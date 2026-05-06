@@ -1,4 +1,4 @@
-import type { AgentType, OutputItem } from "@flow-state-dev/core/items";
+import type { AgentType, BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
@@ -22,26 +22,21 @@ export function testItems(items: OutputItem[]) {
         (item): item is Extract<OutputItem, { type: "message" }> => item.type === "message"
       );
     },
-    errors(): Array<Extract<OutputItem, { type: "error" | "step_error" }>> {
+    errors(): Array<Extract<OutputItem, { type: "error" }>> {
       return allItems.filter(
-        (
-          item
-        ): item is Extract<OutputItem, { type: "error" | "step_error" }> =>
-          item.type === "error" || item.type === "step_error"
+        (item): item is Extract<OutputItem, { type: "error" }> => item.type === "error"
       );
     },
-    blockOutputs(blockName?: string): Array<Extract<OutputItem, { type: "block_output" }>> {
-      return allItems.filter(
-        (item): item is Extract<OutputItem, { type: "block_output" }> => {
-          if (item.type !== "block_output") {
+    blockOutputs(blockName?: string): BlockOutputItem[] {
+      return (allItems as Array<OutputItem | BlockOutputItem>).filter(
+        (item): item is BlockOutputItem => {
+          if ((item as { type: string }).type !== "block_output") {
             return false;
           }
-
           if (blockName === undefined) {
             return true;
           }
-
-          return item.blockName === blockName;
+          return (item as BlockOutputItem).blockName === blockName;
         }
       );
     },

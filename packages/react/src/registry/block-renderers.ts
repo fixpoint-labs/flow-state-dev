@@ -36,7 +36,6 @@ export type RendererRegistry = {
   status?: BlockComponentType | false;
   source?: BlockComponentType | false;
   error?: BlockComponentType | false;
-  step_error?: BlockComponentType | false;
   component?: Record<string, BlockComponentType | false>;
   container?: Record<string, BlockComponentType | false>;
 };

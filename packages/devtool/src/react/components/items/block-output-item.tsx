@@ -5,7 +5,8 @@
  * Regular outputs: "▸ blockName → completed" collapsed, full JSON on expand.
  */
 import { useState } from "react";
-import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
+import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockValueInternal as BlockValue } from "@flow-state-dev/core/items/internal";
 import { Braces, ChevronDown, ChevronRight, Link2, Loader2, Package } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
 import { safeParseJson } from "../../lib/utils";

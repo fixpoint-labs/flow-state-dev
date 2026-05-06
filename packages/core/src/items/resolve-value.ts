@@ -15,15 +15,22 @@
  * can carry a ref to its own emitted message instead of duplicating the
  * text. Resolution returns the joined `output_text` content.
  */
-import type { BlockOutputItem, BlockValue, MessageItem, OutputItem, StructureShape } from "./types";
+import type {
+  BlockOutputItem,
+  BlockValue,
+  BlockValueInternal,
+  MessageItem,
+  OutputItem,
+  StructureShape
+} from "./types";
 
 /** Construct an inline BlockValue carrying novel content. */
 export function inlineBlockValue<T>(value: T): BlockValue<T> {
   return { kind: "inline", value };
 }
 
-/** Construct a ref BlockValue pointing at another item's content. */
-export function refBlockValue(sourceItemId: string): BlockValue<never> {
+/** Construct an internal ref BlockValue pointing at another item's content. */
+export function refBlockValue(sourceItemId: string): BlockValueInternal<never> {
   return { kind: "ref", sourceItemId };
 }
 
@@ -37,7 +44,7 @@ export function structureBlockValue<T>(shape: StructureShape): BlockValue<T> {
  * at boundaries where an older raw value might sneak in — callers should
  * treat a non-BlockValue as an `inline` with that value.
  */
-export function isBlockValue(candidate: unknown): candidate is BlockValue {
+export function isBlockValue(candidate: unknown): candidate is BlockValueInternal {
   if (typeof candidate !== "object" || candidate === null) return false;
   const kind = (candidate as { kind?: unknown }).kind;
   return kind === "inline" || kind === "ref" || kind === "structure";
@@ -45,10 +52,10 @@ export function isBlockValue(candidate: unknown): candidate is BlockValue {
 
 /**
  * Lookup signature used by `resolveBlockValue`. Returns any item type — the
- * resolver branches on `target.type`. FIX-480 broadens this from
- * `BlockOutputItem`-only to support refs targeting `MessageItem`s.
+ * resolver branches on `target.type`. The wider union accepts trace items
+ * (`BlockOutputItem`) since refs may target them internally.
  */
-export type ItemLookup = (itemId: string) => OutputItem | undefined;
+export type ItemLookup = (itemId: string) => OutputItem | BlockOutputItem | undefined;
 
 /**
  * Resolve a BlockValue to its typed payload `T`.
@@ -69,11 +76,23 @@ export function resolveBlockValue<T = unknown>(
   lookup: ItemLookup
 ): T | undefined {
   if (value === undefined) return undefined;
+  return resolveInternal(value as BlockValueInternal<unknown>, lookup, 0) as T | undefined;
+}
+
+/**
+ * Internal resolver. Accepts the wider `BlockValueInternal<T>` and follows
+ * `ref` hops to their content-bearing target.
+ */
+export function resolveBlockValueInternal<T = unknown>(
+  value: BlockValueInternal<unknown> | undefined,
+  lookup: ItemLookup
+): T | undefined {
+  if (value === undefined) return undefined;
   return resolveInternal(value, lookup, 0) as T | undefined;
 }
 
 function resolveInternal(
-  value: BlockValue<unknown>,
+  value: BlockValueInternal<unknown>,
   lookup: ItemLookup,
   refHops: number
 ): unknown {

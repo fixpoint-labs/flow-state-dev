@@ -429,7 +429,7 @@ const researcher = generator({
 });
 ```
 
-Structural item types (`component`, `status`, `container`, `state_change`, `resource_change`, `error`, `step_error`, `block_output`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
+Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_output`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
 
 ### `agentName`
 

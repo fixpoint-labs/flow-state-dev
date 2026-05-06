@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";
 import { buildTraceTree } from "../../lib/trace-tree";
@@ -379,7 +380,6 @@ function getItemIcon(type: string): string {
     reasoning: "🧠",
     block_output: "{}",
     error: "❌",
-    step_error: "⚠️",
     status: "○",
     component: "🧩",
     container: "📦",
@@ -394,7 +394,7 @@ function getItemIcon(type: string): string {
   return icons[type] ?? "?";
 }
 
-function getItemPreview(item: OutputItem): string {
+function getItemPreview(item: DevtoolItem): string {
   switch (item.type) {
     case "message": {
       const text = item.content
@@ -403,8 +403,6 @@ function getItemPreview(item: OutputItem): string {
       return text.slice(0, 60) + (text.length > 60 ? "..." : "");
     }
     case "error":
-      return item.message;
-    case "step_error":
       return item.message;
     case "status": {
       // Structural status items from the sequencer's auto-await (FIX-369)

@@ -43,7 +43,7 @@ type ResolvedTask = {
 
 type Props = {
   /** Flat list of items the user is currently inspecting (across all requests). */
-  items: ReadonlyArray<OutputItem>;
+  items: ReadonlyArray<OutputItem | import("../../lib/item-types").DevtoolItem>;
 };
 
 export function TaskCollectionsView({ items }: Props) {
@@ -234,7 +234,7 @@ type TaskBoardMetaData = {
   counts?: BoardMeta["counts"];
 };
 
-function groupCollections(items: ReadonlyArray<OutputItem>): CollectionView[] {
+function groupCollections(items: ReadonlyArray<OutputItem | import("../../lib/item-types").DevtoolItem>): CollectionView[] {
   const byId = new Map<
     string,
     {

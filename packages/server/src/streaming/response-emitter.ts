@@ -7,6 +7,8 @@ import type {
   ContentPartDeltaEvent,
   ContentPartDoneEvent,
   ItemAddedEvent,
+  BlockDebugItem,
+  BlockOutputItem,
   ItemDoneEvent,
   ItemProvenance,
   OutputItem,
@@ -17,8 +19,18 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
-  ResourceChangeItem
+  ResourceChangeItem,
+  RouterDecisionItem,
+  StateSnapshotItem
 } from "@flow-state-dev/core/items";
+
+/** Server-side runtime item union (includes trace types). */
+export type RuntimeItem =
+  | OutputItem
+  | BlockOutputItem
+  | RouterDecisionItem
+  | StateSnapshotItem
+  | BlockDebugItem;
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import { createRequestEventId } from "./encode-event";
 import {
@@ -58,7 +70,7 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
 
 export type ResponseEmitterItemHooks = {
   /** Fires once an item reaches a terminal status via `item.done`. */
-  onItemDone?: (item: OutputItem) => void;
+  onItemDone?: (item: RuntimeItem) => void;
   /**
    * Fires when an in-flight item's content is mutated by a streaming
    * `content.delta` event (FIX-479). Both `MessageItem.content[i].text`
@@ -70,7 +82,7 @@ export type ResponseEmitterItemHooks = {
    * `setEventHooks`; this hook covers snapshot-style checkpointing of
    * the items field.
    */
-  onItemUpdate?: (item: OutputItem) => void;
+  onItemUpdate?: (item: RuntimeItem) => void;
 };
 
 export type ResponseEmitterEventHooks = {

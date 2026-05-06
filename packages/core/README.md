@@ -179,7 +179,7 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 ### Items (`@flow-state-dev/core/items`)
 
-Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `context`, `status`, `state_change`, `resource_change`, `block_output`, `error`, `step_error`.
+Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `block_tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.thenAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 

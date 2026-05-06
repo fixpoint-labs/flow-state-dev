@@ -18,6 +18,7 @@
       "@flow-state-dev/core": ["packages/core/src/index.ts"],
       "@flow-state-dev/core/types": ["packages/core/src/types/index.ts"],
       "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],
+      "@flow-state-dev/core/items/internal": ["packages/core/src/items/internal.ts"],
       "@flow-state-dev/core/models": ["packages/core/src/models/index.ts"],
       "@flow-state-dev/core/utils": ["packages/core/src/utils/index.ts"],
       "@flow-state-dev/server": ["packages/server/src/index.ts"],

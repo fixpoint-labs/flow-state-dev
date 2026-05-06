@@ -4,7 +4,7 @@
  * Resolution order for renderable types:
  * 1. Custom renderer from RendererRegistry (if registered via FlowProvider)
  *    — pass `false` to explicitly suppress a type
- * 2. Built-in fallback for message/status/error/step_error
+ * 2. Built-in fallback for message/status/error
  * 3. JSON `<pre>` for development visibility (all other unregistered types)
  *
  * Non-client types (context, state_change, resource_change) return null.
@@ -20,8 +20,7 @@ import type {
   MessageItem,
   OutputItem,
   ReasoningItem,
-  StatusItem,
-  StepErrorItem
+  StatusItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 import { resolveRenderer } from "../registry/block-renderers";
@@ -82,14 +81,6 @@ function renderErrorFallback(item: ErrorItem): ReactNode {
   );
 }
 
-function renderStepErrorFallback(item: StepErrorItem): ReactNode {
-  return createElement(
-    "div",
-    { "data-step-error": "true", style: { color: "orange" } },
-    `${item.blockName ? `[${item.blockName}] ` : ""}${item.message}${item.recovered ? " (recovered)" : ""}`
-  );
-}
-
 function renderReasoningFallback(item: ReasoningItem): ReactNode {
   const text = item.summary
     .filter((c) => c.type === "reasoning_text")
@@ -144,7 +135,6 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
   reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
-  step_error: (item) => renderStepErrorFallback(item as StepErrorItem),
   block_tool_output: (item) => renderBlockToolOutputFallback(item as BlockToolOutputItem)
 };
 
@@ -209,7 +199,7 @@ function renderItem(item: OutputItem): ReactNode {
     return null;
   }
 
-  // 2. Built-in fallback (message, status, error, step_error).
+  // 2. Built-in fallback (message, status, error).
   const fallback = BUILT_IN_FALLBACKS[item.type];
   if (fallback !== undefined) {
     return fallback(item);

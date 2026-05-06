@@ -291,7 +291,7 @@ pipeline
 
 #### Background work
 
-Queue non-blocking tasks that run alongside the main pipeline. The main chain continues immediately — background failures emit `step_error` items but never abort the pipeline:
+Queue non-blocking tasks that run alongside the main pipeline. The main chain continues immediately — background failures are logged and surfaced on the DevTool's trace channel; they never abort the pipeline:
 
 ```ts
 pipeline

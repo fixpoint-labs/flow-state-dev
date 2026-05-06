@@ -40,7 +40,6 @@ export const chatAssistantRenderers: RendererRegistry = {
   block_tool_output: Tool,
   status: Status,
   error: ErrorDisplay,
-  step_error: ErrorDisplay,
   source: false,
   component: {
     "audit-annotation": AuditAnnotation,

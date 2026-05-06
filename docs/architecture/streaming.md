@@ -45,7 +45,6 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `router_decision` | No | No | Route selection record (trace only) |
 | `state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
 | `error` | Yes | No | Terminal errors |
-| `step_error` | Yes | No | Recoverable step errors |
 
 For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
 

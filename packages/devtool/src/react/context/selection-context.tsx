@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem as OutputItem } from "../lib/item-types";
 import type { StateSnapshot, TraceNode } from "../lib/trace-tree";
 
 /**

@@ -154,9 +154,11 @@ export function useRequestStream(
 
   const blockOutputs = useMemo(
     () =>
-      items.filter(
-        (item: OutputItem): item is BlockOutputItem =>
-          item.type === "block_output"
+      // `block_output` arrives via the trace channel; not in the public
+      // OutputItem union. Cast at the boundary.
+      (items as Array<OutputItem | BlockOutputItem>).filter(
+        (item): item is BlockOutputItem =>
+          (item as { type: string }).type === "block_output"
       ),
     [items]
   );

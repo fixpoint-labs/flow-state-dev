@@ -37,7 +37,6 @@ import type {
   AgentType,
   BlockOutputItem,
   BlockToolOutputItem,
-  BlockValue,
   ComponentItem,
   ContainerItem,
   Content,
@@ -48,7 +47,9 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import { resolveBlockValue, resolveItemVisibility } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type { CASPersist } from "../stores/cas";
@@ -812,7 +813,6 @@ const CLIENT_AUDIENCE_TYPES = new Set([
   "state_change",
   "resource_change",
   "error",
-  "step_error"
 ]);
 
 /**
@@ -825,8 +825,8 @@ const CLIENT_AUDIENCE_TYPES = new Set([
  * `allItems` is used to resolve `block_output` BlockValue refs back to their
  * source items (FIX-413); pass the same list you're iterating over.
  */
-function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): LLMMessage[] {
-  if (!resolveItemVisibility(item).history) {
+function itemToLLMMessages(item: OutputItem | BlockOutputItem, allItems: readonly (OutputItem | BlockOutputItem)[]): LLMMessage[] {
+  if (!resolveItemVisibility(item as OutputItem).history) {
     return [];
   }
 
@@ -869,7 +869,7 @@ function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): L
     // Resolve the BlockValue union to its typed payload before stringifying
     // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
     // FIX-480: refs may target `message` items, so accept any item type.
-    const resolvedOutput = resolveBlockValue(bo.output, (id) => {
+    const resolvedOutput = resolveBlockValueInternal(bo.output, (id: string) => {
       for (let i = allItems.length - 1; i >= 0; i -= 1) {
         if (allItems[i].id === id) return allItems[i];
       }
@@ -989,7 +989,7 @@ async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => OutputItem[]
+  readLiveItems?: () => Array<OutputItem | BlockOutputItem>
 ): Promise<LLMMessage[]> {
 
   const allowedTypes = query?.itemTypes
@@ -999,7 +999,7 @@ async function loadLLMHistory(
 
   const messages: LLMMessage[] = [];
 
-  function processItems(items: OutputItem[]): void {
+  function processItems(items: Array<OutputItem | BlockOutputItem>): void {
     const sorted = [...items].sort((a, b) => {
       const tsDiff = a.ts - b.ts;
       return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
@@ -1138,7 +1138,7 @@ function createSessionItemViews(
   options: {
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
-    readLiveItems?: () => OutputItem[];
+    readLiveItems?: () => Array<OutputItem | BlockOutputItem>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -1218,8 +1218,8 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 type EmissionContext = {
   requestId: string;
   response: {
-    emitItemAdded(item: OutputItem): Promise<unknown>;
-    emitItemDone(item: OutputItem): Promise<unknown>;
+    emitItemAdded(item: OutputItem | BlockOutputItem | RouterDecisionItem): Promise<unknown>;
+    emitItemDone(item: OutputItem | BlockOutputItem | RouterDecisionItem): Promise<unknown>;
     emitContentAdded?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
     emitContentDelta?(itemId: string, contentIndex: number, delta: string): Promise<unknown>;
     emitContentDone?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
@@ -2251,8 +2251,8 @@ export async function createExecutionContext<
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
-  const readLiveItems = (): OutputItem[] => {
-    const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };
+  const readLiveItems = (): Array<OutputItem | BlockOutputItem> => {
+    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockOutputItem> };
     if (typeof typedResponse.getItems === "function") {
       return typedResponse.getItems();
     }
@@ -2502,15 +2502,15 @@ export async function createExecutionContext<
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
-    const blockValue: BlockValue<unknown> =
+    const blockValue: BlockValueInternal<unknown> =
       status === "failed"
         ? { kind: "inline", value: undefined }
         : buildEmitterBlockValue(blockOutput, hint, (id) => {
-            const typed = responseRef.current as unknown as { getItems?: () => OutputItem[] };
+            const typed = responseRef.current as unknown as { getItems?: () => Array<OutputItem | BlockOutputItem> };
             if (typeof typed.getItems === "function") {
               const items = typed.getItems();
               for (let i = items.length - 1; i >= 0; i -= 1) {
-                if (items[i].id === id) return items[i] as BlockOutputItem;
+                if (items[i].id === id) return items[i] as unknown as BlockOutputItem;
               }
             }
             return undefined;
@@ -2552,7 +2552,7 @@ export async function createExecutionContext<
     output: unknown,
     hint: BlockOutputHint | undefined,
     lookupItem: (id: string) => BlockOutputItem | undefined
-  ): BlockValue<unknown> {
+  ): BlockValueInternal<unknown> {
     if (hint === undefined || hint.kind === "inline") {
       return { kind: "inline", value: output };
     }

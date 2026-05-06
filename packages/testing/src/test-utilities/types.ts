@@ -1,4 +1,7 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockOutputItem, OutputItem, RouterDecisionItem, StateSnapshotItem } from "@flow-state-dev/core/items";
+
+/** Test-utility item union: includes trace items so harnesses can assert on them. */
+type TestItem = OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
 import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
@@ -66,7 +69,7 @@ export type StateChange = {
 export type TestBlockResult<TOutput> = {
   output: TOutput;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
   state: {
     request: Record<string, unknown>;
     session: Record<string, unknown>;
@@ -88,7 +91,7 @@ export type StepTrace = {
   input: unknown;
   output: unknown;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
   durationMs: number;
   phase: "main" | "work";
   skipped: boolean;
@@ -98,7 +101,7 @@ export type WorkTrace = {
   blockName: string;
   output: unknown;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
 };
 
 export type TestSequencerResult<TOutput> = TestBlockResult<TOutput> & {
@@ -136,7 +139,7 @@ export type TestFlowResult = {
   requestId: string;
   output?: unknown;
   error?: Error;
-  items: OutputItem[];
+  items: TestItem[];
 };
 
 export type { BlockInput, BlockOutput };

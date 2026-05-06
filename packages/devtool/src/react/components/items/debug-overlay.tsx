@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-export function DebugOverlay({ item }: { item: OutputItem }) {
+export function DebugOverlay({ item }: { item: DevtoolItem }) {
   const [expanded, setExpanded] = useState(false);
 
   return (

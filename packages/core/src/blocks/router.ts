@@ -210,15 +210,15 @@ export function router<
       // descriptor on the outer ctx so the router's own block_output carries
       // the ref instead of duplicating content. Set AFTER runSelected below.
       const installRouterHint = (selectedInstanceId: string): void => {
-        const response = ctx.response as unknown as { getItems?: () => OutputItem[] } | undefined;
+        const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
         if (response === undefined || typeof response.getItems !== "function") return;
         const items = response.getItems();
         for (let i = items.length - 1; i >= 0; i -= 1) {
           const item = items[i];
-          if (item.type === "block_output" && item.provenance?.blockInstanceId === selectedInstanceId) {
+          if (item.type === "block_output" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === selectedInstanceId) {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
               kind: "ref",
-              sourceItemId: item.id
+              sourceItemId: (item as { id: string }).id
             };
             return;
           }

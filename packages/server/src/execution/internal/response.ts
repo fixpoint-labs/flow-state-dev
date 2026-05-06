@@ -1,12 +1,30 @@
 /**
  * Small response-emitter helpers shared by the execution runtime.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type {
+  BlockDebugItem,
+  BlockOutputItem,
+  OutputItem,
+  RouterDecisionItem,
+  StateSnapshotItem
+} from "@flow-state-dev/core/items";
+
+/**
+ * Server-side item union. The public `OutputItem` excludes trace items;
+ * runtime buffers carry them, so this alias re-includes the four trace
+ * types for internal narrowing.
+ */
+export type RuntimeItem =
+  | OutputItem
+  | BlockOutputItem
+  | RouterDecisionItem
+  | StateSnapshotItem
+  | BlockDebugItem;
 
 /**
  * Safely reads buffered response items from both public and internal emitters.
  */
-export function getResponseItems(response: unknown): OutputItem[] {
+export function getResponseItems(response: unknown): RuntimeItem[] {
   if (
     typeof response === "object" &&
     response !== null &&
@@ -14,7 +32,7 @@ export function getResponseItems(response: unknown): OutputItem[] {
     typeof (response as { getItems?: unknown }).getItems === "function"
   ) {
     return (
-      (response as { getItems: () => OutputItem[] }).getItems?.() ?? []
+      (response as { getItems: () => RuntimeItem[] }).getItems?.() ?? []
     );
   }
 

@@ -31,7 +31,6 @@ const STRUCTURAL_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
   state_change:    { client: true,  history: false },
   resource_change: { client: true,  history: false },
   error:           { client: true,  history: false },
-  step_error:      { client: true,  history: false },
   block_output:    { client: false, history: false },
   router_decision: { client: false, history: false },
   state_snapshot:  { client: false, history: false },

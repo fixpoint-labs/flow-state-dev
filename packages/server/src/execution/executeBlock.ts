@@ -1,7 +1,8 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, BlockValue, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
@@ -87,8 +88,8 @@ function createBlockOutputProvenance(
 function buildBlockValueForEmit(
   output: unknown,
   hint: BlockOutputHint | undefined,
-  items: OutputItem[]
-): BlockValue<unknown> {
+  items: import("./internal/response").RuntimeItem[]
+): BlockValueInternal<unknown> {
   if (hint === undefined || hint.kind === "inline") {
     return { kind: "inline", value: output };
   }
@@ -131,7 +132,7 @@ async function emitBlockOutputItem(
   const items = getResponseItems(options.ctx.response);
   const itemIndex = items.length;
   const blockValue = options.status === "failed"
-    ? ({ kind: "inline", value: undefined } as BlockValue<unknown>)
+    ? ({ kind: "inline", value: undefined } as BlockValueInternal<unknown>)
     : buildBlockValueForEmit(options.output, options.hint, items);
   // Root block_output items carry lifecycle timing and are marked for trace.
   // Items with toolCall (generator tool results) are emitted separately and

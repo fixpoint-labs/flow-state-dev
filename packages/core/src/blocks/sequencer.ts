@@ -1,7 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
 import { asRuntime } from "../types/block";
-import type { BlockValue, OutputItem, StructureShape } from "../items/types";
+import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
 import type {
   BranchStep,
   BranchStepOutput,
@@ -123,13 +123,13 @@ function findEmittedBlockOutputId(
   ctx: BlockContext,
   childInstanceId: string
 ): string | undefined {
-  const response = ctx.response as unknown as { getItems?: () => OutputItem[] } | undefined;
+  const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
   if (response === undefined || typeof response.getItems !== "function") return undefined;
   const items = response.getItems();
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
-    if (item.type === "block_output" && item.provenance?.blockInstanceId === childInstanceId) {
-      return item.id;
+    if (item.type === "block_output" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === childInstanceId) {
+      return (item as { id: string }).id;
     }
   }
   return undefined;
@@ -191,61 +191,6 @@ function getSequencerEmitterItemCount(response: unknown): number {
     return Array.isArray(items) ? items.length : 0;
   }
   return 0;
-}
-
-/**
- * Emits a `step_error` item describing a recoverable failure inside a
- * background `.work()` / `.workIf()` task (or a `.forEachBackground` batch).
- *
- * Step errors are client-visible but excluded from history — the canonical
- * channel for "something went wrong in the side-chain, but the request as a
- * whole continued." Renderers display them as warnings (e.g. orange text)
- * rather than as fatal request errors. The accompanying failed `block_output`
- * (always emitted by `executeBlock`) remains available for trace/devtool
- * inspection.
- */
-async function emitWorkStepError(
-  ctx: BlockContext,
-  failedBlockName: string,
-  reason: unknown
-): Promise<void> {
-  const message =
-    reason instanceof Error
-      ? reason.message
-      : typeof reason === "string"
-        ? reason
-        : String(reason);
-  const code =
-    reason !== null && typeof reason === "object" && "code" in reason
-      ? typeof (reason as { code?: unknown }).code === "string"
-        ? ((reason as { code: string }).code)
-        : undefined
-      : undefined;
-  const item = {
-    id: `item_step_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "step_error" as const,
-    status: "failed" as const,
-    transient: true,
-    requestId: ctx.request.identity.id,
-    itemIndex: getSequencerEmitterItemCount(ctx.response),
-    provenance: {
-      blockName: ctx._blockIdentity?.blockName ?? failedBlockName,
-      blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? failedBlockName,
-      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
-      phase: "work" as const,
-    },
-    ts: Date.now(),
-    message,
-    code,
-    blockName: failedBlockName,
-    recovered: false,
-  };
-  try {
-    await ctx.response.emit({ type: "item.added", item });
-    await ctx.response.emit({ type: "item.done", item });
-  } catch {
-    // Emission is best-effort — never escalate a side-channel failure.
-  }
 }
 
 /**
@@ -387,7 +332,7 @@ async function emitGeneratorBlockOutput(
   // Default for generators is inline (FIX-413: leaves carry novel
   // content). FIX-480 lets streaming-text generators promote to a ref
   // when the output IS the streamed message.
-  const blockValue: BlockValue<unknown> =
+  const blockValue: BlockValueInternal<unknown> =
     error
       ? { kind: "inline", value: undefined }
       : hint?.kind === "ref"
@@ -749,11 +694,6 @@ function runSequencerOperations(
               remaining--;
               if (result.status === "rejected") {
                 console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
-                // Surface the failure to the client as a non-fatal step_error.
-                // The work was fire-and-forget, so the parent action stays
-                // successful — but the renderer should still have a chance to
-                // show the user that a side-channel didn't complete.
-                await emitWorkStepError(ctx, result.name, result.reason);
               }
               ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
             })
@@ -1085,7 +1025,7 @@ function createSequencer<TInput, TOutput>(
             // Emit a structure BlockValue whose entries point at each branch's
             // item (FIX-413). Branches whose item id can't be found fall back
             // to inline using the branch output itself.
-            const shapeEntries: Record<string, BlockValue<unknown>> = {};
+            const shapeEntries: Record<string, BlockValueInternal<unknown>> = {};
             entries.forEach(([key], index) => {
               const branchPath = branchPaths[index];
               const ref = branchPath !== undefined ? refDescriptorForPath(ctx, branchPath) : { kind: "inline" as const };
@@ -1161,7 +1101,7 @@ function createSequencer<TInput, TOutput>(
 
             // `.forEach` aggregates an array of existing iteration outputs.
             // Emit a structure BlockValue whose entries ref each iteration.
-            const entries: BlockValue<unknown>[] = iterationPaths.map((path, i) => {
+            const entries: BlockValueInternal<unknown>[] = iterationPaths.map((path, i) => {
               const ref = refDescriptorForPath(ctx, path);
               return ref.kind === "ref"
                 ? { kind: "ref", sourceItemId: ref.sourceItemId }
@@ -1728,7 +1668,7 @@ function createSequencer<TInput, TOutput>(
 
             // `.thenAll` aggregates an array of existing branch outputs.
             // Emit a structure BlockValue whose entries ref each branch's item.
-            const entries: BlockValue<unknown>[] = branchPaths.map((path, i) => {
+            const entries: BlockValueInternal<unknown>[] = branchPaths.map((path, i) => {
               const ref = refDescriptorForPath(ctx, path);
               return ref.kind === "ref"
                 ? { kind: "ref", sourceItemId: ref.sourceItemId }
