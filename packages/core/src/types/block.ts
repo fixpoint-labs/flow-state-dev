@@ -471,6 +471,28 @@ export interface BlockDefinition<
   connectOutput<TTo>(
     mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
   ): BlockDefinition<TInputSchema, ZodTypeAny>;
+  /**
+   * Declare a separate, model-visible representation of this block's output
+   * for use when the block is installed as a tool on a generator. The mapper
+   * fires only at the AI SDK bridge boundary, producing the string the LLM
+   * observes on its next turn.
+   *
+   * The structured `TOutput` continues to flow through the block graph
+   * unchanged: `block_tool_output` items, downstream sequencer steps, devtool,
+   * tests, and replay all see the original value. Both `TInputSchema` and
+   * `TOutputSchema` are preserved.
+   *
+   * The mapper is a property of the block definition. When the block is used
+   * as a regular sequencer step (not via `tools: [...]`), the mapper is
+   * silently inert.
+   *
+   * The mapper is expected to be deterministic: history replay re-runs it
+   * rather than persisting its string output. A non-deterministic formatter
+   * would produce different strings between original turn and replay.
+   */
+  mapModelOutput(
+    mapper: (output: TOutput, ctx: BlockContext) => string | Promise<string>
+  ): BlockDefinition<TInputSchema, TOutputSchema>;
 }
 
 /**
@@ -494,6 +516,13 @@ export interface BlockRuntime<
 > extends BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   /** @internal — dispatch entry point used by the substrate. */
   run(input: TInput, ctx: BlockContext): Promise<TOutput>;
+  /**
+   * @internal — mapper installed via `mapModelOutput`. Read by the generator
+   * tool bridge (`compileToolsWithExecute`) and forwarded as `toModelOutput`
+   * on the resulting `GeneratorModelTool`. Absent on blocks that never call
+   * `mapModelOutput`.
+   */
+  _modelOutputMapper?: (output: TOutput, ctx: BlockContext) => string | Promise<string>;
 }
 
 /**

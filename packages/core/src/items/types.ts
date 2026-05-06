@@ -371,6 +371,12 @@ export type BlockDebugPayload = {
    *  actually changed the value — otherwise the previous block's output is
    *  the input, already visible via block_output. */
   connectedInput?: unknown;
+  /** Model-visible representation of a tool's output, produced by a block's
+   *  `mapModelOutput` mapper. Lets the devtool render what the LLM saw on
+   *  its next turn alongside the structured `output` carried on the
+   *  `block_tool_output` item. Only set on tool-call invocations whose
+   *  underlying block declared `mapModelOutput`. */
+  modelOutput?: string;
 };
 
 /** Resolved block configuration snapshot emitted at block start for devtool debugging.

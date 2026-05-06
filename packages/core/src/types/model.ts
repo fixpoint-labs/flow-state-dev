@@ -132,6 +132,13 @@ export type GeneratorModelTool = {
   description?: string;
   parameters?: ZodTypeAny;
   execute?: (args: unknown, options?: { toolCallId?: string }) => Promise<unknown>;
+  /**
+   * Optional mapper from the structured tool output to the string the model
+   * sees on its next turn. Forwarded to the AI SDK as `toModelOutput`. When
+   * omitted, the AI SDK uses the structured output verbatim. Sourced from a
+   * block's `mapModelOutput` declaration.
+   */
+  toModelOutput?: (output: unknown) => string | Promise<string>;
 };
 
 export type GeneratorModelStreamChunk = {

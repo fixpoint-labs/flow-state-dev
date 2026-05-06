@@ -16,6 +16,32 @@ import type {
   RecallToolResult,
 } from './types.js'
 
+/**
+ * Compact summary string for the LLM-visible representation of a recall result.
+ *
+ * Installed via `recallSeq.mapModelOutput(formatRecallSummary)` in the recall
+ * tool factory. The structured `RecallToolResult` continues to flow through
+ * the framework (devtool, items log, tests, history replay); the LLM observes
+ * this summary instead of the full JSON envelope on its next turn.
+ *
+ * Deterministic by design: history replay re-runs the mapper on the persisted
+ * structured output rather than persisting the string itself.
+ */
+export function formatRecallSummary(result: RecallToolResult): string {
+  if ('error' in result) {
+    return `Recall failed: ${result.error}`
+  }
+  if (result.results.length === 0) {
+    return `No memories matched "${result.query}".`
+  }
+  const lines = result.results.map((r) => `- ${r.content}`)
+  const more =
+    result.totalMatched > result.truncatedTo
+      ? `\n\n(${result.truncatedTo} of ${result.totalMatched} matches shown; re-query with narrower terms for more)`
+      : ''
+  return lines.join('\n') + more
+}
+
 /** Default per-item char cap applied to result content. */
 export const DEFAULT_PER_ITEM_CHAR_CAP = 400
 

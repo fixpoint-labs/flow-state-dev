@@ -371,6 +371,20 @@ function buildAiSdkRequest(
         if (tool.execute !== undefined) {
           entry.execute = tool.execute;
         }
+        // Forward the block's `mapModelOutput` mapper as the AI SDK's
+        // `toModelOutput`. The AI SDK invokes it when materialising tool-
+        // result content for the next-turn assistant message; the framework's
+        // `block_tool_output` items continue to carry the structured value.
+        // The framework mapper returns a plain string; wrap it in the AI SDK
+        // v6 content-part envelope here so block authors don't need to know
+        // about the SDK's content shape.
+        if (tool.toModelOutput !== undefined) {
+          const mapper = tool.toModelOutput;
+          entry.toModelOutput = async ({ output }: { output: unknown }) => {
+            const text = await mapper(output);
+            return { type: "content" as const, value: [{ type: "text" as const, text }] };
+          };
+        }
         compiled[alias] = entry;
         if (alias !== tool.name) {
           if (toolNameMap === undefined) toolNameMap = new Map();

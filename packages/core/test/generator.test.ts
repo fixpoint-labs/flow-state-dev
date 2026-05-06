@@ -219,6 +219,189 @@ describe("generator builder", () => {
     expect(toolCalls).toEqual(["ok"]);
   });
 
+  it("forwards mapModelOutput as toModelOutput on the compiled GeneratorModelTool", async () => {
+    // A block carrying a `mapModelOutput` mapper installed via
+    // `BlockDefinition.mapModelOutput` should surface its mapper as the
+    // compiled tool's `toModelOutput` field. The framework-level mapper
+    // returns a plain string; the AI SDK adapter wraps it into the SDK's
+    // content-part envelope.
+    const richTool = handler({
+      name: "rich",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ count: z.number() }),
+      execute: async (input) => ({ count: input.q.length }),
+    }).mapModelOutput((out) => `count=${out.count}`);
+
+    let seenToModelOutput: ((output: unknown) => Promise<string> | string) | undefined;
+    let seenStructuredOutput: unknown;
+
+    const block = generator({
+      name: "with-mapped-tool",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [richTool],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const tool = options.tools?.[0];
+          seenToModelOutput = tool?.toModelOutput;
+          if (tool?.execute) {
+            seenStructuredOutput = await tool.execute({ q: "hello" });
+          }
+          return { structuredOutput: { done: true } };
+        },
+      }),
+    });
+
+    await runForTest(block, { q: "hello" }, ctx);
+
+    // execute() returns the structured output unchanged (consumed by
+    // `block_tool_output` items, devtool, replay).
+    expect(seenStructuredOutput).toEqual({ count: 5 });
+    // The mapper is forwarded for the AI SDK to materialise next-turn
+    // model-visible content from the structured output.
+    expect(seenToModelOutput).toBeDefined();
+    await expect(
+      seenToModelOutput!({ count: 5 })
+    ).resolves.toBe("count=5");
+  });
+
+  it("emits a block_debug item carrying the model-visible string when mapModelOutput is set", async () => {
+    // The tool wrapper captures the mapper's string on a `block_debug` item
+    // so devtool can render what the LLM saw alongside the structured
+    // `block_tool_output`. Gated by trace observability.
+    const richTool = handler({
+      name: "rich-debug",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ count: z.number() }),
+      execute: async (input) => ({ count: input.q.length }),
+    }).mapModelOutput((out) => `count=${out.count}`);
+
+    const emitted: any[] = [];
+    const block = generator({
+      name: "with-debug",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [richTool],
+    });
+
+    const prevTrace = process.env.FSDEV_TRACE_OBSERVABILITY;
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+
+    try {
+      const ctx = createMockContext({
+        response: {
+          emit: (event: any) => {
+            emitted.push(event);
+          },
+        } as any,
+        resolveModel: () => ({
+          modelId: "m",
+          async generate(options: any) {
+            const tool = options.tools?.[0];
+            if (tool?.execute) {
+              await tool.execute({ q: "hello" }, { toolCallId: "call_1" });
+            }
+            return { structuredOutput: { done: true } };
+          },
+        }),
+      });
+
+      await runForTest(block, { q: "hello" }, ctx);
+    } finally {
+      if (prevTrace === undefined) delete process.env.FSDEV_TRACE_OBSERVABILITY;
+      else process.env.FSDEV_TRACE_OBSERVABILITY = prevTrace;
+    }
+
+    const toolOutput = emitted.find(
+      (e) => e?.item?.type === "block_tool_output" && e?.type === "item.done"
+    );
+    expect(toolOutput).toBeDefined();
+    expect(toolOutput.item.output).toEqual({ count: 5 });
+
+    const debug = emitted.find(
+      (e) => e?.item?.type === "block_debug" && e?.type === "item.done"
+    );
+    expect(debug).toBeDefined();
+    expect(debug.item.payload).toEqual({ modelOutput: "count=5" });
+    expect(debug.item.transient).toBe(true);
+  });
+
+  it("does not emit a block_debug for tools without mapModelOutput", async () => {
+    const plain = handler({
+      name: "plain-no-debug",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true }),
+    });
+
+    const emitted: any[] = [];
+    const block = generator({
+      name: "no-debug",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [plain],
+    });
+
+    const prevTrace = process.env.FSDEV_TRACE_OBSERVABILITY;
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+    try {
+      const ctx = createMockContext({
+        response: { emit: (e: any) => emitted.push(e) } as any,
+        resolveModel: () => ({
+          modelId: "m",
+          async generate(options: any) {
+            const tool = options.tools?.[0];
+            if (tool?.execute) await tool.execute({}, { toolCallId: "c" });
+            return { structuredOutput: { done: true } };
+          },
+        }),
+      });
+      await runForTest(block, {}, ctx);
+    } finally {
+      if (prevTrace === undefined) delete process.env.FSDEV_TRACE_OBSERVABILITY;
+      else process.env.FSDEV_TRACE_OBSERVABILITY = prevTrace;
+    }
+
+    expect(emitted.find((e) => e?.item?.type === "block_debug")).toBeUndefined();
+  });
+
+  it("does not set toModelOutput on tools without mapModelOutput", async () => {
+    const plain = handler({
+      name: "plain",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true }),
+    });
+
+    let seenToModelOutput: unknown;
+    const block = generator({
+      name: "no-mapper",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [plain],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          seenToModelOutput = options.tools?.[0]?.toModelOutput;
+          return { structuredOutput: { done: true } };
+        },
+      }),
+    });
+    await runForTest(block, {}, ctx);
+    expect(seenToModelOutput).toBeUndefined();
+  });
+
   it("tools resolver receives the current input alongside ctx", async () => {
     // A tools function closes over per-invocation state via its `input`
     // argument. Verifies that `tools: (input, ctx) => ...` can select tools
