@@ -116,6 +116,10 @@ The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserv
 
 The mapper is expected to be deterministic: history replay re-runs it on the persisted structured output rather than persisting the string itself.
 
+### Devtool inspection
+
+When a tool block declares `mapModelOutput`, the framework emits a transient `block_debug` item carrying the mapper's string output alongside the regular `block_tool_output` item that carries the structured value. Devtool surfaces both, so you can see what the LLM saw next to what the block actually produced. Gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in dev/test, off in production).
+
 ## State handoffs
 
 Connectors can read from scope state or sequencer state when shaping input:

@@ -11,6 +11,7 @@ Adds a new `BlockDefinition.mapModelOutput((output, ctx) => string)` method that
 - New method on every block kind. Both `TInputSchema` and `TOutputSchema` are preserved — unlike `connectOutput`, `mapModelOutput` does not reshape downstream consumers. When the block is used as a regular sequencer step (not via `tools: [...]`), the mapper is silently inert.
 - Plumbed through the AI SDK v6 bridge as `toModelOutput` so providers materialise next-turn tool-result content from the mapper's string instead of the structured envelope.
 - Recall tool migrated as the validating consumer: structured `RecallToolResult` keeps flowing through devtool/replay, and the LLM sees a compact bulleted summary built by the new exported `formatRecallSummary` helper. Token cost on a 5-result return drops well below half the previous JSON envelope.
+- Devtool inspection: when a tool block declares `mapModelOutput`, the wrapper emits a `block_debug` item carrying the mapper's string. Devtool can render it side-by-side with the structured `block_tool_output`, so you can see what the LLM saw alongside what the block produced. Gated by `FSDEV_TRACE_OBSERVABILITY`; transient, never persisted, never sent to LLM context.
 - Mapper is expected to be deterministic: history replay re-runs it on the persisted structured output rather than persisting the string itself.
 
 ### Generator: log unparseable candidates + raise consolidation repair attempts

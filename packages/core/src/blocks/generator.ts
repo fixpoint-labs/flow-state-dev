@@ -43,6 +43,7 @@ import {
 } from "./internal/block-instance-id";
 
 import { toError, withTimeout } from "./internal/utils";
+import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -684,7 +685,9 @@ function compileToolsWithExecute(
     // resulting tool entry so the AI SDK substitutes the mapper's string for
     // the structured output when materialising next-turn tool-result content.
     // The wrapper's `block_tool_output` emit path below continues to use the
-    // raw structured `output` — the mapper is invisible to observation.
+    // raw structured `output`; the mapper's string is captured separately on
+    // a `block_debug` item so devtool can render what the LLM saw alongside
+    // the structured output.
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
     return {
     name: tool.name,
@@ -747,6 +750,46 @@ function compileToolsWithExecute(
             };
             await scopedCtx.response.emit({ type: "item.added", item: toolOutputItem });
             await scopedCtx.response.emit({ type: "item.done", item: toolOutputItem });
+
+            // When the tool block declared `mapModelOutput`, emit a
+            // block_debug item carrying the model-visible string. The
+            // structured `output` on the block_tool_output above is what
+            // downstream consumers see; this is what the LLM saw on its
+            // next turn. Gated by trace observability — debug items are
+            // transient, never persisted, never sent to LLM context.
+            if (
+              modelOutputMapper !== undefined &&
+              isTraceObservabilityEnabled()
+            ) {
+              try {
+                const modelOutput = await modelOutputMapper(output as never, scopedCtx);
+                const debugItem = {
+                  id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                  type: "block_debug" as const,
+                  status: "completed" as const,
+                  transient: true as const,
+                  requestId: scopedCtx.request.identity.id,
+                  itemIndex: getEmitterItemCount(scopedCtx.response),
+                  provenance: {
+                    blockName: identity?.blockName ?? tool.name,
+                    blockInstanceId: identity?.blockInstanceId ?? tool.name,
+                    parentBlockInstanceId: identity?.parentBlockInstanceId,
+                    phase: identity?.phase ?? "main"
+                  },
+                  ts: Date.now(),
+                  blockName: tool.name,
+                  blockKind: tool.kind,
+                  blockInstanceId: identity?.blockInstanceId ?? tool.name,
+                  payload: { modelOutput }
+                };
+                await scopedCtx.response.emit({ type: "item.added", item: debugItem });
+                await scopedCtx.response.emit({ type: "item.done", item: debugItem });
+              } catch {
+                // Mapper failure here must not break the tool path. The AI
+                // SDK still re-runs the mapper at its own boundary; if that
+                // also fails the SDK surfaces the error there.
+              }
+            }
           }
 
           return output;
