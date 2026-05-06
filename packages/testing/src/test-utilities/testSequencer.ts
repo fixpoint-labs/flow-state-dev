@@ -40,7 +40,11 @@ function buildStepTraces(items: Array<OutputItem | BlockOutputItem>): StepTrace[
     current.items.push(item);
 
     if ((item as { type: string }).type === "block_output") {
-      current.output = (item as unknown as BlockOutputItem).output;
+      const blockOutput = item as unknown as BlockOutputItem;
+      current.output = blockOutput.output;
+      if (blockOutput.error !== undefined) {
+        current.error = new Error(blockOutput.error.message);
+      }
     }
 
     map.set(key, current);

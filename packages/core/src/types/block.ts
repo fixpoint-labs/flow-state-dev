@@ -11,7 +11,14 @@ import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
-import type { AgentType, StructureShape } from "../items/types";
+import type {
+  AgentType,
+  StructureShape,
+  BlockOutputItem,
+  RouterDecisionItem,
+  StateSnapshotItem,
+  BlockDebugPayload
+} from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
@@ -161,6 +168,8 @@ export interface BlockContext<
   cap: TCapabilities;
 
   /**
+   * @deprecated Use `ctx.emit.message(...)` instead. Removed in next major.
+   *
    * Emit a chat message item.
    *
    * Defaults to `transient: false` (persisted) regardless of the producing
@@ -174,11 +183,14 @@ export interface BlockContext<
     text: string,
     options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
   ): void;
+  /** @deprecated Use `ctx.emit.message(...)` instead. Removed in next major. */
   emitMessage(
     content: Content[],
     options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
   ): void;
   /**
+   * @deprecated Use `ctx.emit.component(...)` instead. Removed in next major.
+   *
    * Emit a component item rendered by a registered UI component.
    *
    * Defaults to `transient: false` (persisted) regardless of the producing
@@ -202,6 +214,8 @@ export interface BlockContext<
     }
   ): void;
   /**
+   * @deprecated Use `ctx.emit.status(...)` instead. Removed in next major.
+   *
    * Update the request-scoped status slot. Rendered by clients as a single
    * in-flight indicator ("what is happening right now").
    *
@@ -217,6 +231,30 @@ export interface BlockContext<
     message: string | undefined,
     options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
   ): void;
+
+  /**
+   * Namespaced emission API. Prefer `ctx.emit.message`/`ctx.emit.component`/
+   * `ctx.emit.status` over the flat `ctx.emitMessage`/`ctx.emitComponent`/
+   * `ctx.emitStatus` aliases (which are deprecated).
+   *
+   * `ctx.emit.trace.*` is reserved for framework auto-emitters of the four
+   * trace item types and rarely called by user code.
+   */
+  emit: {
+    /** See {@link BlockContext.emitMessage}. */
+    message: BlockContext["emitMessage"];
+    /** See {@link BlockContext.emitComponent}. */
+    component: BlockContext["emitComponent"];
+    /** See {@link BlockContext.emitStatus}. */
+    status: BlockContext["emitStatus"];
+    /** @internal — used by framework auto-emitters; user code rarely calls these. */
+    trace: {
+      blockOutput: (item: BlockOutputItem) => void;
+      routerDecision: (item: RouterDecisionItem) => void;
+      stateSnapshot: (item: StateSnapshotItem) => void;
+      blockDebug: (payload: BlockDebugPayload) => void;
+    };
+  };
 
   /**
    * Runtime metadata for the current request. Available during server-side

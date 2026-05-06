@@ -35,6 +35,8 @@ import {
 } from "@flow-state-dev/core/types";
 import type {
   AgentType,
+  BlockDebugItem,
+  BlockDebugPayload,
   BlockOutputItem,
   BlockToolOutputItem,
   ComponentItem,
@@ -45,6 +47,7 @@ import type {
   OutputItem,
   RouterDecisionItem,
   StateChangeItem,
+  StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
@@ -53,7 +56,7 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type { CASPersist } from "../stores/cas";
-import type { SetResult } from "../stores/types";
+import type { SetResult, TraceStore } from "../stores/types";
 import type {
   OrgRecord,
   RequestRecord,
@@ -69,7 +72,6 @@ import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
 import {
   buildConnectedInputDebugPayload,
   buildGeneratorDebugPayload,
-  emitBlockDebugItem,
 } from "../execution/internal/debug-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -1218,11 +1220,13 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 type EmissionContext = {
   requestId: string;
   response: {
-    emitItemAdded(item: OutputItem | BlockOutputItem | RouterDecisionItem): Promise<unknown>;
-    emitItemDone(item: OutputItem | BlockOutputItem | RouterDecisionItem): Promise<unknown>;
+    emitItemAdded(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
+    emitItemDone(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
+    emitItemOneShot?(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
     emitContentAdded?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
     emitContentDelta?(itemId: string, contentIndex: number, delta: string): Promise<unknown>;
     emitContentDone?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
+    getSequenceNumber?(): number;
   };
   provenance: () => ItemProvenance;
   nextItemIndex: () => number;
@@ -1678,6 +1682,182 @@ function createEmitStatus(
 
     void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
+  };
+}
+
+/**
+ * Module-level set of deprecated alias names already warned for, debouncing
+ * `console.warn` to once per process per name. The flat `ctx.emitMessage`
+ * etc. methods route through this so the noise stays bounded across long
+ * sessions while still nudging users toward `ctx.emit.*`.
+ */
+const DEPRECATED_ALIAS_WARNED = new Set<string>();
+
+/**
+ * Wraps an emission function so the first invocation per process logs a
+ * single deprecation warning. The wrapper preserves the underlying
+ * function's call signature exactly.
+ */
+function createDeprecatedAlias<TFn extends (...args: any[]) => any>(
+  name: string,
+  fn: TFn
+): TFn {
+  return function deprecatedAlias(...args: Parameters<TFn>): ReturnType<TFn> {
+    if (!DEPRECATED_ALIAS_WARNED.has(name)) {
+      DEPRECATED_ALIAS_WARNED.add(name);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[flow-state-dev] ctx.${name}(...) is deprecated. Use ctx.emit.${
+          name.replace(/^emit/, "").charAt(0).toLowerCase() +
+          name.replace(/^emit/, "").slice(1)
+        }(...) instead. Removed in next major.`
+      );
+    }
+    return fn(...args);
+  } as TFn;
+}
+
+/**
+ * Build the four `ctx.emit.trace.*` impls. Each:
+ *   - stamps `agentType: "trace"` on the item if missing,
+ *   - emits item.added then item.done via the response emitter
+ *     (or the one-shot fast path for block_debug, which skips the items
+ *     buffer to keep large prompts out of memory),
+ *   - fire-and-forgets a TraceStore append for both events.
+ *
+ * The TraceStore writes are best-effort: errors are swallowed (with a
+ * once-per-process console.warn fallback) so trace plumbing never breaks
+ * primary execution.
+ */
+let TRACE_STORE_WRITE_WARNED = false;
+function buildTraceEmitters(
+  emCtx: EmissionContext,
+  traces: TraceStore | undefined,
+  getBlockIdentity?: () => {
+    blockName?: string;
+    blockKind?: "handler" | "generator" | "sequencer" | "router";
+    blockInstanceId?: string;
+    parentBlockInstanceId?: string;
+    phase?: "main" | "work";
+  } | undefined
+): {
+  blockOutput: (item: BlockOutputItem) => void;
+  routerDecision: (item: RouterDecisionItem) => void;
+  stateSnapshot: (item: StateSnapshotItem) => void;
+  blockDebug: (payload: BlockDebugPayload) => void;
+} {
+  const requestId = emCtx.requestId;
+
+  function recordTrace(
+    type: "trace.item.added" | "trace.item.done",
+    item: BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem
+  ): void {
+    if (traces === undefined) return;
+    const sequenceNumber =
+      typeof emCtx.response.getSequenceNumber === "function"
+        ? emCtx.response.getSequenceNumber()
+        : 0;
+    void traces
+      .appendEvent(requestId, {
+        requestId,
+        sequenceNumber,
+        ts: Date.now(),
+        type,
+        item,
+      })
+      .catch(() => {
+        if (!TRACE_STORE_WRITE_WARNED) {
+          TRACE_STORE_WRITE_WARNED = true;
+          // eslint-disable-next-line no-console
+          console.warn("[flow-state-dev] TraceStore append failed; further errors suppressed.");
+        }
+      });
+  }
+
+  function stampTrace<T extends { agentType?: AgentType }>(item: T): T {
+    if (item.agentType === undefined) {
+      (item as { agentType?: AgentType }).agentType = "trace";
+    }
+    return item;
+  }
+
+  return {
+    blockOutput(item) {
+      stampTrace(item);
+      void emCtx.response
+        .emitItemAdded(item)
+        .then(() => {
+          recordTrace("trace.item.added", item);
+          return emCtx.response.emitItemDone(item);
+        })
+        .then(() => recordTrace("trace.item.done", item))
+        .catch(() => { /* trace emission is best-effort */ });
+    },
+    routerDecision(item) {
+      stampTrace(item);
+      void emCtx.response
+        .emitItemAdded(item)
+        .then(() => {
+          recordTrace("trace.item.added", item);
+          return emCtx.response.emitItemDone(item);
+        })
+        .then(() => recordTrace("trace.item.done", item))
+        .catch(() => { /* trace emission is best-effort */ });
+    },
+    stateSnapshot(item) {
+      stampTrace(item);
+      void emCtx.response
+        .emitItemAdded(item)
+        .then(() => {
+          recordTrace("trace.item.added", item);
+          return emCtx.response.emitItemDone(item);
+        })
+        .then(() => recordTrace("trace.item.done", item))
+        .catch(() => { /* trace emission is best-effort */ });
+    },
+    blockDebug(payload) {
+      // The block_debug item carries a redundant copy of block-name/kind/
+      // instance-id alongside the standard provenance. Prefer the firing
+      // ctx's `_blockIdentity` when available (it carries the precise kind);
+      // fall back to the active emission provenance for the block-level
+      // fields when this is invoked outside a per-block scope.
+      const provenance = emCtx.provenance();
+      const identity = getBlockIdentity?.();
+      const item: BlockDebugItem = {
+        id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: "block_debug",
+        status: "completed",
+        transient: true,
+        requestId,
+        itemIndex: emCtx.nextItemIndex(),
+        provenance,
+        ts: Date.now(),
+        blockName: identity?.blockName ?? provenance.blockName,
+        blockKind: identity?.blockKind ?? "generator",
+        blockInstanceId: identity?.blockInstanceId ?? provenance.blockInstanceId,
+        payload,
+      };
+      stampTrace(item);
+      const oneShot = emCtx.response.emitItemOneShot;
+      if (typeof oneShot === "function") {
+        void oneShot
+          .call(emCtx.response, item)
+          .then(() => {
+            recordTrace("trace.item.added", item);
+            recordTrace("trace.item.done", item);
+          })
+          .catch(() => { /* trace emission is best-effort */ });
+        return;
+      }
+      void emCtx.response
+        .emitItemAdded(item)
+        .then(() => {
+          recordTrace("trace.item.added", item);
+          return emCtx.response.emitItemDone(item);
+        })
+        .then(() => recordTrace("trace.item.done", item))
+        .catch(() => { /* trace emission is best-effort */ });
+    },
   };
 }
 
@@ -2530,6 +2710,10 @@ export async function createExecutionContext<
       },
       ts: completedAt,
       ownedBy,
+      // Stamp trace so visibility resolution short-circuits to invisible.
+      // After Step 4, all block_output sites carry this stamp so the
+      // structural defaults table no longer needs an entry for the type.
+      agentType: "trace",
       blockName: parent.name,
       blockKind: parent.kind,
       output: blockValue,
@@ -2629,6 +2813,11 @@ export async function createExecutionContext<
     nextItemIndex: () => emittedItemCount++,
   };
 
+  // Request-level trace emitters used by `_runtimeHooks` (router decisions,
+  // etc.) where there's no per-block ctx to delegate to. Per-context trace
+  // emitters with provenance overrides are built inside `createContext`.
+  const requestTraceEmitters = buildTraceEmitters(emCtx, stores.traces);
+
   const logger = options.logger;
   const baseLogContext = {
     requestId: requestRef.current.id,
@@ -2695,66 +2884,23 @@ export async function createExecutionContext<
         routerName,
         selectedRoute: selectedBlockName
       };
-      void emissionResponse.emitItemAdded(decisionItem)
-        .then(() => emissionResponse.emitItemDone(decisionItem))
-        .catch(() => { /* trace emission is best-effort */ });
+      requestTraceEmitters.routerDecision(decisionItem);
     },
     // Debug observability hooks — installed on the shared _runtimeHooks so
-    // every context (root and nested) fires them. The hooks read the firing
-    // ctx's `_blockIdentity` at invocation time to emit against the correct
-    // block instance, avoiding closure capture of any specific block.
+    // every context (root and nested) fires them. The hooks delegate to
+    // the firing ctx's `emit.trace.blockDebug` so the item carries the
+    // firing block's identity (read from its `_blockIdentity` inside the
+    // trace emitter).
     onBlockDebugCapture: isTraceObservabilityEnabled()
       ? (capture, firingCtx) => {
-          const identity = firingCtx._blockIdentity;
-          if (identity === undefined) return;
-          const metadata = {
-            requestId: requestRef.current.id,
-            userId: userRef.current.id,
-            flowKind: baseLogContext.flowKind,
-            actionName: baseLogContext.actionName,
-            blockName: identity.blockName,
-            blockKind: (identity.blockKind ?? "generator") as "handler" | "generator" | "sequencer" | "router",
-            blockInstanceId: identity.blockInstanceId,
-            parentBlockInstanceId: identity.parentBlockInstanceId,
-            scope: identity.phase === "work" ? "work" : "block",
-          } as Parameters<typeof emitBlockDebugItem>[2];
-          const blockShim = {
-            name: identity.blockName,
-            kind: identity.blockKind ?? "generator",
-          } as Parameters<typeof emitBlockDebugItem>[1];
-          void emitBlockDebugItem(
-            emissionResponse,
-            blockShim,
-            metadata,
-            buildGeneratorDebugPayload(capture)
-          ).catch(() => { /* best-effort */ });
+          if (firingCtx._blockIdentity === undefined) return;
+          firingCtx.emit.trace.blockDebug(buildGeneratorDebugPayload(capture));
         }
       : undefined,
     onConnectedInput: isTraceObservabilityEnabled()
       ? (value, firingCtx) => {
-          const identity = firingCtx._blockIdentity;
-          if (identity === undefined) return;
-          const metadata = {
-            requestId: requestRef.current.id,
-            userId: userRef.current.id,
-            flowKind: baseLogContext.flowKind,
-            actionName: baseLogContext.actionName,
-            blockName: identity.blockName,
-            blockKind: (identity.blockKind ?? "handler") as "handler" | "generator" | "sequencer" | "router",
-            blockInstanceId: identity.blockInstanceId,
-            parentBlockInstanceId: identity.parentBlockInstanceId,
-            scope: identity.phase === "work" ? "work" : "block",
-          } as Parameters<typeof emitBlockDebugItem>[2];
-          const blockShim = {
-            name: identity.blockName,
-            kind: identity.blockKind ?? "handler",
-          } as Parameters<typeof emitBlockDebugItem>[1];
-          void emitBlockDebugItem(
-            emissionResponse,
-            blockShim,
-            metadata,
-            buildConnectedInputDebugPayload(value)
-          ).catch(() => { /* best-effort */ });
+          if (firingCtx._blockIdentity === undefined) return;
+          firingCtx.emit.trace.blockDebug(buildConnectedInputDebugPayload(value));
         }
       : undefined,
     emitNestedBlockDebug: undefined,
@@ -2936,9 +3082,14 @@ export async function createExecutionContext<
 
         return { status: "not_started" } as BlockResult<never>;
       },
-      emitMessage: createEmitMessage(activeEmCtx),
-      emitComponent: createEmitComponent(activeEmCtx),
-      emitStatus: createEmitStatus(activeEmCtx, statusSlot),
+      // Populated immediately after this object literal closes so the
+      // deprecated aliases share the underlying impls with `ctx.emit.*`
+      // and the trace.blockDebug emitter can read this context's
+      // `_blockIdentity` (set later by `_withExecutionScope`).
+      emitMessage: undefined as unknown as BlockContext["emitMessage"],
+      emitComponent: undefined as unknown as BlockContext["emitComponent"],
+      emitStatus: undefined as unknown as BlockContext["emitStatus"],
+      emit: undefined as unknown as BlockContext["emit"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.
@@ -3118,6 +3269,37 @@ export async function createExecutionContext<
           throw error;
         }
       }
+    };
+
+    // Wire emission methods. The flat `emitMessage`/`emitComponent`/
+    // `emitStatus` are deprecated aliases that warn once per process;
+    // both the aliases and `ctx.emit.{message,component,status}` share
+    // the same underlying impls. `ctx.emit.trace.*` uses the active
+    // emission context plus this context's `_blockIdentity` (set by
+    // `_withExecutionScope` on child scopes) so trace items carry the
+    // firing block's identity.
+    const emitMessageImpl = createEmitMessage(activeEmCtx);
+    const emitComponentImpl = createEmitComponent(activeEmCtx);
+    const emitStatusImpl = createEmitStatus(activeEmCtx, statusSlot);
+    const traceEmitters = buildTraceEmitters(
+      activeEmCtx,
+      stores.traces,
+      () => (context as { _blockIdentity?: {
+        blockName?: string;
+        blockKind?: "handler" | "generator" | "sequencer" | "router";
+        blockInstanceId?: string;
+        parentBlockInstanceId?: string;
+        phase?: "main" | "work";
+      } })._blockIdentity
+    );
+    context.emitMessage = createDeprecatedAlias("emitMessage", emitMessageImpl) as BlockContext["emitMessage"];
+    context.emitComponent = createDeprecatedAlias("emitComponent", emitComponentImpl) as BlockContext["emitComponent"];
+    context.emitStatus = createDeprecatedAlias("emitStatus", emitStatusImpl) as BlockContext["emitStatus"];
+    context.emit = {
+      message: emitMessageImpl,
+      component: emitComponentImpl,
+      status: emitStatusImpl,
+      trace: traceEmitters,
     };
 
     Object.defineProperty(context, "sequencer", {

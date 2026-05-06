@@ -31,10 +31,10 @@ const STRUCTURAL_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
   state_change:    { client: true,  history: false },
   resource_change: { client: true,  history: false },
   error:           { client: true,  history: false },
-  block_output:    { client: false, history: false },
-  router_decision: { client: false, history: false },
-  state_snapshot:  { client: false, history: false },
-  block_debug:     { client: false, history: false },
+  // Trace types (`block_output`, `router_decision`, `state_snapshot`,
+  // `block_debug`) are stamped `agentType: "trace"` at emission time and
+  // short-circuit to `{ client: false, history: false }` above. They no
+  // longer need entries here.
 };
 
 export function resolveItemVisibility(item: OutputItem): ItemVisibility {

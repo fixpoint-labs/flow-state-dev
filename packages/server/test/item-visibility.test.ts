@@ -112,27 +112,34 @@ describe("resolveItemVisibility — structural types", () => {
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
   });
 
-  it("block_output → neither client nor history", () => {
+  // Trace types (block_output, router_decision, state_snapshot, block_debug)
+  // are stamped `agentType: "trace"` at emission time and short-circuit to
+  // invisible via the agentType branch — they have no entries in the
+  // structural defaults table. These tests confirm that contract.
+  it("block_output stamped trace → neither client nor history", () => {
     const item = baseItem({
       type: "block_output",
+      agentType: "trace",
       blockName: "b",
       output: {},
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: false, history: false });
   });
 
-  it("router_decision → neither client nor history", () => {
+  it("router_decision stamped trace → neither client nor history", () => {
     const item = baseItem({
       type: "router_decision",
+      agentType: "trace",
       routerName: "r",
       selectedRoute: "a",
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: false, history: false });
   });
 
-  it("state_snapshot → neither client nor history", () => {
+  it("state_snapshot stamped trace → neither client nor history", () => {
     const item = baseItem({
       type: "state_snapshot",
+      agentType: "trace",
       stepName: "s",
       stepIndex: 0,
       state: {},

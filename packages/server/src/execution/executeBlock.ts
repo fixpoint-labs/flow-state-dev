@@ -111,7 +111,7 @@ function buildBlockValueForEmit(
   return { kind: "ref", sourceItemId };
 }
 
-async function emitBlockOutputItem(
+function emitBlockOutputItem(
   options: {
     block: BlockDefinition<any, any>;
     output: unknown;
@@ -123,7 +123,7 @@ async function emitBlockOutputItem(
     error?: { message: string; code?: string };
     hint?: BlockOutputHint;
   }
-): Promise<void> {
+): void {
   if (!hasItemEmitter(options.ctx.response)) {
     return;
   }
@@ -156,8 +156,7 @@ async function emitBlockOutputItem(
     modelUsage: options.modelUsage
   };
 
-  await options.ctx.response.emitItemAdded(item);
-  await options.ctx.response.emitItemDone(item);
+  options.ctx.emit.trace.blockOutput(item);
 }
 
 /**
@@ -512,7 +511,7 @@ export async function executeBlock(
       (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
     }
 
-    await emitBlockOutputItem({
+    emitBlockOutputItem({
       block: options.block,
       output: executionResult.output,
       ctx: options.ctx,
@@ -558,7 +557,7 @@ export async function executeBlock(
       }
     );
 
-    await emitBlockOutputItem({
+    emitBlockOutputItem({
       block: options.block,
       output: undefined,
       ctx: options.ctx,

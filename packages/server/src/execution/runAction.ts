@@ -463,6 +463,24 @@ export async function runActionInternal<
     await Promise.allSettled(checkpointChains.values());
   }
 
+  /**
+   * Best-effort flush of the per-request TraceStore. Sits alongside the
+   * checkpoint flush in every terminal path so adapters with batched I/O
+   * (in-memory ring buffer; future SQLite WAL) reach durability before the
+   * request completes. Failure here must not affect the action's outcome —
+   * trace data is observability, not correctness.
+   */
+  async function flushTraces(): Promise<void> {
+    try {
+      await options.stores.traces.flush(requestId);
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] trace flush failed", {
+        requestId,
+        error: String(err)
+      });
+    }
+  }
+
   response.setItemHooks({
     onItemDone: (item) => {
       if (item.type === "state_snapshot") {
@@ -719,6 +737,7 @@ export async function runActionInternal<
     await options.stores.request.flushItems(requestId);
     await options.stores.request.flushEvents(requestId);
     await flushCheckpoints();
+    await flushTraces();
 
     const completedAt = Date.now();
     const items = response.getItems();
@@ -807,6 +826,7 @@ export async function runActionInternal<
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
+        await flushTraces();
 
         const abortedAt = Date.now();
         await patchRequestRecord(options.stores, requestId, {
@@ -835,6 +855,7 @@ export async function runActionInternal<
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
+        await flushTraces();
 
         await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
@@ -873,6 +894,7 @@ export async function runActionInternal<
       await options.stores.request.flushItems(requestId);
       await options.stores.request.flushEvents(requestId);
       await flushCheckpoints();
+      await flushTraces();
 
       const failedAt = Date.now();
       await patchRequestRecord(options.stores, requestId, {

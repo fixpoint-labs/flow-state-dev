@@ -44,7 +44,7 @@ export function structureBlockValue<T>(shape: StructureShape): BlockValue<T> {
  * at boundaries where an older raw value might sneak in — callers should
  * treat a non-BlockValue as an `inline` with that value.
  */
-export function isBlockValue(candidate: unknown): candidate is BlockValueInternal {
+export function isBlockValue(candidate: unknown): candidate is BlockValue {
   if (typeof candidate !== "object" || candidate === null) return false;
   const kind = (candidate as { kind?: unknown }).kind;
   return kind === "inline" || kind === "ref" || kind === "structure";
