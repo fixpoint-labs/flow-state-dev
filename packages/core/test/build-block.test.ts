@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { BlockConfig } from "../src/types/block";
 import { buildBlock } from "../src/blocks/internal/build-block";
+import { asRuntime } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
 class RetryableError extends Error {}
 class FatalError extends Error {}
@@ -136,6 +137,35 @@ describe("buildBlock", () => {
     const ctx = createMockContext();
     await expect(runForTest(block, 1, ctx)).rejects.toThrow("try again");
     expect(attempts).toBe(1);
+  });
+
+  it("mapModelOutput stashes the mapper without changing run() output", async () => {
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "rich",
+        execute: (value: number) => ({ items: [{ id: "a", v: value }], n: 1 })
+      }
+    });
+
+    const mapped = block.mapModelOutput((out) => `n=${out.n}`);
+
+    // Schemas are preserved.
+    expect(mapped.outputSchema).toBe(block.outputSchema);
+    expect(mapped.inputSchema).toBe(block.inputSchema);
+
+    // The structured output continues to flow through the substrate's run().
+    const ctx = createMockContext();
+    await expect(runForTest(mapped, 5, ctx)).resolves.toEqual({
+      items: [{ id: "a", v: 5 }],
+      n: 1
+    });
+
+    // The original block has no mapper; the mapped clone carries it.
+    expect(asRuntime(block)._modelOutputMapper).toBeUndefined();
+    const mapper = asRuntime(mapped)._modelOutputMapper;
+    expect(mapper).toBeDefined();
+    await expect(Promise.resolve(mapper!({ items: [], n: 3 } as never, ctx))).resolves.toBe("n=3");
   });
 
   it("calls lifecycle hooks", async () => {

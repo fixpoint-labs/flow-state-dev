@@ -29,6 +29,7 @@ import {
   defaultFormatBlock,
   DEFAULT_PER_ITEM_CHAR_CAP,
   DEFAULT_RECALL_LIMIT,
+  formatRecallSummary,
 } from './format-helpers.js'
 import {
   recallToolDescription,
@@ -156,5 +157,11 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
     .then(formatBlock)
     .rescue([{ block: errorRescueBlock }])
 
-  return recallSeq
+  // Compact, model-visible representation. The structured `RecallToolResult`
+  // keeps flowing through the framework — devtool, items log, tests, and
+  // history replay all see the full envelope. The LLM observes the summary
+  // string on its next turn, dropping per-item metadata it can't reason about.
+  return recallSeq.mapModelOutput((result: RecallToolResult) =>
+    formatRecallSummary(result),
+  )
 }

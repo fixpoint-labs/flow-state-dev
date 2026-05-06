@@ -88,6 +88,12 @@ export type BuildBlockOptions<
    * builders OR this with their own `config.requireOrg`. Leaves omit it.
    */
   requiresOrg?: boolean;
+  /**
+   * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
+   * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
+   * and forwards it to the AI SDK as `toModelOutput`.
+   */
+  modelOutputMapper?: (output: TOutput, ctx: BlockContext) => string | Promise<string>;
 };
 
 function validateSchema<TValue>(
@@ -160,6 +166,7 @@ export function buildBlock<
     config: runtimeConfig,
     declaredResources: options.declaredResources,
     requiresOrg,
+    _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput
@@ -210,6 +217,19 @@ export function buildBlock<
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
         requiresOrg: definition.requiresOrg,
+      });
+    },
+    mapModelOutput(
+      mapper: (output: TOutput, ctx: BlockContext) => string | Promise<string>
+    ): BlockDefinition<TInputSchema, TOutputSchema> {
+      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+        kind,
+        config: runtimeConfig,
+        execute: internalExecute,
+        declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
+        requiresOrg: definition.requiresOrg,
+        modelOutputMapper: mapper,
       });
     },
     connectOutput<TTo>(

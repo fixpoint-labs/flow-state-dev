@@ -86,6 +86,36 @@ const adapted = someBlock.connectOutput((out) => ({
 }));
 ```
 
+## Model-visible tool output: `mapModelOutput`
+
+When a block is installed as a tool on a generator, its output flows to two consumers: the LLM (as the tool result it sees on the next turn) and the framework's observation surfaces (`block_tool_output` items, devtool, replay, tests). For tools with rich structured envelopes, that's a bad tradeoff — fields the LLM can't reason about cost tokens, and trimming the result strips inspection value.
+
+`mapModelOutput` declares a separate, model-visible representation. The structured `TOutput` keeps flowing through the framework. The mapper only fires at the AI SDK bridge boundary, producing the value the LLM observes.
+
+```ts
+const recallTool = recallSeq.mapModelOutput((result) => {
+  if ('error' in result) return `Recall failed: ${result.error}`
+  if (result.results.length === 0) return `No memories matched "${result.query}".`
+  return result.results.map((r) => `- ${r.content}`).join('\n')
+})
+```
+
+The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserved — downstream sequencer steps and `block_tool_output` items still see the full structured envelope.
+
+### How it differs from `connectOutput`
+
+| | `connectOutput` | `mapModelOutput` |
+| -- | -- | -- |
+| Rewrites `TOutputSchema` | yes | no |
+| Visible to downstream block consumers | yes | no |
+| Visible in `block_tool_output` items | yes | no |
+| Fires when the block is used as a non-tool step | yes | no — silently inert |
+| Fires when the block is installed as a tool | yes | yes, at the bridge boundary |
+
+`connectOutput` reshapes data flowing into downstream consumers. `mapModelOutput` is scoped to a single boundary — the AI SDK tool-result content the LLM sees — and preserves every existing type and observation contract.
+
+The mapper is expected to be deterministic: history replay re-runs it on the persisted structured output rather than persisting the string itself.
+
 ## State handoffs
 
 Connectors can read from scope state or sequencer state when shaping input:

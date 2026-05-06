@@ -678,10 +678,24 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
-  return tools.map((tool) => ({
+  return tools.map((tool) => {
+    // Pluck the model-output mapper off the tool's runtime view (set by
+    // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
+    // resulting tool entry so the AI SDK substitutes the mapper's string for
+    // the structured output when materialising next-turn tool-result content.
+    // The wrapper's `block_tool_output` emit path below continues to use the
+    // raw structured `output` — the mapper is invisible to observation.
+    const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
+    return {
     name: tool.name,
     description: tool.description,
     parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
+    ...(modelOutputMapper !== undefined
+      ? {
+          toModelOutput: async (output: unknown) =>
+            modelOutputMapper(output as never, ctx),
+        }
+      : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
       const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
@@ -813,7 +827,8 @@ function compileToolsWithExecute(
         runTool
       );
     }
-  }));
+    };
+  });
 }
 
 /**

@@ -19,6 +19,7 @@ export {
   defaultFormatBlock,
   DEFAULT_PER_ITEM_CHAR_CAP,
   DEFAULT_RECALL_LIMIT,
+  formatRecallSummary,
   TRUNCATION_MARKER,
 } from './format-helpers.js'
 

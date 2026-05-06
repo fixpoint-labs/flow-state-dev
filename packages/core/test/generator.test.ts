@@ -219,6 +219,87 @@ describe("generator builder", () => {
     expect(toolCalls).toEqual(["ok"]);
   });
 
+  it("forwards mapModelOutput as toModelOutput on the compiled GeneratorModelTool", async () => {
+    // A block carrying a `mapModelOutput` mapper installed via
+    // `BlockDefinition.mapModelOutput` should surface its mapper as the
+    // compiled tool's `toModelOutput` field. The framework-level mapper
+    // returns a plain string; the AI SDK adapter wraps it into the SDK's
+    // content-part envelope.
+    const richTool = handler({
+      name: "rich",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ count: z.number() }),
+      execute: async (input) => ({ count: input.q.length }),
+    }).mapModelOutput((out) => `count=${out.count}`);
+
+    let seenToModelOutput: ((output: unknown) => Promise<string> | string) | undefined;
+    let seenStructuredOutput: unknown;
+
+    const block = generator({
+      name: "with-mapped-tool",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [richTool],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const tool = options.tools?.[0];
+          seenToModelOutput = tool?.toModelOutput;
+          if (tool?.execute) {
+            seenStructuredOutput = await tool.execute({ q: "hello" });
+          }
+          return { structuredOutput: { done: true } };
+        },
+      }),
+    });
+
+    await runForTest(block, { q: "hello" }, ctx);
+
+    // execute() returns the structured output unchanged (consumed by
+    // `block_tool_output` items, devtool, replay).
+    expect(seenStructuredOutput).toEqual({ count: 5 });
+    // The mapper is forwarded for the AI SDK to materialise next-turn
+    // model-visible content from the structured output.
+    expect(seenToModelOutput).toBeDefined();
+    await expect(
+      seenToModelOutput!({ count: 5 })
+    ).resolves.toBe("count=5");
+  });
+
+  it("does not set toModelOutput on tools without mapModelOutput", async () => {
+    const plain = handler({
+      name: "plain",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true }),
+    });
+
+    let seenToModelOutput: unknown;
+    const block = generator({
+      name: "no-mapper",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ done: z.literal(true) }),
+      tools: [plain],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          seenToModelOutput = options.tools?.[0]?.toModelOutput;
+          return { structuredOutput: { done: true } };
+        },
+      }),
+    });
+    await runForTest(block, {}, ctx);
+    expect(seenToModelOutput).toBeUndefined();
+  });
+
   it("tools resolver receives the current input alongside ctx", async () => {
     // A tools function closes over per-invocation state via its `input`
     // argument. Verifies that `tools: (input, ctx) => ...` can select tools
