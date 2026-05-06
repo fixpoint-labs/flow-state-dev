@@ -10,7 +10,7 @@ Side chains let you run work in the background without blocking the main pipelin
 - **`.workIf(condition, block)`** — conditional variant of `.work()`, dispatches only when condition is truthy
 - **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
 
-Work failures never abort the pipeline. They emit `step_error` items instead. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
+Work failures never abort the pipeline. The framework logs them and the failed `block_output` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
 
 ## Fire-and-forget
 
@@ -36,7 +36,7 @@ const pipeline = sequencer({
   .then(nextStep);
 ```
 
-`nextStep` receives the same output as `mainBlock` produced. The analytics call runs in the background and doesn't block. If `logAnalytics` throws, the pipeline keeps going. The error becomes a `step_error` item.
+`nextStep` receives the same output as `mainBlock` produced. The analytics call runs in the background and doesn't block. If `logAnalytics` throws, the pipeline keeps going.
 
 ## With and without connectors
 
@@ -59,7 +59,7 @@ The connector runs in the main thread. Only the block execution is backgrounded.
 
 ## Error isolation
 
-Work failures are isolated. The main pipeline does not throw. Instead, the framework emits a `step_error` item with the work task name and the error. Your client can surface these for debugging, but the user flow continues.
+Work failures are isolated. The framework logs the failure; the DevTool surfaces it via the trace channel. Your user-facing stream is unaffected.
 
 If you need to know whether background work succeeded, use `.waitForWork()`.
 
@@ -100,7 +100,7 @@ If `requiredSyncTask` fails, the pipeline throws. If only `optionalLogTask` fail
 |--|-------|--------|
 | **Blocks main pipeline?** | Yes | No |
 | **Runs in parallel with next step?** | No | Yes |
-| **Failure affects pipeline?** | Yes (throws) | No (step_error only) |
+| **Failure affects pipeline?** | Yes (throws) | No (logged + trace-channel signal) |
 | **Use case** | Side effect you must complete before continuing | Fire-and-forget, best-effort |
 
 Use `tap` when the side effect must succeed before the next step. Use `work` when you want non-blocking, best-effort behavior.
@@ -175,7 +175,7 @@ const pipeline = sequencer({
   .then(formatResponse);
 ```
 
-When `features.memory` is disabled, the pipeline behaves as if the `.workIf()` call didn't exist. No block is dispatched, no promise is queued, no `step_error` can be emitted.
+When `features.memory` is disabled, the pipeline behaves as if the `.workIf()` call didn't exist. No block is dispatched and no promise is queued.
 
 ### Static booleans
 

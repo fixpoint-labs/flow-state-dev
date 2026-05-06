@@ -661,7 +661,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     // Small models occasionally drop out of structured-output mode and return
     // narrative text instead of JSON. Allow more repair attempts than the
     // default (1) so the pipeline can recover before the background task
-    // surfaces as a step_error.
+    // fails (a failed `block_output` will then surface on the trace channel).
     repair: { mode: 'auto', maxAttempts: 3 },
     agentType: "trace",
   })

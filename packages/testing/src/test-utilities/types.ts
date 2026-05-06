@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
 import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
@@ -66,7 +66,7 @@ export type StateChange = {
 export type TestBlockResult<TOutput> = {
   output: TOutput;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
   state: {
     request: Record<string, unknown>;
     session: Record<string, unknown>;
@@ -88,7 +88,7 @@ export type StepTrace = {
   input: unknown;
   output: unknown;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
   durationMs: number;
   phase: "main" | "work";
   skipped: boolean;
@@ -98,7 +98,7 @@ export type WorkTrace = {
   blockName: string;
   output: unknown;
   error: Error | null;
-  items: OutputItem[];
+  items: TestItem[];
 };
 
 export type TestSequencerResult<TOutput> = TestBlockResult<TOutput> & {
@@ -136,7 +136,7 @@ export type TestFlowResult = {
   requestId: string;
   output?: unknown;
   error?: Error;
-  items: OutputItem[];
+  items: TestItem[];
 };
 
 export type { BlockInput, BlockOutput };

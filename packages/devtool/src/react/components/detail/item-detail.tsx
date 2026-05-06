@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
 import type { BlockDebugPayload, BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "../../lib/item-types";
 import { Button } from "../ui/button";
 import { useSelection } from "../../context/selection-context";
 import { StatusBadge } from "../shared/status-badge";
@@ -307,7 +308,7 @@ function DebugPayloadSection({ payload }: { payload: BlockDebugPayload }) {
   );
 }
 
-function ItemDetailContent({ item, stateSnapshots }: { item: OutputItem; stateSnapshots: import("../../lib/trace-tree").StateSnapshot[] | null }) {
+function ItemDetailContent({ item, stateSnapshots }: { item: DevtoolItem; stateSnapshots: import("../../lib/trace-tree").StateSnapshot[] | null }) {
   const handleCopy = () => {
     void navigator.clipboard.writeText(JSON.stringify(item, null, 2));
   };
@@ -361,7 +362,7 @@ function ItemDetailContent({ item, stateSnapshots }: { item: OutputItem; stateSn
   );
 }
 
-function ItemTypeDetail({ item }: { item: OutputItem }) {
+function ItemTypeDetail({ item }: { item: DevtoolItem }) {
   switch (item.type) {
     case "message":
       return <MessageDetail item={item} />;
@@ -369,8 +370,6 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <BlockOutputDetail item={item} />;
     case "error":
       return <ErrorDetail item={item} />;
-    case "step_error":
-      return <StepErrorDetail item={item} />;
     case "reasoning":
       return <ReasoningDetail item={item} />;
     case "component":
@@ -400,7 +399,7 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
 
 /* --- Per-type detail sections --- */
 
-function MessageDetail({ item }: { item: OutputItem & { type: "message" } }) {
+function MessageDetail({ item }: { item: DevtoolItem & { type: "message" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Role" value={item.role} />
@@ -418,7 +417,7 @@ function MessageDetail({ item }: { item: OutputItem & { type: "message" } }) {
   );
 }
 
-function BlockOutputDetail({ item }: { item: OutputItem & { type: "block_output" } }) {
+function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_output" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
@@ -460,7 +459,7 @@ function BlockOutputDetail({ item }: { item: OutputItem & { type: "block_output"
   );
 }
 
-function ErrorDetail({ item }: { item: OutputItem & { type: "error" } }) {
+function ErrorDetail({ item }: { item: DevtoolItem & { type: "error" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Message" value={item.message} />
@@ -469,18 +468,7 @@ function ErrorDetail({ item }: { item: OutputItem & { type: "error" } }) {
   );
 }
 
-function StepErrorDetail({ item }: { item: OutputItem & { type: "step_error" } }) {
-  return (
-    <div className="space-y-2">
-      <MetadataRow label="Message" value={item.message} />
-      {item.code && <MetadataRow label="Code" value={item.code} mono />}
-      {item.blockName && <MetadataRow label="Block" value={item.blockName} />}
-      <MetadataRow label="Recovered" value={item.recovered ? "Yes" : "No"} />
-    </div>
-  );
-}
-
-function ReasoningDetail({ item }: { item: OutputItem & { type: "reasoning" } }) {
+function ReasoningDetail({ item }: { item: DevtoolItem & { type: "reasoning" } }) {
   const text = item.summary.map((c) => ("text" in c ? (c as { text: string }).text : "")).join("");
   return (
     <div>
@@ -489,7 +477,7 @@ function ReasoningDetail({ item }: { item: OutputItem & { type: "reasoning" } })
   );
 }
 
-function ComponentDetail({ item }: { item: OutputItem & { type: "component" } }) {
+function ComponentDetail({ item }: { item: DevtoolItem & { type: "component" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Component" value={item.component} mono />
@@ -502,7 +490,7 @@ function ComponentDetail({ item }: { item: OutputItem & { type: "component" } })
   );
 }
 
-function ContainerDetail({ item }: { item: OutputItem & { type: "container" } }) {
+function ContainerDetail({ item }: { item: DevtoolItem & { type: "container" } }) {
   return (
     <div className="space-y-1">
       <MetadataRow label="Block" value={item.blockName} mono />
@@ -511,7 +499,7 @@ function ContainerDetail({ item }: { item: OutputItem & { type: "container" } })
   );
 }
 
-function StateChangeDetail({ item }: { item: OutputItem & { type: "state_change" } }) {
+function StateChangeDetail({ item }: { item: DevtoolItem & { type: "state_change" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Scope" value={item.scope} />
@@ -527,7 +515,7 @@ function StateChangeDetail({ item }: { item: OutputItem & { type: "state_change"
   );
 }
 
-function ResourceChangeDetail({ item }: { item: OutputItem & { type: "resource_change" } }) {
+function ResourceChangeDetail({ item }: { item: DevtoolItem & { type: "resource_change" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Resource" value={item.resourcePath} mono />
@@ -542,7 +530,7 @@ function ResourceChangeDetail({ item }: { item: OutputItem & { type: "resource_c
   );
 }
 
-function StatusDetail({ item }: { item: OutputItem & { type: "status" } }) {
+function StatusDetail({ item }: { item: DevtoolItem & { type: "status" } }) {
   return (
     <div className="space-y-1">
       <MetadataRow label="Message" value={item.message} />
@@ -555,7 +543,7 @@ function StatusDetail({ item }: { item: OutputItem & { type: "status" } }) {
   );
 }
 
-function BlockToolOutputDetail({ item }: { item: OutputItem & { type: "block_tool_output" } }) {
+function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "block_tool_output" } }) {
   const isFailed = item.status === "failed";
   return (
     <div className="space-y-2">
@@ -584,7 +572,7 @@ function BlockToolOutputDetail({ item }: { item: OutputItem & { type: "block_too
   );
 }
 
-function RouterDecisionDetail({ item }: { item: OutputItem & { type: "router_decision" } }) {
+function RouterDecisionDetail({ item }: { item: DevtoolItem & { type: "router_decision" } }) {
   return (
     <div className="space-y-1">
       <MetadataRow label="Router" value={item.routerName} mono />
@@ -593,7 +581,7 @@ function RouterDecisionDetail({ item }: { item: OutputItem & { type: "router_dec
   );
 }
 
-function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
+function SourceDetail({ item }: { item: DevtoolItem & { type: "source" } }) {
   return (
     <div className="space-y-1">
       <MetadataRow label="Source ID" value={item.sourceId} mono />
@@ -612,7 +600,7 @@ function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
   );
 }
 
-function StateSnapshotDetail({ item }: { item: OutputItem & { type: "state_snapshot" } }) {
+function StateSnapshotDetail({ item }: { item: DevtoolItem & { type: "state_snapshot" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.provenance.blockName} mono />
@@ -626,7 +614,7 @@ function StateSnapshotDetail({ item }: { item: OutputItem & { type: "state_snaps
   );
 }
 
-function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" } }) {
+function BlockDebugDetail({ item }: { item: DevtoolItem & { type: "block_debug" } }) {
   const p = item.payload;
   return (
     <div className="space-y-2">
@@ -675,7 +663,6 @@ function TypePill({ type }: { type: string }) {
     message: "text-blue-400 border-blue-800/50",
     block_output: "text-green-400 border-green-800/50",
     error: "text-red-400 border-red-800/50",
-    step_error: "text-amber-400 border-amber-800/50",
     reasoning: "text-slate-400 border-slate-700",
     component: "text-cyan-400 border-cyan-800/50",
     container: "text-slate-500 border-slate-700",

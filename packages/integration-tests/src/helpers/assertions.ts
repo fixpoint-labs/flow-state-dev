@@ -6,26 +6,26 @@
  * across scenarios; everything else stays in the test file so the
  * assertions speak for themselves.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /** Returns every item of the given top-level `type`. */
-export function itemsByType<T extends OutputItem["type"]>(
-  items: OutputItem[],
+export function itemsByType<T extends RuntimeItem["type"]>(
+  items: RuntimeItem[],
   type: T
-): Extract<OutputItem, { type: T }>[] {
-  return items.filter((item): item is Extract<OutputItem, { type: T }> => item.type === type);
+): Extract<RuntimeItem, { type: T }>[] {
+  return items.filter((item): item is Extract<RuntimeItem, { type: T }> => item.type === type);
 }
 
 /** Returns the first message item with the given role, or `undefined`. */
 export function findMessage(
-  items: OutputItem[],
+  items: RuntimeItem[],
   role: "user" | "assistant" | "system" | "developer" | "tool"
-): Extract<OutputItem, { type: "message" }> | undefined {
+): Extract<RuntimeItem, { type: "message" }> | undefined {
   return itemsByType(items, "message").find((item) => item.role === role);
 }
 
 /** Concatenates all `output_text` parts of a message item. */
-export function messageText(item: Extract<OutputItem, { type: "message" }>): string {
+export function messageText(item: Extract<RuntimeItem, { type: "message" }>): string {
   return item.content
     .filter((part): part is { type: "output_text"; text: string } => part.type === "output_text")
     .map((part) => part.text)
@@ -37,7 +37,7 @@ export function messageText(item: Extract<OutputItem, { type: "message" }>): str
  * the generator invoked. Generator-emitted tool calls land here once the
  * tool block has executed.
  */
-export function findToolCalls(items: OutputItem[]): Extract<OutputItem, { type: "block_tool_output" }>[] {
+export function findToolCalls(items: RuntimeItem[]): Extract<RuntimeItem, { type: "block_tool_output" }>[] {
   return itemsByType(items, "block_tool_output");
 }
 
@@ -47,9 +47,9 @@ export function findToolCalls(items: OutputItem[]): Extract<OutputItem, { type: 
  * collection, pass the collection prefix.
  */
 export function findResourceChanges(
-  items: OutputItem[],
+  items: RuntimeItem[],
   pathPrefix?: string
-): Extract<OutputItem, { type: "resource_change" }>[] {
+): Extract<RuntimeItem, { type: "resource_change" }>[] {
   const changes = itemsByType(items, "resource_change");
   if (pathPrefix === undefined) return changes;
   return changes.filter((item) => item.resourcePath.startsWith(pathPrefix));
@@ -57,9 +57,9 @@ export function findResourceChanges(
 
 /** Returns every `block_output` item produced by the named block. */
 export function findBlockOutputs(
-  items: OutputItem[],
+  items: RuntimeItem[],
   blockName: string
-): Extract<OutputItem, { type: "block_output" }>[] {
+): Extract<RuntimeItem, { type: "block_output" }>[] {
   return itemsByType(items, "block_output").filter((item) => item.blockName === blockName);
 }
 

@@ -35,7 +35,6 @@ export type {
   StateSnapshotItem,
   SourceItem,
   StatusItem,
-  StepErrorItem,
   StructureShape
 } from "./types";
 
@@ -45,7 +44,6 @@ export {
   buildItemLookup,
   inlineBlockValue,
   isBlockValue,
-  refBlockValue,
   resolveBlockValue,
   structureBlockValue
 } from "./resolve-value";

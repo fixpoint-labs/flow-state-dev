@@ -144,7 +144,7 @@ pipeline
 - `.work(block)` — queues side-chain execution, non-aborting by default
 - `.waitForWork({ failOnError: false })` — waits for work, failures are non-terminal
 - `.waitForWork({ failOnError: true })` — promotes any work failure to terminal request error
-- Work failures emit `step_error` items and trigger `onStepErrored` observers
+- Work failures are logged and the failed `block_output` reaches the DevTool's trace channel; `onStepErrored` observers still fire
 
 ## Generator Repair
 
@@ -211,8 +211,8 @@ The full request execution sequence:
 | Error Type | Stream Result |
 |------------|---------------|
 | Terminal request error | `error` item + `request.failed` |
-| Recoverable step error | `step_error` item (`recovered: true`) |
-| Work queue failure | `step_error` item + `onStepErrored` observer |
+| Recoverable step error | failed `block_output` (trace channel) + `onStepErrored` observer |
+| Work queue failure | failed `block_output` (trace channel) + `onStepErrored` observer |
 
 ## Canonical Authority
 

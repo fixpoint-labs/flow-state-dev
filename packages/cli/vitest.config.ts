@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@flow-state-dev/core/types": resolve(root, "packages/core/src/types/index.ts"),
+      "@flow-state-dev/core/items/internal": resolve(root, "packages/core/src/items/internal.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),
       "@flow-state-dev/core/utils": resolve(root, "packages/core/src/utils/index.ts"),

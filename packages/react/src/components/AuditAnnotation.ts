@@ -14,28 +14,8 @@
  * state, no "all clear" message.
  */
 import { createElement, useState, type ReactNode } from "react";
-import type { BlockOutputItem, BlockValue, OutputItem } from "@flow-state-dev/core/items";
-
-/**
- * Inline BlockValue resolver (FIX-413). See AuditAnnotationProgress.ts for
- * rationale — the react package cannot import runtime values from core.
- */
-function resolveValue(value: BlockValue<unknown> | undefined, items: readonly OutputItem[]): unknown {
-  if (value === undefined) return undefined;
-  if (value.kind === "inline") return value.value;
-  if (value.kind === "ref") {
-    const target = items.find((i) => i.id === value.sourceItemId && i.type === "block_output") as BlockOutputItem | undefined;
-    return target === undefined ? undefined : resolveValue(target.output, items);
-  }
-  if (value.shape.container === "array") {
-    return value.shape.entries.map((entry) => resolveValue(entry, items));
-  }
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value.shape.entries)) {
-    result[k] = resolveValue(v, items);
-  }
-  return result;
-}
+import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import { resolveBlockValueLocal } from "../internal/block-value-resolver";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,16 +81,17 @@ const SEVERITY_COLOR: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 function extractAuditData(items: OutputItem[]): AuditAnnotationData | null {
-  // Find the most recent block_output from apply-threshold
+  // Find the most recent block_output from apply-threshold. `block_output`
+  // arrives via the trace channel, so it isn't part of the public OutputItem
+  // union — narrow via runtime check + cast.
   for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i];
+    const item = items[i] as OutputItem | BlockOutputItem;
     if (
-      item.type === "block_output" &&
-      "blockName" in item &&
-      item.blockName === "apply-threshold" &&
+      (item as { type: string }).type === "block_output" &&
+      (item as BlockOutputItem).blockName === "apply-threshold" &&
       "output" in item
     ) {
-      return (resolveValue(
+      return (resolveBlockValueLocal(
         (item as BlockOutputItem).output,
         items,
       ) ?? null) as AuditAnnotationData | null;

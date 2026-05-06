@@ -43,7 +43,7 @@ export type ExecutionMetadata = {
 
 export type ExecutionResult<TOutput = unknown> = {
   output: TOutput | undefined;
-  items: OutputItem[];
+  items: import("./internal/response").RuntimeItem[];
   durationMs: number;
   error?: FlowError;
 };

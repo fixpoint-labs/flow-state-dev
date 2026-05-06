@@ -1,7 +1,8 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, BlockValue, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
@@ -87,8 +88,8 @@ function createBlockOutputProvenance(
 function buildBlockValueForEmit(
   output: unknown,
   hint: BlockOutputHint | undefined,
-  items: OutputItem[]
-): BlockValue<unknown> {
+  items: import("./internal/response").RuntimeItem[]
+): BlockValueInternal<unknown> {
   if (hint === undefined || hint.kind === "inline") {
     return { kind: "inline", value: output };
   }
@@ -110,7 +111,7 @@ function buildBlockValueForEmit(
   return { kind: "ref", sourceItemId };
 }
 
-async function emitBlockOutputItem(
+function emitBlockOutputItem(
   options: {
     block: BlockDefinition<any, any>;
     output: unknown;
@@ -122,7 +123,7 @@ async function emitBlockOutputItem(
     error?: { message: string; code?: string };
     hint?: BlockOutputHint;
   }
-): Promise<void> {
+): void {
   if (!hasItemEmitter(options.ctx.response)) {
     return;
   }
@@ -131,7 +132,7 @@ async function emitBlockOutputItem(
   const items = getResponseItems(options.ctx.response);
   const itemIndex = items.length;
   const blockValue = options.status === "failed"
-    ? ({ kind: "inline", value: undefined } as BlockValue<unknown>)
+    ? ({ kind: "inline", value: undefined } as BlockValueInternal<unknown>)
     : buildBlockValueForEmit(options.output, options.hint, items);
   // Root block_output items carry lifecycle timing and are marked for trace.
   // Items with toolCall (generator tool results) are emitted separately and
@@ -155,8 +156,7 @@ async function emitBlockOutputItem(
     modelUsage: options.modelUsage
   };
 
-  await options.ctx.response.emitItemAdded(item);
-  await options.ctx.response.emitItemDone(item);
+  options.ctx.emit.trace.blockOutput(item);
 }
 
 /**
@@ -511,7 +511,7 @@ export async function executeBlock(
       (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
     }
 
-    await emitBlockOutputItem({
+    emitBlockOutputItem({
       block: options.block,
       output: executionResult.output,
       ctx: options.ctx,
@@ -557,7 +557,7 @@ export async function executeBlock(
       }
     );
 
-    await emitBlockOutputItem({
+    emitBlockOutputItem({
       block: options.block,
       output: undefined,
       ctx: options.ctx,

@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "../../lib/item-types";
 import { Inbox } from "lucide-react";
 import { ItemRenderer } from "../items/item-renderer";
 import { RequestSeparator } from "./request-separator";
@@ -28,7 +29,7 @@ type RequestGroup = {
   status: string;
   startedAt: number;
   duration?: number;
-  items: OutputItem[];
+  items: DevtoolItem[];
   /** Inbound transport that produced the request — undefined for legacy data. */
   source?: string;
 };
@@ -39,7 +40,6 @@ const STREAM_TYPES = new Set([
   "reasoning",
   "block_tool_output",
   "error",
-  "step_error",
   "component",
   "container",
   "status",

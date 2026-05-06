@@ -10,24 +10,32 @@
  * existing `selectBlock` action when clicked so the user can jump-select
  * the producing block in the trace tree (FIX-556).
  */
-import type { BlockValue } from "@flow-state-dev/core/items";
-import { isBlockValue, resolveBlockValue } from "@flow-state-dev/core/items";
+import type { ItemLookup } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { Link2, Package } from "lucide-react";
 import { JsonViewer } from "./json-viewer";
 import { useTraceLookup } from "../../context/trace-context";
 import { useSelection } from "../../context/selection-context";
 import { resolveSourceBlock } from "../../lib/source-block";
+import type { DevtoolItem } from "../../lib/item-types";
 
 type BlockValueViewProps = {
-  value: BlockValue<unknown> | undefined;
+  value: BlockValueInternal<unknown> | undefined;
   /** Optional className applied to the outer wrapper. */
   className?: string;
 };
 
+function isInternalBlockValue(v: unknown): v is BlockValueInternal<unknown> {
+  if (typeof v !== "object" || v === null) return false;
+  const kind = (v as { kind?: unknown }).kind;
+  return kind === "inline" || kind === "ref" || kind === "structure";
+}
+
 export function BlockValueView({ value, className }: BlockValueViewProps) {
   if (value === undefined) return null;
 
-  if (!isBlockValue(value)) {
+  if (!isInternalBlockValue(value)) {
     // Legacy / handler-raw values (pre-FIX-413). Render directly so older
     // shapes still inspect cleanly.
     return <JsonViewer data={value} className={className} />;
@@ -111,7 +119,7 @@ function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
 
   let resolved: unknown;
   if (sourceItem.type === "block_output") {
-    resolved = resolveBlockValue(sourceItem.output, getItem);
+    resolved = resolveBlockValueInternal(sourceItem.output, getItem as ItemLookup);
   } else if (sourceItem.type === "message") {
     resolved = sourceItem.content
       .map((part) => ("text" in part ? (part as { text: string }).text : ""))

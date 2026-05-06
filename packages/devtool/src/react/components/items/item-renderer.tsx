@@ -7,11 +7,11 @@
  */
 import { memo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "../../lib/item-types";
 import { MessageItemView } from "./message-item";
 import { ReasoningItemView } from "./reasoning-item";
 import { BlockOutputItemView } from "./block-output-item";
 import { ErrorItemView } from "./error-item";
-import { StepErrorItemView } from "./step-error-item";
 import { StatusItemView } from "./status-item";
 import { ComponentItemView } from "./component-item";
 import { ContainerItemView } from "./container-item";
@@ -28,7 +28,7 @@ import { DebugOverlay } from "./debug-overlay";
 import { cn } from "../../lib/utils";
 
 type ItemRendererProps = {
-  item: OutputItem;
+  item: DevtoolItem;
 };
 
 const TIER_3_TYPES = new Set(["state_change", "resource_change", "state_snapshot", "block_debug"]);
@@ -93,7 +93,7 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
   );
 });
 
-function ItemContent({ item }: { item: OutputItem }) {
+function ItemContent({ item }: { item: DevtoolItem }) {
   switch (item.type) {
     case "message":
       return <MessageItemView item={item} />;
@@ -103,8 +103,6 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <BlockOutputItemView item={item} />;
     case "error":
       return <ErrorItemView item={item} />;
-    case "step_error":
-      return <StepErrorItemView item={item} />;
     case "status":
       return <StatusItemView item={item} />;
     case "component":
@@ -130,7 +128,7 @@ function ItemContent({ item }: { item: OutputItem }) {
   }
 }
 
-function StateSnapshotItemView({ item }: { item: OutputItem & { type: "state_snapshot" } }) {
+function StateSnapshotItemView({ item }: { item: DevtoolItem & { type: "state_snapshot" } }) {
   return (
     <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono">
       <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500/60 shrink-0" />

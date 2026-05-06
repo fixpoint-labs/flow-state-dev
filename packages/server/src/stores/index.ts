@@ -54,6 +54,11 @@ import {
   InMemorySessionStore
 } from "./memory/session-store";
 import {
+  createInMemoryTraceStore,
+  InMemoryTraceStore,
+  type InMemoryTraceStoreOptions
+} from "./memory/trace-store";
+import {
   createInMemoryUserStore,
   InMemoryUserStore
 } from "./memory/user-store";
@@ -85,6 +90,8 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  TraceEvent,
+  TraceStore,
   UserListOptions,
   UserRecord,
   UserStore
@@ -114,6 +121,7 @@ export {
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
+  createInMemoryTraceStore,
   createInMemoryUserStore,
   FilesystemActiveRequestRegistry,
   FilesystemCheckpointStore,
@@ -128,6 +136,7 @@ export {
   InMemoryProjectStore,
   InMemoryRequestStore,
   InMemorySessionStore,
+  InMemoryTraceStore,
   InMemoryUserStore,
   MemoryStateContainer,
   runWithCAS
@@ -135,13 +144,14 @@ export {
 
 export type CreateStoreOptions = {
   cas?: CASOptions;
+  traceStore?: InMemoryTraceStoreOptions;
 };
 
 export type FilesystemStoreRegistryOptions = CreateStoreOptions & {
   rootDir: string;
 };
 
-export function createInMemoryStores(): StoreRegistry {
+export function createInMemoryStores(options: CreateStoreOptions = {}): StoreRegistry {
   return {
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
@@ -149,7 +159,8 @@ export function createInMemoryStores(): StoreRegistry {
     org: createInMemoryProjectStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
-    checkpoints: createInMemoryCheckpointStore()
+    checkpoints: createInMemoryCheckpointStore(),
+    traces: createInMemoryTraceStore(options.traceStore)
   };
 }
 
@@ -173,6 +184,9 @@ export function createFilesystemStores(
       directory: options.rootDir
     }),
     content: createFilesystemContentStore(options.rootDir),
-    checkpoints: createFilesystemCheckpointStore(options.rootDir)
+    checkpoints: createFilesystemCheckpointStore(options.rootDir),
+    // Filesystem trace persistence is out of scope for FIX-506; the in-memory
+    // store satisfies the registry contract until a durable variant lands.
+    traces: createInMemoryTraceStore(options.traceStore)
   };
 }

@@ -34,7 +34,7 @@ You don't need to emit most item types yourself. The framework handles them:
 - **Tool calls** produce `block_tool_output` items with the tool name, input, and result
 - **State mutations** emit `state_change` notifications so the client stays in sync
 - **Resource mutations** emit `resource_change` notifications
-- **Errors** produce `error` or `step_error` items depending on whether they're terminal
+- **Errors** produce `error` items when the request itself fails. Failures inside `.work()` background tasks don't produce a public item; the failed `block_output` (visible to the DevTool via the trace channel) is the only signal.
 
 ## Visibility
 
@@ -128,7 +128,6 @@ For reference, here's the complete registry:
 | `status` | Progress indicator | ✓ | — | Always |
 | `state_change` | State mutation notification | ✓ | — | Production |
 | `resource_change` | Resource mutation notification | ✓ | — | Always |
-| `step_error` | Non-terminal error in a pipeline step | ✓ | — | — |
 | `error` | Terminal request error | ✓ | — | — |
 | `block_output` | Execution record | — | — | — |
 | `router_decision` | Route selection record | — | — | — |

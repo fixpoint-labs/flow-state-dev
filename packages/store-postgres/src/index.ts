@@ -15,6 +15,7 @@ import { createPostgresOrgStore } from "./org-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
+import { createInMemoryTraceStore } from "@flow-state-dev/server";
 
 export type PostgresStoreRegistry = StoreRegistry & {
   /** Drain the connection pool and disconnect */
@@ -120,6 +121,7 @@ export async function createPostgresStores(
       activeRequests: createPostgresActiveRequestRegistry(executor),
       content: createPostgresContentStore(executor),
       checkpoints: createPostgresCheckpointStore(executor),
+      traces: createInMemoryTraceStore(),
       async close() {
         await closePool();
       }
@@ -138,6 +140,7 @@ export async function createPostgresStores(
     activeRequests: createPostgresActiveRequestRegistry(executor),
     content: createPostgresContentStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),
+    traces: createInMemoryTraceStore(),
     async close() {
       await closePool();
     }

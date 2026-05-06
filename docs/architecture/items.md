@@ -34,7 +34,7 @@ See `generator-identity.md` for the full identity model.
 
 ### Structural types have fixed visibility
 
-Component, container, source, status, state_change, resource_change, error, step_error → `{ client: true, history: false }`. Block_output, router_decision, state_snapshot, block_debug → `{ client: false, history: false }` (devtool-only).
+Component, container, source, status, state_change, resource_change, error → `{ client: true, history: false }`. Block_output, router_decision, state_snapshot, block_debug → `{ client: false, history: false }` (devtool-only).
 
 Structural items ignore `agentType` for visibility. `agentType` on a structural item is metadata only (useful for per-agent rendering or queries via `selectForContext`).
 
@@ -59,8 +59,6 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 **`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
-
-**`step_error`** is a block-level error within a sequencer — either handled by a rescue boundary (`recovered: true`) or not. Persisted so you can see what went wrong in session history.
 
 **`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
@@ -139,7 +137,6 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 | `state_change` | Auto on state mutations | ✓ | — | — | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | — | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | — | Persistent |
-| `step_error` | Sequencer (block error, with/without rescue) | ✓ | — | — | Persistent |
 | `block_output` | Every block (auto, post-execution) | — | — | — | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | — | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | — | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
@@ -250,7 +247,7 @@ Use `component` when the output needs custom UI that native types can't express.
 - Conversational text → `message`
 - Progress during a long operation → `status`
 - Search citations → `source`
-- Errors → `error` or `step_error`
+- Errors → `error`
 
 Using `component` for things native types cover bypasses built-in history assembly and adds renderer maintenance overhead.
 

@@ -19,6 +19,9 @@ import type {
   RequestStreamEvent,
   ResourceChangeItem
 } from "@flow-state-dev/core/items";
+
+export type { RuntimeItem } from "../execution/internal/response";
+import type { RuntimeItem } from "../execution/internal/response";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import { createRequestEventId } from "./encode-event";
 import {
@@ -58,7 +61,7 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
 
 export type ResponseEmitterItemHooks = {
   /** Fires once an item reaches a terminal status via `item.done`. */
-  onItemDone?: (item: OutputItem) => void;
+  onItemDone?: (item: RuntimeItem) => void;
   /**
    * Fires when an in-flight item's content is mutated by a streaming
    * `content.delta` event (FIX-479). Both `MessageItem.content[i].text`
@@ -70,7 +73,7 @@ export type ResponseEmitterItemHooks = {
    * `setEventHooks`; this hook covers snapshot-style checkpointing of
    * the items field.
    */
-  onItemUpdate?: (item: OutputItem) => void;
+  onItemUpdate?: (item: RuntimeItem) => void;
 };
 
 export type ResponseEmitterEventHooks = {

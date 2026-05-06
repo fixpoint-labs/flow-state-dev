@@ -202,7 +202,7 @@ orderPipeline
 
 `recordOrder` returns immediately. `trackOrder` runs in parallel. The sequencer waits for outstanding `.work()` tasks to settle before it returns, so they don't get orphaned, but they don't slow the main chain.
 
-If a `.work()` block throws, the main chain is *not* aborted. The error is recorded as a `step_error` item on the work side. This is the right shape for non-essential work where failure is recoverable.
+If a `.work()` block throws, the main chain is *not* aborted. The framework logs the failure and the failed `block_output` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream.
 
 For more on background work — including waiting on results, fan-out over arrays, and conditional dispatch — see [Side Chains](/docs/advanced/sequencer-side-chains).
 

@@ -142,6 +142,33 @@ CREATE TABLE IF NOT EXISTS sequencer_checkpoints (
 CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id);
 `;
 
+// FIX-506: per-request trace event log with FIFO retention by request.
+// `trace_request_roster` records the insertion timestamp of each retained
+// request — retention deletes the oldest roster rows and the foreign-key
+// cascade reaps the matching events. `item` carries the BlockOutput /
+// RouterDecision / StateSnapshot / BlockDebug item JSON so the schema can
+// evolve without ALTER TABLE.
+const TRACE_REQUEST_ROSTER_TABLE = `
+CREATE TABLE IF NOT EXISTS trace_request_roster (
+  request_id  TEXT PRIMARY KEY,
+  inserted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trace_request_roster_inserted_at ON trace_request_roster(inserted_at);
+`;
+
+const TRACE_EVENTS_TABLE = `
+CREATE TABLE IF NOT EXISTS trace_events (
+  request_id      TEXT NOT NULL,
+  sequence_number INTEGER NOT NULL,
+  ts              INTEGER NOT NULL,
+  type            TEXT NOT NULL,
+  item            TEXT NOT NULL,
+  PRIMARY KEY (request_id, sequence_number),
+  FOREIGN KEY (request_id) REFERENCES trace_request_roster(request_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_trace_events_request_id ON trace_events(request_id);
+`;
+
 /**
  * One-shot rename migrations for databases initialised under the pre-FIX-428
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
@@ -227,6 +254,8 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
+  db.exec(TRACE_REQUEST_ROSTER_TABLE);
+  db.exec(TRACE_EVENTS_TABLE);
 }
 
 /**

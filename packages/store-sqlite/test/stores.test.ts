@@ -3,6 +3,7 @@ import type {
   OrgRecord,
   RequestRecord,
   SessionRecord,
+  TraceEvent,
   UserRecord
 } from "@flow-state-dev/server";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
@@ -659,6 +660,75 @@ describe("SQLite store adapter", () => {
       });
       await s.checkpoints.delete("r1", "b1");
       expect(await s.checkpoints.latest("r1", "b1")).toBeNull();
+    });
+  });
+
+  // --- Trace store (FIX-506) ---
+
+  describe("trace store", () => {
+    function makeEvent(
+      requestId: string,
+      sequenceNumber: number,
+      ts: number
+    ): TraceEvent {
+      return {
+        requestId,
+        sequenceNumber,
+        ts,
+        type: "trace.item.added",
+        item: {
+          type: "block_debug",
+          itemId: `item_${sequenceNumber}`,
+          ts,
+          blockName: "test"
+        } as TraceEvent["item"]
+      };
+    }
+
+    it("appendEvent then getEvents round-trips", async () => {
+      const s = freshStores();
+      await s.traces.appendEvent("r1", makeEvent("r1", 1, 100));
+      await s.traces.appendEvent("r1", makeEvent("r1", 2, 101));
+
+      const events = await s.traces.getEvents("r1");
+      expect(events).toHaveLength(2);
+      expect(events[0]!.sequenceNumber).toBe(1);
+      expect(events[1]!.type).toBe("trace.item.added");
+    });
+
+    it("getEvents with fromSequence returns strictly greater sequence numbers", async () => {
+      const s = freshStores();
+      for (let i = 1; i <= 4; i += 1) {
+        await s.traces.appendEvent("r1", makeEvent("r1", i, 100 + i));
+      }
+      const events = await s.traces.getEvents("r1", 2);
+      expect(events.map((e) => e.sequenceNumber)).toEqual([3, 4]);
+    });
+
+    it("listRequestIds returns ids in insertion order", async () => {
+      const s = freshStores();
+      await s.traces.appendEvent("r3", makeEvent("r3", 1, 100));
+      await s.traces.appendEvent("r1", makeEvent("r1", 1, 101));
+      await s.traces.appendEvent("r2", makeEvent("r2", 1, 102));
+      expect(await s.traces.listRequestIds()).toEqual(["r3", "r1", "r2"]);
+    });
+
+    it("evicts oldest request when maxRequests exceeded", async () => {
+      stores = createSQLiteStores({ filename: ":memory:", traceStore: { maxRequests: 2 } });
+      await stores.traces.appendEvent("r1", makeEvent("r1", 1, 100));
+      await stores.traces.appendEvent("r2", makeEvent("r2", 1, 101));
+      await stores.traces.appendEvent("r3", makeEvent("r3", 1, 102));
+
+      expect(await stores.traces.listRequestIds()).toEqual(["r2", "r3"]);
+      // Cascade should have removed r1's events.
+      expect(await stores.traces.getEvents("r1")).toEqual([]);
+    });
+
+    it("flush is a no-op", async () => {
+      const s = freshStores();
+      await s.traces.appendEvent("r1", makeEvent("r1", 1, 100));
+      await s.traces.flush("r1");
+      expect(await s.traces.getEvents("r1")).toHaveLength(1);
     });
   });
 });

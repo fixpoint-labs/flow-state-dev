@@ -59,7 +59,6 @@ function mergeRenderers(
     block_output: child.block_output !== undefined ? child.block_output : parent.block_output,
     status: child.status !== undefined ? child.status : parent.status,
     error: child.error !== undefined ? child.error : parent.error,
-    step_error: child.step_error !== undefined ? child.step_error : parent.step_error,
     component: {
       ...parent.component,
       ...child.component

@@ -6,6 +6,7 @@
  * session-level panels.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "./item-types";
 
 export type ModelTokenSummary = {
   model: string;
@@ -37,7 +38,7 @@ const EMPTY_SUMMARY: TokenSummary = {
   calls: 0,
 };
 
-export function aggregateTokenUsage(items: OutputItem[]): TokenSummary {
+export function aggregateTokenUsage(items: DevtoolItem[]): TokenSummary {
   const byModel = new Map<string, ModelTokenSummary>();
   let totalPrompt = 0;
   let totalCompletion = 0;
@@ -48,7 +49,7 @@ export function aggregateTokenUsage(items: OutputItem[]): TokenSummary {
 
   for (const item of items) {
     if (item.type !== "block_output") continue;
-    const usage = (item as OutputItem & { type: "block_output" }).modelUsage;
+    const usage = (item as DevtoolItem & { type: "block_output" }).modelUsage;
     if (!usage) continue;
 
     calls++;

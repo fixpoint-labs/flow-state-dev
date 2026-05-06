@@ -101,16 +101,28 @@ export type OutputItemBase = {
  */
 export type BlockValue<T = unknown> =
   | { kind: "inline"; value: T }
+  | { kind: "structure"; shape: StructureShape };
+
+/**
+ * Internal-only BlockValue. Adds the `ref` case used by pass-through
+ * composers (`.then`, `.work`, `.tap`, routers, `.rescue`) to avoid
+ * duplicating content. Public consumers see only `inline | structure`
+ * via {@link BlockValue}; the executor and persistence layers thread
+ * `BlockValueInternal` through.
+ */
+export type BlockValueInternal<T = unknown> =
+  | { kind: "inline"; value: T }
   | { kind: "ref"; sourceItemId: string }
   | { kind: "structure"; shape: StructureShape };
 
 /**
  * Shape of a `structure` BlockValue: a container of nested BlockValues.
- * Used by aggregators that produce a novel array or object of existing content.
+ * Entries use the internal value type because structures may transitively
+ * contain refs.
  */
 export type StructureShape =
-  | { container: "array"; entries: BlockValue<unknown>[] }
-  | { container: "object"; entries: Record<string, BlockValue<unknown>> };
+  | { container: "array"; entries: BlockValueInternal<unknown>[] }
+  | { container: "object"; entries: Record<string, BlockValueInternal<unknown>> };
 
 export type BlockOutputItem = OutputItemBase & {
   type: "block_output";
@@ -121,7 +133,7 @@ export type BlockOutputItem = OutputItemBase & {
    * Resolve via `resolveBlockValue(item.output, lookup)` to recover the typed
    * payload `T`. `ctx.getBlockOutput()` resolves transparently.
    */
-  output: BlockValue<unknown>;
+  output: BlockValueInternal<unknown>;
   /** Present when block execution failed (status will be "failed"). */
   error?: {
     message: string;
@@ -284,14 +296,6 @@ export type ErrorItem = OutputItemBase & {
   code?: string;
 };
 
-export type StepErrorItem = OutputItemBase & {
-  type: "step_error";
-  message: string;
-  code?: string;
-  blockName?: string;
-  recovered: boolean;
-};
-
 /** Source reference emitted by provider-native tools (e.g., web search). */
 export type SourceItem = OutputItemBase & {
   type: "source";
@@ -386,18 +390,13 @@ export type BlockDebugItem = OutputItemBase & {
 };
 
 export type OutputItem =
-  | BlockOutputItem
-  | BlockToolOutputItem
-  | RouterDecisionItem
   | MessageItem
   | ReasoningItem
+  | BlockToolOutputItem
   | ComponentItem
   | ContainerItem
-  | StatusItem
-  | StateChangeItem
-  | ResourceChangeItem
-  | ErrorItem
-  | StepErrorItem
   | SourceItem
-  | StateSnapshotItem
-  | BlockDebugItem;
+  | StatusItem
+  | ErrorItem
+  | StateChangeItem
+  | ResourceChangeItem;

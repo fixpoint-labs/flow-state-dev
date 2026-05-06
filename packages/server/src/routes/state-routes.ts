@@ -3,6 +3,7 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
@@ -79,13 +80,11 @@ export async function handleGetSessionState(
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
 
-  // FIX-391: type-based strip of known trace items on reload. The SSE
-  // transport filters by `resolveItemVisibility(item).client`, but we can't
-  // do the same here without also stripping container items from older
-  // sessions (which were persisted with the now-fixed `client: false`).
-  // Until the visibility model is redesigned, hardcode the known-trace type
-  // list — these types resolve to `client: false` via resolveItemVisibility
-  // and should never reach the UI as raw JSON.
+  // Legacy-compat safety net: pre-FIX-506 records were persisted before trace
+  // items carried `agentType: "trace"`, so `resolveItemVisibility` alone can't
+  // identify them. The hardcoded set covers those records; new records take
+  // the primary `resolveItemVisibility(item).client === false` path below.
+  // TODO(FIX-506): remove once we're confident no legacy records remain.
   const TRACE_ITEM_TYPES = new Set([
     "block_output",
     "router_decision",
@@ -105,7 +104,10 @@ export async function handleGetSessionState(
           if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
             continue;
           }
-          if (itemTypeFilter === undefined && TRACE_ITEM_TYPES.has(item.type)) {
+          if (
+            itemTypeFilter === undefined &&
+            (TRACE_ITEM_TYPES.has(item.type) || resolveItemVisibility(item).client === false)
+          ) {
             continue;
           }
           aggregatedItems.push(item);

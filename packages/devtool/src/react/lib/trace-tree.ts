@@ -1,4 +1,5 @@
 import type { BlockDebugItem, BlockDebugPayload, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -32,9 +33,9 @@ export type TraceNode = {
    * distinct from main-chain steps.
    */
   phase?: "main" | "work";
-  item?: OutputItem;
+  item?: DevtoolItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
-  traceItem?: OutputItem;
+  traceItem?: DevtoolItem;
   /** State snapshots for sequencer blocks, ordered by step execution. */
   stateSnapshots?: StateSnapshot[];
   /** Latest resolved debug payload for this block. Replace-in-place — no
@@ -233,7 +234,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
   });
 }
 
-function inferBlockKind(item: OutputItem): string | undefined {
+function inferBlockKind(item: DevtoolItem): string | undefined {
   if (item.type === "block_output" && (item as BlockOutputItem).toolCall) return "generator";
   return undefined;
 }

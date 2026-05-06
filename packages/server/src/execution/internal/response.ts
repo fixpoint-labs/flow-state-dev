@@ -1,12 +1,14 @@
 /**
  * Small response-emitter helpers shared by the execution runtime.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+
+export type { RuntimeItem };
 
 /**
  * Safely reads buffered response items from both public and internal emitters.
  */
-export function getResponseItems(response: unknown): OutputItem[] {
+export function getResponseItems(response: unknown): RuntimeItem[] {
   if (
     typeof response === "object" &&
     response !== null &&
@@ -14,7 +16,7 @@ export function getResponseItems(response: unknown): OutputItem[] {
     typeof (response as { getItems?: unknown }).getItems === "function"
   ) {
     return (
-      (response as { getItems: () => OutputItem[] }).getItems?.() ?? []
+      (response as { getItems: () => RuntimeItem[] }).getItems?.() ?? []
     );
   }
 
