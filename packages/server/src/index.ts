@@ -18,6 +18,7 @@ export {
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryStores,
+  createInMemoryTraceStore,
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
