@@ -55,7 +55,7 @@ export async function handleRequestStream(
   }
 
   const url = new URL(request.url);
-  const unfiltered = getBooleanFlag(url.searchParams.get("unfiltered"));
+  const includeTrace = url.searchParams.get("include") === "trace";
 
   // Per-flow heartbeat override wins over the host-level default.
   const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
@@ -80,7 +80,7 @@ export async function handleRequestStream(
 
     const readable = new ReadableStream<Uint8Array>({
       start(controller) {
-        const shouldForward = unfiltered ? undefined : createClientEventFilter();
+        const shouldForward = includeTrace ? undefined : createClientEventFilter();
 
         // 1. Replay buffered events after the cursor.
         // FIX-479: content.delta is non-replayable. The reconnecting
@@ -180,7 +180,7 @@ export async function handleRequestStream(
         lastEventId: request.headers.get("last-event-id"),
         startingAfter: url.searchParams.get("starting_after")
       });
-      if (!unfiltered) replay = filterClientEvents(replay);
+      if (!includeTrace) replay = filterClientEvents(replay);
       const payload = replay.map((event) => encodeStreamEvent(event)).join("");
       return new Response(payload, { status: 200, headers: SSE_HEADERS });
     }
@@ -213,7 +213,7 @@ export async function handleRequestStream(
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
   });
-  if (!unfiltered) replay = filterClientEvents(replay);
+  if (!includeTrace) replay = filterClientEvents(replay);
   const payload = replay.map((event) => encodeStreamEvent(event)).join("");
 
   return new Response(payload, {

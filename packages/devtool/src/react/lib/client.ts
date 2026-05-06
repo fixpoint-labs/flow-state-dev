@@ -47,7 +47,7 @@ export function connectRequestStream(
   return createSSEClient({
     ...callbacks,
     baseUrl,
-    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?unfiltered=true`,
+    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?include=trace`,
   });
 }
 
