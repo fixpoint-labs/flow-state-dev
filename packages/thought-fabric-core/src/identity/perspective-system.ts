@@ -19,6 +19,7 @@
 
 import { sequencer } from '@flow-state-dev/core'
 import type { DefinedResource } from '@flow-state-dev/core'
+import { z } from 'zod'
 import {
   perspectiveInputSchema,
   perspectiveObservationsResource,
@@ -215,12 +216,28 @@ export function system(
   // Bundled capture sequencer: analyze → observe.
   // Takes raw content, produces a PerspectiveAnalysis AND records the
   // analysis's salienceNotes as observations.
-  const capture = sequencer({
-    name: `${namePrefix}/capture`,
+  //
+  // The outer schema is intentionally looser than `perspectiveInputSchema`
+  // (which requires non-empty content) — capture is commonly wired into
+  // `.work()` background slots that receive whatever a generator produced,
+  // including empty strings when an upstream call short-circuits. Treating
+  // empty content as a no-op here keeps a transient upstream issue from
+  // surfacing as a background-work failure.
+  const captureInputSchema = z.object({
+    content: z.string(),
+    context: z.string().optional(),
+  })
+  const captureCore = sequencer({
+    name: `${namePrefix}/capture/run`,
     inputSchema: perspectiveInputSchema,
   })
     .then(analyze)
     .tap(observe)
+  const capture = sequencer({
+    name: `${namePrefix}/capture`,
+    inputSchema: captureInputSchema,
+  })
+    .thenIf((input) => input.content.length > 0, captureCore)
 
   const capability = createPerspectiveCapability(instance, { positionScope, positionsResource })
 

@@ -2,7 +2,77 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-06
+
+### Generator: log unparseable candidates + raise consolidation repair attempts
+
+When a generator's output schema rejects the model's response and repair gives up, the framework now logs the actual candidate to stderr alongside the validation error. Previously the only signal was `Generator output validation failed: Expected object, received string` — which tells you the schema saw a string but not *what* string. Operators had to re-run with a debugger or page through the request's block_debug item to see what the model returned.
+
+- New stderr log lines on terminal failure:
+  ```
+  [generator:generate] "tf.memory/consolidate/generate" output failed schema validation: Expected object, received string
+  [generator:generate] candidate (string): Sorry, I cannot consolidate these episodes…
+  ```
+- Candidate dump is truncated at 2000 chars; full payload is still recoverable from the request's block_debug.
+- Same dump fires from both the non-streaming (`generate`) and streaming (`stream`) terminal paths.
+
+Also raises `tf.memory/consolidate/generate`'s repair attempts from the default 1 to 3. Small models occasionally drop out of structured-output mode and return narrative text; with one auto-repair attempt the framework gave up too quickly and surfaced a `step_error` for what was usually transient flakiness. Three attempts let it recover before the background task fails.
+
 ## 2026-05-05
+
+### Recall tool: per-source pre-rank — semantic facts always reach the filter
+
+Fixes a structural starvation in the `llm-filter` strategy's prepare gate: when episodic memory was large and recent (200+ episodes at significance 0.9+), the unified intrinsic pre-rank pool filled with episodes and only the most-reinforced semantic facts squeezed in. A real-world repro on devuser showed 47 episodic + 3 semantic in a 50-candidate pool — every wife-related semantic fact was dropped before the LLM filter ran, and the agent answered "Jennifer" by reading episodic chat history while the semantic record about Moni never appeared.
+
+- **Per-source pooling.** `prepareBlock` no longer pools both stores under one cap. Semantic facts pass through unconditionally (the semantic store is bounded by `pruneThreshold` upstream). Episodes are intrinsically pre-ranked and capped at the new `PRE_RANK_EPISODIC_CAP` (default 30).
+- **Stage 1.5 exact-phrase pass-through** still runs but only over episodes that didn't make the cap. Semantic facts are all already in.
+- **`PRE_RANK_CAP` is deprecated.** Kept exported as the previous value (50) for back-compat with custom strategies that imported it for parity. The strategy itself no longer references it. Will be removed in a future major.
+- **Migration:** transparent for `tool: { strategy: 'llm-filter' }` consumers — the change is purely in the candidate pool composition. Custom strategies that used `PRE_RANK_CAP` should switch to `PRE_RANK_EPISODIC_CAP`.
+
+### Recall tool: `RetrievalStrategy` becomes block-factory shaped
+
+Reshapes the public `RetrievalStrategy` contract that custom recall backends implement. Strategies used to expose a single `rank(query, ctx, opts)` method called from inside the recall tool's `execute`. They now expose framework blocks the tool composes as a sequencer (`prepare → optional filter → format`), so no handler in the pipeline reaches into `asRuntime()` to invoke a generator (BP-011).
+
+- **Removed public types**: `RankedResult`, `RetrievalStrategyContext`, `RetrievalStrategyOptions`, and the `rank()` method on `RetrievalStrategy`. Anyone with a custom `RetrievalStrategy` will need to migrate.
+- **New public types**: `PrepareInput`, `PrepareEnvelope`. `PrepareInput` is what reaches the strategy's `prepareBlock` (the recall tool defaults/clamps `limit`, stamps `strategyName` and `perItemCharCap`). `PrepareEnvelope` is the carrier threaded between `prepare`, the optional filter+merge, and `format`.
+- **`RetrievalStrategy` shape**: `{ name, prepareBlock, filterBlock?, formatBlock? }`. `prepareBlock` is required and produces the envelope; `filterBlock` is the optional LLM filter step (omit it for vector/keyword backends and the tool surfaces the intrinsic top-N directly); `formatBlock` is an optional override on the tool's default formatter.
+- **New exports** from `@thought-fabric/core/memory`: `defaultFormatBlock`, `buildResult`, `buildResultMetadata`, `capContent`, `TRUNCATION_MARKER`. Custom strategies that override `formatBlock` can reuse the helpers without re-implementing per-item char capping, hallucination dropping, or score normalisation.
+- **Built-in strategy unchanged at the consumer level**: `tool: { strategy: 'llm-filter' }` keeps working; the `llm-filter` strategy now ships `prepareBlock` (intrinsic pre-rank + exact-phrase pass-through) plus `filterBlock` (single bounded LLM call). Token spend per call remains bounded regardless of total store size.
+- **Migration**: see `apps/docs/thought-fabric/memory.md` for the new strategy shape and an example.
+
+### Memory capability: orthogonal section presets + configurable formatter (FIX-513 pivot)
+
+Pivots away from the role-named `agent` / `worker` memory capability presets. The original FIX-513 design bundled "context formatter + recall tool" under role labels, which conflated two unrelated axes: which memory tier gets re-injected into the prompt, and whether the agent has a search tool. Authors who wanted only working memory but no digest, or recent episodes alongside the digest, couldn't express that without giving up the formatter entirely.
+
+- **Five orthogonal section presets** replace `agent` / `worker`: `digest`, `working`, `semantic`, `episodic`, `recall`. Default-on set is `['digest', 'working', 'recall']`. Each preset toggles independently with `.presets({...})`. `mem.capability` (no args) keeps the same effective behaviour as the old `agent` preset, so the migration nudge is contained: every consumer of `presets({ agent: …, worker: … })` updates to one of `presets({ digest: …, working: …, recall: …, semantic: …, episodic: … })`.
+- **Inclusion is independent of processing.** The capture pipeline still runs `tf.memory/digest/regenerate`, consolidation, and prune for whichever tiers are configured on `memorySystem({...})`. Disabling the `digest` preset on a worker generator just suppresses the section in *that* prompt — the underlying digest stays fresh for any other generator that opts in.
+- **Configurable formatter factory.** New export `createMemoryContextFormatter(options?)` from `@thought-fabric/core/memory`. Options: `{ digest?, working?, semantic?: { topN } | bool, episodic?: { limit } | bool }`. The boolean presets use fixed defaults (top-10 facts, last-5 episodes); reach for the factory directly when those defaults aren't right.
+- **Pre-FIX-407 sections are back, opt-in.** The simplification that removed semantic-fact and episodic-memory injection from the formatter is partially reversed — they're now selectable sections rather than always-on or always-off. The recall tool path remains the canonical way to fetch *specific* details on demand.
+- **Migration:** kitchen-sink's `workerUses` updated from `presets({ agent: false, worker: true })` to `presets({ digest: false, working: false })`. `MemoryCapabilityPreset` type changes from `'agent' | 'worker'` to `'digest' | 'working' | 'semantic' | 'episodic' | 'recall'`. `mem.contextFormatter` direct callers see no change — it remains an alias for `createMemoryContextFormatter()` with default options. Docs at `apps/docs/thought-fabric/memory.md` updated.
+
+### Recall tool: per-source pre-rank gate, semantic facts pass through
+
+Splits the unified pre-rank pool inside the `llm-filter` strategy's `prepareBlock` into two independent gates. Failure mode driving the change: high-significance recent episodes were crowding moderately-reinforced semantic facts out of the unified top-50 pool, leaving the LLM filter with no facts to score against on queries where a fact would have been the right answer.
+
+- **Semantic facts pass through unconditionally.** The semantic store is already bounded by `pruneThreshold`, so the worst case is well within the filter's token budget. No score-based admission, no cap.
+- **Episodes are scored intrinsically and capped at `PRE_RANK_EPISODIC_CAP = 30`** (replaces the old unified 50-item cap shared with facts). Stage 1.5 exact-phrase pass-through still runs over episodes the cap dropped; semantic facts skip the pass-through because they're all already admitted.
+- New export from `@thought-fabric/core/memory`: `PRE_RANK_EPISODIC_CAP`. Custom strategies that previously imported `PRE_RANK_CAP` for parity should switch to this.
+- `PRE_RANK_CAP` is now `@deprecated` but still exported. Internally unused; kept so prior consumers keep compiling. Removed in a future major.
+- Visible to consumers: the candidate set the filter sees is different — facts are no longer crowded out, and episodes that would have made the top-50 mixed pool but not the top-30 episodic pool now fall through to the exact-phrase tier rather than the filter.
+
+### Memory pipeline + tool naming reliability fixes
+
+Behavior fixes shipped after the memory + tool-naming work above landed:
+
+- **Memory `contextFormatter` returns an object, not a pre-formatted string.** Returning `<digest>…</digest>\n<working>…</working>` as a single string caused the framework's context aggregator to XML-escape the inner tags as text — the model saw `&lt;working&gt;`. The formatter now returns `{ digest?, working? }`, which the aggregator nests as proper child tags under `<memory>`. Public type on `MemorySystem.contextFormatter` is updated; consumers reading the value directly need to handle the object shape (no behavior change for the standard `context: { memory: mem.contextFormatter }` wiring).
+- **Digest regenerates every turn the source signature drifts.** Previously `digestRegenerate` was wired only inside the consolidation and prune `generate-and-persist` chains, both gated by guards that need ≥4 turns and ≥5 episodic writes. Until those gates triggered the digest never refreshed regardless of how much state had changed. Capture now appends `digestRegenerate` as a top-level `.work()` step when `digest` is configured; the block's own staleness guard keeps the cost cheap when nothing has drifted.
+- **OpenAI tool-name pattern compliance, end to end.** Framework-namespaced tool blocks like `tf.memory/recall` are aliased to `^[a-zA-Z0-9_-]+$` form before submission to providers that enforce it (notably OpenAI). The alias is now applied in three places: the outbound `tools` dictionary, the auto-described tool listing inside the system prompt, and the `toolName` field on historical tool-call / tool-result messages replayed from session items. Inbound stream chunks and result `toolCalls` are translated back to original framework names so observability stays consistent. `sanitizeToolName` is now exported from `@flow-state-dev/core/utils/tool-name` (and re-exported via the `@flow-state-dev/core/utils` barrel).
+- **Tool-call replay reads alias from item metadata, not from the framework name.** Replacing the message-time `sanitizeToolNamesInMessages` band-aid: `BlockToolOutputItem.toolCall` now carries an optional `alias` field (the model-facing sanitised name), populated at emit time inside the generator's `compileToolsWithExecute`. The server's `itemToLLMMessages` reads `bto.toolCall.alias ?? sanitizeToolName(bto.toolCall.name)`, so the toolName the model sees on replay is the same string it produced on the original turn. Items written before this field existed continue to work via the fallback. The `sanitizeToolNamesInMessages` pass is retained as defence-in-depth; it's now a no-op for items emitted on or after this change.
+- **Recall tool prompt wording is more directive.** `recallToolDescription` now explicitly tells the model to use the tool for personal/user-specific details that aren't in the visible context summary. The exported constant remains a string; only the wording changed.
+- **`workIf` predicate sees the running value.** The condition now takes `(value, ctx)` like `thenIf` and `tapIf` instead of `(ctx)` only. Lets authors gate background dispatch on the upstream output (e.g. skip perspective capture when the assistant produced empty text).
+- **Failed background work surfaces as `step_error`.** Rejected `.work()` / `.workIf()` tasks emit a client-visible `step_error` item alongside the existing failed `block_output`, so renderers can show a non-fatal warning instead of treating the failure as a request error. The `ErrorDisplay` renderer now distinguishes by item type — `error` (red, terminal) vs `step_error` (yellow, non-fatal) — rather than by `recovered`.
+- **Perspective capture tolerates empty content.** The bundled `${name}/capture` sequencer accepts empty content at its outer schema and short-circuits via `thenIf` so a `.work()` slot receiving an empty assistant response is a no-op instead of a background-work failure. The inner `analyze` block keeps its strict non-empty contract.
+- **Kitchen-sink memory now opts into the digest tier.** `memorySystem({...})` was missing `digest: true`; without it the `<memory>` section had nothing to render once working memory was in use. Also fixed `dev:watch` so edits to `thought-fabric-core`, `tools`, `patterns`, and `ui` trigger a Next.js restart — previously those packages' rebuilds didn't propagate without a manual `pnpm dev` restart.
 
 ### Memory: simplified `contextFormatter` — digest + working memory only (FIX-407)
 

@@ -2,8 +2,8 @@
  * Strategy registry for the recall tool.
  *
  * V1 ships only `llm-filter`. Later tickets register additional backends:
- * `keyword` (FIX-410, BM25/FTS5) and `vector` / `hybrid` (FIX-412).
- * Consumers can also pass a custom `RetrievalStrategy` object directly.
+ * `keyword` (BM25/FTS5) and `vector` / `hybrid`. Consumers can also pass a
+ * custom `RetrievalStrategy` object directly.
  */
 
 import { createLlmFilterStrategy } from './llm-filter-strategy.js'
@@ -12,12 +12,15 @@ import type { RetrievalStrategy } from '../types.js'
 export {
   createLlmFilterStrategy,
   PRE_RANK_CAP,
+  PRE_RANK_EPISODIC_CAP,
   RECENCY_HALF_LIFE,
   EXACT_PHRASE_CAP,
   intrinsicSemanticScore,
   intrinsicEpisodicScore,
   semanticToMemoryItem,
   episodeToMemoryItem,
+  extractExactPhrases,
+  exactPhraseMatches,
 } from './llm-filter-strategy.js'
 export type { LlmFilterStrategyOptions } from './llm-filter-strategy.js'
 

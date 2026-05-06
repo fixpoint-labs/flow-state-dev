@@ -133,12 +133,48 @@ const chat = generator({
 })
 ```
 
-The composed capability includes a `context` preset (on by default) that injects unified cross-store recall into the generator's prompt. For non-generator blocks, disable the preset:
+The composed capability ships five orthogonal section presets — each one toggles a single slice of the memory surface independently:
+
+| Preset | Default | Effect |
+| --- | --- | --- |
+| `digest` | on | Inject the rolling digest under `<memory><digest>…</digest></memory>`. No-op when no digest tier is configured. |
+| `working` | on | Inject working-memory entries under `<memory><working>…</working></memory>`. |
+| `recall` | on | Install the agent-invocable `tf.memory/recall` tool. No-op when neither episodic nor semantic is configured. |
+| `semantic` | off | Inject the top-N semantic facts under `<memory><semantic>…</semantic></memory>`. Default top-N is 10. No-op when no semantic tier is configured. |
+| `episodic` | off | Inject the most-recent episodes under `<memory><episodic>…</episodic></memory>`. Default limit is 5. No-op when no episodic tier is configured. |
+
+Inclusion is independent of processing: the capture pipeline still runs `digestRegenerate`, consolidation, prune, etc. for whichever tiers are configured on `memorySystem({...})`. Turning a preset off just suppresses the corresponding section in *that* generator's prompt — the underlying tier keeps running so the next generator that opts in sees fresh state.
+
+Default-on set is `['digest', 'working', 'recall']`. Toggle any preset on or off with `.presets({...})`:
+
+```ts
+// Primary agent — defaults: digest + working + recall
+const chat = generator({
+  name: 'chat',
+  uses: [mem.capability],
+})
+
+// Worker — recall tool only; nothing pre-injected into the prompt
+const subAgent = generator({
+  name: 'sub-agent',
+  uses: [mem.capability.presets({ digest: false, working: false })],
+})
+
+// Add semantic facts alongside the defaults
+const reviewer = generator({
+  name: 'reviewer',
+  uses: [mem.capability.presets({ semantic: true })],
+})
+```
+
+The split matters in multi-agent flows. A worker handed a focused task doesn't need the full memory summary at the top of its prompt — the parent agent already has it. Pre-injecting it on every sub-agent multiplies token cost without changing what the worker can actually do; the recall tool covers the rare cases where the worker needs a specific detail.
+
+For non-generator blocks, opt out of every section preset to keep just resources and helpers:
 
 ```ts
 const myHandler = handler({
   name: 'remember',
-  uses: [mem.capability.presets({ context: false })],
+  uses: [mem.capability.presets({ digest: false, working: false, recall: false })],
   execute: async (input, ctx) => {
     // Typed helpers via ctx.cap
     await ctx.cap.workingMemory.add({ content: 'User likes pizza', importance: 0.8 })
@@ -147,6 +183,42 @@ const myHandler = handler({
   },
 })
 ```
+
+### Custom limits — `createMemoryContextFormatter`
+
+The boolean presets use fixed defaults for `topN` (semantic) and `limit` (episodic). When you need a custom mix — top-30 facts, last-10 episodes, digest off but everything else on — bypass the section presets and wire the standalone factory directly into the generator's `context: { memory: … }` slot:
+
+```ts
+import { createMemoryContextFormatter } from '@thought-fabric/core/memory'
+
+const richReviewer = generator({
+  name: 'rich-reviewer',
+  // Disable the preset entries that would also write to the `memory` key,
+  // so the factory below is the single contributor.
+  uses: [mem.capability.presets({ digest: false, working: false })],
+  context: {
+    memory: createMemoryContextFormatter({
+      digest: true,
+      working: true,
+      semantic: { topN: 30 },
+      episodic: { limit: 10 },
+    }),
+  },
+})
+```
+
+Options shape:
+
+```ts
+type MemoryContextFormatterOptions = {
+  digest?: boolean                              // default: true
+  working?: boolean                             // default: true
+  semantic?: boolean | { topN?: number }       // default: false; topN default 10
+  episodic?: boolean | { limit?: number }      // default: false; limit default 5
+}
+```
+
+The factory's return shape is `{ digest?, working?, semantic?, episodic? }` — sibling keys nested under whatever context key it's registered against (so `context: { memory: factory(…) }` produces `<memory><digest>…</digest>…</memory>`).
 
 ### Individual tier capabilities
 
@@ -348,12 +420,12 @@ Each result's `content` is capped at 400 characters by default. When a result is
 
 The retrieval backend is pluggable. The default is `llm-filter`, which runs in two stages:
 
-1. **Query-blind intrinsic pre-rank.** Score every fact by `confidence × (0.5 + reinforcementCount/10)` and every episode by `significance × exp(-age/50)`. Pool both, sort, take the top 50. No tokenisation, no overlap math — high-value memories enter the candidate set regardless of query vocabulary.
+1. **Per-source pre-rank.** Two independent gates: every semantic fact passes through unconditionally (the semantic store is bounded by `pruneThreshold`, so fact count is naturally small); episodes are scored by `significance × exp(-age/50)`, sorted, and capped at `PRE_RANK_EPISODIC_CAP` (default 30). Splitting per source eliminates the starvation case where many high-significance recent episodes pushed moderately-reinforced facts out of the candidate set before the LLM filter ever saw them.
 2. **Single LLM filter call.** A small model picks the actually-relevant subset from the bounded candidate list.
 
-Token spend is bounded regardless of total store size. As the store grows, the pre-rank gate gets stricter. When low-value facts the LLM never sees stop being recallable, that's the signal to upgrade to a heavier strategy. There is no silent degradation curve.
+Token spend stays bounded regardless of total store size. The semantic store is gated upstream by `pruneThreshold`; the episodic gate is the cap above. When `pruneThreshold` doesn't keep facts useful or the cap excludes the relevant episode, that's the signal to upgrade to a heavier strategy.
 
-There's also a small Stage 1.5 pass-through that catches exact phrases (proper nouns, error codes) buried in low-score memories — up to 5 extra candidates per call. Disable it via `tool: { strategy: createLlmFilterStrategy({ model, exactPhrasePassThrough: false }) }`.
+There's also a small Stage 1.5 pass-through that catches exact phrases (proper nouns, error codes) buried in episodes that didn't make the cap — up to 5 extra candidates per call, applied to episodes only since semantic facts are all already in. Disable it via `tool: { strategy: createLlmFilterStrategy({ model, exactPhrasePassThrough: false }) }`.
 
 Configure the strategy at `memory.system()` time:
 
@@ -371,18 +443,31 @@ const mem = memorySystem({
 })
 ```
 
-Custom strategies implement the `RetrievalStrategy` interface and slot in the same way:
+Custom strategies implement the `RetrievalStrategy` interface — a block-factory shape that lets the recall tool compose your strategy as a sequencer instead of calling a single `rank()` method:
 
 ```ts
 const myStrategy: RetrievalStrategy = {
   name: 'my-backend',
-  rank(query, ctx, opts) { /* ... */ },
+  // Required. Reads stores, ranks candidates intrinsically, returns the
+  // carrier envelope `{ query, limit, candidates, shouldFilter, … }`.
+  prepareBlock: handler({ /* ... */ }),
+  // Optional. Bounded LLM filter step that selects from the prepared
+  // candidates. Strategies without an LLM call (vector, keyword) omit this
+  // and the recall tool surfaces the intrinsic top-N directly.
+  filterBlock: generator({ /* ... */ }),
+  // Optional. Override the default formatter (caps content per-item, drops
+  // hallucinated IDs from `selectedIds`, builds the result envelope).
+  formatBlock: handler({ /* ... */ }),
 }
 
 memorySystem({ /* ... */, tool: { strategy: myStrategy } })
 ```
 
-The `tool` preset is also available via the memory capability, but it's off by default in this release. Manual install (`tools: [mem.tool.recall()]`) is the supported path.
+Strategies expose blocks rather than a single `rank()` method so the recall tool can compose `prepare → optional filter → format` as a sequencer without any handler reaching into `asRuntime()` to invoke a generator (BP-011). The recall tool's input — `RecallToolInput` — is enriched into a `PrepareInput` before reaching `prepareBlock` (the optional `limit` is defaulted and clamped, `strategyName` and `perItemCharCap` are stamped through). `prepareBlock` returns a `PrepareEnvelope` that the rest of the pipeline threads through; the optional `filterBlock` reads `{ query, limit, candidates }` and returns `{ selectedIds }`, which the recall tool's internal merge step folds back into the envelope before `formatBlock` consumes it.
+
+The default `formatBlock` is exported as `defaultFormatBlock` from `@thought-fabric/core/memory` so custom strategies can reuse it (or its building blocks `buildResult`, `buildResultMetadata`, `capContent`).
+
+The recall tool ships as the `recall` preset on the memory capability — default-on, so `mem.capability` installs it automatically. To drop it (handlers that don't need search, or tightly-scoped sub-agents), disable explicitly: `mem.capability.presets({ recall: false })`. Manual install (`tools: [mem.tool.recall()]`) remains supported when you need a configuration the preset doesn't cover.
 
 ### When to use it
 

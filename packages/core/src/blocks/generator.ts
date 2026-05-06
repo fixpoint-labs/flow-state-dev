@@ -28,6 +28,7 @@ import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
+import { sanitizeToolName } from "../utils/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   aggregateContextEntries,
@@ -720,6 +721,12 @@ function compileToolsWithExecute(
               toolCall: {
                 callId: options.toolCallId,
                 name: tool.name,
+                // Sanitised alias the LLM saw — what history replay must use
+                // for `toolName` fields on tool-call / tool-result content
+                // parts. Storing it here avoids re-deriving it later from the
+                // framework name (which can mismatch when the model resolver
+                // disambiguates colliding aliases).
+                alias: sanitizeToolName(tool.name),
                 arguments: typeof args === "string" ? args : JSON.stringify(args),
                 generatorBlock: generatorBlockName
               }
@@ -757,6 +764,7 @@ function compileToolsWithExecute(
               toolCall: {
                 callId: options.toolCallId,
                 name: tool.name,
+                alias: sanitizeToolName(tool.name),
                 arguments: typeof args === "string" ? args : JSON.stringify(args),
                 generatorBlock: generatorBlockName
               },
@@ -811,6 +819,11 @@ function compileToolsWithExecute(
 /**
  * Build a context string listing available tools by name and description.
  * Returns undefined if no tools have descriptions.
+ *
+ * Names are sanitized to the same alias the model receives in the tools
+ * dict (see `sanitizeToolName`). This keeps the listing the model reads
+ * in its prompt consistent with the name it must call — e.g. a framework
+ * tool block named `tf.memory/recall` is listed as `tf_memory_recall`.
  */
 function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined {
   const described = tools.filter((t) => t.description);
@@ -818,8 +831,8 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
     return undefined;
   }
 
-  const lines = described.map((t) => `- ${t.name}: ${t.description}`);
-  return `Available tools:\n${lines.join("\n")}`;
+  const lines = described.map((t) => `- ${sanitizeToolName(t.name)}: ${t.description}`);
+  return `<tools>\n${lines.join("\n")}</tools>`;
 }
 
 function isBlockObserver(
@@ -912,6 +925,40 @@ function parseOutputWithSchema<TOutput>(schema: ZodTypeAny, candidate: unknown):
   };
 }
 
+/** Cap dumped candidates so a runaway model output doesn't flood logs. */
+const UNPARSEABLE_CANDIDATE_MAX_CHARS = 2000;
+
+/**
+ * Log the candidate that failed final schema validation so operators can
+ * inspect what the model actually returned. Truncates at
+ * `UNPARSEABLE_CANDIDATE_MAX_CHARS` to keep stderr legible — full payloads
+ * can still be recovered from the request's block_debug item.
+ */
+function logUnparseableCandidate(
+  blockName: string,
+  candidate: unknown,
+  error: Error,
+  source: 'generate' | 'stream'
+): void {
+  let dump: string;
+  if (typeof candidate === 'string') {
+    dump = candidate;
+  } else {
+    try {
+      dump = JSON.stringify(candidate);
+    } catch {
+      dump = String(candidate);
+    }
+  }
+  if (dump.length > UNPARSEABLE_CANDIDATE_MAX_CHARS) {
+    dump = `${dump.slice(0, UNPARSEABLE_CANDIDATE_MAX_CHARS)}… [truncated, total ${dump.length} chars]`;
+  }
+  console.warn(
+    `[generator:${source}] "${blockName}" output failed schema validation: ${error.message}\n` +
+    `[generator:${source}] candidate (${typeof candidate === 'string' ? 'string' : 'non-string'}): ${dump}`,
+  );
+}
+
 async function attemptDefaultRepair(candidate: unknown): Promise<unknown> {
   if (typeof candidate === "string") {
     try {
@@ -933,7 +980,8 @@ async function applyRepairPolicy<TInput, TOutput>(
   outputSchema: ZodTypeAny,
   candidate: unknown,
   state: GeneratorLoopState<TInput>,
-  ctx: BlockContext
+  ctx: BlockContext,
+  blockName: string
 ): Promise<TOutput> {
   const mode = config.repair?.mode ?? "auto";
   const maxAttempts = Math.max(0, config.repair?.maxAttempts ?? DEFAULT_REPAIR_ATTEMPTS);
@@ -948,10 +996,12 @@ async function applyRepairPolicy<TInput, TOutput>(
     }
 
     if (mode === "fail" || mode === "rescue") {
+      logUnparseableCandidate(blockName, currentCandidate, parsed.error, 'generate');
       throw parsed.error;
     }
 
     if (currentAttempt >= maxAttempts) {
+      logUnparseableCandidate(blockName, currentCandidate, parsed.error, 'generate');
       throw parsed.error;
     }
 
@@ -1329,9 +1379,11 @@ async function executeStreamingGeneration<TInput, TOutput>(
   // Validate output through the schema
   const parsed = outputSchema.safeParse(accumulated);
   if (!parsed.success) {
-    throw new Error(
+    const err = new Error(
       `Generator "${blockName}" streaming output failed schema validation: ${parsed.error.issues[0]?.message ?? "unknown"}`
     );
+    logUnparseableCandidate(blockName, accumulated, err, 'stream');
+    throw err;
   }
 
   // Emit content.done and completed item (only when identity is declared).
@@ -1760,7 +1812,7 @@ export function generator<
       };
 
       const output = await applyRepairPolicy<TInput, TOutput>(
-        normalizedConfig, outputSchema, candidate, state, ctx
+        normalizedConfig, outputSchema, candidate, state, ctx, blockName
       );
 
       // Emit a completed assistant message when the generator has identity

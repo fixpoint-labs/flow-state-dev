@@ -62,7 +62,13 @@ import {
   isStale as digestIsStale,
 } from './digest-helpers.js'
 import { digestRegenerate } from './digest-blocks.js'
-import { createContextFormatter } from './formatter.js'
+import {
+  createMemoryContextFormatter,
+  createDigestEntry,
+  createWorkingEntry,
+  createSemanticEntry,
+  createEpisodicEntry,
+} from './formatter.js'
 import { createRecallTool } from './tools/recall-tool.js'
 import { resolveStrategy } from './tools/strategies/index.js'
 import type { BuiltInStrategyName } from './tools/strategies/index.js'
@@ -102,6 +108,50 @@ export const memorySystemResource = defineResource({
   },
   writable: true,
 })
+
+// ---------------------------------------------------------------------------
+// Preset names
+// ---------------------------------------------------------------------------
+
+/**
+ * Orthogonal section presets exposed on the composed memory capability.
+ *
+ * Each preset toggles one slice of the memory surface independently:
+ *
+ * - `digest`   — inject the rolling digest into the prompt under
+ *                `<memory><digest>…</digest></memory>` (default on).
+ *                No-op when no digest tier is configured.
+ * - `working`  — inject working-memory entries under
+ *                `<memory><working>…</working></memory>` (default on).
+ * - `recall`   — install the agent-invocable `tf.memory/recall` tool that
+ *                searches semantic + episodic stores on demand (default on).
+ * - `semantic` — inject the top-N semantic facts (by reinforcement count)
+ *                under `<memory><semantic>…</semantic></memory>`
+ *                (default off; opt-in for content-rich generators).
+ *                No-op when no semantic tier is configured.
+ * - `episodic` — inject the most-recent episodes under
+ *                `<memory><episodic>…</episodic></memory>` (default off).
+ *                No-op when no episodic tier is configured.
+ *
+ * Inclusion is independent of processing: the capture pipeline still runs
+ * `tf.memory/digest/regenerate`, consolidation, prune, etc. for whichever
+ * tiers are configured on `memorySystem({...})` — turning off a preset
+ * just suppresses the section in that one generator's prompt.
+ *
+ * Default-on set: `['digest', 'working', 'recall']`. Authors who want
+ * non-default `topN` / `limit` values should bypass the preset and use
+ * `createMemoryContextFormatter({...})` directly in `context: { memory: … }`.
+ */
+export const MEMORY_CAPABILITY_PRESETS = [
+  'digest',
+  'working',
+  'semantic',
+  'episodic',
+  'recall',
+] as const
+
+/** Union of valid preset names on the composed memory capability. */
+export type MemoryCapabilityPreset = (typeof MEMORY_CAPABILITY_PRESETS)[number]
 
 // ---------------------------------------------------------------------------
 // Default config constants
@@ -268,12 +318,28 @@ export interface MemorySystem {
   /**
    * Context formatter for generator context arrays.
    *
-   * Emits `<memory>` containing the rolling digest (when configured) and
-   * working memory entries. Returns `undefined` when both are empty so the
-   * generator omits the section entirely. Semantic facts and episodic
-   * memories live on the recall tool ([FIX-409]), not the load path.
+   * Returns an object whose keys become nested XML tags under the parent
+   * key the formatter is registered against — e.g.
+   * `context: { memory: mem.contextFormatter }` produces
+   * `<memory><digest>…</digest><working>…</working></memory>`. Returning a
+   * pre-formatted string with embedded tags would be XML-escaped by the
+   * context aggregator's leaf renderer. Returns `undefined` when every
+   * section is empty so the generator omits `<memory>` entirely.
+   *
+   * The convenience export uses the default `{ digest, working }`
+   * configuration — equivalent to `createMemoryContextFormatter()`. For
+   * richer mixes (semantic facts, recent episodes, custom limits) call
+   * `createMemoryContextFormatter(options)` directly.
    */
-  contextFormatter: (input: unknown, ctx: any) => string | undefined
+  contextFormatter: (
+    input: unknown,
+    ctx: any
+  ) => {
+    digest?: string
+    working?: string
+    semantic?: string
+    episodic?: string
+  } | undefined
   /** Working memory module — resource and helpers. */
   working: {
     resource: typeof workingMemoryResource
@@ -355,21 +421,55 @@ export interface MemorySystem {
   /**
    * Composed memory capability for all configured tiers.
    *
-   * Use on generators to auto-install resources, context formatting, and
-   * typed helpers. Includes a `context` preset (on by default) that injects
-   * unified recall output into the generator prompt.
+   * Use on generators to auto-install resources, context formatting, typed
+   * helpers, and the agent-invocable recall tool. Five orthogonal section
+   * presets toggle independently — three default-on, two default-off:
+   *
+   *   - `digest` (default-on)   — render the rolling digest in the prompt.
+   *                               No-op when no digest tier is configured.
+   *   - `working` (default-on)  — render current working-memory entries.
+   *   - `recall` (default-on)   — install the `tf.memory/recall` tool.
+   *   - `semantic` (default-off) — render top-N semantic facts.
+   *   - `episodic` (default-off) — render most-recent episodes.
+   *
+   * Inclusion is independent of processing — the capture pipeline still runs
+   * `digestRegenerate`, consolidation, prune etc. for whichever tiers are
+   * configured. Turning off a preset just suppresses the section in that
+   * one generator's prompt.
    *
    * ```ts
-   * const gen = generator({
-   *   uses: [mem.capability],
-   *   // resources, context, and ctx.cap.memory.* auto-available
+   * // Primary agent — default; digest + working + recall
+   * generator({ uses: [mem.capability] })
+   *
+   * // Worker — recall tool only, no memory injected into the prompt
+   * generator({
+   *   uses: [mem.capability.presets({ digest: false, working: false })],
+   * })
+   *
+   * // Add semantic facts alongside the defaults
+   * generator({ uses: [mem.capability.presets({ semantic: true })] })
+   *
+   * // For non-default top-N / limit values, bypass presets and use the
+   * // factory directly:
+   * generator({
+   *   uses: [mem.capability.presets({ digest: false, working: false })],
+   *   context: {
+   *     memory: createMemoryContextFormatter({
+   *       digest: true,
+   *       working: true,
+   *       episodic: { limit: 10 },
+   *     }),
+   *   },
    * })
    * ```
    *
-   * For handlers, disable the context preset:
+   * For handlers, opt out of every section preset to keep just resources +
+   * helpers:
    * ```ts
    * handler({
-   *   uses: [mem.capability.presets({ context: false })],
+   *   uses: [mem.capability.presets({
+   *     digest: false, working: false, recall: false,
+   *   })],
    *   execute: async (input, ctx) => {
    *     const items = ctx.cap.memory.recall()
    *     await ctx.cap.workingMemory.add({ content: '...', importance: 0.8 })
@@ -779,7 +879,14 @@ export function system(config: MemorySystemConfig): MemorySystem {
     episodicConfig ? { scope: episodicConfig.scope } : undefined,
     semanticConfig ? { scope: semanticConfig.scope } : undefined,
   )
-  const contextFormatterFn = createContextFormatter(!!digestConfig)
+  // The bundled formatter retains the previous default behaviour (digest +
+  // working) for direct consumers of `mem.contextFormatter`. Capability
+  // presets register their own per-section entries below so each toggle is
+  // truly independent.
+  const contextFormatterFn = createMemoryContextFormatter({
+    digest: !!digestConfig,
+    working: true,
+  })
 
   // Create captureFromItems — self-serving variant that reads from session items
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
@@ -813,24 +920,54 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }),
     presets: {
       /**
-       * Unified context formatter for generators — injects the digest plus
-       * working memory under a `<memory>` tag (FIX-407). Object-form so
-       * multiple memory contributors (e.g. layered memory systems) aggregate
-       * into one section.
+       * Inject the rolling digest into the prompt under
+       * `<memory><digest>…</digest></memory>`. Default-on. No-op when no
+       * digest tier is configured on `memorySystem({...})` — the entry's
+       * function returns `undefined` and the framework drops the section.
        */
-      context: {
-        context: { memory: contextFormatterFn },
+      digest: digestConfig
+        ? { context: { memory: createDigestEntry() } }
+        : {},
+      /**
+       * Inject working-memory entries under
+       * `<memory><working>…</working></memory>`. Default-on. Working memory
+       * is the base tier, so this is always wired when memory is enabled.
+       */
+      working: {
+        context: { memory: createWorkingEntry() },
       },
       /**
-       * Agent-invocable recall tool (FIX-409). Off by default in this
-       * ticket — FIX-513 will introduce `agent`/`worker` presets that
-       * bundle this with `context` and flip the default. Manual install
-       * via `tools: [mem.tool.recall()]` remains supported.
+       * Inject the top-N semantic facts under
+       * `<memory><semantic>…</semantic></memory>`. Default-off — opt in for
+       * generators that benefit from a flat fact list alongside the digest.
+       * Uses a fixed default top-N; reach for `createMemoryContextFormatter`
+       * directly for a custom limit. No-op when no semantic tier is
+       * configured.
        */
-      tool: {
+      semantic: semanticConfig
+        ? { context: { memory: createSemanticEntry() } }
+        : {},
+      /**
+       * Inject the most-recent episodes under
+       * `<memory><episodic>…</episodic></memory>`. Default-off. Uses a fixed
+       * default count; reach for `createMemoryContextFormatter` directly
+       * for a custom limit. No-op when no episodic tier is configured.
+       */
+      episodic: episodicConfig
+        ? { context: { memory: createEpisodicEntry() } }
+        : {},
+      /**
+       * Install the `tf.memory/recall` tool so the model can search semantic
+       * facts and past episodes on demand. Default-on. No-op when neither
+       * episodic nor semantic is configured (recall has nothing to search).
+       */
+      recall: {
+        context: { memory: { 
+          additional: "There are additional memories available then what are included within this context. Use the tf_memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available. Before saying you don’t know, check memory for any relevant context first."
+        }},
         tools: () => [recallToolBlock],
       },
-      default: ['context'],
+      default: ['digest', 'working', 'recall'],
     },
   })
 

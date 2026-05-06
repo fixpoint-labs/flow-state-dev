@@ -204,21 +204,16 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     expect(result).toBeDefined()
-    // Framework wraps the entry in <memory> via the context key — formatter
-    // emits only the inner content with <digest> / <working> sections.
-    expect(result).not.toContain('<memory>')
-    expect(result).toContain('<digest>')
-    expect(result).toContain('The user is a TypeScript engineer working on a chat app.')
-    expect(result).toContain('</digest>')
-    expect(result).toContain('<working>')
-    expect(result).toContain('- (pinned) User name is Jake')
-    expect(result).toContain('- Debugging React crash')
-    expect(result).toContain('</working>')
-
-    // <digest> comes before <working>
-    const digestIdx = result!.indexOf('<digest>')
-    const workingIdx = result!.indexOf('<working>')
-    expect(digestIdx).toBeLessThan(workingIdx)
+    // Formatter returns an object so the framework's context aggregator can
+    // nest the keys as XML tags under the parent <memory> tag without
+    // escaping inner < and > as text.
+    expect(result).toEqual({
+      digest: 'The user is a TypeScript engineer working on a chat app.',
+      working: '- (pinned) User name is Jake\n- Debugging React crash',
+    })
+    // Key order matters — framework renders in insertion order, so digest
+    // must appear before working.
+    expect(Object.keys(result!)).toEqual(['digest', 'working'])
   })
 
   it('renders working memory only when no digest configured', () => {
@@ -234,7 +229,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<working>\n- (pinned) User name is Jake\n</working>')
+    expect(result).toEqual({ working: '- (pinned) User name is Jake' })
   })
 
   it('renders working memory only when digest configured but content empty', () => {
@@ -261,7 +256,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<working>\n- Debugging hydration mismatch\n</working>')
+    expect(result).toEqual({ working: '- Debugging hydration mismatch' })
   })
 
   it('renders digest only when working memory empty', () => {
@@ -287,8 +282,8 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<digest>\nStable framing about the user.\n</digest>')
-    expect(result).not.toContain('<working>')
+    expect(result).toEqual({ digest: 'Stable framing about the user.' })
+    expect(result).not.toHaveProperty('working')
   })
 
   it('returns undefined when both digest and working memory are empty', () => {
@@ -350,7 +345,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     // No digest content → just the working block
-    expect(result).toBe('<working>\n- Active task\n</working>')
+    expect(result).toEqual({ working: '- Active task' })
   })
 
   it('renders all entries when working memory is at capacity (7)', () => {
@@ -372,14 +367,15 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)!
+    const working = result.working ?? ''
     for (const content of ['item one', 'item two', 'item three', 'item four', 'item five', 'item six', 'item seven']) {
-      expect(result).toContain(content)
+      expect(working).toContain(content)
     }
     // Pinned marker preserved
-    expect(result).toContain('- (pinned) item one')
+    expect(working).toContain('- (pinned) item one')
     // Salience-sorted ordering
-    const idxOne = result.indexOf('item one')
-    const idxSeven = result.indexOf('item seven')
+    const idxOne = working.indexOf('item one')
+    const idxSeven = working.indexOf('item seven')
     expect(idxOne).toBeLessThan(idxSeven)
   })
 
@@ -417,11 +413,224 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)!
-    expect(result).not.toContain('Works at Stripe')
-    expect(result).not.toContain('Prefers TypeScript')
-    expect(result).not.toContain('Debugged a hydration bug')
-    expect(result).not.toContain('Known facts')
-    expect(result).not.toContain('About user')
+    const combined = JSON.stringify(result)
+    expect(combined).not.toContain('Works at Stripe')
+    expect(combined).not.toContain('Prefers TypeScript')
+    expect(combined).not.toContain('Debugged a hydration bug')
+    expect(combined).not.toContain('Known facts')
+    expect(combined).not.toContain('About user')
   })
 
+})
+
+// ---------------------------------------------------------------------------
+// Configurable factory: createMemoryContextFormatter
+// ---------------------------------------------------------------------------
+
+describe('memory/createMemoryContextFormatter (configurable factory)', () => {
+  it('with no options, defaults to { digest, working } — same as the legacy formatter', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const wmRef = createMockWmRef({
+      entries: [makeEntry({ id: 'e1', content: 'Active focus', salience: 0.9 })],
+    })
+    const digestRef = createMockDigestRef({ digest: makeDigest('Stable framing.') })
+    const formatter = createMemoryContextFormatter()
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: wmRef,
+        digestMemory: digestRef,
+        semanticMemory: createMockSemRef(),
+        episodicMemory: createMockEpRef(),
+      }),
+    }
+
+    const result = formatter(undefined, ctx)
+    expect(result).toEqual({
+      digest: 'Stable framing.',
+      working: '- Active focus',
+    })
+  })
+
+  it('opts into the semantic section with `semantic: true` and renders top-N facts', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const semRef = createMockSemRef({
+      facts: [
+        makeFact({ id: 'sf_1', content: 'Works at Stripe', category: 'profession' }),
+        makeFact({ id: 'sf_2', content: 'Prefers TypeScript', category: 'preference' }),
+      ],
+    })
+    const formatter = createMemoryContextFormatter({
+      digest: false,
+      working: false,
+      semantic: true,
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef(),
+        semanticMemory: semRef,
+      }),
+    }
+
+    const result = formatter(undefined, ctx)
+    expect(result).toBeDefined()
+    expect(result!.semantic).toContain('Works at Stripe')
+    expect(result!.semantic).toContain('Prefers TypeScript')
+    expect(result).not.toHaveProperty('digest')
+    expect(result).not.toHaveProperty('working')
+  })
+
+  it('honours the `topN` knob on the semantic section', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const semRef = createMockSemRef({
+      facts: [
+        makeFact({ id: 'sf_1', content: 'fact one', reinforcementCount: 5 }),
+        makeFact({ id: 'sf_2', content: 'fact two', reinforcementCount: 4 }),
+        makeFact({ id: 'sf_3', content: 'fact three', reinforcementCount: 3 }),
+      ],
+    })
+    const formatter = createMemoryContextFormatter({
+      digest: false,
+      working: false,
+      semantic: { topN: 2 },
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef(),
+        semanticMemory: semRef,
+      }),
+    }
+
+    const result = formatter(undefined, ctx)!
+    expect(result.semantic).toContain('fact one')
+    expect(result.semantic).toContain('fact two')
+    expect(result.semantic).not.toContain('fact three')
+  })
+
+  it('opts into the episodic section with `episodic: true` and renders most-recent episodes', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const epRef = createMockEpRef({
+      episodes: [
+        makeEpisode({ id: 'ep1', content: 'first event', occurredAtTurn: 1 }),
+        makeEpisode({ id: 'ep2', content: 'second event', occurredAtTurn: 2 }),
+        makeEpisode({ id: 'ep3', content: 'third event', occurredAtTurn: 3 }),
+      ],
+    })
+    const formatter = createMemoryContextFormatter({
+      digest: false,
+      working: false,
+      episodic: true,
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef(),
+        episodicMemory: epRef,
+      }),
+    }
+
+    const result = formatter(undefined, ctx)!
+    // Most-recent first; default limit is 5 so all three appear.
+    expect(result.episodic).toMatch(/third event[\s\S]*second event[\s\S]*first event/)
+  })
+
+  it('honours the `limit` knob on the episodic section', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const epRef = createMockEpRef({
+      episodes: [
+        makeEpisode({ id: 'ep1', content: 'older event', occurredAtTurn: 1 }),
+        makeEpisode({ id: 'ep2', content: 'middle event', occurredAtTurn: 2 }),
+        makeEpisode({ id: 'ep3', content: 'newest event', occurredAtTurn: 3 }),
+      ],
+    })
+    const formatter = createMemoryContextFormatter({
+      digest: false,
+      working: false,
+      episodic: { limit: 2 },
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef(),
+        episodicMemory: epRef,
+      }),
+    }
+
+    const result = formatter(undefined, ctx)!
+    expect(result.episodic).toContain('newest event')
+    expect(result.episodic).toContain('middle event')
+    expect(result.episodic).not.toContain('older event')
+  })
+
+  it('returns undefined when every enabled section is empty', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const formatter = createMemoryContextFormatter({
+      digest: true,
+      working: true,
+      semantic: true,
+      episodic: true,
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef(),
+        digestMemory: createMockDigestRef(),
+        semanticMemory: createMockSemRef(),
+        episodicMemory: createMockEpRef(),
+      }),
+    }
+
+    expect(formatter(undefined, ctx)).toBeUndefined()
+  })
+
+  it('skips a section gracefully when its resource is absent from the registry', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const wmRef = createMockWmRef({
+      entries: [makeEntry({ id: 'e1', content: 'present' })],
+    })
+    // semanticMemory intentionally omitted from the registry
+    const formatter = createMemoryContextFormatter({
+      digest: false,
+      working: true,
+      semantic: true,
+    })
+    const ctx = {
+      resources: createMockResources({ workingMemory: wmRef }),
+    }
+
+    const result = formatter(undefined, ctx)!
+    expect(result.working).toContain('present')
+    expect(result).not.toHaveProperty('semantic')
+  })
+
+  it('combines all four sections when every option is enabled and populated', async () => {
+    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const wmRef = createMockWmRef({
+      entries: [makeEntry({ id: 'e1', content: 'wm-entry' })],
+    })
+    const digestRef = createMockDigestRef({ digest: makeDigest('digest text') })
+    const semRef = createMockSemRef({
+      facts: [makeFact({ id: 'sf_1', content: 'fact text' })],
+    })
+    const epRef = createMockEpRef({
+      episodes: [makeEpisode({ id: 'ep1', content: 'episode text', occurredAtTurn: 1 })],
+    })
+    const formatter = createMemoryContextFormatter({
+      digest: true,
+      working: true,
+      semantic: true,
+      episodic: true,
+    })
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: wmRef,
+        digestMemory: digestRef,
+        semanticMemory: semRef,
+        episodicMemory: epRef,
+      }),
+    }
+
+    const result = formatter(undefined, ctx)!
+    expect(Object.keys(result).sort()).toEqual(['digest', 'episodic', 'semantic', 'working'])
+    expect(result.digest).toBe('digest text')
+    expect(result.working).toContain('wm-entry')
+    expect(result.semantic).toContain('fact text')
+    expect(result.episodic).toContain('episode text')
+  })
 })

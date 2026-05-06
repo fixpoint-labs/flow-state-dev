@@ -494,3 +494,175 @@ describe("createAiSdkModelResolver", () => {
     expect(result.text).toBe("original model");
   });
 });
+
+describe("createAiSdkModelResolver — tool name sanitization", () => {
+  it("rewrites framework-style tool names to a provider-safe alias and translates results back", async () => {
+    // OpenAI rejects tool names with `.` or `/`. Framework-namespaced names like
+    // `tf.memory/recall` must be aliased before submission and translated back
+    // on the way out so block-name routing and observability stay coherent.
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call_1",
+            // Provider echoes back whatever name we sent — so this carries the alias.
+            toolName: "tf_memory_recall",
+            input: { query: "anything" }
+          }
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 4, text: undefined, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        {
+          name: "tf.memory/recall",
+          description: "recall",
+          parameters: z.object({ query: z.string() })
+        }
+      ]
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const sentTools = request.tools as Array<{ name: string }>;
+    // Submitted name is the sanitized alias.
+    expect(sentTools.map((t) => t.name)).toEqual(["tf_memory_recall"]);
+
+    // Returned tool call carries the original framework name.
+    expect(result.toolCalls).toEqual([
+      { toolCallId: "call_1", toolName: "tf.memory/recall", args: { query: "anything" } }
+    ]);
+  });
+
+  it("disambiguates collisions between names that sanitize to the same alias", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        { name: "tf.memory/recall", description: "a", parameters: z.object({}) },
+        { name: "tf-memory-recall", description: "b", parameters: z.object({}) },
+        { name: "tf/memory.recall", description: "c", parameters: z.object({}) }
+      ]
+    });
+
+    const sent = model.doGenerateCalls[0]!.tools as Array<{ name: string }>;
+    const aliases = sent.map((t) => t.name);
+    // First wins the bare alias; collisions get numeric suffixes.
+    expect(aliases).toEqual(["tf_memory_recall", "tf-memory-recall", "tf_memory_recall_2"]);
+  });
+
+  it("leaves names that already match the alias pattern untouched", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [{ name: "lookup_data", description: "x", parameters: z.object({}) }]
+    });
+
+    const sent = model.doGenerateCalls[0]!.tools as Array<{ name: string }>;
+    expect(sent[0]?.name).toBe("lookup_data");
+  });
+
+  it("rewrites toolName on historical tool-call / tool-result messages", async () => {
+    // History replay rebuilds messages from stored block_tool_output items,
+    // which carry the framework's `tf.memory/recall` style names. Those
+    // toolName fields end up in OpenAI's request as `input[N].name` — same
+    // /^[a-zA-Z0-9_-]+$/ rule as tool names. Without rewriting, OpenAI
+    // rejects the request with `Invalid 'input[1].name'`.
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [
+        { role: "user", content: "what do I do?" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "call_1", toolName: "tf.memory/recall", input: { query: "job" } }
+          ]
+        },
+        {
+          role: "tool",
+          content: [
+            { type: "tool-result", toolCallId: "call_1", toolName: "tf.memory/recall", output: { type: "text", value: "CPTO" } }
+          ]
+        }
+      ]
+    });
+
+    const prompt = model.doGenerateCalls[0]!.prompt as Array<{ role: string; content: Array<{ toolName?: string }> }>;
+    const assistantMsg = prompt.find((m) => m.role === "assistant");
+    const toolMsg = prompt.find((m) => m.role === "tool");
+    expect(assistantMsg?.content[0]?.toolName).toBe("tf_memory_recall");
+    expect(toolMsg?.content[0]?.toolName).toBe("tf_memory_recall");
+  });
+
+  it("leaves messages without tool-call content untouched (identity return)", async () => {
+    // Hot-path optimisation: pure-text histories should not be deep-cloned.
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" }
+    ];
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({ messages });
+
+    const sent = model.doGenerateCalls[0]!.prompt;
+    // Mock-language-model normalises content arrays internally, so only
+    // assert the toolName branch left these untouched (no surprising rewrites).
+    expect(sent.length).toBe(2);
+  });
+});

@@ -1396,6 +1396,28 @@ describe('identity/perspective — system() factory', () => {
     expect(p.capture.name).toBe('sec-audit/capture')
   })
 
+  it('capture accepts empty content without rejecting at the schema boundary', () => {
+    // Capture is wired into `.work()` background slots that may receive an
+    // empty assistant response when an upstream call short-circuits. The
+    // outer schema must allow empty content; the inner `thenIf` skips the
+    // analyze→observe pipeline so an empty input is a true no-op rather than
+    // an LLM call followed by silent failure.
+    const p = system(makeInstance())
+    const captureSchema = (p.capture as { config: { inputSchema: { safeParse: (v: unknown) => { success: boolean } } } }).config.inputSchema
+    expect(captureSchema.safeParse({ content: '' }).success).toBe(true)
+    expect(captureSchema.safeParse({ content: 'something to analyze' }).success).toBe(true)
+  })
+
+  it('analyze keeps its strict input contract — empty content still rejected at the analyze boundary', () => {
+    // Loosening capture must not loosen the underlying analyze block; analyze
+    // still requires non-empty content. Capture handles empty input by
+    // skipping the chain entirely instead of pushing it through analyze.
+    const p = system(makeInstance())
+    const analyzeSchema = (p.analyze as { config: { inputSchema: { safeParse: (v: unknown) => { success: boolean } } } }).config.inputSchema
+    expect(analyzeSchema.safeParse({ content: '' }).success).toBe(false)
+    expect(analyzeSchema.safeParse({ content: 'not empty' }).success).toBe(true)
+  })
+
   it('populates resources map for default scope', () => {
     const p = system(makeInstance())
     expect(p.resources).toHaveProperty('perspectiveObservations')

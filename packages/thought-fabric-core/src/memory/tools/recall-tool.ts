@@ -1,45 +1,50 @@
 /**
- * `createRecallTool` — agent-invocable handler block that searches the
- * agent's stored memory (semantic facts + episodes) on demand (FIX-409).
+ * `createRecallTool` — agent-invocable recall tool, expressed as a sequencer
+ * composing strategy-supplied blocks. The agent installs it on a generator
+ * via `tools: [mem.tool.recall()]` like any other framework tool.
  *
- * The tool is a framework `handler` block so it slots into a generator's
- * `tools` array (or a capability preset's `tools` callback) the same way
- * any other framework tool does. Working memory is intentionally excluded
- * from the search surface — it lives in the formatter (FIX-407) and would
- * duplicate context cost if surfaced through the tool.
+ * Pipeline:
+ *   prepare → (filter → merge)? → format
  *
- * Strategy is pluggable; V1 ships `llm-filter`. The strategy is created
- * once at factory time and reused across every tool invocation.
+ * - `prepare` is the strategy's `prepareBlock` (with the recall tool's input
+ *   defaults applied via `connectInput`). It reads stores, ranks intrinsically,
+ *   produces the `PrepareEnvelope` carrier.
+ * - `(filter → merge)` is a sub-sequencer constructed at factory time when
+ *   `strategy.filterBlock` is defined. The filter generator receives a
+ *   stripped-down `{ query, limit, candidates }` payload via `connectInput`,
+ *   returns `{ selectedIds }`, and the merge handler reads the original
+ *   envelope back from `ctx.parent.input` (the inner sub-sequencer's input)
+ *   and folds `selectedIds` in.
+ * - `format` is `strategy.formatBlock` if provided, otherwise the default
+ *   `defaultFormatBlock` from `format-helpers.ts` — caps content per-item,
+ *   resolves `selectedIds` against the candidate map, drops hallucinations.
+ *
+ * No handler in this pipeline reaches into `asRuntime` to invoke another
+ * block (BP-011): the framework's executor walks each step at the substrate
+ * boundary, the same way it does for any other sequencer.
  */
 
-import { handler } from '@flow-state-dev/core'
-import { z } from 'zod'
-import { allFacts } from '../semantic-memory-helpers.js'
-import type { Episode, EpisodicMemoryState } from '../episodic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../semantic-memory.js'
-import type { WorkingMemoryState } from '../working-memory.js'
+import { handler, sequencer } from '@flow-state-dev/core'
+import {
+  defaultFormatBlock,
+  DEFAULT_PER_ITEM_CHAR_CAP,
+  DEFAULT_RECALL_LIMIT,
+} from './format-helpers.js'
+import {
+  recallToolDescription,
+  recallToolInputSchema,
+} from './types.js'
 import type {
-  RecallResultItem,
+  PrepareEnvelope,
+  PrepareInput,
   RecallToolInput,
   RecallToolResult,
   RetrievalStrategy,
-  RetrievalStrategyContext,
 } from './types.js'
-import { recallToolDescription, recallToolInputSchema } from './types.js'
-
-/** Default per-item char cap applied to result content. */
-export const DEFAULT_PER_ITEM_CHAR_CAP = 400
-
-/** Default `limit` when the agent omits it from tool input. */
-export const DEFAULT_RECALL_LIMIT = 5
-
-/** Truncation marker appended to capped content. */
-export const TRUNCATION_MARKER =
-  '… [truncated, re-query with narrower terms for full content]'
 
 /** Options for `createRecallTool`. */
 export type CreateRecallToolOptions = {
-  /** Strategy that produces ranked candidates. Constructed once, reused per call. */
+  /** Strategy whose blocks compose the pipeline. Constructed once, reused per call. */
   strategy: RetrievalStrategy
   /** Defaults applied when the agent's input or factory consumer omits values. */
   defaults?: {
@@ -51,175 +56,105 @@ export type CreateRecallToolOptions = {
 }
 
 /**
- * Cap content length, appending the truncation marker when triggered.
+ * Build the merge handler that closes the filter sub-sequencer.
  *
- * Cap < marker length is treated as a hard slice with no marker — keeps the
- * function total without surprising negative-slice math.
+ * Reads the original `PrepareEnvelope` from `ctx.parent!.input` — the inner
+ * sub-sequencer's input is the envelope handed in by the outer recall
+ * sequencer's `.thenIf(filterStep)` step, so `parent.input` recovers it
+ * even though the filter generator's own output is just `{ selectedIds }`.
+ * That parent reference is set fresh per execution by the substrate, so
+ * nesting is safe.
  */
-export function capContent(
-  content: string,
-  cap: number,
-): { content: string; truncated: boolean } {
-  if (content.length <= cap) return { content, truncated: false }
-  if (cap <= TRUNCATION_MARKER.length) return { content: content.slice(0, cap), truncated: true }
-  return {
-    content: content.slice(0, cap - TRUNCATION_MARKER.length) + TRUNCATION_MARKER,
-    truncated: true,
-  }
-}
-
-/** Build the source-specific metadata block surfaced to the agent. */
-function buildResultMetadata(item: RecallResultItem['source'], raw: any): Record<string, unknown> {
-  if (item === 'semantic') {
+const filterMergeBlock = handler({
+  name: 'tf.memory/recall.merge',
+  execute: async (
+    filterOut: { selectedIds: string[] },
+    ctx,
+  ): Promise<PrepareEnvelope & { selectedIds: string[] }> => {
+    const env = ctx.parent!.input as PrepareEnvelope
     return {
-      subject: raw.subject,
-      category: raw.category,
-      confidence: raw.confidence,
-      reinforcementCount: raw.reinforcementCount,
-      lastReinforced: raw.lastReinforced,
+      ...env,
+      selectedIds: filterOut.selectedIds,
     }
-  }
-  return {
-    category: raw.category,
-    occurredAtTurn: raw.occurredAtTurn,
-    significance: raw.significance,
-    encodedAt: raw.encodedAt,
-  }
-}
+  },
+})
 
 /**
- * Read semantic facts and episodes from the block context's resource registry.
+ * Create the recall tool — a sequencer the agent calls as a tool.
  *
- * Missing stores are silently coerced to empty arrays; the tool installs even
- * when only working memory is wired — agents may run before facts/episodes
- * accumulate.
- */
-function readStores(ctx: any): { semantic: SemanticFact[]; episodic: Episode[]; currentTurn: number } {
-  let semantic: SemanticFact[] = []
-  let episodic: Episode[] = []
-  let currentTurn = 0
-
-  try {
-    const semRef = ctx.resources?.semanticMemory as { state?: SemanticMemoryState } | undefined
-    if (semRef?.state) semantic = allFacts({ state: semRef.state } as any)
-  } catch { /* not installed */ }
-
-  try {
-    const epRef = ctx.resources?.episodicMemory as { state?: EpisodicMemoryState } | undefined
-    if (epRef?.state) episodic = epRef.state.episodes ?? []
-  } catch { /* not installed */ }
-
-  try {
-    const wmRef = ctx.resources?.workingMemory as { state?: WorkingMemoryState } | undefined
-    if (wmRef?.state) currentTurn = wmRef.state.currentTurn ?? 0
-  } catch { /* not installed */ }
-
-  return { semantic, episodic, currentTurn }
-}
-
-/**
- * Create the recall handler tool.
- *
- * Returned block is mounted on a generator via `tools: [recallTool]` (or via
- * the memory capability's `tool` preset).
+ * Returned block has the same `name` (`tf.memory/recall`) and `description`
+ * as before; only the `kind` shifts from `handler` to `sequencer`. Tools
+ * accept any `BlockDefinition`, so generators install it the same way.
  */
 export function createRecallTool(opts: CreateRecallToolOptions) {
   const strategy = opts.strategy
   const defaultLimit = opts.defaults?.limit ?? DEFAULT_RECALL_LIMIT
   const perItemCharCap = opts.defaults?.perItemCharCap ?? DEFAULT_PER_ITEM_CHAR_CAP
 
-  // Output schema — matches `RecallToolResult` shape. `error` envelope and
-  // success envelope are merged via z.union so the LLM can recover from
-  // strategy errors in the same call.
-  const outputSchema = z.union([
-    z.object({
-      results: z.array(
-        z.object({
-          id: z.string(),
-          content: z.string(),
-          source: z.enum(['semantic', 'episodic']),
-          score: z.number(),
-          metadata: z.record(z.string(), z.unknown()),
-          truncated: z.boolean(),
-        }),
-      ),
-      query: z.string(),
-      strategy: z.string(),
-      totalMatched: z.number(),
-      truncatedTo: z.number(),
+  // Wrap the strategy's prepare with input-defaults application: clamp limit,
+  // stamp strategy name and per-item char cap so prepare can carry both
+  // through to the envelope without re-resolving.
+  const wrappedPrepare = strategy.prepareBlock.connectInput(
+    (input: RecallToolInput): PrepareInput => ({
+      query: input.query,
+      limit: Math.min(20, Math.max(1, input.limit ?? defaultLimit)),
+      sinceTurn: input.sinceTurn,
+      strategyName: strategy.name,
+      perItemCharCap,
     }),
-    z.object({
-      error: z.string(),
-      query: z.string(),
-      strategy: z.string(),
-    }),
-  ])
+  )
 
-  return handler({
-    name: 'tf.memory/recall',
-    description: recallToolDescription,
-    inputSchema: recallToolInputSchema,
-    outputSchema,
-    execute: async (input: RecallToolInput, ctx: any): Promise<RecallToolResult> => {
-      const { semantic, episodic, currentTurn } = readStores(ctx)
+  // Build the optional filter sub-sequencer. Skipped entirely when the
+  // strategy doesn't ship a `filterBlock` — the recall sequencer's `.thenIf`
+  // condition collapses to false, prepare's envelope passes straight to
+  // format which surfaces the intrinsic ordering.
+  const filterStep = strategy.filterBlock
+    ? sequencer({ name: 'tf.memory/recall.filter' })
+        .then(
+          strategy.filterBlock.connectInput((env: PrepareEnvelope) => ({
+            query: env.query,
+            limit: env.limit,
+            candidates: env.candidates,
+          })),
+        )
+        .then(filterMergeBlock)
+    : undefined
 
-      // Empty-store short-circuit — no LLM call.
-      if (semantic.length === 0 && episodic.length === 0) {
-        return {
-          results: [],
-          query: input.query,
-          strategy: strategy.name,
-          totalMatched: 0,
-          truncatedTo: 0,
-        }
-      }
+  const formatBlock = strategy.formatBlock ?? defaultFormatBlock
 
-      const strategyCtx: RetrievalStrategyContext = {
-        semantic,
-        episodic,
-        currentTurn,
-        runtime: ctx,
-      }
-
-      const limit = Math.min(20, Math.max(1, input.limit ?? defaultLimit))
-
-      let ranked
-      try {
-        ranked = await strategy.rank(input.query, strategyCtx, {
-          limit,
-          sinceTurn: input.sinceTurn,
-        })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return {
-          error: message,
-          query: input.query,
-          strategy: strategy.name,
-        }
-      }
-
-      const totalMatched = ranked.length
-      const truncated = ranked.slice(0, limit)
-
-      const results: RecallResultItem[] = truncated.map((r) => {
-        const capped = capContent(r.item.content, perItemCharCap)
-        return {
-          id: r.item.id,
-          content: capped.content,
-          source: r.item.source,
-          score: r.score,
-          metadata: buildResultMetadata(r.item.source, r.item),
-          truncated: capped.truncated,
-        }
-      })
-
+  // Translate any error thrown inside the pipeline (LLM rate limit, schema
+  // validation failure, etc.) into the agent-observable error envelope
+  // `{ error, query, strategy }`. The agent sees a recoverable result
+  // instead of a thrown exception. `ctx.parent!.input` recovers the
+  // original `RecallToolInput` because `rescue` runs as a sibling step of
+  // the failed block under the same outer recall sequencer.
+  const errorRescueBlock = handler({
+    name: 'tf.memory/recall.rescue',
+    execute: async (error: Error, ctx): Promise<RecallToolResult> => {
+      const input = ctx.parent!.input as RecallToolInput
       return {
-        results,
+        error: error.message,
         query: input.query,
         strategy: strategy.name,
-        totalMatched,
-        truncatedTo: results.length,
       }
     },
   })
+
+  // Build the recall sequencer. Output schema is the union enforced by the
+  // format block (success or error envelope); we don't re-declare it here —
+  // the sequencer infers it from `formatBlock`.
+  const recallSeq = sequencer({
+    name: 'tf.memory/recall',
+    description: recallToolDescription,
+    inputSchema: recallToolInputSchema,
+  })
+    .then(wrappedPrepare)
+    .thenIf(
+      (env: PrepareEnvelope) => env.shouldFilter && filterStep !== undefined,
+      filterStep ?? formatBlock, // unreachable when filterStep is undefined; cast keeps types happy
+    )
+    .then(formatBlock)
+    .rescue([{ block: errorRescueBlock }])
+
+  return recallSeq
 }

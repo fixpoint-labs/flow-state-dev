@@ -14,7 +14,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const exampleRoot = resolve(__dirname, "..");
 const monoRoot = resolve(exampleRoot, "../..");
 
-const WATCHED_PACKAGES = ["core", "client", "server", "react"];
+// Each entry is the directory under packages/ whose dist/ is watched. Add a
+// package here when kitchen-sink imports from it — otherwise edits to that
+// package won't trigger a next dev restart and the running app keeps using
+// stale compiled output. Last regression: thought-fabric-core was missing,
+// so memory/digest changes silently didn't take effect until full restart.
+const WATCHED_PACKAGES = [
+  "core",
+  "client",
+  "server",
+  "react",
+  "thought-fabric-core",
+  "tools",
+  "patterns",
+  "ui",
+];
 const RESTART_DEBOUNCE_MS = 500;
 
 let nextProcess = null;

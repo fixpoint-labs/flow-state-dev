@@ -130,6 +130,41 @@ describe("generator builder", () => {
     await expect(runForTest(blockRescue, { value: 1 }, ctx)).rejects.toThrow("validation failed");
   });
 
+  it("logs the unparseable candidate when output validation gives up", async () => {
+    // When a generator's output schema can't validate the candidate even
+    // after repair attempts, the framework should dump the actual model
+    // output to stderr so an operator can see what came back. Without this
+    // log, debugging "Expected object, received string" requires re-running
+    // with a debugger or paging through a request's block_debug item.
+    const block = generator({
+      name: "log-on-fail",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.boolean() }),
+      repair: { mode: "fail" },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: ((() => ({
+        modelId: "m",
+        async generate() {
+          // Return a plain text string — the structured-output fallthrough
+          // case that small models hit when they drop out of JSON mode.
+          return { text: "Sorry, I cannot consolidate these episodes." };
+        },
+      })) as unknown) as any,
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(runForTest(block, { value: 1 }, ctx)).rejects.toThrow("validation failed");
+
+    const messages = warnSpy.mock.calls.map((call) => String(call[0]));
+    const hit = messages.find((m) => m.includes("log-on-fail") && m.includes("Sorry, I cannot consolidate"));
+    expect(hit, `expected a console.warn dump of the candidate; saw: ${messages.join(" | ")}`).toBeDefined();
+
+    warnSpy.mockRestore();
+  });
+
   it("runs model-requested tools via execute wrappers", async () => {
     // The generator compiles tools with `execute` closures. The model layer
     // (AI SDK) calls `execute` during its built-in multi-step loop.
@@ -457,6 +492,166 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).callId).toBe("call_123");
     expect((toolOutput.toolCall as any).name).toBe("lookup-tool");
     expect((toolOutput.toolCall as any).generatorBlock).toBe("tool-generator");
+    // Already-clean name → alias equals name (sanitisation is idempotent).
+    expect((toolOutput.toolCall as any).alias).toBe("lookup-tool");
+  });
+
+  it("stamps a sanitized alias on block_tool_output when the tool name contains namespace characters", async () => {
+    // The model only ever sees the sanitized alias `tf_memory_recall`; the
+    // emitted item must carry that alias so history replay sends the same
+    // string OpenAI accepted in the original turn. Prior to FIX-… the item
+    // stored only the framework name, and replay produced a 400 from
+    // OpenAI's `^[a-zA-Z0-9_-]+$` rule.
+    const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const namespacedTool = handler({
+      name: "tf.memory/recall",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: () => ({ results: ["found"] })
+    });
+
+    const block = generator({
+      name: "ns-tool-generator",
+      model: "m",
+      prompt: "p",
+      tools: [namespacedTool]
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find(
+            (t: any) => t.name === "tf.memory/recall"
+          );
+          if (toolDef?.execute) {
+            await toolDef.execute({ query: "wife" }, { toolCallId: "call_ns" });
+          }
+          return { text: "done" };
+        }
+      }),
+      response: {
+        emit: (event: unknown) => {
+          emittedEvents.push(event as any);
+        },
+        getItems: () => emittedEvents.filter((e: any) => e.item).map((e: any) => e.item)
+      } as any
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const toolOutput = emittedEvents.find(
+      (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
+    )!.item!;
+    expect((toolOutput.toolCall as any).name).toBe("tf.memory/recall");
+    expect((toolOutput.toolCall as any).alias).toBe("tf_memory_recall");
+    // The alias must satisfy provider patterns; if this regex check fails,
+    // OpenAI will reject the next turn's replay.
+    expect((toolOutput.toolCall as any).alias).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("stamps the alias on a failed block_tool_output as well", async () => {
+    // Both success and failure paths emit block_tool_output. Replay sends
+    // the failure's tool-call back to the model on the next turn (with the
+    // synthesised "Tool ... failed" error text), so the alias must travel
+    // with the failure path too.
+    const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const failingTool = handler({
+      name: "tf.memory/recall",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+
+    const block = generator({
+      name: "failing-tool-gen",
+      model: "m",
+      prompt: "p",
+      tools: [failingTool]
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find(
+            (t: any) => t.name === "tf.memory/recall"
+          );
+          if (toolDef?.execute) {
+            try {
+              await toolDef.execute({ query: "x" }, { toolCallId: "call_fail" });
+            } catch {
+              // expected — tool execute rethrows after emitting failure item
+            }
+          }
+          return { text: "done" };
+        }
+      }),
+      response: {
+        emit: (event: unknown) => {
+          emittedEvents.push(event as any);
+        },
+        getItems: () => emittedEvents.filter((e: any) => e.item).map((e: any) => e.item)
+      } as any
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const failed = emittedEvents.find(
+      (e) =>
+        e.type === "item.added" &&
+        e.item?.type === "block_tool_output" &&
+        e.item?.status === "failed"
+    )!.item!;
+    expect((failed.toolCall as any).alias).toBe("tf_memory_recall");
+  });
+
+  it("lists tools in the system prompt using sanitized names matching what the model can call", async () => {
+    // Framework block names use namespacing characters (`.`, `/`) that
+    // OpenAI rejects in tool names. The adapter aliases the names before
+    // submitting; the prompt context must use the same alias so the model
+    // sees one consistent name.
+    const namespaced = handler({
+      name: "tf.memory/recall",
+      description: "Search your stored memory",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: async () => ({ results: [] }),
+    });
+
+    let capturedSystemContent = "";
+    const block = generator({
+      name: "ns-tool-listing",
+      model: "m",
+      prompt: "You are a helper.",
+      outputSchema: z.string(),
+      tools: [namespaced],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          // The auto-describe tool listing flows through buildSystemPrefix
+          // as its own additional system message — concatenate every
+          // system message so the assertion is independent of how many
+          // system slices the prefix produced.
+          capturedSystemContent = (options.messages ?? [])
+            .filter((m: any) => m.role === "system")
+            .map((m: any) => (typeof m.content === "string" ? m.content : ""))
+            .join("\n");
+          return { text: "ok" };
+        },
+      }),
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    // Listed under the sanitized alias the model can actually invoke.
+    expect(capturedSystemContent).toContain("- tf_memory_recall: Search your stored memory");
+    // The original framework name should NOT leak into the prompt body.
+    expect(capturedSystemContent).not.toContain("tf.memory/recall");
   });
 });
 

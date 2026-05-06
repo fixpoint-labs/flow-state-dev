@@ -194,6 +194,61 @@ function getSequencerEmitterItemCount(response: unknown): number {
 }
 
 /**
+ * Emits a `step_error` item describing a recoverable failure inside a
+ * background `.work()` / `.workIf()` task (or a `.forEachBackground` batch).
+ *
+ * Step errors are client-visible but excluded from history — the canonical
+ * channel for "something went wrong in the side-chain, but the request as a
+ * whole continued." Renderers display them as warnings (e.g. orange text)
+ * rather than as fatal request errors. The accompanying failed `block_output`
+ * (always emitted by `executeBlock`) remains available for trace/devtool
+ * inspection.
+ */
+async function emitWorkStepError(
+  ctx: BlockContext,
+  failedBlockName: string,
+  reason: unknown
+): Promise<void> {
+  const message =
+    reason instanceof Error
+      ? reason.message
+      : typeof reason === "string"
+        ? reason
+        : String(reason);
+  const code =
+    reason !== null && typeof reason === "object" && "code" in reason
+      ? typeof (reason as { code?: unknown }).code === "string"
+        ? ((reason as { code: string }).code)
+        : undefined
+      : undefined;
+  const item = {
+    id: `item_step_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "step_error" as const,
+    status: "failed" as const,
+    transient: true,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: ctx._blockIdentity?.blockName ?? failedBlockName,
+      blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? failedBlockName,
+      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
+      phase: "work" as const,
+    },
+    ts: Date.now(),
+    message,
+    code,
+    blockName: failedBlockName,
+    recovered: false,
+  };
+  try {
+    await ctx.response.emit({ type: "item.added", item });
+    await ctx.response.emit({ type: "item.done", item });
+  } catch {
+    // Emission is best-effort — never escalate a side-channel failure.
+  }
+}
+
+/**
  * Emits a state_snapshot item at sequencer step boundaries (FIX-401).
  *
  * One logical snapshot per sequencer instance, keyed by `blockInstanceId`.
@@ -690,10 +745,15 @@ function runSequencerOperations(
           ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
 
           await Promise.all(pending.map((t) =>
-            t.promise.then((result) => {
+            t.promise.then(async (result) => {
               remaining--;
               if (result.status === "rejected") {
                 console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+                // Surface the failure to the client as a non-fatal step_error.
+                // The work was fire-and-forget, so the parent action stays
+                // successful — but the renderer should still have a chance to
+                // show the user that a side-channel didn't complete.
+                await emitWorkStepError(ctx, result.name, result.reason);
               }
               ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
             })
@@ -1380,7 +1440,9 @@ function createSequencer<TInput, TOutput>(
     },
 
     workIf<TStepIn>(
-      condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+      condition:
+        | boolean
+        | ((value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>),
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any> | WorkOptions,
       arg4?: WorkOptions
@@ -1395,7 +1457,9 @@ function createSequencer<TInput, TOutput>(
           name: options?.name ?? `workIf:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
             const shouldDispatch =
-              typeof condition === "function" ? await condition(ctx) : condition;
+              typeof condition === "function"
+                ? await condition(value as TOutput, ctx)
+                : condition;
 
             if (!shouldDispatch) {
               return { value };

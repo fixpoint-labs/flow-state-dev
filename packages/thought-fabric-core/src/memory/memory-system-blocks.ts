@@ -658,6 +658,11 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     prompt: consolidationPrompt,
     context: buildContext,
     user: (_input: unknown) => 'Consolidate the episodes into semantic facts.',
+    // Small models occasionally drop out of structured-output mode and return
+    // narrative text instead of JSON. Allow more repair attempts than the
+    // default (1) so the pipeline can recover before the background task
+    // surfaces as a step_error.
+    repair: { mode: 'auto', maxAttempts: 3 },
     agentType: "trace",
   })
 }
@@ -1080,13 +1085,18 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
  * When semantic is configured, adds consolidation and prune as .work() steps.
+ * When digest is configured, adds a top-level digest-regenerate work step
+ * so the rolling summary refreshes on every turn whose source signature
+ * changed (new episodes, new facts, removed facts) — independent of whether
+ * consolidation or prune actually triggered. The digest block's own
+ * staleness guard makes the call a cheap no-op when nothing has drifted.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const observeBlock = memorySystemObserve(config)
   const reflectBlock = memorySystemReflect(config)
   const tickBlock = memorySystemTick(config)
 
-  const pipeline = sequencer({
+  let pipeline: any = sequencer({
     name: config.name ?? 'tf.memory/capture',
     inputSchema: z.any(),
   })
@@ -1097,7 +1107,18 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   if (config.semantic) {
     const consolidateBlock = memorySystemConsolidate(config)
     const pruneBlock = memorySystemPrune(config)
-    return pipeline.work(consolidateBlock).work(pruneBlock)
+    pipeline = pipeline.work(consolidateBlock).work(pruneBlock)
+  }
+
+  if (config.digest) {
+    // Connector returns `{}` so the captured pipeline value (reflect's
+    // output) is reshaped to match `digestRegenerateInputSchema`. `force` is
+    // omitted so the block's own staleness guard decides whether to
+    // regenerate based on source-signature drift.
+    pipeline = pipeline.work(
+      () => ({}),
+      digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }),
+    )
   }
 
   return pipeline

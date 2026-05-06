@@ -162,10 +162,30 @@ export type {
 } from './digest-blocks.js'
 
 // ---------------------------------------------------------------------------
+// Layer 3: Memory context formatter (configurable factory + per-section builders)
+// ---------------------------------------------------------------------------
+
+export {
+  createMemoryContextFormatter,
+  createDigestEntry,
+  createWorkingEntry,
+  createSemanticEntry,
+  createEpisodicEntry,
+  DEFAULT_SEMANTIC_TOP_N,
+  DEFAULT_EPISODIC_LIMIT,
+} from './formatter.js'
+export type {
+  MemoryContextFormatterOptions,
+  MemoryContextValue,
+  SemanticSectionOption,
+  EpisodicSectionOption,
+} from './formatter.js'
+
+// ---------------------------------------------------------------------------
 // Layer 3: Unified memory system factory
 // ---------------------------------------------------------------------------
 
-export { system, DEFAULT_DIGEST_CONFIG } from './memory-system.js'
+export { system, DEFAULT_DIGEST_CONFIG, MEMORY_CAPABILITY_PRESETS } from './memory-system.js'
 export type {
   MemorySystemConfig,
   MemorySystem,
@@ -175,6 +195,7 @@ export type {
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
   DigestSystemConfig,
+  MemoryCapabilityPreset,
 } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
@@ -186,30 +207,35 @@ export {
   recallToolDescription,
   recallToolInputSchema,
   capContent,
+  buildResult,
+  buildResultMetadata,
+  defaultFormatBlock,
   DEFAULT_PER_ITEM_CHAR_CAP,
   DEFAULT_RECALL_LIMIT,
   TRUNCATION_MARKER,
   createLlmFilterStrategy,
   resolveStrategy,
   PRE_RANK_CAP,
+  PRE_RANK_EPISODIC_CAP,
   RECENCY_HALF_LIFE,
   EXACT_PHRASE_CAP,
   intrinsicSemanticScore,
   intrinsicEpisodicScore,
   semanticToMemoryItem,
   episodeToMemoryItem,
+  extractExactPhrases,
+  exactPhraseMatches,
 } from './tools/index.js'
 export type {
   CreateRecallToolOptions,
   MemoryItem,
   MemoryItemSource,
-  RankedResult,
+  PrepareEnvelope,
+  PrepareInput,
   RecallResultItem,
   RecallToolInput,
   RecallToolResult,
   RetrievalStrategy,
-  RetrievalStrategyContext,
-  RetrievalStrategyOptions,
   BuiltInStrategyName,
   LlmFilterStrategyOptions,
   ResolveStrategyOptions,

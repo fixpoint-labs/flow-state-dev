@@ -156,7 +156,22 @@ export type BlockToolOutputItem = OutputItemBase & {
   output: unknown;
   toolCall: {
     callId: string;
+    /**
+     * Framework block name (e.g. `tf.memory/recall`). Used for UI display
+     * and observability. Matches the registered block, including framework
+     * naming conventions like `.` and `/`.
+     */
     name: string;
+    /**
+     * Model-facing sanitized alias the LLM saw and called (e.g.
+     * `tf_memory_recall`). When present, history replay uses this directly
+     * for the `toolName` field on serialised tool-call / tool-result content
+     * parts — the value is already known to satisfy provider name patterns
+     * (notably OpenAI's `^[a-zA-Z0-9_-]+$`). Optional for backward
+     * compatibility with items persisted before this field existed; the
+     * replay path falls back to `sanitizeToolName(name)` when absent.
+     */
+    alias?: string;
     arguments: string;
     generatorBlock: string;
   };

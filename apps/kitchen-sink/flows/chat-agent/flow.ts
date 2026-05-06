@@ -59,6 +59,12 @@ const mem = memorySystem({
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
+  // Enables the rolling-summary digest tier. Without this the unified
+  // memory formatter has nothing to render in the system prompt's
+  // <memory> section once working memory drifts past capacity. The capture
+  // pipeline also runs `digestRegenerate` after each turn so the digest
+  // stays fresh as new facts and episodes accumulate.
+  digest: true,
 });
 
 // ---------------------------------------------------------------------------
@@ -131,7 +137,10 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
-  // mem.capability injects unified memory recall context.
+  // mem.capability defaults: `digest`, `working`, `recall` all on — renders
+  // the rolling digest + working-memory entries under <memory> and installs
+  // the agent-invocable recall tool. Workers further down opt out of the
+  // two context presets via `.presets({ digest: false, working: false })`.
   // p.capability injects perspective framing (static + accumulated presets).
   // Perspective context appears in all modes but accumulated state only
   // grows in ask mode (capture is gated via workIf below).
@@ -182,6 +191,17 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   history: { limit: 8 },
   context: { memory: mem.contextFormatter, artifacts: artifactListContext },
   uses: [featuresCapability],
+  // Worker generators in the supervisor / routed-specialists / evented-actors
+  // pipelines disable the digest + working memory section presets so the
+  // parent's memory blob isn't replicated into every worker prompt. The
+  // recall tool stays installed (default-on `recall` preset) so workers can
+  // still look up specifics on demand. workerContext drops the `memory` key
+  // for the same reason — the formerly manual installation would otherwise
+  // re-inject the formatter regardless of preset.
+  workerUses: [
+    featuresCapability,
+  ],
+  workerContext: { artifacts: artifactListContext },
   instructions: modeInstructions,
 });
 
@@ -391,7 +411,12 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .then(thinkingStyleRouter)
   .work(biasCheck)
   .workIf(
-    (ctx) => ctx.session.state.mode === "ask",
+    // Skip capture when the assistant produced no text (e.g. a turn that
+    // ended in a tool call only). The perspective system already no-ops on
+    // empty content, but gating here avoids dispatching a background block
+    // we know has nothing to do.
+    (response, ctx) =>
+      ctx.session.state.mode === "ask" && response.length > 0,
     (response: string) => ({ content: response }),
     analystPerspective.capture,
   )
