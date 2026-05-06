@@ -832,7 +832,7 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
   }
 
   const lines = described.map((t) => `- ${sanitizeToolName(t.name)}: ${t.description}`);
-  return `Available tools:\n${lines.join("\n")}`;
+  return `<tools>\n${lines.join("\n")}</tools>`;
 }
 
 function isBlockObserver(

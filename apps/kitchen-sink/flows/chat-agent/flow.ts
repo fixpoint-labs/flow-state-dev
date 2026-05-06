@@ -200,7 +200,6 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   // re-inject the formatter regardless of preset.
   workerUses: [
     featuresCapability,
-    mem.capability.presets({ digest: false, working: false }),
   ],
   workerContext: { artifacts: artifactListContext },
   instructions: modeInstructions,

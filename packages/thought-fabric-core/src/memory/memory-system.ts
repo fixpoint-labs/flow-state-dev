@@ -962,6 +962,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
        * episodic nor semantic is configured (recall has nothing to search).
        */
       recall: {
+        context: { memory: { 
+          recall: "There are additional memories stored, use the tf_memory_recall tool to access them."
+        }},
         tools: () => [recallToolBlock],
       },
       default: ['digest', 'working', 'recall'],
