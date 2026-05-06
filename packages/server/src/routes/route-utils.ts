@@ -269,16 +269,37 @@ export function createScopeResources(options: {
   return handles;
 }
 
+/**
+ * Build the client-visible state object for a single scope.
+ *
+ * Consumes a normalized `ScopeClientConfig` (as produced by `defineFlow`):
+ *   - `expose` keys copy `state[name]` verbatim into the output.
+ *   - `derived` keys call the compute fn with `{ state, resources }`.
+ *
+ * The query-param filter (`?clientData=session.foo,user.bar`) is applied
+ * uniformly to both kinds — `expose` and `derived` share the same
+ * `clientData.<scope>` namespace on the wire. Name-collision guarding
+ * happens at definition time, not here.
+ */
 export async function computeClientData(options: {
-  definitions: Record<string, unknown> | undefined;
+  config: { expose?: ReadonlyArray<string>; derived?: Record<string, unknown> } | undefined;
   scope: ClientDataScope;
   filter: ClientDataFilter | undefined;
   state: JsonObject;
   resources: Record<string, Record<string, unknown>>;
 }): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
+  const config = options.config;
+  if (config === undefined) return out;
 
-  for (const [name, compute] of Object.entries(options.definitions ?? {})) {
+  for (const name of config.expose ?? []) {
+    if (!shouldIncludeClientData(options.filter, options.scope, name)) {
+      continue;
+    }
+    out[name] = (options.state as Record<string, unknown>)[name];
+  }
+
+  for (const [name, compute] of Object.entries(config.derived ?? {})) {
     if (typeof compute !== "function") {
       continue;
     }

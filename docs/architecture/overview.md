@@ -99,8 +99,8 @@ const myFlow = defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
   },
-  session: { stateSchema, resources: { ... }, clientData: { ... } },
-  user: { stateSchema, clientData: { ... } },
+  session: { stateSchema, resources: { ... }, client: { expose: [...], derived: { ... } } },
+  user: { stateSchema, client: { derived: { ... } } },
 });
 ```
 
@@ -132,7 +132,7 @@ See [Streaming](./streaming.md) and [Items](./items.md).
 
 **Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
 
-**Client data** entries are derived views computed from state and resources — the mechanism for exposing data to clients. Every `clientData` entry is client-visible. Raw state never reaches the client. This is deliberate: you can't accidentally leak internal state because `clientData` is the sole data gateway.
+**Client data** is the projection of scope state declared by each scope's `client` block (`expose` for verbatim passthrough, `derived` for computed views). Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose` or `derived`.
 
 See [Resources and Client Data](./resources-and-client-data.md).
 

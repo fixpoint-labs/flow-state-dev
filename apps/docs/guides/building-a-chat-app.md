@@ -8,7 +8,7 @@ This guide walks you through building a complete chat application from blocks to
 
 **What we're building:** A chat app where an LLM generates responses, a handler tracks message count in session state, and a React UI shows the conversation plus the count. Items stream in real time. Tests run without real LLM calls.
 
-**Concepts we'll cover:** Generator slots (model, prompt, history, user), partial state schemas, sequencer composition, flow definition (kind, actions, userMessage, clientData), server registration, React hooks, and deterministic testing.
+**Concepts we'll cover:** Generator slots (model, prompt, history, user), partial state schemas, sequencer composition, flow definition (kind, actions, userMessage, the `client` block), server registration, React hooks, and deterministic testing.
 
 ---
 
@@ -113,8 +113,8 @@ const chatFlow = defineFlow({
       messageCount: z.number().default(0),
     }),
 
-    clientData: {
-      messageCount: (ctx) => ctx.state.messageCount ?? 0,
+    client: {
+      expose: ["messageCount"],
     },
   },
 });
@@ -127,7 +127,7 @@ export default chatFlow({ id: "default" });
 - **`kind`** — The flow identifier. Becomes the URL path: `/api/flows/hello-chat/actions/chat`. Clients use it to target this flow.
 - **`actions`** — The flow's public API. Each action is an entry point. Clients invoke them by name: `sendAction("chat", { message: "Hello" })`. The framework validates input against `inputSchema`, resolves the session, and executes the block.
 - **`userMessage: (input) => input.message`** — Before block execution, the framework emits a user-role message item with this text. That way the conversation stream shows what the user said. Without it, you'd only see assistant messages.
-- **`clientData`** — The sole gateway for exposing server state to clients. Raw state never leaves the server. Every `clientData` entry is client-visible. Here we expose `messageCount` so the UI can display it. The clientData functions run when the framework builds a state snapshot (e.g. after `request.completed`). The client fetches snapshots via `GET /api/flows/sessions/:sessionId/state`.
+- **`client`** — The sole gateway for exposing server state to clients. Raw state never leaves the server. Each scope's `client` block declares what crosses to the browser via `expose` (verbatim by name) and `derived` (computed projections). Here we expose `messageCount` so the UI can display it. The client view is rebuilt when the framework produces a state snapshot (e.g. after `request.completed`). The client fetches snapshots via `GET /api/flows/sessions/:sessionId/state`.
 
 ---
 

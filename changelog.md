@@ -4,6 +4,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-06
 
+### `clientData` privacy fix + API rename to `client.expose` / `client.derived` (FIX-505)
+
+The session snapshot route used to ship raw scope state (`state.request`, `state.session`, `state.user`, `state.org`) alongside `clientData`. Documentation said state was private; the wire format said otherwise. Snapshots are now opt-in for raw state, and the public API for declaring what's visible is one consistent shape on scopes and resources.
+
+- The default snapshot response no longer includes raw scope state. `response.state` is gone. Any consumer reading `snapshot.state.*` breaks at the type level — that's the privacy fix.
+- New per-scope `client: { expose: string[], derived: { name: fn } }` on `session`, `user`, and `org`. `expose` lists state fields to pass through verbatim; `derived` names compute functions over `{ state, resources }`. State without a `client` block is private.
+- Legacy `clientData: { name: fn }` keeps working with a one-time deprecation warning per scope per process; setting both `client` and `clientData` on the same scope now throws at definition time, as does any `expose`/`derived` name collision or `expose` key not present on `stateSchema`.
+- DevTool escape hatch: `?include=internal_state` re-attaches raw state under `internalState` (never `state`). The DevTool opts in automatically. Match for FIX-506's `?include=trace`.
+- `FlowClient.state.getSessionState/getUserState/getOrgState` are removed — they were typed against the privacy-broken response. `getSnapshot` stays; read `clientData.<scope>` from it.
+- Kitchen-sink and reference docs (`fundamentals/state-and-scopes`, `flows`, `type-system`, `api/core`, `resources/storage`, `models`, `skills/activation`, two guides, the core README, and the architecture overview) reflect the new shape.
+
 ### Trace channel separation, public type cleanup, `step_error` removal (FIX-506)
 
 The public `OutputItem` union shrinks from 15 to 10 entries. The four trace types (`block_output`, `router_decision`, `state_snapshot`, `block_debug`) leave the union and are now observability-only — they ride the same SSE wire as production items but are server-filtered by default. Subscribe with `?include=trace` to receive them. The query parameter previously named `?unfiltered=true` is renamed; the old name is gone.

@@ -42,7 +42,7 @@ A flow is the deployable unit. It bundles blocks, state, and client visibility i
 - **`actions`** — Entry points. Each action maps to a root block. When a client calls `sendAction("chat", { message: "Hi" })`, the framework looks up the "chat" action, validates the input, and runs its block.
 - **State schemas** — For request, session, user, and project scopes. Blocks declare partial schemas; the flow merges them into full scope contracts.
 - **Resources** — Named, typed data stores attached to scopes. Blocks can declare resource dependencies; the flow wires them up.
-- **ClientData** — Derived views computed from state and resources. The only way server state reaches the client. Raw state never crosses the boundary. Every clientData entry is a function `(ctx) => value` that the framework computes when building state snapshots.
+- **`client` block** — The privacy gateway. Each scope's `client` block declares what state crosses to the browser via `expose` (verbatim field names) and `derived` (computed projections). State without a `client` entry stays on the server.
 
 A minimal flow:
 
@@ -53,7 +53,7 @@ defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message },
   },
-  session: { stateSchema, clientData: { count: (ctx) => ctx.state.count ?? 0 } },
+  session: { stateSchema, client: { expose: ["count"] } },
 });
 ```
 

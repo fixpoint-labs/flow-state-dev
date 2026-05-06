@@ -497,24 +497,34 @@ describe("createFlowApiRouter", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const stateResponse = await router.GET(
-      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
+      new Request("http://localhost/api/flows/sessions/sess_iso_state/state?include=internal_state"),
       { params: { path: ["sessions", "sess_iso_state", "state"] } }
     );
 
     expect(stateResponse.status).toBe(200);
     const body = (await stateResponse.json()) as {
-      state: {
+      state?: unknown;
+      internalState?: {
         user?: Record<string, unknown>;
         org?: Record<string, unknown>;
       };
       clientData: Record<string, Record<string, unknown>>;
     };
-    expect(body.state.user).toMatchObject({ nickname: "Ada" });
-    expect(body.state.org).toMatchObject({ title: "Project Ada" });
+    expect(body.state).toBeUndefined();
+    expect(body.internalState?.user).toMatchObject({ nickname: "Ada" });
+    expect(body.internalState?.org).toMatchObject({ title: "Project Ada" });
     expect(body.clientData).toMatchObject({
       user: { userLabel: { nickname: "Ada" } },
       org: { orgLabel: { title: "Project Ada" } }
     });
+
+    const defaultStateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
+      { params: { path: ["sessions", "sess_iso_state", "state"] } }
+    );
+    const defaultBody = (await defaultStateResponse.json()) as Record<string, unknown>;
+    expect(defaultBody.state).toBeUndefined();
+    expect(defaultBody.internalState).toBeUndefined();
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get("proj_iso_state")).toBeUndefined();
 
@@ -715,6 +725,68 @@ describe("createFlowApiRouter", () => {
     expect(stateBody.clientData.session!.summary).toEqual({
       totalCount: 5,
       label: "Count is 5"
+    });
+  });
+
+  it("computes client.expose and client.derived from session state", async () => {
+    const flow = defineFlow({
+      kind: "stateful-client",
+      actions: {
+        increment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: handler({
+            name: "stateful-client-incr",
+            inputSchema: z.object({ amount: z.number() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            sessionStateSchema: z.object({ count: z.number().default(0) }),
+            execute: async (input, ctx) => {
+              const current = ctx.session.state.count ?? 0;
+              await ctx.session.patchState({ count: current + input.amount });
+              return { ok: true };
+            }
+          })
+        }
+      },
+      session: {
+        stateSchema: z.object({ count: z.number().default(0) }),
+        client: {
+          expose: ["count"],
+          derived: {
+            label: (ctx) => `Count is ${(ctx.state as { count?: number }).count ?? 0}`
+          }
+        }
+      }
+    })();
+
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    await router.POST(
+      new Request("http://localhost/api/flows/stateful-client/sess_sc/actions/increment", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user_sc", input: { amount: 7 } })
+      }),
+      { params: { path: ["stateful-client", "sess_sc", "actions", "increment"] } }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_sc/state"),
+      { params: { path: ["sessions", "sess_sc", "state"] } }
+    );
+    expect(stateResponse.status).toBe(200);
+    const body = (await stateResponse.json()) as {
+      state?: unknown;
+      internalState?: unknown;
+      clientData: Record<string, Record<string, unknown>>;
+    };
+    expect(body.state).toBeUndefined();
+    expect(body.internalState).toBeUndefined();
+    expect(body.clientData.session).toEqual({
+      count: 7,
+      label: "Count is 7"
     });
   });
 

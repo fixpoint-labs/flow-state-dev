@@ -42,11 +42,6 @@ const REQUESTS: SessionRequestSummary[] = [
 const SNAPSHOT: SessionStateSnapshotResponse = {
   sessionId: "sess_1",
   flowKind: "demo",
-  state: {
-    session: {
-      count: 1
-    }
-  },
   clientData: {}
 };
 

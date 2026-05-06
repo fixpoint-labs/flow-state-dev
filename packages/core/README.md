@@ -81,8 +81,10 @@ export default defineFlow({
   session: {
     stateSchema: z.object({ mode: z.string().default("chat"), count: z.number().default(0) }),
     resources: { artifacts: { stateSchema: artifactSchema, writable: true } },
-    clientData: {
-      artifactsList: (ctx) => /* derive list from resource state */,
+    client: {
+      derived: {
+        artifactsList: (ctx) => /* derive list from resource state */,
+      },
     },
   },
 })({ id: "default" });
@@ -99,7 +101,7 @@ export default defineFlow({
 - `router(config)` — Runtime block selection from declared routes
 
 **Flow:**
-- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and clientData
+- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks
 
 **Utility block factories (`utility.*`):**
 - `utility.contextReducer(config)` — Generator factory for `distill`, `denoise`, or `compress` context transformation modes with mode-specific default output schemas (`{ distilled, keyPoints }`, `{ cleaned, removedCategories? }`, `{ compressed, compressionRatio?, dropped? }`)
@@ -131,7 +133,7 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
-- `clientData` on scope configs — Derived values exposed to clients (compute functions receive `{ state, resources }`)
+- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
 - `section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context
@@ -231,7 +233,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
 
-**clientData as data policy.** `clientData` is how you expose derived state to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately define a clientData compute function. Security by architecture, not by convention.
+**The `client` block is the data policy.** Each scope's `client` block declares what crosses to the browser — `expose` for verbatim fields, `derived` for projections. State, resources, and intermediate values stay server-side unless you opt them in. Security by architecture, not by convention.
 
 ## Dependencies
 

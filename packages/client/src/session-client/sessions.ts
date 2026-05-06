@@ -54,6 +54,12 @@ export type GetSessionStateOptions = {
    * clients should leave it unset.
    */
   includeInternal?: boolean;
+  /**
+   * Include the raw scope state (`request`, `session`, `user`, `org`) under
+   * `internalState` on the response. Off by default — scope state is
+   * private to the server. Intended for development tooling only.
+   */
+  includeInternalState?: boolean;
 };
 
 /**
@@ -172,7 +178,8 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
               : stateOptions.itemTypes.join(","),
           offset: stateOptions?.offset,
           limit: stateOptions?.limit,
-          include_internal_resources: stateOptions?.includeInternal
+          include_internal_resources: stateOptions?.includeInternal,
+          include: stateOptions?.includeInternalState ? "internal_state" : undefined
         })
       })
     });

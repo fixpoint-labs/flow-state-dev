@@ -61,7 +61,7 @@ own user store before returning it.
 
 `requireUser: false` opts a flow out of user-scope identity entirely. The
 framework then refuses to compile the flow if it declares any user-scope
-state, resources, or `clientData`. Use it for webhooks and scheduled jobs
+state, resources, or `client` block. Use it for webhooks and scheduled jobs
 that legitimately have no end user.
 
 ## The hook
@@ -168,7 +168,7 @@ defineFlow({
 ```
 
 `requireUser: false` opts the flow out of user-scope identity at build
-time — the framework rejects any user-scope state, `clientData`, or
+time — the framework rejects any user-scope state, `client` block, or
 resource declarations on this flow. The runtime still needs a `userId`
 for `RequestRecord.userId` and friends; that's what `defaultUserId`
 covers.

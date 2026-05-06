@@ -141,7 +141,7 @@ No manual tool definition objects. No duplicating parameter schemas. The block I
 
 ## Flow-level inference
 
-At the flow level, `defineFlow` infers state types from scope configurations and makes them available to clientData:
+At the flow level, `defineFlow` infers state types from scope configurations and makes them available to the `client` block:
 
 ```ts
 const myFlow = defineFlow({
@@ -151,11 +151,13 @@ const myFlow = defineFlow({
     resources: {
       docs: { stateSchema: z.object({ byId: z.record(docSchema) }) },
     },
-    clientData: {
-      summary: (ctx) => {
-        // ctx.state — typed as { mode: string; count: number }
-        // ctx.resources.docs.state.byId — typed as Record<string, Doc>
-        return { mode: ctx.state.mode, docCount: Object.keys(ctx.resources.docs.state.byId).length };
+    client: {
+      derived: {
+        summary: (ctx) => {
+          // ctx.state — typed as { mode: string; count: number }
+          // ctx.resources.docs.state.byId — typed as Record<string, Doc>
+          return { mode: ctx.state.mode, docCount: Object.keys(ctx.resources.docs.state.byId).length };
+        },
       },
     },
   },
@@ -177,7 +179,7 @@ Here's what the framework infers so you don't have to:
 | `sessionResources` (with `defineResource`) | `BlockDefinition.declaredResources` + automatic flow merge |
 | Block in `.then()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
-| Scope `stateSchema` in flow | `clientData` compute function types |
+| Scope `stateSchema` in flow | `client.derived` compute function types |
 
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
 

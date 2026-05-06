@@ -54,6 +54,27 @@ export type ClientDataComputeFn<
   ctx: ClientDataContext<TState, TResources>
 ) => JsonValue | Promise<JsonValue>;
 
+/**
+ * Scope-level client config. Declares what state crosses the
+ * server/client boundary. Absent or empty means the scope's state is
+ * private to the server.
+ *
+ * - `expose`: top-level state field names whose values are passed
+ *   verbatim into `clientData.<scope>.<name>`.
+ * - `derived`: named projections computed from `{ state, resources }`,
+ *   surfaced under `clientData.<scope>.<name>`.
+ *
+ * Names in `expose` and `derived` share a namespace (the scope's
+ * `clientData` object). They must not collide.
+ */
+export type ScopeClientConfig<
+  TState extends JsonObject = JsonObject,
+  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
+> = {
+  expose?: ReadonlyArray<keyof TState & string>;
+  derived?: Record<string, ClientDataComputeFn<TState, TResources>>;
+};
+
 export type HookHandler<TInput = unknown> = (
   input: TInput,
   ctx: BlockContext
@@ -191,8 +212,15 @@ export type SessionConfig = {
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
   /**
-   * Client-visible derivations of session state (and optionally session-scoped
-   * resources reachable through the flow's flat `resources` map).
+   * Declares which slice of session state crosses to the client. State is
+   * private by default — only `expose`d field names and `derived`
+   * projections appear in `clientData.session`.
+   */
+  client?: ScopeClientConfig<JsonObject>;
+  /**
+   * @deprecated Use `client.derived` instead. `clientData` keeps working
+   * with a one-time deprecation warning per scope per process; removal
+   * lands in a future minor.
    */
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
@@ -247,11 +275,17 @@ export type RequestConfig = {
 
 export type UserConfig = {
   stateSchema?: ZodTypeAny;
+  /** See `SessionConfig.client`. */
+  client?: ScopeClientConfig<JsonObject>;
+  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type OrgConfig = {
   stateSchema?: ZodTypeAny;
+  /** See `SessionConfig.client`. */
+  client?: ScopeClientConfig<JsonObject>;
+  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 

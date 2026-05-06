@@ -37,8 +37,8 @@ const chatFlow = defineFlow({
     resources: {
       artifacts: { stateSchema: artifactSchema, writable: true },
     },
-    clientData: {
-      messageCount: (ctx) => ctx.state.messageCount ?? 0,
+    client: {
+      expose: ["messageCount"],
     },
   },
 
@@ -99,7 +99,7 @@ See [Actions](/docs/fundamentals/actions) for the full picture.
 
 ## Session configuration
 
-Sessions carry state, resources, and clientData that persist across requests in a conversation:
+Sessions carry state, resources, and a `client` block that persist across requests in a conversation:
 
 ```ts
 session: {
@@ -118,8 +118,10 @@ session: {
     },
   },
 
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state ?? null,
+  client: {
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state ?? null,
+    },
   },
 },
 ```
@@ -145,7 +147,7 @@ const myFlow = defineFlow({
 
 Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
 
-See [State](/docs/fundamentals/state-and-scopes) for details on scopes, resources, and clientData.
+See [State](/docs/fundamentals/state-and-scopes) for details on scopes, resources, and the `client` block.
 
 ## Lifecycle hooks
 

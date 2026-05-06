@@ -209,7 +209,13 @@ export type CollectionSnapshotEntry = {
 export type SessionStateSnapshotResponse = {
   sessionId: string;
   flowKind: string;
-  state: {
+  /**
+   * Raw scope state. Only populated when the snapshot request opts in with
+   * `?include=internal_state`. The DevTool uses this; production callers
+   * should read `clientData` instead. Typed loosely as the trust boundary
+   * is opaque (no per-flow generic) — this is an escape hatch.
+   */
+  internalState?: {
     request?: Record<string, unknown>;
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
@@ -290,15 +296,6 @@ export type FlowClient<TFlow extends FlowLike> = {
   actions: TypedActionMethods<TFlow>;
   state: {
     getSnapshot: (sessionId: string) => Promise<SessionStateSnapshotResponse>;
-    getSessionState: (
-      sessionId: string
-    ) => Promise<FlowStateMap<TFlow>["session"] | undefined>;
-    getUserState: (
-      sessionId: string
-    ) => Promise<FlowStateMap<TFlow>["user"] | undefined>;
-    getOrgState: (
-      sessionId: string
-    ) => Promise<FlowStateMap<TFlow>["org"] | undefined>;
   };
 };
 

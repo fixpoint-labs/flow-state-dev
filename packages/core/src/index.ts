@@ -116,6 +116,7 @@ export type {
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,
+  ScopeClientConfig,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,

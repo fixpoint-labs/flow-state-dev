@@ -102,20 +102,22 @@ The active-skill body formatter lives on a separate `context` preset that stays 
 
 ### Showing the active skill in your UI
 
-Project `activeSkills` through your flow's `clientData` to the surface shape your UI wants:
+Project `activeSkills` through your flow's `client.derived` to the surface shape your UI wants:
 
 ```ts
 session: {
   stateSchema: sessionStateSchema,
-  clientData: {
-    modeStatus: (ctx) => {
-      const active =
-        (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
-          .activeSkills ?? [];
-      return {
-        // ... other fields
-        activeSkills: active.map((s) => ({ name: s.name, source: s.source ?? "tool" })),
-      };
+  client: {
+    derived: {
+      modeStatus: (ctx) => {
+        const active =
+          (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
+            .activeSkills ?? [];
+        return {
+          // ... other fields
+          activeSkills: active.map((s) => ({ name: s.name, source: s.source ?? "tool" })),
+        };
+      },
     },
   },
 },

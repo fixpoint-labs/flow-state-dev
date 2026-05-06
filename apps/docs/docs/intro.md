@@ -29,11 +29,11 @@ const pipeline = sequencer({ name: "pipeline" })
 export default defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
-  session: { stateSchema, resources, clientData },
+  session: { stateSchema, resources, client },
 })({ id: "default" });
 ```
 
-That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed clientData to the client, error recovery, and lifecycle hooks. From that one definition.
+That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed client-visible state, error recovery, and lifecycle hooks. From that one definition.
 
 ## Four primitives
 

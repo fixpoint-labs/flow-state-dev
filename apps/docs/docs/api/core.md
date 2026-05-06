@@ -136,8 +136,8 @@ const myFlow = defineFlow({
   kind: "my-app",
   requireUser: true,
   actions: { /* ... */ },
-  session: { stateSchema, resources, clientData },
-  user: { stateSchema, resources, clientData },
+  session: { stateSchema, resources, client },
+  user: { stateSchema, resources, client },
   request: { onStarted, onCompleted, onErrored, onFinished, onStepErrored },
 });
 
@@ -292,26 +292,27 @@ Three overloads: `(session)`, `(session, user)`, `(session, user, org)`.
 
 ## Client Data
 
-### `clientData` on scope configs
+### `client` on scope configs
 
-Expose derived state to the frontend. Define compute functions on `session`, `user`, or `org` scope configs:
+Declare what slice of state crosses to the browser. Each scope (`session`, `user`, `org`) has a `client` block with two halves: `expose` (verbatim passthrough by field name) and `derived` (computed projections).
 
 ```ts
 defineFlow({
   session: {
     stateSchema,
-    clientData: {
-      topicList: (ctx) => ctx.state.coveredTopics,
-      progress: (ctx) => ({
-        total: ctx.state.totalSteps,
-        completed: ctx.state.completedSteps,
-      }),
+    client: {
+      expose: ["progress"],
+      derived: {
+        topicList: (ctx) => ctx.state.coveredTopics,
+      },
     },
   },
 });
 ```
 
-Compute functions receive `{ state, resources }` from their scope. All entries are client-visible. Values must be JSON-serializable.
+`derived` compute functions receive `{ state, resources }` from their scope. Values must be JSON-serializable. State without a `client` block is private to the server.
+
+`clientData` is the previous name for `client.derived` and is deprecated. Setting both `client` and `clientData` on the same scope throws at definition time; setting only `clientData` emits a one-time deprecation warning.
 
 ## Voice Types
 
