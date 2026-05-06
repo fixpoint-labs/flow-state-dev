@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 import { useSelection } from "../../context/selection-context";
 import { StatusBadge } from "../shared/status-badge";
 import { JsonViewer } from "../shared/json-viewer";
+import { BlockValueView, ToolOutputView } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
 import { SequencerStateSection } from "./sequencer-state-panel";
 import { safeParseJson } from "../../lib/utils";
@@ -143,7 +144,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       {/* Output — collapsed by default, output blobs can be large */}
       {traceItem?.output !== undefined && (
         <CollapsibleSection title="Output" defaultOpen={false}>
-          <JsonViewer data={traceItem.output} />
+          <BlockValueView value={traceItem.output} />
         </CollapsibleSection>
       )}
 
@@ -433,7 +434,7 @@ function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_output
       )}
       {item.output !== undefined && (
         <CollapsibleSection title="Output" defaultOpen>
-          <JsonViewer data={item.output} />
+          <BlockValueView value={item.output} />
         </CollapsibleSection>
       )}
       {item.modelUsage && (
@@ -556,7 +557,7 @@ function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "block_to
       </CollapsibleSection>
       {!isFailed && item.output !== undefined && (
         <CollapsibleSection title="Output" defaultOpen>
-          <JsonViewer data={item.output} />
+          <ToolOutputView value={item.output} />
         </CollapsibleSection>
       )}
     </div>

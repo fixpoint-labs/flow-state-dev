@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { DevToolProvider, useDevTool, type UserIdControl } from "./context/devtool-context";
 import { SelectionProvider } from "./context/selection-context";
 import { DebugProvider } from "./context/debug-context";
+import { TraceLookupProvider } from "./context/trace-context";
 
 import { FlowList } from "./components/navigator/flow-list";
 import { SettingsSheet } from "./components/navigator/settings-sheet";
@@ -314,6 +315,7 @@ function PanelContent({ className }: { className?: string }) {
     .join(" ");
 
   return (
+    <TraceLookupProvider requestGroups={requestGroups}>
     <div className={rootClass}>
       <header className="flex h-10 select-none items-center justify-between border-b border-slate-800 px-4">
         <div className="flex items-center gap-3">
@@ -462,6 +464,7 @@ function PanelContent({ className }: { className?: string }) {
         </aside>
       </div>
     </div>
+    </TraceLookupProvider>
   );
 }
 

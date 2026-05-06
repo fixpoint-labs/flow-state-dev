@@ -6,9 +6,13 @@ argument-hint: "<Linear issue ID or identifier, e.g. FSD-142>"
 
 You are a specification research and authoring agent. Given a Linear issue, your job is to deeply understand the problem, research how it's best solved (both in the industry and within this codebase's patterns), and produce a thorough implementation spec that an agent can execute without ambiguity.
 
-## Core Principle
+## Core Principles
 
 **Specs prevent wasted implementation cycles.** A good spec means the implementer doesn't have to make architectural decisions, guess at edge cases, or discover conflicts mid-PR. Invest the research time upfront so implementation is mechanical.
+
+**Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
+
+This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
 ## Workflow
 
@@ -23,6 +27,8 @@ Use the Linear MCP tools to fetch the full issue:
 5. `list_comments` to read any discussion or decisions already made on the issue
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
+
+Once the issue is loaded, **move it to "In Spec Dev"** with `save_issue` (set `state` to the "In Spec Dev" workflow state for the issue's team). This signals to the team that spec authoring is in flight. If the issue is already in "In Spec Dev" or a later state, leave it. If the team has no "In Spec Dev" state, fall back to the closest equivalent (e.g., "In Progress") and note it in the publishing comment.
 
 ### Step 2: Understand the Codebase Context
 
@@ -253,31 +259,70 @@ Launch an `Explore` sub-agent to review section 8 (Documentation Plan) specifica
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
-### Step 6: Publish to Linear
+### Step 6: Publish the Spec to Linear
 
 1. **Check for existing spec document** on the issue:
    - If one exists, update it with the new content using `update_document`
    - If none exists, create a new one with `create_document`, linked to the issue
 
-2. **Update the Linear issue**:
+2. **Update issue relations and comment**:
    - Add/update any dependency relations discovered during research (using `save_issue` with `blockedBy` or `blocks`)
    - Add a comment summarizing: "Implementation spec created/updated. Key decisions: [1-2 sentence summary]. Open questions: [list if any]."
    - If open questions exist, flag the issue for discussion (don't move it to "In Progress" — it's not ready)
 
-3. **Update the issue description** if it's sparse:
-   - Add a link to the spec document
-   - Add a brief scope summary and acceptance criteria following the project's issue description conventions
+3. **Move the issue to "In Spec Review"** with `save_issue` (set `state` to the team's "In Spec Review" workflow state). This signals the spec is ready for human review before implementation begins. Do this *after* the spec document is attached and the publishing comment is posted, so anyone navigating to the issue from the status change finds the spec already linked. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the publishing comment.
 
-### Step 7: Present Summary
+### Step 7: Reframe the Issue Description
+
+This step is required, not optional. The spec now exists as the authoritative source of *how* — so the issue must be reshaped to be the authoritative source of *what* and *why*. Even issues that already look "fine" usually need pruning: details that were appropriate before the spec existed are now duplication.
+
+**7.1. Diff the existing issue description against the spec.** Read the current description carefully and classify every section/bullet as one of:
+
+- **Keep in issue** — problem statement, motivation, user/business value, desired outcomes, high-level scope boundaries, success criteria expressed as observable outcomes (not implementation), stakeholders, links to related issues/projects.
+- **Move to spec** — file paths, function/API signatures, architectural decisions, sequencing, test strategy, error taxonomies, schemas. If any of this is in the issue and *also* in the spec, delete it from the issue. If it's in the issue but *not* in the spec, first verify whether the spec's approach actually covers it; if so, delete from issue; if not, that's a gap in the spec — go fix the spec.
+- **Stale / contradicted** — implementation detail in the issue that conflicts with what the spec decided. Delete from the issue. Do NOT silently rewrite it to match the spec; the issue is not the place for that detail at all anymore.
+- **Reframe** — content that gestures at a solution but is really expressing a constraint or outcome. Rewrite it as the underlying outcome. Example: "Use Redis for the queue" → "Queue must survive process restarts and support multiple workers."
+
+**7.2. Rewrite the issue around the PM/business/user lens.** The reshaped description should answer, in this order:
+
+1. **Problem / opportunity** — what's broken, missing, or worth doing, in plain language a non-engineer stakeholder could follow.
+2. **Who benefits and how** — the user (end user, developer using the framework, operator, internal team) and the value they get. Be concrete; avoid "improves DX" without saying *what specifically gets better*.
+3. **Desired outcome / success criteria** — observable, testable outcomes. "Resuming a stream after a disconnect delivers no duplicate items and skips no items" is good. "Implement sequence-based resume in `sse.ts`" is not — that's solution.
+4. **Scope boundaries (high-level)** — what's in vs out, expressed as outcomes, not file lists. Phase split if relevant.
+5. **Link to the spec** — a blockquote at or near the top: `> **Implementation spec:** [link]`. This is the pointer for any reader who wants the *how*.
+6. **Dependencies** — only at the level of "this is blocked by FSD-XXX" or "ships after the X work lands." File-level coupling lives in the spec.
+
+**7.3. What to leave out of the issue:**
+
+- File paths, package names, function signatures, type definitions
+- Step-by-step implementation sequences
+- Test plans (mention testability outcomes only — e.g., "must be covered by integration tests" if that's a stakeholder requirement, but not the test list)
+- Code snippets or pseudocode
+- Architectural decisions and their justification
+- Anything labeled "design" or "approach" — that's spec territory
+- Long checklists of work items (the spec's Implementation Sequence covers this; the issue's acceptance criteria should be outcome-shaped, not task-shaped)
+
+**7.4. What's legitimately allowed to stay even though it's specific:**
+
+- Concrete success criteria that happen to mention public API surface a user will see (e.g., "users can call `defineCapability({...})` to declare a reusable capability") — this is *what users get*, not *how it's built*.
+- A short "Documentation Deliverables" line if the project requires it for user-visible features. Keep it short — the spec's Documentation Plan has the detail.
+- Performance, latency, or compatibility targets — these are outcomes.
+
+**7.5. Apply the update** with `save_issue`, replacing the description. If the existing description had content worth preserving for archival reasons (e.g., a historical decision thread), put that in a comment rather than the live description so the description stays clean.
+
+**7.6. Note the reshape in the publishing comment** added in Step 6.2 — extend it with: "Issue description reframed: [one-sentence summary of what was moved out / what now leads]." This gives reviewers a heads-up that the issue text changed shape, not just content.
+
+### Step 8: Present Summary
 
 Present the completed spec to the user:
 
 1. **Approach chosen**: 2-3 sentences on what the spec proposes and why
 2. **Key decisions**: any architectural choices made and their rationale
 3. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.
-4. **Dependencies identified**: what must land before this can start
-5. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
-6. **Spec location**: link to the Linear document
+4. **Issue reshape summary**: one or two sentences on how the Linear issue description was reframed — what implementation detail was moved out, what now leads, and whether anything was found stale/contradicted. If the issue needed no reshape because it was already PM/business-shaped, say so explicitly.
+5. **Dependencies identified**: what must land before this can start
+6. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
+7. **Links**: the Linear issue and the spec document
 
 If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
 
@@ -290,5 +335,6 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
 - **Documentation is part of the spec, not an afterthought.** Every spec must include section 8 (Documentation Plan) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
+- **Reframing the issue is part of the spec workflow, not a post-script.** Step 7 is required. The moment the spec is published, any solution detail still living in the issue is duplicate or stale. Removing it preserves the issue/spec separation and prevents future readers from following the wrong source. Do not skip it because the issue "looks fine" — re-read it through the PM/business lens and prune.
 - **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
