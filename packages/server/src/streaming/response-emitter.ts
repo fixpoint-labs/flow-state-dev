@@ -7,8 +7,6 @@ import type {
   ContentPartDeltaEvent,
   ContentPartDoneEvent,
   ItemAddedEvent,
-  BlockDebugItem,
-  BlockOutputItem,
   ItemDoneEvent,
   ItemProvenance,
   OutputItem,
@@ -19,18 +17,11 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
-  ResourceChangeItem,
-  RouterDecisionItem,
-  StateSnapshotItem
+  ResourceChangeItem
 } from "@flow-state-dev/core/items";
 
-/** Server-side runtime item union (includes trace types). */
-export type RuntimeItem =
-  | OutputItem
-  | BlockOutputItem
-  | RouterDecisionItem
-  | StateSnapshotItem
-  | BlockDebugItem;
+export type { RuntimeItem } from "../execution/internal/response";
+import type { RuntimeItem } from "../execution/internal/response";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import { createRequestEventId } from "./encode-event";
 import {
