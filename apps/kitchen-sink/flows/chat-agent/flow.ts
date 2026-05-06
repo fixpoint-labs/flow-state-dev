@@ -461,28 +461,30 @@ const chatAgentFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    clientData: {
-      modeStatus: (ctx) => {
-        // `activeSkills` is contributed by the skills capability's
-        // session-state schema (framework merges all schemas at flow
-        // registration). Project to the surface shape the top-bar UI
-        // wants — name + source tier, drop the rest.
-        const activeSkills =
-          (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
-            .activeSkills ?? [];
-        return {
-          currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
-          thinkingStyle:
-            (ctx.state.thinkingStyle as string | undefined) ?? null,
-          resolvedModel:
-            (ctx.state.resolvedModel as string | undefined) ?? null,
-          requestCount: Number(ctx.state.requestCount ?? 0),
-          features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
-          activeSkills: activeSkills.map((s) => ({
-            name: s.name,
-            source: s.source ?? "tool",
-          })),
-        };
+    client: {
+      derived: {
+        modeStatus: (ctx) => {
+          // `activeSkills` is contributed by the skills capability's
+          // session-state schema (framework merges all schemas at flow
+          // registration). Project to the surface shape the top-bar UI
+          // wants — name + source tier, drop the rest.
+          const activeSkills =
+            (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
+              .activeSkills ?? [];
+          return {
+            currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
+            thinkingStyle:
+              (ctx.state.thinkingStyle as string | undefined) ?? null,
+            resolvedModel:
+              (ctx.state.resolvedModel as string | undefined) ?? null,
+            requestCount: Number(ctx.state.requestCount ?? 0),
+            features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
+            activeSkills: activeSkills.map((s) => ({
+              name: s.name,
+              source: s.source ?? "tool",
+            })),
+          };
+        },
       },
     },
   },
@@ -493,12 +495,14 @@ const chatAgentFlow = defineFlow({
 
   user: {
     stateSchema: userStateSchema,
-    clientData: {
-      preferences: (ctx) => ({
-        displayName: String(ctx.state.displayName ?? "Developer"),
-        preferredModel: String(ctx.state.preferredModel ?? MODEL_ID),
-        preferredProvider: String(ctx.state.preferredProvider ?? ""),
-      }),
+    client: {
+      derived: {
+        preferences: (ctx) => ({
+          displayName: String(ctx.state.displayName ?? "Developer"),
+          preferredModel: String(ctx.state.preferredModel ?? MODEL_ID),
+          preferredProvider: String(ctx.state.preferredProvider ?? ""),
+        }),
+      },
     },
   },
 });

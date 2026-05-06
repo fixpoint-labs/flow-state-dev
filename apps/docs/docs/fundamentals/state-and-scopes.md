@@ -104,7 +104,7 @@ defineFlow({
 });
 ```
 
-But you don't have to. The flow-level schema only needs to declare fields that aren't already declared by blocks, or fields the flow itself references (like in `clientData` compute functions).
+But you don't have to. The flow-level schema only needs to declare fields that aren't already declared by blocks, or fields the flow itself references (like in a `client.expose` list or a `client.derived` compute function).
 
 ### Why bubbling matters
 
@@ -170,21 +170,31 @@ A new session typically starts via `sessions.createSession({...})` on the client
 
 If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
-## clientData: exposing state safely
+## The `client` block: exposing state safely
 
-Raw state never reaches the client. Clients see derived `clientData` entries that you compute server-side:
+Raw state never reaches the client. Each scope's `client` block declares the slice of state that crosses to the browser. Anything not in `client` stays on the server.
+
+The block has two halves:
+
+- `expose` — top-level field names that pass through verbatim. Use it for primitives that are already client-shaped.
+- `derived` — named projections computed from `{ state, resources }`. Use it when the client wants a different shape (e.g. mapping a structured resource into an ID + title list).
 
 ```ts
 session: {
-  clientData: {
-    artifactsList: (ctx) => {
-      const artifacts = ctx.resources.artifacts?.state;
-      return artifacts?.order.map(id => ({
-        id,
-        title: artifacts.byId[id]?.title ?? "Untitled",
-      })) ?? [];
+  stateSchema: z.object({
+    messageCount: z.number().default(0),
+  }),
+  client: {
+    expose: ["messageCount"],
+    derived: {
+      artifactsList: (ctx) => {
+        const artifacts = ctx.resources.artifacts?.state;
+        return artifacts?.order.map(id => ({
+          id,
+          title: artifacts.byId[id]?.title ?? "Untitled",
+        })) ?? [];
+      },
     },
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 }
 ```
@@ -198,9 +208,40 @@ const data = useClientData(session, {
 });
 ```
 
-Internal state — intermediate processing, raw resource contents, block-private fields — stays on the server. You decide exactly what the client sees by writing `clientData` compute functions. Security by architecture, not by convention.
+Internal state — intermediate processing, raw resource contents, block-private fields — stays on the server. The privacy contract is the default: a scope without a `client` block exposes nothing. Adding a new state field doesn't silently leak to the browser; you have to add it to `expose` or `derived` first.
 
-During streaming, `state_change` and `resource_change` events signal that clientData may be stale. The client refetches the authoritative snapshot on `request.completed`.
+During streaming, `state_change` and `resource_change` events signal that the client view may be stale. The client refetches the authoritative snapshot on `request.completed`.
+
+This mirrors how resources work: a resource without a `client` config is invisible to clients (see [Resources: client access](/docs/resources/client-access)). One mental model — `client` everywhere — instead of two.
+
+### Migrating from `clientData`
+
+The previous shape was a flat `clientData: { name: fn }` map. It still works, with a one-time deprecation warning per scope per process; removal lands in a future minor.
+
+```ts
+// Before
+session: {
+  clientData: {
+    messageCount: (ctx) => ctx.state.messageCount,
+  },
+}
+
+// After
+session: {
+  client: {
+    expose: ["messageCount"],
+  },
+}
+```
+
+Compute functions move under `client.derived`. Pure passthroughs become `expose` entries — no function needed.
+
+Two errors `defineFlow` will reject up front:
+
+- Setting both `client` and `clientData` on the same scope. Pick one.
+- A name appearing in both `expose` and `derived`. They share a namespace.
+
+The on-the-wire shape is unchanged: clients still read `snapshot.clientData.<scope>.<name>`. Only the input syntax changed.
 
 ## The other three scopes
 
@@ -255,7 +296,7 @@ In practice, most state declarations live on blocks, not flows. A counter block 
 
 Reach for flow-level `session.stateSchema` (or `user`, `org`) when:
 
-- You write a `clientData` compute function that reads the field — the compute function lives on the flow config, so the field has to be visible there.
+- You write a `client.derived` compute function that reads the field — the compute function lives on the flow config, so the field has to be visible there.
 - You want one place to see the canonical schema for code review or onboarding.
 - A field doesn't belong to any one block (rare).
 
@@ -265,12 +306,12 @@ A typical flow ends up looking closer to this:
 const myFlow = defineFlow({
   kind: "team-assistant",
   session: {
-    // Declared at the flow level so the clientData fn below sees it typed.
+    // Declared at the flow level so the client block below sees it typed.
     stateSchema: z.object({
       messageCount: z.number().default(0),
     }),
-    clientData: {
-      messageCount: (ctx) => ctx.state.messageCount,
+    client: {
+      expose: ["messageCount"],
     },
   },
   actions: {
@@ -282,7 +323,7 @@ const myFlow = defineFlow({
 });
 ```
 
-`messageCount` is declared at the flow level because the flow itself reads it (in the `clientData` compute function). Other fields — a `mode` flag a router uses, a `lastModelUsed` field a generator writes — stay declared on their blocks and merge in via bubbling. The rule of thumb: declare state at the flow level only when something on the flow config actually reads it.
+`messageCount` is declared at the flow level because the flow itself reads it (in the `client.expose` list). Other fields — a `mode` flag a router uses, a `lastModelUsed` field a generator writes — stay declared on their blocks and merge in via bubbling. The rule of thumb: declare state at the flow level only when something on the flow config actually reads it.
 
 ## Where to next
 

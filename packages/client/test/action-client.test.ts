@@ -25,12 +25,6 @@ const EXECUTE_RESPONSE: ExecuteActionResponse = {
 const SNAPSHOT_RESPONSE: SessionStateSnapshotResponse = {
   sessionId: "sess_1",
   flowKind: "demo",
-  state: {
-    request: { progress: 1 },
-    session: { count: 2 },
-    user: { name: "test" },
-    org: { mode: "dev" }
-  },
   clientData: {}
 };
 
@@ -165,15 +159,7 @@ describe("createTypedClient", () => {
 
     const snapshot = await client.state.getSnapshot("sess_1");
     expect(snapshot.sessionId).toBe("sess_1");
-
-    const sessionState = await client.state.getSessionState("sess_1");
-    expect(sessionState).toEqual({ count: 2 });
-
-    const userState = await client.state.getUserState("sess_1");
-    expect(userState).toEqual({ name: "test" });
-
-    const orgState = await client.state.getOrgState("sess_1");
-    expect(orgState).toEqual({ mode: "dev" });
+    expect(snapshot.flowKind).toBe("demo");
   });
 
   it("creates typed action helpers with compile-time flow typing", async () => {

@@ -21,6 +21,7 @@ import type {
   McpConfig,
   OrgConfig,
   RequestConfig,
+  ScopeClientConfig,
   SessionConfig,
   ToolsConfig,
   UserConfig,
@@ -28,6 +29,113 @@ import type {
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
+import { warnDeprecated } from "../utils/deprecation";
+
+type ScopeKind = "session" | "user" | "org";
+
+type ScopeWithClient = {
+  stateSchema?: unknown;
+  client?: ScopeClientConfig;
+  clientData?: Record<string, unknown>;
+};
+
+/**
+ * Pull the top-level field names from a Zod object-like schema, if possible.
+ * Returns `undefined` when the schema isn't introspectable as an object —
+ * `expose` validation is skipped silently in that case (per spec § 5).
+ */
+function introspectStateKeys(stateSchema: unknown): Set<string> | undefined {
+  if (stateSchema === null || stateSchema === undefined) return undefined;
+  const schema = stateSchema as { _def?: { typeName?: string }; shape?: unknown };
+  if (schema._def?.typeName !== "ZodObject") return undefined;
+  const shape = typeof schema.shape === "function"
+    ? (schema as unknown as { shape: () => Record<string, unknown> }).shape()
+    : (schema.shape as Record<string, unknown> | undefined);
+  if (shape === undefined || shape === null || typeof shape !== "object") return undefined;
+  return new Set(Object.keys(shape));
+}
+
+/**
+ * Collapse a scope's `{ client, clientData }` inputs into the canonical
+ * `client` shape the runtime consumes. Throws on conflicting input
+ * (both fields set, name collision, unknown `expose` key) so authors
+ * see one clear error at definition time. Emits a one-shot deprecation
+ * warning when only the legacy `clientData` is set.
+ */
+function normalizeScopeClientConfig(
+  flowKind: string,
+  scope: ScopeKind,
+  config: ScopeWithClient | undefined
+): ScopeClientConfig | undefined {
+  if (config === undefined) return undefined;
+
+  const hasClient = config.client !== undefined;
+  const hasClientData = config.clientData !== undefined && Object.keys(config.clientData).length > 0;
+
+  if (hasClient && hasClientData) {
+    throw new Error(
+      `Flow "${flowKind}" sets both ${scope}.client and ${scope}.clientData. ` +
+      `Pick one — clientData is the legacy shape; move its entries under client.derived.`
+    );
+  }
+
+  let normalized: ScopeClientConfig | undefined;
+  if (hasClient) {
+    normalized = config.client;
+  } else if (hasClientData) {
+    warnDeprecated(
+      `clientData:${flowKind}:${scope}`,
+      `${flowKind}.${scope}.clientData is deprecated. ` +
+      `Replace with ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
+    );
+    normalized = { derived: config.clientData as ScopeClientConfig["derived"] };
+  } else {
+    return undefined;
+  }
+
+  if (normalized === undefined) return undefined;
+
+  const exposeNames = normalized.expose ?? [];
+  const derivedNames = normalized.derived === undefined ? [] : Object.keys(normalized.derived);
+
+  if (exposeNames.length > 0 && derivedNames.length > 0) {
+    const exposeSet = new Set(exposeNames);
+    const collisions = derivedNames.filter((n) => exposeSet.has(n));
+    if (collisions.length > 0) {
+      throw new Error(
+        `Flow "${flowKind}" ${scope}.client has overlapping names in expose and derived: ` +
+        `${collisions.join(", ")}. Pick one per name.`
+      );
+    }
+  }
+
+  if (exposeNames.length > 0) {
+    const knownKeys = introspectStateKeys(config.stateSchema);
+    if (knownKeys !== undefined) {
+      const unknown = exposeNames.filter((n) => !knownKeys.has(n));
+      if (unknown.length > 0) {
+        const valid = [...knownKeys].sort().join(", ") || "(none)";
+        throw new Error(
+          `Flow "${flowKind}" ${scope}.client.expose names key(s) not on ${scope}.stateSchema: ` +
+          `${unknown.join(", ")}. Valid keys: ${valid}.`
+        );
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function applyNormalizedClient<TConfig extends ScopeWithClient | undefined>(
+  config: TConfig,
+  normalized: ScopeClientConfig | undefined
+): TConfig {
+  if (config === undefined) return config;
+  // Drop the legacy `clientData` field from the runtime object so consumers
+  // can't accidentally read it; carry the normalized result on `client`.
+  const { clientData: _drop, ...rest } = config as ScopeWithClient;
+  return { ...(rest as object), client: normalized } as TConfig;
+}
 
 type AnyActions = Record<string, ActionConfig>;
 
@@ -289,10 +397,15 @@ function validateRequireUserFalseConsistency(
       `Drop the user-scope state or set requireUser: true.`
     );
   }
-  if (user?.clientData !== undefined && Object.keys(user.clientData).length > 0) {
+  const userClient = user?.client;
+  const userHasClient =
+    userClient !== undefined &&
+    ((userClient.expose?.length ?? 0) > 0 ||
+      Object.keys(userClient.derived ?? {}).length > 0);
+  if (userHasClient) {
     throw new Error(
-      `Flow "${flowKind}" sets requireUser: false but declares user.clientData. ` +
-      `Drop user.clientData or set requireUser: true.`
+      `Flow "${flowKind}" sets requireUser: false but declares user.client. ` +
+      `Drop user.client or set requireUser: true.`
     );
   }
   if (resources !== undefined) {
@@ -382,9 +495,22 @@ function createFlowInstance(
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
 
-  const session = mergeConfig(definition.session, options?.session);
-  const user = mergeConfig(definition.user, options?.user);
-  const org = mergeConfig(definition.org, options?.org);
+  const sessionMerged = mergeConfig(definition.session, options?.session);
+  const userMerged = mergeConfig(definition.user, options?.user);
+  const orgMerged = mergeConfig(definition.org, options?.org);
+
+  const session = applyNormalizedClient(
+    sessionMerged,
+    normalizeScopeClientConfig(kind, "session", sessionMerged as ScopeWithClient | undefined)
+  );
+  const user = applyNormalizedClient(
+    userMerged,
+    normalizeScopeClientConfig(kind, "user", userMerged as ScopeWithClient | undefined)
+  );
+  const org = applyNormalizedClient(
+    orgMerged,
+    normalizeScopeClientConfig(kind, "org", orgMerged as ScopeWithClient | undefined)
+  );
 
   const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;

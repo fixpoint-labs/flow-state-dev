@@ -105,16 +105,19 @@ Quick rules:
 
 ## Client visibility
 
-Scope state is never directly visible to clients. You expose it through scope-level `clientData` — computed projections that run server-side:
+Scope state is never directly visible to clients. You expose it through each scope's `client` block — `expose` for verbatim fields, `derived` for computed projections (the latter runs server-side):
 
 ```ts
 session: {
-  clientData: {
-    currentMode: (ctx) => ctx.state.mode,
+  stateSchema: z.object({ mode: z.string() }),
+  client: {
+    derived: {
+      currentMode: (ctx) => ctx.state.mode,
+    },
   },
 }
 ```
 
-Resources have a second option. Instead of (or in addition to) scope-level clientData, you can declare `client` config directly on the resource. This gives the frontend lazy-loaded access to resource content and metadata through dedicated hooks and endpoints. See [Client Access](/docs/resources/client-access) for the full API.
+This is the same shape resources already use. Scope-level `client.derived` mirrors resource-level `client.data` — one mental model for "what does the client see" everywhere. Resources additionally support `client.content` for lazy-loaded content access through dedicated hooks and endpoints; see [Client Access](/docs/resources/client-access) for the full API.
 
 Choose state vs resources based on the data's nature and lifecycle, not on client visibility.

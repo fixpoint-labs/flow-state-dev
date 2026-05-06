@@ -72,6 +72,13 @@ export async function handleGetSessionState(
   const includeInternalResources = getBooleanFlag(
     url.searchParams.get("include_internal_resources")
   );
+  // FIX-505: opt-in escape hatch for raw scope state. Parallels FIX-506's
+  // `?include=trace`. When unset (the default), the response carries no
+  // raw state under any key — `clientData` is the only public projection.
+  const includeParam = url.searchParams.get("include");
+  const includeInternalState =
+    includeParam !== null &&
+    includeParam.split(",").map((s) => s.trim()).includes("internal_state");
   const offset = getPositiveInteger(url.searchParams.get("offset")) ?? 0;
   const limit =
     getPositiveInteger(url.searchParams.get("limit")) ?? DEFAULT_STATE_ITEMS_LIMIT;
@@ -156,21 +163,21 @@ export async function handleGetSessionState(
   });
 
   const sessionClientData = await computeClientData({
-    definitions: flow.session?.clientData as Record<string, unknown> | undefined,
+    config: flow.session?.client,
     scope: "session",
     filter: clientDataFilter,
     state: (session.state ?? {}) as JsonObject,
     resources: sessionResources
   });
   const userClientData = await computeClientData({
-    definitions: flow.user?.clientData as Record<string, unknown> | undefined,
+    config: flow.user?.client,
     scope: "user",
     filter: clientDataFilter,
     state: (user?.state ?? {}) as JsonObject,
     resources: userResources
   });
   const orgClientData = await computeClientData({
-    definitions: flow.org?.clientData as Record<string, unknown> | undefined,
+    config: flow.org?.client,
     scope: "org",
     filter: clientDataFilter,
     state: (org?.state ?? {}) as JsonObject,
@@ -210,12 +217,18 @@ export async function handleGetSessionState(
   return jsonResponse(200, {
     sessionId: session.id,
     flowKind: session.flowKind,
-    state: {
-      request: latestRequest?.state,
-      session: session.state,
-      user: user?.state,
-      org: org?.state
-    },
+    // FIX-505: raw scope state is private by default. The DevTool (and other
+    // explicitly-trusted consumers) can opt in with `?include=internal_state`
+    // and read it under `internalState` — never under `state`, so any caller
+    // still reaching for `response.state.*` fails fast at the type level.
+    internalState: includeInternalState
+      ? {
+          request: latestRequest?.state,
+          session: session.state,
+          user: user?.state,
+          org: org?.state
+        }
+      : undefined,
     clientData: {
       session:
         Object.keys(sessionClientData).length > 0

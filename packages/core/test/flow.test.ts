@@ -147,7 +147,9 @@ describe("defineFlow", () => {
     ).toThrow(/scope: "user"/);
   });
 
-  it("rejects requireUser: false when user.clientData is declared", () => {
+  it("rejects requireUser: false when user.client is declared", () => {
+    // Legacy `clientData` normalizes into `client.derived`, so the
+    // requireUser-consistency check applies to either input shape.
     expect(() =>
       defineFlow({
         kind: "user-clientdata-with-no-user",
@@ -164,7 +166,7 @@ describe("defineFlow", () => {
           }
         }
       })
-    ).toThrow(/user\.clientData/);
+    ).toThrow(/user\.client/);
   });
 
   it("wires flow-level tool defaults and lifecycle hooks into generator execution", async () => {
@@ -566,6 +568,105 @@ describe("defineFlow", () => {
           actions: {},
           resources: { a: resA, b: resB }
         })({ id: "y" })
+      ).not.toThrow();
+    });
+  });
+
+  describe("scope client config normalization (FIX-505)", () => {
+    it("accepts client.expose + client.derived and exposes a normalized client", () => {
+      const flow = defineFlow({
+        kind: "ccnorm-1",
+        actions: {},
+        session: {
+          stateSchema: z.object({
+            count: z.number().default(0),
+            name: z.string().default("")
+          }),
+          client: {
+            expose: ["count"],
+            derived: { greeting: (ctx) => `hi ${(ctx.state as { name?: string }).name ?? ""}` }
+          }
+        }
+      });
+      expect(flow.session?.client?.expose).toEqual(["count"]);
+      expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
+      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
+    });
+
+    it("normalizes legacy clientData into client.derived and warns once per scope", async () => {
+      const { __resetDeprecationWarningsForTests } = await import("../src/utils/deprecation");
+      __resetDeprecationWarningsForTests();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const flow = defineFlow({
+        kind: "ccnorm-2",
+        actions: {},
+        session: {
+          stateSchema: z.object({}),
+          clientData: { legacy: () => ({ ok: true }) }
+        }
+      });
+      flow({ id: "ccnorm-2-instance" });
+
+      expect(typeof flow.session?.client?.derived?.legacy).toBe("function");
+      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+    });
+
+    it("throws when both client and clientData are set on the same scope", () => {
+      expect(() =>
+        defineFlow({
+          kind: "ccnorm-3",
+          actions: {},
+          session: {
+            stateSchema: z.object({}),
+            client: { derived: { a: () => 1 } },
+            clientData: { b: () => 2 }
+          }
+        })
+      ).toThrow(/sets both session\.client and session\.clientData/);
+    });
+
+    it("throws when expose and derived share a name", () => {
+      expect(() =>
+        defineFlow({
+          kind: "ccnorm-4",
+          actions: {},
+          session: {
+            stateSchema: z.object({ count: z.number().default(0) }),
+            client: {
+              expose: ["count"],
+              derived: { count: () => 99 }
+            }
+          }
+        })
+      ).toThrow(/overlapping names in expose and derived/);
+    });
+
+    it("throws when expose names a key not on stateSchema (introspectable)", () => {
+      expect(() =>
+        defineFlow({
+          kind: "ccnorm-5",
+          actions: {},
+          session: {
+            stateSchema: z.object({ count: z.number().default(0) }),
+            client: { expose: ["missing" as "count"] }
+          }
+        })
+      ).toThrow(/expose names key\(s\) not on session\.stateSchema/);
+    });
+
+    it("skips expose validation when stateSchema is not introspectable", () => {
+      expect(() =>
+        defineFlow({
+          kind: "ccnorm-6",
+          actions: {},
+          session: {
+            stateSchema: z.unknown(),
+            client: { expose: ["whatever" as never] }
+          }
+        })
       ).not.toThrow();
     });
   });

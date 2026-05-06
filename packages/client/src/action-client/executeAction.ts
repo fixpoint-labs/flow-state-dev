@@ -250,25 +250,7 @@ export function createTypedClient<TFlow extends FlowLike>(
     actions,
     state: {
       getSnapshot: (sessionId: string) =>
-        sessions.getSessionState(sessionId),
-      getSessionState: async (sessionId: string) => {
-        const snapshot = await sessions.getSessionState(sessionId);
-        return snapshot.state.session as
-          | Awaited<ReturnType<FlowClient<TFlow>["state"]["getSessionState"]>>
-          | undefined;
-      },
-      getUserState: async (sessionId: string) => {
-        const snapshot = await sessions.getSessionState(sessionId);
-        return snapshot.state.user as
-          | Awaited<ReturnType<FlowClient<TFlow>["state"]["getUserState"]>>
-          | undefined;
-      },
-      getOrgState: async (sessionId: string) => {
-        const snapshot = await sessions.getSessionState(sessionId);
-        return snapshot.state.org as
-          | Awaited<ReturnType<FlowClient<TFlow>["state"]["getOrgState"]>>
-          | undefined;
-      }
+        sessions.getSessionState(sessionId)
     }
   };
 }

@@ -196,15 +196,17 @@ On the client side, call the action when the user picks a new model. The change 
 await session.sendAction("setPreferredModel", { preferredModel: "preset/large" });
 ```
 
-Surface the current selection via `clientData` so the UI stays in sync:
+Surface the current selection through the user scope's `client` block so the UI stays in sync:
 
 ```ts
 user: {
   stateSchema: userStateSchema,
-  clientData: {
-    preferences: (ctx) => ({
-      preferredModel: ctx.state.preferredModel,
-    }),
+  client: {
+    derived: {
+      preferences: (ctx) => ({
+        preferredModel: ctx.state.preferredModel,
+      }),
+    },
   },
 },
 ```
