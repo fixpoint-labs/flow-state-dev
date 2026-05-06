@@ -1,24 +1,23 @@
 /**
- * Public types for the agent-invocable memory recall tool (FIX-409).
+ * Public types for the agent-invocable memory recall tool.
  *
  * Defines the unified `MemoryItem` shape over semantic facts and episodes,
- * the pluggable `RetrievalStrategy` contract, and the tool-result envelope
- * the agent observes. Working memory is intentionally excluded from this
- * surface — it lives in the formatter (FIX-407) and would duplicate context
- * cost if surfaced through the tool.
+ * the carrier `PrepareEnvelope` threaded between sequencer steps, the
+ * pluggable `RetrievalStrategy` contract (block-factory shape), and the
+ * tool-result envelope the agent observes. Working memory is intentionally
+ * excluded from this surface — it lives in the formatter and would duplicate
+ * context cost if surfaced through the tool.
  */
 
 import { z } from 'zod'
-import type { SemanticFact } from '../semantic-memory.js'
-import type { Episode } from '../episodic-memory.js'
+import type { BlockDefinition } from '@flow-state-dev/core/types'
 
 /** Source store of a recalled memory item. */
 export type MemoryItemSource = 'semantic' | 'episodic'
 
 /**
- * Unified memory item passed through retrieval strategies.
- *
- * Strategies operate on this shape so they don't have to special-case
+ * Unified memory item passed through retrieval strategies and the recall
+ * pipeline. Strategies operate on this shape so they don't have to special-case
  * stores. Source-specific fields are present only for their owning source.
  */
 export type MemoryItem = {
@@ -35,57 +34,6 @@ export type MemoryItem = {
   occurredAtTurn?: number
   significance?: number
   encodedAt?: string
-}
-
-/** Single ranked retrieval result, score normalised to [0, 1]. */
-export type RankedResult<T = MemoryItem> = {
-  item: T
-  /** Strategy-normalised relevance score in [0, 1]. */
-  score: number
-}
-
-/**
- * Read-only context handed to a `RetrievalStrategy.rank` call.
- *
- * `semantic` and `episodic` are empty arrays when the corresponding store
- * is not installed. `currentTurn` reflects working memory's current turn
- * and is the reference point for episode recency decay.
- */
-export type RetrievalStrategyContext = {
-  semantic: SemanticFact[]
-  episodic: Episode[]
-  currentTurn: number
-  /**
-   * Block runtime context — the strategy may use it to invoke generator blocks
-   * (e.g. the `llm-filter` strategy runs a small classifier generator). Backends
-   * that don't need a runtime call (keyword, vector) ignore this field.
-   */
-  runtime: any
-}
-
-/** Options applied to a single `rank()` call. */
-export type RetrievalStrategyOptions = {
-  /** Maximum results to return. Strategies should respect this as a soft cap. */
-  limit: number
-  /** Optional turn floor — strategies must drop episodes with `occurredAtTurn < sinceTurn`. */
-  sinceTurn?: number
-}
-
-/**
- * Pluggable retrieval backend.
- *
- * V1 ships a single strategy (`llm-filter`). FIX-410 (keyword/BM25/FTS5) and
- * FIX-412 (vector / hybrid) implement this same interface so the tool surface
- * does not change when backends are swapped.
- */
-export interface RetrievalStrategy {
-  /** Strategy identifier; surfaced on tool results as `strategy`. */
-  name: string
-  rank(
-    query: string,
-    ctx: RetrievalStrategyContext,
-    opts: RetrievalStrategyOptions,
-  ): Promise<RankedResult[]> | RankedResult[]
 }
 
 /** Zod schema for the recall tool's input parameters. */
@@ -109,6 +57,83 @@ export const recallToolInputSchema = z.object({
 /** Inferred input shape from `recallToolInputSchema`. */
 export type RecallToolInput = z.infer<typeof recallToolInputSchema>
 
+/**
+ * Input shape passed to `RetrievalStrategy.prepareBlock`. The recall tool's
+ * factory enriches `RecallToolInput` (resolves the optional limit, stamps the
+ * strategy name, propagates the per-item char cap) before invoking prepare,
+ * so the strategy can carry these straight through to the envelope without
+ * re-deriving them.
+ */
+export type PrepareInput = Omit<RecallToolInput, 'limit'> & {
+  /** Resolved limit (default applied, clamped to [1, 20]). */
+  limit: number
+  /** Strategy identifier — strategies must copy this into the envelope. */
+  strategyName: string
+  /** Per-item char cap — strategies must copy this into the envelope. */
+  perItemCharCap: number
+}
+
+/**
+ * Carrier envelope threaded between recall pipeline steps.
+ *
+ * `prepareBlock` produces it; the optional `filterBlock` reads `{ query,
+ * limit, candidates }` and returns `{ selectedIds }`, which the recall tool's
+ * internal merge step folds back into the envelope; `formatBlock` consumes
+ * the envelope (with optional `selectedIds`) and produces the result.
+ */
+export type PrepareEnvelope = {
+  /** Original query, copied through so downstream steps can stamp it on results. */
+  query: string
+  /** Resolved limit (default applied, clamped to [1, 20]). */
+  limit: number
+  /** Bounded candidate list (intrinsic-ranked + exact-phrase pass-through for llm-filter). */
+  candidates: MemoryItem[]
+  /** Whether the optional filter step should run. False when stores are empty or strategy is filter-less. */
+  shouldFilter: boolean
+  /** Identifier surfaced on the result envelope as `strategy`. */
+  strategyName: string
+  /** Forwarded sinceTurn (episode floor). Strategies enforce in `prepareBlock`. */
+  sinceTurn?: number
+  /** Per-item char cap applied by `formatBlock`. Bound at recall-tool factory time. */
+  perItemCharCap: number
+}
+
+/**
+ * Pluggable retrieval backend.
+ *
+ * Strategies expose blocks rather than a single `rank()` method so the recall
+ * tool can compose them as a sequencer (prepare → optional filter → format)
+ * without any handler reaching into `asRuntime()` to invoke a generator
+ * (BP-011). V1 ships `llm-filter` (prepare + filter); future backends
+ * (vector, keyword) supply only `prepareBlock`.
+ */
+export interface RetrievalStrategy {
+  /** Strategy identifier; surfaced on tool results as `strategy`. */
+  name: string
+  /**
+   * Reads stores, ranks candidates intrinsically, returns the carrier envelope.
+   * Input: `RecallToolInput` (the tool's input, with limit defaulted/clamped).
+   * Output: `PrepareEnvelope`.
+   */
+  prepareBlock: BlockDefinition<any, any>
+  /**
+   * Optional LLM filter step. Strategies without an LLM call (vector, keyword)
+   * omit this; the recall tool then skips straight to format and returns the
+   * intrinsic-ranked top-N.
+   * Input: `{ query: string; limit: number; candidates: MemoryItem[] }`.
+   * Output: `{ selectedIds: string[] }`.
+   */
+  filterBlock?: BlockDefinition<any, any>
+  /**
+   * Optional override; when omitted, the recall tool installs its default
+   * format handler (caps content per-item, drops hallucinated IDs, builds
+   * the result envelope).
+   * Input: `PrepareEnvelope & { selectedIds?: string[] }`.
+   * Output: `RecallToolResult`.
+   */
+  formatBlock?: BlockDefinition<any, any>
+}
+
 /** A single result item as the agent observes it. */
 export type RecallResultItem = {
   id: string
@@ -124,7 +149,7 @@ export type RecallResultItem = {
 }
 
 /**
- * Envelope returned by the recall tool's `execute`.
+ * Envelope returned by the recall tool.
  *
  * `totalMatched` is the count returned by the strategy before the user-facing
  * limit was applied; agents compare it to `truncatedTo` to decide whether to

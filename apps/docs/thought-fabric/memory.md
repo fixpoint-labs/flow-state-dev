@@ -443,16 +443,29 @@ const mem = memorySystem({
 })
 ```
 
-Custom strategies implement the `RetrievalStrategy` interface and slot in the same way:
+Custom strategies implement the `RetrievalStrategy` interface — a block-factory shape that lets the recall tool compose your strategy as a sequencer instead of calling a single `rank()` method:
 
 ```ts
 const myStrategy: RetrievalStrategy = {
   name: 'my-backend',
-  rank(query, ctx, opts) { /* ... */ },
+  // Required. Reads stores, ranks candidates intrinsically, returns the
+  // carrier envelope `{ query, limit, candidates, shouldFilter, … }`.
+  prepareBlock: handler({ /* ... */ }),
+  // Optional. Bounded LLM filter step that selects from the prepared
+  // candidates. Strategies without an LLM call (vector, keyword) omit this
+  // and the recall tool surfaces the intrinsic top-N directly.
+  filterBlock: generator({ /* ... */ }),
+  // Optional. Override the default formatter (caps content per-item, drops
+  // hallucinated IDs from `selectedIds`, builds the result envelope).
+  formatBlock: handler({ /* ... */ }),
 }
 
 memorySystem({ /* ... */, tool: { strategy: myStrategy } })
 ```
+
+Strategies expose blocks rather than a single `rank()` method so the recall tool can compose `prepare → optional filter → format` as a sequencer without any handler reaching into `asRuntime()` to invoke a generator (BP-011). The recall tool's input — `RecallToolInput` — is enriched into a `PrepareInput` before reaching `prepareBlock` (the optional `limit` is defaulted and clamped, `strategyName` and `perItemCharCap` are stamped through). `prepareBlock` returns a `PrepareEnvelope` that the rest of the pipeline threads through; the optional `filterBlock` reads `{ query, limit, candidates }` and returns `{ selectedIds }`, which the recall tool's internal merge step folds back into the envelope before `formatBlock` consumes it.
+
+The default `formatBlock` is exported as `defaultFormatBlock` from `@thought-fabric/core/memory` so custom strategies can reuse it (or its building blocks `buildResult`, `buildResultMetadata`, `capContent`).
 
 The recall tool ships as the `recall` preset on the memory capability — default-on, so `mem.capability` installs it automatically. To drop it (handlers that don't need search, or tightly-scoped sub-agents), disable explicitly: `mem.capability.presets({ recall: false })`. Manual install (`tools: [mem.tool.recall()]`) remains supported when you need a configuration the preset doesn't cover.
 

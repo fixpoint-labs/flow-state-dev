@@ -1,19 +1,26 @@
 /**
- * Public surface for the agent-invocable memory recall tool (FIX-409).
+ * Public surface for the agent-invocable memory recall tool.
  *
- * Exports the tool factory, the strategy contract + built-in resolver, and
- * the input/output type shapes. Wired into `memory.system()` as
- * `mem.tool.recall()` — see memory-system.ts.
+ * Exports the tool factory (a sequencer composer), the strategy contract
+ * (block-factory shape) + built-in resolver, the format helpers strategies
+ * can reuse, and the input/output type shapes. Wired into `memory.system()`
+ * as `mem.tool.recall()` — see memory-system.ts.
  */
 
 export {
   createRecallTool,
+} from './recall-tool.js'
+export type { CreateRecallToolOptions } from './recall-tool.js'
+
+export {
   capContent,
+  buildResult,
+  buildResultMetadata,
+  defaultFormatBlock,
   DEFAULT_PER_ITEM_CHAR_CAP,
   DEFAULT_RECALL_LIMIT,
   TRUNCATION_MARKER,
-} from './recall-tool.js'
-export type { CreateRecallToolOptions } from './recall-tool.js'
+} from './format-helpers.js'
 
 export {
   recallToolDescription,
@@ -22,13 +29,12 @@ export {
 export type {
   MemoryItem,
   MemoryItemSource,
-  RankedResult,
+  PrepareEnvelope,
+  PrepareInput,
   RecallResultItem,
   RecallToolInput,
   RecallToolResult,
   RetrievalStrategy,
-  RetrievalStrategyContext,
-  RetrievalStrategyOptions,
 } from './types.js'
 
 export {
@@ -41,6 +47,8 @@ export {
   intrinsicEpisodicScore,
   semanticToMemoryItem,
   episodeToMemoryItem,
+  extractExactPhrases,
+  exactPhraseMatches,
 } from './strategies/index.js'
 export type {
   BuiltInStrategyName,

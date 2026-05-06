@@ -1,30 +1,37 @@
 /**
  * `llm-filter` retrieval strategy — V1 default for the recall tool.
  *
- * Two stages:
- *   1. Query-blind intrinsic pre-rank that pools semantic facts and episodes
- *      by their source-specific scoring formulas, takes the top
- *      `PRE_RANK_CAP`. High-value memories enter the candidate set regardless
- *      of query vocabulary, avoiding the paraphrase-blindness failure mode.
- *   1.5. Optional exact-phrase pass-through that catches distinctive strings
- *      (proper nouns, error codes) buried in low-score memories.
- *   2. Single LLM call that filters the bounded candidate set by relevance.
+ * Two stages, each a separate block so the recall tool can compose them in a
+ * sequencer without any handler reaching into `asRuntime` to invoke a
+ * generator (BP-011):
+ *
+ *   1. `prepareBlock` (handler) — query-blind intrinsic pre-rank that pools
+ *      semantic facts and episodes by their source-specific scoring formulas
+ *      and takes the top `PRE_RANK_CAP`. High-value memories enter the
+ *      candidate set regardless of query vocabulary, avoiding the
+ *      paraphrase-blindness failure mode. Optional Stage 1.5 exact-phrase
+ *      pass-through catches distinctive strings (proper nouns, error codes)
+ *      buried in low-score memories.
+ *   2. `filterBlock` (generator) — single LLM call that filters the bounded
+ *      candidate set by relevance. The recall tool wraps this with an input
+ *      adapter and a merge handler (in a sub-sequencer) so the format step
+ *      receives the LLM's `selectedIds` alongside the candidate list.
  *
  * Token spend per call is bounded regardless of total store size — as the
  * store grows the pre-rank gate gets stricter rather than the LLM payload.
  */
 
-import { generator } from '@flow-state-dev/core'
+import { generator, handler } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { asRuntime } from '@flow-state-dev/core/types'
-import type { SemanticFact } from '../../semantic-memory.js'
-import type { Episode } from '../../episodic-memory.js'
+import type { Episode, EpisodicMemoryState } from '../../episodic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory.js'
+import type { WorkingMemoryState } from '../../working-memory.js'
+import { allFacts } from '../../semantic-memory-helpers.js'
 import type {
   MemoryItem,
-  RankedResult,
+  PrepareEnvelope,
+  PrepareInput,
   RetrievalStrategy,
-  RetrievalStrategyContext,
-  RetrievalStrategyOptions,
 } from '../types.js'
 
 /** Maximum candidates handed to the LLM filter call. */
@@ -42,8 +49,8 @@ const EXACT_PHRASE_MIN_WORDS = 3
 /**
  * Intrinsic score for a semantic fact (no query component).
  *
- * Lifted from `mem.recall()`: `confidence × (0.5 + reinforcementCount/10)`.
- * Stable, well-reinforced facts float up.
+ * `confidence × (0.5 + reinforcementCount/10)`. Stable, well-reinforced facts
+ * float up.
  */
 export function intrinsicSemanticScore(fact: SemanticFact): number {
   const normalised = Math.min(1, fact.reinforcementCount / 10)
@@ -95,7 +102,7 @@ export function episodeToMemoryItem(episode: Episode): MemoryItem {
  * Whitespace splits only — no tokenisation tricks. Phrases overlap; a 5-word
  * query produces (5-3)+(5-4)+(5-5) = 3 phrases at min-len 3.
  */
-function extractExactPhrases(query: string): string[] {
+export function extractExactPhrases(query: string): string[] {
   const words = query.trim().split(/\s+/).filter((w) => w.length > 0)
   if (words.length < EXACT_PHRASE_MIN_WORDS) return []
   const phrases: string[] = []
@@ -113,7 +120,7 @@ function extractExactPhrases(query: string): string[] {
  * Catches the "exact identifier in a low-score memory" failure mode. Returns
  * up to `EXACT_PHRASE_CAP` items not already in `included`.
  */
-function exactPhraseMatches(
+export function exactPhraseMatches(
   query: string,
   candidates: { item: MemoryItem; score: number }[],
   includedIds: Set<string>,
@@ -132,6 +139,119 @@ function exactPhraseMatches(
   return out
 }
 
+/**
+ * Read semantic facts and episodes from the block context's resource
+ * registry. Missing stores are silently coerced to empty arrays.
+ */
+function readStores(ctx: any): {
+  semantic: SemanticFact[]
+  episodic: Episode[]
+  currentTurn: number
+} {
+  let semantic: SemanticFact[] = []
+  let episodic: Episode[] = []
+  let currentTurn = 0
+
+  try {
+    const semRef = ctx.resources?.semanticMemory as { state?: SemanticMemoryState } | undefined
+    if (semRef?.state) semantic = allFacts({ state: semRef.state } as any)
+  } catch { /* not installed */ }
+
+  try {
+    const epRef = ctx.resources?.episodicMemory as { state?: EpisodicMemoryState } | undefined
+    if (epRef?.state) episodic = epRef.state.episodes ?? []
+  } catch { /* not installed */ }
+
+  try {
+    const wmRef = ctx.resources?.workingMemory as { state?: WorkingMemoryState } | undefined
+    if (wmRef?.state) currentTurn = wmRef.state.currentTurn ?? 0
+  } catch { /* not installed */ }
+
+  return { semantic, episodic, currentTurn }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 1: prepareBlock — intrinsic pre-rank + exact-phrase pass-through.
+// ---------------------------------------------------------------------------
+
+/** Output schema for the prepare block. */
+const prepareOutputSchema = z.object({
+  query: z.string(),
+  limit: z.number(),
+  candidates: z.array(z.any()),
+  shouldFilter: z.boolean(),
+  strategyName: z.string(),
+  sinceTurn: z.number().optional(),
+  perItemCharCap: z.number(),
+})
+
+/**
+ * Build the prepare handler. Reads stores, scores intrinsically, applies
+ * `sinceTurn` floor on episodes, runs the optional exact-phrase pass-through.
+ * Sets `shouldFilter = candidates.length > 0` so the recall tool's gating
+ * conditional skips the LLM call when there's nothing to filter.
+ */
+function buildPrepareBlock(includeExactPhrase: boolean) {
+  return handler({
+    name: 'tf.memory/recall.prepare',
+    outputSchema: prepareOutputSchema,
+    execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
+      const { semantic, episodic, currentTurn } = readStores(ctx)
+
+      const eligibleEpisodes = input.sinceTurn !== undefined
+        ? episodic.filter((e) => e.occurredAtTurn >= input.sinceTurn!)
+        : episodic
+
+      // Stage 1: query-blind intrinsic pre-rank.
+      const scored: { item: MemoryItem; score: number }[] = []
+      for (const fact of semantic) {
+        scored.push({ item: semanticToMemoryItem(fact), score: intrinsicSemanticScore(fact) })
+      }
+      for (const ep of eligibleEpisodes) {
+        scored.push({ item: episodeToMemoryItem(ep), score: intrinsicEpisodicScore(ep, currentTurn) })
+      }
+
+      if (scored.length === 0) {
+        return {
+          query: input.query,
+          limit: input.limit,
+          candidates: [],
+          shouldFilter: false,
+          strategyName: input.strategyName,
+          sinceTurn: input.sinceTurn,
+          perItemCharCap: input.perItemCharCap,
+        }
+      }
+
+      scored.sort((a, b) => b.score - a.score)
+      const preRanked = scored.slice(0, PRE_RANK_CAP)
+      const includedIds = new Set(preRanked.map((c) => c.item.id))
+
+      // Stage 1.5: exact-phrase pass-through over the items the pre-rank dropped.
+      const passThroughs = includeExactPhrase
+        ? exactPhraseMatches(input.query, scored.slice(PRE_RANK_CAP), includedIds)
+        : []
+
+      const combined = [...preRanked, ...passThroughs]
+      const candidates = combined.map((c) => c.item)
+
+      return {
+        query: input.query,
+        limit: input.limit,
+        candidates,
+        shouldFilter: candidates.length > 0,
+        strategyName: input.strategyName,
+        sinceTurn: input.sinceTurn,
+        perItemCharCap: input.perItemCharCap,
+      }
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2: filterBlock — bounded LLM filter call.
+// ---------------------------------------------------------------------------
+
 /** Output schema for the LLM filter call — ordered list of selected IDs. */
 const filterOutputSchema = z.object({
   selectedIds: z.array(z.string()),
@@ -141,7 +261,7 @@ const filterOutputSchema = z.object({
 type FilterInput = {
   query: string
   limit: number
-  candidates: Array<{ id: string; source: string; content: string; metadata?: Record<string, unknown> }>
+  candidates: MemoryItem[]
 }
 
 const filterPrompt = [
@@ -155,121 +275,6 @@ const filterPrompt = [
   '- Only return IDs that appear in the candidates list.',
   '- If nothing is relevant, return an empty list.',
 ].join('\n')
-
-/**
- * Build the filter generator. Created once at strategy-construction time and
- * reused across `rank()` calls — the underlying model resolver caches request
- * setup across invocations.
- */
-function buildFilterGenerator(model: string) {
-  return generator({
-    name: 'tf.memory/recall.llm-filter',
-    model,
-    inputSchema: z.any(),
-    outputSchema: filterOutputSchema,
-    prompt: filterPrompt,
-    user: (input: FilterInput) => {
-      const lines: string[] = [
-        `Query: ${input.query}`,
-        `Limit: ${input.limit}`,
-        '',
-        'Candidates:',
-      ]
-      for (const c of input.candidates) {
-        const meta = c.metadata && Object.keys(c.metadata).length > 0
-          ? ` ${JSON.stringify(c.metadata)}`
-          : ''
-        lines.push(`- [${c.id}] (${c.source})${meta} ${c.content}`)
-      }
-      return lines.join('\n')
-    },
-    agentType: 'trace',
-  })
-}
-
-/** Options for `createLlmFilterStrategy`. */
-export type LlmFilterStrategyOptions = {
-  /** Model id used for the filter call. */
-  model: string
-  /** Include the Stage 1.5 exact-phrase pass-through. Default: true. */
-  exactPhrasePassThrough?: boolean
-}
-
-/**
- * Create the V1 `llm-filter` retrieval strategy.
- *
- * The returned strategy is stateless across calls aside from the cached
- * generator block; it is safe to share across concurrent `rank()` invocations.
- */
-export function createLlmFilterStrategy(opts: LlmFilterStrategyOptions): RetrievalStrategy {
-  const filterGen = buildFilterGenerator(opts.model)
-  const includeExactPhrase = opts.exactPhrasePassThrough ?? true
-
-  return {
-    name: 'llm-filter',
-    async rank(
-      query: string,
-      ctx: RetrievalStrategyContext,
-      options: RetrievalStrategyOptions,
-    ): Promise<RankedResult[]> {
-      // Stage 1: query-blind intrinsic pre-rank.
-      const sinceTurn = options.sinceTurn
-      const eligibleEpisodes = sinceTurn !== undefined
-        ? ctx.episodic.filter((e) => e.occurredAtTurn >= sinceTurn)
-        : ctx.episodic
-
-      const scored: { item: MemoryItem; score: number }[] = []
-      for (const fact of ctx.semantic) {
-        scored.push({ item: semanticToMemoryItem(fact), score: intrinsicSemanticScore(fact) })
-      }
-      for (const ep of eligibleEpisodes) {
-        scored.push({ item: episodeToMemoryItem(ep), score: intrinsicEpisodicScore(ep, ctx.currentTurn) })
-      }
-
-      if (scored.length === 0) return []
-
-      scored.sort((a, b) => b.score - a.score)
-      const preRanked = scored.slice(0, PRE_RANK_CAP)
-      const includedIds = new Set(preRanked.map((c) => c.item.id))
-
-      // Stage 1.5: exact-phrase pass-through over the items the pre-rank dropped.
-      const passThroughs = includeExactPhrase
-        ? exactPhraseMatches(query, scored.slice(PRE_RANK_CAP), includedIds)
-        : []
-
-      const candidates = [...preRanked, ...passThroughs]
-      if (candidates.length === 0) return []
-
-      // Stage 2: single LLM filter call.
-      const candidatePayload = candidates.map((c) => ({
-        id: c.item.id,
-        source: c.item.source,
-        content: c.item.content,
-        metadata: extractCandidateMetadata(c.item),
-      }))
-
-      const filterResult = await asRuntime(filterGen).run(
-        { query, limit: options.limit, candidates: candidatePayload },
-        ctx.runtime,
-      ) as { selectedIds: string[] }
-
-      // Filter hallucinated IDs and preserve LLM ordering.
-      const byId = new Map(candidates.map((c) => [c.item.id, c]))
-      const ordered: { item: MemoryItem; score: number }[] = []
-      for (const id of filterResult.selectedIds) {
-        const hit = byId.get(id)
-        if (hit) ordered.push(hit)
-      }
-
-      const n = ordered.length
-      return ordered.map((c, i) => ({
-        item: c.item,
-        // Score is the LLM rank, normalised so the top result is 1.
-        score: n > 0 ? 1 - i / n : 0,
-      }))
-    },
-  }
-}
 
 /** Pull source-specific metadata onto the LLM filter input payload. */
 function extractCandidateMetadata(item: MemoryItem): Record<string, unknown> {
@@ -285,5 +290,62 @@ function extractCandidateMetadata(item: MemoryItem): Record<string, unknown> {
     category: item.category,
     occurredAtTurn: item.occurredAtTurn,
     significance: item.significance,
+  }
+}
+
+/**
+ * Build the filter generator. Sequencer-internal substrate invokes this; no
+ * handler ever calls it directly.
+ */
+function buildFilterBlock(model: string) {
+  return generator({
+    name: 'tf.memory/recall.llm-filter',
+    model,
+    inputSchema: z.any(),
+    outputSchema: filterOutputSchema,
+    prompt: filterPrompt,
+    user: (input: FilterInput) => {
+      const lines: string[] = [
+        `Query: ${input.query}`,
+        `Limit: ${input.limit}`,
+        '',
+        'Candidates:',
+      ]
+      for (const c of input.candidates) {
+        const meta = extractCandidateMetadata(c)
+        const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : ''
+        lines.push(`- [${c.id}] (${c.source})${metaStr} ${c.content}`)
+      }
+      return lines.join('\n')
+    },
+    agentType: 'trace',
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Strategy factory
+// ---------------------------------------------------------------------------
+
+/** Options for `createLlmFilterStrategy`. */
+export type LlmFilterStrategyOptions = {
+  /** Model id used for the filter call. */
+  model: string
+  /** Include the Stage 1.5 exact-phrase pass-through. Default: true. */
+  exactPhrasePassThrough?: boolean
+}
+
+/**
+ * Create the V1 `llm-filter` retrieval strategy.
+ *
+ * Returns a strategy whose `prepareBlock` and `filterBlock` are constructed
+ * once at factory time; the recall tool factory composes them into a
+ * sequencer (no handler calls a block via `asRuntime`).
+ */
+export function createLlmFilterStrategy(opts: LlmFilterStrategyOptions): RetrievalStrategy {
+  const includeExactPhrase = opts.exactPhrasePassThrough ?? true
+  return {
+    name: 'llm-filter',
+    prepareBlock: buildPrepareBlock(includeExactPhrase),
+    filterBlock: buildFilterBlock(opts.model),
   }
 }

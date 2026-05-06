@@ -4,6 +4,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-05
 
+### Recall tool: `RetrievalStrategy` becomes block-factory shaped
+
+Reshapes the public `RetrievalStrategy` contract that custom recall backends implement. Strategies used to expose a single `rank(query, ctx, opts)` method called from inside the recall tool's `execute`. They now expose framework blocks the tool composes as a sequencer (`prepare → optional filter → format`), so no handler in the pipeline reaches into `asRuntime()` to invoke a generator (BP-011).
+
+- **Removed public types**: `RankedResult`, `RetrievalStrategyContext`, `RetrievalStrategyOptions`, and the `rank()` method on `RetrievalStrategy`. Anyone with a custom `RetrievalStrategy` will need to migrate.
+- **New public types**: `PrepareInput`, `PrepareEnvelope`. `PrepareInput` is what reaches the strategy's `prepareBlock` (the recall tool defaults/clamps `limit`, stamps `strategyName` and `perItemCharCap`). `PrepareEnvelope` is the carrier threaded between `prepare`, the optional filter+merge, and `format`.
+- **`RetrievalStrategy` shape**: `{ name, prepareBlock, filterBlock?, formatBlock? }`. `prepareBlock` is required and produces the envelope; `filterBlock` is the optional LLM filter step (omit it for vector/keyword backends and the tool surfaces the intrinsic top-N directly); `formatBlock` is an optional override on the tool's default formatter.
+- **New exports** from `@thought-fabric/core/memory`: `defaultFormatBlock`, `buildResult`, `buildResultMetadata`, `capContent`, `TRUNCATION_MARKER`. Custom strategies that override `formatBlock` can reuse the helpers without re-implementing per-item char capping, hallucination dropping, or score normalisation.
+- **Built-in strategy unchanged at the consumer level**: `tool: { strategy: 'llm-filter' }` keeps working; the `llm-filter` strategy now ships `prepareBlock` (intrinsic pre-rank + exact-phrase pass-through) plus `filterBlock` (single bounded LLM call). Token spend per call remains bounded regardless of total store size.
+- **Migration**: see `apps/docs/thought-fabric/memory.md` for the new strategy shape and an example.
+
 ### Memory capability: orthogonal section presets + configurable formatter (FIX-513 pivot)
 
 Pivots away from the role-named `agent` / `worker` memory capability presets. The original FIX-513 design bundled "context formatter + recall tool" under role labels, which conflated two unrelated axes: which memory tier gets re-injected into the prompt, and whether the agent has a search tool. Authors who wanted only working memory but no digest, or recent episodes alongside the digest, couldn't express that without giving up the formatter entirely.

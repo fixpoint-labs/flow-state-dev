@@ -1,18 +1,16 @@
 /**
- * Tests for the agent-invocable memory recall tool (FIX-409).
+ * Tests for the agent-invocable memory recall tool.
  *
- * Two layers of coverage:
- *   - Tool surface: input/output envelope, char cap, sinceTurn, empty stores,
- *     strategy errors, hallucinated IDs — all driven through stub strategies
- *     so tests are deterministic and don't make LLM calls.
- *   - llm-filter strategy: query-blind intrinsic pre-rank ordering, recency
- *     decay, exact-phrase pass-through, working-memory exclusion. The Stage 2
- *     LLM call is verified via the registry-level tool surface tests.
+ * The tool is a sequencer composing strategy-supplied blocks. Tests stub the
+ * strategy with simple handler blocks so they're deterministic and don't make
+ * LLM calls. Pure-function helpers (intrinsic scoring, exact-phrase matching)
+ * are exercised in isolation alongside.
  */
 
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import { handler } from '@flow-state-dev/core'
 import { runForTest } from '@flow-state-dev/testing'
+import type { ResourceHandle } from '@flow-state-dev/core'
 import {
   workingMemoryStateSchema,
   type WorkingMemoryState,
@@ -36,11 +34,14 @@ import {
   RECENCY_HALF_LIFE,
   intrinsicSemanticScore,
   intrinsicEpisodicScore,
+  semanticToMemoryItem,
+  episodeToMemoryItem,
   recallToolDescription,
   recallToolInputSchema,
-  type RetrievalStrategy,
-  type RetrievalStrategyContext,
   type MemoryItem,
+  type PrepareEnvelope,
+  type PrepareInput,
+  type RetrievalStrategy,
 } from '../../../src/memory/tools/index.js'
 
 // ---------------------------------------------------------------------------
@@ -132,7 +133,13 @@ function buildCtx(args: {
   if (args.wm) refs.workingMemory = args.wm
   if (args.ep) refs.episodicMemory = args.ep
   if (args.sem) refs.semanticMemory = args.sem
-  return {
+  const ctx: any = {
+    request: {
+      identity: { type: 'request', id: 'req_1' },
+      state: {},
+      tokenUsage: { totalConsumed: 0, byModel: {}, remaining: Number.POSITIVE_INFINITY },
+      costEstimate: { totalUSD: 0, byModel: {} },
+    },
     resources: {
       ...refs,
       get: (name: string) => refs[name],
@@ -143,34 +150,130 @@ function buildCtx(args: {
       instanceId: 'test',
     },
     response: { emit: async () => {} },
+    signal: new AbortController().signal,
   }
+  // Minimal _withExecutionScope shim that mirrors the server runtime's
+  // parent-chain semantics. Server impl (createExecutionContext.ts ~3150):
+  // `ctx.parent` resolves to the IMMEDIATE PARENT block in the chain — not
+  // the block that's currently executing. So when the merge handler runs
+  // inside the filter sub-sequencer, ctx.parent.input = sub-sequencer's
+  // input = prepare envelope.
+  //
+  // Implementation: each scope tracks the current block's metadata; when it
+  // opens a child scope, the child sees the current block as its parent.
+  function makeScope(immediateParent: any) {
+    return async (current: any, execute: (c: any) => Promise<unknown>) => {
+      const scopedCtx: any = {
+        ...ctx,
+        parent: immediateParent
+          ? {
+              name: immediateParent.name,
+              kind: immediateParent.kind,
+              input: immediateParent.input,
+            }
+          : undefined,
+        _blockIdentity: { blockInstanceId: current.instanceId, blockPath: current.path },
+      }
+      // When `current` executes a child, that child's parent will be `current`.
+      scopedCtx._withExecutionScope = makeScope(current)
+      return execute(scopedCtx)
+    }
+  }
+  // Root call has no parent.
+  ctx._withExecutionScope = makeScope(undefined)
+  return ctx
+}
+
+/**
+ * Runs the recall tool the way the framework does in production: opens an
+ * outer execution scope around it so child blocks see the recall sequencer
+ * as their parent (and the rescue handler can read `ctx.parent.input` to
+ * recover the tool's original input). `runForTest` alone doesn't do this —
+ * the server's executeBlock does it automatically, but unit tests don't go
+ * through that path.
+ */
+async function runRecallTool(tool: any, input: any, ctx: any): Promise<any> {
+  return ctx._withExecutionScope(
+    { name: tool.name, kind: tool.kind, input, instanceId: 'test-instance', path: 'test' },
+    (scopedCtx: any) => runForTest(tool, input, scopedCtx),
+  )
 }
 
 // ---------------------------------------------------------------------------
-// Stub strategy — surfaces every input it sees and returns a deterministic order
+// Stub strategy — deterministic prepare + filter handlers for tests
 // ---------------------------------------------------------------------------
 
-type StubCall = {
-  query: string
-  ctx: RetrievalStrategyContext
-  opts: { limit: number; sinceTurn?: number }
+type StubFilterInput = { query: string; limit: number; candidates: MemoryItem[] }
+
+type StubOptions = {
+  /** Build candidates from the runtime ctx. Defaults to walking semantic + episodic stores. */
+  candidatesFromCtx?: (input: PrepareInput, ctx: any) => MemoryItem[]
+  /** Stub the filter step. Defaults to selecting every candidate ID in order. */
+  filter?: (input: StubFilterInput) => { selectedIds: string[] }
+  /** Make the filter throw — exercises the rescue branch / error envelope. */
+  filterError?: string
+  /** Omit the filterBlock entirely — strategy is filter-less (vector-style). */
+  noFilter?: boolean
+  /** Strategy name surfaced on the result envelope. */
+  name?: string
 }
 
-function makeStubStrategy(handler: (call: StubCall) => MemoryItem[] | { error: string }): {
+function makeStubStrategy(opts: StubOptions = {}): {
   strategy: RetrievalStrategy
-  calls: StubCall[]
+  prepareCalls: PrepareInput[]
+  filterCalls: StubFilterInput[]
 } {
-  const calls: StubCall[] = []
-  const strategy: RetrievalStrategy = {
-    name: 'stub',
-    rank(query, ctx, opts) {
-      calls.push({ query, ctx, opts })
-      const result = handler({ query, ctx, opts })
-      if ('error' in result) throw new Error(result.error)
-      return result.map((item, i) => ({ item, score: 1 - i / Math.max(1, result.length) }))
+  const prepareCalls: PrepareInput[] = []
+  const filterCalls: StubFilterInput[] = []
+  const name = opts.name ?? 'stub'
+
+  const candidatesFromCtx = opts.candidatesFromCtx ?? ((_input, ctx) => {
+    const items: MemoryItem[] = []
+    const sem = ctx.resources?.semanticMemory
+    const ep = ctx.resources?.episodicMemory
+    if (sem?.state?.facts) {
+      for (const f of sem.state.facts as SemanticFact[]) items.push(semanticToMemoryItem(f))
+    }
+    if (ep?.state?.episodes) {
+      for (const e of ep.state.episodes as Episode[]) items.push(episodeToMemoryItem(e))
+    }
+    return items
+  })
+
+  const prepareBlock = handler({
+    name: 'stub.prepare',
+    execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
+      prepareCalls.push(input)
+      const candidates = candidatesFromCtx(input, ctx)
+      return {
+        query: input.query,
+        limit: input.limit,
+        sinceTurn: input.sinceTurn,
+        candidates,
+        shouldFilter: candidates.length > 0,
+        strategyName: input.strategyName,
+        perItemCharCap: input.perItemCharCap,
+      }
     },
+  })
+
+  const filterBlock = handler({
+    name: 'stub.filter',
+    execute: async (input: StubFilterInput): Promise<{ selectedIds: string[] }> => {
+      filterCalls.push(input)
+      if (opts.filterError) throw new Error(opts.filterError)
+      if (opts.filter) return opts.filter(input)
+      return { selectedIds: input.candidates.map((c) => c.id) }
+    },
+  })
+
+  const strategy: RetrievalStrategy = {
+    name,
+    prepareBlock,
+    ...(opts.noFilter ? {} : { filterBlock }),
   }
-  return { strategy, calls }
+
+  return { strategy, prepareCalls, filterCalls }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,14 +281,12 @@ function makeStubStrategy(handler: (call: StubCall) => MemoryItem[] | { error: s
 // ---------------------------------------------------------------------------
 
 describe('tools/recall — tool surface', () => {
-  it('factory returns a handler block exposing the documented description and schema', () => {
-    const { strategy } = makeStubStrategy(() => [])
+  it('factory returns a sequencer block exposing the documented description and schema', () => {
+    const { strategy } = makeStubStrategy()
     const tool = createRecallTool({ strategy })
     expect(tool).toBeDefined()
     expect(tool.name).toBe('tf.memory/recall')
-    // Description text is editable for prompt-tuning; assert only that the
-    // tool exposes one (and that it mentions memory) rather than locking to
-    // a specific phrase.
+    expect(tool.kind).toBe('sequencer')
     const description = (tool as any).description ?? recallToolDescription
     expect(typeof description).toBe('string')
     expect(description.length).toBeGreaterThan(0)
@@ -194,15 +295,15 @@ describe('tools/recall — tool surface', () => {
     expect(recallToolInputSchema.safeParse({ query: '' }).success).toBe(false)
   })
 
-  it('returns empty envelope without invoking the strategy when both stores are empty', async () => {
-    const { strategy, calls } = makeStubStrategy(() => [])
+  it('returns empty envelope without invoking the filter when both stores are empty', async () => {
+    const { strategy, filterCalls } = makeStubStrategy()
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef({ currentTurn: 3 }),
       sem: createMockSemRef(),
       ep: createMockEpRef(),
     })
-    const result = await runForTest(tool, { query: 'anything' } as any, ctx) as any
+    const result = await runRecallTool(tool,{ query: 'anything' } as any, ctx) as any
     expect(result).toEqual({
       results: [],
       query: 'anything',
@@ -210,33 +311,31 @@ describe('tools/recall — tool surface', () => {
       totalMatched: 0,
       truncatedTo: 0,
     })
-    expect(calls).toHaveLength(0)
+    expect(filterCalls).toHaveLength(0)
   })
 
-  it('passes semantic and episodic candidates to the strategy with currentTurn from working memory', async () => {
+  it('passes semantic and episodic candidates to the filter step', async () => {
     const fact = makeFact({ id: 'f1', content: 'user lives in Paris' })
     const episode = makeEpisode({ id: 'e1', content: 'user mentioned a trip', occurredAtTurn: 4 })
-    const { strategy, calls } = makeStubStrategy(() => [
-      { id: 'f1', content: fact.content, source: 'semantic', confidence: 0.8 },
-    ])
+    const { strategy, filterCalls } = makeStubStrategy({
+      filter: (input) => ({ selectedIds: [input.candidates[0].id] }),
+    })
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef({ currentTurn: 9 }),
       sem: createMockSemRef({ facts: [fact] }),
       ep: createMockEpRef({ episodes: [episode] }),
     })
-    const result = await runForTest(tool, { query: 'where' } as any, ctx) as any
-    expect(calls).toHaveLength(1)
-    expect(calls[0].ctx.semantic).toHaveLength(1)
-    expect(calls[0].ctx.episodic).toHaveLength(1)
-    expect(calls[0].ctx.currentTurn).toBe(9)
+    const result = await runRecallTool(tool,{ query: 'where' } as any, ctx) as any
+    expect(filterCalls).toHaveLength(1)
+    expect(filterCalls[0].candidates.map((c) => c.source).sort()).toEqual(['episodic', 'semantic'])
     expect(result.totalMatched).toBe(1)
     expect(result.results[0].source).toBe('semantic')
-    expect(result.results[0].metadata).toMatchObject({ confidence: 0.8 })
+    expect(result.results[0].metadata).toMatchObject({ confidence: 0.7 })
   })
 
-  it('clamps limit to [1, 20] and forwards sinceTurn to the strategy', async () => {
-    const { strategy, calls } = makeStubStrategy(() => [])
+  it('clamps limit to [1, 20] and forwards sinceTurn into the prepare envelope', async () => {
+    const { strategy, prepareCalls, filterCalls } = makeStubStrategy()
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef({ currentTurn: 0 }),
@@ -246,26 +345,29 @@ describe('tools/recall — tool surface', () => {
     // limit > 20 is rejected by zod (max 20)
     expect(recallToolInputSchema.safeParse({ query: 'q', limit: 100 }).success).toBe(false)
 
-    await runForTest(tool, { query: 'q', limit: 12, sinceTurn: 5 } as any, ctx)
-    expect(calls[0].opts).toEqual({ limit: 12, sinceTurn: 5 })
+    await runRecallTool(tool,{ query: 'q', limit: 12, sinceTurn: 5 } as any, ctx)
+    expect(prepareCalls[0].limit).toBe(12)
+    expect(prepareCalls[0].sinceTurn).toBe(5)
+    expect(filterCalls[0].limit).toBe(12)
   })
 
   it('truncates content above the per-item char cap and sets truncated:true', async () => {
     const longContent = 'x'.repeat(800)
-    const item: MemoryItem = {
-      id: 'big',
-      content: longContent,
-      source: 'semantic',
-      confidence: 0.9,
-      reinforcementCount: 3,
-    }
-    const { strategy } = makeStubStrategy(() => [item])
+    const { strategy } = makeStubStrategy({
+      candidatesFromCtx: () => [{
+        id: 'big',
+        content: longContent,
+        source: 'semantic',
+        confidence: 0.9,
+        reinforcementCount: 3,
+      }],
+    })
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef(),
       sem: createMockSemRef({ facts: [makeFact({ id: 'big', content: longContent })] }),
     })
-    const result = await runForTest(tool, { query: 'q' } as any, ctx) as any
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
     expect(result.results[0].truncated).toBe(true)
     expect(result.results[0].content.length).toBeLessThanOrEqual(DEFAULT_PER_ITEM_CHAR_CAP)
     expect(result.results[0].content.endsWith(TRUNCATION_MARKER)).toBe(true)
@@ -273,8 +375,9 @@ describe('tools/recall — tool surface', () => {
 
   it('respects a custom perItemCharCap override', async () => {
     const longContent = 'a'.repeat(120)
-    const item: MemoryItem = { id: 'x', content: longContent, source: 'episodic' }
-    const { strategy } = makeStubStrategy(() => [item])
+    const { strategy } = makeStubStrategy({
+      candidatesFromCtx: () => [{ id: 'x', content: longContent, source: 'episodic' }],
+    })
     const tool = createRecallTool({
       strategy,
       defaults: { perItemCharCap: 50 },
@@ -283,86 +386,94 @@ describe('tools/recall — tool surface', () => {
       wm: createMockWmRef(),
       ep: createMockEpRef({ episodes: [makeEpisode({ id: 'x', content: longContent })] }),
     })
-    const result = await runForTest(tool, { query: 'q' } as any, ctx) as any
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
     expect(result.results[0].content.length).toBeLessThanOrEqual(50)
     expect(result.results[0].truncated).toBe(true)
   })
 
-  it('reports totalMatched from the strategy and truncatesTo to the limit', async () => {
+  it('reports totalMatched from selectedIds and truncatesTo to the limit', async () => {
     const items: MemoryItem[] = Array.from({ length: 8 }, (_, i) => ({
       id: `i${i}`,
       content: `fact ${i}`,
       source: 'semantic',
     }))
-    const { strategy } = makeStubStrategy(() => items)
+    const { strategy } = makeStubStrategy({
+      candidatesFromCtx: () => items,
+      filter: () => ({ selectedIds: items.map((i) => i.id) }),
+    })
     const tool = createRecallTool({ strategy, defaults: { limit: 5 } })
     const ctx = buildCtx({
       wm: createMockWmRef(),
       sem: createMockSemRef({ facts: items.map((i) => makeFact({ id: i.id })) }),
     })
-    const result = await runForTest(tool, { query: 'q' } as any, ctx) as any
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
     expect(result.totalMatched).toBe(8)
     expect(result.truncatedTo).toBe(5)
     expect(result.results).toHaveLength(5)
   })
 
-  it('returns an error envelope when the strategy throws', async () => {
-    const { strategy } = makeStubStrategy(() => ({ error: 'rate limit' }))
+  it('returns an error envelope when the filter throws', async () => {
+    const { strategy } = makeStubStrategy({ filterError: 'rate limit' })
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef(),
       sem: createMockSemRef({ facts: [makeFact({ id: 'a' })] }),
     })
-    const result = await runForTest(tool, { query: 'q' } as any, ctx) as any
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
     expect(result.error).toBe('rate limit')
     expect(result.query).toBe('q')
     expect(result.strategy).toBe('stub')
   })
 
   it('stamps the strategy name onto every envelope', async () => {
-    const { strategy } = makeStubStrategy(() => [
-      { id: 'a', content: 'x', source: 'semantic' },
-    ])
+    const { strategy } = makeStubStrategy({ name: 'my-strategy' })
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
       wm: createMockWmRef(),
       sem: createMockSemRef({ facts: [makeFact({ id: 'a' })] }),
     })
-    const result = await runForTest(tool, { query: 'q' } as any, ctx) as any
-    expect(result.strategy).toBe('stub')
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
+    expect(result.strategy).toBe('my-strategy')
   })
 
-  it('does not surface working-memory entries even when the strategy is asked to return them', async () => {
-    // Simulate an off-spec strategy that ignores the contract — the tool layer
-    // should still only return what the strategy returns; working-memory items
-    // are never passed in.
-    const { strategy, calls } = makeStubStrategy(() => [])
+  it('drops hallucinated IDs returned by the filter', async () => {
+    const items: MemoryItem[] = [
+      { id: 'real-1', content: 'a', source: 'semantic' },
+      { id: 'real-2', content: 'b', source: 'semantic' },
+    ]
+    const { strategy } = makeStubStrategy({
+      candidatesFromCtx: () => items,
+      // Mix in an ID that wasn't in the candidates — recall must drop it.
+      filter: () => ({ selectedIds: ['real-1', 'hallucinated', 'real-2'] }),
+    })
     const tool = createRecallTool({ strategy })
     const ctx = buildCtx({
-      wm: createMockWmRef({
-        currentTurn: 1,
-        entries: [
-          {
-            id: 'wm1',
-            content: 'present in working memory',
-            importance: 0.8,
-            category: 'preference',
-            durability: 'session',
-            pinned: false,
-            decayValue: 1,
-            createdAtTurn: 0,
-            lastAccessedTurn: 0,
-            salience: 0.8,
-          } as any,
-        ],
-      }),
-      sem: createMockSemRef({ facts: [makeFact({ id: 's1' })] }),
+      wm: createMockWmRef(),
+      sem: createMockSemRef({ facts: items.map((i) => makeFact({ id: i.id })) }),
     })
-    await runForTest(tool, { query: 'q' } as any, ctx)
-    expect(calls[0].ctx.semantic).toHaveLength(1)
-    // RetrievalStrategyContext has no `working` field — working memory cannot
-    // reach the strategy by construction.
-    expect((calls[0].ctx as any).working).toBeUndefined()
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
+    expect(result.results.map((r: any) => r.id)).toEqual(['real-1', 'real-2'])
+  })
+
+  it('skips the filter step when the strategy has no filterBlock', async () => {
+    const items: MemoryItem[] = [
+      { id: 'a', content: 'aaa', source: 'semantic' },
+      { id: 'b', content: 'bbb', source: 'semantic' },
+    ]
+    const { strategy, filterCalls } = makeStubStrategy({
+      noFilter: true,
+      candidatesFromCtx: () => items,
+    })
+    const tool = createRecallTool({ strategy })
+    const ctx = buildCtx({
+      wm: createMockWmRef(),
+      sem: createMockSemRef({ facts: items.map((i) => makeFact({ id: i.id })) }),
+    })
+    const result = await runRecallTool(tool,{ query: 'q' } as any, ctx) as any
+    expect(filterCalls).toHaveLength(0)
+    // Without a filter, format surfaces the intrinsic-ranked candidates.
+    expect(result.results.map((r: any) => r.id)).toEqual(['a', 'b'])
+    expect(result.totalMatched).toBe(2)
   })
 })
 
