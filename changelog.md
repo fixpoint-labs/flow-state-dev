@@ -2,6 +2,22 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-06
+
+### Generator: log unparseable candidates + raise consolidation repair attempts
+
+When a generator's output schema rejects the model's response and repair gives up, the framework now logs the actual candidate to stderr alongside the validation error. Previously the only signal was `Generator output validation failed: Expected object, received string` — which tells you the schema saw a string but not *what* string. Operators had to re-run with a debugger or page through the request's block_debug item to see what the model returned.
+
+- New stderr log lines on terminal failure:
+  ```
+  [generator:generate] "tf.memory/consolidate/generate" output failed schema validation: Expected object, received string
+  [generator:generate] candidate (string): Sorry, I cannot consolidate these episodes…
+  ```
+- Candidate dump is truncated at 2000 chars; full payload is still recoverable from the request's block_debug.
+- Same dump fires from both the non-streaming (`generate`) and streaming (`stream`) terminal paths.
+
+Also raises `tf.memory/consolidate/generate`'s repair attempts from the default 1 to 3. Small models occasionally drop out of structured-output mode and return narrative text; with one auto-repair attempt the framework gave up too quickly and surfaced a `step_error` for what was usually transient flakiness. Three attempts let it recover before the background task fails.
+
 ## 2026-05-05
 
 ### Recall tool: per-source pre-rank — semantic facts always reach the filter

@@ -658,6 +658,11 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     prompt: consolidationPrompt,
     context: buildContext,
     user: (_input: unknown) => 'Consolidate the episodes into semantic facts.',
+    // Small models occasionally drop out of structured-output mode and return
+    // narrative text instead of JSON. Allow more repair attempts than the
+    // default (1) so the pipeline can recover before the background task
+    // surfaces as a step_error.
+    repair: { mode: 'auto', maxAttempts: 3 },
     agentType: "trace",
   })
 }

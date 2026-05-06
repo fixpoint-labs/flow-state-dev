@@ -130,6 +130,41 @@ describe("generator builder", () => {
     await expect(runForTest(blockRescue, { value: 1 }, ctx)).rejects.toThrow("validation failed");
   });
 
+  it("logs the unparseable candidate when output validation gives up", async () => {
+    // When a generator's output schema can't validate the candidate even
+    // after repair attempts, the framework should dump the actual model
+    // output to stderr so an operator can see what came back. Without this
+    // log, debugging "Expected object, received string" requires re-running
+    // with a debugger or paging through a request's block_debug item.
+    const block = generator({
+      name: "log-on-fail",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.boolean() }),
+      repair: { mode: "fail" },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: ((() => ({
+        modelId: "m",
+        async generate() {
+          // Return a plain text string — the structured-output fallthrough
+          // case that small models hit when they drop out of JSON mode.
+          return { text: "Sorry, I cannot consolidate these episodes." };
+        },
+      })) as unknown) as any,
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(runForTest(block, { value: 1 }, ctx)).rejects.toThrow("validation failed");
+
+    const messages = warnSpy.mock.calls.map((call) => String(call[0]));
+    const hit = messages.find((m) => m.includes("log-on-fail") && m.includes("Sorry, I cannot consolidate"));
+    expect(hit, `expected a console.warn dump of the candidate; saw: ${messages.join(" | ")}`).toBeDefined();
+
+    warnSpy.mockRestore();
+  });
+
   it("runs model-requested tools via execute wrappers", async () => {
     // The generator compiles tools with `execute` closures. The model layer
     // (AI SDK) calls `execute` during its built-in multi-step loop.
