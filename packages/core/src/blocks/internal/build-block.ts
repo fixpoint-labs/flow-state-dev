@@ -216,7 +216,12 @@ export function buildBlock<
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        // `connectInput` preserves `TOutputSchema`, so any installed
+        // `mapModelOutput` mapper is still valid against the rebuilt block's
+        // output. Forward it through.
+        modelOutputMapper: options.modelOutputMapper,
       });
     },
     mapModelOutput(
@@ -246,11 +251,17 @@ export function buildBlock<
         onCompleted: undefined
       };
 
+      // Intentionally do not forward `modelOutputMapper`: `connectOutput`
+      // changes the output type from `TOutput` to `TTo`, so the original
+      // mapper's `(output: TOutput) => string` signature no longer matches.
+      // Re-install via `.mapModelOutput(...)` after `.connectOutput(...)` if
+      // a model-visible representation is still wanted on the rebuilt block.
       return buildBlock<TInputSchema, ZodTypeAny, TInput, TTo>({
         kind,
         config: nextConfig,
         execute: mappedExecute,
         declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
       });
     }

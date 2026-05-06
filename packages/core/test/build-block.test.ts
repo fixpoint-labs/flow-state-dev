@@ -168,6 +168,35 @@ describe("buildBlock", () => {
     await expect(Promise.resolve(mapper!({ items: [], n: 3 } as never, ctx))).resolves.toBe("n=3");
   });
 
+  it("connectInput preserves an installed mapModelOutput mapper", () => {
+    // `connectInput` keeps `TOutputSchema`, so any mapper installed via
+    // `mapModelOutput` is still type-valid against the rebuilt block. The
+    // rebuild must forward it through.
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "with-mapper",
+        execute: (n: number) => ({ doubled: n * 2 })
+      }
+    }).mapModelOutput((out) => `doubled=${out.doubled}`);
+
+    const reshaped = block.connectInput((s: string) => Number(s));
+    expect(asRuntime(reshaped)._modelOutputMapper).toBeDefined();
+  });
+
+  it("connectOutput drops mapModelOutput (output type changes)", () => {
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "drop-mapper",
+        execute: (n: number) => ({ doubled: n * 2 })
+      }
+    }).mapModelOutput((out) => `doubled=${out.doubled}`);
+
+    const reshaped = block.connectOutput((out) => out.doubled);
+    expect(asRuntime(reshaped)._modelOutputMapper).toBeUndefined();
+  });
+
   it("calls lifecycle hooks", async () => {
     const onCompleted = vi.fn();
     const onErrored = vi.fn();
