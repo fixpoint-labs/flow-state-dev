@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
             "streaming/overview",
             "streaming/emitting-items",
             "streaming/items",
+            "streaming/trace-channel",
           ],
         },
         {

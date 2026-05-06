@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-06
 
+### Trace channel separation, public type cleanup, `step_error` removal (FIX-506)
+
+The public `OutputItem` union shrinks from 15 to 10 entries. The four trace types (`block_output`, `router_decision`, `state_snapshot`, `block_debug`) leave the union and are now observability-only — they ride the same SSE wire as production items but are server-filtered by default. Subscribe with `?include=trace` to receive them. The query parameter previously named `?unfiltered=true` is renamed; the old name is gone.
+
+- Public `BlockValue<T>` is now `inline | structure`. The `ref` case and the `refBlockValue` helper move to `@flow-state-dev/core/items/internal`. The four trace type names (`BlockOutputItem`, `RouterDecisionItem`, `StateSnapshotItem`, `BlockDebugItem`) stay exported from `@flow-state-dev/core/items` so first-party imports keep compiling.
+- New `traces: TraceStore` on `StoreRegistry` with in-memory (default 50 requests, 5 MB/request) and SQLite implementations. Retention is independent of `RequestRecord` GC, so the DevTool can replay traces from a completed request after its record is gone.
+- New `ctx.emit.{message, component, status, trace.*}` namespace. The flat `ctx.emitMessage`, `ctx.emitComponent`, `ctx.emitStatus` continue to work as deprecated aliases that emit a once-per-process console warning on first use. Aliases are removed at next major.
+- **Retracts the user-facing portion of commit `8e0bd62b`** ("emit `step_error` for background work failures and render as warning"). `step_error` is removed entirely — the type definition, named export, `emitWorkStepError`, every renderer dispatch, and doc references are gone. Failed `.work()` blocks now surface only via the trace-channel `block_output` and the existing `console.error`. Migration: any code switching on `item.type === "step_error"` should be removed; that case is unreachable.
+
 ### Generator: log unparseable candidates + raise consolidation repair attempts
 
 When a generator's output schema rejects the model's response and repair gives up, the framework now logs the actual candidate to stderr alongside the validation error. Previously the only signal was `Generator output validation failed: Expected object, received string` — which tells you the schema saw a string but not *what* string. Operators had to re-run with a debugger or page through the request's block_debug item to see what the model returned.
