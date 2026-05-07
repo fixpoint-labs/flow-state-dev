@@ -142,10 +142,11 @@ export async function retryWithPolicy<TValue>(
           // pre-p-retry "retry scheduled" semantics. The terminal failure
           // surfaces via the rejection itself.
           if (attemptError.retriesLeft <= 0) return;
-          // p-retry's FailedAttemptError wraps the original via `cause`;
-          // surface the original to downstream telemetry.
-          const original = (attemptError.cause ?? attemptError) as Error;
-          await options.onRetry?.(attemptError.attemptNumber, original);
+          // p-retry decorates the thrown error in-place with `attemptNumber`
+          // and `retriesLeft` (it is not a wrapper). Forward the error as-is
+          // — reading `.cause` here would surface the user's own cause chain
+          // instead of the actual thrown error.
+          await options.onRetry?.(attemptError.attemptNumber, attemptError);
         }
       }
     );

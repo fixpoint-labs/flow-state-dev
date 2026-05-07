@@ -138,6 +138,35 @@ describe("retryWithPolicy (p-retry backed)", () => {
     await expect(promise).rejects.toThrow("Retry aborted");
   });
 
+  it("forwards the original thrown error (with its own cause chain) to onRetry", async () => {
+    const fetchErr = new Error("underlying fetch failed");
+    const thrown = new NetworkError("transient", { cause: fetchErr });
+    let received: Error | undefined;
+    await expect(
+      retryWithPolicy(
+        async () => {
+          throw thrown;
+        },
+        {
+          maxAttempts: 2,
+          baseDelayMs: 0,
+          maxDelayMs: 0,
+          retryableErrors: [NetworkError]
+        },
+        {
+          onRetry: (_attempt, err) => {
+            received = err;
+          }
+        }
+      )
+    ).rejects.toBeInstanceOf(NetworkError);
+    // p-retry decorates the thrown error in-place; `received` should be the
+    // NetworkError itself, not its `.cause` (which would be a regression to
+    // an earlier draft of this wrapper).
+    expect(received).toBe(thrown);
+    expect(received?.cause).toBe(fetchErr);
+  });
+
   it("isRetryableError respects FlowError.retryable=false even with no allowlist", () => {
     const policy = {
       maxAttempts: 3,
