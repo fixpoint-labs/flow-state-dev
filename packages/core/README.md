@@ -100,6 +100,8 @@ export default defineFlow({
 - `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
+**Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
+
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks
 

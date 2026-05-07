@@ -63,9 +63,33 @@ Work failures are isolated. The framework logs the failure; the DevTool surfaces
 
 If you need to know whether background work succeeded, use `.waitForWork()`.
 
+## Background work is request-scoped
+
+Background work outlives the sequencer that dispatched it. `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.work()` tasks concurrently. The request executor drains the pool exactly once before the SSE stream closes — your stream stays open until every queued task settles, regardless of which sequencer queued it.
+
+Two siblings each calling `.work()` finish in roughly the time of the slower one, not the sum:
+
+```ts
+const root = sequencer({ name: "root", inputSchema: z.unknown() })
+  .then(branchA) // .work(slowA) inside
+  .then(branchB) // .work(slowB) inside — starts immediately, doesn't wait for slowA
+  .then(thirdStep); // also starts immediately
+```
+
+If you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier *in the dispatching sequencer*. It drains only the calling sequencer's tasks, not unrelated siblings'.
+
+```ts
+const memoryPipeline = sequencer({ name: "memory", inputSchema: z.unknown() })
+  .work(persistMemoryEntry)
+  .waitForWork() // wait for persistence before reading state below
+  .then(readPersistedEntries);
+```
+
+Before this change, every sequencer auto-awaited its own background work before returning, which serialized sibling work that should have run concurrently. If you have code that previously relied on the inner-sequencer auto-await for ordering — e.g. an inner `.work(setupBlock)` followed by a parent step that read state mutated by `setupBlock` — add an explicit `.waitForWork()` at the inner sequencer boundary.
+
 ## waitForWork — convergence points
 
-`.waitForWork()` waits for all `.work()` tasks queued so far. By default, it does not throw on work failures:
+`.waitForWork()` waits for the calling sequencer's `.work()` tasks. By default, it does not throw on work failures:
 
 ```ts
 pipeline

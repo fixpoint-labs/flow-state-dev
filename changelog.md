@@ -13,6 +13,15 @@ Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` re
 - New shared `createTraceStoreConformanceTests` helper exposed at `@flow-state-dev/server/testing`. The in-memory, filesystem, and SQLite stores all run the same conformance suite; backend-specific cases stay alongside each implementation.
 - Trace channel reference doc gains backend overview, local-dev subsection, and production subsection. Server and store-sqlite READMEs document the new option.
 
+### Lift `.work()` background tasks to a request-level pool (FIX-554) — breaking
+
+`.work()`, `.workIf()`, and `.forEachBackground()` previously queued onto the dispatching sequencer and the sequencer auto-awaited its own list before returning. That meant inner sequencers serialized siblings — two parallel branches each calling `.work()` ran one after the other instead of concurrently.
+
+- Background tasks are now queued on a single per-request pool. Inner sequencers no longer auto-await; the request executor drains the pool exactly once before terminal status. Sibling sequencers' `.work()` tasks run concurrently — request wall time is roughly the slower branch, not the sum.
+- The SSE stream still stays open until the drain completes. `backgroundTasks: N` status emissions are preserved; they now reflect the request-level pool count.
+- `.waitForWork()` semantics tighten: it drains by sequencer-instance scope, so it waits on the calling sequencer's tasks only, not unrelated siblings'. Failure handling unchanged (`failOnError` throws the first failure; otherwise failures are logged).
+- **Migration:** if your code relied on the inner-sequencer auto-await for ordering — e.g. an inner `.work(setupBlock)` followed by a parent step that read state mutated by `setupBlock` — add an explicit `.waitForWork()` at the inner sequencer boundary. An audit of `packages/patterns`, `packages/thought-fabric-core`, and `apps/kitchen-sink` found no callers that needed migration.
+
 ## 2026-05-06
 
 ### Round Robin pattern (FIX-318)
