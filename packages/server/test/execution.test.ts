@@ -1634,6 +1634,105 @@ describe("execution runtime", () => {
 
   });
 
+  it("emits container lifecycle: in_progress on entry, completed on exit (FIX-574)", async () => {
+    const { ctx } = await createRuntimeContext("req_container_lifecycle");
+
+    const leaf = handler({
+      name: "lifecycle-leaf",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+
+    const flowSeq = sequencer({
+      name: "lifecycle-seq",
+      inputSchema: z.number(),
+      container: { component: "Lifecycle" }
+    }).then(leaf);
+
+    await executeBlock({ block: flowSeq, input: 1, ctx });
+
+    const events = (ctx.response as { getEvents: () => Array<any> }).getEvents();
+    const containerEvents = events.filter(
+      (e: any) =>
+        (e.type === "item.added" && e.item?.type === "container") ||
+        (e.type === "item.done" && e.item?.type === "container") ||
+        (e.type === "item.updated" &&
+          events.some(
+            (other: any) =>
+              other.type === "item.added" &&
+              other.item?.type === "container" &&
+              other.item.id === e.itemId
+          ))
+    );
+    const types = containerEvents.map((e: any) => e.type);
+    expect(types).toEqual(["item.added", "item.updated", "item.done"]);
+
+    const added = containerEvents[0];
+    expect(added.item.status).toBe("in_progress");
+    expect(added.item.startedAt).toBeTypeOf("number");
+
+    const updated = containerEvents[1];
+    expect(updated.itemId).toBe(added.item.id);
+    expect(updated.patch.status).toBe("completed");
+    expect(updated.patch.completedAt).toBeTypeOf("number");
+    expect(updated.patch.duration).toBeTypeOf("number");
+
+    const done = containerEvents[2];
+    expect(done.item.status).toBe("completed");
+
+    // The settled snapshot in itemsById reflects the patched state.
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const container = items.find((item: any) => item.type === "container");
+    expect(container.status).toBe("completed");
+    expect(container.completedAt).toBeTypeOf("number");
+    expect(container.duration).toBeTypeOf("number");
+  });
+
+  it("emits container lifecycle with failed status when sequencer throws (FIX-574)", async () => {
+    const { ctx } = await createRuntimeContext("req_container_failure");
+
+    const failing = handler({
+      name: "failing-leaf",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+
+    const failSeq = sequencer({
+      name: "failing-seq",
+      inputSchema: z.number(),
+      container: { component: "Failure" }
+    }).then(failing);
+
+    const result = await executeBlock({ block: failSeq, input: 1, ctx });
+    expect(result.error).toBeDefined();
+
+    const events = (ctx.response as { getEvents: () => Array<any> }).getEvents();
+    const addedEvent = events.find(
+      (e: any) => e.type === "item.added" && e.item?.type === "container"
+    );
+    expect(addedEvent).toBeDefined();
+    const containerId = addedEvent.item.id;
+    const updatedEvent = events.find(
+      (e: any) => e.type === "item.updated" && e.itemId === containerId
+    );
+    const doneEvent = events.find(
+      (e: any) =>
+        e.type === "item.done" && e.item?.type === "container" && e.item.id === containerId
+    );
+
+    expect(addedEvent.item.status).toBe("in_progress");
+    expect(updatedEvent).toBeDefined();
+    expect(updatedEvent.patch.status).toBe("failed");
+    expect(updatedEvent.patch.error).toEqual({ message: "boom" });
+    expect(doneEvent).toBeDefined();
+    expect(doneEvent.item.status).toBe("failed");
+    expect(doneEvent.item.error).toEqual({ message: "boom" });
+  });
+
   it("propagates ownedBy on items emitted inside a container scope", async () => {
     const { ctx } = await createRuntimeContext("req_owned_by");
 

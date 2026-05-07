@@ -2989,20 +2989,35 @@ export async function createExecutionContext<
               )
             : undefined;
 
+        // Container lifecycle (FIX-574): emit `item.added` with
+        // `status: "in_progress"` on scope entry; defer the terminal patch +
+        // `item.done` until the child execute resolves or throws (see the
+        // try/catch below). Captured here so both lifecycle branches reach it.
+        let containerItem: ContainerItem | undefined;
+        let containerResponse:
+          | {
+              emitItemAdded: (item: OutputItem) => Promise<unknown>;
+              emitItemDone: (item: OutputItem) => Promise<unknown>;
+              emitItemUpdated?: (itemId: string, patch: Record<string, unknown>) => Promise<unknown>;
+            }
+          | undefined;
+        let containerStartedAt = 0;
         if (resolvedParent.container !== undefined) {
           const typed = responseRef.current as {
             emitItemAdded?: (item: OutputItem) => Promise<unknown>;
             emitItemDone?: (item: OutputItem) => Promise<unknown>;
+            emitItemUpdated?: (itemId: string, patch: Record<string, unknown>) => Promise<unknown>;
           };
           if (
             typeof typed.emitItemAdded === "function" &&
             typeof typed.emitItemDone === "function"
           ) {
             const itemIndex = emittedItemCount++;
-            const item: ContainerItem = {
+            containerStartedAt = Date.now();
+            containerItem = {
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
-              status: "completed",
+              status: "in_progress",
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
@@ -3012,15 +3027,18 @@ export async function createExecutionContext<
                 parentBlockInstanceId: resolvedParent.parentInstanceId,
                 phase: resolvedParent.phase ?? "main"
               },
-              ts: Date.now(),
+              ts: containerStartedAt,
               ownedBy: activeEmCtx.ownedBy,
               blockName: resolvedParent.name,
               component: resolvedParent.container.component,
               label: resolvedParent.container.label,
-              metadata: resolvedParent.container.metadata
+              metadata: resolvedParent.container.metadata,
+              startedAt: containerStartedAt
             };
-            await typed.emitItemAdded(item);
-            await typed.emitItemDone(item);
+            // Hold the response itself so method calls preserve `this`
+            // binding when we close out the lifecycle below.
+            containerResponse = typed as Required<typeof typed>;
+            await typed.emitItemAdded(containerItem);
           }
         }
 
@@ -3152,6 +3170,26 @@ export async function createExecutionContext<
             }
           }
 
+          if (containerItem !== undefined && containerResponse !== undefined) {
+            const completedAt = Date.now();
+            const duration = completedAt - containerStartedAt;
+            const patch = {
+              status: "completed" as const,
+              completedAt,
+              duration
+            };
+            // Clear the handle before emitting so a throw from emitItemUpdated
+            // or emitItemDone can't re-enter the failure-path close in the
+            // catch and produce a contradictory `completed → failed` sequence.
+            const closing = containerItem;
+            containerItem = undefined;
+            if (containerResponse.emitItemUpdated !== undefined) {
+              await containerResponse.emitItemUpdated(closing.id, patch);
+            }
+            const finalItem: ContainerItem = { ...closing, ...patch };
+            await containerResponse.emitItemDone(finalItem);
+          }
+
           return output;
         } catch (error) {
           siblingEntry.result.status = "failed";
@@ -3182,6 +3220,22 @@ export async function createExecutionContext<
               },
               childContext
             );
+          }
+
+          if (containerItem !== undefined && containerResponse !== undefined) {
+            const completedAt = Date.now();
+            const duration = completedAt - containerStartedAt;
+            const patch = {
+              status: "failed" as const,
+              completedAt,
+              duration,
+              error: { message: normalized.message }
+            };
+            if (containerResponse.emitItemUpdated !== undefined) {
+              await containerResponse.emitItemUpdated(containerItem.id, patch);
+            }
+            const finalItem: ContainerItem = { ...containerItem, ...patch };
+            await containerResponse.emitItemDone(finalItem);
           }
 
           throw error;

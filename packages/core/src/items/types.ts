@@ -271,12 +271,28 @@ export type ComponentItem = OutputItemBase & {
   key?: string;
 };
 
+/**
+ * Visual grouping emitted by sequencers and routers that declare a `container`
+ * config. Lifecycle: `item.added` with `status: "in_progress"` when the
+ * sequencer scope opens; `item.updated` patching `status`, `completedAt`,
+ * `duration` (and `error` on failure) when the scope closes; finally
+ * `item.done` with the terminal status. Public-stream consumers see a live
+ * in-flight signal for sequencer execution.
+ */
 export type ContainerItem = OutputItemBase & {
   type: "container";
   blockName: string;
   component?: string;
   label?: string;
   metadata?: Record<string, unknown>;
+  /** Wall-clock time the sequencer/router scope opened. */
+  startedAt?: number;
+  /** Wall-clock time the scope closed (success or failure). */
+  completedAt?: number;
+  /** `completedAt - startedAt`, in ms. */
+  duration?: number;
+  /** Set on failure with the throwing error's message. */
+  error?: { message: string };
 };
 
 export type StatusItem = OutputItemBase & {

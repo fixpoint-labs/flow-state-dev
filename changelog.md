@@ -4,6 +4,12 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Container lifecycle: live in-flight signal for sequencers (FIX-574)
+
+- `container` items now emit `item.added` with `status: "in_progress"` when a sequencer or router scope opens, then patch to `completed` (or `failed`) via `item.updated` when the scope closes. The terminal `item.done` follows. Previously the container appeared with terminal status in the same flush, so slow sequencers gave no in-flight feedback.
+- New optional fields on `ContainerItem`: `startedAt`, `completedAt`, `duration`, and `error: { message }` on failure.
+- First public-channel item type to use the `item.updated` primitive from FIX-572. Existing renderers continue to work — the settled snapshot reaches consumers either way.
+
 ### Block trace unification (FIX-573) — BREAKING
 
 - Trace channel now uses a single `block_trace` item per block run, replacing the old `block_output` / `block_debug` split. Carries input, output, error, timing, and (for generators) the resolved prompt and model config.
