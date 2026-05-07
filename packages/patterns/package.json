@@ -40,6 +40,10 @@
     "./round-robin": {
       "types": "./dist/round-robin/index.d.ts",
       "default": "./dist/round-robin/index.js"
+    },
+    "./debate": {
+      "types": "./dist/debate/index.d.ts",
+      "default": "./dist/debate/index.js"
     }
   },
   "license": "MIT",
