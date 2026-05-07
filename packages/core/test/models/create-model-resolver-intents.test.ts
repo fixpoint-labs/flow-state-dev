@@ -1,7 +1,7 @@
 /**
  * Tests for createModelResolver intent resolution + construction validation.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
 import { _resetDevWarnsForTesting } from "../../src/models/dev-warn.js";
