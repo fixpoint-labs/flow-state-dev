@@ -142,6 +142,7 @@ export type {
   GeneratorModelUsage,
   GeneratorSearchConfig,
   ModelResolver,
+  ResolveModelCallOptions,
   PrepareStepFn,
   PrepareStepResult,
   ProviderTool
@@ -175,8 +176,9 @@ export {
   isRetryableError,
   detectAvailableProviders,
   parseModelString,
-  DEFAULT_PRESETS,
+  extractProviderName,
   selectModel,
+  isModelSelection,
   applyCaching,
   DEFAULT_CACHING_CONFIG
 } from "./models";
@@ -194,11 +196,11 @@ export type {
   ProviderName,
   ProviderAvailability,
   ParsedModelString,
-  PresetConfig,
   FallbackModelEntry,
   ModelRule,
-  PreferRule,
+  PreferProviderRule,
   WhenRule,
+  ModelSelection,
   ProviderPreference,
   ResolveOptions,
   ExplainCandidate,

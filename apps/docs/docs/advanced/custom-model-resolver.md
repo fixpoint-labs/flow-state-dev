@@ -42,7 +42,7 @@ const router = createFlowApiRouter({
 
 ## Resolver with Options
 
-Configure explicit keys, presets, and retry policy:
+Configure explicit keys, intents, and retry policy:
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
@@ -52,13 +52,42 @@ const resolver = createModelResolver({
     openai: process.env.MY_OPENAI_KEY,
     anthropic: process.env.MY_ANTHROPIC_KEY,
   },
-  presets: {
-    fast: { models: ["openai/gpt-5.4-mini"] },
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
   },
   retryPolicy: {
     maxAttemptsPerModel: 3,
   },
 });
+```
+
+## Intents and defaultModel
+
+Intents are named routing groups configured on the resolver. Generators reference them as `model: "intent/<name>"`. The resolver walks the candidate list, filters to providers the app has keys for, and falls back to `defaultModel` when nothing in the intent is reachable.
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    utility:   ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    chat:      ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    plan:      ["anthropic/claude-opus-4.7"],
+    synthesize:["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    code:      ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    reason:    ["anthropic/claude-opus-4.7"],
+  },
+});
+```
+
+`defaultModel` is required when `intents` is non-empty. It must parse as `provider/model` or `gateway/provider/model` — never another `intent/*`. The resolver validates these constraints at construction; misconfigured intents throw immediately rather than at first generator call.
+
+Framework canonical intent names are documented in [Models](/docs/fundamentals/models#canonical-intent-names). Apps can add more — names match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
+
+Per-call provider preference flows through the resolver callable's optional third argument:
+
+```ts
+resolver("intent/chat", "block-name", { preferProvider: "openai" });
 ```
 
 ## Array Fallback

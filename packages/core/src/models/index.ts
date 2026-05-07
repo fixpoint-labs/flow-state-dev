@@ -18,12 +18,8 @@ export { createFallbackModel, isRetryableError } from "./fallbackModel";
 export type { FallbackModelEntry } from "./fallbackModel";
 
 // Provider detection and model string parsing
-export { detectAvailableProviders, parseModelString } from "./providerDetection";
+export { detectAvailableProviders, parseModelString, extractProviderName } from "./providerDetection";
 export type { ProviderAvailability, ParsedModelString } from "./providerDetection";
-
-// Presets
-export { DEFAULT_PRESETS } from "./presets";
-export type { PresetConfig } from "./presets";
 
 // Types
 export type {
@@ -50,8 +46,13 @@ export {
 } from "./reorderByPreference";
 
 // Model selection utility
-export { selectModel } from "./selectModel";
-export type { ModelRule, PreferRule, WhenRule } from "./selectModel";
+export { selectModel, isModelSelection } from "./selectModel";
+export type {
+  ModelRule,
+  PreferProviderRule,
+  WhenRule,
+  ModelSelection,
+} from "./selectModel";
 
 // Prompt caching (provider-specific cacheControl translation)
 export { applyCaching, DEFAULT_CACHING_CONFIG } from "./caching";

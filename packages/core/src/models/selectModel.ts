@@ -1,13 +1,22 @@
 /**
  * selectModel utility — declarative model selection.
  *
- * Produces a ResolvableModel function from an ordered list of rules, avoiding
- * the need for inline model functions with type casts in block configs.
- * Prefer rules are evaluated first (first non-null, non-default value wins),
- * then when rules (first truthy condition wins), then the default.
+ * Produces a function that yields a {@link ModelSelection} from an ordered
+ * list of rules. Two rule kinds are supported:
+ *
+ * - `preferProvider` — collects a provider-name preference (first non-null
+ *   value wins) and threads it alongside the chosen model. Does not
+ *   short-circuit; collection continues so `when` rules can still fire.
+ * - `when` — first truthy condition wins and replaces the model. Short-circuits
+ *   the model axis but does not affect the collected `preferProvider`.
+ *
+ * The legacy `prefer` rule is no longer supported and throws a migration
+ * error at function-builder time. Use `preferProvider` for provider-name
+ * semantics, or restructure as a `when` rule for full model replacement.
  */
 import type { BlockContext } from "../types/block";
 import type { MaybePromise } from "../schema/common";
+import type { ProviderPreference } from "./types";
 
 // ---------------------------------------------------------------------------
 // Rule types
@@ -21,16 +30,20 @@ import type { MaybePromise } from "../schema/common";
 type LooseBlockContext = BlockContext<any, any, any, any>;
 
 /**
- * Returns a candidate model string.
- * If it resolves to null, undefined, empty string, or the same value as the
- * default, this rule is skipped and evaluation continues to the next rule.
+ * Returns a provider-preference value (provider name or ordered list of
+ * provider names). The first non-null result is collected into the
+ * {@link ModelSelection}'s `preferProvider` field. Evaluation does not
+ * short-circuit — `when` rules below still execute.
  */
-export type PreferRule<TInput = unknown, TCtx = LooseBlockContext> = {
-  prefer: (input: TInput, ctx: TCtx) => MaybePromise<string | undefined | null>;
+export type PreferProviderRule<TInput = unknown, TCtx = LooseBlockContext> = {
+  preferProvider: (
+    input: TInput,
+    ctx: TCtx
+  ) => MaybePromise<string | string[] | undefined | null>;
 };
 
 /**
- * Returns a boolean condition. When true, uses the `use` model.
+ * Returns a boolean condition. When true, replaces the model with `use`.
  */
 export type WhenRule<TInput = unknown, TCtx = LooseBlockContext> = {
   when: (input: TInput, ctx: TCtx) => MaybePromise<boolean>;
@@ -39,8 +52,38 @@ export type WhenRule<TInput = unknown, TCtx = LooseBlockContext> = {
 
 /** Union of all rule kinds. */
 export type ModelRule<TInput = unknown, TCtx = LooseBlockContext> =
-  | PreferRule<TInput, TCtx>
+  | PreferProviderRule<TInput, TCtx>
   | WhenRule<TInput, TCtx>;
+
+/**
+ * Final return shape of the {@link selectModel} callable. May be a bare
+ * model id (or array of ids) when no preference was collected, or an object
+ * carrying both the model and a `preferProvider` value when one was.
+ */
+export type ModelSelection =
+  | string
+  | string[]
+  | { model: string | string[]; preferProvider?: ProviderPreference };
+
+const LEGACY_PREFER_MIGRATION_MESSAGE =
+  "selectModel: the `prefer` rule has been replaced. Use `preferProvider` for\n" +
+  "provider-name semantics, or restructure as a `when` rule for model\n" +
+  "replacement. See FIX-512 for context.";
+
+/**
+ * Type-guard for the structured {@link ModelSelection} object form.
+ * Returns true when `v` is `{ model, preferProvider? }`.
+ */
+export function isModelSelection(
+  v: unknown
+): v is { model: string | string[]; preferProvider?: ProviderPreference } {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    "model" in v
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -50,52 +93,64 @@ export type ModelRule<TInput = unknown, TCtx = LooseBlockContext> =
  * Creates a ResolvableModel function from declarative rules.
  *
  * Evaluation order:
- * 1. All `prefer` rules — first that returns a non-null, non-empty, non-default string wins.
- * 2. All `when` rules — first that returns `true` wins, uses its `use` value.
- * 3. Default — returned as-is when no rule matches.
+ * 1. All rules walked in order; first non-null `preferProvider` is collected.
+ * 2. First truthy `when` rule replaces the model with its `use` value.
+ * 3. Default — used when no `when` rule matches.
+ *
+ * If a `preferProvider` was collected, the return is
+ * `{ model, preferProvider }`. Otherwise the bare model (string or array)
+ * is returned for backward compatibility with the generator block.
  *
  * @example
  * ```ts
- * model: selectModel("preset/fast", [
- *   { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+ * model: selectModel("intent/chat", [
+ *   { preferProvider: (_input, ctx) => ctx.user?.state.preferredProvider },
  *   { when: (_input, ctx) => ctx.session.state.thinkingStyle === "chain-of-thought",
- *     use: "preset/thinking-small" },
+ *     use: "intent/reason" },
  * ])
  * ```
  */
 export function selectModel<TInput = unknown, TCtx extends BlockContext = LooseBlockContext>(
   defaultModel: string | string[],
   rules: ModelRule<TInput, TCtx> | ModelRule<TInput, TCtx>[]
-): (input: any, ctx: any) => Promise<string | string[]> {
+): (input: any, ctx: any) => Promise<ModelSelection> {
   const ruleList = Array.isArray(rules) ? rules : [rules];
-  const defaultString = Array.isArray(defaultModel) ? null : defaultModel;
 
-  return async (input: TInput, ctx: TCtx): Promise<string | string[]> => {
-    // Phase 1: prefer rules — first non-null, non-default value wins
-    for (const rule of ruleList) {
-      if ("prefer" in rule) {
-        const candidate = await rule.prefer(input, ctx);
-        if (
-          candidate != null &&
-          candidate !== "" &&
-          (defaultString === null || candidate !== defaultString)
-        ) {
-          return candidate;
-        }
-      }
+  // Validate rule shapes at builder time so misuse fails immediately.
+  for (const rule of ruleList) {
+    if ("prefer" in rule) {
+      throw new Error(LEGACY_PREFER_MIGRATION_MESSAGE);
     }
+  }
 
-    // Phase 2: when rules — first truthy condition wins
+  return async (input: TInput, ctx: TCtx): Promise<ModelSelection> => {
+    let collectedPreferProvider: ProviderPreference | undefined;
+    let model: string | string[] = defaultModel;
+    let modelOverridden = false;
+
     for (const rule of ruleList) {
+      if ("preferProvider" in rule) {
+        if (collectedPreferProvider !== undefined) continue;
+        const candidate = await rule.preferProvider(input, ctx);
+        if (candidate != null && candidate !== "") {
+          collectedPreferProvider = candidate;
+        }
+        continue;
+      }
+
       if ("when" in rule) {
+        if (modelOverridden) continue;
         const matched = await rule.when(input, ctx);
         if (matched) {
-          return rule.use;
+          model = rule.use;
+          modelOverridden = true;
         }
       }
     }
 
-    // Phase 3: default
-    return defaultModel;
+    if (collectedPreferProvider !== undefined) {
+      return { model, preferProvider: collectedPreferProvider };
+    }
+    return model;
   };
 }

@@ -1,17 +1,28 @@
+/**
+ * Unified model resolver.
+ *
+ * Builds a callable that maps model strings (`provider/model`,
+ * `gateway/provider/model`, or `intent/<name>`) into resolved
+ * {@link GeneratorModel} instances. Handles automatic provider/gateway
+ * package loading, availability detection, intent fallback chains, and
+ * per-call provider preference overrides.
+ */
 import { createRequire } from "node:module";
-import type { GeneratorModel, ModelResolver } from "../types/model";
-import type { RetryPolicy, GatewayConfig, GatewayEntry, ModelGroupDefaults, ProviderPreference } from "./types";
-import type { ProviderAvailability } from "./providerDetection";
-import { detectAvailableProviders, parseModelString } from "./providerDetection";
-import { createFallbackModel } from "./fallbackModel";
+import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
+import type { RetryPolicy, GatewayConfig, GatewayEntry, ProviderPreference } from "./types";
+import { detectAvailableProviders, parseModelString, extractProviderName } from "./providerDetection";
+import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
-import { DEFAULT_PRESETS, type PresetConfig } from "./presets";
 import { reorderByPreference } from "./reorderByPreference";
+import { devWarnOnce } from "./dev-warn";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
+const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+
+/** Options for {@link createModelResolver}. */
 export interface CreateModelResolverOptions {
   /** Explicit API keys. Overrides env var detection. */
   keys?: Partial<Record<string, string>>;
@@ -23,9 +34,7 @@ export interface CreateModelResolverOptions {
    *   `gateways: { vercel: { type: "vercel", apiKey: "..." } }`
    */
   gateways?: Record<string, GatewayEntry>;
-  /** Custom preset definitions. Merged with built-in presets. */
-  presets?: Record<string, PresetConfig>;
-  /** Retry policy for fallback arrays and presets. */
+  /** Retry policy for fallback arrays and intents. */
   retryPolicy?: RetryPolicy;
   /**
    * AI SDK provider instances. Keys are provider prefixes used in model strings.
@@ -33,13 +42,23 @@ export interface CreateModelResolverOptions {
    */
   providers?: Record<string, unknown>;
   /**
-   * Default provider preference applied to preset resolution. See
-   * {@link ProviderPreference}. Stable-reorders each preset's model list by
+   * Default provider preference applied to intent resolution. See
+   * {@link ProviderPreference}. Stable-reorders each intent's candidate list by
    * provider bucket before availability filtering — preferred providers first
    * (in the order given), remaining models after in their original order.
-   * Omit to preserve the preset author's ordering.
+   * Omit to preserve the intent author's ordering.
    */
   providerPreference?: ProviderPreference;
+  /**
+   * Required when {@link CreateModelResolverOptions.intents} is non-empty. The
+   * model string returned when an intent has no available candidate, an
+   * unknown intent is referenced, or an intent's list is empty. Must be a
+   * valid model string (`provider/model` or `gateway/provider/model` — never
+   * `intent/*`).
+   */
+  defaultModel?: string;
+  /** Map of intent name → ordered candidate model strings. */
+  intents?: Record<string, string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,29 +188,77 @@ function resolveExplicitProviders(
 }
 
 // ---------------------------------------------------------------------------
+// Construction-time validation
+// ---------------------------------------------------------------------------
+
+function validateOptions(options: CreateModelResolverOptions | undefined): void {
+  if (!options) return;
+
+  if ("presets" in options) {
+    throw new Error(
+      "createModelResolver: 'presets' option has been removed. Migrate to intents."
+    );
+  }
+
+  const intents = options.intents;
+  const intentEntries = intents ? Object.entries(intents) : [];
+
+  if (intentEntries.length > 0) {
+    if (!options.defaultModel) {
+      throw new Error(
+        "createModelResolver: defaultModel is required when intents are configured"
+      );
+    }
+  }
+
+  if (options.defaultModel !== undefined) {
+    const parsed = parseModelString(options.defaultModel);
+    if (parsed.type === "intent") {
+      throw new Error(
+        `createModelResolver: defaultModel must not be an intent/* string (got "${options.defaultModel}").`
+      );
+    }
+  }
+
+  for (const [name, candidates] of intentEntries) {
+    if (!INTENT_NAME_REGEX.test(name)) {
+      throw new Error(
+        `createModelResolver: invalid intent name "${name}". Must match ${INTENT_NAME_REGEX.source}.`
+      );
+    }
+    for (const candidate of candidates) {
+      const parsed = parseModelString(candidate);
+      if (parsed.type === "intent") {
+        throw new Error(
+          `createModelResolver: intent "${name}" candidate "${candidate}" must not be an intent/* string.`
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
  * Creates a unified model resolver that auto-detects providers from env vars
- * and resolves model strings in `provider/model` format.
+ * and resolves model strings.
  *
  * Supports:
  * - `"provider/model"` — direct provider access (e.g., `"openai/gpt-5.4"`)
  * - `"gateway/provider/model"` — route through gateway (e.g., `"vercel/openai/gpt-5.4"`)
- * - `"preset/name"` — resolve a preset to a fallback model (e.g., `"preset/fast"`)
+ * - `"intent/name"` — resolve a configured intent to a fallback model
+ *   (e.g., `"intent/chat"`)
  */
 export function createModelResolver(
   options?: CreateModelResolverOptions
 ): ModelResolver {
+  validateOptions(options);
+
   const retryPolicy: Required<RetryPolicy> = {
     ...DEFAULT_RETRY_POLICY,
     ...options?.retryPolicy,
-  };
-
-  const allPresets: Record<string, PresetConfig> = {
-    ...DEFAULT_PRESETS,
-    ...options?.presets,
   };
 
   // Detect available providers from keys / env vars / gateways
@@ -215,14 +282,10 @@ export function createModelResolver(
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
 
   // Seed gateway cache with explicit instances from options.gateways.
-  // Accepts either a GatewayConfig (has `type` property) or a raw instance
-  // (has `languageModel` or `chat` method). Raw instances bypass dynamic
-  // loading via createRequire, which fails in bundled Next.js environments.
   if (options?.gateways) {
     for (const [name, entry] of Object.entries(options.gateways)) {
       if (isGatewayConfig(entry)) {
-        // Old-style config object — only seed if it has a pre-created instance
-        // (backwards compat). Otherwise, auto-detection handles it later.
+        // Old-style config object — auto-detection handles it later.
       } else if (entry !== null && entry !== undefined) {
         // Raw gateway instance — seed directly
         gatewayCache.set(name, {
@@ -234,17 +297,14 @@ export function createModelResolver(
   }
 
   function getProviderResolver(providerName: string): ProviderResolver | undefined {
-    // Check explicit providers first
     if (explicitProviders?.has(providerName)) {
       return explicitProviders.get(providerName)!;
     }
 
-    // Check cache
     if (providerCache.has(providerName)) {
       return providerCache.get(providerName)!;
     }
 
-    // Try to create from availability
     const info = availability.get(providerName);
     if (!info) return undefined;
 
@@ -254,7 +314,6 @@ export function createModelResolver(
       return resolver;
     }
 
-    // Source is gateway — use gateway resolver for this provider
     return undefined;
   }
 
@@ -276,6 +335,11 @@ export function createModelResolver(
     return (gateway as any).languageModel(gatewayModelId);
   }
 
+  /**
+   * Resolve a single direct or gateway model string (no intents). Throws on
+   * unavailable providers / missing packages. Used by both top-level
+   * resolution and intent candidate resolution.
+   */
   function resolveSingleModel(modelString: string): GeneratorModel {
     const cached = cache.get(modelString);
     if (cached) return cached;
@@ -284,17 +348,11 @@ export function createModelResolver(
 
     let model: GeneratorModel;
 
-    if (parsed.type === "preset") {
-      const preset = allPresets[parsed.presetName!];
-      if (!preset) {
-        const available = Object.keys(allPresets).join(", ");
-        throw new Error(
-          `Unknown preset "${parsed.presetName}". Available presets: ${available}`
-        );
-      }
-      model = resolvePreset(parsed.presetName!, preset);
+    if (parsed.type === "intent") {
+      throw new Error(
+        `resolveSingleModel cannot resolve intent strings; got "${modelString}".`
+      );
     } else if (parsed.type === "gateway") {
-      // Explicit gateway path: gateway/provider/model
       const gwType = parsed.gateway!;
       const gwInfo = GATEWAY_PACKAGES[gwType];
       if (!gwInfo) {
@@ -303,9 +361,6 @@ export function createModelResolver(
         );
       }
 
-      // If the gateway instance was already seeded (via explicit instance in
-      // options.gateways), resolveViaGateway will find it in the cache and
-      // the API key is unnecessary. Otherwise, look it up from config/env.
       if (!gatewayCache.has(gwType)) {
         const gwEnvVars: Record<string, string> = {
           vercel: "AI_GATEWAY_API_KEY",
@@ -338,16 +393,13 @@ export function createModelResolver(
       const providerName = parsed.provider!;
       const modelId = parsed.modelId!;
 
-      // Try direct provider first
       const resolver = getProviderResolver(providerName);
       if (resolver) {
         const languageModel = resolver(modelId);
         model = wrapAiSdkModel(languageModel, modelString);
       } else {
-        // Try gateway fallback
         const info = availability.get(providerName);
         if (info?.source === "gateway" && info.gatewayType) {
-          // Ensure the gateway is loaded (may already be cached from explicit instance)
           if (!gatewayCache.has(info.gatewayType) && info.apiKey) {
             gatewayCache.set(info.gatewayType, loadGatewaySync(info.gatewayType, info.apiKey));
           }
@@ -377,80 +429,103 @@ export function createModelResolver(
     return model;
   }
 
-  function resolvePreset(
-    presetName: string,
-    preset: PresetConfig
+  /** Soft variant: returns null on resolution failure instead of throwing. */
+  function tryResolveSingleModel(modelString: string): GeneratorModel | null {
+    try {
+      return resolveSingleModel(modelString);
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveDefaultModel(): GeneratorModel {
+    if (!options?.defaultModel) {
+      throw new Error(
+        `createModelResolver: defaultModel is not configured; cannot fall back from an intent.`
+      );
+    }
+    return resolveSingleModel(options.defaultModel);
+  }
+
+  function resolveIntent(
+    name: string,
+    callOptions?: ResolveModelCallOptions
   ): GeneratorModel {
-    // Tag every preset model with its provider before any resolution attempt,
-    // so the reorder pass can see the full preference landscape (including
-    // models that will fail to resolve).
-    const tagged = preset.models.map((modelString) => {
-      let providerName = "unknown";
-      try {
-        providerName = parseModelString(modelString).provider ?? "unknown";
-      } catch {
-        // malformed model strings stay tagged as 'unknown'
+    const candidates = options?.intents?.[name];
+    if (!candidates || candidates.length === 0) {
+      devWarnOnce(
+        `intent/${name}`,
+        `Unknown or empty intent "${name}"; falling back to defaultModel.`
+      );
+      return resolveDefaultModel();
+    }
+
+    const tagged = candidates.map((s) => ({
+      modelString: s,
+      providerName: extractProviderName(s),
+    }));
+
+    const effectivePreference =
+      callOptions?.preferProvider ?? options?.providerPreference;
+
+    const reordered = reorderByPreference(tagged, effectivePreference);
+
+    const resolved: FallbackModelEntry[] = [];
+    for (const entry of reordered) {
+      const model = tryResolveSingleModel(entry.modelString);
+      if (model) {
+        resolved.push({
+          modelId: entry.modelString,
+          providerName: entry.providerName,
+          model,
+        });
       }
-      return { modelString, providerName };
-    });
+    }
 
-    const ordered = reorderByPreference(tagged, options?.providerPreference);
-
-    const entries = ordered
-      .map((t) => {
-        try {
-          const model = resolveSingleModel(t.modelString);
-          return {
-            modelId: t.modelString,
-            providerName: t.providerName,
-            model,
-          };
-        } catch {
-          // Model not available — skip
-          return null;
-        }
-      })
-      .filter((m): m is NonNullable<typeof m> => m !== null);
+    if (resolved.length === 0) {
+      return resolveDefaultModel();
+    }
 
     return createFallbackModel({
-      groupName: presetName,
-      models: entries,
-      defaults: preset.defaults,
+      groupName: `intent/${name}`,
+      models: resolved,
       retryPolicy,
     });
   }
 
-  const resolver = ((modelId: string, _blockName?: string): GeneratorModel => {
+  const resolver = ((
+    modelId: string,
+    _blockName?: string,
+    callOptions?: ResolveModelCallOptions
+  ): GeneratorModel => {
+    const parsed = parseModelString(modelId);
+    if (parsed.type === "intent") {
+      return resolveIntent(parsed.intentName!, callOptions);
+    }
     return resolveSingleModel(modelId);
   }) as ModelResolver;
 
   resolver.resolveId = (
     modelId: string,
-    callOptions?: { prefer?: ProviderPreference }
+    callOptions?: { preferProvider?: ProviderPreference }
   ): string => {
     const parsed = parseModelString(modelId);
-    if (parsed.type !== "preset") return modelId;
+    if (parsed.type !== "intent") return modelId;
 
-    const preset = allPresets[parsed.presetName!];
-    if (!preset) return modelId;
+    const candidates = options?.intents?.[parsed.intentName!];
+    if (!candidates || candidates.length === 0) {
+      return options?.defaultModel ?? modelId;
+    }
 
-    // Call-site `prefer` overrides resolver-level `providerPreference`.
     const preference =
-      callOptions?.prefer !== undefined
-        ? callOptions.prefer
+      callOptions?.preferProvider !== undefined
+        ? callOptions.preferProvider
         : options?.providerPreference;
 
-    // Reorder by provider preference (if any), then walk for the first
-    // available model. Keeps resolveId consistent with the fallback chain.
-    const tagged = preset.models.map((modelString) => {
-      let providerName = "unknown";
-      try {
-        providerName = parseModelString(modelString).provider ?? "unknown";
-      } catch {
-        // malformed — leave as 'unknown'
-      }
-      return { modelString, providerName };
-    });
+    const tagged = candidates.map((modelString) => ({
+      modelString,
+      providerName: extractProviderName(modelString),
+    }));
     const ordered = reorderByPreference(tagged, preference);
 
     for (const t of ordered) {
@@ -458,10 +533,10 @@ export function createModelResolver(
         resolveSingleModel(t.modelString);
         return t.modelString;
       } catch {
-        // Model not available — try next
+        // try next
       }
     }
-    return modelId;
+    return options?.defaultModel ?? modelId;
   };
 
   return resolver;

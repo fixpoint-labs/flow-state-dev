@@ -4,7 +4,7 @@ sidebar_position: 7
 
 # Models
 
-Every generator block needs a model. The framework gives you multiple ways to specify one, from a single model string to a preset that handles fallback across providers automatically.
+Every generator block needs a model. The framework gives you multiple ways to specify one, from a single model string to a named intent that handles fallback across providers automatically.
 
 ## Model Strings
 
@@ -13,7 +13,7 @@ The simplest form. A slash-separated provider and model ID:
 ```ts
 const chat = generator({
   name: "chat",
-  model: "openai/gpt-5.4",
+  model: "openai/gpt-5.5",
   prompt: "You are a helpful assistant.",
 });
 ```
@@ -22,67 +22,56 @@ Supported formats:
 
 | Format | Example | What it does |
 |--------|---------|-------------|
-| `provider/model` | `"anthropic/claude-sonnet-4-6"` | Direct provider call |
-| `preset/name` | `"preset/small"` | Resolves to the best available model in that preset |
-| `gateway/provider/model` | `"vercel/openai/gpt-5.4"` | Routes through a gateway |
+| `provider/model` | `"anthropic/claude-sonnet-4.6"` | Direct provider call |
+| `intent/<name>` | `"intent/chat"` | Resolves to the first available model in the named intent |
+| `gateway/provider/model` | `"vercel/openai/gpt-5.5"` | Routes through a gateway |
 
-## Presets
+## Intents
 
-Presets are named model lists. When you write `model: "preset/small"`, the framework picks the first model in that preset's list that has a working API key configured. If that model fails at runtime, it retries then falls back to the next one.
+An intent is a named routing group. When you write `model: "intent/utility"`, the framework picks the first candidate in that intent's list that has a working API key configured. If that model fails at runtime, it retries then falls back to the next one. If the whole list is unreachable, it falls back to the resolver's `defaultModel`.
 
-This means one line of config gives you multi-provider redundancy:
+One line of config gives you multi-provider redundancy:
 
 ```ts
 const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
 });
 ```
 
-If your `ANTHROPIC_API_KEY` is set, this resolves to `claude-haiku-4-5`. If Anthropic is down, it tries OpenAI, then Google. Your generator code doesn't change.
+### Canonical intent names
 
-### Built-in Presets
+The framework documents six intent names. Apps configure their own model lists per intent — there are no built-in defaults. Pick names from this list when you can; add your own when you need to.
 
-The framework ships these presets:
+| Intent | Cognitive shape |
+|--------|-----------------|
+| `utility` | Bounded utility tasks: classification, routing, extraction, summarization, titles. Smallest reliable model. |
+| `chat` | User-facing assistant turns. App-tunable. |
+| `plan` | Goal decomposition, task graphs, supervisor planning. Errors compound — point this at your strongest model. |
+| `synthesize` | Combining intermediate artifacts; structured-JSON heavy work. **Doubles as the structured-JSON intent** — apps should point it at JSON-reliable models (Sonnet/GPT-class), not the cheapest tier. |
+| `code` | Code generation, review, debugging. |
+| `reason` | Open-ended deliberation that doesn't fit the other names. |
 
-| Preset | Models (tried in order) | Notes |
-|--------|------------------------|-------|
-| `small` | gpt-5.4-mini, claude-haiku-4-5, gemini-3-flash | `maxTokens: 1024` |
-| `medium` | gpt-5.4, claude-sonnet-4-6, gemini-2.5-pro | General-purpose |
-| `large` | claude-opus-4-6, gpt-5.4, gemini-3.1-pro-preview | Highest capability |
-| `thinking-small` | gpt-5.4, claude-sonnet-4-6, gemini-2.5-pro | Extended reasoning enabled |
-| `thinking-medium` | gpt-5.4, claude-sonnet-4-6, gemini-2.5-pro | Extended reasoning enabled |
-| `thinking-large` | claude-opus-4-6, gpt-5.4, gemini-3.1-pro-preview | Extended reasoning enabled |
-| `tiny` | gpt-5.4-nano, gemini-3.1-flash-lite-preview | Cheapest, fastest |
+### Configuring intents
 
-The thinking presets activate provider-specific reasoning features. For Anthropic models, this enables extended thinking with a 10,000-token budget. The models in thinking presets are the same tier as their non-thinking counterparts, but the generation config tells them to reason before answering.
-
-### Custom Presets
-
-Define your own or override built-ins when creating the model resolver:
+Intents are configured on the model resolver:
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  presets: {
-    coding: {
-      models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-      defaults: { maxTokens: 8192 },
-    },
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    plan: ["anthropic/claude-opus-4.7"],
+    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
   },
 });
 ```
 
-Then use it like any other preset:
-
-```ts
-const coder = generator({
-  name: "coder",
-  model: "preset/coding",
-});
-```
+`defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `gateway/provider/model` string — never another `intent/*`. See [Custom Model Resolver](/docs/advanced/custom-model-resolver) for the full options reference.
 
 ## Array Fallback
 
@@ -106,8 +95,8 @@ The `model` field accepts a function. It receives the block's input and context,
 const adaptive = generator({
   name: "adaptive",
   model: (input, ctx) => {
-    if (input.message.length > 2000) return "preset/large";
-    return "preset/small";
+    if (input.message.length > 2000) return "intent/reason";
+    return "intent/chat";
   },
   prompt: "You are a helpful assistant.",
 });
@@ -124,37 +113,27 @@ import { generator, selectModel } from "@flow-state-dev/core";
 
 const assistant = generator({
   name: "assistant",
-  model: selectModel("preset/small", [
-    { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+  model: selectModel("intent/chat", [
+    { preferProvider: (_input, ctx) => ctx.user?.state.preferredProvider },
   ]),
   prompt: "You are a helpful assistant.",
 });
 ```
 
-Rules are evaluated in two phases. **Prefer rules** run first. Each returns a candidate model string. The first non-null value that differs from the default wins. **When rules** run second. Each has a boolean condition and a fixed model to use when it's true.
+Rules are evaluated in two phases. **PreferProvider rules** run first and *collect* — every non-null result contributes a provider-name preference (`"anthropic"`, `"openai"`, etc.) that the resolver uses to reorder the intent's candidate list. **When rules** run second. Each has a boolean condition and a fixed model to use when it's true.
 
 ```ts
-model: selectModel("preset/small", [
-  // Phase 1: prefer — check user override
-  { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+model: selectModel("intent/chat", [
+  // Phase 1: preferProvider — provider-name preference, collected into the resolver
+  { preferProvider: (_input, ctx) => ctx.user?.state.preferredProvider },
 
-  // Phase 2: when — condition-based overrides
-  { when: (input) => input.message.length > 5000, use: "preset/large" },
-  { when: (_input, ctx) => ctx.session.state.mode === "create", use: "preset/medium" },
+  // Phase 2: when — condition-based model swaps
+  { when: (input) => input.message.length > 5000, use: "intent/reason" },
+  { when: (_input, ctx) => ctx.session.state.mode === "create", use: "intent/plan" },
 ])
 ```
 
-If no rule matches, the default is returned. Prefer rules that return `null`, `undefined`, an empty string, or the default value itself are skipped, so a user state field that hasn't been set yet falls through cleanly.
-
-This is what the kitchen sink example uses. The user picks a preset from the UI, the selection lands in user state, and a `prefer` rule picks it up at generation time:
-
-```ts
-model: selectModel("preset/small", {
-  prefer: (_input, ctx) => ctx.user?.state.preferredModel,
-})
-```
-
-Both `prefer` and `when` callbacks can be async.
+If no `when` matches, the default is returned. `preferProvider` returns a *provider name* (or array of names), not a model string — the two compose: `when` chooses the intent, `preferProvider` shapes ordering inside it. Both callbacks can be async.
 
 ## User-Facing Model Selection
 
@@ -168,15 +147,15 @@ Here's the flow-level setup:
 
 ```ts
 const userStateSchema = z.object({
-  preferredModel: z.string().default("preset/small"),
+  selectedModel: z.string().default("anthropic/claude-sonnet-4.6"),
 });
 
-const setPreferredModel = handler({
-  name: "set-preferred-model",
-  inputSchema: z.object({ preferredModel: z.string() }),
+const setSelectedModel = handler({
+  name: "set-selected-model",
+  inputSchema: z.object({ selectedModel: z.string() }),
   userStateSchema,
   execute: async (input, ctx) => {
-    await ctx.user!.patchState({ preferredModel: input.preferredModel });
+    await ctx.user!.patchState({ selectedModel: input.selectedModel });
   },
 });
 
@@ -184,7 +163,7 @@ const kitchenSink = defineFlow({
   kind: "my-app",
   actions: {
     chat: { block: chatPipeline, inputSchema },
-    setPreferredModel: { block: setPreferredModel, inputSchema: z.object({ preferredModel: z.string() }) },
+    setSelectedModel: { block: setSelectedModel, inputSchema: z.object({ selectedModel: z.string() }) },
   },
   user: { stateSchema: userStateSchema },
 });
@@ -193,7 +172,7 @@ const kitchenSink = defineFlow({
 On the client side, call the action when the user picks a new model. The change takes effect on the next generation — no restart needed.
 
 ```ts
-await session.sendAction("setPreferredModel", { preferredModel: "preset/large" });
+await session.sendAction("setSelectedModel", { selectedModel: "anthropic/claude-opus-4.7" });
 ```
 
 Surface the current selection through the user scope's `client` block so the UI stays in sync:
@@ -204,7 +183,7 @@ user: {
   client: {
     derived: {
       preferences: (ctx) => ({
-        preferredModel: ctx.state.preferredModel,
+        selectedModel: ctx.state.selectedModel,
       }),
     },
   },
@@ -255,28 +234,6 @@ const resolver = createModelResolver({
   },
 });
 ```
-
-## Preset Defaults
-
-Presets can carry default generation settings that apply to every model in the group:
-
-```ts
-const resolver = createModelResolver({
-  presets: {
-    thinking: {
-      models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-      defaults: {
-        maxTokens: 4096,
-        providerOptions: {
-          anthropic: { thinking: { type: "enabled", budgetTokens: 10000 } },
-        },
-      },
-    },
-  },
-});
-```
-
-Provider-specific options are filtered at runtime. If the preset resolves to an OpenAI model, the `anthropic` options are stripped automatically.
 
 ## Prompt Caching
 

@@ -53,8 +53,8 @@ export interface FSDProviderConfig {
   /** Retry policy for failed model calls. */
   retryPolicy?: RetryPolicy;
   /**
-   * Default provider preference applied when a call-site `ResolveOptions.prefer`
-   * is omitted. Accepts a provider name or an ordered list. The resolver
+   * Default provider preference applied when a call-site
+   * `ResolveOptions.preferProvider` is omitted. Accepts a provider name or an ordered list. The resolver
    * performs a stable reorder of the group's model list: preferred buckets
    * first (in the order given), remaining models after, in their original
    * relative order. Fully backward-compatible — omitting this preserves the
@@ -76,14 +76,18 @@ export type ProviderPreference = string | string[];
 
 /**
  * Options passed to a provider call site to influence model resolution
- * without editing the preset definition.
+ * without editing the group definition.
  */
 export interface ResolveOptions {
-  /** Preferred provider(s). Overrides any provider-level default when set. */
-  prefer?: ProviderPreference;
+  /**
+   * Preferred provider(s). Overrides any provider-level default when set.
+   * Renamed from the legacy `prefer` field — passing `prefer` now throws a
+   * migration error.
+   */
+  preferProvider?: ProviderPreference;
   /**
    * When true, throws if no model from the preferred providers is available.
-   * When false (default), falls back to the full preset in its natural order.
+   * When false (default), falls back to the full group in its natural order.
    */
   strict?: boolean;
 }
@@ -153,9 +157,10 @@ export interface RetryPolicy {
 
 export interface FSDProvider {
   /**
-   * Get a GeneratorModel for a named group. Optional `ResolveOptions.prefer`
-   * reorders the group's models by provider before availability filtering and
-   * fallback. Call-site `prefer` overrides any provider-level default.
+   * Get a GeneratorModel for a named group. Optional
+   * `ResolveOptions.preferProvider` reorders the group's models by provider
+   * before availability filtering and fallback. Call-site `preferProvider`
+   * overrides any provider-level default.
    */
   (groupName: string, options?: ResolveOptions): GeneratorModel;
   /** Explicit form: get a language model for a named group. */
@@ -163,8 +168,8 @@ export interface FSDProvider {
   /** List available groups. */
   groups(): string[];
   /**
-   * Check which models in a group are available. When `options.prefer` is
-   * supplied, the returned list is ordered after the preference reorder
+   * Check which models in a group are available. When
+   * `options.preferProvider` is supplied, the returned list is ordered after the preference reorder
    * (same order the fallback chain will walk).
    */
   available(groupName: string, options?: ResolveOptions): string[];
