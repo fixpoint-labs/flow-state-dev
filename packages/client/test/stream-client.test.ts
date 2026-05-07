@@ -279,6 +279,50 @@ describe("createSSEClient", () => {
 
     handle.close();
   });
+
+  it("dispatches item.updated events to the onItemUpdated callback", async () => {
+    const onItemUpdated = vi.fn();
+
+    const streamBody = requestEventFrame({
+      id: "req_u:1",
+      event: "item.updated",
+      data: {
+        stream: "request",
+        type: "item.updated",
+        requestId: "req_u",
+        sequence_number: 1,
+        ts: 1,
+        itemId: "item_x",
+        patch: { status: "completed" }
+      }
+    });
+
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      new Response(streamBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      })
+    );
+
+    const handle = createSSEClient({
+      url: "/api/flows/demo/requests/req_u/stream",
+      fetcher,
+      onItemUpdated
+    });
+
+    await flushSSE();
+
+    expect(onItemUpdated).toHaveBeenCalledTimes(1);
+    expect(onItemUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "item.updated",
+        itemId: "item_x",
+        patch: { status: "completed" }
+      })
+    );
+
+    handle.close();
+  });
 });
 
 describe("createSSEClientFromResponse", () => {

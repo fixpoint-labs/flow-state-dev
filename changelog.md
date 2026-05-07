@@ -27,6 +27,23 @@ The in-process active-streams registry is replaced by `RequestStore.subscribeToE
 - Conformance harness `createRequestStoreConformanceTests` shipped via `@flow-state-dev/server/testing`; memory, SQLite, and filesystem stores all run it.
 - Long-running flows are no longer at risk of registry eviction — the legacy 5-minute stale-stream TTL is gone. SSE wire format and `createFlowApiRouter()` shape are unchanged.
 
+### Lazy collection state, query interface, and resource manifest (FIX-427) — breaking
+
+- Collection snapshots dropped the eager `items` map; entries now carry `count` (always) and an opt-in `prefetched` window. Per-item `clientData` in the window requires the new `client.state.read` permission.
+- New paginated list endpoint (`GET /sessions/:id/resources/:ref?limit=&offset=&topicPrefix=`) and single-item state endpoint (`GET /sessions/:id/resources/:ref/:topic`). Pagination returns `{ offset, limit, total, hasMore, nextOffset }`; the get-state endpoint returns `null` body when absent.
+- New manifest endpoint (`GET /sessions/:id/manifest`) describes every public resource on a flow — kind, scope, pattern, declared permissions, prefetchWindow. Static per `flowKind`.
+- `defineResourceCollection` gains `prefetchWindow?: number`. Items are selected by **lexicographic storage-key sort**, not by recency.
+- React surface: `useResourceCollection` returns `{ list, get, query, actions, refetch, prefetched, count }`; new `useResourceCollectionList`, `useResourceCollectionItem`, and `useResourceManifest` hooks for the common cases.
+
+### `item.updated` SSE event for shallow-merge field deltas (FIX-572)
+
+Items whose non-text fields evolve between `item.added` and `item.done` now have a structured update primitive on the wire, replacing the prior choice between re-emitting whole items or never reflecting mid-flight state.
+
+- New `item.updated` SSE event carrying `{ itemId, patch }` with shallow top-level merge semantics. Producers re-supply nested objects in full as new top-level values; identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped server-side and ignored client-side.
+- New `emitItemUpdated(itemId, patch)` on `ResponseEmitter`, sibling to `emitItemAdded` / `emitItemDone`. Also reachable via `response.emit({ type: "item.updated", ... })`. Updates for an unknown `itemId` are dropped with a debug event; updates after `item.done` apply normally.
+- Client SSE dispatcher routes the event to a new `onItemUpdated` callback. The DevTool stream consumer and `@flow-state-dev/react`'s `useRequestStream` apply the merge to their items map without touching item order.
+- No producers ship in this change — `block_trace` and `container` lifecycles adopt the primitive in follow-up PRs.
+
 ### Debate pattern (FIX-328)
 
 New `debate` factory in `@flow-state-dev/patterns` for multi-round adversarial argumentation with assigned stances and a single judge that runs once at the end. Built on the Round Robin chassis with three structural specializations: every debater carries an assigned `stance`, every debater sees all prior arguments from all agents, and the judge produces a structured `{ verdict, winner, reasoning }` after the loop instead of terminating it round-by-round.

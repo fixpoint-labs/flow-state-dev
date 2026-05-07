@@ -10,6 +10,8 @@ export type {
 
 export { isEphemeralContent } from "./content";
 
+export { ITEM_UPDATE_INVARIANT_KEYS } from "./events";
+
 export type {
   AgentType,
   BlockDebugItem,
@@ -57,6 +59,7 @@ export type {
   EventBase,
   ItemAddedEvent,
   ItemDoneEvent,
+  ItemUpdatedEvent,
   PingEvent,
   RequestDebugEvent,
   RequestEventBase,

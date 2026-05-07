@@ -270,23 +270,33 @@ function countRecords(data: Record<string, unknown>): number {
 
 /**
  * Snapshot entries arrive as wrappers, never raw state — single resources are
- * `{ clientData?, content?, internal? }`, collections are `{ items, internal? }`.
- * Unwrap so the displayed body and key count reflect actual data, not envelope.
+ * `{ clientData?, content?, internal? }`. Collections (FIX-427) are
+ * `{ count?, prefetched?, internal? }`. The displayed body reflects the
+ * inlined `prefetched` window when set; the count badge reflects the always-
+ * emitted total cardinality.
  */
 function unwrapResourceEntry(entry: Record<string, unknown>): {
   data: unknown;
   isCollection: boolean;
   hasContent: boolean;
   isInternal: boolean;
+  count: number | null;
 } {
   const isInternal = entry.internal === true;
-  if ("items" in entry) {
-    const items = entry.items;
+  if ("count" in entry || "prefetched" in entry) {
+    const prefetched = entry.prefetched as
+      | Array<{ topic: string; clientData?: unknown }>
+      | undefined;
+    const asMap: Record<string, unknown> = {};
+    if (prefetched !== undefined) {
+      for (const p of prefetched) asMap[p.topic] = { clientData: p.clientData };
+    }
     return {
-      data: items,
+      data: asMap,
       isCollection: true,
       hasContent: false,
       isInternal,
+      count: typeof entry.count === "number" ? entry.count : null,
     };
   }
   return {
@@ -294,6 +304,7 @@ function unwrapResourceEntry(entry: Record<string, unknown>): {
     isCollection: false,
     hasContent: entry.content !== undefined,
     isInternal,
+    count: null,
   };
 }
 
@@ -309,22 +320,29 @@ function ResourceItem({
   isNew: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const { data, isCollection, hasContent, isInternal } = unwrapResourceEntry(entry);
+  const { data, isCollection, hasContent, isInternal, count } = unwrapResourceEntry(entry);
 
-  // For collections: count items in the map.
-  // For single resources: sum across top-level fields where arrays contribute
-  // their length and scalars contribute 1 if non-zero/non-null. This gives a
-  // "how much is actually in here" reading rather than just field count
-  // (e.g. { observations: [a,b,c], turnCounter: 5 } → 4 records, not 2 fields).
-  const itemCount = isCollection && data && typeof data === "object"
+  // Collection count: prefer the explicit `count` field from the snapshot
+  // (FIX-427); fall back to the items map size when the legacy escape hatch
+  // surfaced an eager `items` map. Single resources still show a record sum.
+  const inlinedCount = isCollection && data && typeof data === "object"
     ? Object.keys(data as Record<string, unknown>).length
     : null;
   const recordCount = !isCollection && data && typeof data === "object"
     ? countRecords(data as Record<string, unknown>)
     : null;
+  const itemCount = isCollection
+    ? count !== null
+      ? count
+      : inlinedCount
+    : null;
+  const truncated =
+    isCollection && itemCount !== null && inlinedCount !== null && inlinedCount < itemCount;
   const countLabel = isCollection
     ? itemCount !== null
-      ? `${itemCount} ${itemCount === 1 ? "item" : "items"}`
+      ? truncated
+        ? `${inlinedCount}/${itemCount} ${itemCount === 1 ? "item" : "items"}`
+        : `${itemCount} ${itemCount === 1 ? "item" : "items"}`
       : null
     : recordCount !== null
       ? `${recordCount} ${recordCount === 1 ? "record" : "records"}`

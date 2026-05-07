@@ -413,4 +413,103 @@ describe("streaming runtime", () => {
     expect(resumed).toHaveLength(2);
     expect(resumed.every(e => e.type !== "ping")).toBe(true);
   });
+
+  it("emitItemUpdated merges patch into the server mirror and emits item.updated", async () => {
+    const emitter = createResponseEmitter({
+      requestId: "req_update",
+      now: () => 1
+    });
+
+    const item = makeMessageItem({
+      requestId: "req_update",
+      itemIndex: 0,
+      ts: 1
+    });
+    await emitter.emitItemAdded(item);
+    await emitter.emitItemUpdated(item.id, { status: "in_progress" });
+    await emitter.emitItemDone({ ...item, status: "completed" });
+
+    const events = emitter.getEvents();
+    const update = events.find((event) => event.type === "item.updated");
+    expect(update).toMatchObject({
+      type: "item.updated",
+      itemId: item.id,
+      patch: { status: "in_progress" }
+    });
+
+    // The server-side mirror reflects the latest snapshot — the final
+    // item.done overrides the in-flight status.
+    const finalItem = emitter.getItems().find((i) => i.id === item.id);
+    expect(finalItem?.status).toBe("completed");
+  });
+
+  it("emitItemUpdated strips identity-invariant keys from patch", async () => {
+    const emitter = createResponseEmitter({
+      requestId: "req_strip",
+      now: () => 1
+    });
+
+    const item = makeMessageItem({
+      requestId: "req_strip",
+      itemIndex: 0,
+      ts: 1
+    });
+    await emitter.emitItemAdded(item);
+    await emitter.emitItemUpdated(item.id, {
+      id: "evil_other",
+      type: "status",
+      provenance: { blockName: "spoof", blockInstanceId: "x", phase: "main" },
+      transient: true,
+      status: "completed"
+    } as Record<string, unknown>);
+
+    const events = emitter.getEvents();
+    const update = events.find((event) => event.type === "item.updated");
+    expect(update?.type).toBe("item.updated");
+    if (update?.type !== "item.updated") throw new Error("unreachable");
+    expect(update.patch).toEqual({ status: "completed" });
+
+    const merged = emitter.getItems().find((i) => i.id === item.id);
+    expect(merged?.id).toBe(item.id);
+    expect(merged?.type).toBe("message");
+    expect(merged?.provenance).toEqual(item.provenance);
+  });
+
+  it("ignores emitItemUpdated for unknown itemId without throwing", async () => {
+    const emitter = createResponseEmitter({
+      requestId: "req_unknown",
+      now: () => 1
+    });
+
+    const result = await emitter.emitItemUpdated("ghost", { status: "failed" });
+    expect(result).toBeUndefined();
+
+    const events = emitter.getEvents();
+    expect(events.filter((event) => event.type === "item.updated")).toHaveLength(0);
+  });
+
+  it("routes draft item.updated through emit() to the tracking helper", async () => {
+    const emitter = createResponseEmitter({
+      requestId: "req_route",
+      now: () => 1
+    });
+
+    const item = makeMessageItem({
+      requestId: "req_route",
+      itemIndex: 0,
+      ts: 1
+    });
+    await emitter.emitItemAdded(item);
+    await emitter.emit({
+      type: "item.updated",
+      itemId: item.id,
+      patch: { status: "in_progress" }
+    });
+
+    const events = emitter.getEvents();
+    const update = events.find((event) => event.type === "item.updated");
+    expect(update?.type).toBe("item.updated");
+    if (update?.type !== "item.updated") throw new Error("unreachable");
+    expect(update.patch).toEqual({ status: "in_progress" });
+  });
 });

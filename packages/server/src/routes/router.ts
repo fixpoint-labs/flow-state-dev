@@ -185,6 +185,27 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       ref: p.ref,
       topic: p.topic
     }))
+  ],
+  list_collection_state: [
+    entry("GET", "/sessions/:sessionId/resources/:ref", (p) => ({
+      kind: "list_collection_state",
+      sessionId: p.sessionId,
+      ref: p.ref
+    }))
+  ],
+  get_collection_item_state: [
+    entry("GET", "/sessions/:sessionId/resources/:ref/:topic", (p) => ({
+      kind: "get_collection_item_state",
+      sessionId: p.sessionId,
+      ref: p.ref,
+      topic: p.topic
+    }))
+  ],
+  get_resource_manifest: [
+    entry("GET", "/sessions/:sessionId/manifest", (p) => ({
+      kind: "get_resource_manifest",
+      sessionId: p.sessionId
+    }))
   ]
 };
 

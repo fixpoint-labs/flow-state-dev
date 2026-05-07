@@ -9,6 +9,7 @@ import type {
   ItemAddedEvent,
   ItemDoneEvent,
   ItemProvenance,
+  ItemUpdatedEvent,
   OutputItem,
   RequestDebugEvent,
   RequestCreatedEvent,
@@ -19,6 +20,7 @@ import type {
   RequestStreamEvent,
   ResourceChangeItem
 } from "@flow-state-dev/core/items";
+import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
 
 export type { RuntimeItem } from "../execution/internal/response";
 import type { RuntimeItem } from "../execution/internal/response";
@@ -104,6 +106,24 @@ function isRequestStreamDraft(value: unknown): value is {
 
   const candidate = value as Record<string, unknown>;
   return typeof candidate.type === "string";
+}
+
+/**
+ * Removes identity-invariant keys from an `item.updated` patch so producers
+ * cannot accidentally rewrite the item's identity when emitting a delta.
+ * Returns a fresh object — never mutates the caller's input.
+ */
+function stripInvariantKeys(
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(patch)) {
+    if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) {
+      continue;
+    }
+    result[key] = patch[key];
+  }
+  return result;
 }
 
 function isOutputItem(value: unknown): value is OutputItem {
@@ -206,6 +226,19 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       return;
     }
 
+    if (
+      draft.type === "item.updated" &&
+      typeof draft.itemId === "string" &&
+      typeof draft.patch === "object" &&
+      draft.patch !== null
+    ) {
+      await this.emitItemUpdated(
+        draft.itemId,
+        draft.patch as Record<string, unknown>
+      );
+      return;
+    }
+
     await this.appendEvent(
       event as RequestEventDraft<RequestStreamEvent>
     );
@@ -272,6 +305,45 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
     this.itemHooks?.onItemDone?.(interceptedItem);
     return event;
+  }
+
+  /**
+   * Emits an `item.updated` event applying a shallow top-level merge of
+   * `patch` to the previously-emitted item. Identity-invariant keys
+   * (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped
+   * from the patch before it reaches the wire and before the server-side
+   * mirror is updated.
+   *
+   * Out-of-order resilience: if `itemId` is unknown (no prior `item.added`
+   * for it on this emitter), nothing is emitted and a debug event is
+   * recorded for diagnosis. Updates after `item.done` are applied normally.
+   */
+  async emitItemUpdated(
+    itemId: string,
+    patch: Record<string, unknown>
+  ): Promise<RequestStreamEventWithId | undefined> {
+    const existing = this.itemsById.get(itemId);
+    if (existing === undefined) {
+      await this.emitDebug("response.emit.item_updated.unknown_id", {
+        itemId
+      });
+      return undefined;
+    }
+
+    const sanitized = stripInvariantKeys(patch);
+    const merged = { ...existing, ...sanitized } as OutputItem;
+    this.itemsById.set(itemId, merged);
+
+    this.onLogEvent?.("item.updated", {
+      itemId,
+      patchKeys: Object.keys(sanitized)
+    });
+
+    return this.appendEvent<ItemUpdatedEvent>({
+      type: "item.updated",
+      itemId,
+      patch: sanitized
+    });
   }
 
   /**

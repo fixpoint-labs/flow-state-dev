@@ -37,15 +37,19 @@ export function useResource(
     const resources = session.snapshot?.resources;
     if (!resources) return undefined;
 
-    // Search across scopes — session first, then user, then org
+    // Search across scopes — session first, then user, then org.
+    // Distinguish single resource from collection: collection entries (FIX-427)
+    // carry `count` and/or `prefetched`; single resources carry `clientData`/
+    // `content`/`internal`. Skip the candidate when it looks like a collection.
     for (const scope of ["session", "user", "org"] as const) {
       const scopeResources = resources[scope];
       if (scopeResources && ref in scopeResources) {
-        const candidate = scopeResources[ref] as ResourceSnapshotEntry;
-        // Distinguish single resource from collection (collections have `items` key)
-        if (!("items" in candidate)) {
-          return candidate;
-        }
+        const candidate = scopeResources[ref] as ResourceSnapshotEntry & {
+          count?: unknown;
+          prefetched?: unknown;
+        };
+        if ("count" in candidate || "prefetched" in candidate) continue;
+        return candidate;
       }
     }
     return undefined;

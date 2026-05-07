@@ -248,6 +248,22 @@ The container pattern is how the framework's built-in patterns (plan-and-execute
 
 Primary output types (`message`, `reasoning`, `status`, `error`) always render in the main stream, even when owned by a container.
 
+## Updating an item after emission
+
+For items whose fields evolve between `item.added` and `item.done`, the runtime emitter exposes a structured update primitive instead of forcing producers to re-emit the whole item:
+
+```ts
+ctx.response.emit({
+  type: "item.updated",
+  itemId: "item_42",
+  patch: { status: "completed", payload: { /* new top-level value */ } }
+});
+```
+
+The patch is a shallow top-level merge — each key in `patch` replaces the existing value at that key on the tracked item. Nested fields require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped server-side and never apply.
+
+Prefer this over re-emitting `item.added` + `item.done` for the same id when only a few fields change. Consumers see fewer flicker frames and the wire stays compact. Updates after `item.done` apply normally; updates referencing an unknown `itemId` are dropped with a debug event.
+
 ## Choosing the right approach
 
 | Scenario | What to use |
