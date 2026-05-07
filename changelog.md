@@ -4,6 +4,10 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Action POST disconnect no longer kills runAction
+
+The HTTP request signal was previously propagated into `runAction` via `actionInput.signal`, so a tab refresh or browser-side cancel of the originating POST aborted the in-flight execution and marked the record `interrupted`. Subsequent reconnect-via-GET-stream then only saw the catch-up replay and no live continuation. The action route no longer sets `signal: request.signal`; runAction's own registered abort controller remains the path for explicit cancellation, and the SSE wire still closes on disconnect at the readable-stream layer. Refresh midstream now resumes against the still-running request.
+
 ### Store-driven live tail (FIX-569)
 
 The in-process active-streams registry is replaced by `RequestStore.subscribeToEvents`. SSE clients can now tail an in-flight request from any instance, including multi-instance Postgres deployments and serverless deployments with shared Postgres.
