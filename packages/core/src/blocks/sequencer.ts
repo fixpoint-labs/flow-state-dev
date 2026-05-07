@@ -28,11 +28,13 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import { getRequestWorkPool } from "../execution/request-work-pool";
 import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
 let inlineBlockCounter = 0;
+let sequencerScopeCounter = 0;
 
 function autoInlineName(): string {
   inlineBlockCounter += 1;
@@ -604,12 +606,39 @@ function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): boolean
 }
 
 function createRuntimeState(): SequencerRuntimeState {
+  sequencerScopeCounter += 1;
   return {
     stepHistory: [],
     loopCounts: new Map<string, number>(),
     workTasks: [],
-    stateVersion: 0
+    stateVersion: 0,
+    scopeId: `seq_scope_${sequencerScopeCounter}`
   };
+}
+
+/**
+ * Dispatch a background work task. When the request-scoped pool is present
+ * (server runtime), push to it tagged with the sequencer's scopeId. When
+ * absent (unit-test contexts), fall back to the per-sequencer work list so
+ * the inner-sequencer auto-await path keeps working unchanged.
+ */
+function dispatchWorkTask(
+  ctx: BlockContext,
+  runtime: SequencerRuntimeState,
+  name: string,
+  rawPromise: Promise<unknown>
+): void {
+  const pool = getRequestWorkPool(ctx);
+  if (pool !== undefined) {
+    pool.addTask({ promise: rawPromise, meta: { name, scopeId: runtime.scopeId } });
+    return;
+  }
+
+  // Fallback: per-sequencer auto-await path (unit-test contexts).
+  const wrapped = rawPromise
+    .then((result): WorkResult => ({ name, status: "fulfilled", value: result }))
+    .catch((error): WorkResult => ({ name, status: "rejected", reason: toError(error) }));
+  runtime.workTasks.push({ name, promise: wrapped });
 }
 
 function runSequencerOperations(
@@ -693,14 +722,15 @@ function runSequencerOperations(
           }
         }
 
-        // Auto-await any outstanding .work() tasks so the block (and its
-        // parent stream) stays alive until background work finishes.
-        if (runtime.workTasks.length > 0) {
+        // Per-sequencer auto-await fallback. Runs only when the request
+        // executor's `_requestWorkPool` is absent (unit-test contexts). Under
+        // the request-scoped pool model, inner sequencers do not block on
+        // their own background work — the request executor drains the pool
+        // exactly once before terminal status. See FIX-554.
+        const hasRequestPool = getRequestWorkPool(ctx) !== undefined;
+        if (!hasRequestPool && runtime.workTasks.length > 0) {
           const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
           let remaining = pending.length;
-          // Signal-only updates: undefined preserves the current status message
-          // while refreshing blocked/backgroundTasks so the client can unblock
-          // sendAction without the in-flight indicator flickering to blank.
           ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
 
           await Promise.all(pending.map((t) =>
@@ -1211,17 +1241,18 @@ function createSequencer<TInput, TOutput>(
               workers.push(worker());
             }
 
-            // Wrap the whole batch as a single work task so auto-await handles cleanup.
+            // Wrap the whole batch as a single work task. Pushed to the
+            // request-scoped pool when present, otherwise the per-sequencer
+            // fallback list (see dispatchWorkTask).
             const batchName = `forEachBackground[${items.length}]`;
-            const promise = Promise.all(workers).then((): WorkResult => {
+            const rawBatchPromise = Promise.all(workers).then(() => {
               const failed = iterationResults.filter((r) => r.status === "rejected");
               if (failed.length > 0) {
-                return { name: batchName, status: "rejected", reason: failed[0].reason };
+                throw failed[0].reason ?? new Error(`forEachBackground batch failed`);
               }
-              return { name: batchName, status: "fulfilled" };
+              return undefined;
             });
-
-            runtime.workTasks.push({ name: batchName, promise });
+            dispatchWorkTask(ctx, runtime, batchName, rawBatchPromise);
             return { value };
           }
         },
@@ -1368,21 +1399,8 @@ function createSequencer<TInput, TOutput>(
             const path = childBlockPath(ctx, "work", stepIndex);
             // work() dispatches run in the "work" phase so nested generators
             // see phase === "work" and apply the trace default for emissions.
-            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
-              .then(
-                (result): WorkResult => ({
-                  name,
-                  status: "fulfilled",
-                  value: result
-                })
-              )
-              .catch((error): WorkResult => ({
-                name,
-                status: "rejected",
-                reason: toError(error)
-              }));
-
-            runtime.workTasks.push({ name, promise });
+            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }
         },
@@ -1425,21 +1443,8 @@ function createSequencer<TInput, TOutput>(
 
             const path = childBlockPath(ctx, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
-            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
-              .then(
-                (result): WorkResult => ({
-                  name,
-                  status: "fulfilled",
-                  value: result
-                })
-              )
-              .catch((error): WorkResult => ({
-                name,
-                status: "rejected",
-                reason: toError(error)
-              }));
-
-            runtime.workTasks.push({ name, promise });
+            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }
         },
@@ -1454,7 +1459,33 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "waitForWork",
-          run: async (value, _ctx, runtime) => {
+          run: async (value, ctx, runtime) => {
+            const pool = getRequestWorkPool(ctx);
+            if (pool !== undefined) {
+              // No early-return on hasPendingForScope: a task can settle
+              // (resolve or reject) between dispatch and this barrier, but
+              // settled-but-undrained entries still need to be drained so
+              // their failures surface. drainScope is a no-op when no
+              // entries match — let it handle the empty case.
+              const result = await withTimeout(
+                pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError }),
+                options?.timeoutMs,
+                "waitForWork"
+              );
+              // drainScope already throws when failOnError is true and any
+              // task failed. With failOnError off, log failures so they still
+              // surface in diagnostics — matches the per-sequencer auto-await
+              // log behavior so silent failures don't slip through.
+              if (options?.failOnError !== true) {
+                for (const f of result.failed) {
+                  // eslint-disable-next-line no-console
+                  console.error(`[sequencer] Background work "${f.meta.name}" failed:`, (f.reason as { message?: string } | undefined)?.message ?? f.reason);
+                }
+              }
+              return { value };
+            }
+
+            // Per-sequencer fallback (unit-test path).
             if (runtime.workTasks.length === 0) {
               return { value };
             }

@@ -16,6 +16,24 @@ export async function ensureDirectory(rootDir: string): Promise<void> {
   await mkdir(rootDir, { recursive: true });
 }
 
+/**
+ * Crash-safe write of `content` to `target` via a unique temp file plus
+ * `rename`. The temp suffix carries `pid + Date.now() + random hex` so
+ * concurrent writers (within or across processes) don't collide on the
+ * staging path. Used by every filesystem store that needs torn-write
+ * resilience.
+ */
+export async function atomicWrite(
+  target: string,
+  content: string | Buffer
+): Promise<void> {
+  const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  await writeFile(tmp, content);
+  await rename(tmp, target);
+}
+
 export async function readRecord<TValue>(
   rootDir: string,
   id: string

@@ -26,6 +26,11 @@ import {
   FilesystemSessionStore
 } from "./filesystem/session-store";
 import {
+  createFilesystemTraceStore,
+  FilesystemTraceStore
+} from "./filesystem/trace-store";
+export type { FilesystemTraceStoreOptions } from "./filesystem/trace-store";
+import {
   createFilesystemUserStore,
   FilesystemUserStore
 } from "./filesystem/user-store";
@@ -114,6 +119,7 @@ export {
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
+  createFilesystemTraceStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
   createInMemoryCheckpointStore,
@@ -129,6 +135,7 @@ export {
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
+  FilesystemTraceStore,
   FilesystemUserStore,
   InMemoryActiveRequestRegistry,
   InMemoryCheckpointStore,
@@ -147,9 +154,39 @@ export type CreateStoreOptions = {
   traceStore?: InMemoryTraceStoreOptions;
 };
 
-export type FilesystemStoreRegistryOptions = CreateStoreOptions & {
+export type FilesystemStoreRegistryOptions = {
+  cas?: CASOptions;
   rootDir: string;
+  /**
+   * Trace store retention. The filesystem trace store doesn't honor the
+   * in-memory store's `maxBytesPerRequest` (no heap pressure to mitigate),
+   * so the surface here is narrower than `CreateStoreOptions.traceStore`.
+   */
+  traceStore?: { maxRequests?: number };
 };
+
+const DEV_DEFAULT_TRACE_MAX_REQUESTS = 1000;
+const PROD_DEFAULT_TRACE_MAX_REQUESTS = 50;
+
+/**
+ * Resolve the effective `maxRequests` for a trace store factory.
+ *
+ * An explicit number passed by the caller always wins. Otherwise, the
+ * default depends on `process.env.NODE_ENV`: development gets a wider
+ * window so a multi-request `fsdev dev` session doesn't silently evict
+ * its own history; everything else keeps the conservative production cap.
+ *
+ * Read at call time so tests that toggle `NODE_ENV` between cases see
+ * the change. The constants intentionally aren't exported — backends
+ * keep their own constructor defaults so direct construction stays
+ * environment-independent.
+ */
+export function resolveTraceMaxRequests(explicit?: number): number {
+  if (explicit !== undefined) return explicit;
+  return process.env.NODE_ENV === "development"
+    ? DEV_DEFAULT_TRACE_MAX_REQUESTS
+    : PROD_DEFAULT_TRACE_MAX_REQUESTS;
+}
 
 export function createInMemoryStores(options: CreateStoreOptions = {}): StoreRegistry {
   return {
@@ -160,7 +197,10 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
     checkpoints: createInMemoryCheckpointStore(),
-    traces: createInMemoryTraceStore(options.traceStore)
+    traces: createInMemoryTraceStore({
+      ...options.traceStore,
+      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
+    })
   };
 }
 
@@ -185,8 +225,9 @@ export function createFilesystemStores(
     }),
     content: createFilesystemContentStore(options.rootDir),
     checkpoints: createFilesystemCheckpointStore(options.rootDir),
-    // Filesystem trace persistence is out of scope for FIX-506; the in-memory
-    // store satisfies the registry contract until a durable variant lands.
-    traces: createInMemoryTraceStore(options.traceStore)
+    traces: createFilesystemTraceStore({
+      rootDir: path.join(options.rootDir, "traces"),
+      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
+    })
   };
 }

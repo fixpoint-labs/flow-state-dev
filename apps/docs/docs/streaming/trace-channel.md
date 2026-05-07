@@ -44,12 +44,45 @@ User code rarely calls these directly. They exist so the framework's four auto-e
 
 Trace events live in `stores.traces`, a new entry on `StoreRegistry` that's independent of `stores.request`. The retention policy that GCs `RequestRecord`s leaves the trace store alone, so the DevTool can replay traces from a completed request even after its request record is gone.
 
-Defaults:
+### Backends
 
-- **In-memory store**: `maxRequests: 50`, `maxBytesPerRequest: 5 MB`. FIFO eviction.
-- **SQLite store**: `maxRequests: 50`. Available via `@flow-state-dev/store-sqlite`.
+Three implementations ship with the framework. `createInMemoryStores`, `createFilesystemStores`, and `createSQLiteStores` each wire a paired trace store automatically — no separate config step.
 
-Both are configurable. A bounded buffer is the same shape Redux DevTools uses (`maxAge: 50`) — keep the last N traces, drop the rest.
+- **In-memory** (`createInMemoryTraceStore`). Per-request ring buffer. FIFO over distinct request IDs plus a per-request `maxBytesPerRequest` soft cap to bound heap usage. Events are gone when the process exits.
+- **Filesystem** (`createFilesystemTraceStore`). Append-only `.ndjson` files under `{rootDir}/traces/`. A `_roster.json` file records insertion order for FIFO eviction. Survives process restarts. Used by `fsdev dev` and by kitchen-sink with `STORE_TYPE=filesystem`.
+- **SQLite** (`createSQLiteTraceStore` from `@flow-state-dev/store-sqlite`). Two tables, `trace_events` and `trace_request_roster`, joined by `ON DELETE CASCADE` so eviction is one row delete. Survives restarts; runs in the same database as the request store.
+
+Filesystem layout for reference:
+
+```
+.fsdev/data/traces/
+  _roster.json
+  req_abc.ndjson
+  req_def.ndjson
+```
+
+Each `.ndjson` file holds one trace event per line. Filenames are URL-encoded so arbitrary request IDs round-trip safely.
+
+### Local development
+
+`fsdev dev` and kitchen-sink with `STORE_TYPE=filesystem` both wire the filesystem trace store. When `NODE_ENV=development`, the registry factory raises the `maxRequests` cap to 1000 so a multi-request iteration session doesn't silently evict its own history. Trace data survives `fsdev dev` restarts: kill the server, run `fsdev dev` again, open the DevTool against an earlier request — the trace tree replays.
+
+To override the cap explicitly:
+
+```ts
+import { createFilesystemStores } from "@flow-state-dev/server";
+
+const stores = createFilesystemStores({
+  rootDir: ".fsdev/data",
+  traceStore: { maxRequests: 200 }
+});
+```
+
+The override always wins, in either direction.
+
+### Production
+
+Outside of `NODE_ENV=development`, all three factories default to `maxRequests: 50` — enough to debug a recent failure without unbounded growth. Filesystem and SQLite both survive process restarts; in-memory does not. Pass `traceStore: { maxRequests }` to widen or narrow the window.
 
 ## See also
 

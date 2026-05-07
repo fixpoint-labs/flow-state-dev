@@ -173,7 +173,7 @@ pipeline.forEachBackground((item, index, ctx) => {
 |--------|---------|--------|
 | `concurrency` | 16 | Maximum number of iterations running simultaneously |
 
-**Lifecycle:** Background iterations are auto-awaited when the sequencer finishes (same as `.work()` tasks). Parent flow cancellation cancels in-flight iterations via the abort signal.
+**Lifecycle:** The whole batch is queued on the per-request work pool (same as `.work()`). The request executor drains it before terminal status; inner sequencers do not block. Parent flow cancellation cancels in-flight iterations via the abort signal. See FIX-554.
 
 ### `doUntil(condition, block)` — Loop Until True
 
@@ -245,7 +245,7 @@ pipeline
 
 **Key:** Work failures do NOT abort the main chain. They are logged and surface on the DevTool's trace channel.
 
-**Auto-await:** When the sequencer's main chain finishes, any outstanding work tasks are automatically awaited before the sequencer returns. This ensures the request stream stays open until all background work completes. Before the auto-await, the sequencer emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). As each task completes, an updated status is emitted with the decremented count.
+**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool exactly once before terminal status; the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier in the dispatching sequencer.
 
 ### `workIf(condition, block)` — Conditional Background Work
 
@@ -285,7 +285,7 @@ When the condition is falsy, the connector is never called.
 
 ### `waitForWork(opts)` — Converge Work Queue
 
-Wait for all queued work to complete at a specific point in the pipeline. This is useful when a later step depends on work task results. If you don't need the results mid-pipeline, the auto-await at the end of the sequencer handles it automatically.
+Wait for the calling sequencer's queued work to complete at a specific point in the pipeline. Drains by sequencer-instance scope: `.waitForWork()` only waits on `.work()` calls dispatched by *this* sequencer instance, not unrelated siblings'. If you don't need the results mid-pipeline, the request-level pool drain handles it automatically before terminal status (FIX-554).
 
 ```ts
 pipeline
@@ -407,7 +407,7 @@ pipeline
   .then(finalizeBlock); // also skipped
 ```
 
-The exit proceeds to auto-await of any outstanding `.work()` tasks before returning. Does not skip rescue handlers for errors that occurred before the exit.
+Does not skip rescue handlers for errors that occurred before the exit. Outstanding `.work()` tasks dispatched by this sequencer remain on the per-request pool and are drained by the request executor (FIX-554).
 
 ### `branch(branches)` — Conditional Multi-Path
 

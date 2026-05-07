@@ -569,6 +569,9 @@ importers:
       path-to-regexp:
         specifier: ^8.2.0
         version: 8.4.2
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
     devDependencies:
       '@flow-state-dev/testing':
         specifier: workspace:*

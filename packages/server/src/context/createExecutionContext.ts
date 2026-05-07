@@ -67,6 +67,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { sanitizeToolName } from "@flow-state-dev/core/utils";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
 import {
@@ -2783,6 +2784,12 @@ export async function createExecutionContext<
   // otherwise fall back to the generic emit() method via a thin adapter.
   let emittedItemCount = 0;
 
+  // Per-request background work pool. Sequencer DSL pushes `.work()` /
+  // `.workIf()` / `.forEachBackground()` tasks here; runActionInternal
+  // drains the pool exactly once on the success path. Replaces the legacy
+  // per-sequencer auto-await scoping.
+  const requestWorkPool = createRequestWorkPool();
+
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
   const statusSlot: StatusSlot = { message: "" };
@@ -3195,6 +3202,11 @@ export async function createExecutionContext<
           blockPath: resolvedParent.path
         };
 
+        // Propagate the request-scoped work pool through every nested scope
+        // so `.work()` calls in inner sequencers reach the same pool the
+        // request executor drains. See `request-work-pool.ts`.
+        (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
         const traceStartedAt = Date.now();
@@ -3347,5 +3359,12 @@ export async function createExecutionContext<
     return context;
   };
 
-  return createContext(undefined, undefined, undefined);
+  const rootContext = createContext(undefined, undefined, undefined);
+  // Attach the per-request background work pool so sequencer DSL can push
+  // `.work()` / `.workIf()` / `.forEachBackground()` tasks. Each child
+  // context constructed by `_withExecutionScope` re-attaches the same pool
+  // explicitly (see the assignment alongside `_blockIdentity` there) — pool
+  // identity is preserved across the entire request scope.
+  (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  return rootContext;
 }

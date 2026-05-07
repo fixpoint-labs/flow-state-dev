@@ -204,3 +204,11 @@ export type {
   ExplainCandidate,
   ExplainResult
 } from "./models";
+export type {
+  RequestWorkPool,
+  RequestWorkPoolResult,
+  RequestWorkPoolDrainOptions,
+  RequestWorkPoolDrainAllOptions,
+  RequestWorkTaskMeta
+} from "./execution/request-work-pool";
+export { getRequestWorkPool } from "./execution/request-work-pool";
