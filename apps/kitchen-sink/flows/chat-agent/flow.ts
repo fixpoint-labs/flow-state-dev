@@ -43,12 +43,22 @@ import {
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
 import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";
+import {
+  KITCHEN_SINK_MODELS,
+  DEFAULT_KITCHEN_SINK_MODEL,
+} from "../../lib/models";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MODEL_ID = "preset/small";
+/**
+ * Default model for internal generators (memory, perspective, summarizer,
+ * auto-title). Internal generators are not user-controllable — they always
+ * run on this concrete model. The user-facing chat generator reads the
+ * user's `selectedModel` from user state instead.
+ */
+const MODEL_ID = DEFAULT_KITCHEN_SINK_MODEL;
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -109,22 +119,23 @@ const inputSchema = z.object({
 const sessionStateSchema = z.object({
   mode: modeSchema,
   thinkingStyle: thinkingStyleSchema.optional(),
-  resolvedModel: z.string().optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
   features: featuresSchema.default({}),
 });
 
-// Brand preference axis (FIX-425). Orthogonal to preferredModel (tier). Empty
-// string is "no preference" — stored as empty so the field is always present
-// in user state without forcing an initial choice on the user.
-const PROVIDER_PREFERENCE_VALUES = ["", "anthropic", "openai", "google"] as const;
-const providerPreferenceSchema = z.enum(PROVIDER_PREFERENCE_VALUES).default("");
+/**
+ * Schema for the kitchen-sink model selector input. Only models that appear
+ * in the catalog are accepted by `setSelectedModel`.
+ */
+const selectedModelSchema = z
+  .enum(KITCHEN_SINK_MODELS)
+  .default(DEFAULT_KITCHEN_SINK_MODEL);
 
 const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
-  preferredModel: z.string().default(MODEL_ID),
-  preferredProvider: providerPreferenceSchema,
+  selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
+  thinkingEnabled: z.boolean().default(false),
 });
 
 // ---------------------------------------------------------------------------
@@ -133,7 +144,10 @@ const userStateSchema = z.object({
 
 const assistantGenerator = generator({
   name: "assistant-generator",
-  userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
+  userStateSchema: z.object({
+    selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
+    thinkingEnabled: z.boolean().default(false),
+  }),
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
@@ -169,7 +183,27 @@ const assistantGenerator = generator({
   },
 
   agentType: "primary",
-  model: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
+  /**
+   * Concrete gateway model string from the user's selection. The model
+   * resolver returns a Vercel-gateway-backed `LanguageModel` for the string.
+   */
+  model: (_input: any, ctx: any) =>
+    ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
+  /**
+   * Extended-thinking on/off is a separate axis from the model selection.
+   * When enabled we forward Anthropic's reasoning options on the same model
+   * (no model swap). Other providers (OpenAI, Google) ignore the
+   * `anthropic` namespace; thinking-on degrades to a no-op there until we
+   * add per-provider mappings.
+   */
+  providerOptions: (_input: any, ctx: any) =>
+    ctx.user?.state.thinkingEnabled
+      ? {
+          anthropic: {
+            thinking: { type: "enabled", budgetTokens: 10000 },
+          },
+        }
+      : {},
 });
 
 // ---------------------------------------------------------------------------
@@ -187,7 +221,8 @@ const modeInstructions = (_input: any, ctx: any): string => {
 
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
-  modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
+  modelId: (_input: any, ctx: any) =>
+    ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
   history: { limit: 8 },
   context: { memory: mem.contextFormatter, artifacts: artifactListContext },
   uses: [featuresCapability],
@@ -272,25 +307,48 @@ const applyFeatures = handler({
   },
 });
 
-// Resolve the model once per request so downstream blocks and clientData can
-// Resolve the preset to its primary concrete model string (e.g.
-// "preset/medium" → "anthropic/claude-sonnet-4-6") so downstream blocks
-// and clientData can read ctx.session.state.resolvedModel.
-const resolveModel = handler({
-  name: "resolve-model",
-  inputSchema,
-  userStateSchema,
-  sessionStateSchema: z.object({ resolvedModel: z.string().optional() }),
+/**
+ * One-time legacy-state migration.
+ *
+ * Earlier versions of this flow tracked a tier-style `preferredModel`,
+ * a brand `preferredProvider`, and a session-scoped `resolvedModel`. The
+ * current flow stores a concrete `selectedModel` plus a `thinkingEnabled`
+ * boolean on user state and removes the session-scoped resolved-model
+ * field entirely. This handler detects any of the legacy keys and clears
+ * them on the next run so persisted user state from the old shape doesn't
+ * stick around. Zod's strip behaviour drops session-state keys we no
+ * longer declare in the schema, so `resolvedModel` cleans itself up
+ * without an explicit unset here.
+ */
+const migrateLegacyState = handler({
+  name: "migrate-legacy-state",
+  // Tolerate the legacy keys long enough to detect them — the schema below
+  // is `passthrough` so the read doesn't fail on stored old fields. We
+  // immediately overwrite with the new shape via `patchState`.
+  userStateSchema: z
+    .object({
+      displayName: z.string().default("Developer"),
+      selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
+      thinkingEnabled: z.boolean().default(false),
+      preferredModel: z.string().optional(),
+      preferredProvider: z.string().optional(),
+    })
+    .passthrough(),
   execute: async (_input, ctx) => {
-    const preferred = ctx.user?.state.preferredModel ?? MODEL_ID;
-    // Empty preferredProvider ("") means "no preference" — resolveId leaves
-    // the preset's natural order intact. Otherwise the string reorders the
-    // preset's candidate list before the first-available walk.
-    const preferredProvider = ctx.user?.state.preferredProvider ?? "";
-    const resolved = ctx.resolveModel.resolveId(preferred, {
-      prefer: preferredProvider === "" ? undefined : preferredProvider,
-    });
-    await ctx.session.patchState({ resolvedModel: resolved });
+    const raw = (ctx.user!.state as Record<string, unknown>) ?? {};
+    const hasLegacy =
+      "preferredModel" in raw || "preferredProvider" in raw;
+    if (!hasLegacy) return;
+    // Replace legacy fields with the new shape. We unset the legacy keys
+    // explicitly via `undefined` so the store layer drops them — Zod parse
+    // of the canonical user schema (no legacy keys) will also strip them
+    // on the next read either way.
+    await ctx.user!.patchState({
+      selectedModel: DEFAULT_KITCHEN_SINK_MODEL,
+      thinkingEnabled: false,
+      preferredModel: undefined,
+      preferredProvider: undefined,
+    } as Record<string, unknown>);
   },
 });
 
@@ -369,29 +427,33 @@ const biasCheck = sequencer({
     }
   });
 
-const setPreferredModelInputSchema = z.object({
-  preferredModel: z.string().min(1),
+/** Input for the `setSelectedModel` action. */
+const setSelectedModelInputSchema = z.object({
+  selectedModel: selectedModelSchema,
 });
 
-const setPreferredModelHandler = handler({
-  name: "set-preferred-model",
-  inputSchema: setPreferredModelInputSchema,
+/** Persists the user's concrete-model selection to user state. */
+const setSelectedModelHandler = handler({
+  name: "set-selected-model",
+  inputSchema: setSelectedModelInputSchema,
   userStateSchema,
   execute: async (input, ctx) => {
-    await ctx.user!.patchState({ preferredModel: input.preferredModel });
+    await ctx.user!.patchState({ selectedModel: input.selectedModel });
   },
 });
 
-const setPreferredProviderInputSchema = z.object({
-  preferredProvider: providerPreferenceSchema,
+/** Input for the `setThinkingEnabled` action. */
+const setThinkingEnabledInputSchema = z.object({
+  thinkingEnabled: z.boolean(),
 });
 
-const setPreferredProviderHandler = handler({
-  name: "set-preferred-provider",
-  inputSchema: setPreferredProviderInputSchema,
+/** Persists the user's extended-thinking toggle to user state. */
+const setThinkingEnabledHandler = handler({
+  name: "set-thinking-enabled",
+  inputSchema: setThinkingEnabledInputSchema,
   userStateSchema,
   execute: async (input, ctx) => {
-    await ctx.user!.patchState({ preferredProvider: input.preferredProvider });
+    await ctx.user!.patchState({ thinkingEnabled: input.thinkingEnabled });
   },
 });
 
@@ -400,9 +462,11 @@ const setPreferredProviderHandler = handler({
 // ---------------------------------------------------------------------------
 
 const runSequencer = sequencer({ name: "run", inputSchema })
+  // One-time clear of the legacy `preferredModel` / `preferredProvider`
+  // user-state keys. Cheap no-op once a user has the new shape.
+  .tap(migrateLegacyState)
   .tap(applyRequestedMode)
   .tap(applyFeatures)
-  .tap(resolveModel)
   // FIX-421: up-front skill router. Decides activeSkills before the
   // generator runs; results land on `session.state.activeSkills` for
   // the skills capability's active-skill formatter to render.
@@ -448,11 +512,11 @@ const chatAgentFlow = defineFlow({
     saveArtifact: {
       block: updateArtifact,
     },
-    setPreferredModel: {
-      block: setPreferredModelHandler,
+    setSelectedModel: {
+      block: setSelectedModelHandler,
     },
-    setPreferredProvider: {
-      block: setPreferredProviderHandler,
+    setThinkingEnabled: {
+      block: setThinkingEnabledHandler,
     },
     "task-queue": {
       block: taskQueueDemo,
@@ -475,8 +539,6 @@ const chatAgentFlow = defineFlow({
             currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
             thinkingStyle:
               (ctx.state.thinkingStyle as string | undefined) ?? null,
-            resolvedModel:
-              (ctx.state.resolvedModel as string | undefined) ?? null,
             requestCount: Number(ctx.state.requestCount ?? 0),
             features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
             activeSkills: activeSkills.map((s) => ({
@@ -499,8 +561,10 @@ const chatAgentFlow = defineFlow({
       derived: {
         preferences: (ctx) => ({
           displayName: String(ctx.state.displayName ?? "Developer"),
-          preferredModel: String(ctx.state.preferredModel ?? MODEL_ID),
-          preferredProvider: String(ctx.state.preferredProvider ?? ""),
+          selectedModel: String(
+            ctx.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
+          ),
+          thinkingEnabled: Boolean(ctx.state.thinkingEnabled ?? false),
         }),
       },
     },

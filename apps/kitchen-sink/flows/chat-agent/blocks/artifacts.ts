@@ -12,6 +12,7 @@ import { defineCapability, defineResourceCollection, handler, sequencer, utility
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import path from "node:path";
 import { z } from "zod";
+import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
 
 // ---------------------------------------------------------------------------
 // Resource definition
@@ -142,7 +143,7 @@ export const updateArtifactOutputSchema = z.object({
 
 const artifactSummarizer = utility.summarizer({
   name: "artifact-summarizer",
-  model: "preset/small",
+  model: DEFAULT_KITCHEN_SINK_MODEL,
   granularity: "brief",
 });
 

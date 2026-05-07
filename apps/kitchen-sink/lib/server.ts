@@ -35,6 +35,39 @@ const modelResolver = createModelResolver({
   gateways: gatewayApiKey
     ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,
+  // Concrete fallback when an `intent/<name>` string can't resolve.
+  defaultModel: "vercel/anthropic/claude-sonnet-4.6",
+  // Starter intent map. Apps can tune later — the resolver walks each list
+  // and picks the first available candidate. `synthesize` doubles as the
+  // structured-JSON intent so we point it at JSON-reliable models, not the
+  // cheapest tier.
+  intents: {
+    utility: [
+      "vercel/anthropic/claude-haiku-4.5",
+      "vercel/openai/gpt-5.5-nano",
+    ],
+    chat: [
+      "vercel/anthropic/claude-sonnet-4.6",
+      "vercel/openai/gpt-5.5",
+    ],
+    plan: [
+      "vercel/anthropic/claude-opus-4.7",
+      "vercel/openai/gpt-5.5",
+    ],
+    synthesize: [
+      "vercel/anthropic/claude-sonnet-4.6",
+      "vercel/openai/gpt-5.5",
+      "vercel/google/gemini-2.5-pro",
+    ],
+    code: [
+      "vercel/anthropic/claude-sonnet-4.6",
+      "vercel/openai/gpt-5.5",
+    ],
+    reason: [
+      "vercel/anthropic/claude-opus-4.7",
+      "vercel/openai/gpt-5.5",
+    ],
+  },
 });
 
 // Voice: speech (TTS) and transcription (STT) resolvers.

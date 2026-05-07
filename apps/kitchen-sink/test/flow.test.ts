@@ -69,7 +69,8 @@ const testFlow = defineFlow({
   user: {
     stateSchema: z.object({
       displayName: z.string().default("Developer"),
-      preferredModel: z.string().default("preset/small"),
+      selectedModel: z.string().default("vercel/anthropic/claude-sonnet-4.6"),
+      thinkingEnabled: z.boolean().default(false),
     }),
   },
 })({ id: "test" });
@@ -178,7 +179,7 @@ describe("chat-agent flow", () => {
     expect(result.output).toBeDefined();
   });
 
-  it("reads preferredModel from user state", async () => {
+  it("reads selectedModel from user state", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
@@ -191,7 +192,8 @@ describe("chat-agent flow", () => {
       user: {
         state: {
           displayName: "TestUser",
-          preferredModel: "gpt-4o"
+          selectedModel: "vercel/openai/gpt-5.5",
+          thinkingEnabled: false,
         }
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
