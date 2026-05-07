@@ -35,7 +35,7 @@ export type ItemsRendererProps = {
    */
   showSubAgents?: boolean;
   /**
-   * When provided, consecutive `block_tool_output` items that survive the
+   * When provided, consecutive `tool_output` items that survive the
    * dedup / sub-agent / container-owner filters are rendered through this
    * component as a single group instead of individually via the registry.
    *
@@ -51,7 +51,7 @@ export type ItemsRendererProps = {
 /**
  * A segment of the render stream after filtering and optional tool-call
  * grouping. `item` segments pass through to the renderer registry; `group`
- * segments represent a run of consecutive block_tool_output items that a
+ * segments represent a run of consecutive tool_output items that a
  * toolGroupRenderer should render as one unit.
  */
 export type ItemRenderSegment =
@@ -67,7 +67,7 @@ export type BuildItemRenderStreamOptions = {
   deduplicateByKey?: boolean;
   showSubAgents?: boolean;
   /**
-   * When true, consecutive block_tool_output items in the filtered stream
+   * When true, consecutive tool_output items in the filtered stream
    * are collapsed into `group` segments. Non-tool items break the run.
    */
   groupToolCalls?: boolean;
@@ -140,7 +140,7 @@ const CONTAINER_MANAGED_TYPES = new Set([
 
 /**
  * Pure helper: applies dedup / sub-agent / container-owner filters, then
- * optionally collapses consecutive block_tool_output runs into `group`
+ * optionally collapses consecutive tool_output runs into `group`
  * segments. Returns the ordered render stream.
  *
  * Exposed so consumers can test filter + grouping behavior without a React
@@ -199,7 +199,7 @@ export function buildItemRenderStream(
  * Items owned by a container that has a registered renderer are suppressed —
  * the container renderer is responsible for displaying its owned items.
  *
- * When `toolGroupRenderer` is provided, consecutive `block_tool_output`
+ * When `toolGroupRenderer` is provided, consecutive `tool_output`
  * items in the filtered stream render as a single group via the supplied
  * component rather than individually.
  */

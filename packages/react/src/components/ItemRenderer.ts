@@ -135,7 +135,7 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
   reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
-  block_tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem)
+  tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem)
 };
 
 // ---------------------------------------------------------------------------

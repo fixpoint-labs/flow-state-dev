@@ -56,7 +56,8 @@ function mergeRenderers(
   return {
     message: child.message !== undefined ? child.message : parent.message,
     reasoning: child.reasoning !== undefined ? child.reasoning : parent.reasoning,
-    block_output: child.block_output !== undefined ? child.block_output : parent.block_output,
+    block_trace: child.block_trace !== undefined ? child.block_trace : parent.block_trace,
+    tool_output: child.tool_output !== undefined ? child.tool_output : parent.tool_output,
     status: child.status !== undefined ? child.status : parent.status,
     error: child.error !== undefined ? child.error : parent.error,
     component: {
