@@ -190,18 +190,111 @@ export type ResourceSnapshotEntry = {
 };
 
 /**
+ * One inlined item inside `CollectionSnapshotEntry.prefetched`.
+ *
+ * `clientData` is present only when the collection sets `client.state.read: true`;
+ * otherwise the entry carries just the `topic`. `content` is present only when
+ * `client.content.prefetch: true` is also declared.
+ */
+export type CollectionSnapshotPrefetchedItem = {
+  topic: string;
+  clientData?: unknown;
+  content?: string;
+};
+
+/**
  * Client-visible metadata for a collection resource in the snapshot.
+ *
+ * As of FIX-427 the per-item `items` map is no longer materialized by default.
+ * `count` is always emitted for client-visible collections; `prefetched` is
+ * populated only when the collection declares a non-zero `prefetchWindow`.
  */
 export type CollectionSnapshotEntry = {
-  items: Record<string, {
-    clientData?: unknown;
-    /** Only present when `client.content.prefetch: true` is declared on the collection. */
-    content?: string;
-  }>;
+  /**
+   * Total number of items currently in the collection. Always emitted for
+   * client-visible collections, regardless of `client.state.read`.
+   */
+  count?: number;
+  /**
+   * First N items in lexicographic storage-key order. Populated only when the
+   * collection declares `prefetchWindow: N` (N > 0). Per-item `clientData` is
+   * included only when `client.state.read: true`.
+   */
+  prefetched?: CollectionSnapshotPrefetchedItem[];
   /**
    * True when the collection has no `client` config. See `ResourceSnapshotEntry.internal`.
    */
   internal?: boolean;
+};
+
+/**
+ * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
+ */
+export type CollectionListPage = {
+  items: Array<{ topic: string; clientData?: unknown }>;
+  pagination: {
+    offset: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+    nextOffset: number;
+  };
+};
+
+/**
+ * Single collection item state returned by `GET /sessions/:id/resources/:ref/:topic`.
+ */
+export type CollectionItemState = {
+  topic: string;
+  clientData?: unknown;
+};
+
+/**
+ * React-layer wrapper around a collection item. Augments the server's
+ * `{ topic, clientData? }` payload with the FIX-296 lazy-content ergonomic
+ * (`fetchContent()`) so consumers don't have to plumb the client themselves.
+ */
+export type CollectionItemHandle = {
+  topic: string;
+  clientData?: unknown;
+  fetchContent(): Promise<string | null>;
+};
+
+/**
+ * Per-resource manifest entry. Static metadata describing a public resource
+ * exposed by a flow.
+ */
+export type ResourceManifestEntry = {
+  ref: string;
+  kind: "single" | "collection";
+  scope: "session" | "user" | "org";
+  /** Pattern (collections only). */
+  pattern?: string;
+  /** Configured prefetch window (collections only). 0 if unset. */
+  prefetchWindow?: number;
+  /** Whether the resource declares a `clientData` projection function. */
+  hasClientData: boolean;
+  client: {
+    content?: {
+      read?: boolean;
+      prefetch?: boolean;
+      create?: boolean;
+      update?: boolean;
+      delete?: boolean;
+    };
+    state?: {
+      read?: boolean;
+    };
+  };
+};
+
+/**
+ * Resource manifest returned by `GET /sessions/:id/manifest`. Describes every
+ * public resource the session's flow exposes — static per `flowKind`.
+ */
+export type ResourceManifest = {
+  flowKind: string;
+  resources: ResourceManifestEntry[];
 };
 
 /**

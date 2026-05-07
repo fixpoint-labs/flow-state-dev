@@ -134,6 +134,7 @@ Ten pre-built utility factories wrapping generator/handler blocks:
 - Sequencers collect `declaredResources` from all child blocks automatically
 - `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
+- Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
 
 → [Resources and Client Data](../architecture/resources-and-client-data.md)
 

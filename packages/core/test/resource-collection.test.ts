@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineResourceCollection, isDefinedResourceCollection } from "../src/types/resource-collection";
 import {
@@ -140,6 +140,79 @@ describe("defineResourceCollection", () => {
         eviction: "none",
       })
     ).not.toThrow();
+  });
+
+  it("accepts prefetchWindow when set to a non-negative integer", () => {
+    const coll = defineResourceCollection({
+      pattern: "files/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      prefetchWindow: 20,
+    });
+    expect(coll.prefetchWindow).toBe(20);
+  });
+
+  it("accepts prefetchWindow: 0 (explicit lazy)", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchWindow: 0,
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects negative prefetchWindow", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchWindow: -1,
+      })
+    ).toThrow("prefetchWindow must be a non-negative integer");
+  });
+
+  it("rejects non-integer prefetchWindow", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchWindow: 1.5,
+      })
+    ).toThrow("prefetchWindow must be a non-negative integer");
+  });
+
+  it("warns (does not throw) when prefetchWindow exceeds 100", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const coll = defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchWindow: 250,
+      });
+      expect(coll.prefetchWindow).toBe(250);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]?.[0]).toContain("prefetchWindow=250 is large");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("accepts client.state.read on collection client config", () => {
+    const coll = defineResourceCollection({
+      pattern: "files/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      client: {
+        content: { read: true },
+        state: { read: true },
+      },
+    });
+    expect(coll.client?.state?.read).toBe(true);
   });
 });
 

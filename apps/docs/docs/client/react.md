@@ -184,6 +184,69 @@ const renderers = {
 };
 ```
 
+## Resource collection hooks
+
+Three hooks for working with collection resources — list views, single-item lookups, and an underlying primitive. All three depend on the collection's `client.state.read` permission for per-item state access.
+
+### useResourceCollection
+
+The underlying primitive. Returns `list`, `get`, `query`, `actions`, `refetch`, plus `prefetched` and `count` from the snapshot. Use it directly when you need control over fetching beyond what the convenience hooks below offer.
+
+```tsx
+const { list, get, actions, refetch, count } = useResourceCollection(session, "artifacts");
+
+await list({ limit: 20, topicPrefix: "artifacts/projects/" });
+const item = await get("artifacts/spec.md");
+await actions.create({ topic: "new.md", content: "# New" });
+```
+
+Pages are cached per hook instance, keyed by the normalized query. Resource changes observed in the session stream invalidate the cache for the affected collection so the next call refetches automatically.
+
+### useResourceCollectionList
+
+The common case: paginated list view with `loadMore`.
+
+```tsx
+const { items, pagination, isLoading, error, loadMore, refetch } =
+  useResourceCollectionList(session, "artifacts", { limit: 50 });
+
+return (
+  <>
+    {items.map((item) => (
+      <ArtifactRow key={item.topic} item={item} />
+    ))}
+    {pagination?.hasMore && <button onClick={loadMore}>Load more</button>}
+  </>
+);
+```
+
+Each `item` is a `CollectionItemHandle` — `{ topic, clientData, fetchContent() }`. `fetchContent()` calls the existing content endpoint for that topic on demand.
+
+If the collection declares `prefetchWindow > 0`, the snapshot's prefetched window paints first while the network fetch runs underneath.
+
+### useResourceCollectionItem
+
+For a single item by topic. Returns `null` if the topic isn't present.
+
+```tsx
+const { item, isLoading, error, refetch } = useResourceCollectionItem(session, "artifacts", "spec.md");
+if (item === null) return <div>Not found</div>;
+const content = await item.fetchContent();
+```
+
+## useResourceManifest
+
+The manifest tells you what every public resource on the session exposes — kind, scope, pattern, declared permissions. The hook fetches once per `flowKind` and shares the result across all components via a module-level cache.
+
+```tsx
+const { manifest, isLoading, error } = useResourceManifest(session);
+const canCreateArtifact = manifest?.resources
+  .find((r) => r.ref === "artifacts")
+  ?.client.content?.create === true;
+```
+
+See [Resource Manifest](/docs/resources/manifest) for the full reference.
+
 ## Typical Pattern
 
 ```tsx

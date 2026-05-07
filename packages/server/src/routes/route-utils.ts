@@ -322,9 +322,12 @@ export async function computeClientData(options: {
 /**
  * Builds the client-visible `resources` snapshot for one scope.
  *
- * For each resource with a `client` config, returns resource-level `clientData`
- * and optionally prefetched content. Resources without a `client` config are
- * excluded by default.
+ * Collections (FIX-427): emit `count` always, plus a `prefetched` window when
+ * the collection declares `prefetchWindow > 0`. Per-item `clientData` in the
+ * window is included only when `client.state.read === true`.
+ *
+ * Single resources retain their existing shape (clientData + optional
+ * prefetched content).
  *
  * When `includeInternal: true`, resources without a `client` config are also
  * included with `internal: true` and the raw resource state surfaced in
@@ -353,29 +356,49 @@ export async function buildResourceSnapshot(options: {
       const clientDataFn = typeof maybeConfig.client?.data === "function"
         ? maybeConfig.client.data as (state: unknown) => unknown
         : undefined;
-      const prefetch = maybeConfig.client?.content?.prefetch === true;
+      const prefetchContent = maybeConfig.client?.content?.prefetch === true;
+      const stateReadable = maybeConfig.client?.state?.read === true;
+      const prefetchWindow = typeof maybeConfig.prefetchWindow === "number" && maybeConfig.prefetchWindow > 0
+        ? maybeConfig.prefetchWindow
+        : 0;
 
-      const items: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(persisted)) {
-        if (!matchesPattern(pattern, key)) continue;
+      const matchedKeys = Object.keys(persisted)
+        .filter((k) => matchesPattern(pattern, k))
+        .sort();
+      const count = matchedKeys.length;
 
-        const state = isJsonObject(value) ? value : {};
-        const entry: Record<string, unknown> = {};
-        if (clientDataFn) {
-          entry.clientData = await clientDataFn(state);
-        } else if (!hasClient) {
-          // Internal collection: surface raw state under clientData so the
-          // DevTool can inspect it. Production clients won't see this branch
-          // because they don't pass includeInternal.
-          entry.clientData = state;
-        }
-        if (prefetch && contentMap[key] !== undefined) {
-          entry.content = contentMap[key];
-        }
-        items[key] = entry;
+      const collectionEntry: Record<string, unknown> = {};
+
+      if (hasClient) {
+        // Always emit `count` for client-visible collections (FIX-427 §3.6).
+        // It's a single integer, not a leak of state, and supports
+        // "X items, log in for details" UIs without a state.read grant.
+        collectionEntry.count = count;
       }
 
-      const collectionEntry: Record<string, unknown> = { items };
+      // Prefetch window: first N keys by lex sort. clientData included only
+      // when state is explicitly readable; otherwise just the topic.
+      if (prefetchWindow > 0 && (hasClient || includeInternal)) {
+        const window = matchedKeys.slice(0, prefetchWindow);
+        const prefetched: Array<Record<string, unknown>> = [];
+        for (const key of window) {
+          const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
+          const item: Record<string, unknown> = { topic: key };
+          if (stateReadable && clientDataFn) {
+            item.clientData = await clientDataFn(state);
+          } else if (!hasClient) {
+            // Internal (no client config) under includeInternal: surface raw
+            // state under clientData, parallel to the single-resource branch.
+            item.clientData = state;
+          }
+          if (prefetchContent && contentMap[key] !== undefined) {
+            item.content = contentMap[key];
+          }
+          prefetched.push(item);
+        }
+        collectionEntry.prefetched = prefetched;
+      }
+
       if (!hasClient) collectionEntry.internal = true;
       out[resourceName] = collectionEntry;
       hasAny = true;

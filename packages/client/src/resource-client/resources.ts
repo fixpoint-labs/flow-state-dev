@@ -2,7 +2,12 @@
  * Resource content and CRUD API client for canonical `/api/flows` resource endpoints.
  */
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
-import type { ClientFetch } from "../types";
+import type {
+  ClientFetch,
+  CollectionListPage,
+  CollectionItemState,
+  ResourceManifest
+} from "../types";
 
 /**
  * Shared options for the resource API client.
@@ -89,6 +94,41 @@ export type ResourceClient = {
     ref: string,
     topic: string
   ) => Promise<void>;
+
+  /**
+   * List a paginated page of collection item state.
+   * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
+   *
+   * Gated by `client.state.read` on the server. Items are ordered by
+   * lexicographic storage key.
+   */
+  listCollectionItems: (
+    sessionId: string,
+    ref: string,
+    options?: { limit?: number; offset?: number; topicPrefix?: string }
+  ) => Promise<CollectionListPage>;
+
+  /**
+   * Fetch a single collection item's state.
+   * GET /sessions/:sessionId/resources/:ref/:topic
+   *
+   * Returns `null` when the topic is not present in the collection (the
+   * server returns 200 with a null body in that case).
+   */
+  getCollectionItemState: (
+    sessionId: string,
+    ref: string,
+    topic: string
+  ) => Promise<CollectionItemState | null>;
+
+  /**
+   * Fetch the static manifest of public resources for a session's flow.
+   * GET /sessions/:sessionId/manifest
+   *
+   * The response is deterministic per `flowKind`; clients should cache by
+   * `flowKind` rather than `sessionId`.
+   */
+  getResourceManifest: (sessionId: string) => Promise<ResourceManifest>;
 };
 
 /**
@@ -182,12 +222,66 @@ export function createResourceClient(
     });
   };
 
+  const listCollectionItems = async (
+    sessionId: string,
+    ref: string,
+    listOptions: { limit?: number; offset?: number; topicPrefix?: string } = {}
+  ): Promise<CollectionListPage> => {
+    const query: string[] = [];
+    if (listOptions.limit !== undefined) {
+      query.push(`limit=${encodeURIComponent(String(listOptions.limit))}`);
+    }
+    if (listOptions.offset !== undefined) {
+      query.push(`offset=${encodeURIComponent(String(listOptions.offset))}`);
+    }
+    if (listOptions.topicPrefix !== undefined) {
+      query.push(`topicPrefix=${encodeURIComponent(listOptions.topicPrefix)}`);
+    }
+    const suffix = query.length > 0 ? `?${query.join("&")}` : "";
+    return requestJson<CollectionListPage>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}${suffix}`
+      })
+    });
+  };
+
+  const getCollectionItemState = async (
+    sessionId: string,
+    ref: string,
+    topic: string
+  ): Promise<CollectionItemState | null> => {
+    return requestJson<CollectionItemState | null>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/${enc(topic)}`
+      })
+    });
+  };
+
+  const getResourceManifest = async (
+    sessionId: string
+  ): Promise<ResourceManifest> => {
+    return requestJson<ResourceManifest>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${enc(sessionId)}/manifest`
+      })
+    });
+  };
+
   return {
     getResourceContent,
     getCollectionItemContent,
     createCollectionItem,
     updateResourceContent,
-    deleteCollectionItem
+    deleteCollectionItem,
+    listCollectionItems,
+    getCollectionItemState,
+    getResourceManifest
   };
 }
 

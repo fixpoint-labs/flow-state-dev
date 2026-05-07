@@ -84,6 +84,7 @@ const artifactsCollection = defineResourceCollection({
   }),
   client: {
     content: { read: true, update: true },
+    state: { read: true },
     data: (state) => ({
       title: state.title,
       summary: state.summary,
@@ -93,7 +94,27 @@ const artifactsCollection = defineResourceCollection({
 });
 ```
 
-The snapshot includes every item's `data` output. Content is not included. Clients fetch content for individual items on demand.
+The snapshot carries the collection's total item count and (when `prefetchWindow` is set) an inline window of the first N items. Per-item `clientData` is included in that window only when `client.state.read: true` is set. Clients page through the rest via the list endpoint or `useResourceCollectionList`. Content is not included; it's fetched per item on demand. See [Resource Collections — lazy state](/docs/resources/collections#lazy-state-by-default) for the full mental model.
+
+## client.state
+
+Collections (only — single resources gate state via `data` directly) can opt into a separate state-read permission:
+
+```ts
+client: {
+  content: { read: true, update: true },
+  state: { read: true },
+}
+```
+
+What `client.state.read: true` enables:
+
+- The list endpoint (`GET /sessions/:id/resources/:ref?limit=…`) and the single-item state endpoint succeed; the response carries each item's `clientData`.
+- The snapshot's `prefetched` window includes `clientData` for each prefetched item.
+
+Without it, those endpoints return 403 and `prefetched` carries just the `topic` for each item. The collection's `count` is always emitted regardless — counts are a cardinality affordance, not state.
+
+For capability-driven UIs, the [resource manifest](/docs/resources/manifest) reports declared permissions per resource so clients can render conditional affordances without hard-coding flow knowledge.
 
 ## Snapshot shape
 
