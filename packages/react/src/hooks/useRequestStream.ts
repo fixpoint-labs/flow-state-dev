@@ -13,7 +13,17 @@ import type {
   RequestStatus,
   StatusItem
 } from "@flow-state-dev/core/items";
-import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
+
+// Identity-invariant keys stripped before applying an `item.updated` patch.
+// Mirrors `ITEM_UPDATE_INVARIANT_KEYS` from `@flow-state-dev/core/items` —
+// inlined because this package may only import types from core.
+const ITEM_UPDATE_INVARIANT_KEYS: ReadonlyArray<string> = [
+  "id",
+  "type",
+  "provenance",
+  "agentType",
+  "transient"
+];
 import { useFlowContext } from "../context/FlowContext";
 
 /**
@@ -133,7 +143,7 @@ export function useRequestStream(
             if (item.id !== event.itemId) return item;
             const sanitized: Record<string, unknown> = {};
             for (const key of Object.keys(event.patch)) {
-              if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
+              if (ITEM_UPDATE_INVARIANT_KEYS.includes(key)) continue;
               sanitized[key] = event.patch[key];
             }
             changed = true;
