@@ -41,7 +41,7 @@ The client assembles content progressively from deltas. Text appears token by to
 | Event | Meaning |
 |-------|---------|
 | `item.added` | New item in the stream. Contains the full item payload with `status: "in_progress"`. |
-| `item.updated` | Patch to an existing item, identified by id. Used by trace items (and `tool_output`) to fill in fields as work progresses. |
+| `item.updated` | Patch to an existing item, identified by id. Used by trace items, `tool_output`, and `container` to fill in fields as work progresses. |
 | `content.delta` | Text chunk appended to a streaming item (messages, reasoning). |
 | `content.added` | New content part added to an item (e.g., audio part on a message). |
 | `content.done` | A content part finalized. |

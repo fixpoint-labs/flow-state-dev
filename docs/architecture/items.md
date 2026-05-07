@@ -50,6 +50,8 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`container`** is emitted by sequencers and routers that declare a `container` config. It marks the start of a visual grouping and establishes an ownership scope — items emitted during the container's execution carry an `ownedBy` reference back to it.
 
+`container` follows a lifecycle: `item.added` with `status: "in_progress"` and `startedAt` set on scope entry, `item.updated` patching `status: "completed" | "failed"`, `completedAt`, `duration` (and `error` on failure) when the scope closes, and a final `item.done`. Public-stream consumers see a live in-flight signal for sequencer execution. This is the first public-channel item type to use the `item.updated` primitive.
+
 **`source`** holds a URL reference from a provider-native tool like web search. Rendered alongside the message that produced it.
 
 **`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Backed by a request-scoped single slot: the latest `emitStatus` value wins, and the UI renders it as a single in-flight indicator (falling back to "Thinking..." when the slot is empty). Emit declaratively via `activeStatusMessage` on any block config, or imperatively via `ctx.emitStatus()` — see [Status slot semantics](#status-slot-semantics).
