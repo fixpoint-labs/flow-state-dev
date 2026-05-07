@@ -70,7 +70,6 @@ export type CollectionItem = CollectionItemHandle;
 
 type CachedPage = {
   page: CollectionListPage;
-  epoch: number;
 };
 
 /** Normalized cache key — sorted JSON of the query. */
@@ -154,13 +153,17 @@ export function useResourceCollection(
   // Per-instance page cache keyed by normalized query. Held in a ref so
   // it survives re-renders without participating in render diffing.
   const cacheRef = useRef<Map<string, CachedPage>>(new Map());
-  const epochRef = useRef<Map<string, number>>(new Map());
-  // Bumped to force subscribers (the convenience hooks) to re-evaluate.
-  const [invalidationToken, setInvalidationToken] = useState(0);
+  // Generation counter — bumped on invalidation. Captured before each list()
+  // await, then compared after to discard stale write-backs from races
+  // between SSE invalidations and in-flight requests. Also flows into the
+  // memoized callbacks so convenience hooks can re-run their effects.
+  const [generation, setGeneration] = useState(0);
+  const generationRef = useRef(0);
 
   const invalidate = useCallback(() => {
     cacheRef.current.clear();
-    setInvalidationToken((t) => t + 1);
+    generationRef.current++;
+    setGeneration(generationRef.current);
   }, []);
 
   // Watch the session items stream for resource_change events touching this
@@ -194,18 +197,19 @@ export function useResourceCollection(
       const cached = cacheRef.current.get(key);
       if (cached !== undefined) return cached.page;
 
-      // Tag the in-flight request with a per-key epoch. If a SSE invalidation
-      // races a list response, only the latest epoch wins on write-back.
-      const nextEpoch = (epochRef.current.get(key) ?? 0) + 1;
-      epochRef.current.set(key, nextEpoch);
-
+      // Snapshot the generation at request start. If invalidate() bumps it
+      // before the response lands (e.g., SSE resource_change while fetching),
+      // skip the write-back so we don't repopulate a cleared cache.
+      const startGen = generationRef.current;
       const page = await client.listCollectionItems(sessionId, ref, options);
-      if (epochRef.current.get(key) === nextEpoch) {
-        cacheRef.current.set(key, { page, epoch: nextEpoch });
+      if (startGen === generationRef.current) {
+        cacheRef.current.set(key, { page });
       }
       return page;
     },
-    [client, ref, session.sessionId]
+    // generation is in deps so the callback identity flips on invalidation;
+    // convenience hooks watching `list` re-run their effects and refetch.
+    [client, ref, session.sessionId, generation]
   );
 
   const get = useCallback(
@@ -265,7 +269,5 @@ export function useResourceCollection(
     refetch: invalidate,
     prefetched,
     count: collectionEntry?.count,
-    // Touch token so React keeps stable identity per invalidation cycle.
-    ...(invalidationToken === Number.MIN_SAFE_INTEGER ? { __t: invalidationToken } : {})
-  } as UseResourceCollectionResult;
+  };
 }

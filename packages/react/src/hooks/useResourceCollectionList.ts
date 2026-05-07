@@ -71,7 +71,7 @@ export function useResourceCollectionList(
             if (!sessionId) return null;
             const result = await client.getCollectionItemContent(sessionId, ref, it.topic);
             return result.content;
-          }
+          },
         }));
         setPagination(page.pagination);
         setItems((prev) => (replace ? handles : [...prev, ...handles]));

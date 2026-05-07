@@ -384,13 +384,12 @@ export async function buildResourceSnapshot(options: {
         for (const key of window) {
           const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
           const item: Record<string, unknown> = { topic: key };
-          if (stateReadable || !hasClient) {
+          if (stateReadable && clientDataFn) {
+            item.clientData = await clientDataFn(state);
+          } else if (!hasClient) {
             // Internal (no client config) under includeInternal: surface raw
             // state under clientData, parallel to the single-resource branch.
-            item.clientData = clientDataFn
-              ? await clientDataFn(state)
-              : (!hasClient ? state : undefined);
-            if (item.clientData === undefined) delete item.clientData;
+            item.clientData = state;
           }
           if (prefetchContent && contentMap[key] !== undefined) {
             item.content = contentMap[key];

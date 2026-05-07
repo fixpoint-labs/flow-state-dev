@@ -275,6 +275,12 @@ function applyClientData(
   return fn ? fn(state) : undefined;
 }
 
+function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
+  if (!record) return false;
+  for (const v of Object.values(record)) if (v === true) return true;
+  return false;
+}
+
 /**
  * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
  *
@@ -452,23 +458,17 @@ export async function handleGetResourceManifest(
 
     const content = client.content as Record<string, unknown> | undefined;
     const state = client.state as Record<string, unknown> | undefined;
-    const hasClientData = typeof (client.data) === "function";
+    const hasClientData = typeof client.data === "function";
 
     // Inclusion rule: presence of any client-visible affordance — a truthy
     // permission flag in `content`/`state`, or a `data` projection. Mirrors
     // the snapshot's inclusion rule (snapshot emits an entry whenever any
     // client surface exists). All-false / empty `client: {}` is treated as
     // private.
-    const anyTruthy = (() => {
-      if (hasClientData) return true;
-      if (content) {
-        for (const v of Object.values(content)) if (v === true) return true;
-      }
-      if (state) {
-        for (const v of Object.values(state)) if (v === true) return true;
-      }
-      return false;
-    })();
+    const anyTruthy =
+      hasClientData ||
+      hasTruthyFlag(content) ||
+      hasTruthyFlag(state);
     if (!anyTruthy) continue;
 
     const scope = cfg.scope as string;
