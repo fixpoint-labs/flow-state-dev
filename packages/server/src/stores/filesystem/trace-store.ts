@@ -1,20 +1,16 @@
 /**
  * Filesystem-backed trace event store with FIFO retention by request (FIX-558).
  *
- * Mirrors the SQLite store's two-table design with files:
- *   - `_roster.json` records the FIFO insertion order of distinct request IDs.
+ * Two on-disk artifacts under `{rootDir}`:
+ *   - `_roster.json` — array of `{ requestId, insertedAt }` in insertion order.
  *     Source of truth for `listRequestIds` and the `maxRequests` cap.
- *   - `{encodeURIComponent(requestId)}.ndjson` holds one trace event per line,
- *     append-only. Atomic appends rely on POSIX `O_APPEND`; coalesced via a
- *     per-request `SerializedWriteQueue`.
+ *   - `{encodeURIComponent(requestId)}.ndjson` — one trace event per line,
+ *     append-only.
  *
- * Designed for `fsdev dev`: events survive process restarts, the roster
- * file is the only mutable cross-cutting state, and reads are full-file
- * (single-digit MB max in practice).
- *
- * No per-request byte cap — the in-memory store needs one for heap
- * pressure; the filesystem store has the disk bounded only by `maxRequests`
- * and the natural size of a request's event tail.
+ * Concurrent appends to the same request are coalesced into one filesystem
+ * write via a per-request `SerializedWriteQueue`. Roster mutations (the
+ * size-checked eviction path) are serialized through a shared lock so size
+ * checks and the corresponding `rm` of evicted files are atomic.
  */
 import { appendFile, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -26,18 +22,11 @@ import type { TraceEvent, TraceStore } from "../types";
 import { ensureDirectory } from "./shared";
 
 export type FilesystemTraceStoreOptions = {
-  /** Directory where the `_roster.json` file and `.ndjson` event files live. */
   rootDir: string;
-  /**
-   * FIFO retention cap measured in distinct request IDs. When a new request
-   * pushes the roster past this number, the oldest request's events are
-   * evicted from disk. Defaults to {@link DEFAULT_MAX_REQUESTS}.
-   */
   maxRequests?: number;
 };
 
 const DEFAULT_MAX_REQUESTS = 50;
-
 const ROSTER_FILE = "_roster.json";
 
 type RosterEntry = { requestId: string; insertedAt: number };
@@ -50,29 +39,36 @@ function eventsPath(rootDir: string, requestId: string): string {
   return path.join(rootDir, `${encodeURIComponent(requestId)}.ndjson`);
 }
 
+/**
+ * Module-scoped so the "warn once per corrupted file" guarantee holds across
+ * `FilesystemTraceStore` instances within the same process — restarting the
+ * store object during tests or registry rebuilds shouldn't re-spam logs for
+ * the same on-disk file.
+ */
+const corruptionWarned = new Set<string>();
+
 export class FilesystemTraceStore implements TraceStore {
   private readonly rootDir: string;
   private readonly maxRequests: number;
   private readonly writeQueues = new Map<string, SerializedWriteQueue>();
-  /** True when a coalescing write task is already in-flight for this request. */
-  private readonly writeScheduled = new Set<string>();
-  /** Events accumulated between coalesced flushes. Drained inside the queue task. */
   private readonly pendingEvents = new Map<string, TraceEvent[]>();
-  /** Insertion-ordered cache of `_roster.json`. Map insertion order is the FIFO. */
+  /**
+   * One in-flight batch promise per request. Concurrent `appendEvent` calls
+   * for the same request all await the same promise, so a single coalesced
+   * write satisfies them collectively and a write failure rejects every
+   * caller (instead of silently logging via the queue's `onError` hook).
+   */
+  private readonly pendingWrite = new Map<string, Promise<void>>();
   private readonly roster = new Map<string, number>();
-  /** Serializes roster mutations so size-checked eviction is atomic. */
   private rosterLock: Promise<unknown> = Promise.resolve();
-  /** Lazy initialization handle so loadRoster runs at most once per instance. */
   private rosterReady: Promise<void> | undefined;
-  /** Tracks file paths we've already warned about to avoid log spam. */
-  private readonly corruptionWarned = new Set<string>();
 
   constructor(options: FilesystemTraceStoreOptions) {
     this.rootDir = options.rootDir;
     this.maxRequests = options.maxRequests ?? DEFAULT_MAX_REQUESTS;
   }
 
-  async appendEvent(requestId: string, event: TraceEvent): Promise<void> {
+  appendEvent(requestId: string, event: TraceEvent): Promise<void> {
     let pending = this.pendingEvents.get(requestId);
     if (pending === undefined) {
       pending = [];
@@ -80,31 +76,42 @@ export class FilesystemTraceStore implements TraceStore {
     }
     pending.push(event);
 
-    const queue = this.getOrCreateWriteQueue(requestId);
-    if (!this.writeScheduled.has(requestId)) {
-      this.writeScheduled.add(requestId);
+    let inflight = this.pendingWrite.get(requestId);
+    if (inflight === undefined) {
+      // Construct the inflight promise BEFORE enqueueing so the
+      // `pendingWrite.set` below runs before the queue task's
+      // `pendingWrite.delete` — `queue.enqueue` synchronously starts the
+      // task up to its first `await`, which would otherwise leave a stale
+      // `pendingWrite` entry that suppresses every subsequent batch.
+      let resolveInflight!: () => void;
+      let rejectInflight!: (err: Error) => void;
+      inflight = new Promise<void>((resolve, reject) => {
+        resolveInflight = resolve;
+        rejectInflight = reject;
+      });
+      this.pendingWrite.set(requestId, inflight);
+
+      const queue = this.getOrCreateWriteQueue(requestId);
       queue.enqueue(async () => {
-        // Read pending at execution time so events appended between enqueue
-        // and now are coalesced into a single append.
-        this.writeScheduled.delete(requestId);
+        this.pendingWrite.delete(requestId);
         const events = this.pendingEvents.get(requestId) ?? [];
         this.pendingEvents.delete(requestId);
-        if (events.length === 0) return;
-
-        // Roster registration runs inside the queued task so eviction can
-        // observe and clean up old requests in the same critical section
-        // before the new file is created.
-        await this.ensureRosterEntry(requestId);
-        await ensureDirectory(this.rootDir);
-        const lines = events.map((e) => `${JSON.stringify(e)}\n`).join("");
-        await appendFile(eventsPath(this.rootDir, requestId), lines, "utf8");
+        if (events.length === 0) {
+          resolveInflight();
+          return;
+        }
+        try {
+          await this.ensureRosterEntry(requestId);
+          await ensureDirectory(this.rootDir);
+          const lines = events.map((e) => `${JSON.stringify(e)}\n`).join("");
+          await appendFile(eventsPath(this.rootDir, requestId), lines, "utf8");
+          resolveInflight();
+        } catch (err) {
+          rejectInflight(err instanceof Error ? err : new Error(String(err)));
+        }
       });
     }
-
-    // Awaiting drain makes `appendEvent` durability-equivalent to the
-    // in-memory and SQLite implementations: by the time the promise
-    // resolves, the event is on disk and visible to `getEvents`.
-    await queue.drain();
+    return inflight;
   }
 
   async flush(requestId: string): Promise<void> {
@@ -127,7 +134,6 @@ export class FilesystemTraceStore implements TraceStore {
     }
 
     const out: TraceEvent[] = [];
-    let warnedThisRead = false;
     for (const line of raw.split("\n")) {
       if (line.length === 0) continue;
       try {
@@ -136,9 +142,8 @@ export class FilesystemTraceStore implements TraceStore {
           out.push(event);
         }
       } catch {
-        if (!warnedThisRead && !this.corruptionWarned.has(filePath)) {
-          this.corruptionWarned.add(filePath);
-          warnedThisRead = true;
+        if (!corruptionWarned.has(filePath)) {
+          corruptionWarned.add(filePath);
           console.warn(
             `[flow-state] skipping corrupted trace line(s) in ${filePath}`
           );
@@ -165,9 +170,9 @@ export class FilesystemTraceStore implements TraceStore {
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
         if (e.code === "ENOENT") return;
-        // Malformed roster: treat as empty so a new write overwrites it
-        // with valid JSON. Operators can still recover the bad file by
-        // hand if they care — we don't unlink it.
+        // Malformed roster: treat as empty so the next write overwrites it
+        // with valid JSON. We don't unlink it — operators can still recover
+        // the bad file by hand if they care.
         console.warn(
           `[flow-state] trace roster at ${rosterPath(this.rootDir)} is unreadable; treating as empty`,
           err
@@ -177,9 +182,11 @@ export class FilesystemTraceStore implements TraceStore {
     return this.rosterReady;
   }
 
+  // `.then(fn, fn)` runs the callback regardless of whether the prior holder
+  // resolved or rejected — a failed roster mutation must not block subsequent
+  // ones, and we explicitly catch the chained rejection so it doesn't leak.
   private withRosterLock<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.rosterLock.then(fn, fn);
-    // Swallow rejection so a failed roster mutation doesn't poison the chain.
     this.rosterLock = next.catch(() => undefined);
     return next;
   }
@@ -188,7 +195,6 @@ export class FilesystemTraceStore implements TraceStore {
     await this.loadRoster();
     if (this.roster.has(requestId)) return;
     await this.withRosterLock(async () => {
-      // Re-check inside the lock — a concurrent append may have added it.
       if (this.roster.has(requestId)) return;
       this.roster.set(requestId, Date.now());
 
@@ -203,10 +209,15 @@ export class FilesystemTraceStore implements TraceStore {
       await this.writeRoster();
 
       for (const id of evicted) {
-        // Best-effort cleanup. A concurrent appendEvent for an evicted
-        // request can re-add it on its next call — that's the documented
+        // Drop in-memory bookkeeping for evicted requests so the maps don't
+        // grow unbounded over a long-running process. A concurrent
+        // appendEvent that beat the roster mutation has already captured
+        // the pending events into its queued task — its appendFile may
+        // create an orphan file, which the spec accepts as the documented
         // "append wins / eviction wins" trade-off.
         this.pendingEvents.delete(id);
+        this.pendingWrite.delete(id);
+        this.writeQueues.delete(id);
         try {
           await rm(eventsPath(this.rootDir, id));
         } catch (err) {
@@ -239,6 +250,9 @@ export class FilesystemTraceStore implements TraceStore {
   private getOrCreateWriteQueue(requestId: string): SerializedWriteQueue {
     let queue = this.writeQueues.get(requestId);
     if (queue === undefined) {
+      // The queue's own `onError` is a backstop for callers that didn't
+      // await `appendEvent`. The primary error channel is the `inflight`
+      // promise rejection in `appendEvent`.
       queue = createSerializedWriteQueue({
         label: `trace-events:${requestId}`,
         onError: (err) => {
@@ -254,11 +268,6 @@ export class FilesystemTraceStore implements TraceStore {
   }
 }
 
-/**
- * Construct a {@link FilesystemTraceStore}. Accepts the same options as the
- * class constructor; returns the {@link TraceStore} interface so callers
- * stay decoupled from the concrete class.
- */
 export function createFilesystemTraceStore(
   options: FilesystemTraceStoreOptions
 ): TraceStore {

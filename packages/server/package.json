@@ -25,6 +25,14 @@
     "@flow-state-dev/core": "workspace:*",
     "ai": "^6.0.93"
   },
+  "peerDependencies": {
+    "vitest": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",

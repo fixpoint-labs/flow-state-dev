@@ -154,8 +154,15 @@ export type CreateStoreOptions = {
   traceStore?: InMemoryTraceStoreOptions;
 };
 
-export type FilesystemStoreRegistryOptions = CreateStoreOptions & {
+export type FilesystemStoreRegistryOptions = {
+  cas?: CASOptions;
   rootDir: string;
+  /**
+   * Trace store retention. The filesystem trace store doesn't honor the
+   * in-memory store's `maxBytesPerRequest` (no heap pressure to mitigate),
+   * so the surface here is narrower than `CreateStoreOptions.traceStore`.
+   */
+  traceStore?: { maxRequests?: number };
 };
 
 const DEV_DEFAULT_TRACE_MAX_REQUESTS = 1000;

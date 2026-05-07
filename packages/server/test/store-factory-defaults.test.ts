@@ -76,13 +76,16 @@ describe("createInMemoryStores trace defaults", () => {
     process.env.NODE_ENV = originalEnv;
   });
 
-  it("retains 1000 requests in development", async () => {
+  it("retains up to 1000 requests in development and evicts the 1001st", async () => {
     process.env.NODE_ENV = "development";
     const stores = createInMemoryStores();
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 1001; i += 1) {
       await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
     }
-    expect((await stores.traces.listRequestIds()).length).toBe(60);
+    const ids = await stores.traces.listRequestIds();
+    expect(ids.length).toBe(1000);
+    expect(ids).not.toContain("r0");
+    expect(ids).toContain("r1000");
   });
 
   it("retains only 50 requests in production", async () => {
@@ -110,15 +113,17 @@ describe("createFilesystemStores trace defaults", () => {
     process.env.NODE_ENV = originalEnv;
   });
 
-  it("uses the development default of 1000 when NODE_ENV=development", async () => {
+  it("retains up to 1000 requests in development and evicts the 1001st", async () => {
     process.env.NODE_ENV = "development";
     const rootDir = await freshRootDir();
     const stores = createFilesystemStores({ rootDir });
-    // Writing 60 distinct requests should not evict anything in dev mode.
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 1001; i += 1) {
       await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
     }
-    expect((await stores.traces.listRequestIds()).length).toBe(60);
+    const ids = await stores.traces.listRequestIds();
+    expect(ids.length).toBe(1000);
+    expect(ids).not.toContain("r0");
+    expect(ids).toContain("r1000");
   });
 
   it("falls back to 50 in production and evicts the oldest", async () => {
