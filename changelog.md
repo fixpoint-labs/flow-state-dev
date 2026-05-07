@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Debate pattern (FIX-328)
+
+New `debate` factory in `@flow-state-dev/patterns` for multi-round adversarial argumentation with assigned stances and a single judge that runs once at the end. Built on the Round Robin chassis with three structural specializations: every debater carries an assigned `stance`, every debater sees all prior arguments from all agents, and the judge produces a structured `{ verdict, winner, reasoning }` after the loop instead of terminating it round-by-round.
+
+- New subpath export `@flow-state-dev/patterns/debate` and matching named exports from the package root: `debate`, `DebaterConfig`, the schemas (`debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`), and the building-block factories (`createDebater`, `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `createDebateTranscript`, `formatDebateTranscriptForJudge`).
+- Bias mitigations ship on by default: `anonymizeTranscript` strips debater names from the judge's view to defuse identity-self-bias when the judge model matches a debater model; `shuffleForJudge` randomizes per-round argument order in the judge's prompt to defuse position bias. Both are opt-out. Tests that need deterministic shuffling can call the exported `formatDebateTranscriptForJudge` helper with an injected RNG.
+- Default `maxRounds` is 2; values above 4 emit a warning about diminishing returns and sycophantic convergence. The default debater prompt is non-conceding by design.
+- Reference docs at `patterns/debate`, package README section, sidebar entry between Round Robin and Event Actors, and cross-links from Round Robin and the patterns overview.
+
 ### Filesystem trace store + dev-mode retention defaults (FIX-558)
 
 Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts. `createFilesystemStores` wires a paired filesystem trace store under `{rootDir}/traces/` instead of falling back to in-memory.

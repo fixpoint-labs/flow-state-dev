@@ -178,3 +178,28 @@ export type {
   RoundRobinContributionsState,
   RoundRobinFinalShape,
 } from "./round-robin";
+export {
+  debate,
+  debateInputSchema,
+  debateStateSchema,
+  debateContributionEntrySchema,
+  debateVerdictSchema,
+  debateTranscriptStateSchema,
+  createDebateTranscript,
+  createDebater,
+  createJudge as createDebateJudge,
+  createSynthesize as createDebateSynthesize,
+  createInitTranscript as createDebateInitTranscript,
+  createRecordArgument as createDebateRecordArgument,
+  formatTranscriptForJudge as formatDebateTranscriptForJudge,
+} from "./debate";
+export type {
+  DebateConfig,
+  DebaterConfig,
+  DebateInput,
+  DebateState,
+  DebateContributionEntry,
+  DebateVerdict,
+  DebateTranscriptState,
+  DebateRawOutput,
+} from "./debate";
