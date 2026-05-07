@@ -85,7 +85,11 @@ export type CollectionClientConfig = {
    * effect on the always-emitted `count`.
    */
   state?: CollectionStateClientConfig;
-  /** Derives client-visible metadata from each instance's state. Appears under `resources[ref].items[topic].clientData` in the snapshot. */
+  /**
+   * Derives client-visible metadata from each instance's state. Surfaces as
+   * `clientData` on items returned by the list/get-state endpoints and on
+   * snapshot `prefetched` entries (the latter only when `state.read: true`).
+   */
   data?: ResourceClientDataFn;
 };
 

@@ -6,7 +6,9 @@
  * an explicit `client` configuration are accessible.
  */
 import type {
+  CollectionClientConfig,
   JsonObject,
+  ResourceClientDataFn,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -266,13 +268,11 @@ const STATE_LIST_DEFAULT_LIMIT = 50;
 const STATE_LIST_MAX_LIMIT = 200;
 
 function applyClientData(
-  config: { client?: { data?: unknown } },
+  config: { client?: Pick<CollectionClientConfig, "data"> },
   state: JsonObject
 ): unknown {
-  const fn = typeof config.client?.data === "function"
-    ? (config.client!.data as (s: JsonObject) => unknown)
-    : undefined;
-  return fn ? fn(state) : undefined;
+  const fn = config.client?.data as ResourceClientDataFn | undefined;
+  return typeof fn === "function" ? fn(state) : undefined;
 }
 
 function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {

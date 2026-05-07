@@ -6,15 +6,11 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ### Lazy collection state, query interface, and resource manifest (FIX-427) — breaking
 
-Resource collections no longer materialize per-item state in the snapshot. The default snapshot for a collection carries `count` plus an opt-in `prefetched` window; clients fetch pages on demand via new endpoints. The React `useResourceCollection` return shape changed; new convenience hooks cover the common cases.
-
-- Snapshot dropped the eager `items` map for collections. Each client-visible collection now reports `count` (always emitted) and `prefetched` (only when `prefetchWindow > 0` is declared on the collection). Per-item `clientData` in the prefetched window appears only when `client.state.read: true` is also set.
-- New endpoints: `GET /sessions/:id/resources/:ref?limit=&offset=&topicPrefix=` lists items with `{ offset, limit, total, hasMore, nextOffset }`. `GET /sessions/:id/resources/:ref/:topic` returns one item's state (200 with `null` body when absent).
-- New manifest endpoint `GET /sessions/:id/manifest` enumerates every resource that opts into any client-visible affordance, with declared permissions, scope, pattern, `prefetchWindow`, and `hasClientData`. Static per `flowKind`; clients should cache by `flowKind`.
-- New `prefetchWindow?: number` option on `defineResourceCollection`. Selects the first N items by **lexicographic storage-key sort**, not by recency. Apps that need recency-biased prefetching should encode timestamps into topic keys.
-- New `client.state` permission slot on collection configs (collections only). Gates the list/get-state endpoints and per-item `clientData` in the snapshot's `prefetched` window. `count` is always emitted regardless.
-- React: `useResourceCollection` returns `{ list, get, query, actions, refetch, prefetched, count }`. New `useResourceCollectionList` (paginated list view with `loadMore`), `useResourceCollectionItem` (single-item lookup), and `useResourceManifest` (flow-static manifest with shared cache).
-- Migration: replace `useResourceCollection({ items, actions })` destructure with `useResourceCollectionList(session, ref, { limit })` for paginated rendering, or call `list()` directly. Add `client: { state: { read: true } }` to any collection whose per-item `clientData` should remain visible to clients.
+- Collection snapshots dropped the eager `items` map; entries now carry `count` (always) and an opt-in `prefetched` window. Per-item `clientData` in the window requires the new `client.state.read` permission.
+- New paginated list endpoint (`GET /sessions/:id/resources/:ref?limit=&offset=&topicPrefix=`) and single-item state endpoint (`GET /sessions/:id/resources/:ref/:topic`). Pagination returns `{ offset, limit, total, hasMore, nextOffset }`; the get-state endpoint returns `null` body when absent.
+- New manifest endpoint (`GET /sessions/:id/manifest`) describes every public resource on a flow — kind, scope, pattern, declared permissions, prefetchWindow. Static per `flowKind`.
+- `defineResourceCollection` gains `prefetchWindow?: number`. Items are selected by **lexicographic storage-key sort**, not by recency.
+- React surface: `useResourceCollection` returns `{ list, get, query, actions, refetch, prefetched, count }`; new `useResourceCollectionList`, `useResourceCollectionItem`, and `useResourceManifest` hooks for the common cases.
 
 ### Debate pattern (FIX-328)
 

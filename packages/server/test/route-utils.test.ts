@@ -2,9 +2,9 @@
  * Tests for the resource-snapshot serializer (FIX-427).
  *
  * Covers the lazy-collection shape: `count` always emitted for client-visible
- * collections; `prefetched` populated only when `prefetchWindow > 0`; per-item
- * `clientData` gated by `client.state.read`; legacy `items` map only via the
- * `includeItems` escape hatch and capped at INCLUDE_ITEMS_CAP.
+ * collections, `prefetched` populated only when `prefetchWindow > 0`, per-item
+ * `clientData` in the prefetched window gated by `client.state.read`, and the
+ * single-resource shape preserved.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
