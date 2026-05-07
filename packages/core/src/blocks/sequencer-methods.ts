@@ -342,4 +342,11 @@ export type SequencerRuntimeState = {
    * drains only the calling sequencer's contributions to the pool.
    */
   scopeId: string;
+  /**
+   * Path of the most recently invoked child block within this sequencer. Used
+   * by subsequent ops to compute the `input.source` ref for the next child
+   * (FIX-573 §3.3). Undefined before the first child runs (sequencer head)
+   * and for ops that don't dispatch a child (`.map`, `.exitIf`, etc.).
+   */
+  lastChildPath?: string;
 };

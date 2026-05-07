@@ -1,4 +1,4 @@
-import type { BlockDebugItem, BlockDebugPayload, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 
@@ -38,11 +38,17 @@ export type TraceNode = {
   traceItem?: DevtoolItem;
   /** State snapshots for sequencer blocks, ordered by step execution. */
   stateSnapshots?: StateSnapshot[];
-  /** Latest resolved debug payload for this block. Replace-in-place — no
-   *  history. Reset each time a new block_debug item arrives for this block
-   *  instance. Generators get a single capture; other blocks only get one
-   *  when `connectInput` transformed the raw input. */
-  debugPayload?: BlockDebugPayload;
+  /** @deprecated FIX-573: synthesized from `traceItem.generator` and
+   *  `traceItem.input.connected` for legacy detail-panel rendering. */
+  debugPayload?: {
+    model?: string;
+    prompt?: string;
+    tools?: string[];
+    user?: unknown[];
+    history?: unknown[];
+    connectedInput?: unknown;
+    modelOutput?: string;
+  };
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -95,16 +101,10 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
       }
 
-      // Block debug items attach to the block node with replace-in-place
-      // semantics — no history. The block detail panel renders them as a
-      // composed section (prompt, connected input). They never appear as
-      // sibling rows in the tree.
-      if (item.type === "block_debug") {
-        const dbg = item as BlockDebugItem;
-        blockNode.blockKind = blockNode.blockKind ?? dbg.blockKind;
-        blockNode.debugPayload = dbg.payload;
-        continue;
-      }
+      // FIX-573: block_debug items are gone. The block_trace lifecycle
+      // already captures the resolved generator config (model, prompt,
+      // tools, user, history) and the connected input; the detail panel
+      // pulls those off `traceItem.generator` and `traceItem.input` below.
 
       // Drop structural status items with nothing to render. The sequencer
       // emits `status` items with an empty `message` carrying only a
@@ -140,8 +140,8 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
 
       // Extract metadata from block_output items into the block node header.
-      if (item.type === "block_output") {
-        const bo = item as BlockOutputItem;
+      if (item.type === "block_trace") {
+        const bo = item as BlockTraceItem;
         blockNode.blockKind = blockNode.blockKind ?? bo.blockKind ?? inferBlockKind(item);
         if (bo.startedAt !== undefined) {
           blockNode.blockStartedAt = bo.startedAt;
@@ -161,9 +161,21 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         if (!blockNode.traceItem || bo.output !== undefined) {
           blockNode.traceItem = item;
         }
+        // FIX-573: synthesize the legacy debugPayload shape from the
+        // unified block_trace item so existing detail-panel rendering keeps
+        // working. Generator config lives at `traceItem.generator`; the
+        // post-connectInput value at `traceItem.input.connected`.
+        const gen = bo.generator;
+        const conn = bo.input?.connected;
+        if (gen !== undefined || conn !== undefined) {
+          blockNode.debugPayload = {
+            ...(gen ?? {}),
+            ...(conn !== undefined ? { connectedInput: conn } : {}),
+          };
+        }
         continue;
       }
-      if (item.type === "block_tool_output") {
+      if (item.type === "tool_output") {
         blockNode.blockKind = blockNode.blockKind ?? "generator";
       }
       if (item.type === "router_decision") {
@@ -235,7 +247,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
 }
 
 function inferBlockKind(item: DevtoolItem): string | undefined {
-  if (item.type === "block_output" && (item as BlockOutputItem).toolCall) return "generator";
+  if (item.type === "block_trace" && (item as BlockTraceItem).toolCall) return "generator";
   return undefined;
 }
 

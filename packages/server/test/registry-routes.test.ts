@@ -626,11 +626,11 @@ describe("createFlowApiRouter", () => {
 
     const stateResponse = await router.GET(
       new Request(
-        // FIX-391: `item_types=block_output` opts into this trace item type,
+        // FIX-391: `item_types=block_trace` opts into this trace item type,
         // which the snapshot route otherwise strips by default. The fixture's
-        // handler emits only a block_output, so we include it explicitly here
+        // handler emits only a block_trace, so we include it explicitly here
         // to keep this pagination assertion intact.
-        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1&item_types=block_output"
+        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1&item_types=block_trace"
       ),
       {
         params: {

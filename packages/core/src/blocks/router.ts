@@ -215,7 +215,7 @@ export function router<
         const items = response.getItems();
         for (let i = items.length - 1; i >= 0; i -= 1) {
           const item = items[i];
-          if (item.type === "block_output" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === selectedInstanceId) {
+          if (item.type === "block_trace" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === selectedInstanceId) {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
               kind: "ref",
               sourceItemId: (item as { id: string }).id

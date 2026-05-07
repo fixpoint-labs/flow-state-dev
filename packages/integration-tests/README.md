@@ -60,9 +60,9 @@ scenario asks for them, not before.
 - `itemsByType(items, type)` — filter to a specific `OutputItem` type.
 - `findMessage(items, role)` — first message matching role.
 - `messageText(messageItem)` — concatenate `output_text` parts of a message.
-- `findToolCalls(items)` — every `block_tool_output` item.
+- `findToolCalls(items)` — every `tool_output` item.
 - `findResourceChanges(items, prefix?)` — `resource_change` items, optionally filtered.
-- `findBlockOutputs(items, blockName)` — `block_output` items produced by a named block.
+- `findBlockOutputs(items, blockName)` — `block_trace` items produced by a named block.
 - `inputContains(needle)` — predicate factory for mock-generator `when` clauses.
 
 ## Authoring a new scenario

@@ -16,7 +16,7 @@
  * text. Resolution returns the joined `output_text` content.
  */
 import type {
-  BlockOutputItem,
+  BlockTraceItem,
   BlockValue,
   BlockValueInternal,
   MessageItem,
@@ -55,14 +55,14 @@ export function isBlockValue(candidate: unknown): candidate is BlockValue {
  * resolver branches on `target.type`. The wider union accepts trace items
  * (`BlockOutputItem`) since refs may target them internally.
  */
-export type ItemLookup = (itemId: string) => OutputItem | BlockOutputItem | undefined;
+export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undefined;
 
 /**
  * Resolve a BlockValue to its typed payload `T`.
  *
  * - `inline` → returns `value` directly.
  * - `ref` → looks up the target item:
- *     - `block_output` → recurse into its own BlockValue.
+ *     - `block_trace` → recurse into its own BlockValue.
  *     - `message` → returns the joined `output_text` content cast to `T`
  *       (FIX-480: streaming-text generators emit refs to their own message).
  *   Returns `undefined` if the target is missing (e.g., evicted).
@@ -108,8 +108,10 @@ function resolveInternal(
     }
     const target = lookup(value.sourceItemId);
     if (target === undefined) return undefined;
-    if (target.type === "block_output") {
-      return resolveInternal((target as BlockOutputItem).output, lookup, refHops + 1);
+    if (target.type === "block_trace") {
+      const traceTarget = target as BlockTraceItem;
+      if (traceTarget.output === undefined) return undefined;
+      return resolveInternal(traceTarget.output, lookup, refHops + 1);
     }
     if (target.type === "message") {
       // Terminal node — the joined text IS the resolved value. No recursion.

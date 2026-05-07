@@ -1,4 +1,4 @@
-import type { AgentType, BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { AgentType, BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
@@ -27,16 +27,16 @@ export function testItems(items: OutputItem[]) {
         (item): item is Extract<OutputItem, { type: "error" }> => item.type === "error"
       );
     },
-    blockOutputs(blockName?: string): BlockOutputItem[] {
-      return (allItems as Array<OutputItem | BlockOutputItem>).filter(
-        (item): item is BlockOutputItem => {
-          if ((item as { type: string }).type !== "block_output") {
+    blockOutputs(blockName?: string): BlockTraceItem[] {
+      return (allItems as Array<OutputItem | BlockTraceItem>).filter(
+        (item): item is BlockTraceItem => {
+          if ((item as { type: string }).type !== "block_trace") {
             return false;
           }
           if (blockName === undefined) {
             return true;
           }
-          return (item as BlockOutputItem).blockName === blockName;
+          return (item as BlockTraceItem).blockName === blockName;
         }
       );
     },

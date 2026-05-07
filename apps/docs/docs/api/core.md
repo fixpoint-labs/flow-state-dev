@@ -62,7 +62,7 @@ const myGenerator = generator({
 
 **Identity config:**
 
-- `agentType?: "primary" | "sub" | "trace"` — Declares the generator's identity. Governs visibility of auto-emitted conversational items (messages, reasoning, tool outputs). `"primary"` = user-facing (client + history). `"sub"` = task-executor (client, not history). `"trace"` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_output` flows via graph edges. No position-inferred default; every generator declares.
+- `agentType?: "primary" | "sub" | "trace"` — Declares the generator's identity. Governs visibility of auto-emitted conversational items (messages, reasoning, tool outputs). `"primary"` = user-facing (client + history). `"sub"` = task-executor (client, not history). `"trace"` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.
 - `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `agentType` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
 
 **Search config:**

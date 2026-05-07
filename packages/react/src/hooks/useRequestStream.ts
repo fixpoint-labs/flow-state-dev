@@ -7,7 +7,7 @@ import {
   type RequestStreamHandle
 } from "@flow-state-dev/client";
 import type {
-  BlockOutputItem,
+  BlockTraceItem,
   MessageItem,
   OutputItem,
   RequestStatus,
@@ -52,7 +52,7 @@ export type UseRequestStreamResult = {
   readonly items: OutputItem[];
   readonly status: RequestStatus;
   readonly messages: MessageItem[];
-  readonly blockOutputs: BlockOutputItem[];
+  readonly blockOutputs: BlockTraceItem[];
   readonly currentStatus?: StatusItem;
   readonly isStreaming: boolean;
   /** True when the main execution chain has completed but background work tasks are still running. */
@@ -183,9 +183,9 @@ export function useRequestStream(
     () =>
       // `block_output` arrives via the trace channel; not in the public
       // OutputItem union. Cast at the boundary.
-      (items as Array<OutputItem | BlockOutputItem>).filter(
-        (item): item is BlockOutputItem =>
-          (item as { type: string }).type === "block_output"
+      (items as Array<OutputItem | BlockTraceItem>).filter(
+        (item): item is BlockTraceItem =>
+          (item as { type: string }).type === "block_trace"
       ),
     [items]
   );

@@ -118,7 +118,7 @@ function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
   }
 
   let resolved: unknown;
-  if (sourceItem.type === "block_output") {
+  if (sourceItem.type === "block_trace") {
     resolved = resolveBlockValueInternal(sourceItem.output, getItem as ItemLookup);
   } else if (sourceItem.type === "message") {
     resolved = sourceItem.content

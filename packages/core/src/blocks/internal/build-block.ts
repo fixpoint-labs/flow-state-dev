@@ -169,14 +169,41 @@ export function buildBlock<
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
+        // Fire the `added` phase trace hook before running connectInput. The
+        // server constructs the in_progress block_trace item from this and
+        // emits item.added — establishes the row that subsequent phases patch.
+        const inputHint = (ctx as { _blockInputHint?: import("../../items/types").BlockValueInternal<unknown> })._blockInputHint;
+        ctx._runtimeHooks?.onBlockTraceCapture?.(
+          {
+            phase: "added",
+            data: {
+              status: "in_progress",
+              input: { source: inputHint ?? { kind: "inline", value: rawInput } },
+              startedAt: Date.now()
+            }
+          },
+          ctx
+        );
+
         const connectedInput = runtimeConfig.connectInput
           ? await runtimeConfig.connectInput(rawInput, ctx)
           : rawInput;
-        // Fire the runtime hook only when the connector actually transformed
-        // the value. Identity check avoids spurious debug items when the
-        // connector is a no-op passthrough.
+        // Fire the `input` phase only when the connector actually transformed
+        // the value — a no-op connector adds no information beyond the source
+        // already captured at `added`.
         if (runtimeConfig.connectInput && connectedInput !== rawInput) {
-          ctx._runtimeHooks?.onConnectedInput?.(connectedInput, ctx);
+          ctx._runtimeHooks?.onBlockTraceCapture?.(
+            {
+              phase: "input",
+              data: {
+                input: {
+                  source: inputHint ?? { kind: "inline", value: rawInput },
+                  connected: connectedInput
+                }
+              }
+            },
+            ctx
+          );
         }
         const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
         const output = await internalExecute(validatedInput, ctx);

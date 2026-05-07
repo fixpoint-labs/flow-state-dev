@@ -335,7 +335,7 @@ describe("createExecutionContext", () => {
         // New item — alias populated at emit time.
         {
           id: "item_tool_new",
-          type: "block_tool_output",
+          type: "tool_output",
           status: "completed",
           requestId: "req_tool_prev",
           itemIndex: 1,
@@ -354,7 +354,7 @@ describe("createExecutionContext", () => {
         // Legacy item — no alias field; fallback derives it from `name`.
         {
           id: "item_tool_legacy",
-          type: "block_tool_output",
+          type: "tool_output",
           status: "completed",
           requestId: "req_tool_prev",
           itemIndex: 2,

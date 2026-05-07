@@ -302,7 +302,7 @@ generator({
 
 The agent calls `recall({ query, limit?, sinceTurn? })` and gets a ranked envelope with `{ results, query, strategy, totalMatched, truncatedTo }`. Each result carries `source` (`'semantic' | 'episodic'`), per-source `metadata`, and a per-item char cap (default 400) with a truncation marker when triggered.
 
-The model-visible representation of a recall result is a compact summary (`formatRecallSummary`) installed via [`mapModelOutput`](https://flowstatedev.com/sequencers/connectors#model-visible-tool-output-mapmodeloutput). The LLM sees one bulleted line per result; the structured `RecallToolResult` keeps flowing through `block_tool_output` items, the devtool, tests, and history replay. Consumers building custom recall variants can reuse `formatRecallSummary` from `@thought-fabric/core/memory`.
+The model-visible representation of a recall result is a compact summary (`formatRecallSummary`) installed via [`mapModelOutput`](https://flowstatedev.com/sequencers/connectors#model-visible-tool-output-mapmodeloutput). The LLM sees one bulleted line per result; the structured `RecallToolResult` keeps flowing through `tool_output` items, the devtool, tests, and history replay. Consumers building custom recall variants can reuse `formatRecallSummary` from `@thought-fabric/core/memory`.
 
 Strategy is pluggable. Default `'llm-filter'` does a query-blind intrinsic pre-rank (top 50) plus a single LLM filter call. Configure at system time:
 

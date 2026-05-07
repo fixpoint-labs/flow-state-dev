@@ -64,7 +64,7 @@ session.snapshot;        // SessionStateSnapshotResponse | null
 session.latestRequest;   // SessionRequestSummary | null — most recent request (any status)
 session.items;           // OutputItem[]  — includes sub-agent items
 session.messages;        // MessageItem[]
-session.blockOutputs;    // BlockOutputItem[]
+session.blockOutputs;    // BlockTraceItem[]
 session.functionCalls;   // FunctionCallItem[]
 session.isLoading;       // boolean
 session.isStreaming;     // boolean

@@ -17,7 +17,7 @@
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
-import type { BlockOutputItem, BlockToolOutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, ToolOutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -196,7 +196,7 @@ export const ToolOutput = ({
   );
 };
 
-type ToolItem = BlockOutputItem | BlockToolOutputItem;
+type ToolItem = BlockTraceItem | ToolOutputItem;
 
 function mapToolStatus(status: string): ToolState {
   switch (status) {
@@ -209,7 +209,7 @@ function mapToolStatus(status: string): ToolState {
 }
 
 function getToolName(item: ToolItem): string {
-  if (item.type === "block_tool_output") return item.toolCall.name;
+  if (item.type === "tool_output") return item.toolCall.name;
   return item.blockName;
 }
 
@@ -225,7 +225,7 @@ function getToolArgs(item: ToolItem): unknown {
  * tool-call items the generator is a leaf, so we only see the `inline` case.
  */
 function unwrapToolOutput(item: ToolItem): unknown {
-  if (item.type === "block_tool_output") return item.output;
+  if (item.type === "tool_output") return item.output;
   const value = item.output;
   if (value !== undefined && typeof value === "object" && "kind" in value && value.kind === "inline") {
     return (value as { value: unknown }).value;
@@ -240,12 +240,12 @@ function getToolOutput(item: ToolItem): unknown {
 
 function getToolErrorText(item: ToolItem): string | undefined {
   if (item.status !== "failed") return undefined;
-  if (item.type === "block_tool_output" && item.error) return item.error.message;
+  if (item.type === "tool_output" && item.error) return item.error.message;
   const raw = unwrapToolOutput(item);
   return raw === undefined ? undefined : String(raw);
 }
 
-export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
+export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   if (!item.toolCall) return null;
   const state = mapToolStatus(item.status);
   const name = getToolName(item);
@@ -268,7 +268,7 @@ export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) 
 // ---------------------------------------------------------------------------
 
 /** Worst status in a batch, used to color the group summary. */
-function aggregateGroupState(items: BlockToolOutputItem[]): ToolState {
+function aggregateGroupState(items: ToolOutputItem[]): ToolState {
   let hasError = false;
   let hasRunning = false;
   for (const item of items) {
@@ -292,7 +292,7 @@ const groupStateIndicator: Record<ToolState, ReactNode> = {
 };
 
 export type ToolGroupProps = {
-  items: BlockToolOutputItem[];
+  items: ToolOutputItem[];
   /** Default-open state. Defaults to false (collapsed). */
   defaultOpen?: boolean;
   className?: string;
@@ -340,7 +340,7 @@ export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupPr
 }
 
 export type ToolRowProps = {
-  item: BlockToolOutputItem;
+  item: ToolOutputItem;
   defaultOpen?: boolean;
   className?: string;
 };
@@ -386,7 +386,7 @@ function ToolRowStatus({ state }: { state: ToolState }) {
   );
 }
 
-function ToolRowMetadata({ item }: { item: BlockToolOutputItem }) {
+function ToolRowMetadata({ item }: { item: ToolOutputItem }) {
   const entries: Array<[string, string]> = [];
   if (item.blockName) entries.push(["Block", item.blockName]);
   entries.push(["Item", item.id]);

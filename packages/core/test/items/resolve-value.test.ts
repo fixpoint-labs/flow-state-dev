@@ -2,12 +2,12 @@
  * Tests for `resolveBlockValue` ref-target broadening (FIX-480 §3.2).
  *
  * The resolver now accepts refs targeting `MessageItem` ids in addition
- * to `BlockOutputItem` ids — joins the message's `output_text` content
+ * to `BlockTraceItem` ids — joins the message's `output_text` content
  * and returns it as the resolved value. Existing `block_output` ref
  * resolution is unchanged.
  */
 import { describe, expect, it } from "vitest";
-import type { BlockOutputItem, MessageItem, OutputItem } from "../../src/items";
+import type { BlockTraceItem, MessageItem, OutputItem } from "../../src/items";
 import {
   buildItemLookup,
   resolveBlockValue,
@@ -35,17 +35,19 @@ function makeMessage(id: string, text: string): MessageItem {
 
 function makeBlockOutput(
   id: string,
-  output: BlockOutputItem["output"],
-): BlockOutputItem {
+  output: BlockTraceItem["output"],
+): BlockTraceItem {
   return {
     id,
-    type: "block_output",
+    type: "block_trace",
     status: "completed",
     requestId: "req",
     itemIndex: 0,
     provenance: baseProvenance,
     ts: 0,
     blockName: "b",
+    blockKind: "handler",
+    blockInstanceId: "b_inst",
     output,
   };
 }

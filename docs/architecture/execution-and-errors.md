@@ -35,7 +35,7 @@ The framework calls `block.run(input, ctx)` which handles input/output validatio
 **Handler:**
 1. Run `validateChunk` (if present)
 2. Execute user-provided `execute` function
-3. Emit `block_output` item (internal/devtools)
+3. Emit `block_trace` item (internal/devtools)
 4. Fire `onCompleted`/`onErrored` observers
 
 **Generator:**
@@ -144,7 +144,7 @@ pipeline
 - `.work(block)` — queues side-chain execution, non-aborting by default
 - `.waitForWork({ failOnError: false })` — waits for work, failures are non-terminal
 - `.waitForWork({ failOnError: true })` — promotes any work failure to terminal request error
-- Work failures are logged and the failed `block_output` reaches the DevTool's trace channel; `onStepErrored` observers still fire
+- Work failures are logged and the failed `block_trace` reaches the DevTool's trace channel; `onStepErrored` observers still fire
 
 ## Generator Repair
 
@@ -211,8 +211,8 @@ The full request execution sequence:
 | Error Type | Stream Result |
 |------------|---------------|
 | Terminal request error | `error` item + `request.failed` |
-| Recoverable step error | failed `block_output` (trace channel) + `onStepErrored` observer |
-| Work queue failure | failed `block_output` (trace channel) + `onStepErrored` observer |
+| Recoverable step error | failed `block_trace` (trace channel) + `onStepErrored` observer |
+| Work queue failure | failed `block_trace` (trace channel) + `onStepErrored` observer |
 
 ## Canonical Authority
 

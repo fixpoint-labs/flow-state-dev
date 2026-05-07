@@ -5,8 +5,7 @@
  * used by the executor, persistence layer, and observability surfaces.
  */
 import type {
-  BlockDebugItem,
-  BlockOutputItem,
+  BlockTraceItem,
   OutputItem,
   RouterDecisionItem,
   StateSnapshotItem
@@ -17,15 +16,13 @@ export { refBlockValue, resolveBlockValueInternal } from "./resolve-value";
 
 /**
  * Runtime item union. Public `OutputItem` is the 10 client-visible types;
- * runtime buffers, the trace channel, and devtool consumers carry the four
- * additional trace types (`block_output`, `router_decision`,
- * `state_snapshot`, `block_debug`). Use this alias when narrowing items
- * that may be either kind.
+ * runtime buffers, the trace channel, and devtool consumers carry the three
+ * additional trace types (`block_trace`, `router_decision`, `state_snapshot`).
+ * Use this alias when narrowing items that may be either kind.
  */
 export type RuntimeItem =
   | OutputItem
-  | BlockOutputItem
+  | BlockTraceItem
   | RouterDecisionItem
-  | StateSnapshotItem
-  | BlockDebugItem;
+  | StateSnapshotItem;
 

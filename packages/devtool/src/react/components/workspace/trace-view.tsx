@@ -162,12 +162,11 @@ export function TraceView({ requestGroups }: TraceViewProps) {
 // the block detail sidebar (or other surfaces). Hidden from the trace
 // tree unless the user flips "Show trace items" on.
 const HIDDEN_TRACE_ITEM_TYPES = new Set([
-  "block_debug",
   "state_snapshot",
   "state_change",
   "resource_change",
   "router_decision",
-  "block_output",
+  "block_trace",
 ]);
 
 function TraceNodeView({
@@ -244,7 +243,7 @@ function TraceNodeView({
   if (node.type === "block") {
     const isBlockSelected = selectedBlockNode?.id === node.id;
     const traceError =
-      node.traceItem?.type === "block_output" && node.traceItem.status === "failed"
+      node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
         ? node.traceItem.error?.message
         : undefined;
 
@@ -417,7 +416,7 @@ function getItemPreview(item: DevtoolItem): string {
       }
       return "";
     }
-    case "block_output":
+    case "block_trace":
       return item.blockName + (item.toolCall ? ` → ${item.toolCall.callId}` : "");
     case "reasoning": {
       const rText = item.summary
@@ -433,7 +432,7 @@ function getItemPreview(item: DevtoolItem): string {
       return `${item.scope}.${item.path ?? ""} ${item.operation}`;
     case "resource_change":
       return `${item.resourcePath} ${item.changeType}`;
-    case "block_tool_output":
+    case "tool_output":
       return `${item.toolCall.name}(${item.toolCall.arguments.slice(0, 40)})`;
     case "router_decision":
       return `${item.routerName} → ${item.selectedRoute}`;

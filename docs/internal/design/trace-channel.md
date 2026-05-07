@@ -22,7 +22,7 @@ Keep the existing single SSE endpoint. Rename `?unfiltered=true` to `?include=tr
 - **Bounded-N retention beats time-windowed retention for in-process devtool buffers.** Redux DevTools' `maxAge: 50` is the canonical pattern. Bound by request count plus a per-request soft byte cap.
 - **Closed kind-set argues for kind-as-method.** OTel's generic `addEvent(kind, payload)` is justified by an open-ended event-kind set. We have four trace types; type-narrowed methods (`ctx.emit.trace.blockOutput`, `routerDecision`, `stateSnapshot`, `blockDebug`) are easier to call correctly.
 - **Public/internal split via subpath beats `@internal` JSDoc + `stripInternal`.** TypeScript's docs flag `stripInternal` as "use at your own risk." A separate subpath (`@flow-state-dev/core/items/internal`) is enforced by `package.json#exports`.
-- **First-party named-type exports stay public.** `BlockOutputItem`, `RouterDecisionItem`, `StateSnapshotItem`, `BlockDebugItem` leave the `OutputItem` union but remain exported types — `@flow-state-dev/react` and `apps/kitchen-sink` already import them by name.
+- **First-party named-type exports stay public.** `BlockTraceItem`, `RouterDecisionItem`, `StateSnapshotItem`, `BlockDebugItem` leave the `OutputItem` union but remain exported types — `@flow-state-dev/react` and `apps/kitchen-sink` already import them by name.
 
 ## 3. Design
 
@@ -34,7 +34,7 @@ Public `OutputItem` shrinks to 10 types:
 export type OutputItem =
   | MessageItem
   | ReasoningItem
-  | BlockToolOutputItem
+  | ToolOutputItem
   | ComponentItem
   | ContainerItem
   | SourceItem
@@ -99,7 +99,7 @@ export type TraceEvent = {
   sequenceNumber: number;
   ts: number;
   type: "trace.item.added" | "trace.item.done";
-  item: BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
+  item: BlockTraceItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
 };
 ```
 
@@ -111,7 +111,7 @@ Four current auto-emission sites refactor to call through `ctx.emit.trace.*`:
 
 | Site | Before | After |
 |---|---|---|
-| `executeBlock.ts:113` (`emitBlockOutputItem`) | `response.emitItemAdded/Done` directly | `ctx.emit.trace.blockOutput(item)` |
+| `executeBlock.ts:113` (`emitBlockTraceItem`) | `response.emitItemAdded/Done` directly | `ctx.emit.trace.blockOutput(item)` |
 | `createExecutionContext.ts:2672` (`onRouteSelected`) | direct emit | `ctx.emit.trace.routerDecision(item)` |
 | `sequencer.ts:272` (`emitStateSnapshot`) | direct emit | `ctx.emit.trace.stateSnapshot(item)` |
 | `debug-items.ts:87` | `emitItemOneShot` | `ctx.emit.trace.blockDebug(payload)` |
@@ -131,13 +131,13 @@ Each `ctx.emit.trace.*` call:
 
 | `step_error` field | Lives where after deletion |
 |---|---|
-| `message` | failed `block_output` |
-| `code` | failed `block_output` |
+| `message` | failed `block_trace` |
+| `code` | failed `block_trace` |
 | `blockName` | `block_output.provenance.blockName` |
-| `recovered: true` | derivable from "failed `block_output` AND no terminal `error`" |
+| `recovered: true` | derivable from "failed `block_trace` AND no terminal `error`" |
 | `console.error` log | unchanged at `sequencer.ts:751` |
 
-`emitWorkStepError` is deleted; the `console.error` stays. `executeBlock` continues to emit a failed `block_output` for any block that throws — that's now the only signal for `.work()` failures, and it rides the trace channel.
+`emitWorkStepError` is deleted; the `console.error` stays. `executeBlock` continues to emit a failed `block_trace` for any block that throws — that's now the only signal for `.work()` failures, and it rides the trace channel.
 
 ### 3.7 Visibility model
 
@@ -149,7 +149,7 @@ Each `ctx.emit.trace.*` call:
 
 - **Why not delete trace type names from public exports too?** First-party files import them by name. Keep them exported, just out of the union.
 - **Why not keep `step_error` and merge with `error` via a `severity` field?** Commit `8e0bd62b` deliberately moved away from a merged shape (a `recovered` flag on a single `error` type) toward separate types because TypeScript exhaustiveness on `item.type` is a UI safety property. Re-merging undoes that. Better to delete one of the two types.
-- **Why not move `step_error` to the trace channel instead of deleting it?** The failed `block_output` already carries the same information. Two trace items for the same signal is duplication.
+- **Why not move `step_error` to the trace channel instead of deleting it?** The failed `block_trace` already carries the same information. Two trace items for the same signal is duplication.
 - **Why public `ctx.emit.trace.*` instead of hidden `ctx._trace`?** Consistent with `ctx.cap.*`. `@internal` JSDoc on the namespace conveys intent without breaking the shape.
 
 ## 5. Sequencing

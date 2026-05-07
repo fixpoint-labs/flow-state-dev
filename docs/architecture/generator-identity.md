@@ -22,7 +22,7 @@ generator({
 | `"trace"`   | ✓ | — | — | not in client stream |
 | *unset*     | — | n/a | n/a | n/a |
 
-A generator with no `agentType` is a pure transformer — it runs the model, returns typed `block_output` via graph edges, and produces no session items. Use this for structured-output generators that feed downstream blocks.
+A generator with no `agentType` is a pure transformer — it runs the model, returns typed `block_trace` via graph edges, and produces no session items. Use this for structured-output generators that feed downstream blocks.
 
 ### Why three values
 

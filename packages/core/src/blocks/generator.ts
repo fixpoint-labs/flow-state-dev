@@ -719,7 +719,7 @@ function compileToolsWithExecute(
             const identity = scopedCtx._blockIdentity;
             const toolOutputItem = {
               id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "block_tool_output" as const,
+              type: "tool_output" as const,
               status: "completed" as const,
               requestId: scopedCtx.request.identity.id,
               itemIndex: getEmitterItemCount(scopedCtx.response),
@@ -751,45 +751,10 @@ function compileToolsWithExecute(
             await scopedCtx.response.emit({ type: "item.added", item: toolOutputItem });
             await scopedCtx.response.emit({ type: "item.done", item: toolOutputItem });
 
-            // When the tool block declared `mapModelOutput`, emit a
-            // block_debug item carrying the model-visible string. The
-            // structured `output` on the block_tool_output above is what
-            // downstream consumers see; this is what the LLM saw on its
-            // next turn. Gated by trace observability — debug items are
-            // transient, never persisted, never sent to LLM context.
-            if (
-              modelOutputMapper !== undefined &&
-              isTraceObservabilityEnabled()
-            ) {
-              try {
-                const modelOutput = await modelOutputMapper(output as never, scopedCtx);
-                const debugItem = {
-                  id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-                  type: "block_debug" as const,
-                  status: "completed" as const,
-                  transient: true as const,
-                  requestId: scopedCtx.request.identity.id,
-                  itemIndex: getEmitterItemCount(scopedCtx.response),
-                  provenance: {
-                    blockName: identity?.blockName ?? tool.name,
-                    blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                    parentBlockInstanceId: identity?.parentBlockInstanceId,
-                    phase: identity?.phase ?? "main"
-                  },
-                  ts: Date.now(),
-                  blockName: tool.name,
-                  blockKind: tool.kind,
-                  blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                  payload: { modelOutput }
-                };
-                await scopedCtx.response.emit({ type: "item.added", item: debugItem });
-                await scopedCtx.response.emit({ type: "item.done", item: debugItem });
-              } catch {
-                // Mapper failure here must not break the tool path. The AI
-                // SDK still re-runs the mapper at its own boundary; if that
-                // also fails the SDK surfaces the error there.
-              }
-            }
+            // FIX-573: the standalone block_debug item carrying modelOutput
+            // is gone. The model-visible string flows to the AI SDK via
+            // toModelOutput on the tool entry, and the structured output is
+            // already on the tool_output item above.
           }
 
           return output;
@@ -802,7 +767,7 @@ function compileToolsWithExecute(
             const identity = scopedCtx._blockIdentity;
             const toolErrorItem = {
               id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "block_tool_output" as const,
+              type: "tool_output" as const,
               status: "failed" as const,
               requestId: scopedCtx.request.identity.id,
               itemIndex: getEmitterItemCount(scopedCtx.response),
@@ -1787,13 +1752,18 @@ export function generator<
         .filter((s) => s.length > 0)
         .join("\n\n");
       const debugUserMessages = userValues.map(asUserMessage);
-      ctx._runtimeHooks?.onBlockDebugCapture?.(
+      ctx._runtimeHooks?.onBlockTraceCapture?.(
         {
-          model: modelId,
-          prompt: debugPrompt,
-          tools: toolBlocks.map((t) => t.name),
-          user: debugUserMessages,
-          history: historyValues,
+          phase: "generator",
+          data: {
+            generator: {
+              model: modelId,
+              prompt: debugPrompt,
+              tools: toolBlocks.map((t) => t.name),
+              user: debugUserMessages,
+              history: historyValues,
+            },
+          },
         },
         ctx
       );

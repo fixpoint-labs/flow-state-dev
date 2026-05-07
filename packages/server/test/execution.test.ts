@@ -1880,8 +1880,8 @@ describe("execution runtime", () => {
     });
 
     expect(withNoopSeams.output).toBe(baseline.output);
-    expect(baseline.items.at(-1)?.type).toBe("block_output");
-    expect(withNoopSeams.items.at(-1)?.type).toBe("block_output");
+    expect(baseline.items.at(-1)?.type).toBe("block_trace");
+    expect(withNoopSeams.items.at(-1)?.type).toBe("block_trace");
     // FIX-413: block_output items carry BlockValue<T>, not the raw T. Handlers
     // are leaves — always inline.
     expect(withNoopSeams.items.at(-1)).toMatchObject({
@@ -1954,7 +1954,7 @@ describe("transient block output", () => {
 
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
-    const blockOutputItems = storedItems.filter((item) => item.type === "block_output");
+    const blockOutputItems = storedItems.filter((item) => item.type === "block_trace");
     expect(blockOutputItems.length).toBe(0);
   });
 
@@ -1987,7 +1987,7 @@ describe("transient block output", () => {
 
     expect(result.error).toBeUndefined();
     // The in-flight items should contain the transient block output
-    const blockOutputItems = result.items.filter((item) => item.type === "block_output");
+    const blockOutputItems = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputItems.length).toBe(1);
     expect(blockOutputItems[0]?.transient).toBe(true);
   });
@@ -2050,14 +2050,14 @@ describe("transient block output", () => {
     expect(result.error).toBeUndefined();
 
     // In-flight items include both transient and non-transient
-    const allBlockOutputs = result.items.filter((item) => item.type === "block_output");
+    const allBlockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(allBlockOutputs.length).toBeGreaterThanOrEqual(1);
 
     // Persisted items should exclude transient block output but include durable
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
     const storedBlockOutputNames = storedItems
-      .filter((item) => item.type === "block_output")
+      .filter((item) => item.type === "block_trace")
       .map((item) => (item as { blockName: string }).blockName);
 
     // The sequencer's own block output is durable (sequencer is not transient)
@@ -2116,7 +2116,7 @@ describe("transient block output", () => {
 
     // Block-level transient still suppresses the auto-emitted block_output trace.
     const storedBlockOutputs = (requestRecord?.items ?? []).filter(
-      (item) => item.type === "block_output"
+      (item) => item.type === "block_trace"
     );
     expect(storedBlockOutputs.length).toBe(0);
   });

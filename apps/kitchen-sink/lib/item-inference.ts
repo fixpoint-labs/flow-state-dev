@@ -1,7 +1,7 @@
 /**
  * Item inference helpers for deriving thinking style from the session item stream.
  */
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import type { ThinkingStyle } from "@/components/thinking-style-selector";
 
 type ComponentItem = OutputItem & {
@@ -53,8 +53,8 @@ export function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
 
   const hasSupervisor = items.some(
     (i) =>
-      (i as { type: string }).type === "block_output" &&
-      (i as unknown as BlockOutputItem).blockName.includes("supervisor"),
+      (i as { type: string }).type === "block_trace" &&
+      (i as unknown as BlockTraceItem).blockName.includes("supervisor"),
   );
   if (hasSupervisor) return "supervisor";
 

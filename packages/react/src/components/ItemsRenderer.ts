@@ -6,7 +6,7 @@
  */
 import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
 import type {
-  BlockToolOutputItem,
+  ToolOutputItem,
   ComponentItem,
   ContainerItem,
   OutputItem
@@ -45,7 +45,7 @@ export type ItemsRendererProps = {
    * Non-tool items continue to render through the renderer registry via
    * `ItemRenderer` as normal.
    */
-  toolGroupRenderer?: ComponentType<{ items: BlockToolOutputItem[] }>;
+  toolGroupRenderer?: ComponentType<{ items: ToolOutputItem[] }>;
 };
 
 /**
@@ -56,7 +56,7 @@ export type ItemsRendererProps = {
  */
 export type ItemRenderSegment =
   | { kind: "item"; item: OutputItem }
-  | { kind: "group"; items: BlockToolOutputItem[] };
+  | { kind: "group"; items: ToolOutputItem[] };
 
 /**
  * Options for {@link buildItemRenderStream}. Mirrors the ItemsRenderer
@@ -135,7 +135,7 @@ function buildSuppressedOwners(
  */
 const CONTAINER_MANAGED_TYPES = new Set([
   "component",
-  "block_tool_output",
+  "tool_output",
 ]);
 
 /**
@@ -172,15 +172,15 @@ export function buildItemRenderStream(
   }
 
   const out: ItemRenderSegment[] = [];
-  let buf: BlockToolOutputItem[] = [];
+  let buf: ToolOutputItem[] = [];
   const flush = () => {
     if (buf.length === 0) return;
     out.push({ kind: "group", items: buf });
     buf = [];
   };
   for (const item of filtered) {
-    if (item.type === "block_tool_output") {
-      buf.push(item as BlockToolOutputItem);
+    if (item.type === "tool_output") {
+      buf.push(item as ToolOutputItem);
     } else {
       flush();
       out.push({ kind: "item", item });

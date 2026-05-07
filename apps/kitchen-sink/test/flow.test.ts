@@ -213,7 +213,7 @@ describe("chat-agent flow", () => {
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

@@ -183,7 +183,7 @@ describe("buildTraceTree", () => {
       // Child trace item appears first — has correct parentBlockInstanceId
       makeItem({
         id: "i2",
-        type: "block_output",
+        type: "block_trace",
         provenance: makeProvenance("child-gen", "gen-inst", "rtr-inst"),
         blockKind: "generator",
       } as Partial<OutputItem> & { id: string; type: string }),
@@ -225,10 +225,10 @@ describe("buildTraceTree", () => {
     const items = [
       makeItem({
         id: "i1",
-        type: "block_output",
+        type: "block_trace",
         blockName: "gen",
         provenance: makeProvenance("gen", "gen-inst"),
-        // FIX-413: BlockOutputItem.output is now a BlockValue<T> union.
+        // FIX-413: BlockTraceItem.output is now a BlockValue<T> union.
         output: { kind: "inline", value: "hello" },
         toolCall: { callId: "tc-1", arguments: "{}", generatorBlock: "gen" },
       } as Partial<OutputItem> & { id: string; type: string }),

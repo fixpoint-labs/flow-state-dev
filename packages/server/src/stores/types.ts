@@ -5,8 +5,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
-  BlockDebugItem,
-  BlockOutputItem,
+  BlockTraceItem,
   OutputItem,
   RequestStreamEvent,
   RouterDecisionItem,
@@ -305,7 +304,7 @@ export type TraceEvent = {
   sequenceNumber: number;
   ts: number;
   type: "trace.item.added" | "trace.item.done";
-  item: BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
+  item: BlockTraceItem | RouterDecisionItem | StateSnapshotItem;
 };
 
 /**

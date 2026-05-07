@@ -124,27 +124,48 @@ export type StructureShape =
   | { container: "array"; entries: BlockValueInternal<unknown>[] }
   | { container: "object"; entries: Record<string, BlockValueInternal<unknown>> };
 
-export type BlockOutputItem = OutputItemBase & {
-  type: "block_output";
+/**
+ * Unified block trace item — the single record describing one block's execution
+ * across its lifecycle (added → input → generator → output). Replaces the prior
+ * split between `block_output` (terminal) and `block_debug` (start-time).
+ *
+ * Items emit at block start with `status: "in_progress"` and are updated in
+ * place as more becomes known: post-`connectInput` value, generator config
+ * resolution, and final output / error / timing. The id is stable across the
+ * full lifecycle so the devtool, replay tools, and the trace store can index
+ * one row per block instance.
+ *
+ * Shape rules:
+ * - `input.source` is the BlockValue describing where the block's raw input
+ *   came from (a ref to the previous step's item, an inline literal at the
+ *   sequencer head, or a structure for fan-in shapes).
+ * - `input.connected` is set only when `connectInput` actually transformed
+ *   the value — otherwise the connector was a no-op and the source is the
+ *   effective input.
+ * - `generator` is populated post-config-resolution for generator blocks.
+ *   Optional nested object so consumers read with optional chaining.
+ * - `output` is set on completion. Carries the BlockValue (inline / ref /
+ *   structure) so pass-through composers don't duplicate content at every
+ *   level.
+ */
+export type BlockTraceItem = OutputItemBase & {
+  type: "block_trace";
   blockName: string;
-  blockKind?: string;
-  /**
-   * Block output as a BlockValue discriminated union. See {@link BlockValue}.
-   * Resolve via `resolveBlockValue(item.output, lookup)` to recover the typed
-   * payload `T`. `ctx.getBlockOutput()` resolves transparently.
-   */
-  output: BlockValueInternal<unknown>;
-  /** Present when block execution failed (status will be "failed"). */
-  error?: {
-    message: string;
-    code?: string;
+  blockKind: "generator" | "handler" | "sequencer" | "router";
+  blockInstanceId: string;
+  status: "in_progress" | "completed" | "failed" | "planned";
+  input?: {
+    source: BlockValueInternal<unknown>;
+    connected?: unknown;
   };
-  /** Epoch ms when block execution started. */
-  startedAt?: number;
-  /** Epoch ms when block execution completed or failed. */
-  completedAt?: number;
-  /** Duration in ms (completedAt - startedAt). */
-  duration?: number;
+  output?: BlockValueInternal<unknown>;
+  generator?: {
+    model: string;
+    tools: string[];
+    prompt: string;
+    user?: unknown[];
+    history?: unknown[];
+  };
   modelUsage?: {
     model: string;
     promptTokens: number;
@@ -159,11 +180,18 @@ export type BlockOutputItem = OutputItemBase & {
     arguments: string;
     generatorBlock: string;
   };
+  startedAt?: number;
+  completedAt?: number;
+  duration?: number;
+  error?: {
+    message: string;
+    code?: string;
+  };
 };
 
 /** Tool result emitted when a block executes as a tool within a generator. */
-export type BlockToolOutputItem = OutputItemBase & {
-  type: "block_tool_output";
+export type ToolOutputItem = OutputItemBase & {
+  type: "tool_output";
   blockName: string;
   output: unknown;
   toolCall: {
@@ -343,56 +371,10 @@ export type StateSnapshotItem = OutputItemBase & {
   terminal?: boolean;
 };
 
-/**
- * Resolved block observability data captured at runtime. Emitted only when it
- * reveals something not inferable from surrounding items:
- *   - Generators: the resolved prompt, model, and registered tools.
- *   - Any block with a `connectInput` connector that transformed raw input:
- *     the transformed value, so debugging isn't guessing what the block
- *     actually received vs. what the previous block emitted.
- *
- * Blocks with none of the above (most handlers/sequencers/routers) emit no
- * debug item at all. Replace-in-place per block instance on the client.
- */
-export type BlockDebugPayload = {
-  /** Resolved model identifier (generators only). */
-  model?: string;
-  /** Fully assembled prompt as sent to the model (generators only). */
-  prompt?: string;
-  /** Registered tool names (generators only). */
-  tools?: string[];
-  /** Resolved user-slot messages as sent to the model (generators only).
-   *  Omitted when the generator had no user slot. */
-  user?: unknown[];
-  /** Resolved conversation history as sent to the model (generators only).
-   *  Omitted when the generator had no history slot. */
-  history?: unknown[];
-  /** Input after `connectInput` transformation. Only set when the connector
-   *  actually changed the value — otherwise the previous block's output is
-   *  the input, already visible via block_output. */
-  connectedInput?: unknown;
-  /** Model-visible representation of a tool's output, produced by a block's
-   *  `mapModelOutput` mapper. Lets the devtool render what the LLM saw on
-   *  its next turn alongside the structured `output` carried on the
-   *  `block_tool_output` item. Only set on tool-call invocations whose
-   *  underlying block declared `mapModelOutput`. */
-  modelOutput?: string;
-};
-
-/** Resolved block configuration snapshot emitted at block start for devtool debugging.
- *  Always transient and trace-only — never persisted, never sent to LLM context. */
-export type BlockDebugItem = OutputItemBase & {
-  type: "block_debug";
-  blockName: string;
-  blockKind: "generator" | "handler" | "sequencer" | "router";
-  blockInstanceId: string;
-  payload: BlockDebugPayload;
-};
-
 export type OutputItem =
   | MessageItem
   | ReasoningItem
-  | BlockToolOutputItem
+  | ToolOutputItem
   | ComponentItem
   | ContainerItem
   | SourceItem

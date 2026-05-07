@@ -66,7 +66,7 @@ function extractTerminalMessage(items: ExecutionResult["items"]): string {
     if (item === undefined) continue;
     const itemType = item.type;
     if (itemType === "message" && typeof item.text === "string") return item.text;
-    if (itemType === "block_output" && item.output !== undefined) {
+    if (itemType === "block_trace" && item.output !== undefined) {
       return typeof item.output === "string"
         ? item.output
         : safeJsonStringify(item.output);

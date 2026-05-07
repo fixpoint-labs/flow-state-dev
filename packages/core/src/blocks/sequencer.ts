@@ -111,7 +111,7 @@ type SequencerOperation = {
 };
 
 /**
- * Looks up the id of the most recently emitted `block_output` item whose
+ * Looks up the id of the most recently emitted `block_trace` item whose
  * provenance matches a given block instance. Used by sequencer ops to build
  * `ref` descriptors pointing at their child's emitted item (FIX-413).
  *
@@ -130,7 +130,7 @@ function findEmittedBlockOutputId(
   const items = response.getItems();
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
-    if (item.type === "block_output" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === childInstanceId) {
+    if (item.type === "block_trace" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === childInstanceId) {
       return (item as { id: string }).id;
     }
   }
@@ -147,6 +147,66 @@ function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint 
   const itemId = findEmittedBlockOutputId(ctx, instanceId);
   if (itemId === undefined) return { kind: "inline" };
   return { kind: "ref", sourceItemId: itemId };
+}
+
+/**
+ * Compute the `input.source` descriptor for a child block invocation by
+ * looking up the previous step's emitted block_trace item. Returns an
+ * inline-undefined when no prior step exists (sequencer head) so the
+ * server-side handler stamps `{ kind: "inline", value: rawInput }` from the
+ * raw input itself.
+ */
+function inputDescriptorFromPrevPath(
+  ctx: BlockContext,
+  prevPath: string | undefined
+): BlockValueInternal<unknown> {
+  if (prevPath === undefined) return { kind: "inline", value: undefined };
+  const ref = refDescriptorForPath(ctx, prevPath);
+  return ref.kind === "ref"
+    ? { kind: "ref", sourceItemId: ref.sourceItemId }
+    : { kind: "inline", value: undefined };
+}
+
+/**
+ * Compute the `input.source` descriptor for an aggregator step (`.thenAll`,
+ * `.parallel`, `.forEach`) whose input is structurally composed from a set of
+ * branch paths. Each entry is a ref to the matching branch trace when present,
+ * falling back to inline-undefined otherwise.
+ */
+function inputDescriptorFromBranches(
+  ctx: BlockContext,
+  branches: Array<{ key?: string; path: string }>,
+  container: "array" | "object"
+): BlockValueInternal<unknown> {
+  if (container === "array") {
+    const entries: BlockValueInternal<unknown>[] = branches.map((b) => {
+      const ref = refDescriptorForPath(ctx, b.path);
+      return ref.kind === "ref"
+        ? { kind: "ref", sourceItemId: ref.sourceItemId }
+        : { kind: "inline", value: undefined };
+    });
+    return { kind: "structure", shape: { container: "array", entries } };
+  }
+  const entries: Record<string, BlockValueInternal<unknown>> = {};
+  for (const b of branches) {
+    if (b.key === undefined) continue;
+    const ref = refDescriptorForPath(ctx, b.path);
+    entries[b.key] =
+      ref.kind === "ref"
+        ? { kind: "ref", sourceItemId: ref.sourceItemId }
+        : { kind: "inline", value: undefined };
+  }
+  return { kind: "structure", shape: { container: "object", entries } };
+}
+
+/**
+ * Stash an input descriptor on a temporary scope key so the next invocation of
+ * `executeBlock` propagates it onto the scoped child ctx via the
+ * `_blockInputHint` field. Cleared by `executeBlock`'s scope wrapper after
+ * forwarding to the child run.
+ */
+function stashInputHint(ctx: BlockContext, hint: BlockValueInternal<unknown>): void {
+  (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = hint;
 }
 
 type WorkOptions = {
@@ -316,73 +376,11 @@ async function emitStateSnapshot(
   return currentStateJson;
 }
 
-/**
- * Emit a block_output item for a generator block. Owns the trace for
- * generators so `_withExecutionScope` can skip its default emission and
- * avoid duplicates. `modelUsage` and `error` are optional — the caller
- * passes whichever matches the success/failure path.
- *
- * Reads `_blockOutputHint` from the passed ctx (FIX-480) so streaming-
- * text generators can ref their just-emitted message item instead of
- * inlining a duplicate copy of the streamed text. Clears the hint after
- * reading so a downstream observer doesn't see a stale value.
- */
-async function emitGeneratorBlockOutput(
-  block: BlockDefinition<any, any>,
-  output: unknown,
-  ctx: BlockContext,
-  startedAt: number,
-  instanceId: string,
-  modelUsage?: GeneratorModelUsageMeta,
-  error?: { message: string; code?: string }
-): Promise<void> {
-  const completedAt = Date.now();
-  const hint = error
-    ? undefined
-    : (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
-  if (hint !== undefined) {
-    (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
-  }
-  // Default for generators is inline (FIX-413: leaves carry novel
-  // content). FIX-480 lets streaming-text generators promote to a ref
-  // when the output IS the streamed message.
-  const blockValue: BlockValueInternal<unknown> =
-    error
-      ? { kind: "inline", value: undefined }
-      : hint?.kind === "ref"
-        ? { kind: "ref", sourceItemId: hint.sourceItemId }
-        : hint?.kind === "structure"
-          ? { kind: "structure", shape: hint.shape }
-          : { kind: "inline", value: output };
-  const item = {
-    id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
-    type: "block_output" as const,
-    status: (error ? "failed" : "completed") as "completed" | "failed",
-    transient: block.transient || undefined,
-    requestId: ctx.request.identity.id,
-    itemIndex: getSequencerEmitterItemCount(ctx.response),
-    provenance: {
-      blockName: block.name,
-      blockInstanceId: instanceId,
-      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
-      phase: ctx._blockIdentity?.phase ?? "main",
-    },
-    ts: completedAt,
-    // Stamp trace so visibility resolution treats this as devtool-only.
-    agentType: "trace" as const,
-    blockName: block.name,
-    blockKind: block.kind,
-    output: blockValue,
-    error,
-    startedAt,
-    completedAt,
-    duration: completedAt - startedAt,
-    modelUsage,
-  };
-
-  await ctx.response.emit({ type: "item.added", item });
-  await ctx.response.emit({ type: "item.done", item });
-}
+// FIX-573: emitGeneratorBlockOutput is gone. The generator's output phase
+// is fired by `_withExecutionScope`'s post-execute path along with all
+// other block kinds; modelUsage flows via `_generatorModelUsage` on the
+// scoped ctx (set in executeBlock above) so the unified hook handler picks
+// it up when patching the trace row.
 
 /**
  * Returns the current sequencer's path from ctx. Defaults to the root path
@@ -420,7 +418,19 @@ async function executeBlock(
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
   const instanceId = buildBlockInstanceId(requestId, path, 0);
+  // Pull the input descriptor stashed by the calling op (FIX-573). Forwarded
+  // onto the scoped child ctx as `_blockInputHint` so build-block.ts's
+  // `added`-phase capture can stamp the right BlockValue source. Cleared
+  // after one read so it can't leak across siblings.
+  const pendingInputHint =
+    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint;
+  if (pendingInputHint !== undefined) {
+    (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = undefined;
+  }
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
+    if (pendingInputHint !== undefined) {
+      (scopedCtx as { _blockInputHint?: BlockValueInternal<unknown> })._blockInputHint = pendingInputHint;
+    }
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
     resolveActiveStatusMessage(block, input, scopedCtx);
 
@@ -471,13 +481,15 @@ async function executeBlock(
         } as BlockContext
       : scopedCtx;
 
-    // Fire the nested-block debug hook so the devtool sees a block_debug row
-    // for every block, not just the root. No-op when debug is disabled.
-    if (scopedCtx._runtimeHooks?.emitNestedBlockDebug !== undefined) {
+    // FIX-573: nested-block trace emission is driven by `onBlockTraceCapture`
+    // firing the `added` phase from build-block.ts. The `emitNestedBlockTrace`
+    // hook is reserved for adapters that need to short-circuit the `added`
+    // emission (e.g., custom traces); core no longer drives it itself.
+    if (scopedCtx._runtimeHooks?.emitNestedBlockTrace !== undefined) {
       try {
-        await scopedCtx._runtimeHooks.emitNestedBlockDebug(block, scopedCtx);
+        await scopedCtx._runtimeHooks.emitNestedBlockTrace(block, scopedCtx);
       } catch {
-        // Debug emission is best-effort; never fail a block because of it.
+        // Trace emission is best-effort; never fail a block because of it.
       }
     }
 
@@ -485,38 +497,31 @@ async function executeBlock(
       const output = await asRuntime(block).run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
-      // Generator blocks own their own block_output trace (carries modelUsage
-      // and shares the scope's instanceId with streaming items). We emit it
-      // here unconditionally so `_withExecutionScope` can skip its nested
-      // trace for generators — otherwise each generator produced two
-      // block_output items in the devtool. Passing `execCtx` (not
-      // `scopedCtx`) so the FIX-480 ref hint the generator wrote to its
-      // own ctx is visible to `emitGeneratorBlockOutput`.
+      // FIX-573: stash captured generator modelUsage on the scoped ctx so
+      // `_withExecutionScope`'s `output` phase capture picks it up. The
+      // unified trace lifecycle uses one row per block; the prior split
+      // (sequencer.ts emit + _withExecutionScope skip) is gone. Also forward
+      // the FIX-480 ref hint that streaming-text generators set on their own
+      // (separate) ctx up to the scoped ctx so the output phase reads it.
       if (block.kind === "generator") {
-        const identity = scopedCtx._blockIdentity;
-        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
-        await emitGeneratorBlockOutput(block, output, execCtx, startedAt, generatorInstanceId, modelUsage);
+        if (modelUsage !== undefined) {
+          (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = modelUsage;
+        }
+        const generatorHint = (execCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+        if (generatorHint !== undefined) {
+          (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = generatorHint;
+        }
       }
 
       return output;
     } catch (error) {
       scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
 
-      // Mirror the success path: emit the generator's failure trace here so
-      // `_withExecutionScope` can skip its nested failure trace.
-      if (block.kind === "generator") {
-        const identity = scopedCtx._blockIdentity;
-        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
-        const err = error instanceof Error ? error : new Error(String(error));
-        await emitGeneratorBlockOutput(
-          block,
-          undefined,
-          execCtx,
-          startedAt,
-          generatorInstanceId,
-          modelUsage,
-          { message: err.message, code: (err as { code?: string }).code }
-        );
+      // FIX-573: forward partial modelUsage on the failure path too. The
+      // `output` phase in `_withExecutionScope` reads it and patches the
+      // shared block_trace row before emitting item.done.
+      if (block.kind === "generator" && modelUsage !== undefined) {
+        (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = modelUsage;
       }
 
       throw error;
@@ -612,7 +617,8 @@ function createRuntimeState(): SequencerRuntimeState {
     loopCounts: new Map<string, number>(),
     workTasks: [],
     stateVersion: 0,
-    scopeId: `seq_scope_${sequencerScopeCounter}`
+    scopeId: `seq_scope_${sequencerScopeCounter}`,
+    lastChildPath: undefined
   };
 }
 

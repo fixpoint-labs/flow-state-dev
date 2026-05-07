@@ -11,7 +11,7 @@ import {
   handler,
   sequencer
 } from "@flow-state-dev/core";
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { NetworkError } from "../src/errors/flow-error";
 import {
   createInMemoryStores,
@@ -23,11 +23,11 @@ import { describe, expect, it } from "vitest";
 
 type Provenance = { blockName: string; blockInstanceId: string; attempt?: number };
 
-function blockOutputs(items: OutputItem[]): BlockOutputItem[] {
-  return items.filter((i): i is BlockOutputItem => i.type === "block_output");
+function blockOutputs(items: OutputItem[]): BlockTraceItem[] {
+  return items.filter((i): i is BlockTraceItem => i.type === "block_trace");
 }
 
-function byBlockName(items: BlockOutputItem[], name: string): BlockOutputItem[] {
+function byBlockName(items: BlockTraceItem[], name: string): BlockTraceItem[] {
   return items.filter((i) => i.provenance.blockName === name);
 }
 

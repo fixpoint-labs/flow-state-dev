@@ -10,7 +10,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
 import { MessageItemView } from "./message-item";
 import { ReasoningItemView } from "./reasoning-item";
-import { BlockOutputItemView } from "./block-output-item";
+import { BlockTraceItemView } from "./block-output-item";
 import { ErrorItemView } from "./error-item";
 import { StatusItemView } from "./status-item";
 import { ComponentItemView } from "./component-item";
@@ -18,10 +18,10 @@ import { ContainerItemView } from "./container-item";
 import { ContextItemView } from "./context-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
-import { BlockToolOutputItemView } from "./block-tool-output-item";
+import { ToolOutputItemView } from "./block-tool-output-item";
 import { RouterDecisionItemView } from "./router-decision-item";
 import { SourceItemView } from "./source-item";
-import { BlockDebugItemView } from "./block-debug-item";
+// FIX-573: BlockDebugItemView is gone with the unified block_trace lifecycle.
 import { useDebug } from "../../context/debug-context";
 import { useSelection } from "../../context/selection-context";
 import { DebugOverlay } from "./debug-overlay";
@@ -31,7 +31,7 @@ type ItemRendererProps = {
   item: DevtoolItem;
 };
 
-const TIER_3_TYPES = new Set(["state_change", "resource_change", "state_snapshot", "block_debug"]);
+const TIER_3_TYPES = new Set(["state_change", "resource_change", "state_snapshot"]);
 
 export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
@@ -99,8 +99,8 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <MessageItemView item={item} />;
     case "reasoning":
       return <ReasoningItemView item={item} />;
-    case "block_output":
-      return <BlockOutputItemView item={item} />;
+    case "block_trace":
+      return <BlockTraceItemView item={item} />;
     case "error":
       return <ErrorItemView item={item} />;
     case "status":
@@ -113,16 +113,14 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <StateChangeItemView item={item} />;
     case "resource_change":
       return <ResourceChangeItemView item={item} />;
-    case "block_tool_output":
-      return <BlockToolOutputItemView item={item} />;
+    case "tool_output":
+      return <ToolOutputItemView item={item} />;
     case "router_decision":
       return <RouterDecisionItemView item={item} />;
     case "source":
       return <SourceItemView item={item} />;
     case "state_snapshot":
       return <StateSnapshotItemView item={item} />;
-    case "block_debug":
-      return <BlockDebugItemView item={item} />;
     default:
       return null;
   }

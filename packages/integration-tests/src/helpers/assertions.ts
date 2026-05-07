@@ -37,8 +37,8 @@ export function messageText(item: Extract<RuntimeItem, { type: "message" }>): st
  * the generator invoked. Generator-emitted tool calls land here once the
  * tool block has executed.
  */
-export function findToolCalls(items: RuntimeItem[]): Extract<RuntimeItem, { type: "block_tool_output" }>[] {
-  return itemsByType(items, "block_tool_output");
+export function findToolCalls(items: RuntimeItem[]): Extract<RuntimeItem, { type: "tool_output" }>[] {
+  return itemsByType(items, "tool_output");
 }
 
 /**
@@ -59,8 +59,8 @@ export function findResourceChanges(
 export function findBlockOutputs(
   items: RuntimeItem[],
   blockName: string
-): Extract<RuntimeItem, { type: "block_output" }>[] {
-  return itemsByType(items, "block_output").filter((item) => item.blockName === blockName);
+): Extract<RuntimeItem, { type: "block_trace" }>[] {
+  return itemsByType(items, "block_trace").filter((item) => item.blockName === blockName);
 }
 
 /**

@@ -17,7 +17,7 @@ import {
 } from "@flow-state-dev/core";
 import type { GeneratorModel } from "@flow-state-dev/core/types";
 import type {
-  BlockOutputItem,
+  BlockTraceItem,
   BlockValue,
   MessageItem,
   OutputItem,
@@ -99,8 +99,8 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const blockOutput = items.find(
-      (i) => i.type === "block_output" && i.blockName === "stream-gen",
-    ) as BlockOutputItem | undefined;
+      (i) => i.type === "block_trace" && i.blockName === "stream-gen",
+    ) as BlockTraceItem | undefined;
     expect(blockOutput).toBeDefined();
 
     const value = blockOutput!.output as BlockValue<unknown>;
@@ -152,8 +152,8 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const genOutput = items.find(
-      (i) => i.type === "block_output" && i.blockName === "nested-stream-gen",
-    ) as BlockOutputItem | undefined;
+      (i) => i.type === "block_trace" && i.blockName === "nested-stream-gen",
+    ) as BlockTraceItem | undefined;
     expect(genOutput).toBeDefined();
 
     const value = genOutput!.output as BlockValue<unknown>;
@@ -169,8 +169,8 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     // refs the generator's, which refs the message. Flatten-at-emit
     // collapses to a single hop pointing at the message.
     const passOutput = items.find(
-      (i) => i.type === "block_output" && i.blockName === "pass-through",
-    ) as BlockOutputItem | undefined;
+      (i) => i.type === "block_trace" && i.blockName === "pass-through",
+    ) as BlockTraceItem | undefined;
     expect(passOutput).toBeDefined();
     const lookup = buildItemLookup(items);
     expect(resolveBlockValue<string>(passOutput!.output, lookup)).toBe("nested");

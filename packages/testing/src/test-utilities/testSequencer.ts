@@ -1,5 +1,5 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { testBlock } from "./testBlock";
 import type {
   BlockInput,
@@ -14,12 +14,12 @@ type StepAccumulator = {
   stepName: string;
   blockName: string;
   phase: "main" | "work";
-  items: Array<OutputItem | BlockOutputItem>;
+  items: Array<OutputItem | BlockTraceItem>;
   output: unknown;
   error: Error | null;
 };
 
-function buildStepTraces(items: Array<OutputItem | BlockOutputItem>): StepTrace[] {
+function buildStepTraces(items: Array<OutputItem | BlockTraceItem>): StepTrace[] {
   const map = new Map<string, StepAccumulator>();
 
   for (const item of items) {
@@ -39,8 +39,8 @@ function buildStepTraces(items: Array<OutputItem | BlockOutputItem>): StepTrace[
 
     current.items.push(item);
 
-    if ((item as { type: string }).type === "block_output") {
-      const blockOutput = item as unknown as BlockOutputItem;
+    if ((item as { type: string }).type === "block_trace") {
+      const blockOutput = item as unknown as BlockTraceItem;
       current.output = blockOutput.output;
       if (blockOutput.error !== undefined) {
         current.error = new Error(blockOutput.error.message);
@@ -79,7 +79,7 @@ function buildWorkTraces(steps: StepTrace[]): WorkTrace[] {
     }));
 }
 
-function inferLoopIterations(items: Array<OutputItem | BlockOutputItem>): number {
+function inferLoopIterations(items: Array<OutputItem | BlockTraceItem>): number {
   const maxStep = items.reduce((max, item) => {
     if (item.provenance.stepIndex === undefined) {
       return max;
@@ -99,7 +99,7 @@ export async function testSequencer<TBlock extends BlockDefinition<any, any>>(
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestSequencerResult<BlockOutput<TBlock>>> {
   const base = await testBlock(sequencer, options);
-  const items = base.items as Array<OutputItem | BlockOutputItem>;
+  const items = base.items as Array<OutputItem | BlockTraceItem>;
   const steps = buildStepTraces(items);
 
   return {

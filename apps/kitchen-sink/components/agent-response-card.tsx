@@ -1,6 +1,6 @@
 "use client";
 
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { Tool } from "@/components/flow-state/tool";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +26,7 @@ function unwrapInline(value: BlockValueInternal<unknown> | undefined): AgentOutp
   return undefined;
 }
 
-export function AgentResponseCard({ item }: { item: BlockOutputItem }) {
+export function AgentResponseCard({ item }: { item: BlockTraceItem }) {
   // Tool calls get rendered via the flow-state Tool component
   if (item.toolCall) {
     return <Tool item={item} />;

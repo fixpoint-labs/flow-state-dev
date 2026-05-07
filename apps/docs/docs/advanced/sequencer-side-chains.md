@@ -10,7 +10,7 @@ Side chains let you run work in the background without blocking the main pipelin
 - **`.workIf(condition, block)`** — conditional variant of `.work()`, dispatches only when condition is truthy
 - **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
 
-Work failures never abort the pipeline. The framework logs them and the failed `block_output` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
+Work failures never abort the pipeline. The framework logs them and the failed `block_trace` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
 
 ## Fire-and-forget
 

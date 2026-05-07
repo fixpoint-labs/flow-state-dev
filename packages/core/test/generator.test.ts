@@ -260,7 +260,7 @@ describe("generator builder", () => {
     await runForTest(block, { q: "hello" }, ctx);
 
     // execute() returns the structured output unchanged (consumed by
-    // `block_tool_output` items, devtool, replay).
+    // `tool_output` items, devtool, replay).
     expect(seenStructuredOutput).toEqual({ count: 5 });
     // The mapper is forwarded for the AI SDK to materialise next-turn
     // model-visible content from the structured output.
@@ -270,107 +270,9 @@ describe("generator builder", () => {
     ).resolves.toBe("count=5");
   });
 
-  it("emits a block_debug item carrying the model-visible string when mapModelOutput is set", async () => {
-    // The tool wrapper captures the mapper's string on a `block_debug` item
-    // so devtool can render what the LLM saw alongside the structured
-    // `block_tool_output`. Gated by trace observability.
-    const richTool = handler({
-      name: "rich-debug",
-      inputSchema: z.object({ q: z.string() }),
-      outputSchema: z.object({ count: z.number() }),
-      execute: async (input) => ({ count: input.q.length }),
-    }).mapModelOutput((out) => `count=${out.count}`);
-
-    const emitted: any[] = [];
-    const block = generator({
-      name: "with-debug",
-      model: "m",
-      prompt: "p",
-      outputSchema: z.object({ done: z.literal(true) }),
-      tools: [richTool],
-    });
-
-    const prevTrace = process.env.FSDEV_TRACE_OBSERVABILITY;
-    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
-
-    try {
-      const ctx = createMockContext({
-        response: {
-          emit: (event: any) => {
-            emitted.push(event);
-          },
-        } as any,
-        resolveModel: () => ({
-          modelId: "m",
-          async generate(options: any) {
-            const tool = options.tools?.[0];
-            if (tool?.execute) {
-              await tool.execute({ q: "hello" }, { toolCallId: "call_1" });
-            }
-            return { structuredOutput: { done: true } };
-          },
-        }),
-      });
-
-      await runForTest(block, { q: "hello" }, ctx);
-    } finally {
-      if (prevTrace === undefined) delete process.env.FSDEV_TRACE_OBSERVABILITY;
-      else process.env.FSDEV_TRACE_OBSERVABILITY = prevTrace;
-    }
-
-    const toolOutput = emitted.find(
-      (e) => e?.item?.type === "block_tool_output" && e?.type === "item.done"
-    );
-    expect(toolOutput).toBeDefined();
-    expect(toolOutput.item.output).toEqual({ count: 5 });
-
-    const debug = emitted.find(
-      (e) => e?.item?.type === "block_debug" && e?.type === "item.done"
-    );
-    expect(debug).toBeDefined();
-    expect(debug.item.payload).toEqual({ modelOutput: "count=5" });
-    expect(debug.item.transient).toBe(true);
-  });
-
-  it("does not emit a block_debug for tools without mapModelOutput", async () => {
-    const plain = handler({
-      name: "plain-no-debug",
-      inputSchema: z.object({}),
-      outputSchema: z.object({ ok: z.boolean() }),
-      execute: async () => ({ ok: true }),
-    });
-
-    const emitted: any[] = [];
-    const block = generator({
-      name: "no-debug",
-      model: "m",
-      prompt: "p",
-      outputSchema: z.object({ done: z.literal(true) }),
-      tools: [plain],
-    });
-
-    const prevTrace = process.env.FSDEV_TRACE_OBSERVABILITY;
-    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
-    try {
-      const ctx = createMockContext({
-        response: { emit: (e: any) => emitted.push(e) } as any,
-        resolveModel: () => ({
-          modelId: "m",
-          async generate(options: any) {
-            const tool = options.tools?.[0];
-            if (tool?.execute) await tool.execute({}, { toolCallId: "c" });
-            return { structuredOutput: { done: true } };
-          },
-        }),
-      });
-      await runForTest(block, {}, ctx);
-    } finally {
-      if (prevTrace === undefined) delete process.env.FSDEV_TRACE_OBSERVABILITY;
-      else process.env.FSDEV_TRACE_OBSERVABILITY = prevTrace;
-    }
-
-    expect(emitted.find((e) => e?.item?.type === "block_debug")).toBeUndefined();
-  });
+  // FIX-573: standalone block_debug items carrying mapModelOutput are gone.
+  // The model-visible string flows to the AI SDK via toModelOutput; the
+  // structured output is on the tool_output item.
 
   it("does not set toModelOutput on tools without mapModelOutput", async () => {
     const plain = handler({
@@ -619,7 +521,7 @@ describe("generator builder", () => {
     expect(toolCall).not.toHaveBeenCalled();
   });
 
-  it("emits block_tool_output items when a tool executes with toolCallId", async () => {
+  it("emits tool_output items when a tool executes with toolCallId", async () => {
     const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
     const tool = handler({
       name: "lookup-tool",
@@ -665,7 +567,7 @@ describe("generator builder", () => {
     await runForTest(block, { value: "x" }, ctx);
 
     const toolOutputEvents = emittedEvents.filter(
-      (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
+      (e) => e.type === "item.added" && e.item?.type === "tool_output"
     );
     expect(toolOutputEvents.length).toBe(1);
 
@@ -679,7 +581,7 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).alias).toBe("lookup-tool");
   });
 
-  it("stamps a sanitized alias on block_tool_output when the tool name contains namespace characters", async () => {
+  it("stamps a sanitized alias on tool_output when the tool name contains namespace characters", async () => {
     // The model only ever sees the sanitized alias `tf_memory_recall`; the
     // emitted item must carry that alias so history replay sends the same
     // string OpenAI accepted in the original turn. Prior to FIX-… the item
@@ -724,7 +626,7 @@ describe("generator builder", () => {
     await runForTest(block, { value: "x" }, ctx);
 
     const toolOutput = emittedEvents.find(
-      (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
+      (e) => e.type === "item.added" && e.item?.type === "tool_output"
     )!.item!;
     expect((toolOutput.toolCall as any).name).toBe("tf.memory/recall");
     expect((toolOutput.toolCall as any).alias).toBe("tf_memory_recall");
@@ -733,8 +635,8 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).alias).toMatch(/^[a-zA-Z0-9_-]+$/);
   });
 
-  it("stamps the alias on a failed block_tool_output as well", async () => {
-    // Both success and failure paths emit block_tool_output. Replay sends
+  it("stamps the alias on a failed tool_output as well", async () => {
+    // Both success and failure paths emit tool_output. Replay sends
     // the failure's tool-call back to the model on the next turn (with the
     // synthesised "Tool ... failed" error text), so the alias must travel
     // with the failure path too.
@@ -785,7 +687,7 @@ describe("generator builder", () => {
     const failed = emittedEvents.find(
       (e) =>
         e.type === "item.added" &&
-        e.item?.type === "block_tool_output" &&
+        e.item?.type === "tool_output" &&
         e.item?.status === "failed"
     )!.item!;
     expect((failed.toolCall as any).alias).toBe("tf_memory_recall");

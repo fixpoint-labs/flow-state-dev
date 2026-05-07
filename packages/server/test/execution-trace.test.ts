@@ -8,7 +8,7 @@ import {
   router,
   sequencer
 } from "@flow-state-dev/core";
-import type { BlockOutputItem, RouterDecisionItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, RouterDecisionItem } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -131,8 +131,8 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const blockOutputItems = items.filter(
-        (i) => i.type === "block_output"
-      ) as BlockOutputItem[];
+        (i) => i.type === "block_trace"
+      ) as BlockTraceItem[];
 
       const rootItem = blockOutputItems.find((i) => i.blockName === "simple-handler");
       expect(rootItem).toBeDefined();
@@ -168,8 +168,8 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
-      ) as BlockOutputItem[];
+        (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
+      ) as BlockTraceItem[];
 
       // At least the root pipeline + nested handlers should produce trace items.
       expect(traceItems.length).toBeGreaterThanOrEqual(1);
@@ -232,8 +232,8 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
-      ) as BlockOutputItem[];
+        (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
+      ) as BlockTraceItem[];
 
       expect(traceItems.length).toBeGreaterThanOrEqual(1);
 
@@ -330,8 +330,8 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const blockOutputItems = items.filter(
-        (i) => i.type === "block_output"
-      ) as BlockOutputItem[];
+        (i) => i.type === "block_trace"
+      ) as BlockTraceItem[];
 
       for (const item of blockOutputItems) {
         const vis = resolveItemVisibility(item);
@@ -421,7 +421,7 @@ describe("execution trace system", () => {
           // block_output — EXCLUDED from LLM history via STRUCTURAL_TYPE_DEFAULTS
           {
             id: "bo_trace",
-            type: "block_output",
+            type: "block_trace",
             status: "completed",
             requestId: "req_prev_llm",
             itemIndex: 2,
@@ -449,7 +449,7 @@ describe("execution trace system", () => {
           // block_tool_output — should be INCLUDED in LLM history (no trace flag)
           {
             id: "bto_1",
-            type: "block_tool_output",
+            type: "tool_output",
             status: "completed",
             requestId: "req_prev_llm",
             itemIndex: 4,
@@ -551,8 +551,8 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
-      ) as BlockOutputItem[];
+        (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
+      ) as BlockTraceItem[];
 
       // Nested handler trace items should have parentBlockInstanceId set.
       const nestedTraces = traceItems.filter(

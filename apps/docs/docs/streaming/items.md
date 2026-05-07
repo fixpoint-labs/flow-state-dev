@@ -84,9 +84,9 @@ Every auto-emitted item from a generator is stamped with the producing generator
 | `"primary"` | ✓ | ✓ | ✓ |
 | `"sub"` | ✓ | — | ✓ |
 | `"trace"` | — | — | ✓ |
-| *unset* | no auto-emission at all — only `block_output` flows via graph edges |
+| *unset* | no auto-emission at all — only `block_trace` flows via graph edges |
 
-A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_output`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
+A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_trace`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
 
 ### Multi-peer agents
 

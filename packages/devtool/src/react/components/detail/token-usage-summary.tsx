@@ -1,7 +1,7 @@
 /**
  * Session-level token usage summary.
  *
- * Aggregates modelUsage from all BlockOutputItems across all request groups
+ * Aggregates modelUsage from all BlockTraceItems across all request groups
  * in the current session. Shows totals and per-model breakdowns.
  */
 import { useMemo, useState } from "react";

@@ -5,7 +5,7 @@
  * severity color-coding, and an interactive threshold slider.
  */
 import { createElement, useState, type ReactNode } from "react";
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { resolveBlockValueLocal as resolveValue } from "../internal/block-value-resolver";
 
 // ---------------------------------------------------------------------------
@@ -55,15 +55,15 @@ function scoreColor(score: number): string {
 
 function extractAnalyzerResults(items: OutputItem[]): AnalyzerStatus[] {
   for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] as OutputItem | BlockOutputItem;
+    const item = items[i] as OutputItem | BlockTraceItem;
     if (
-      (item as { type: string }).type === "block_output" &&
-      (item as BlockOutputItem).blockName === "aggregate-results" &&
+      (item as { type: string }).type === "block_trace" &&
+      (item as BlockTraceItem).blockName === "aggregate-results" &&
       "output" in item
     ) {
       // Resolve BlockValue union to its typed payload (FIX-413).
       const output = resolveValue(
-        (item as BlockOutputItem).output,
+        (item as BlockTraceItem).output,
         items,
       ) as { results?: AnalyzerStatus[] } | undefined;
       return output?.results ?? [];
@@ -74,14 +74,14 @@ function extractAnalyzerResults(items: OutputItem[]): AnalyzerStatus[] {
 
 function extractOverallScore(items: OutputItem[]): number | null {
   for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] as OutputItem | BlockOutputItem;
+    const item = items[i] as OutputItem | BlockTraceItem;
     if (
-      (item as { type: string }).type === "block_output" &&
-      (item as BlockOutputItem).blockName === "aggregate-results" &&
+      (item as { type: string }).type === "block_trace" &&
+      (item as BlockTraceItem).blockName === "aggregate-results" &&
       "output" in item
     ) {
       const output = resolveValue(
-        (item as BlockOutputItem).output,
+        (item as BlockTraceItem).output,
         items,
       ) as { overallScore?: number } | undefined;
       return output?.overallScore ?? null;

@@ -13,7 +13,7 @@
  */
 import { createElement, type ReactNode } from "react";
 import type {
-  BlockToolOutputItem,
+  ToolOutputItem,
   ComponentItem,
   ContainerItem,
   ErrorItem,
@@ -95,7 +95,7 @@ function renderReasoningFallback(item: ReasoningItem): ReactNode {
   );
 }
 
-function renderBlockToolOutputFallback(item: BlockToolOutputItem): ReactNode {
+function renderBlockToolOutputFallback(item: ToolOutputItem): ReactNode {
   const statusLabel = item.status === "in_progress" ? "Running" : item.status === "failed" ? "Error" : "Completed";
 
   let parsedArgs: string;
@@ -135,7 +135,7 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
   reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
-  block_tool_output: (item) => renderBlockToolOutputFallback(item as BlockToolOutputItem)
+  block_tool_output: (item) => renderBlockToolOutputFallback(item as ToolOutputItem)
 };
 
 // ---------------------------------------------------------------------------

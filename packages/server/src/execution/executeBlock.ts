@@ -1,7 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
@@ -51,8 +51,8 @@ type GeneratorModelUsageMeta = {
 };
 
 function hasItemEmitter(response: unknown): response is {
-  emitItemAdded: (item: BlockOutputItem) => Promise<unknown>;
-  emitItemDone: (item: BlockOutputItem) => Promise<unknown>;
+  emitItemAdded: (item: BlockTraceItem) => Promise<unknown>;
+  emitItemDone: (item: BlockTraceItem) => Promise<unknown>;
 } {
   return (
     typeof response === "object" &&
@@ -60,21 +60,6 @@ function hasItemEmitter(response: unknown): response is {
     typeof (response as { emitItemAdded?: unknown }).emitItemAdded === "function" &&
     typeof (response as { emitItemDone?: unknown }).emitItemDone === "function"
   );
-}
-
-function createBlockOutputProvenance(
-  metadata: ExecutionMetadata,
-  blockName: string
-): ItemProvenance {
-  return {
-    blockName,
-    blockInstanceId: metadata.blockInstanceId!,
-    parentBlockInstanceId: metadata.parentBlockInstanceId,
-    phase: metadata.scope === "work" ? "work" : "main",
-    stepIndex: metadata.stepIndex,
-    workGroupId: metadata.workGroupId,
-    attempt: metadata.attempt
-  };
 }
 
 
@@ -100,8 +85,8 @@ function buildBlockValueForEmit(
   let sourceItemId = hint.sourceItemId;
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
-    if (item.type === "block_output" && item.id === sourceItemId) {
-      const targetValue = (item as BlockOutputItem).output;
+    if (item.type === "block_trace" && item.id === sourceItemId) {
+      const targetValue = (item as BlockTraceItem).output;
       if (targetValue !== undefined && typeof targetValue === "object" && "kind" in targetValue && targetValue.kind === "ref") {
         sourceItemId = targetValue.sourceItemId;
       }
@@ -111,6 +96,12 @@ function buildBlockValueForEmit(
   return { kind: "ref", sourceItemId };
 }
 
+/**
+ * Fire the `output` phase of `onBlockTraceCapture` for a root block. The
+ * unified hook implementation in createExecutionContext patches the existing
+ * in-progress block_trace item (created at `added`) with output, modelUsage,
+ * and timing; emits item.done.
+ */
 function emitBlockOutputItem(
   options: {
     block: BlockDefinition<any, any>;
@@ -130,33 +121,24 @@ function emitBlockOutputItem(
 
   const completedAt = Date.now();
   const items = getResponseItems(options.ctx.response);
-  const itemIndex = items.length;
   const blockValue = options.status === "failed"
     ? ({ kind: "inline", value: undefined } as BlockValueInternal<unknown>)
     : buildBlockValueForEmit(options.output, options.hint, items);
-  // Root block_output items carry lifecycle timing and are marked for trace.
-  // Items with toolCall (generator tool results) are emitted separately and
-  // do NOT pass through this function — they retain their existing LLM audience.
-  const item: BlockOutputItem = {
-    id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "block_output",
-    status: options.status ?? "completed",
-    transient: options.block.transient || undefined,
-    requestId: options.metadata.requestId,
-    itemIndex,
-    provenance: createBlockOutputProvenance(options.metadata, options.block.name),
-    ts: completedAt,
-    blockName: options.block.name,
-    blockKind: options.block.kind,
-    output: blockValue,
-    error: options.error,
-    startedAt: options.startedAt,
-    completedAt,
-    duration: completedAt - options.startedAt,
-    modelUsage: options.modelUsage
-  };
 
-  options.ctx.emit.trace.blockOutput(item);
+  options.ctx._runtimeHooks?.onBlockTraceCapture?.(
+    {
+      phase: "output",
+      data: {
+        status: options.status ?? "completed",
+        output: blockValue,
+        completedAt,
+        duration: completedAt - options.startedAt,
+        modelUsage: options.modelUsage,
+        error: options.error,
+      },
+    },
+    options.ctx as unknown as BlockContext
+  );
 }
 
 /**
@@ -377,9 +359,9 @@ export async function executeBlock(
         );
       }
 
-      const executeCore = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
+      const executeCore = async (): Promise<unknown> => {
         if (options.ctx._withExecutionScope === undefined) {
-          return executeByKind(
+          const result = await executeByKind(
             options.block,
             interceptedInput,
             options.ctx,
@@ -388,6 +370,8 @@ export async function executeBlock(
               metadata: attemptMetadata,
             }
           );
+          scopedExecutionResult = result;
+          return result.output;
         }
         return options.ctx._withExecutionScope(
           {
@@ -423,7 +407,10 @@ export async function executeBlock(
             if (childIdentity !== undefined) {
               childIdentity.attempt = attempt;
             }
-            return executeByKind(
+            // executeByKind returns `{ output, modelUsage }`; unwrap so
+            // _withExecutionScope sees the raw block output. modelUsage is
+            // forwarded to the caller via the closure-captured slot below.
+            const result = await executeByKind(
               options.block,
               interceptedInput,
               scopedCtx as ExecuteBlockContext,
@@ -432,23 +419,34 @@ export async function executeBlock(
                 metadata: attemptMetadata,
               }
             );
+            scopedExecutionResult = result;
+            // Stash modelUsage on the scoped ctx so the unified `output`
+            // phase capture in createExecutionContext picks it up when
+            // patching the block_trace row.
+            if (result.modelUsage !== undefined) {
+              (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = result.modelUsage;
+            }
+            return result.output;
           }
         );
       };
 
+      let scopedExecutionResult: { output: unknown; modelUsage?: GeneratorModelUsageMeta } | undefined;
+
       // Run middleware chain around block execution.
       // Middleware wraps the output only; modelUsage is captured internally.
-      let capturedModelUsage: GeneratorModelUsageMeta | undefined;
       const executionResult = await runMiddleware(
         middlewareContext,
         async () => {
-          const result = await executeCore();
-          capturedModelUsage = result.modelUsage;
-          return result.output;
+          // executeCore returns the raw output via the _withExecutionScope
+          // path (unwraps via scopedExecutionResult). The non-scope test path
+          // also returns the unwrapped output here.
+          const out = await executeCore();
+          return out;
         }
       ).then((output) => ({
         output,
-        modelUsage: capturedModelUsage
+        modelUsage: scopedExecutionResult?.modelUsage
       }));
 
       const interceptedOutput = applyBlockOutputSeam(seams, executionResult.output, attemptMetadata);
@@ -503,27 +501,17 @@ export async function executeBlock(
             }
           });
 
-    // Sequencer / router execute functions set `_blockOutputHint` on ctx
-    // before returning (FIX-413). Pick it up, then clear so a retry or
-    // re-entry starts fresh.
+    // FIX-573: root block_trace emission is handled by the `output` phase of
+    // `onBlockTraceCapture`, fired from `_withExecutionScope`'s post-execute
+    // path. Clear any leftover hint so a retry or re-entry starts fresh.
     const capturedHint = (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
     if (capturedHint !== undefined) {
       (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
     }
-
-    emitBlockOutputItem({
-      block: options.block,
-      output: executionResult.output,
-      ctx: options.ctx,
-      metadata: {
-        ...metadata,
-        attempt,
-        blockInstanceId: buildBlockInstanceId(requestId, blockPath, attempt)
-      },
-      startedAt,
-      modelUsage: executionResult.modelUsage,
-      hint: capturedHint
-    });
+    void emitBlockOutputItem;
+    void buildBlockValueForEmit;
+    void buildBlockInstanceId;
+    void attempt;
 
     return {
       output: executionResult.output,
@@ -557,22 +545,9 @@ export async function executeBlock(
       }
     );
 
-    emitBlockOutputItem({
-      block: options.block,
-      output: undefined,
-      ctx: options.ctx,
-      metadata: {
-        ...metadata,
-        attempt: terminalAttempt,
-        blockInstanceId: terminalInstanceId
-      },
-      startedAt,
-      status: "failed",
-      error: {
-        message: normalized.message,
-        code: normalized.code
-      }
-    });
+    // FIX-573: root failure trace is handled by `_withExecutionScope`'s
+    // catch-path firing the `output` phase of `onBlockTraceCapture`.
+    void terminalInstanceId;
 
     return {
       output: undefined,

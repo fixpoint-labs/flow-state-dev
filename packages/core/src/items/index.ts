@@ -14,10 +14,7 @@ export { ITEM_UPDATE_INVARIANT_KEYS } from "./events";
 
 export type {
   AgentType,
-  BlockDebugItem,
-  BlockDebugPayload,
-  BlockOutputItem,
-  BlockToolOutputItem,
+  BlockTraceItem,
   BlockValue,
   ComponentItem,
   ContainerItem,
@@ -37,7 +34,8 @@ export type {
   StateSnapshotItem,
   SourceItem,
   StatusItem,
-  StructureShape
+  StructureShape,
+  ToolOutputItem
 } from "./types";
 
 export { resolveItemVisibility } from "./resolve-visibility";

@@ -91,7 +91,7 @@ describe("hello-chat", () => {
       ...withGeneratorMocks(chatFixture)
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

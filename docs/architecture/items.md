@@ -19,7 +19,7 @@ There are no per-item `client`/`history` overrides. Visibility is a pure functio
 
 ### Generator identity governs conversational items
 
-Messages, reasoning, and `block_tool_output` items — the conversational types — inherit visibility from the producing generator's `agentType`:
+Messages, reasoning, and `tool_output` items — the conversational types — inherit visibility from the producing generator's `agentType`:
 
 | `agentType` | Client | History |
 |-------------|:------:|:-------:|
@@ -60,11 +60,11 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
 
-**`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
+**`tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
 ### Devtool-only items — what the devtool sees
 
-**`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
+**`block_trace`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
 
 Since FIX-413, `block_output.output` is a `BlockValue<T>` discriminated union with three cases:
 
@@ -90,7 +90,7 @@ Items fall into three buckets:
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_output` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
 
 ### Transient × keyed item matrix
 
@@ -129,7 +129,7 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 |------|------------|:------:|:-------:|:-----------------:|-------------|
 | `message` | Generator (auto), `ctx.emitMessage()` | agentType | agentType | ✓ | Persistent |
 | `reasoning` | Generator (auto, CoT models) | agentType | agentType | ✓ | Persistent |
-| `block_tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
+| `tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
 | `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
 | `container` | Sequencer/Router with `container` config | ✓ | — | — | Persistent |
 | `source` | Generator (provider-native tools) | ✓ | — | — | Persistent |
@@ -137,7 +137,7 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 | `state_change` | Auto on state mutations | ✓ | — | — | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | — | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | — | Persistent |
-| `block_output` | Every block (auto, post-execution) | — | — | — | Persistent |
+| `block_trace` | Every block (auto, post-execution) | — | — | — | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | — | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | — | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 | `block_debug` | Generator (resolved config at start) | — | — | — | Transient |
@@ -229,7 +229,7 @@ When combined with `transient: false` (the default), this is the **keyed snapsho
 
 When a sequencer or router declares `container: { component: "my-container" }`, it emits a `ContainerItem` at execution start. Items emitted inside the container scope carry `ownedBy: containerBlockInstanceId`.
 
-`ItemsRenderer` suppresses `component` and `block_tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
+`ItemsRenderer` suppresses `component` and `tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
 
 ```ts
 const { state, items, componentsByKey } = useContainerItems(containerItem, session);
@@ -253,7 +253,7 @@ Using `component` for things native types cover bypasses built-in history assemb
 
 ## What doesn't belong in items
 
-**Block execution status** — the `status` field on `block_output` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.
+**Block execution status** — the `status` field on `block_trace` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.
 
 **Per-block activity trees** — there is no per-block status hierarchy or activity graph. Status is a single request-scoped slot ("what is happening right now"). If you need per-agent live visibility of parallel work, group items by `agentName` and render that — don't invent a tree on top of status.
 

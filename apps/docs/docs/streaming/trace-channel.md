@@ -10,8 +10,8 @@ The SSE stream carries two kinds of items. Production items are what your user s
 
 | Channel | Item types | Who sees them |
 |---|---|---|
-| Production (default) | `message`, `reasoning`, `block_tool_output`, `component`, `container`, `source`, `status`, `error`, `state_change`, `resource_change` | Every client. |
-| Trace (opt-in) | `block_output`, `router_decision`, `state_snapshot`, `block_debug` | DevTool, opted in via `?include=trace`. |
+| Production (default) | `message`, `reasoning`, `tool_output`, `component`, `container`, `source`, `status`, `error`, `state_change`, `resource_change` | Every client. |
+| Trace (opt-in) | `block_trace`, `router_decision`, `state_snapshot`, `block_debug` | DevTool, opted in via `?include=trace`. |
 
 Trace items are stamped with `agentType: "trace"` at emit time. The visibility resolver short-circuits anything stamped that way to `{ client: false, history: false }`.
 

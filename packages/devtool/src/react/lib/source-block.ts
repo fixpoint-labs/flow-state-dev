@@ -2,7 +2,7 @@
  * Resolve a `BlockValue.ref`'s `sourceItemId` to the human-readable source
  * block name and a handle on the source item itself. The flatten-at-emit
  * invariant (FIX-413) guarantees a ref points one hop directly at a
- * content-bearing item — either a `BlockOutputItem` or a `MessageItem`
+ * content-bearing item — either a `BlockTraceItem` or a `MessageItem`
  * (FIX-480 streaming-text generators emit refs to their own message).
  *
  * Returns `null` when the source item is no longer in the live trace
@@ -23,8 +23,8 @@ export function resolveSourceBlock(
   const item = lookup(sourceItemId);
   if (!item) return null;
 
-  // BlockOutputItem carries blockName + blockInstanceId at the top level.
-  if (item.type === "block_output") {
+  // BlockTraceItem carries blockName + blockInstanceId at the top level.
+  if (item.type === "block_trace") {
     return {
       blockName: item.blockName,
       blockInstanceId: item.provenance.blockInstanceId,
