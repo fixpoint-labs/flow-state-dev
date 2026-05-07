@@ -138,14 +138,11 @@ export async function retryWithPolicy<TValue>(
         randomize: false,
         signal: options.signal,
         onFailedAttempt: async (attemptError: FailedAttemptError) => {
-          // Only surface attempts that will actually be retried — matches the
-          // pre-p-retry "retry scheduled" semantics. The terminal failure
-          // surfaces via the rejection itself.
+          // Fire only when another attempt will run, so callers (e.g.
+          // `executeBlock`'s "retry scheduled" log) don't see the terminal
+          // failure. p-retry decorates the thrown error in-place — not a
+          // wrapper — so forward as-is rather than reading `.cause`.
           if (attemptError.retriesLeft <= 0) return;
-          // p-retry decorates the thrown error in-place with `attemptNumber`
-          // and `retriesLeft` (it is not a wrapper). Forward the error as-is
-          // — reading `.cause` here would surface the user's own cause chain
-          // instead of the actual thrown error.
           await options.onRetry?.(attemptError.attemptNumber, attemptError);
         }
       }

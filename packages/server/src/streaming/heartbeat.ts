@@ -1,8 +1,7 @@
 /**
- * SSE heartbeat injection — legacy stream-wrapping helper retained for the
- * Vercel adapter's public re-export. New code should construct an
- * `SSEStreamHandle` via `createSSEStream({ pingIntervalMs })`, which owns
- * the heartbeat timer alongside frame writes and lifecycle.
+ * Wraps a `ReadableStream<Uint8Array>` so it emits periodic `: ping\n\n`
+ * comment frames at `intervalMs` cadence. Retained for the Vercel
+ * adapter's public re-export — new code should use `createSSEStream`.
  */
 
 const encoder = new TextEncoder();

@@ -1,18 +1,9 @@
 /**
- * Method-aware route table for the canonical `/api/flows` surface and a
- * shared compile helper for transport-adapter routes.
- *
- * Replaces the long if-chain in `parseFlowRoute.ts` and the hand-rolled
- * `:param` + `*` matcher in `createFlowApiRouter.ts` with a single
- * `path-to-regexp@^8` driver. Routes are organized by `ParsedFlowRoute`
- * kind, so omitting a kind is a TypeScript error at this file's level.
- *
- * Same-length method+path overlaps are resolved by `path-to-regexp`'s
- * specificity ranking (literal segments beat parameter segments). Every
- * same-length pair under this table differs in at least one literal
- * position (`requests`, `resources`, `state`, `actions`, `recovery`); the
- * router test snapshots every parser branch to verify parity with the
- * legacy if-chain.
+ * Method-aware route table for `/api/flows`, plus a transport-pattern
+ * compile helper for adapter-declared routes. Routes are grouped by
+ * `ParsedFlowRoute` kind so omitting a kind is a TypeScript error at the
+ * table declaration. Same-length method+path overlaps resolve through
+ * `path-to-regexp`'s literal-segment specificity ranking.
  */
 import { match, type MatchFunction } from "path-to-regexp";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
