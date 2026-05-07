@@ -13,6 +13,17 @@ New `debate` factory in `@flow-state-dev/patterns` for multi-round adversarial a
 - Default `maxRounds` is 2; values above 4 emit a warning about diminishing returns and sycophantic convergence. The default debater prompt is non-conceding by design.
 - Reference docs at `patterns/debate`, package README section, sidebar entry between Round Robin and Event Actors, and cross-links from Round Robin and the patterns overview.
 
+### Memory system: structured-output repair + per-block model overrides (FIX-570)
+
+Hardens the memory system's consolidation and prune generators against the most common LLM structured-output failure modes, and exposes per-block model overrides with optional fallback chains.
+
+- **Output repair.** `tf.memory/consolidate/generate` and `tf.memory/prune/generate` now register a `repairOutput` hook that recovers from common mis-shapes before the schema re-validates: bare arrays (`[{...}]`) wrapped under the envelope key with all sibling keys defaulted to `[]` in a single pass (`{ facts: [...] }`, `{ removals: [...], merges: [] }`) so multi-key schemas don't burn a separate repair attempt to fill in the missing key; narrative text containing a JSON code block parsed out; output truncated mid-stream (typical when `max_output_tokens` hits during a long array) recovered by walking back to the last balanced `}` and synthesizing closing brackets; partial objects missing array keys defaulted to `[]`. Unrecoverable strings degrade to an empty envelope with a `[tf.memory]` warning so a single bad cycle doesn't crash the background `.work()` step. Combined with `repair: { mode: 'auto', maxAttempts: 3 }`, most one-off structured-output drift on smaller models recovers transparently.
+- **Fallback chains.** `MemorySystemConfig.model` (and `MemorySystemBlocksConfig.model`) now accept `string | string[]`. Arrays build a `createFallbackModel` chain — the generator walks the list on retryable provider errors.
+- **Per-block model overrides.** New optional `consolidationModel?: string | string[]` and `pruneModel?: string | string[]` fields. Defaults to `model` when omitted. Lets operators run a stronger model (or a chain) for the heavier structured-output demands of consolidation while keeping the observer on a small fast model.
+- **Recall-tool model coercion.** When `config.model` is an array, the recall tool's strategy defaults to the first entry. Pass `tool.model` to override.
+
+Migration: transparent — existing single-string `model` values continue to work unchanged.
+
 ### Filesystem trace store + dev-mode retention defaults (FIX-558)
 
 Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts. `createFilesystemStores` wires a paired filesystem trace store under `{rootDir}/traces/` instead of falling back to in-memory.
