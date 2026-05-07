@@ -1,11 +1,24 @@
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type {
-  RequestListOptions,
-  RequestRecord,
-  RequestStore
+import {
+  pollEvents,
+  type RequestListOptions,
+  type RequestRecord,
+  type RequestStore,
+  type SubscribeToEventsOptions
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
+
+const DEFAULT_POLL_INTERVAL_MS = 100;
+
+export type CreateSQLiteRequestStoreOptions = {
+  /**
+   * Poll interval for `subscribeToEvents` in milliseconds. Default 100ms.
+   * Lower values reduce live-tail latency at the cost of read load on the
+   * `request_events` table.
+   */
+  subscribePollIntervalMs?: number;
+};
 
 /**
  * Backfill `source` on records persisted before FIX-438 added the field.
@@ -17,7 +30,12 @@ function withSourceDefault(record: RequestRecord | undefined): RequestRecord | u
   return { ...record, source: "http" };
 }
 
-export function createSQLiteRequestStore(db: Database.Database): RequestStore {
+export function createSQLiteRequestStore(
+  db: Database.Database,
+  options: CreateSQLiteRequestStoreOptions = {}
+): RequestStore {
+  const pollIntervalMs = options.subscribePollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
     columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
@@ -66,8 +84,11 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   const insertEventStmt = db.prepare(
     "INSERT OR REPLACE INTO request_events (request_id, sequence_number, event_data) VALUES (?, ?, ?)"
   );
-  const selectEventsStmt = db.prepare(
+  const selectAllEventsStmt = db.prepare(
     "SELECT event_data FROM request_events WHERE request_id = ? ORDER BY sequence_number ASC"
+  );
+  const selectEventsAfterStmt = db.prepare(
+    "SELECT event_data FROM request_events WHERE request_id = ? AND sequence_number > ? ORDER BY sequence_number ASC"
   );
   /** Accumulates new events between coalesced writes for incremental persistence. */
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
@@ -83,6 +104,19 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
       }
     }
   );
+
+  async function readEvents(
+    requestId: string,
+    fromSequence?: number
+  ): Promise<RequestStreamEvent[]> {
+    const rows =
+      fromSequence === undefined
+        ? (selectAllEventsStmt.all(requestId) as Array<{ event_data: string }>)
+        : (selectEventsAfterStmt.all(requestId, fromSequence) as Array<{
+            event_data: string;
+          }>);
+    return rows.map((row) => JSON.parse(row.event_data) as RequestStreamEvent);
+  }
 
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
@@ -149,9 +183,13 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
       // No-op: queueMicrotask writes complete before any await resumes
     },
 
-    async getEvents(requestId: string): Promise<RequestStreamEvent[]> {
-      const rows = selectEventsStmt.all(requestId) as Array<{ event_data: string }>;
-      return rows.map((row) => JSON.parse(row.event_data) as RequestStreamEvent);
+    getEvents: readEvents,
+
+    subscribeToEvents(
+      requestId: string,
+      options: SubscribeToEventsOptions
+    ): AsyncIterableIterator<RequestStreamEvent> {
+      return pollEvents(readEvents, requestId, options, pollIntervalMs);
     }
   };
 }

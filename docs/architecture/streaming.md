@@ -203,6 +203,29 @@ GET /stream?starting_after=42
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 
+## Store-driven event subscriptions
+
+Live tail is owned by `RequestStore.subscribeToEvents(requestId, options)`. The route handler does catch-up + live in a single iterator; the legacy in-process active-streams registry is gone (FIX-569).
+
+What the store interface owns:
+
+- **Catch-up**: events with `sequence_number > options.fromSequence`.
+- **Live**: events as they are persisted, in order.
+- **Termination**: `signal.abort()`, terminal request status, or a liveness timeout that yields a synthetic `request.interrupted` event (default 30s, override via `LIVE_TAIL_LIVENESS_MS`).
+
+Per-backend strategies:
+
+- **Memory**: in-process bus; `persistEvents` fans out to subscriber callbacks. Same emitter source as `addEventObserver`.
+- **SQLite / filesystem / Postgres-without-`liveTailPool`**: poll `getEvents(requestId, lastSeen)` on a fixed interval (default 100ms; Postgres polling fallback is 250ms).
+- **Postgres with `liveTailPool`**: `LISTEN flow_events` on a dedicated `pg.Client` checked out from the dedicated pool. Notifications carry a signal-only payload `${requestId}:${seq}`; the subscriber drains via `getEvents(id, lastSeen)` once per dirty cycle (Notifier Pattern). `pg_notify` runs inside the same transaction as the row insert so subscribers never see signals for events that didn't commit.
+
+Hidden invariants preserved:
+
+- **First-event persistence** replaces synchronous active-streams registration. The route handler attaches `subscribeToEvents` once a request record or first event exists in the store.
+- **`content.delta` cross-process gap**: deltas are not persisted. Memory subscribers receive them when the bus carries them; cross-process subscribers (SQLite/Postgres/filesystem) snap to the next persisted `item.added` / `item.done` / item-update snapshot. Documented limitation, not a bug.
+- **`addEventObserver` carve-out**: TTS subscribes via `response.addEventObserver`; untouched by FIX-569. Two independent consumers of the emitter push chain.
+- **Single-SSE-writer**: TTS observers read; only the SSE wire writes. The conformance test asserts each event reaches both consumers exactly once.
+
 ## Emission Rules by Block Kind
 
 All blocks can emit explicitly via `ctx` methods. Additionally:

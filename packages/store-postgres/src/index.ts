@@ -17,6 +17,16 @@ import { createPostgresContentStore } from "./content-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/server";
 
+const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
+
+/** Resolve the auto-created `liveTailPool`'s `max` from env (override `LIVE_TAIL_POOL_MAX`). */
+function resolveLiveTailPoolMax(): number {
+  const raw = process.env.LIVE_TAIL_POOL_MAX;
+  if (raw === undefined || raw === "") return DEFAULT_LIVE_TAIL_POOL_MAX;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LIVE_TAIL_POOL_MAX;
+}
+
 export type PostgresStoreRegistry = StoreRegistry & {
   /** Drain the connection pool and disconnect */
   close(): Promise<void>;
@@ -44,10 +54,29 @@ export async function createPostgresStores(
   const skipSchemaInit = options.skipSchemaInit === true;
   let executor: QueryExecutor;
   let closePool: () => Promise<void>;
+  // `null` = explicitly disabled (caller passed `liveTailPool: null`).
+  // `undefined` here = "decide later based on construction shape".
+  // A `Pool` value = use as-is. The auto-create path runs only for shapes
+  // that already have a connection string available.
+  let liveTailPool: Pool | null | undefined = options.liveTailPool;
+  /** Pool we created ourselves and therefore must `end()` on close. */
+  let liveTailPoolOwned: Pool | undefined;
+
+  async function closeLiveTailPool(): Promise<void> {
+    if (liveTailPoolOwned !== undefined) {
+      try {
+        await liveTailPoolOwned.end();
+      } catch {
+        // Pool may already be closed; nothing to do.
+      }
+    }
+  }
 
   if ("executor" in options) {
     executor = options.executor;
-    closePool = async () => {};
+    closePool = closeLiveTailPool;
+    // PGlite / arbitrary executors can't service LISTEN. Force polling.
+    if (liveTailPool === undefined) liveTailPool = null;
   } else if ("pool" in options) {
     const pool = options.pool;
     executor = {
@@ -56,7 +85,14 @@ export async function createPostgresStores(
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
       }
     };
-    closePool = () => pool.end();
+    closePool = async () => {
+      await pool.end();
+      await closeLiveTailPool();
+    };
+    // For the `{ pool }` shape we don't have a connection string to
+    // auto-create a separate tail pool from. Callers who want LISTEN must
+    // pass `liveTailPool` explicitly.
+    if (liveTailPool === undefined) liveTailPool = null;
   } else {
     const connStr =
       options.connectionString ??
@@ -105,7 +141,10 @@ export async function createPostgresStores(
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
       }
     };
-    closePool = () => pool.end();
+    closePool = async () => {
+      await pool.end();
+      await closeLiveTailPool();
+    };
 
     // Schema init needs session-scoped advisory locks — lock and unlock MUST
     // run on the same pg connection. Use a dedicated client, not the pool.
@@ -113,9 +152,30 @@ export async function createPostgresStores(
       await initializeSchemaWithDedicatedClient(pool);
     }
 
+    if (liveTailPool === undefined && poolConfig.connectionString) {
+      const { default: pg } = await import("pg");
+      // Inherit the caller's poolOptions so driver-level overrides (e.g. Neon's
+      // WebSocket `Client`) apply to the tail pool too — the tail pool runs the
+      // same protocol, against the same database, just on a separate set of
+      // connections so LISTEN traffic doesn't compete with query traffic.
+      // `max` and `allowExitOnIdle` are tail-specific and override any caller
+      // values.
+      liveTailPoolOwned = new pg.Pool({
+        ...poolConfig,
+        max: resolveLiveTailPoolMax(),
+        allowExitOnIdle: true
+      });
+      liveTailPoolOwned.on("error", () => {});
+      liveTailPool = liveTailPoolOwned;
+    } else if (liveTailPool === undefined) {
+      // Couldn't resolve a connection string from the merged poolConfig
+      // (caller used `host` etc. without a URL). Fall back to polling.
+      liveTailPool = null;
+    }
+
     return {
       session: createPostgresSessionStore(executor),
-      request: createPostgresRequestStore(executor),
+      request: createPostgresRequestStore(executor, { liveTailPool }),
       user: createPostgresUserStore(executor),
       org: createPostgresOrgStore(executor),
       activeRequests: createPostgresActiveRequestRegistry(executor),
@@ -134,7 +194,7 @@ export async function createPostgresStores(
 
   return {
     session: createPostgresSessionStore(executor),
-    request: createPostgresRequestStore(executor),
+    request: createPostgresRequestStore(executor, { liveTailPool: liveTailPool ?? null }),
     user: createPostgresUserStore(executor),
     org: createPostgresOrgStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),

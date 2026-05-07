@@ -47,6 +47,7 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  SubscribeToEventsOptions,
   TraceEvent,
   TraceStore,
   UserListOptions,
@@ -112,6 +113,20 @@ export {
   AmbiguousBlockNameError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
+export {
+  StoreSubscriptionError,
+  STORE_SUBSCRIPTION_ERROR_CODES,
+  type StoreSubscriptionErrorCode
+} from "./errors/store-subscription-error";
+export { BoundedQueue } from "./utils/bounded-queue";
+export type { BoundedQueuePushResult } from "./utils/bounded-queue";
+export {
+  isTerminalRequestStreamEvent,
+  synthesizeRequestInterrupted,
+  pollEvents,
+  abortableSleep,
+  type ReadEventsFn
+} from "./stores/subscribe-helpers";
 export {
   OrgBindingMismatchError,
   UserBindingMismatchError

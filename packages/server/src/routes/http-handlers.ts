@@ -16,7 +16,6 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests } from "../execution/request-recovery";
-import { configureActiveStreamRegistry } from "../streaming/active-streams";
 import { normalizeRouteError } from "../utils/normalize-route-error";
 import {
   parseFlowRoute,
@@ -189,13 +188,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   host: InboundTransportHost;
 } {
   const stores = resolveStores(options.stores);
-  configureActiveStreamRegistry({
-    maxConcurrentStreams: options.maxConcurrentStreams,
-    staleStreamTtlMs: options.staleStreamTtlMs,
-    onWarning: (message, detail) => {
-      console.warn(`[flow-state] ${message}`, detail);
-    }
-  });
+  // FIX-569: the legacy active-streams registry (and its `maxConcurrentStreams`
+  // / `staleStreamTtlMs` knobs) is gone. Live tail is owned by the store
+  // interface; long-running flows are no longer at risk of registry eviction.
+  // The options remain on `CreateFlowRouteHandlersOptions` for source-compat
+  // but have no effect.
+  void options.maxConcurrentStreams;
+  void options.staleStreamTtlMs;
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
   const defaultSseHeartbeatMs =

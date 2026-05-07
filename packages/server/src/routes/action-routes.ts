@@ -100,8 +100,14 @@ export async function handleExecuteAction(
     metadata: {
       ...ctx.bootstrapMetadata,
       ...(metadata ?? {})
-    },
-    signal: request.signal
+    }
+    // Intentionally no `signal: request.signal`. The HTTP request signal
+    // is a wire-level concern (closes the SSE readable on disconnect);
+    // propagating it into runAction would tie execution durability to
+    // the originating connection and kill the run on a tab refresh,
+    // breaking resume-via-GET-stream. Explicit cancellation flows
+    // through `runAction`'s registered abort controller (the abort
+    // endpoint), not through this signal.
   };
 
   const actionOverrides =

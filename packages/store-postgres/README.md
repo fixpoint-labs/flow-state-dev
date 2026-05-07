@@ -156,6 +156,50 @@ Migrations are still idempotent if you forget — `skipSchemaInit` is a performa
 
 This adapter fully supports the interrupted request recovery feature. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query on `last_heartbeat_at`.
 
+## Cross-process live tail
+
+Multi-instance deployments can serve an SSE tail for a request started on a different instance. The adapter uses PostgreSQL's `LISTEN/NOTIFY` — the database's pub/sub primitive — to broadcast a small signal whenever a new request event is persisted, so other instances know when to pull fresh rows.
+
+### How it works
+
+`persistEvents` runs `pg_notify('flow_events', '<requestId>:<seq>')` inside the same transaction as the `INSERT INTO request_events`. The notification is suppressed if the transaction rolls back, so subscribers never see signals for events that didn't make it to the table.
+
+`subscribeToEvents` checks out a dedicated `pg.Client` from a separate `liveTailPool`, issues `LISTEN flow_events`, and waits for notifications. On each notification it filters by `requestId`, then drains via `getEvents(id, lastSeen)`. N notifications collapse into one query (the Notifier Pattern), so bursty workloads don't fan out into N+1 reads.
+
+### Configuration
+
+Zero-config by default: when you construct via `{ connectionString, ... }`, a fresh `liveTailPool` is auto-created with `max: 10` (override via the `LIVE_TAIL_POOL_MAX` env var). Pass `liveTailPool` explicitly for fleet-wide tuning, or `liveTailPool: null` to disable LISTEN entirely and fall back to polling.
+
+```ts
+import pg from "pg";
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+
+// Default: auto-creates a separate Pool({ max: LIVE_TAIL_POOL_MAX ?? 10 })
+const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL!
+});
+
+// Or supply your own tail pool (e.g. tuned to fleet size)
+const queryPool = new pg.Pool({ connectionString, max: 20 });
+const tailPool = new pg.Pool({ connectionString, max: 50 });
+const tuned = await createPostgresStores({
+  pool: queryPool,
+  liveTailPool: tailPool
+});
+```
+
+The liveness timeout (how long subscribers wait before yielding a synthetic `request.interrupted` on a stalled originating instance) defaults to 30s and is configurable via `LIVE_TAIL_LIVENESS_MS`.
+
+### PGlite
+
+[`@electric-sql/pglite`](https://pglite.dev) does not support `LISTEN/NOTIFY`. When constructed via `{ executor }`, `subscribeToEvents` polls instead of listening — same shape as the SQLite store. PGlite remains supported for tests and embedded deployments.
+
+### Limitations
+
+- `content.delta` events are in-process only. Cross-process subscribers snap to the next persisted snapshot (`item.added` / `item.done` / item-update) rather than receiving per-token deltas.
+- A dropped originating instance surfaces as a clean stream end with a synthetic `request.interrupted` event after the liveness timeout (default 30s). Clients can reconnect with `Last-Event-ID` to resume.
+- LISTEN/NOTIFY's scaling ceiling is per-NOTIFY-volume — see [Recall.ai's writeup](https://www.recall.ai/blog/postgres-listen-notify-does-not-scale). Below tens of thousands of simultaneous in-flight requests the pattern is fine; above that, look at Redis pub/sub or NATS.
+
 ## Testing with PGlite
 
 For zero-infrastructure testing, use `@electric-sql/pglite` (embedded PostgreSQL via WASM):
