@@ -58,6 +58,10 @@ export * from "./routes";
 export * from "./transports";
 // Model infrastructure — re-exported from core.
 // Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
+// Note: core's `isRetryableError` is intentionally NOT re-exported here — it
+// would collide with the policy-aware `isRetryableError` from `./execution`,
+// which has a different signature (`(error, policy)`) and serves a different
+// purpose. Import core's helper from `@flow-state-dev/core/models` directly.
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
@@ -68,7 +72,6 @@ export {
   parseModelString,
   DEFAULT_PRESETS,
   createFallbackModel,
-  isRetryableError,
   createAiSdkSpeechResolver,
   wrapAiSdkSpeechModel,
   createAiSdkTranscriptionResolver,

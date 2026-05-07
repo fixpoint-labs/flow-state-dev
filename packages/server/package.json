@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "ai": "^6.0.93"
+    "ai": "^6.0.93",
+    "p-retry": "^6.2.0"
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
