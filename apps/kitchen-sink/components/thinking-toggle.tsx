@@ -51,7 +51,7 @@ export function ThinkingToggle({
   disabled,
 }: ThinkingToggleProps) {
   const activeKey: "off" | "on" = value ? "on" : "off";
-  const activeLabel = value ? "Thinking on" : "Thinking off";
+  const activeLabel = OPTIONS.find((o) => o.value === activeKey)!.label;
 
   const handleValueChange = useCallback(
     (v: string) => onValueChange(v === "on"),

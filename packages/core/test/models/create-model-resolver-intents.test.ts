@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
-import { _resetDevWarnsForTesting } from "../../src/models/dev-warn.js";
+import { __resetDeprecationWarningsForTests } from "../../src/utils/deprecation.js";
 
 function mockProvider() {
   return (modelId: string) =>
@@ -127,7 +127,7 @@ describe("createModelResolver — construction validation", () => {
 
 describe("createModelResolver — intent resolution", () => {
   beforeEach(() => {
-    _resetDevWarnsForTesting();
+    __resetDeprecationWarningsForTests();
   });
 
   it("intent resolves to first available candidate", async () => {

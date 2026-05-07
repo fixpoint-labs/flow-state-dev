@@ -150,7 +150,8 @@ const PRESET_MIGRATION_MESSAGE =
   "                                            with reasoning enabled (FIX-517)\n" +
   "See https://linear.app/.../fix-512 for context.";
 
-const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+/** Allowed shape for intent names referenced via `intent/<name>`. */
+export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /**
  * Parse a model string into its components.

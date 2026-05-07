@@ -1,9 +1,7 @@
 /**
  * ModelSelector — concrete-model dropdown for the kitchen-sink chat agent.
- *
- * Replaces the legacy preset/* selector. Values are concrete Vercel AI
- * Gateway model strings from `KITCHEN_SINK_MODELS`. Thinking on/off is a
- * separate axis (see `ThinkingToggle`).
+ * Values are Vercel AI Gateway model strings from `KITCHEN_SINK_MODELS`;
+ * thinking on/off is a separate axis (see `ThinkingToggle`).
  */
 "use client";
 
@@ -23,6 +21,7 @@ import { Sparkles, ChevronDownIcon } from "lucide-react";
 import {
   KITCHEN_SINK_MODELS,
   MODEL_LABELS,
+  DEFAULT_KITCHEN_SINK_MODEL,
   type KitchenSinkModel,
 } from "@/lib/models";
 
@@ -51,7 +50,7 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const activeId: KitchenSinkModel = isKitchenSinkModel(value)
     ? value
-    : KITCHEN_SINK_MODELS[1];
+    : DEFAULT_KITCHEN_SINK_MODEL;
   const activeLabel = MODEL_LABELS[activeId].label;
 
   const handleValueChange = useCallback(

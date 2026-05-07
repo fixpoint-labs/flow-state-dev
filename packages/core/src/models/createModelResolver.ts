@@ -10,17 +10,20 @@
 import { createRequire } from "node:module";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
 import type { RetryPolicy, GatewayConfig, GatewayEntry, ProviderPreference } from "./types";
-import { detectAvailableProviders, parseModelString, extractProviderName } from "./providerDetection";
+import {
+  detectAvailableProviders,
+  parseModelString,
+  extractProviderName,
+  INTENT_NAME_REGEX,
+} from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
-import { reorderByPreference } from "./reorderByPreference";
-import { devWarnOnce } from "./dev-warn";
+import { reorderByPreference, normalizePreference } from "./reorderByPreference";
+import { warnOnceDev } from "../utils/deprecation";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
-const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /** Options for {@link createModelResolver}. */
 export interface CreateModelResolverOptions {
@@ -281,20 +284,24 @@ export function createModelResolver(
   // Cache for auto-loaded gateway resolvers (by gateway type)
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
 
-  // Seed gateway cache with explicit instances from options.gateways.
+  // Seed gateway cache with explicit instances from options.gateways. Config
+  // objects (`{ type, apiKey }`) are handled lazily by resolveSingleModel via
+  // auto-detection; only raw instances need seeding here.
   if (options?.gateways) {
     for (const [name, entry] of Object.entries(options.gateways)) {
-      if (isGatewayConfig(entry)) {
-        // Old-style config object — auto-detection handles it later.
-      } else if (entry !== null && entry !== undefined) {
-        // Raw gateway instance — seed directly
-        gatewayCache.set(name, {
-          gateway: entry as Record<string, unknown>,
-          type: name
-        });
-      }
+      if (entry == null || isGatewayConfig(entry)) continue;
+      gatewayCache.set(name, {
+        gateway: entry as Record<string, unknown>,
+        type: name,
+      });
     }
   }
+
+  // Per-(intent, preferProvider) cache. Without this, every generator call
+  // through `intent/<name>` would rebuild the FallbackModel wrapper.
+  const intentCache = new Map<string, GeneratorModel>();
+  const intentCacheKey = (name: string, pref: ProviderPreference | undefined) =>
+    `${name}::${(normalizePreference(pref) ?? []).join("|")}`;
 
   function getProviderResolver(providerName: string): ProviderResolver | undefined {
     if (explicitProviders?.has(providerName)) {
@@ -451,23 +458,27 @@ export function createModelResolver(
     name: string,
     callOptions?: ResolveModelCallOptions
   ): GeneratorModel {
+    const effectivePreference =
+      callOptions?.preferProvider ?? options?.providerPreference;
+    const cacheKey = intentCacheKey(name, effectivePreference);
+    const cached = intentCache.get(cacheKey);
+    if (cached) return cached;
+
     const candidates = options?.intents?.[name];
     if (!candidates || candidates.length === 0) {
-      devWarnOnce(
+      warnOnceDev(
         `intent/${name}`,
         `Unknown or empty intent "${name}"; falling back to defaultModel.`
       );
-      return resolveDefaultModel();
+      const fallback = resolveDefaultModel();
+      intentCache.set(cacheKey, fallback);
+      return fallback;
     }
 
     const tagged = candidates.map((s) => ({
       modelString: s,
       providerName: extractProviderName(s),
     }));
-
-    const effectivePreference =
-      callOptions?.preferProvider ?? options?.providerPreference;
-
     const reordered = reorderByPreference(tagged, effectivePreference);
 
     const resolved: FallbackModelEntry[] = [];
@@ -482,15 +493,15 @@ export function createModelResolver(
       }
     }
 
-    if (resolved.length === 0) {
-      return resolveDefaultModel();
-    }
-
-    return createFallbackModel({
-      groupName: `intent/${name}`,
-      models: resolved,
-      retryPolicy,
-    });
+    const result = resolved.length === 0
+      ? resolveDefaultModel()
+      : createFallbackModel({
+          groupName: `intent/${name}`,
+          models: resolved,
+          retryPolicy,
+        });
+    intentCache.set(cacheKey, result);
+    return result;
   }
 
   const resolver = ((

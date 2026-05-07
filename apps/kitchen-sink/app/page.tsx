@@ -84,10 +84,6 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
-  const [selectedModel, setSelectedModel] = useState<ModelId>(
-    DEFAULT_KITCHEN_SINK_MODEL,
-  );
-  const [thinkingEnabled, setThinkingEnabled] = useState<boolean>(false);
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -161,25 +157,12 @@ function KitchenSinkApp() {
     });
   }, [artifactItems]);
 
-  // Sync local selected model from server state on initial load / session switch.
-  const serverSelectedModel = userPrefs?.selectedModel;
-  const prevServerModel = useRef(serverSelectedModel);
-  useEffect(() => {
-    if (serverSelectedModel && serverSelectedModel !== prevServerModel.current) {
-      prevServerModel.current = serverSelectedModel;
-      setSelectedModel(serverSelectedModel as ModelId);
-    }
-  }, [serverSelectedModel]);
-
-  // Sync local thinking-enabled toggle from server state.
-  const serverThinkingEnabled = userPrefs?.thinkingEnabled ?? false;
-  const prevServerThinking = useRef(serverThinkingEnabled);
-  useEffect(() => {
-    if (serverThinkingEnabled !== prevServerThinking.current) {
-      prevServerThinking.current = serverThinkingEnabled;
-      setThinkingEnabled(serverThinkingEnabled);
-    }
-  }, [serverThinkingEnabled]);
+  // Server is the source of truth for selectedModel + thinkingEnabled. Fall
+  // back to the catalog default while user state is still loading.
+  const selectedModel: ModelId =
+    (userPrefs?.selectedModel as ModelId | undefined) ??
+    DEFAULT_KITCHEN_SINK_MODEL;
+  const thinkingEnabled = userPrefs?.thinkingEnabled ?? false;
 
   // Artifact content is loaded lazily when an artifact is selected.
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
@@ -248,22 +231,16 @@ function KitchenSinkApp() {
 
   const handleSelectedModelChange = useCallback(
     (next: ModelId) => {
-      setSelectedModel(next);
-      if (flow.activeSessionId) {
-        void session.sendAction("setSelectedModel", { selectedModel: next });
-      }
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setSelectedModel", { selectedModel: next });
     },
     [flow.activeSessionId, session],
   );
 
   const handleThinkingEnabledChange = useCallback(
     (next: boolean) => {
-      setThinkingEnabled(next);
-      if (flow.activeSessionId) {
-        void session.sendAction("setThinkingEnabled", {
-          thinkingEnabled: next,
-        });
-      }
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setThinkingEnabled", { thinkingEnabled: next });
     },
     [flow.activeSessionId, session],
   );
@@ -358,7 +335,7 @@ function KitchenSinkApp() {
 
         <ClientDataBar
           displayName={userPrefs?.displayName}
-          selectedModel={userPrefs?.selectedModel ?? selectedModel}
+          selectedModel={selectedModel}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
           activeSkills={modeStatus?.activeSkills}

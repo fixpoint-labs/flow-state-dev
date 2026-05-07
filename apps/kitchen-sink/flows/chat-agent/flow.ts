@@ -144,10 +144,7 @@ const userStateSchema = z.object({
 
 const assistantGenerator = generator({
   name: "assistant-generator",
-  userStateSchema: z.object({
-    selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
-    thinkingEnabled: z.boolean().default(false),
-  }),
+  userStateSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
@@ -183,26 +180,17 @@ const assistantGenerator = generator({
   },
 
   agentType: "primary",
-  /**
-   * Concrete gateway model string from the user's selection. The model
-   * resolver returns a Vercel-gateway-backed `LanguageModel` for the string.
-   */
+  // `ctx.user` may be absent in test harnesses without a configured user
+  // scope, so fall back to the catalog default rather than relying on the
+  // Zod default alone.
   model: (_input: any, ctx: any) =>
     ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
-  /**
-   * Extended-thinking on/off is a separate axis from the model selection.
-   * When enabled we forward Anthropic's reasoning options on the same model
-   * (no model swap). Other providers (OpenAI, Google) ignore the
-   * `anthropic` namespace; thinking-on degrades to a no-op there until we
-   * add per-provider mappings.
-   */
+  // Anthropic-only — OpenAI and Google ignore this namespace, so the toggle
+  // is a no-op for non-Anthropic models until per-provider reasoning
+  // mappings land (FIX-517).
   providerOptions: (_input: any, ctx: any) =>
     ctx.user?.state.thinkingEnabled
-      ? {
-          anthropic: {
-            thinking: { type: "enabled", budgetTokens: 10000 },
-          },
-        }
+      ? { anthropic: { thinking: { type: "enabled", budgetTokens: 10000 } } }
       : {},
 });
 
@@ -512,11 +500,9 @@ const chatAgentFlow = defineFlow({
     client: {
       derived: {
         preferences: (ctx) => ({
-          displayName: String(ctx.state.displayName ?? "Developer"),
-          selectedModel: String(
-            ctx.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
-          ),
-          thinkingEnabled: Boolean(ctx.state.thinkingEnabled ?? false),
+          displayName: ctx.state.displayName,
+          selectedModel: ctx.state.selectedModel,
+          thinkingEnabled: ctx.state.thinkingEnabled,
         }),
       },
     },
