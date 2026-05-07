@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Live tail on Vercel + Neon: opt out of LISTEN, force polling
+
+Kitchen-sink on Vercel + Neon was failing to deliver post-catch-up live events on a midstream refresh. Two issues stacked on top of each other: the auto-created `liveTailPool` in `createPostgresStores` ignored the caller's `poolOptions`, so a Neon `Client` override applied to the main pool didn't reach the tail pool; and even with the right driver, Neon's pooled (`-pooler`) endpoint is pgbouncer in transaction mode, where `LISTEN flow_events` registers on a backend that gets recycled at transaction end and never sees the matching `NOTIFY`. Two fixes:
+
+- `@flow-state-dev/store-postgres`: the auto-created `liveTailPool` now spreads the caller's `poolOptions` so driver-level overrides (Neon's WebSocket `Client`, custom `connectionTimeoutMillis`, etc.) carry over. `max` and `allowExitOnIdle` remain tail-specific.
+- `apps/kitchen-sink`: explicitly passes `liveTailPool: null` on Vercel to force the polling fallback. Polling is correct for serverless deployments where listener sessions don't survive function recycles, and the ~250ms tail latency is invisible behind model generation. Local-with-Postgres deployments keep LISTEN/NOTIFY.
+
+Locks the polling path in with a new conformance run against `createPostgresRequestStore` configured with `liveTailPool: null`, so future regressions in the polling code path get caught by `pnpm --filter @flow-state-dev/store-postgres test`.
+
 ### Action POST disconnect no longer kills runAction
 
 The HTTP request signal was previously propagated into `runAction` via `actionInput.signal`, so a tab refresh or browser-side cancel of the originating POST aborted the in-flight execution and marked the record `interrupted`. Subsequent reconnect-via-GET-stream then only saw the catch-up replay and no live continuation. The action route no longer sets `signal: request.signal`; runAction's own registered abort controller remains the path for explicit cancellation, and the SSE wire still closes on disconnect at the readable-stream layer. Refresh midstream now resumes against the still-running request.

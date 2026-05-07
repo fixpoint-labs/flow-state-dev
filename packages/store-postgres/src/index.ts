@@ -154,8 +154,14 @@ export async function createPostgresStores(
 
     if (liveTailPool === undefined && poolConfig.connectionString) {
       const { default: pg } = await import("pg");
+      // Inherit the caller's poolOptions so driver-level overrides (e.g. Neon's
+      // WebSocket `Client`) apply to the tail pool too — the tail pool runs the
+      // same protocol, against the same database, just on a separate set of
+      // connections so LISTEN traffic doesn't compete with query traffic.
+      // `max` and `allowExitOnIdle` are tail-specific and override any caller
+      // values.
       liveTailPoolOwned = new pg.Pool({
-        connectionString: poolConfig.connectionString,
+        ...poolConfig,
         max: resolveLiveTailPoolMax(),
         allowExitOnIdle: true
       });

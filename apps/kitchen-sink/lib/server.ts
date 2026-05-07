@@ -75,6 +75,14 @@ async function createStores(): Promise<StoreRegistry> {
       poolOptions: onVercel
         ? { ...vercelPgPoolOptions, ...(isNeon ? { Client: NeonClientForPg } : {}) }
         : undefined,
+      // Vercel functions can't hold a usable `LISTEN flow_events` session: Neon's
+      // pooled endpoint is pgbouncer in transaction mode (LISTEN registers on a
+      // backend that's recycled at transaction end), and even on direct endpoints
+      // the function lifetime makes long-lived listeners impractical. Force the
+      // store's polling fallback instead — it's correct for serverless and the
+      // user-visible cost (a ~250ms tail latency) is invisible alongside model
+      // generation.
+      liveTailPool: onVercel ? null : undefined,
     });
   }
   if (process.env.STORE_TYPE === "filesystem") {
