@@ -5,6 +5,7 @@ export type { ResolveAiSdkLanguageModel } from "./createAiSdkModelResolver";
 // Unified model resolver
 export { createModelResolver } from "./createModelResolver";
 export type { CreateModelResolverOptions } from "./createModelResolver";
+export type { ResolveModelCallOptions } from "../types/model";
 
 export { createAiSdkSpeechResolver, wrapAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
 export type { ResolveAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
