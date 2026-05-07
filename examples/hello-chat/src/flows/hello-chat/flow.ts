@@ -86,7 +86,8 @@ const helloChatFlow = defineFlow({
     }
   },
   session: {
-    stateSchema: sessionStateSchema
+    stateSchema: sessionStateSchema,
+    client: { expose: ["messageCount"] }
   }
 });
 

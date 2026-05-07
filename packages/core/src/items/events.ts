@@ -39,6 +39,34 @@ export type ItemDoneEvent = RequestEventBase & {
   item: OutputItem;
 };
 
+/**
+ * Identity-invariant keys that must not be replaced by an `item.updated`
+ * patch. Producers should not include them; consumers must strip them
+ * defensively before merging.
+ */
+export const ITEM_UPDATE_INVARIANT_KEYS = [
+  "id",
+  "type",
+  "provenance",
+  "agentType",
+  "transient"
+] as const satisfies ReadonlyArray<keyof OutputItem | "agentType">;
+
+/**
+ * Shallow top-level merge update for a previously-emitted item. Each
+ * top-level key in `patch` replaces the existing value at that key on
+ * the consumer's tracked item. Nested updates require re-supplying the
+ * full nested object as the new top-level value.
+ *
+ * Identity-invariant keys (see `ITEM_UPDATE_INVARIANT_KEYS`) are stripped
+ * both server-side and client-side before the patch is applied.
+ */
+export type ItemUpdatedEvent = RequestEventBase & {
+  type: "item.updated";
+  itemId: string;
+  patch: Record<string, unknown>;
+};
+
 export type ContentPartAddedEvent = RequestEventBase & {
   type: "content.added";
   itemId: string;
@@ -154,6 +182,7 @@ export type RequestStreamEvent =
   | RequestStatusEvent
   | ItemAddedEvent
   | ItemDoneEvent
+  | ItemUpdatedEvent
   | ContentPartAddedEvent
   | ContentPartDeltaEvent
   | ContentPartDoneEvent

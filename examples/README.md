@@ -7,6 +7,7 @@ For full reference applications (multiple flows, every subsystem integrated) see
 | Directory | Purpose |
 |-----------|---------|
 | `hello-chat/` | Minimal chat flow — generator + handler + sequencer in ~50 lines. The best starting point. |
+| `trading-desk/` | Multi-stage agent pipeline (Phase 1 of 5): parallel analyst fan-out producing typed memo resources rendered in a streaming two-pane UI. Research / demo only. |
 
 ## apps vs. examples
 

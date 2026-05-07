@@ -113,6 +113,19 @@ Items go through three phases:
 2. **Streaming** — for messages and reasoning, text arrives in chunks via content deltas
 3. **Done** — item finalized as `"completed"`, `"incomplete"`, or `"failed"` (terminal, immutable)
 
+### Updating an item mid-flight
+
+For items whose non-text fields evolve over their lifetime (a long-running container populating its `payload`, a trace block recording input then output then result), the wire carries an `item.updated` event:
+
+```
+event: item.updated
+data: {"itemId":"item_42","patch":{"status":"completed","payload":{...}}}
+```
+
+The patch is a **shallow top-level merge** — each top-level key in `patch` replaces the existing value at that key on the consumer's tracked item. Nested updates require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped both server-side and client-side and never apply.
+
+Producers should prefer `emitItemUpdated` over re-emitting `item.added` + `item.done` when fields evolve; consumers see fewer flicker frames and the wire stays compact. See [Emitting Items](/docs/streaming/emitting-items#updating-an-item-after-emission) for the producer-side helper.
+
 ## All item types
 
 For reference, here's the complete registry:

@@ -36,7 +36,7 @@ export async function transcribe(
   const body =
     request.audio instanceof Blob
       ? request.audio
-      : new Blob([request.audio], { type: mediaType });
+      : new Blob([request.audio as Uint8Array<ArrayBuffer>], { type: mediaType });
 
   return requestJson<TranscribeResponse>({
     fetcher,
