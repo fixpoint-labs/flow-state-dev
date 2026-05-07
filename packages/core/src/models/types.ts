@@ -58,7 +58,7 @@ export interface FSDProviderConfig {
    * performs a stable reorder of the group's model list: preferred buckets
    * first (in the order given), remaining models after, in their original
    * relative order. Fully backward-compatible — omitting this preserves the
-   * preset/group author's ordering.
+   * group author's ordering.
    */
   providerPreference?: ProviderPreference;
 }
@@ -69,8 +69,9 @@ export interface FSDProviderConfig {
 
 /**
  * Brand preference axis: a provider name ("anthropic") or an ordered list
- * of provider names (["anthropic", "google"]). Orthogonal to the preset/tier
- * axis — the preset defines the candidate pool; preference reorders it.
+ * of provider names (["anthropic", "google"]). Orthogonal to the model
+ * group / intent axis — the group or intent defines the candidate pool;
+ * preference reorders it.
  */
 export type ProviderPreference = string | string[];
 

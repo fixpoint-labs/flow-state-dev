@@ -15,66 +15,96 @@ describe("selectModel", () => {
   // ---------------------------------------------------------------------------
 
   it("single when rule — matches → returns use value", async () => {
-    const resolve = selectModel("preset/fast", {
+    const resolve = selectModel("intent/utility", {
       when: () => true,
-      use: "preset/smart",
+      use: "intent/chat",
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/smart");
+    expect(await resolve({}, stubCtx)).toBe("intent/chat");
   });
 
   it("single when rule — no match → returns default", async () => {
-    const resolve = selectModel("preset/fast", {
+    const resolve = selectModel("intent/utility", {
       when: () => false,
-      use: "preset/smart",
+      use: "intent/chat",
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/fast");
+    expect(await resolve({}, stubCtx)).toBe("intent/utility");
   });
 
   it("when rule with use as string[] — returns array", async () => {
-    const resolve = selectModel("preset/fast", {
+    const resolve = selectModel("intent/utility", {
       when: () => true,
-      use: ["preset/smart", "preset/fast"],
+      use: ["intent/chat", "intent/utility"],
     });
-    expect(await resolve({}, stubCtx)).toEqual(["preset/smart", "preset/fast"]);
+    expect(await resolve({}, stubCtx)).toEqual(["intent/chat", "intent/utility"]);
   });
 
   // ---------------------------------------------------------------------------
-  // prefer rules
+  // preferProvider rules
   // ---------------------------------------------------------------------------
 
-  it("single prefer rule — returns override → uses it", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: () => "custom/model",
+  it("preferProvider rule — sets preferProvider and returns structured selection", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: () => "anthropic",
     });
-    expect(await resolve({}, stubCtx)).toBe("custom/model");
+    expect(await resolve({}, stubCtx)).toEqual({
+      model: "intent/utility",
+      preferProvider: "anthropic",
+    });
   });
 
-  it("single prefer rule — returns undefined → falls back to default", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: () => undefined,
+  it("preferProvider rule — returns array of provider names", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: () => ["anthropic", "openai"],
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/fast");
+    expect(await resolve({}, stubCtx)).toEqual({
+      model: "intent/utility",
+      preferProvider: ["anthropic", "openai"],
+    });
   });
 
-  it("single prefer rule — returns null → falls back to default", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: () => null,
+  it("preferProvider rule — returns undefined → bare-string back-compat", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: () => undefined,
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/fast");
+    expect(await resolve({}, stubCtx)).toBe("intent/utility");
   });
 
-  it("single prefer rule — returns empty string → falls back to default", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: () => "",
+  it("preferProvider rule — returns null → bare-string back-compat", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: () => null,
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/fast");
+    expect(await resolve({}, stubCtx)).toBe("intent/utility");
   });
 
-  it("single prefer rule — returns same as default → falls back (no-op)", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: () => "preset/fast",
+  it("preferProvider rule — returns empty string → bare-string back-compat", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: () => "",
     });
-    expect(await resolve({}, stubCtx)).toBe("preset/fast");
+    expect(await resolve({}, stubCtx)).toBe("intent/utility");
+  });
+
+  it("preferProvider does not short-circuit — when rule still fires", async () => {
+    const resolve = selectModel("intent/utility", [
+      { preferProvider: () => "openai" },
+      { when: () => true, use: "intent/chat" },
+    ]);
+    expect(await resolve({}, stubCtx)).toEqual({
+      model: "intent/chat",
+      preferProvider: "openai",
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Legacy `prefer` migration error
+  // ---------------------------------------------------------------------------
+
+  it("legacy `prefer` rule throws migration error at builder time", () => {
+    expect(() =>
+      selectModel("intent/utility", {
+        // @ts-expect-error — legacy field intentionally tested
+        prefer: () => "x",
+      })
+    ).toThrow(/`prefer` rule has been replaced/);
   });
 
   // ---------------------------------------------------------------------------
@@ -82,19 +112,19 @@ describe("selectModel", () => {
   // ---------------------------------------------------------------------------
 
   it("default as string[] — returned as-is when no rule matches", async () => {
-    const resolve = selectModel(["preset/smart", "preset/fast"], {
+    const resolve = selectModel(["intent/chat", "intent/utility"], {
       when: () => false,
       use: "other/model",
     });
-    expect(await resolve({}, stubCtx)).toEqual(["preset/smart", "preset/fast"]);
+    expect(await resolve({}, stubCtx)).toEqual(["intent/chat", "intent/utility"]);
   });
 
   // ---------------------------------------------------------------------------
   // Multiple rules
   // ---------------------------------------------------------------------------
 
-  it("multiple rules — first match wins", async () => {
-    const resolve = selectModel("preset/fast", [
+  it("multiple when rules — first match wins", async () => {
+    const resolve = selectModel("intent/utility", [
       { when: () => false, use: "first" },
       { when: () => true, use: "second" },
       { when: () => true, use: "third" },
@@ -102,39 +132,25 @@ describe("selectModel", () => {
     expect(await resolve({}, stubCtx)).toBe("second");
   });
 
-  it("mixed prefer + when — prefer evaluated first", async () => {
-    const resolve = selectModel("preset/fast", [
-      { when: () => true, use: "when-result" },
-      { prefer: () => "prefer-result" },
-    ]);
-    // prefer is evaluated first across ALL rules before when rules
-    expect(await resolve({}, stubCtx)).toBe("prefer-result");
-  });
-
-  it("prefer skipped, when wins", async () => {
-    const resolve = selectModel("preset/fast", [
-      { prefer: () => undefined },
-      { when: () => true, use: "when-result" },
-    ]);
-    expect(await resolve({}, stubCtx)).toBe("when-result");
-  });
-
   // ---------------------------------------------------------------------------
   // Async rules
   // ---------------------------------------------------------------------------
 
-  it("async prefer rule — awaited correctly", async () => {
-    const resolve = selectModel("preset/fast", {
-      prefer: async () => {
+  it("async preferProvider rule — awaited correctly", async () => {
+    const resolve = selectModel("intent/utility", {
+      preferProvider: async () => {
         await new Promise((r) => setTimeout(r, 0));
-        return "async-model";
+        return "anthropic";
       },
     });
-    expect(await resolve({}, stubCtx)).toBe("async-model");
+    expect(await resolve({}, stubCtx)).toEqual({
+      model: "intent/utility",
+      preferProvider: "anthropic",
+    });
   });
 
   it("async when rule — awaited correctly", async () => {
-    const resolve = selectModel("preset/fast", {
+    const resolve = selectModel("intent/utility", {
       when: async () => {
         await new Promise((r) => setTimeout(r, 0));
         return true;
@@ -148,24 +164,27 @@ describe("selectModel", () => {
   // Input/ctx forwarding
   // ---------------------------------------------------------------------------
 
-  it("prefer rule receives input and ctx", async () => {
+  it("preferProvider rule receives input and ctx", async () => {
     const input = { userId: "u1" };
     const ctx = { userId: "u1" } as unknown as BlockContext;
 
-    const resolve = selectModel("preset/fast", {
-      prefer: (i, c) => {
-        if (i === input && c === ctx) return "matched";
+    const resolve = selectModel("intent/utility", {
+      preferProvider: (i, c) => {
+        if (i === input && c === ctx) return "anthropic";
         return undefined;
       },
     });
-    expect(await resolve(input, ctx)).toBe("matched");
+    expect(await resolve(input, ctx)).toEqual({
+      model: "intent/utility",
+      preferProvider: "anthropic",
+    });
   });
 
   it("when rule receives input and ctx", async () => {
     const input = { flag: true };
     const ctx = { flag: true } as unknown as BlockContext;
 
-    const resolve = selectModel("preset/fast", {
+    const resolve = selectModel("intent/utility", {
       when: (i, c) => (i as typeof input).flag && (c as typeof ctx).flag,
       use: "flagged-model",
     });

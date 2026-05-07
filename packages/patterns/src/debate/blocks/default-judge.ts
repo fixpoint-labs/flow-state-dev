@@ -102,7 +102,7 @@ export function createJudge(opts: CreateJudgeOptions) {
   const shuffle = opts.shuffleForJudge ?? true;
   return generator({
     name: `${opts.name}-judge`,
-    model: opts.model ?? "preset/fast",
+    model: opts.model ?? "intent/synthesize",
     outputSchema: debateVerdictSchema,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,

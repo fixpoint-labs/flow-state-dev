@@ -64,7 +64,7 @@ export interface PerspectiveSystemConfig {
    * - `'org'`: positions persist within an org across users.
    */
   positionScope?: PositionScope
-  /** Model ID for generator blocks. Default: 'preset/fast'. */
+  /** Model ID for generator blocks. Default: 'intent/utility'. */
   model?: string
   /** Override the system name prefix. Default: derived from perspective name. */
   name?: string

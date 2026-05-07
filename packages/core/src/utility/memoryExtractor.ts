@@ -54,7 +54,7 @@ export function memoryExtractor<
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "intent/utility",
     outputSchema,
     agentType: config.agentType,
     prompt: [

@@ -261,7 +261,7 @@ describe("createFSDProvider — provider preference", () => {
 
   it("single-provider prefer: moves preferred provider to the front", async () => {
     const provider = createFSDProvider(fourProviderConfig);
-    const result = await provider("large", { prefer: "anthropic" }).generate({
+    const result = await provider("large", { preferProvider: "anthropic" }).generate({
       messages: [{ role: "user", content: "hi" }],
     });
     expect(result.text).toBe("response:opus");
@@ -270,14 +270,14 @@ describe("createFSDProvider — provider preference", () => {
   it("multi-provider prefer: uses the first in the prefer list that is available", async () => {
     const provider = createFSDProvider(fourProviderConfig);
     const result = await provider("large", {
-      prefer: ["google", "anthropic"],
+      preferProvider: ["google", "anthropic"],
     }).generate({ messages: [{ role: "user", content: "hi" }] });
     expect(result.text).toBe("response:gemini-3");
   });
 
   it("prefer is an array, within-bucket order preserved (opus before sonnet)", () => {
     const provider = createFSDProvider(fourProviderConfig);
-    expect(provider.available("large", { prefer: "anthropic" })).toEqual([
+    expect(provider.available("large", { preferProvider: "anthropic" })).toEqual([
       "anthropic/opus",
       "anthropic/sonnet",
       "openai/gpt-5.4",
@@ -294,7 +294,7 @@ describe("createFSDProvider — provider preference", () => {
         // anthropic deliberately omitted
       },
     });
-    const result = await provider("large", { prefer: "anthropic" }).generate({
+    const result = await provider("large", { preferProvider: "anthropic" }).generate({
       messages: [{ role: "user", content: "hi" }],
     });
     // falls back to the natural order of the remaining models
@@ -304,7 +304,7 @@ describe("createFSDProvider — provider preference", () => {
   it("strict: throws when preferred provider has no matching models in preset", () => {
     const provider = createFSDProvider(fourProviderConfig);
     expect(() =>
-      provider("large", { prefer: "grok", strict: true })
+      provider("large", { preferProvider: "grok", strict: true })
     ).toThrow(/contains no models from preferred provider\(s\) \[grok\]/);
   });
 
@@ -318,7 +318,7 @@ describe("createFSDProvider — provider preference", () => {
       },
     });
     expect(() =>
-      provider("large", { prefer: "anthropic", strict: true })
+      provider("large", { preferProvider: "anthropic", strict: true })
     ).toThrow(/no available models from preferred provider\(s\) \[anthropic\]/);
   });
 
@@ -338,7 +338,7 @@ describe("createFSDProvider — provider preference", () => {
       ...fourProviderConfig,
       providerPreference: "anthropic",
     });
-    const result = await provider("large", { prefer: "google" }).generate({
+    const result = await provider("large", { preferProvider: "google" }).generate({
       messages: [{ role: "user", content: "hi" }],
     });
     expect(result.text).toBe("response:gemini-3");
@@ -349,7 +349,7 @@ describe("createFSDProvider — provider preference", () => {
       ...fourProviderConfig,
       providerPreference: "anthropic",
     });
-    const result = await provider("large", { prefer: [] }).generate({
+    const result = await provider("large", { preferProvider: [] }).generate({
       messages: [{ role: "user", content: "hi" }],
     });
     // Empty array doesn't fall back to the config-level default — it means
@@ -359,9 +359,9 @@ describe("createFSDProvider — provider preference", () => {
 
   it("caches per (group, prefer, strict) triple", () => {
     const provider = createFSDProvider(fourProviderConfig);
-    const a = provider("large", { prefer: "anthropic" });
-    const b = provider("large", { prefer: "anthropic" });
-    const c = provider("large", { prefer: "google" });
+    const a = provider("large", { preferProvider: "anthropic" });
+    const b = provider("large", { preferProvider: "anthropic" });
+    const c = provider("large", { preferProvider: "google" });
     const d = provider("large");
     expect(a).toBe(b);
     expect(a).not.toBe(c);
@@ -370,10 +370,29 @@ describe("createFSDProvider — provider preference", () => {
 
   it("unknown provider in prefer silently no-ops (non-strict)", async () => {
     const provider = createFSDProvider(fourProviderConfig);
-    const result = await provider("large", { prefer: "foobar" }).generate({
+    const result = await provider("large", { preferProvider: "foobar" }).generate({
       messages: [{ role: "user", content: "hi" }],
     });
     expect(result.text).toBe("response:gpt-5.4");
+  });
+
+  it("legacy `prefer` option throws migration error", () => {
+    const provider = createFSDProvider({
+      groups: { large: { models: ["openai/gpt-5.4"] } },
+      providers: { openai: createMockProvider() },
+    });
+    // @ts-expect-error — legacy field intentionally tested
+    expect(() => provider("large", { prefer: "anthropic" })).toThrow(
+      /`prefer` option has been renamed to `preferProvider`/
+    );
+    // @ts-expect-error
+    expect(() => provider.available("large", { prefer: "anthropic" })).toThrow(
+      /`prefer` option has been renamed to `preferProvider`/
+    );
+    // @ts-expect-error
+    expect(() => provider.explain("large", { prefer: "anthropic" })).toThrow(
+      /`prefer` option has been renamed to `preferProvider`/
+    );
   });
 });
 
@@ -401,7 +420,7 @@ describe("createFSDProvider.explain", () => {
 
   it("returns the candidate list in preference-reordered order", () => {
     const provider = createFSDProvider(cfg);
-    const result = provider.explain("medium", { prefer: "anthropic" });
+    const result = provider.explain("medium", { preferProvider: "anthropic" });
     expect(result.preset).toBe("medium");
     expect(result.prefer).toEqual(["anthropic"]);
     expect(result.candidates.map((c) => c.modelId)).toEqual([
@@ -422,7 +441,7 @@ describe("createFSDProvider.explain", () => {
   it("willUse points at the first available candidate after reorder", () => {
     const provider = createFSDProvider(cfg);
     expect(provider.explain("medium").willUse).toBe("openai/gpt-5.4-mini");
-    expect(provider.explain("medium", { prefer: "anthropic" }).willUse).toBe(
+    expect(provider.explain("medium", { preferProvider: "anthropic" }).willUse).toBe(
       "anthropic/sonnet"
     );
   });

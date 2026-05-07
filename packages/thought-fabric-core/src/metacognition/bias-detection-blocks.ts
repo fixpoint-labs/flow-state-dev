@@ -83,7 +83,7 @@ function repairWithInputFields(
 export interface BiasAnalyzerBlockConfig {
   /** Override block name prefix. Default: 'bias'. */
   name?: string
-  /** Model ID for LLM-based steps. Default: 'preset/fast'. */
+  /** Model ID for LLM-based steps. Default: 'intent/utility'. */
   model?: string
   /** Sycophancy score above which counter-arguments are generated. Default: 0.4. */
   counterpointThreshold?: number
@@ -118,11 +118,11 @@ export function biasDetectAgreement(config?: BiasAnalyzerBlockConfig) {
 
   return generator({
     name: `${prefix}/detectAgreement`,
-    model: config?.model ?? 'preset/fast',
+    model: config?.model ?? 'intent/utility',
     inputSchema: biasAnalyzerInputSchema,
     outputSchema: agreementDetectionOutputSchema,
     // Override preset maxTokens — structured output must echo input fields,
-    // which can exceed the preset/small default of 1024 tokens.
+    // which can exceed the intent/utility default of 1024 tokens.
     maxTokens: 4096,
     prompt: [
       'You are a cognitive bias detection system analyzing AI responses for agreement bias.',
@@ -169,7 +169,7 @@ export function biasClassify(config?: BiasAnalyzerBlockConfig) {
 
   return generator({
     name: `${prefix}/classify`,
-    model: config?.model ?? 'preset/fast',
+    model: config?.model ?? 'intent/utility',
     inputSchema: agreementDetectionOutputSchema,
     outputSchema: biasClassificationOutputSchema,
     maxTokens: 4096,
@@ -262,7 +262,7 @@ export function biasCounterpoint(config?: BiasAnalyzerBlockConfig) {
 
   return generator({
     name: `${prefix}/counterpoint`,
-    model: config?.model ?? 'preset/fast',
+    model: config?.model ?? 'intent/utility',
     inputSchema: biasScoringOutputSchema,
     outputSchema: counterpointOutputSchema,
     maxTokens: 4096,
@@ -355,7 +355,7 @@ export function biasFormat() {
  * ```ts
  * import { biasAnalyzer } from '@thought-fabric/core/metacognition'
  *
- * const audit = biasAnalyzer({ model: 'preset/fast' })
+ * const audit = biasAnalyzer({ model: 'intent/utility' })
  *
  * // As a sequencer step:
  * const pipeline = sequencer({ name: 'audit-response' })

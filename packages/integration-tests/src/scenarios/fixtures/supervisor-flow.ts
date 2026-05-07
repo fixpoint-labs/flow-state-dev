@@ -15,7 +15,7 @@ const inputSchema = z.object({ goal: z.string() });
 
 const worker = generator({
   name: "test-worker",
-  model: "preset/small",
+  model: "intent/synthesize",
   inputSchema: z.object({
     taskId: z.string(),
     goal: z.string(),

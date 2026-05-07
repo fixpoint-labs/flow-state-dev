@@ -47,7 +47,7 @@ export function synthesizer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "intent/synthesize",
     outputSchema,
     agentType: config.agentType ?? "primary",
     prompt: [

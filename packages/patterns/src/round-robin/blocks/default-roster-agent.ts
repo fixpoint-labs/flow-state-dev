@@ -68,7 +68,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
     : "You are an agent contributing to a round-robin coordination process.";
   return generator({
     name: `${opts.name}-roster-${opts.agentName}`,
-    model: opts.model ?? "preset/fast",
+    model: opts.model ?? "intent/chat",
     outputSchema: rosterAgentOutputSchema,
     resources: { contributions: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,

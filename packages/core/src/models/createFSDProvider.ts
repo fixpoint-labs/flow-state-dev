@@ -224,13 +224,13 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
       );
     }
 
-    const prefer = effectivePreference(options);
+    const preferProvider = effectivePreference(options);
     const strict = options?.strict === true;
 
-    if (strict && prefer.length > 0) {
-      if (!hasPreferredProvider(built.candidates, prefer)) {
+    if (strict && preferProvider.length > 0) {
+      if (!hasPreferredProvider(built.candidates, preferProvider)) {
         throw new Error(
-          `Preset "${groupName}" contains no models from preferred provider(s) [${prefer.join(
+          `Preset "${groupName}" contains no models from preferred provider(s) [${preferProvider.join(
             ", "
           )}]. Add a model from one of those providers to the preset or disable strict mode.`
         );
@@ -238,16 +238,16 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     }
 
     // Reorder (stable) by preference, then filter to only available models.
-    const reordered = reorderByPreference(built.candidates, prefer);
+    const reordered = reorderByPreference(built.candidates, preferProvider);
     const availableEntries = reordered.filter((c) => c.available);
 
-    if (strict && prefer.length > 0) {
+    if (strict && preferProvider.length > 0) {
       const anyPreferredAvailable = availableEntries.some((c) =>
-        prefer.includes(c.providerName)
+        preferProvider.includes(c.providerName)
       );
       if (!anyPreferredAvailable) {
         throw new Error(
-          `Preset "${groupName}" has no available models from preferred provider(s) [${prefer.join(
+          `Preset "${groupName}" has no available models from preferred provider(s) [${preferProvider.join(
             ", "
           )}]. Configure an API key or gateway for one of those providers, or disable strict mode.`
         );

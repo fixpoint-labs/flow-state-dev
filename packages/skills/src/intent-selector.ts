@@ -46,7 +46,7 @@ export interface IntentSelectorOptions {
   name?: string;
   /** Resource registry key for the skills collection. Default `"skills"`. */
   collectionKey?: string;
-  /** Model the tier-3 classifier uses. Default `"preset/fast"`. */
+  /** Model the tier-3 classifier uses. Default `"intent/utility"`. */
   classifierModel?: string;
   /** Confidence threshold for accepting a classifier match. Default 0.65. */
   confidenceThreshold?: number;

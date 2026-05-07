@@ -39,7 +39,7 @@ export function decomposer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "intent/plan",
     outputSchema,
     prompt: [
       "You are a task decomposition assistant.",

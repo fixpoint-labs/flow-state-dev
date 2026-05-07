@@ -29,7 +29,7 @@ export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
   { keyword: "gpt-5.4-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.2, completionPer1M: 0.8 } },
   { keyword: "gpt-5.4-nano", charsPerToken: 3.5, pricing: { promptPer1M: 0.05, completionPer1M: 0.2 } },
   { keyword: "gpt-5.4", charsPerToken: 3.5, pricing: { promptPer1M: 1.0, completionPer1M: 4.0 } },
-  { keyword: "preset/fast", charsPerToken: 3.5, pricing: { promptPer1M: 0.25, completionPer1M: 2.0 } },
+  { keyword: "intent/utility", charsPerToken: 3.5, pricing: { promptPer1M: 0.25, completionPer1M: 2.0 } },
   { keyword: "gpt-5-nano", charsPerToken: 3.5, pricing: { promptPer1M: 0.05, completionPer1M: 0.4 } },
   { keyword: "gpt-5", charsPerToken: 3.5, pricing: { promptPer1M: 1.25, completionPer1M: 10.0 } },
   { keyword: "gpt-4.1-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.4, completionPer1M: 1.6 } },

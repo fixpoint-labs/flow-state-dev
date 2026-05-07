@@ -37,7 +37,7 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
   ].join("\n");
   return generator({
     name: `${opts.name}-synthesizer`,
-    model: opts.model ?? "preset/fast",
+    model: opts.model ?? "intent/synthesize",
     outputSchema: opts.outputSchema ?? z.string(),
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),

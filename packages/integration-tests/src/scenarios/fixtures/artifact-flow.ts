@@ -74,7 +74,7 @@ const writeArtifact = sequencer({
 
 const builderGenerator = generator({
   name: "builder-generator",
-  model: "preset/small",
+  model: "intent/synthesize",
   prompt: "You build artifacts in response to user requests.",
   inputSchema: buildInputSchema,
   user: (input) => input.message,

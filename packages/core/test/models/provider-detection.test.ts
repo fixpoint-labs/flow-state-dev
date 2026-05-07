@@ -22,11 +22,40 @@ describe("parseModelString", () => {
     });
   });
 
-  it("parses preset/name format", () => {
-    expect(parseModelString("preset/fast")).toEqual({
-      type: "preset",
-      presetName: "fast",
+  it("throws migration error for legacy preset/* strings", () => {
+    expect(() => parseModelString("preset/fast")).toThrow(
+      /preset\/\* model strings have been removed/
+    );
+  });
+
+  it("parses intent/name format", () => {
+    expect(parseModelString("intent/utility")).toEqual({
+      type: "intent",
+      intentName: "utility",
     });
+  });
+
+  it("parses intent/multi-word-name format", () => {
+    expect(parseModelString("intent/multi-word_name")).toEqual({
+      type: "intent",
+      intentName: "multi-word_name",
+    });
+  });
+
+  it("rejects intent/foo/bar (3-part intent)", () => {
+    expect(() => parseModelString("intent/foo/bar")).toThrow(
+      /intent\/\* model strings must be 2 parts/
+    );
+  });
+
+  it("rejects preset/foo/bar (3-part preset) with migration error", () => {
+    expect(() => parseModelString("preset/foo/bar")).toThrow(
+      /preset\/\* model strings have been removed/
+    );
+  });
+
+  it("rejects malformed intent name (digits-leading)", () => {
+    expect(() => parseModelString("intent/1abc")).toThrow(/Invalid intent name/);
   });
 
   it("throws for single segment (no provider)", () => {

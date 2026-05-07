@@ -24,6 +24,7 @@ import type {
   PrepareStepFn,
   ProviderTool
 } from "../types/model";
+import type { ModelSelection } from "../models/selectModel";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
@@ -125,7 +126,10 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
   | GeneratorModel
-  | ((input: TInput, ctx: TCtx) => MaybePromise<string | string[] | GeneratorModel>);
+  | ((
+      input: TInput,
+      ctx: TCtx
+    ) => MaybePromise<string | string[] | GeneratorModel | ModelSelection>);
 type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
   | Record<string, unknown>
   | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
@@ -465,6 +469,38 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
     return {
       modelId: resolved,
       model: ctx.resolveModel(resolved, blockName)
+    };
+  }
+
+  // Structured selection from selectModel: { model, preferProvider? }
+  const { isModelSelection } = await import("../models/selectModel");
+  if (isModelSelection(resolved)) {
+    const m = resolved.model;
+    const preferProvider = resolved.preferProvider;
+    if (Array.isArray(m)) {
+      if (m.length === 0) {
+        throw new Error(`Generator "${blockName}" model array cannot be empty`);
+      }
+      const { createFallbackModel } = await import("../models/fallbackModel");
+      const { parseModelString } = await import("../models/providerDetection");
+      const entries = m.map((modelStr) => {
+        const parsed = parseModelString(modelStr);
+        return {
+          modelId: modelStr,
+          providerName: parsed.provider ?? "unknown",
+          model: ctx.resolveModel(modelStr, blockName, { preferProvider }),
+        };
+      });
+      const fallback = createFallbackModel({
+        groupName: `${blockName}-fallback`,
+        models: entries,
+        retryPolicy: { maxAttemptsPerModel: 2, baseDelayMs: 1000, maxDelayMs: 10000 },
+      });
+      return { modelId: m[0], model: fallback };
+    }
+    return {
+      modelId: m,
+      model: ctx.resolveModel(m, blockName, { preferProvider }),
     };
   }
 
