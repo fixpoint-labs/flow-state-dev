@@ -378,7 +378,7 @@ async function* subscribeViaListen(
             }
           }
         } else if (Date.now() - lastTickAt > livenessMs) {
-          yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
+          yield synthesizeRequestInterrupted(requestId, lastSeen ?? 0);
           return;
         }
       }

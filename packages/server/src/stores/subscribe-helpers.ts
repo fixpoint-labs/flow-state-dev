@@ -39,6 +39,15 @@ export function isTerminalRequestStreamEvent(
  * Build an in-iterator `request.interrupted` event for liveness-timeout
  * surfacing. Not persisted — this represents the subscriber's view of an
  * apparent originating-process death, not durable state.
+ *
+ * Caller must pass the last real `sequence_number` yielded (or `0` if
+ * nothing has been yielded yet). Reusing the last-seen sequence is
+ * deliberate: SSE clients echo this id back as `Last-Event-ID` on
+ * auto-reconnect, and the resume cursor returns events strictly greater
+ * than that. If the writer was actually still alive and persisted a real
+ * event at `lastSeen + 1`, advancing the synthetic past it would cause
+ * the reconnecting subscriber to skip that real event (the synthetic is
+ * never persisted, so it can't collide in catch-up).
  */
 export function synthesizeRequestInterrupted(
   requestId: string,
@@ -112,7 +121,7 @@ export async function* pollEvents(
         if (isTerminalRequestStreamEvent(event)) return;
       }
     } else if (Date.now() - lastTickAt > livenessMs) {
-      yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
+      yield synthesizeRequestInterrupted(requestId, lastSeen ?? 0);
       return;
     }
   }

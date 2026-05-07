@@ -289,6 +289,10 @@ export function createRequestStoreConformanceTests(
           controller.abort();
           expect(seen.at(-1)?.type).toBe("request.interrupted");
           expect((seen.at(-1) as { status?: string }).status).toBe("interrupted");
+          // Synthetic event reuses the last real sequence_number so a
+          // reconnecting SSE client doesn't skip a still-in-flight event
+          // at lastSeen + 1 (FIX-569 regression).
+          expect(seen.at(-1)?.sequence_number).toBe(1);
         });
       }, 10_000);
     }
