@@ -6,12 +6,12 @@
  *
  * Handles the three BlockValue cases:
  *   - `inline` → returns `value` directly.
- *   - `ref`    → looks up the source item (BlockOutputItem or MessageItem)
+ *   - `ref`    → looks up the source item (BlockTraceItem or MessageItem)
  *                in the supplied items list and recurses one hop. Anything
  *                deeper is treated as a missed reference and returns undefined.
  *   - `structure` → deep-resolves each entry, reconstructing the container.
  */
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 
 export type AnyBlockValue =
   | { kind: "inline"; value: unknown }
@@ -24,7 +24,7 @@ export type AnyBlockValue =
     };
 
 export function resolveBlockValueLocal(
-  value: BlockOutputItem["output"] | undefined,
+  value: BlockTraceItem["output"] | undefined,
   items: readonly OutputItem[],
 ): unknown {
   if (value === undefined) return undefined;
@@ -36,11 +36,11 @@ function resolveLocal(value: AnyBlockValue, items: readonly OutputItem[], hops: 
   if (value.kind === "ref") {
     if (hops > 1) return undefined;
     const target = items.find((i) => i.id === value.sourceItemId) as
-      | (OutputItem | BlockOutputItem)
+      | (OutputItem | BlockTraceItem)
       | undefined;
     if (!target) return undefined;
-    if ((target as { type: string }).type === "block_output") {
-      return resolveLocal((target as BlockOutputItem).output as AnyBlockValue, items, hops + 1);
+    if ((target as { type: string }).type === "block_trace") {
+      return resolveLocal((target as BlockTraceItem).output as AnyBlockValue, items, hops + 1);
     }
     if (target.type === "message") {
       return target.content

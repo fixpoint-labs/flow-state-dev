@@ -5,7 +5,7 @@ import type {
   ContainerItem,
   OutputItem,
 } from "@flow-state-dev/core/items";
-import type { BlockToolOutputItem } from "@flow-state-dev/core/items";
+import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
@@ -135,8 +135,8 @@ export function EventedActors({ item }: { item: ContainerItem }) {
   const toolGroups = useMemo(() => {
     const calls: ToolCall[] = [];
     for (const i of scopedItems) {
-      if (i.type !== "block_tool_output") continue;
-      const tool = i as BlockToolOutputItem;
+      if (i.type !== "tool_output") continue;
+      const tool = i as ToolOutputItem;
       let query: string | undefined;
       let resultSummary: string[] | undefined;
       try {

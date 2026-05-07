@@ -57,7 +57,7 @@ interface BlockContext {
 }
 ```
 
-Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, block_tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
+Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -171,7 +171,7 @@ Key properties:
 - `execute` is the user-provided logic
 - `validateChunk` (optional) validates input chunks before execution
 - `retry` (optional) configures retry policy
-- Handlers emit `block_output` automatically (internal/devtools only)
+- Handlers emit `block_trace` automatically (internal/devtools only)
 - Use `ctx.emitMessage()` or `ctx.emitComponent()` for client-visible output
 
 ## Generator
@@ -277,10 +277,10 @@ The original array form continues to work unchanged. String entries in an array 
 Generators auto-emit items based on model output — but only when `agentType` is set:
 - Reasoning/thinking → `reasoning` item
 - Text response → `message` item (role: "assistant"), streamed via `content.delta`
-- Tool invocation → `block_output` with `toolCall` (two-phase: in_progress → completed)
-- Final return value → `block_output` (internal/devtools only)
+- Tool invocation → `block_trace` with `toolCall` (two-phase: in_progress → completed)
+- Final return value → `block_trace` (internal/devtools only)
 
-To run a generator silently (no session items, only `block_output` via graph edges), omit `agentType`. See [Item Visibility](#item-visibility) for the identity model.
+To run a generator silently (no session items, only `block_trace` via graph edges), omit `agentType`. See [Item Visibility](#item-visibility) for the identity model.
 
 ## Sequencer
 
@@ -297,11 +297,11 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
 ### DSL Methods (20 total)
 
 Each method produces a `BlockValue<T>` of a specific kind on the emitted
-`block_output` item (FIX-413). Refs and structures avoid duplicating content
+`block_trace` item (FIX-413). Refs and structures avoid duplicating content
 across the execution tree; see `docs/architecture/items.md` for the union
 definition and resolution semantics.
 
-| Method | Purpose | `block_output` kind |
+| Method | Purpose | `block_trace` kind |
 |--------|---------|---------------------|
 | `then(block)` | Execute block, pass output to next step | `ref` → child's item |
 | `then(connector, block)` | Transform input before block execution | `ref` → child's item |
@@ -415,7 +415,7 @@ Every generator declares one of four stances:
 | `"primary"` | ✓ | ✓ | ✓ |
 | `"sub"`     | ✓ | — | ✓ |
 | `"trace"`   | — | — | ✓ |
-| *unset*     | *no auto-emission* — only `block_output` flows via graph edges |
+| *unset*     | *no auto-emission* — only `block_trace` flows via graph edges |
 
 No position-inferred default. Every generator declares its own identity.
 
@@ -429,7 +429,7 @@ const researcher = generator({
 });
 ```
 
-Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_output`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
+Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_trace`, `router_decision`, `state_snapshot`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
 
 ### `agentName`
 
@@ -469,5 +469,5 @@ const output = ctx.getBlockOutput(validateBlock);
 These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.
 
 
-`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_output.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
+`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_trace.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
 

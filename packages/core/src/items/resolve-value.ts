@@ -1,7 +1,7 @@
 /**
  * BlockValue construction, resolution, and type-guard helpers.
  *
- * `BlockValue<T>` is the discriminated union carried on `BlockOutputItem.output`
+ * `BlockValue<T>` is the discriminated union carried on `BlockTraceItem.output`
  * (FIX-413). This module owns the pure functions that:
  *  - construct the three cases (`inline`, `ref`, `structure`),
  *  - resolve a `BlockValue` to its typed payload `T` via an item-id lookup,
@@ -11,12 +11,12 @@
  * every `ref` points directly to a content-bearing item, never another ref.
  *
  * FIX-480 §3.2: refs may now point at `MessageItem` ids (in addition to
- * `BlockOutputItem` ids), so a streaming-text generator's `block_output`
+ * `BlockTraceItem` ids), so a streaming-text generator's `block_trace.output`
  * can carry a ref to its own emitted message instead of duplicating the
  * text. Resolution returns the joined `output_text` content.
  */
 import type {
-  BlockOutputItem,
+  BlockTraceItem,
   BlockValue,
   BlockValueInternal,
   MessageItem,
@@ -55,14 +55,14 @@ export function isBlockValue(candidate: unknown): candidate is BlockValue {
  * resolver branches on `target.type`. The wider union accepts trace items
  * (`BlockOutputItem`) since refs may target them internally.
  */
-export type ItemLookup = (itemId: string) => OutputItem | BlockOutputItem | undefined;
+export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undefined;
 
 /**
  * Resolve a BlockValue to its typed payload `T`.
  *
  * - `inline` → returns `value` directly.
  * - `ref` → looks up the target item:
- *     - `block_output` → recurse into its own BlockValue.
+ *     - `block_trace` → recurse into its own BlockValue.
  *     - `message` → returns the joined `output_text` content cast to `T`
  *       (FIX-480: streaming-text generators emit refs to their own message).
  *   Returns `undefined` if the target is missing (e.g., evicted).
@@ -108,8 +108,10 @@ function resolveInternal(
     }
     const target = lookup(value.sourceItemId);
     if (target === undefined) return undefined;
-    if (target.type === "block_output") {
-      return resolveInternal((target as BlockOutputItem).output, lookup, refHops + 1);
+    if (target.type === "block_trace") {
+      const traceTarget = target as BlockTraceItem;
+      if (traceTarget.output === undefined) return undefined;
+      return resolveInternal(traceTarget.output, lookup, refHops + 1);
     }
     if (target.type === "message") {
       // Terminal node — the joined text IS the resolved value. No recursion.
@@ -148,7 +150,7 @@ function joinMessageText(item: MessageItem): string {
 
 /**
  * Build a lookup closure from a flat items list. Indexes every item by
- * id (not just `block_output`) so refs may resolve to `message` items
+ * id (not just `block_trace`) so refs may resolve to `message` items
  * as well — FIX-480 widened the source pool. Callers with a Map already
  * indexed by id should wrap that directly.
  */

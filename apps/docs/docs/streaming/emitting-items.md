@@ -188,7 +188,7 @@ The same idea shows up across the industry. Vercel AI SDK calls them "data parts
 
 ## Default transience and the block flag
 
-A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_output` traces don't enter the persisted log. It does **not** affect items the block emits explicitly.
+A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_trace` traces don't enter the persisted log. It does **not** affect items the block emits explicitly.
 
 That separation is intentional. When you call `ctx.emitComponent()` or `ctx.emitMessage()` from inside any block — including a transient one — that's an explicit choice to surface user-facing content. The producing block being infrastructure says nothing about the content's status.
 

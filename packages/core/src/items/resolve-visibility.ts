@@ -7,9 +7,9 @@
  *
  * Rules:
  * - `agentType: "trace"` → neither client nor history, regardless of type.
- *   The four trace item types (`block_output`, `router_decision`,
- *   `state_snapshot`, `block_debug`) are always emitted with this stamp.
- * - Conversational types (`message`, `reasoning`, `block_tool_output`)
+ *   The three trace item types (`block_trace`, `router_decision`,
+ *   `state_snapshot`) are always emitted with this stamp.
+ * - Conversational types (`message`, `reasoning`, `tool_output`)
  *   inherit visibility from `agentType`. Unset `agentType` on a conversational
  *   item falls back to primary-equivalent visibility — this keeps handler
  *   emits like `ctx.emitMessage("hi")` ergonomic when no generator identity
@@ -21,7 +21,7 @@ import type { ItemVisibility, OutputItem } from "./types";
 const CONVERSATIONAL_TYPES = new Set<string>([
   "message",
   "reasoning",
-  "block_tool_output",
+  "tool_output",
 ]);
 
 const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };

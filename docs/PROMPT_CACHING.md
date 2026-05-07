@@ -32,7 +32,7 @@ The only place `providerOptions` was set intentionally was the `thinking-*` pres
 
 Telemetry infrastructure was already in place:
 
-- `BlockOutputItem.modelUsage.cacheReadTokens` / `cacheCreationTokens` were defined (`packages/core/src/items/types.ts`).
+- `BlockTraceItem.modelUsage.cacheReadTokens` / `cacheCreationTokens` were defined (`packages/core/src/items/types.ts`).
 - The sequencer and server both extracted those values from `providerMetadata.anthropic` (`packages/core/src/blocks/sequencer.ts`, `packages/server/src/execution/executeBlock.ts`).
 - Pricing estimation understood the Anthropic cache-read and cache-write rates (`packages/core/src/adapters/model-lookup.ts`).
 - The DevTool displayed aggregated and per-call cache stats (`apps/devtool/src/components/detail/token-usage-summary.tsx`).

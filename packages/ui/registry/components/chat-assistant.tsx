@@ -39,8 +39,8 @@ function TaskBoardMeta({ item }: { item: ComponentItem }) {
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
   reasoning: Reasoning,
-  block_output: false,
-  block_tool_output: Tool,
+  block_trace: false,
+  tool_output: Tool,
   status: Status,
   error: ErrorDisplay,
   source: false,

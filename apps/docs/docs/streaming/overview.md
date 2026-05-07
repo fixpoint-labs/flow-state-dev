@@ -31,24 +31,24 @@ These are covered in depth in [Emitting Items](/docs/streaming/emitting-items).
 You don't need to emit most item types yourself. The framework handles them:
 
 - **Generators** automatically emit `message` and `reasoning` items as the model streams
-- **Tool calls** produce `block_tool_output` items with the tool name, input, and result
+- **Tool calls** produce `tool_output` items with the tool name, input, and result
 - **State mutations** emit `state_change` notifications so the client stays in sync
 - **Resource mutations** emit `resource_change` notifications
-- **Errors** produce `error` items when the request itself fails. Failures inside `.work()` background tasks don't produce a public item; the failed `block_output` (visible to the DevTool via the trace channel) is the only signal.
+- **Errors** produce `error` items when the request itself fails. Failures inside `.work()` background tasks don't produce a public item; the failed `block_trace` (visible to the DevTool via the trace channel) is the only signal.
 
 ## Visibility
 
 The reference table below shows where each item type appears by default. Two things to note:
 
 - **Client** means the client receives and can render it. Most items are client-visible.
-- **LLM History** means the item enters conversation history for future model calls. Only content-bearing types (`message`, `reasoning`, `block_tool_output`) do this. Other client-visible types like `component` and `status` don't feed into model context — they're purely for the UI.
+- **LLM History** means the item enters conversation history for future model calls. Only content-bearing types (`message`, `reasoning`, `tool_output`) do this. Other client-visible types like `component` and `status` don't feed into model context — they're purely for the UI.
 
 ### How visibility is resolved
 
 Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`:
 
-- **Conversational types** (`message`, `reasoning`, `block_tool_output`) inherit visibility from the producing generator's `agentType`.
-- **Structural types** (`component`, `status`, `block_output`, etc.) have fixed per-type visibility.
+- **Conversational types** (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType`.
+- **Structural types** (`component`, `status`, `block_trace`, etc.) have fixed per-type visibility.
 - An `agentType: "trace"` item is always `{ client: false, history: false }` regardless of type — trace is observability-only.
 
 ### Generator identity controls conversational visibility
@@ -67,7 +67,7 @@ const worker = generator({ agentType: "sub", /* ... */ });
 const memoryObserver = generator({ agentType: "trace", /* ... */ });
 
 // No agentType → the generator produces no auto-emitted items. Its typed
-// `block_output` still flows to parents via graph edges.
+// `block_trace` still flows to parents via graph edges.
 const classifier = generator({ outputSchema: z.enum(["A", "B"]), /* ... */ });
 ```
 
@@ -134,7 +134,7 @@ For reference, here's the complete registry:
 |------|-----------|:-------:|:-------:|:---------:|
 | `message` | Chat message (user or assistant) | ✓ | ✓ | — |
 | `reasoning` | Model thinking tokens | ✓ | ✓ | — |
-| `block_tool_output` | Tool invocation result | ✓ | ✓ | — |
+| `tool_output` | Tool invocation result | ✓ | ✓ | — |
 | `component` | Custom UI component | ✓ | — | — |
 | `container` | Groups child items for visual layout | ✓ | — | — |
 | `source` | URL reference from web search, etc. | ✓ | — | — |
@@ -142,7 +142,7 @@ For reference, here's the complete registry:
 | `state_change` | State mutation notification | ✓ | — | Production |
 | `resource_change` | Resource mutation notification | ✓ | — | Always |
 | `error` | Terminal request error | ✓ | — | — |
-| `block_output` | Execution record | — | — | — |
+| `block_trace` | Execution record | — | — | — |
 | `router_decision` | Route selection record | — | — | — |
 | `state_snapshot` | Sequencer state snapshot | — | — | Always |
 

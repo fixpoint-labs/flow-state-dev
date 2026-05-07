@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import type {
-  BlockToolOutputItem,
+  ToolOutputItem,
   ComponentItem,
   ContainerItem,
   MessageItem,
@@ -18,10 +18,10 @@ import type {
 } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, type RendererRegistry } from "../src";
 
-function toolItem(id: string, toolName: string, overrides: Partial<BlockToolOutputItem> = {}): BlockToolOutputItem {
+function toolItem(id: string, toolName: string, overrides: Partial<ToolOutputItem> = {}): ToolOutputItem {
   return {
     id,
-    type: "block_tool_output",
+    type: "tool_output",
     status: "completed",
     requestId: "req",
     itemIndex: 0,

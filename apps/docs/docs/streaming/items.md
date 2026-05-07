@@ -41,12 +41,118 @@ The client assembles content progressively from deltas. Text appears token by to
 | Event | Meaning |
 |-------|---------|
 | `item.added` | New item in the stream. Contains the full item payload with `status: "in_progress"`. |
+| `item.updated` | Patch to an existing item, identified by id. Used by trace items (and `tool_output`) to fill in fields as work progresses. |
 | `content.delta` | Text chunk appended to a streaming item (messages, reasoning). |
 | `content.added` | New content part added to an item (e.g., audio part on a message). |
 | `content.done` | A content part finalized. |
 | `item.done` | Item finalized with terminal status. |
 | `request.completed` | All blocks finished. Request succeeded. |
 | `request.failed` | Request failed with a terminal error. |
+
+## Trace items
+
+Trace items describe what blocks ran, what they consumed, and what they produced. They flow only on the trace channel — the default client filter strips them — and they are retained for inspection in DevTool.
+
+### `block_trace`
+
+One row per block execution. The same row is emitted at `item.added`, patched in place via `item.updated`, then finalized with `item.done`. Fields fill in as the block progresses:
+
+```jsonc
+// item.added — block started, only input is known.
+{
+  "type": "block_trace",
+  "id": "item_block_trace_4_a1b2",
+  "status": "in_progress",
+  "blockName": "summarize",
+  "blockKind": "generator",
+  "input": { "source": { "kind": "ref", "sourceItemId": "item_block_trace_3_..." } },
+  "startedAt": 1717000000000
+}
+```
+
+```jsonc
+// item.updated — generator bundle landed (model, prompt, params).
+{
+  "id": "item_block_trace_4_a1b2",
+  "patch": {
+    "generator": {
+      "model": "openai/gpt-4o-mini",
+      "messages": [/* ... */],
+      "temperature": 0.2
+    }
+  }
+}
+```
+
+```jsonc
+// item.done — terminal: output, status, timing, token usage.
+{
+  "type": "block_trace",
+  "id": "item_block_trace_4_a1b2",
+  "status": "completed",
+  "blockName": "summarize",
+  "blockKind": "generator",
+  "input": { "source": { "kind": "ref", "sourceItemId": "item_block_trace_3_..." } },
+  "output": { "kind": "inline", "value": { "summary": "..." } },
+  "startedAt": 1717000000000,
+  "completedAt": 1717000004210,
+  "duration": 4210,
+  "modelUsage": {
+    "model": "openai/gpt-4o-mini",
+    "promptTokens": 412,
+    "completionTokens": 94,
+    "totalTokens": 506
+  }
+}
+```
+
+`block_trace` carries both input and output as `BlockValue` descriptors. A block downstream of another block stamps its `input.source` as a `ref` to the upstream `block_trace`, so the input area in DevTool can dedupe rather than repeat the upstream content. Aggregator steps (`thenAll`, `parallel`, `forEach`) stamp a `structure` source that carries refs to each branch.
+
+### `tool_output`
+
+When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns:
+
+```jsonc
+// item.added — tool was called, args known, output not yet.
+{
+  "type": "tool_output",
+  "id": "item_tool_output_5_c3d4",
+  "status": "in_progress",
+  "blockName": "lookup",
+  "toolCall": {
+    "callId": "call_abc",
+    "name": "lookup",
+    "alias": "lookup",
+    "arguments": "{\"query\":\"..\"}",
+    "generatorBlock": "agent"
+  }
+}
+```
+
+```jsonc
+// item.updated → item.done — terminal output.
+{
+  "id": "item_tool_output_5_c3d4",
+  "patch": { "status": "completed", "output": { "answers": ["..."] } }
+}
+```
+
+`tool_output` and the called block's `block_trace` are decoupled. The called block still gets its own `block_trace` row, but its `output` is a `ref` to the `tool_output` item. The tool result is therefore stored once, surfaced in two places, and the conversation history sees the rich `tool_output` form.
+
+### Lifecycle
+
+Trace items follow a three-event lifecycle: `item.added` (in_progress, no output yet), zero or more `item.updated` patches (input connectors, generator bundle, model usage), and a terminal `item.done` (status set to `completed` or `failed`, output written, timing closed). Consumers reconcile by id. A late subscriber that joins after `item.done` sees only the final settled row in the snapshot — no synthetic replay of intermediate patches is needed.
+
+### Migration
+
+If you were reading the previous trace types, here's the mapping:
+
+| Old | New |
+|-----|-----|
+| `block_output` (terminal) + `block_debug` (start-time) | `block_trace` (one row, lifecycle patched) |
+| `block_tool_output` | `tool_output` (decoupled from `block_trace`) |
+
+`block_debug` and `block_output` are gone as separate types. Anything that filtered `block_output` should filter `block_trace` instead. Anything that read `block_debug` should read the `generator` field on `block_trace` once `item.updated` has landed.
 
 ## Resume and replay
 
@@ -84,9 +190,9 @@ Every auto-emitted item from a generator is stamped with the producing generator
 | `"primary"` | ✓ | ✓ | ✓ |
 | `"sub"` | ✓ | — | ✓ |
 | `"trace"` | — | — | ✓ |
-| *unset* | no auto-emission at all — only `block_output` flows via graph edges |
+| *unset* | no auto-emission at all — only `block_trace` flows via graph edges |
 
-A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_output`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
+A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_trace`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
 
 ### Multi-peer agents
 

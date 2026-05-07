@@ -81,7 +81,7 @@ describe("hello-chat", () => {
     expect(result.output).toBeDefined();
   });
 
-  it("emits block_output items", async () => {
+  it("emits block_trace items", async () => {
     const chatFixture = createChatFixture();
     const result = await testFlow({
       flow: helloChatFlow,
@@ -91,7 +91,7 @@ describe("hello-chat", () => {
       ...withGeneratorMocks(chatFixture)
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

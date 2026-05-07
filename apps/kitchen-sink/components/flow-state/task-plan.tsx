@@ -24,7 +24,7 @@ import React, {
   useState,
 } from "react";
 import type {
-  BlockToolOutputItem,
+  ToolOutputItem,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -773,10 +773,10 @@ function TaskOutput({ text }: { text: string }) {
  * inside a section card stacks frames and reads poorly.
  *
  * Item dispatch:
- *   - `block_tool_output`        → `<TaskToolItem>`
+ *   - `tool_output`              → `<TaskToolItem>`
  *   - `message`                  → compact line (assistant text only)
  *   - `reasoning`                → muted compact line
- *   - everything else            → ignored (block_output is hidden by
+ *   - everything else            → ignored (block_trace is hidden by
  *     design — `task.output` carries the canonical worker result and
  *     renders as the timeline's final entry via `<TaskOutput>`)
  */
@@ -788,14 +788,14 @@ function TaskWindowTimeline({
   outputText: string | null;
 }) {
   const renderable: Array<
-    | { kind: "tool"; item: BlockToolOutputItem }
+    | { kind: "tool"; item: ToolOutputItem }
     | { kind: "message"; item: MessageItem }
     | { kind: "reasoning"; item: ReasoningItem }
   > = [];
 
   for (const item of windowItems ?? []) {
-    if (item.type === "block_tool_output") {
-      renderable.push({ kind: "tool", item: item as BlockToolOutputItem });
+    if (item.type === "tool_output") {
+      renderable.push({ kind: "tool", item: item as ToolOutputItem });
     } else if (item.type === "message") {
       renderable.push({ kind: "message", item: item as MessageItem });
     } else if (item.type === "reasoning") {
@@ -895,7 +895,7 @@ function StepItem({
  * `<ToolCallItem>`. Flat line for tools with no result detail;
  * expandable `<details>` for tools that returned a list of results.
  */
-function TaskToolItem({ item }: { item: BlockToolOutputItem }) {
+function TaskToolItem({ item }: { item: ToolOutputItem }) {
   const summary = useMemo(() => extractToolCallSummary(item), [item]);
   const label = summary.query ?? summary.displayName;
   const hasResults =

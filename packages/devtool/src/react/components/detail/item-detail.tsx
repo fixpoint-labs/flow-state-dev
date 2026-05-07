@@ -11,7 +11,19 @@
  */
 import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
-import type { BlockDebugPayload, BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+
+// Generator config + connected-input view used by DebugPayloadSection.
+// Sourced directly from `block_trace.generator` and `block_trace.input.connected`.
+type BlockDebugPayload = {
+  model?: string;
+  prompt?: string;
+  tools?: string[];
+  user?: unknown[];
+  history?: unknown[];
+  connectedInput?: unknown;
+  modelOutput?: string;
+};
 import type { DevtoolItem } from "../../lib/item-types";
 import { Button } from "../ui/button";
 import { useSelection } from "../../context/selection-context";
@@ -49,7 +61,16 @@ export function ItemDetail() {
  * rows for debug payload / state timeline / final output.
  */
 function BlockNodeDetail({ node }: { node: TraceNode }) {
-  const traceItem = node.traceItem as BlockOutputItem | undefined;
+  const traceItem = node.traceItem as BlockTraceItem | undefined;
+  const generator = traceItem?.generator;
+  const connectedInput = traceItem?.input?.connected;
+  const debugPayload: BlockDebugPayload | undefined =
+    generator !== undefined || connectedInput !== undefined
+      ? {
+          ...(generator ?? {}),
+          ...(connectedInput !== undefined ? { connectedInput } : {}),
+        }
+      : undefined;
 
   const handleCopy = () => {
     const payload = {
@@ -60,7 +81,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         status: node.blockStatus,
         durationMs: node.blockDuration,
       },
-      debug: node.debugPayload,
+      debug: debugPayload,
       stateSnapshots: node.stateSnapshots,
       output: traceItem?.output,
       error: traceItem?.error,
@@ -68,7 +89,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
     void navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
   };
 
-  const prompt = node.debugPayload?.prompt;
+  const prompt = debugPayload?.prompt;
 
   return (
     <div className="space-y-3 text-xs">
@@ -114,27 +135,27 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       )}
 
       {/* User message(s) for this turn — what the caller actually sent in */}
-      {node.debugPayload?.user && node.debugPayload.user.length > 0 && (
+      {debugPayload?.user && debugPayload.user.length > 0 && (
         <CollapsibleSection
-          title={`User Message${node.debugPayload.user.length > 1 ? `s (${node.debugPayload.user.length})` : ""}`}
+          title={`User Message${debugPayload.user.length > 1 ? `s (${debugPayload.user.length})` : ""}`}
           defaultOpen
         >
-          <MessageList messages={node.debugPayload.user} />
+          <MessageList messages={debugPayload.user} />
         </CollapsibleSection>
       )}
 
       {/* Conversation history sent alongside the user message */}
-      {node.debugPayload?.history && node.debugPayload.history.length > 0 && (
+      {debugPayload?.history && debugPayload.history.length > 0 && (
         <CollapsibleSection
-          title={`History (${node.debugPayload.history.length})`}
+          title={`History (${debugPayload.history.length})`}
           defaultOpen={false}
         >
-          <MessageList messages={node.debugPayload.history} />
+          <MessageList messages={debugPayload.history} />
         </CollapsibleSection>
       )}
 
       {/* Resolved generator config */}
-      {node.debugPayload && <DebugPayloadSection payload={node.debugPayload} />}
+      {debugPayload && <DebugPayloadSection payload={debugPayload} />}
 
       {/* State snapshots timeline (sequencers) */}
       {node.stateSnapshots && node.stateSnapshots.length > 0 && (
@@ -314,7 +335,7 @@ function ItemDetailContent({ item, stateSnapshots }: { item: DevtoolItem; stateS
   };
 
   const isSequencerBlock =
-    item.type === "block_output" && item.blockKind === "sequencer";
+    item.type === "block_trace" && item.blockKind === "sequencer";
 
   return (
     <div className="space-y-3 text-xs">
@@ -366,7 +387,7 @@ function ItemTypeDetail({ item }: { item: DevtoolItem }) {
   switch (item.type) {
     case "message":
       return <MessageDetail item={item} />;
-    case "block_output":
+    case "block_trace":
       return <BlockOutputDetail item={item} />;
     case "error":
       return <ErrorDetail item={item} />;
@@ -382,7 +403,7 @@ function ItemTypeDetail({ item }: { item: DevtoolItem }) {
       return <ResourceChangeDetail item={item} />;
     case "status":
       return <StatusDetail item={item} />;
-    case "block_tool_output":
+    case "tool_output":
       return <BlockToolOutputDetail item={item} />;
     case "router_decision":
       return <RouterDecisionDetail item={item} />;
@@ -390,8 +411,6 @@ function ItemTypeDetail({ item }: { item: DevtoolItem }) {
       return <SourceDetail item={item} />;
     case "state_snapshot":
       return <StateSnapshotDetail item={item} />;
-    case "block_debug":
-      return <BlockDebugDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -417,7 +436,7 @@ function MessageDetail({ item }: { item: DevtoolItem & { type: "message" } }) {
   );
 }
 
-function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_output" } }) {
+function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_trace" } }) {
   return (
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
@@ -543,7 +562,7 @@ function StatusDetail({ item }: { item: DevtoolItem & { type: "status" } }) {
   );
 }
 
-function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "block_tool_output" } }) {
+function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "tool_output" } }) {
   const isFailed = item.status === "failed";
   return (
     <div className="space-y-2">
@@ -614,47 +633,8 @@ function StateSnapshotDetail({ item }: { item: DevtoolItem & { type: "state_snap
   );
 }
 
-function BlockDebugDetail({ item }: { item: DevtoolItem & { type: "block_debug" } }) {
-  const p = item.payload;
-  return (
-    <div className="space-y-2">
-      <MetadataRow label="Block" value={item.blockName} mono />
-      <MetadataRow label="Kind" value={item.blockKind} />
-      {p.model && <MetadataRow label="Model" value={p.model} mono />}
-      {p.tools && p.tools.length > 0 && (
-        <CollapsibleSection title={`Tools (${p.tools.length})`} defaultOpen>
-          <div className="space-y-0.5">
-            {p.tools.map((name) => (
-              <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
-            ))}
-          </div>
-        </CollapsibleSection>
-      )}
-      {p.prompt && (
-        <CollapsibleSection title="Prompt" defaultOpen>
-          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
-            {p.prompt}
-          </pre>
-        </CollapsibleSection>
-      )}
-      {p.connectedInput !== undefined && (
-        <CollapsibleSection title="Connected Input" defaultOpen>
-          <JsonViewer data={p.connectedInput} />
-        </CollapsibleSection>
-      )}
-      {p.modelOutput !== undefined && (
-        <CollapsibleSection title="Model-visible Output" defaultOpen>
-          <pre className="text-[11px] text-amber-200 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
-            {p.modelOutput}
-          </pre>
-          <div className="mt-1 text-[10px] text-slate-500">
-            What the LLM saw on its next turn (from `mapModelOutput`). The structured value lives on the matching `block_tool_output`.
-          </div>
-        </CollapsibleSection>
-      )}
-    </div>
-  );
-}
+// FIX-573: BlockDebugDetail removed; block_trace.generator + input.connected
+// surface in BlockNodeDetail instead.
 
 /* --- Shared components --- */
 

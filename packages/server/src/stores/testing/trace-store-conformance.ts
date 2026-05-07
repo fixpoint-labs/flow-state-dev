@@ -29,7 +29,7 @@ export type MakeTraceEventOptions = {
 };
 
 /**
- * Build a `TraceEvent` whose inner item is a fully-typed `BlockDebugItem`.
+ * Build a `TraceEvent` whose inner item is a fully-typed `BlockTraceItem`.
  * Tests want one valid shape they can stamp with sequence numbers; this is
  * it. `ts` defaults to a stable function of `sequenceNumber` so test logs
  * don't churn between runs.
@@ -48,7 +48,7 @@ export function makeTraceEvent(
     type: "trace.item.added",
     item: {
       id,
-      type: "block_debug",
+      type: "block_trace",
       status: "completed",
       requestId,
       itemIndex: sequenceNumber,
@@ -60,8 +60,7 @@ export function makeTraceEvent(
       ts,
       blockName: "test-block",
       blockKind: "handler",
-      blockInstanceId: "test-instance",
-      payload: options.payload ?? {}
+      blockInstanceId: "test-instance"
     }
   };
 }

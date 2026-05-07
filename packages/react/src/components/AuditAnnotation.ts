@@ -14,7 +14,7 @@
  * state, no "all clear" message.
  */
 import { createElement, useState, type ReactNode } from "react";
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { resolveBlockValueLocal } from "../internal/block-value-resolver";
 
 // ---------------------------------------------------------------------------
@@ -85,14 +85,14 @@ function extractAuditData(items: OutputItem[]): AuditAnnotationData | null {
   // arrives via the trace channel, so it isn't part of the public OutputItem
   // union — narrow via runtime check + cast.
   for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] as OutputItem | BlockOutputItem;
+    const item = items[i] as OutputItem | BlockTraceItem;
     if (
-      (item as { type: string }).type === "block_output" &&
-      (item as BlockOutputItem).blockName === "apply-threshold" &&
+      (item as { type: string }).type === "block_trace" &&
+      (item as BlockTraceItem).blockName === "apply-threshold" &&
       "output" in item
     ) {
       return (resolveBlockValueLocal(
-        (item as BlockOutputItem).output,
+        (item as BlockTraceItem).output,
         items,
       ) ?? null) as AuditAnnotationData | null;
     }

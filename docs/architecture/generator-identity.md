@@ -22,7 +22,7 @@ generator({
 | `"trace"`   | ✓ | — | — | not in client stream |
 | *unset*     | — | n/a | n/a | n/a |
 
-A generator with no `agentType` is a pure transformer — it runs the model, returns typed `block_output` via graph edges, and produces no session items. Use this for structured-output generators that feed downstream blocks.
+A generator with no `agentType` is a pure transformer — it runs the model, returns typed `block_trace` via graph edges, and produces no session items. Use this for structured-output generators that feed downstream blocks.
 
 ### Why three values
 
@@ -40,7 +40,7 @@ Rationale: position-inferred defaults silently change emission based on where a 
 
 ## Items inherit identity from the producing generator
 
-Every auto-emitted item is stamped with `{ agentType, agentName }`. Structural items (status, component, container, block_output, etc.) also carry identity when emitted from inside a generator's scope, but their visibility is fixed per type — the identity is metadata for filtering and rendering, not visibility.
+Every auto-emitted item is stamped with `{ agentType, agentName }`. Structural items (status, component, container, block_trace, etc.) also carry identity when emitted from inside a generator's scope, but their visibility is fixed per type — the identity is metadata for filtering and rendering, not visibility.
 
 ## Multi-peer agents
 

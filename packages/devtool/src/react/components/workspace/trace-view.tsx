@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";
@@ -162,12 +162,11 @@ export function TraceView({ requestGroups }: TraceViewProps) {
 // the block detail sidebar (or other surfaces). Hidden from the trace
 // tree unless the user flips "Show trace items" on.
 const HIDDEN_TRACE_ITEM_TYPES = new Set([
-  "block_debug",
   "state_snapshot",
   "state_change",
   "resource_change",
   "router_decision",
-  "block_output",
+  "block_trace",
 ]);
 
 function TraceNodeView({
@@ -244,7 +243,7 @@ function TraceNodeView({
   if (node.type === "block") {
     const isBlockSelected = selectedBlockNode?.id === node.id;
     const traceError =
-      node.traceItem?.type === "block_output" && node.traceItem.status === "failed"
+      node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
         ? node.traceItem.error?.message
         : undefined;
 
@@ -292,14 +291,20 @@ function TraceNodeView({
               {traceError}
             </span>
           )}
-          {node.debugPayload && (
-            <span
-              className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
-              title={node.debugPayload.prompt ? "Resolved prompt captured" : "Connected input captured"}
-            >
-              D
-            </span>
-          )}
+          {(() => {
+            const trace = node.traceItem as BlockTraceItem | undefined;
+            const hasGenerator = trace?.generator !== undefined;
+            const hasConnected = trace?.input?.connected !== undefined;
+            if (!hasGenerator && !hasConnected) return null;
+            return (
+              <span
+                className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
+                title={trace?.generator?.prompt ? "Resolved prompt captured" : "Connected input captured"}
+              >
+                D
+              </span>
+            );
+          })()}
           {node.stateSnapshots && node.stateSnapshots.length > 0 && (
             <span
               className="text-[10px] font-mono text-amber-500/70 px-1 rounded border border-amber-800/40"
@@ -417,7 +422,7 @@ function getItemPreview(item: DevtoolItem): string {
       }
       return "";
     }
-    case "block_output":
+    case "block_trace":
       return item.blockName + (item.toolCall ? ` → ${item.toolCall.callId}` : "");
     case "reasoning": {
       const rText = item.summary
@@ -433,7 +438,7 @@ function getItemPreview(item: DevtoolItem): string {
       return `${item.scope}.${item.path ?? ""} ${item.operation}`;
     case "resource_change":
       return `${item.resourcePath} ${item.changeType}`;
-    case "block_tool_output":
+    case "tool_output":
       return `${item.toolCall.name}(${item.toolCall.arguments.slice(0, 40)})`;
     case "router_decision":
       return `${item.routerName} → ${item.selectedRoute}`;

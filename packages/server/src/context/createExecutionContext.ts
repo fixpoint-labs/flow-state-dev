@@ -35,10 +35,8 @@ import {
 } from "@flow-state-dev/core/types";
 import type {
   AgentType,
-  BlockDebugItem,
-  BlockDebugPayload,
-  BlockOutputItem,
-  BlockToolOutputItem,
+  BlockTraceItem,
+  ToolOutputItem,
   ComponentItem,
   ContainerItem,
   Content,
@@ -70,10 +68,6 @@ import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
-import {
-  buildConnectedInputDebugPayload,
-  buildGeneratorDebugPayload,
-} from "../execution/internal/debug-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -791,26 +785,24 @@ function defineStateProperty<THandle extends object, TState extends object>(
 
 /**
  * Set of item types that enter LLM context.
- * `block_output` is conditional — only when it has a `toolCall` field (legacy).
- * `block_tool_output` is the dedicated tool-result type.
+ * `tool_output` is the dedicated tool-result type.
  */
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "block_output",
-  "block_tool_output"
+  "tool_output"
 ]);
 
 /**
  * Set of item types visible to the client.
- * `block_output`, `context` are NOT client-visible.
+ * `block_trace`, `context` are NOT client-visible.
  */
 const CLIENT_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
   "component",
   "container",
-  "block_tool_output",
+  "tool_output",
   "status",
   "source",
   "state_change",
@@ -828,7 +820,7 @@ const CLIENT_AUDIENCE_TYPES = new Set([
  * `allItems` is used to resolve `block_output` BlockValue refs back to their
  * source items (FIX-413); pass the same list you're iterating over.
  */
-function itemToLLMMessages(item: OutputItem | BlockOutputItem, allItems: readonly (OutputItem | BlockOutputItem)[]): LLMMessage[] {
+function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: readonly (OutputItem | BlockTraceItem)[]): LLMMessage[] {
   if (!resolveItemVisibility(item as OutputItem).history) {
     return [];
   }
@@ -859,54 +851,8 @@ function itemToLLMMessages(item: OutputItem | BlockOutputItem, allItems: readonl
       : [];
   }
 
-  if (item.type === "block_output") {
-    const bo = item as BlockOutputItem;
-    // Only enters LLM context when invoked as a tool by a generator (legacy path).
-    if (bo.toolCall === undefined) {
-      return [];
-    }
-
-    // AI SDK v6 requires tool messages as Array<ToolResultPart> (not strings)
-    // and each tool result must be preceded by an assistant message containing
-    // the matching tool-call part. Emit both in order.
-    // Resolve the BlockValue union to its typed payload before stringifying
-    // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
-    // FIX-480: refs may target `message` items, so accept any item type.
-    const resolvedOutput = resolveBlockValueInternal(bo.output, (id: string) => {
-      for (let i = allItems.length - 1; i >= 0; i -= 1) {
-        if (allItems[i].id === id) return allItems[i];
-      }
-      return undefined;
-    });
-    const resultText = typeof resolvedOutput === "string"
-      ? resolvedOutput
-      : JSON.stringify(resolvedOutput);
-    let input: Record<string, unknown> = {};
-    try { input = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
-    return [
-      {
-        role: "assistant",
-        content: [{
-          type: "tool-call",
-          toolCallId: bo.toolCall.callId,
-          toolName: bo.blockName,
-          input
-        }]
-      },
-      {
-        role: "tool",
-        content: [{
-          type: "tool-result",
-          toolCallId: bo.toolCall.callId,
-          toolName: bo.blockName,
-          output: { type: "text", value: resultText }
-        }]
-      }
-    ];
-  }
-
-  if (item.type === "block_tool_output") {
-    const bto = item as BlockToolOutputItem;
+  if (item.type === "tool_output") {
+    const bto = item as ToolOutputItem;
     const resultText = bto.status === "failed" && bto.error
       ? `Tool "${bto.toolCall.name}" failed: ${bto.error.message}`
       : typeof bto.output === "string"
@@ -992,7 +938,7 @@ async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => Array<OutputItem | BlockOutputItem>
+  readLiveItems?: () => Array<OutputItem | BlockTraceItem>
 ): Promise<LLMMessage[]> {
 
   const allowedTypes = query?.itemTypes
@@ -1002,7 +948,7 @@ async function loadLLMHistory(
 
   const messages: LLMMessage[] = [];
 
-  function processItems(items: Array<OutputItem | BlockOutputItem>): void {
+  function processItems(items: Array<OutputItem | BlockTraceItem>): void {
     const sorted = [...items].sort((a, b) => {
       const tsDiff = a.ts - b.ts;
       return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
@@ -1141,7 +1087,7 @@ function createSessionItemViews(
   options: {
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
-    readLiveItems?: () => Array<OutputItem | BlockOutputItem>;
+    readLiveItems?: () => Array<OutputItem | BlockTraceItem>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -1221,9 +1167,10 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 type EmissionContext = {
   requestId: string;
   response: {
-    emitItemAdded(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
-    emitItemDone(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
-    emitItemOneShot?(item: OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem): Promise<unknown>;
+    emitItemAdded(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
+    emitItemDone(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
+    emitItemUpdated?(itemId: string, patch: Record<string, unknown>): Promise<unknown>;
+    emitItemOneShot?(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
     emitContentAdded?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
     emitContentDelta?(itemId: string, contentIndex: number, delta: string): Promise<unknown>;
     emitContentDone?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
@@ -1260,7 +1207,7 @@ function createEmitMessage(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
     // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // auto-emitted block_trace item. Per-call
     // `{ transient: true }` is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -1308,7 +1255,7 @@ function createEmitComponent(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
     // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // auto-emitted block_trace item. Per-call
     // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
     // with dedup).
     // FIX-491: when a `key` is supplied, derive a deterministic item ID from
@@ -1719,11 +1666,9 @@ function createDeprecatedAlias<TFn extends (...args: any[]) => any>(
 }
 
 /**
- * Build the four `ctx.emit.trace.*` impls. Each:
+ * Build the three `ctx.emit.trace.*` impls. Each:
  *   - stamps `agentType: "trace"` on the item if missing,
- *   - emits item.added then item.done via the response emitter
- *     (or the one-shot fast path for block_debug, which skips the items
- *     buffer to keep large prompts out of memory),
+ *   - emits item.added then item.done via the response emitter,
  *   - fire-and-forgets a TraceStore append for both events.
  *
  * The TraceStore writes are best-effort: errors are swallowed (with a
@@ -1734,7 +1679,7 @@ let TRACE_STORE_WRITE_WARNED = false;
 function buildTraceEmitters(
   emCtx: EmissionContext,
   traces: TraceStore | undefined,
-  getBlockIdentity?: () => {
+  _getBlockIdentity?: () => {
     blockName?: string;
     blockKind?: "handler" | "generator" | "sequencer" | "router";
     blockInstanceId?: string;
@@ -1742,16 +1687,15 @@ function buildTraceEmitters(
     phase?: "main" | "work";
   } | undefined
 ): {
-  blockOutput: (item: BlockOutputItem) => void;
+  blockTrace: (item: BlockTraceItem) => void;
   routerDecision: (item: RouterDecisionItem) => void;
   stateSnapshot: (item: StateSnapshotItem) => void;
-  blockDebug: (payload: BlockDebugPayload) => void;
 } {
   const requestId = emCtx.requestId;
 
   function recordTrace(
     type: "trace.item.added" | "trace.item.done",
-    item: BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem
+    item: BlockTraceItem | RouterDecisionItem | StateSnapshotItem
   ): void {
     if (traces === undefined) return;
     const sequenceNumber =
@@ -1783,7 +1727,7 @@ function buildTraceEmitters(
   }
 
   return {
-    blockOutput(item) {
+    blockTrace(item) {
       stampTrace(item);
       void emCtx.response
         .emitItemAdded(item)
@@ -1807,49 +1751,6 @@ function buildTraceEmitters(
     },
     stateSnapshot(item) {
       stampTrace(item);
-      void emCtx.response
-        .emitItemAdded(item)
-        .then(() => {
-          recordTrace("trace.item.added", item);
-          return emCtx.response.emitItemDone(item);
-        })
-        .then(() => recordTrace("trace.item.done", item))
-        .catch(() => { /* trace emission is best-effort */ });
-    },
-    blockDebug(payload) {
-      // The block_debug item carries a redundant copy of block-name/kind/
-      // instance-id alongside the standard provenance. Prefer the firing
-      // ctx's `_blockIdentity` when available (it carries the precise kind);
-      // fall back to the active emission provenance for the block-level
-      // fields when this is invoked outside a per-block scope.
-      const provenance = emCtx.provenance();
-      const identity = getBlockIdentity?.();
-      const item: BlockDebugItem = {
-        id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        type: "block_debug",
-        status: "completed",
-        transient: true,
-        requestId,
-        itemIndex: emCtx.nextItemIndex(),
-        provenance,
-        ts: Date.now(),
-        blockName: identity?.blockName ?? provenance.blockName,
-        blockKind: identity?.blockKind ?? "generator",
-        blockInstanceId: identity?.blockInstanceId ?? provenance.blockInstanceId,
-        payload,
-      };
-      stampTrace(item);
-      const oneShot = emCtx.response.emitItemOneShot;
-      if (typeof oneShot === "function") {
-        void oneShot
-          .call(emCtx.response, item)
-          .then(() => {
-            recordTrace("trace.item.added", item);
-            recordTrace("trace.item.done", item);
-          })
-          .catch(() => { /* trace emission is best-effort */ });
-        return;
-      }
       void emCtx.response
         .emitItemAdded(item)
         .then(() => {
@@ -2432,8 +2333,8 @@ export async function createExecutionContext<
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
-  const readLiveItems = (): Array<OutputItem | BlockOutputItem> => {
-    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockOutputItem> };
+  const readLiveItems = (): Array<OutputItem | BlockTraceItem> => {
+    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockTraceItem> };
     if (typeof typedResponse.getItems === "function") {
       return typedResponse.getItems();
     }
@@ -2443,7 +2344,7 @@ export async function createExecutionContext<
   const computeTokenUsage = () => {
     const byModel: Record<string, { prompt: number; completion: number; total: number; cacheReadTokens: number; cacheCreationTokens: number }> = {};
     for (const item of readLiveItems()) {
-      if (item.type !== "block_output") {
+      if (item.type !== "block_trace") {
         continue;
       }
       const modelUsage = item.modelUsage;
@@ -2547,7 +2448,7 @@ export async function createExecutionContext<
           const items = readLiveItems();
           for (let index = items.length - 1; index >= 0; index -= 1) {
             const item = items[index];
-            if (item?.type === "block_output" && item.modelUsage !== undefined) {
+            if (item?.type === "block_trace" && item.modelUsage !== undefined) {
               return item.modelUsage.model;
             }
           }
@@ -2659,107 +2560,11 @@ export async function createExecutionContext<
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
 
-  /**
-   * Fire-and-forget lifecycle trace item for nested blocks.
-   * Single emission (completed or failed) with timing, avoiding two-phase overhead.
-   * Uses void + catch to avoid blocking the execution hot path.
-   *
-   * `hint` controls the BlockValue kind stored in `output` (FIX-413):
-   * - unset / `inline` → `{ kind: "inline", value: blockOutput }`
-   * - `ref` → `{ kind: "ref", sourceItemId }` with flatten-at-emit
-   * - `structure` → `{ kind: "structure", shape }`
-   */
-  function emitNestedBlockTrace(
-    parent: ExecutionParent,
-    startedAt: number,
-    status: "completed" | "failed",
-    emitter: EmissionContext["response"],
-    reqRef: { current: { id: string } },
-    nextIndex: () => number,
-    blockOutput?: unknown,
-    blockError?: { message: string; code?: string },
-    ownedBy?: string,
-    hint?: BlockOutputHint
-  ): void {
-    const completedAt = Date.now();
-    const itemIndex = nextIndex();
-    const blockValue: BlockValueInternal<unknown> =
-      status === "failed"
-        ? { kind: "inline", value: undefined }
-        : buildEmitterBlockValue(blockOutput, hint, (id) => {
-            const typed = responseRef.current as unknown as { getItems?: () => Array<OutputItem | BlockOutputItem> };
-            if (typeof typed.getItems === "function") {
-              const items = typed.getItems();
-              for (let i = items.length - 1; i >= 0; i -= 1) {
-                if (items[i].id === id) return items[i] as unknown as BlockOutputItem;
-              }
-            }
-            return undefined;
-          });
-    const item: BlockOutputItem = {
-      id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "block_output",
-      status,
-      transient: parent.transient || undefined,
-      requestId: reqRef.current.id,
-      itemIndex,
-      provenance: {
-        blockName: parent.name,
-        blockInstanceId: parent.instanceId,
-        parentBlockInstanceId: parent.parentInstanceId,
-        phase: parent.phase ?? "main"
-      },
-      ts: completedAt,
-      ownedBy,
-      // Stamp trace so visibility resolution short-circuits to invisible.
-      // After Step 4, all block_output sites carry this stamp so the
-      // structural defaults table no longer needs an entry for the type.
-      agentType: "trace",
-      blockName: parent.name,
-      blockKind: parent.kind,
-      output: blockValue,
-      error: blockError,
-      startedAt,
-      completedAt,
-      duration: completedAt - startedAt
-    };
-    void emitter.emitItemAdded(item)
-      .then(() => emitter.emitItemDone(item))
-      .catch(() => { /* trace emission is best-effort */ });
-  }
-
-  /**
-   * Translate a BlockOutputHint + raw output into a BlockValue, flattening
-   * refs one hop so every emitted ref points at a content-bearing item
-   * (FIX-413 flatten-at-emit invariant).
-   */
-  function buildEmitterBlockValue(
-    output: unknown,
-    hint: BlockOutputHint | undefined,
-    lookupItem: (id: string) => BlockOutputItem | undefined
-  ): BlockValueInternal<unknown> {
-    if (hint === undefined || hint.kind === "inline") {
-      return { kind: "inline", value: output };
-    }
-    if (hint.kind === "structure") {
-      return { kind: "structure", shape: hint.shape };
-    }
-    // ref — flatten one hop if the target is itself a ref.
-    let sourceItemId = hint.sourceItemId;
-    const target = lookupItem(sourceItemId);
-    if (target !== undefined) {
-      const targetValue = target.output;
-      if (
-        targetValue !== undefined &&
-        typeof targetValue === "object" &&
-        "kind" in targetValue &&
-        targetValue.kind === "ref"
-      ) {
-        sourceItemId = targetValue.sourceItemId;
-      }
-    }
-    return { kind: "ref", sourceItemId };
-  }
+  // FIX-573: per-block lifecycle trace items are now driven by
+  // `onBlockTraceCapture` phases (added → input → generator → output).
+  // The unified hook constructs/patches the row in the per-request
+  // blockTraceMap; this section previously held a fire-and-forget
+  // single-emission helper that's no longer needed.
 
   type ExecutionParentNode = {
     parent: ExecutionParent;
@@ -2806,6 +2611,9 @@ export async function createExecutionContext<
         },
         async emitItemDone(item: OutputItem) {
           await response.emit({ type: "item.done", item });
+        },
+        async emitItemUpdated(itemId: string, patch: Record<string, unknown>) {
+          await response.emit({ type: "item.updated", id: itemId, patch });
         }
       };
 
@@ -2814,7 +2622,7 @@ export async function createExecutionContext<
     response: emissionResponse,
     provenance: () => ({
       blockName: "runtime",
-      blockInstanceId: `runtime_${requestRef.current.id}`,
+      blockInstanceId: "runtime",
       phase: "main" as const
     }),
     nextItemIndex: () => emittedItemCount++,
@@ -2893,25 +2701,89 @@ export async function createExecutionContext<
       };
       requestTraceEmitters.routerDecision(decisionItem);
     },
-    // Debug observability hooks — installed on the shared _runtimeHooks so
-    // every context (root and nested) fires them. The hooks delegate to
-    // the firing ctx's `emit.trace.blockDebug` so the item carries the
-    // firing block's identity (read from its `_blockIdentity` inside the
-    // trace emitter).
-    onBlockDebugCapture: isTraceObservabilityEnabled()
-      ? (capture, firingCtx) => {
-          if (firingCtx._blockIdentity === undefined) return;
-          firingCtx.emit.trace.blockDebug(buildGeneratorDebugPayload(capture));
+    // FIX-573: unified block-trace lifecycle hook. Maintains one
+    // block_trace item per block instance, stamped on `added` and patched
+    // in place on `input` / `generator` / `output` phases. Item.added fires
+    // immediately at `added`; subsequent phases emit item.updated; the
+    // `output` phase additionally emits item.done.
+    onBlockTraceCapture: isTraceObservabilityEnabled()
+      ? (payload, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const instanceId = identity.blockInstanceId;
+          if (payload.phase === "added") {
+            // Construct + emit. Store on the per-request trace map so later
+            // phases can find and patch the row.
+            const startedAt = payload.data.startedAt ?? Date.now();
+            const itemIndex = emittedItemCount++;
+            // Spec §3.8: block_trace is the canonical retained record and is
+            // always non-transient, regardless of the originating block's
+            // transient flag.
+            const item: BlockTraceItem = {
+              id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+              type: "block_trace",
+              status: payload.data.status ?? "in_progress",
+              transient: false,
+              requestId: requestRef.current.id,
+              itemIndex,
+              provenance: {
+                blockName: identity.blockName,
+                blockInstanceId: instanceId,
+                parentBlockInstanceId: identity.parentBlockInstanceId,
+                phase: identity.phase ?? "main",
+              },
+              ts: startedAt,
+              ownedBy: identity.ownedBy,
+              agentType: "trace",
+              blockName: identity.blockName,
+              blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
+              blockInstanceId: instanceId,
+              input: payload.data.input,
+              startedAt,
+            };
+            blockTraceMap.set(instanceId, item);
+            void emissionResponse.emitItemAdded(item).catch(() => { /* best-effort */ });
+            return;
+          }
+          const existing = blockTraceMap.get(instanceId);
+          if (existing === undefined) return;
+          // Apply phase patch in-place. Last-write-wins on chained calls
+          // (multi-step tool loops): the most recent `generator` capture
+          // overwrites prior model/prompt fields, matching how the model
+          // re-resolves between turns. The wire patch mirrors the in-memory
+          // mutation so subscribers don't have to diff the whole row.
+          const patch: Record<string, unknown> = {};
+          const data = payload.data as Record<string, unknown>;
+          const target = existing as Record<string, unknown>;
+          for (const key of Object.keys(data)) {
+            const value = data[key];
+            if (value === undefined) continue;
+            target[key] = value;
+            patch[key] = value;
+          }
+          // Emit item.updated for in-flight phases. The FIX-572 dedicated
+          // channel is used when available; the duck-typed fallback adapter
+          // synthesizes an `item.updated` event via the generic `emit()`.
+          if (emissionResponse.emitItemUpdated !== undefined) {
+            void emissionResponse
+              .emitItemUpdated(existing.id, patch)
+              .catch(() => { /* best-effort */ });
+          }
+          if (payload.phase === "output") {
+            // Final emission: emit done so consumers know the row is settled.
+            void emissionResponse
+              .emitItemDone(existing)
+              .catch(() => { /* best-effort */ });
+            blockTraceMap.delete(instanceId);
+          }
         }
       : undefined,
-    onConnectedInput: isTraceObservabilityEnabled()
-      ? (value, firingCtx) => {
-          if (firingCtx._blockIdentity === undefined) return;
-          firingCtx.emit.trace.blockDebug(buildConnectedInputDebugPayload(value));
-        }
-      : undefined,
-    emitNestedBlockDebug: undefined,
   };
+
+  // Per-request trace map. Keyed by blockInstanceId; entries are removed
+  // when the `output` phase fires. Lives in createExecutionContext closure
+  // because every nested ctx shares the same `_runtimeHooks` reference.
+  const blockTraceMap = new Map<string, BlockTraceItem>();
 
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
@@ -3199,7 +3071,8 @@ export async function createExecutionContext<
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
           phase: resolvedParent.phase ?? "main",
-          blockPath: resolvedParent.path
+          blockPath: resolvedParent.path,
+          transient: resolvedParent.transient
         };
 
         // Propagate the request-scoped work pool through every nested scope
@@ -3218,38 +3091,65 @@ export async function createExecutionContext<
           siblingEntry.result.error = undefined;
 
           // Harvest the BlockValue hint set by the child's execute (if any)
-          // so the emitted block_output carries a ref/structure rather than
-          // duplicating content (FIX-413).
+          // so the block_trace `output` patch carries a ref/structure rather
+          // than duplicating content (FIX-413).
           const capturedHint = (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
           if (capturedHint !== undefined) {
             (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
           }
 
-          // Emit lifecycle trace item for nested blocks only.
-          // Root blocks are traced by executeBlock's emitBlockOutputItem.
-          // Suppressed for:
-          //  - tool calls — the generator's tool wrapper emits a richer
-          //    `block_tool_output` that supersedes this trace.
-          //  - generator blocks — sequencer.ts owns the generator trace so
-          //    modelUsage can ride on a single block_output item without
-          //    producing a duplicate here.
-          const suppressTrace =
-            resolvedParent.isToolCall === true ||
-            resolvedParent.kind === "generator";
-          if (parentChain !== undefined && !suppressTrace) {
-            emitNestedBlockTrace(
-              resolvedParent, traceStartedAt, "completed",
-              emissionResponse, requestRef, () => emittedItemCount++,
-              output,
-              undefined,
-              childEmCtx.ownedBy,
-              capturedHint
+          // FIX-573: fire the `output` phase trace capture. The block_trace
+          // is emitted for every block — even tool calls — because Path A
+          // emits `tool_output` separately and the called block's trace
+          // refs it via `_blockOutputHint` (see generator.ts).
+          {
+            const completedAt = Date.now();
+            // Flatten-at-emit (FIX-413): if the hint refs an item whose own
+            // output is itself a ref, take the inner sourceItemId so emitted
+            // refs always point one hop to a content-bearing item.
+            let flattenedHint = capturedHint;
+            if (capturedHint !== undefined && capturedHint.kind === "ref") {
+              const typed = responseRef.current as unknown as { getItems?: () => Array<OutputItem | BlockTraceItem> };
+              if (typeof typed.getItems === "function") {
+                const allItems = typed.getItems();
+                for (let i = allItems.length - 1; i >= 0; i -= 1) {
+                  const it = allItems[i] as BlockTraceItem;
+                  if (it.id === capturedHint.sourceItemId && it.output !== undefined && it.output.kind === "ref") {
+                    flattenedHint = { kind: "ref", sourceItemId: it.output.sourceItemId };
+                    break;
+                  }
+                }
+              }
+            }
+            const blockValue: BlockValueInternal<unknown> =
+              flattenedHint === undefined || flattenedHint.kind === "inline"
+                ? { kind: "inline", value: output }
+                : flattenedHint.kind === "structure"
+                  ? { kind: "structure", shape: flattenedHint.shape }
+                  : { kind: "ref", sourceItemId: flattenedHint.sourceItemId };
+            const generatorModelUsage = (childContext as { _generatorModelUsage?: BlockTraceItem["modelUsage"] })._generatorModelUsage;
+            if (generatorModelUsage !== undefined) {
+              (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
+            }
+            childContext._runtimeHooks?.onBlockTraceCapture?.(
+              {
+                phase: "output",
+                data: {
+                  status: "completed",
+                  output: blockValue,
+                  completedAt,
+                  duration: completedAt - traceStartedAt,
+                  modelUsage: generatorModelUsage,
+                },
+              },
+              childContext
             );
-          } else if (parentChain === undefined && capturedHint !== undefined) {
-            // Root block case: server's executeBlock reads the hint off the
-            // outer (non-scoped) ctx. Forward the child's hint so the root's
-            // block_output can be emitted as ref/structure (FIX-413).
-            (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
+            if (parentChain === undefined && capturedHint !== undefined) {
+              // Root block case: server's executeBlock reads the hint off
+              // the outer (non-scoped) ctx. Forward the child's hint so the
+              // root's block_trace can be emitted as ref/structure (FIX-413).
+              (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
+            }
           }
 
           return output;
@@ -3262,19 +3162,25 @@ export async function createExecutionContext<
             scope: "block"
           });
 
-          const suppressFailureTrace =
-            resolvedParent.isToolCall === true ||
-            resolvedParent.kind === "generator";
-          if (parentChain !== undefined && !suppressFailureTrace) {
-            emitNestedBlockTrace(
-              resolvedParent, traceStartedAt, "failed",
-              emissionResponse, requestRef, () => emittedItemCount++,
-              undefined,
+          {
+            const completedAt = Date.now();
+            const generatorModelUsage = (childContext as { _generatorModelUsage?: BlockTraceItem["modelUsage"] })._generatorModelUsage;
+            if (generatorModelUsage !== undefined) {
+              (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
+            }
+            childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
-                message: normalized.message,
-                code: normalized.code
+                phase: "output",
+                data: {
+                  status: "failed",
+                  output: { kind: "inline", value: undefined },
+                  completedAt,
+                  duration: completedAt - traceStartedAt,
+                  error: { message: normalized.message, code: normalized.code },
+                  modelUsage: generatorModelUsage,
+                },
               },
-              childEmCtx.ownedBy
+              childContext
             );
           }
 

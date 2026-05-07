@@ -343,7 +343,7 @@ export interface GeneratorConfig<
    * - `"trace"`: observability-only emissions (devtool/replay). Not on the
    *   client stream, not in history.
    * - *unset* (default): **no auto-emission**. Only the generator's typed
-   *   `block_output` flows to parents via graph edges.
+   *   `block_trace` output flows to parents via graph edges.
    *
    * There is no position-inferred default — every generator declares its
    * own identity explicitly. Pattern factories set identity on their
@@ -684,10 +684,10 @@ function compileToolsWithExecute(
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
     // resulting tool entry so the AI SDK substitutes the mapper's string for
     // the structured output when materialising next-turn tool-result content.
-    // The wrapper's `block_tool_output` emit path below continues to use the
-    // raw structured `output`; the mapper's string is captured separately on
-    // a `block_debug` item so devtool can render what the LLM saw alongside
-    // the structured output.
+    // The wrapper's `tool_output` emit path below continues to use the raw
+    // structured `output`; the mapper's string is captured on the unified
+    // `block_trace` item's `mapModelOutput` field so devtool can render what
+    // the LLM saw alongside the structured output.
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
     return {
     name: tool.name,
@@ -700,146 +700,111 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        try {
-          const output = await runWithRetry(
-            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-            retry
-          );
-          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-
-          // Emit block_tool_output item so tool results appear in the stream
-          // and can be replayed into LLM context on subsequent requests.
-          // `agentType` / `agentName` carry the parent generator's identity
-          // so `resolveItemVisibility()` can route the item correctly:
-          // sub-agent tool calls render to the client but are excluded from
-          // primary-agent LLM history.
-          if (options?.toolCallId !== undefined) {
-            const identity = scopedCtx._blockIdentity;
-            const toolOutputItem = {
-              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "block_tool_output" as const,
-              status: "completed" as const,
-              requestId: scopedCtx.request.identity.id,
-              itemIndex: getEmitterItemCount(scopedCtx.response),
-              provenance: {
-                blockName: identity?.blockName ?? tool.name,
-                blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: identity?.phase ?? "main"
-              },
-              ts: Date.now(),
-              ownedBy: identity?.ownedBy,
-              ...(agentType !== undefined ? { agentType } : {}),
-              ...(agentName !== undefined ? { agentName } : {}),
-              blockName: tool.name,
-              output,
-              toolCall: {
-                callId: options.toolCallId,
-                name: tool.name,
-                // Sanitised alias the LLM saw — what history replay must use
-                // for `toolName` fields on tool-call / tool-result content
-                // parts. Storing it here avoids re-deriving it later from the
-                // framework name (which can mismatch when the model resolver
-                // disambiguates colliding aliases).
-                alias: sanitizeToolName(tool.name),
-                arguments: typeof args === "string" ? args : JSON.stringify(args),
-                generatorBlock: generatorBlockName
-              }
-            };
-            await scopedCtx.response.emit({ type: "item.added", item: toolOutputItem });
-            await scopedCtx.response.emit({ type: "item.done", item: toolOutputItem });
-
-            // When the tool block declared `mapModelOutput`, emit a
-            // block_debug item carrying the model-visible string. The
-            // structured `output` on the block_tool_output above is what
-            // downstream consumers see; this is what the LLM saw on its
-            // next turn. Gated by trace observability — debug items are
-            // transient, never persisted, never sent to LLM context.
-            if (
-              modelOutputMapper !== undefined &&
-              isTraceObservabilityEnabled()
-            ) {
-              try {
-                const modelOutput = await modelOutputMapper(output as never, scopedCtx);
-                const debugItem = {
-                  id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-                  type: "block_debug" as const,
-                  status: "completed" as const,
-                  transient: true as const,
-                  requestId: scopedCtx.request.identity.id,
-                  itemIndex: getEmitterItemCount(scopedCtx.response),
-                  provenance: {
-                    blockName: identity?.blockName ?? tool.name,
-                    blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                    parentBlockInstanceId: identity?.parentBlockInstanceId,
-                    phase: identity?.phase ?? "main"
-                  },
-                  ts: Date.now(),
-                  blockName: tool.name,
-                  blockKind: tool.kind,
-                  blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                  payload: { modelOutput }
-                };
-                await scopedCtx.response.emit({ type: "item.added", item: debugItem });
-                await scopedCtx.response.emit({ type: "item.done", item: debugItem });
-              } catch {
-                // Mapper failure here must not break the tool path. The AI
-                // SDK still re-runs the mapper at its own boundary; if that
-                // also fails the SDK surfaces the error there.
-              }
-            }
+      // FIX-573 Path A: when this tool is invoked through a model loop, emit a
+      // `tool_output` placeholder BEFORE the called block runs, then patch it
+      // in place once the block returns. The called block's own block_trace
+      // captures `output` as a ref to this tool_output, so the two items stay
+      // decoupled but the called block doesn't duplicate the tool result.
+      const buildPlaceholderTool = (parentIdentity: typeof ctx._blockIdentity): {
+        item: any;
+        emit: () => Promise<void>;
+      } | undefined => {
+        if (options?.toolCallId === undefined) return undefined;
+        const item: any = {
+          id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          type: "tool_output" as const,
+          status: "in_progress" as const,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance: {
+            blockName: parentIdentity?.blockName ?? tool.name,
+            blockInstanceId: parentIdentity?.blockInstanceId ?? tool.name,
+            parentBlockInstanceId: parentIdentity?.parentBlockInstanceId,
+            phase: parentIdentity?.phase ?? "main"
+          },
+          ts: Date.now(),
+          ownedBy: parentIdentity?.ownedBy,
+          ...(agentType !== undefined ? { agentType } : {}),
+          ...(agentName !== undefined ? { agentName } : {}),
+          blockName: tool.name,
+          output: undefined,
+          toolCall: {
+            callId: options.toolCallId,
+            name: tool.name,
+            alias: sanitizeToolName(tool.name),
+            arguments: typeof args === "string" ? args : JSON.stringify(args),
+            generatorBlock: generatorBlockName
           }
+        };
+        return {
+          item,
+          emit: async () => {
+            await ctx.response.emit({ type: "item.added", item });
+          }
+        };
+      };
 
+      const runTool = async (
+        scopedCtx: BlockContext,
+        toolOutputId: string | undefined,
+      ): Promise<unknown> => {
+        // Stash the tool_output id as the called block's output hint so its
+        // block_trace `output` becomes a ref to the tool_output (Path A).
+        if (toolOutputId !== undefined) {
+          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+        }
+        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+        const output = await runWithRetry(
+          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+          retry
+        );
+        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+        return output;
+      };
+
+      const finishToolOutput = async (
+        placeholder: { item: any } | undefined,
+        result: { kind: "ok"; output: unknown } | { kind: "err"; error: Error },
+      ): Promise<void> => {
+        if (placeholder === undefined) return;
+        const item = placeholder.item;
+        if (result.kind === "ok") {
+          item.status = "completed";
+          item.output = result.output;
+        } else {
+          item.status = "failed";
+          item.output = undefined;
+          item.error = {
+            message: result.error.message,
+            code: (result.error as any).code
+          };
+        }
+        // Emit `item.updated` to patch the in-progress placeholder, then
+        // `item.done` so the row settles. Consumers reconcile by id.
+        const patch: Record<string, unknown> = result.kind === "ok"
+          ? { status: item.status, output: item.output }
+          : { status: item.status, output: undefined, error: item.error };
+        await ctx.response.emit({ type: "item.updated", id: item.id, patch });
+        await ctx.response.emit({ type: "item.done", item });
+      };
+
+      const placeholder = buildPlaceholderTool(ctx._blockIdentity);
+      if (placeholder !== undefined) {
+        await placeholder.emit();
+      }
+
+      if (ctx._withExecutionScope === undefined) {
+        try {
+          const output = await runTool(ctx, placeholder?.item.id);
+          await finishToolOutput(placeholder, { kind: "ok", output });
           return output;
         } catch (error) {
           const err = toError(error);
-          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
-
-          // Emit a failed block_tool_output so the devtool can display the error
-          if (options?.toolCallId !== undefined) {
-            const identity = scopedCtx._blockIdentity;
-            const toolErrorItem = {
-              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "block_tool_output" as const,
-              status: "failed" as const,
-              requestId: scopedCtx.request.identity.id,
-              itemIndex: getEmitterItemCount(scopedCtx.response),
-              provenance: {
-                blockName: identity?.blockName ?? tool.name,
-                blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: identity?.phase ?? "main"
-              },
-              ts: Date.now(),
-              ownedBy: identity?.ownedBy,
-              ...(agentType !== undefined ? { agentType } : {}),
-              ...(agentName !== undefined ? { agentName } : {}),
-              blockName: tool.name,
-              output: undefined,
-              toolCall: {
-                callId: options.toolCallId,
-                name: tool.name,
-                alias: sanitizeToolName(tool.name),
-                arguments: typeof args === "string" ? args : JSON.stringify(args),
-                generatorBlock: generatorBlockName
-              },
-              error: {
-                message: err.message,
-                code: (err as any).code
-              }
-            };
-            await scopedCtx.response.emit({ type: "item.added", item: toolErrorItem });
-            await scopedCtx.response.emit({ type: "item.done", item: toolErrorItem });
-          }
-
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
+          await finishToolOutput(placeholder, { kind: "err", error: err });
           throw err;
         }
-      };
-
-      if (ctx._withExecutionScope === undefined) {
-        return runTool(ctx);
       }
 
       // Derive a deterministic path for this tool invocation. The model's
@@ -856,19 +821,25 @@ function compileToolsWithExecute(
         0
       );
 
-      return ctx._withExecutionScope(
-        {
-          name: tool.name,
-          kind: tool.kind,
-          instanceId: toolInstanceId,
-          path: toolPath,
-          input: args,
-          // Suppress the default block_output trace — the tool wrapper above
-          // emits a richer block_tool_output that supersedes it.
-          isToolCall: true
-        },
-        runTool
-      );
+      try {
+        const output = await ctx._withExecutionScope(
+          {
+            name: tool.name,
+            kind: tool.kind,
+            instanceId: toolInstanceId,
+            path: toolPath,
+            input: args
+          },
+          (scopedCtx) => runTool(scopedCtx, placeholder?.item.id)
+        );
+        await finishToolOutput(placeholder, { kind: "ok", output });
+        return output;
+      } catch (error) {
+        const err = toError(error);
+        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
+        await finishToolOutput(placeholder, { kind: "err", error: err });
+        throw err;
+      }
     }
     };
   });
@@ -990,7 +961,7 @@ const UNPARSEABLE_CANDIDATE_MAX_CHARS = 2000;
  * Log the candidate that failed final schema validation so operators can
  * inspect what the model actually returned. Truncates at
  * `UNPARSEABLE_CANDIDATE_MAX_CHARS` to keep stderr legible — full payloads
- * can still be recovered from the request's block_debug item.
+ * can still be recovered from the request's block_trace item.
  */
 function logUnparseableCandidate(
   blockName: string,
@@ -1461,7 +1432,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // FIX-480 §3.2: when this generator's logical output IS the streamed
-  // text, emit a `block_output { kind: "ref", sourceItemId: <messageId> }`
+  // text, emit a `block_trace.output { kind: "ref", sourceItemId: <messageId> }`
   // instead of inlining the same string. The `parsed.data === accumulated`
   // check guards against post-validation transforms (e.g.
   // `z.string().transform(s => s.trim())`) where the returned value
@@ -1747,11 +1718,11 @@ export function generator<
       const maxSteps = resolveMaxIterations(normalizedConfig);
 
       // Identity: generators without `agentType` produce no auto-emitted
-      // items (only block_output via graph edges). When set, `agentName`
+      // items (only block_trace output via graph edges). When set, `agentName`
       // defaults to the block name so collaborating generators can be
       // given a shared name explicitly.
       // Resolved BEFORE `compileToolsWithExecute` so the tool runner can
-      // stamp `agentType`/`agentName` on emitted `block_tool_output`
+      // stamp `agentType`/`agentName` on emitted `tool_output`
       // items — `resolveItemVisibility()` uses those to decide
       // sub-agent visibility (client: true, history: false).
       const agentType = normalizedConfig.agentType;
@@ -1787,13 +1758,18 @@ export function generator<
         .filter((s) => s.length > 0)
         .join("\n\n");
       const debugUserMessages = userValues.map(asUserMessage);
-      ctx._runtimeHooks?.onBlockDebugCapture?.(
+      ctx._runtimeHooks?.onBlockTraceCapture?.(
         {
-          model: modelId,
-          prompt: debugPrompt,
-          tools: toolBlocks.map((t) => t.name),
-          user: debugUserMessages,
-          history: historyValues,
+          phase: "generator",
+          data: {
+            generator: {
+              model: modelId,
+              prompt: debugPrompt,
+              tools: toolBlocks.map((t) => t.name),
+              user: debugUserMessages,
+              history: historyValues,
+            },
+          },
         },
         ctx
       );
@@ -1875,7 +1851,7 @@ export function generator<
 
       // Emit a completed assistant message when the generator has identity
       // and produced text output. Identity-less generators skip emission —
-      // their typed `block_output` is the only signal to downstream blocks.
+      // their typed `block_trace` output is the only signal to downstream blocks.
       if (agentType !== undefined && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
@@ -1904,11 +1880,11 @@ export function generator<
         await ctx.response.emit({ type: "item.added", item: messageItem });
         await ctx.response.emit({ type: "item.done", item: messageItem });
 
-        // FIX-480 §3.2: emit `block_output` as a ref to this message
+        // FIX-480 §3.2: emit `block_trace.output` as a ref to this message
         // instead of an inline copy of the same text. The message's
         // content equals `output` by construction (built from `output`
         // above), so no defensive equality check is needed here. Skip
-        // empty strings to keep block_output inline for the trivial case.
+        // empty strings to keep block_trace.output inline for the trivial case.
         if (output.length > 0) {
           ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
         }

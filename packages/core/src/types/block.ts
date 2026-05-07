@@ -13,28 +13,56 @@ import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
 import type {
   AgentType,
+  BlockValueInternal,
   StructureShape,
-  BlockOutputItem,
+  BlockTraceItem,
   RouterDecisionItem,
-  StateSnapshotItem,
-  BlockDebugPayload
+  StateSnapshotItem
 } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
-/** Payload emitted by the generator after resolving its config, for debug item capture. */
-export type BlockDebugCapturePayload = {
-  model: string;
-  prompt: string;
-  tools: string[];
-  /** Resolved user-slot values, post-`asUserMessage` wrapping, in the form
-   *  the model was sent. Empty array when no user slot was provided. */
-  user: unknown[];
-  /** Resolved history values (already in message form). Empty array when
-   *  no history slot was provided. */
-  history: unknown[];
+/**
+ * Phase tag for {@link BlockContext._runtimeHooks.onBlockTraceCapture}. Each
+ * value drives a distinct emission pattern on the unified `block_trace` item:
+ *
+ * - `added` — fired at block start, before `connectInput`. Constructs the
+ *   item with `status: "in_progress"` and the input source descriptor.
+ * - `input` — fired after `connectInput`, only when the connector actually
+ *   transformed the raw value. Patches `input.connected`.
+ * - `generator` — fired post-config-resolution for generator blocks. Patches
+ *   `generator: { model, tools, prompt, user?, history? }`. Last write wins
+ *   on chained model calls (multi-step tool loops).
+ * - `output` — fired at completion. Patches `output`, `status`, `completedAt`,
+ *   `duration`, `error?`, `modelUsage?`. Triggers item.done after the patch.
+ */
+export type BlockTraceCapturePhase = "added" | "input" | "generator" | "output";
+
+/**
+ * Payload variant for one phase of {@link BlockContext._runtimeHooks.onBlockTraceCapture}.
+ * Untyped on the hook surface (consumers branch on `phase`) to keep the
+ * runtime call site simple. The server-side handler reads the matching subset
+ * of fields per phase. See {@link BlockTraceCapturePhase} for the per-phase
+ * contract.
+ */
+export type BlockTraceCapturePayload = {
+  phase: BlockTraceCapturePhase;
+  data: {
+    status?: BlockTraceItem["status"];
+    blockName?: string;
+    blockKind?: BlockTraceItem["blockKind"];
+    blockInstanceId?: string;
+    input?: { source: import("../items/types").BlockValueInternal<unknown>; connected?: unknown };
+    output?: import("../items/types").BlockValueInternal<unknown>;
+    generator?: BlockTraceItem["generator"];
+    modelUsage?: BlockTraceItem["modelUsage"];
+    startedAt?: number;
+    completedAt?: number;
+    duration?: number;
+    error?: { message: string; code?: string };
+  };
 };
 
 export type ExecutionParent = {
@@ -63,13 +91,6 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
-  /**
-   * True when this scope represents a tool invocation from a generator.
-   * Suppresses the redundant `block_output` trace item — the generator's
-   * tool wrapper emits a richer `block_tool_output` item that fully
-   * describes the tool call (name, arguments, result, error).
-   */
-  isToolCall?: boolean;
 };
 
 export interface ResponseEmitterHandle {
@@ -249,10 +270,9 @@ export interface BlockContext<
     status: BlockContext["emitStatus"];
     /** @internal — used by framework auto-emitters; user code rarely calls these. */
     trace: {
-      blockOutput: (item: BlockOutputItem) => void;
+      blockTrace: (item: BlockTraceItem) => void;
       routerDecision: (item: RouterDecisionItem) => void;
       stateSnapshot: (item: StateSnapshotItem) => void;
-      blockDebug: (payload: BlockDebugPayload) => void;
     };
   };
 
@@ -284,25 +304,16 @@ export interface BlockContext<
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
     }) => void;
-    /** Captures resolved generator config for debug item emission. The hook
-     *  receives the firing block's context so it can read `_blockIdentity` to
-     *  self-identify — required because a single hook closure handles nested
-     *  blocks that each have distinct identities. */
-    onBlockDebugCapture?: (payload: BlockDebugCapturePayload, ctx: BlockContext) => void;
-    /** Fires when a block's `connectInput` actually transformed raw input.
-     *  Receives the post-connector value plus the firing block's context so
-     *  the server can emit a debug item against the correct block identity. */
-    onConnectedInput?: (value: unknown, ctx: BlockContext) => void;
     /**
-     * Emits a block_debug item for a nested block. Wired by the server when
-     * trace observability is enabled; no-op otherwise. Called from core's
-     * sequencer.ts executeBlock before the nested block runs, so the devtool
-     * sees a debug row for every block in the trace — not just the root.
+     * Unified block-lifecycle capture hook. Fires four phases per block:
+     * `added` (at start), `input` (post-connectInput, only on transform),
+     * `generator` (post-resolve), and `output` (at completion). The hook
+     * receives the firing block's context so it can read `_blockIdentity`
+     * to self-identify — required because a single hook closure handles
+     * nested blocks that each have distinct identities. See
+     * {@link BlockTraceCapturePayload} for the per-phase data contract.
      */
-    emitNestedBlockDebug?: (
-      block: { name: string; kind: string; inputSchema?: unknown; outputSchema?: unknown; config: unknown; transient?: boolean },
-      scopedCtx: unknown
-    ) => void | Promise<void>;
+    onBlockTraceCapture?: (payload: BlockTraceCapturePayload, ctx: BlockContext) => void;
   };
 
   /** @internal Current block's identity within the execution chain. */
@@ -332,15 +343,24 @@ export interface BlockContext<
 
   /**
    * @internal Hint written by a sequencer/router's execute right before
-   * returning to describe the BlockValue kind its block_output should carry
-   * (FIX-413). Emitters wrap the returned output as `inline` when no hint is
-   * set (the default for generators, handlers, and transforms).
+   * returning to describe the BlockValue kind its `block_trace.output` should
+   * carry (FIX-413). Emitters wrap the returned output as `inline` when no
+   * hint is set (the default for generators, handlers, and transforms).
    */
   _blockOutputHint?: BlockOutputHint;
 
   /**
+   * @internal Hint stashed by a sequencer/router on the scoped child context
+   * just before invoking a child block. Describes the BlockValue source the
+   * child's `input.source` should carry on its emitted `block_trace` item.
+   * `ref` for previous-step / fan-in branches that already have an item;
+   * `inline` for sequencer-head literals; `structure` for aggregator inputs.
+   */
+  _blockInputHint?: BlockValueInternal<unknown>;
+
+  /**
    * @internal Shared mutable slot that tracks the id of the most recently
-   * emitted `block_output` item. Sequencer operations read this immediately
+   * emitted `block_trace` item. Sequencer operations read this immediately
    * after calling a child block so they can record a `ref` descriptor pointing
    * at the child's item. Lives on a ref passed through every scope so child
    * emissions are visible to the parent that spawned them.
@@ -358,7 +378,7 @@ export interface BlockContext<
 }
 
 /**
- * Hint communicated from a block's `execute` out to the block_output emitter
+ * Hint communicated from a block's `execute` out to the block_trace emitter
  * (FIX-413). One of:
  * - unset / `kind: "inline"` — wrap the returned output as `{ kind: "inline", value: output }`.
  * - `kind: "ref"` — emit `{ kind: "ref", sourceItemId }`; executor flattens
@@ -487,7 +507,7 @@ export interface BlockDefinition<
    * observes on its next turn.
    *
    * The structured `TOutput` continues to flow through the block graph
-   * unchanged: `block_tool_output` items, downstream sequencer steps, devtool,
+   * unchanged: `tool_output` items, downstream sequencer steps, devtool,
    * tests, and replay all see the original value. Both `TInputSchema` and
    * `TOutputSchema` are preserved.
    *

@@ -93,7 +93,7 @@ export async function handleGetSessionState(
   // the primary `resolveItemVisibility(item).client === false` path below.
   // TODO(FIX-506): remove once we're confident no legacy records remain.
   const TRACE_ITEM_TYPES = new Set([
-    "block_output",
+    "block_trace",
     "router_decision",
     "state_snapshot",
   ]);

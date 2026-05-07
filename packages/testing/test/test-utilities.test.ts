@@ -223,7 +223,7 @@ describe("testing utilities", () => {
       },
       {
         id: "item_2",
-        type: "block_output",
+        type: "block_trace",
         blockName: "summary",
         output: { ok: true },
         status: "completed",

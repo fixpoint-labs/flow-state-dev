@@ -254,7 +254,7 @@ for (const task of collection.list({ status: "completed" })) {
   const items = task.items();
   const messages = items.filter((i) => i.type === "message");
   const sources = items.filter((i) => i.type === "source");
-  const toolCalls = items.filter((i) => i.type === "block_tool_output");
+  const toolCalls = items.filter((i) => i.type === "tool_output");
   const finalText = task.output ?? messages.map((m) => /* join text */ "").join("\n");
   // …feed into your synthesizer's prompt
 }

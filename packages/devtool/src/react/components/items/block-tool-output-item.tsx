@@ -4,12 +4,12 @@
  * Failed tool calls show error details with red styling.
  */
 import { useState } from "react";
-import type { BlockToolOutputItem } from "@flow-state-dev/core/items";
+import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { AlertTriangle, Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
 import { safeParseJson } from "../../lib/utils";
 
-export function BlockToolOutputItemView({ item }: { item: BlockToolOutputItem }) {
+export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
   const [expanded, setExpanded] = useState(false);
   const isInProgress = item.status === "in_progress";
   const isFailed = item.status === "failed";

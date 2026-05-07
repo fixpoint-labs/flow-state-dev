@@ -19,7 +19,7 @@ There are no per-item `client`/`history` overrides. Visibility is a pure functio
 
 ### Generator identity governs conversational items
 
-Messages, reasoning, and `block_tool_output` items — the conversational types — inherit visibility from the producing generator's `agentType`:
+Messages, reasoning, and `tool_output` items — the conversational types — inherit visibility from the producing generator's `agentType`:
 
 | `agentType` | Client | History |
 |-------------|:------:|:-------:|
@@ -34,7 +34,7 @@ See `generator-identity.md` for the full identity model.
 
 ### Structural types have fixed visibility
 
-Component, container, source, status, state_change, resource_change, error → `{ client: true, history: false }`. Block_output, router_decision, state_snapshot, block_debug → `{ client: false, history: false }` (devtool-only).
+Component, container, source, status, state_change, resource_change, error → `{ client: true, history: false }`. Block_trace, router_decision, state_snapshot → `{ client: false, history: false }` (devtool-only).
 
 Structural items ignore `agentType` for visibility. `agentType` on a structural item is metadata only (useful for per-agent rendering or queries via `selectForContext`).
 
@@ -60,19 +60,25 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
 
-**`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
+**`tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
+
+`tool_output` follows a lifecycle: the runtime emits an `in_progress` placeholder via `item.added` before the called block runs (args known, output empty), then patches it via `item.updated` once the block returns. The called block still gets its own `block_trace` row, decoupled from the `tool_output`, but its `output` is a `ref` to the `tool_output` so the result lives in one place. On failure, the patch sets `status: "failed"` and an `error` field; the called block's `block_trace.status` is also `failed`.
 
 ### Devtool-only items — what the devtool sees
 
-**`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
+**`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), and on failure the error. This is how the devtool builds its execution trace tree.
 
-Since FIX-413, `block_output.output` is a `BlockValue<T>` discriminated union with three cases:
+Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) → zero or more `item.updated` patches (connector input, generator bundle, model usage) → `item.done` (terminal status, output written, timing closed). Consumers reconcile by id. Late subscribers see only the final settled row.
+
+`block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Since FIX-480, streaming-text generators (`outputSchema: z.string()`, `agentType` set) also emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `agentType` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.thenAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 
-The union exists so a deeply nested pass-through pipeline (`s1 → s2 → s3 → generator`) persists the LLM output exactly once, on the generator's item — intermediate sequencers carry a ~40-byte ref rather than an N-byte copy.
+`block_trace.input.source` is a `BlockValue<T>` of the same shape, stamped at block start. Sequential steps stamp a `ref` to the upstream block's trace; aggregator branches share the same upstream ref; downstream consumers of an aggregator see a `structure` of branch refs; `forEach` per-iteration children see `inline` with the element value; the request entry point sees `inline` with the raw input.
+
+The union exists so a deeply nested pass-through pipeline (`s1 → s2 → s3 → generator`) persists the LLM output exactly once, on the generator's item — intermediate sequencers carry a ~40-byte ref rather than an N-byte copy. Tool calls extend the same idea: the called block and the `tool_output` item are decoupled, but the called block's `block_trace.output` refs the `tool_output` so the result lives in one place.
 
 Consumers reading historical items should use `resolveBlockValue(item.output, lookup)` from `@flow-state-dev/core/items` to recover the typed payload `T`. `ctx.getBlockOutput()` and `TargetHandle` resolve transparently.
 
@@ -90,7 +96,7 @@ Items fall into three buckets:
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_output` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
 
 ### Transient × keyed item matrix
 
@@ -129,7 +135,7 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 |------|------------|:------:|:-------:|:-----------------:|-------------|
 | `message` | Generator (auto), `ctx.emitMessage()` | agentType | agentType | ✓ | Persistent |
 | `reasoning` | Generator (auto, CoT models) | agentType | agentType | ✓ | Persistent |
-| `block_tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
+| `tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
 | `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
 | `container` | Sequencer/Router with `container` config | ✓ | — | — | Persistent |
 | `source` | Generator (provider-native tools) | ✓ | — | — | Persistent |
@@ -137,10 +143,9 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 | `state_change` | Auto on state mutations | ✓ | — | — | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | ✓ | — | — | Transient by default |
 | `error` | Runtime (terminal failure) | ✓ | — | — | Persistent |
-| `block_output` | Every block (auto, post-execution) | — | — | — | Persistent |
+| `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | — | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | — | Persistent |
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | — | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
-| `block_debug` | Generator (resolved config at start) | — | — | — | Transient |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Identity-governed` = visibility derives from the producing generator's `agentType`. A `trace` agentType forces `client: false, history: false` regardless of type.
 
@@ -229,7 +234,7 @@ When combined with `transient: false` (the default), this is the **keyed snapsho
 
 When a sequencer or router declares `container: { component: "my-container" }`, it emits a `ContainerItem` at execution start. Items emitted inside the container scope carry `ownedBy: containerBlockInstanceId`.
 
-`ItemsRenderer` suppresses `component` and `block_tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
+`ItemsRenderer` suppresses `component` and `tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
 
 ```ts
 const { state, items, componentsByKey } = useContainerItems(containerItem, session);
@@ -253,7 +258,7 @@ Using `component` for things native types cover bypasses built-in history assemb
 
 ## What doesn't belong in items
 
-**Block execution status** — the `status` field on `block_output` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.
+**Block execution status** — the `status` field on `block_trace` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.
 
 **Per-block activity trees** — there is no per-block status hierarchy or activity graph. Status is a single request-scoped slot ("what is happening right now"). If you need per-agent live visibility of parallel work, group items by `agentName` and render that — don't invent a tree on top of status.
 

@@ -67,7 +67,7 @@ Each generator declares its identity via `agentType`, which governs where its au
 | `"primary"` | ✓ | ✓ | ✓ |
 | `"sub"` | ✓ | — | ✓ |
 | `"trace"` | — | — | ✓ |
-| *unset* | no auto-emission — only `block_output` flows via graph edges |
+| *unset* | no auto-emission — only `block_trace` flows via graph edges |
 
 Set `agentType` explicitly on every generator that should stream. There is no position-inferred default — each generator's identity is visible in its own config.
 

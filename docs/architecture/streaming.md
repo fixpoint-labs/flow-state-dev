@@ -40,17 +40,17 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `status` | Yes | No | Transient progress updates |
 | `state_change` | Yes | No | Scope state mutation record |
 | `resource_change` | Yes | No | Resource mutation record |
-| `block_output` | No | Conditional | Execution record (every block) |
-| `block_tool_output` | No | Yes | Tool result from generator tool invocation |
+| `block_trace` | No | Conditional | Execution record (every block) |
+| `tool_output` | No | Yes | Tool result from generator tool invocation |
 | `router_decision` | No | No | Route selection record (trace only) |
 | `state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
 | `error` | Yes | No | Terminal errors |
 
-For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
+For `block_trace`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `tool_output` items instead.
 
 ### Visibility Resolution
 
-`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `block_tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_output`, `router_decision`, `state_snapshot`, and `block_debug` are devtool-only.
+`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_trace`, `router_decision`, and `state_snapshot` are devtool-only.
 
 ### Container Ownership (`ownedBy`)
 
@@ -168,7 +168,7 @@ Because events are operationally independent from items, they can be:
 - Retained with a different policy (e.g., capped collection, age-based pruning)
 - Disabled entirely in production without affecting app behavior
 
-This separation means observability-only item types (like `state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
+This separation means observability-only item types (like `state_snapshot`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
 
 ### Durability ordering
 
@@ -230,8 +230,8 @@ Hidden invariants preserved:
 
 All blocks can emit explicitly via `ctx` methods. Additionally:
 
-- **Generator**: Auto-emits `reasoning`, `message` (streaming), `block_tool_output` per tool invocation, final `block_output`
-- **Handler**: Auto-emits `block_output` (internal only). Silent to client/LLM by default.
+- **Generator**: Auto-emits `reasoning`, `message` (streaming), `tool_output` per tool invocation, final `block_trace`
+- **Handler**: Auto-emits `block_trace` (internal only). Silent to client/LLM by default.
 - **Sequencer**: Emits child block items. Optional `container` config for visual grouping.
 - **Router**: Emits `router_decision` (trace) when a route is selected, then items from selected path. Optional `container` config.
 
@@ -267,7 +267,7 @@ This enables UI grouping, debugging, and devtools timeline views.
 For full type definitions, edge cases, and user-stream event contracts, see `../preperation/architecture/STREAMING.md`.
 
 
-### Generator usage metadata on `block_output`
+### Generator usage metadata on `block_trace`
 
-Generator `block_output` items may include `modelUsage` metadata with `model`, `promptTokens`, `completionTokens`, `totalTokens`, optional `providerMetadata`, and Anthropic cache convenience fields (`cacheReadTokens`, `cacheCreationTokens`). This metadata represents only that generator call; summing across `block_output` items gives total request usage.
+Generator `block_trace` items may include `modelUsage` metadata with `model`, `promptTokens`, `completionTokens`, `totalTokens`, optional `providerMetadata`, and Anthropic cache convenience fields (`cacheReadTokens`, `cacheCreationTokens`). This metadata represents only that generator call; summing across `block_trace` items gives total request usage.
 

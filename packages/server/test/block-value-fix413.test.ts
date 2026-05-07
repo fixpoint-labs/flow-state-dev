@@ -12,7 +12,7 @@ import {
   router,
   sequencer
 } from "@flow-state-dev/core";
-import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, BlockValue } from "@flow-state-dev/core/items";
 import { resolveBlockValue, buildItemLookup } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -30,7 +30,7 @@ async function runFlowAndGetBlockOutputs(args: {
   flow: ReturnType<ReturnType<typeof defineFlow>>;
   input: unknown;
   requestId?: string;
-}): Promise<{ items: BlockOutputItem[]; allItems: ReturnType<ReturnType<typeof createResponseEmitter>["getItems"]> }> {
+}): Promise<{ items: BlockTraceItem[]; allItems: ReturnType<ReturnType<typeof createResponseEmitter>["getItems"]> }> {
   const stores = createInMemoryStores();
   const response = createResponseEmitter({
     requestId: args.requestId ?? "req_fix413",
@@ -47,8 +47,8 @@ async function runFlowAndGetBlockOutputs(args: {
   });
   const allItems = response.getItems();
   const items = allItems.filter(
-    (i) => i.type === "block_output"
-  ) as BlockOutputItem[];
+    (i) => i.type === "block_trace"
+  ) as BlockTraceItem[];
   return { items, allItems };
 }
 

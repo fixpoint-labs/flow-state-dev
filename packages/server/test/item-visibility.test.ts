@@ -76,7 +76,7 @@ describe("resolveItemVisibility — conversational types", () => {
 
   it("block_tool_output from sub-agent → client only", () => {
     const item = baseItem({
-      type: "block_tool_output",
+      type: "tool_output",
       agentType: "sub",
       blockName: "search",
       output: {},
@@ -118,7 +118,7 @@ describe("resolveItemVisibility — structural types", () => {
   // structural defaults table. These tests confirm that contract.
   it("block_output stamped trace → neither client nor history", () => {
     const item = baseItem({
-      type: "block_output",
+      type: "block_trace",
       agentType: "trace",
       blockName: "b",
       output: {},

@@ -300,7 +300,7 @@ describe("parallelTasks pattern", () => {
       input: { goal: "Test item emission" }
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 });

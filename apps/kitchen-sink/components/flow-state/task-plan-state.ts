@@ -224,7 +224,7 @@ export function scopeItemsToLatestCollectionRequest(
  *
  * Windows use `item.ts` (timestamp), not `item.itemIndex`. itemIndex is
  * not monotonic across emit batches — multiple items can share an
- * index, and AI-SDK-driven `block_tool_output` emissions sometimes
+ * index, and AI-SDK-driven `tool_output` emissions sometimes
  * land after the worker's terminal `task-change` in itemIndex order
  * but inside it chronologically. Timestamps are monotonic per emitter
  * and reliably bracket the worker's actual work.

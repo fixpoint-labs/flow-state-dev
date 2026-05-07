@@ -31,8 +31,8 @@ export type BlockComponentType = ComponentType<any>;
 export type RendererRegistry = {
   message?: BlockComponentType | false;
   reasoning?: BlockComponentType | false;
-  block_output?: BlockComponentType | false;
-  block_tool_output?: BlockComponentType | false;
+  block_trace?: BlockComponentType | false;
+  tool_output?: BlockComponentType | false;
   status?: BlockComponentType | false;
   source?: BlockComponentType | false;
   error?: BlockComponentType | false;

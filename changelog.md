@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Block trace unification (FIX-573) — BREAKING
+
+- Trace channel now uses a single `block_trace` item per block run, replacing the old `block_output` / `block_debug` split. Carries input, output, error, timing, and (for generators) the resolved prompt and model config.
+- `block_tool_output` renamed to `tool_output`. Both `tool_output` and `block_trace` now emit when a block runs as a tool; the called block's output is a `ref` to the tool_output to avoid duplication.
+- Block traces stream live: an in-progress trace appears the moment a block starts, with input, prompt, and output filled in via `item.updated` events as they resolve.
+- Hooks `onBlockDebugCapture` and `onConnectedInput` collapsed into a single `onBlockTraceCapture(payload, ctx)` keyed by phase (`added` / `input` / `generator` / `output`).
+- Migration: rename `block_output` → `block_trace` and `block_tool_output` → `tool_output` at consumer dispatch sites. The old `block_debug` payload moves under `block_trace.generator` and `block_trace.input.connected`. See `apps/docs/docs/streaming/items.md` for the full rename table.
+
 ### Live tail on Vercel + Neon: opt out of LISTEN, force polling
 
 Kitchen-sink on Vercel + Neon was failing to deliver post-catch-up live events on a midstream refresh. Two issues stacked on top of each other: the auto-created `liveTailPool` in `createPostgresStores` ignored the caller's `poolOptions`, so a Neon `Client` override applied to the main pool didn't reach the tail pool; and even with the right driver, Neon's pooled (`-pooler`) endpoint is pgbouncer in transaction mode, where `LISTEN flow_events` registers on a backend that gets recycled at transaction end and never sees the matching `NOTIFY`. Two fixes:

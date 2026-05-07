@@ -1,6 +1,6 @@
 "use client";
 
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { Tool } from "@/components/flow-state/tool";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ type AgentOutput = {
 /**
  * Extract the resolved payload from a BlockValue. For this card we only care
  * about the inline case — the agent generator is a leaf that produces novel
- * content, so its block_output always carries `kind: "inline"` (FIX-413).
+ * content, so its block_trace.output always carries `kind: "inline"` (FIX-413).
  * Defensive fallback for any legacy/ref shapes just returns undefined.
  */
 function unwrapInline(value: BlockValueInternal<unknown> | undefined): AgentOutput | undefined {
@@ -26,7 +26,7 @@ function unwrapInline(value: BlockValueInternal<unknown> | undefined): AgentOutp
   return undefined;
 }
 
-export function AgentResponseCard({ item }: { item: BlockOutputItem }) {
+export function AgentResponseCard({ item }: { item: BlockTraceItem }) {
   // Tool calls get rendered via the flow-state Tool component
   if (item.toolCall) {
     return <Tool item={item} />;

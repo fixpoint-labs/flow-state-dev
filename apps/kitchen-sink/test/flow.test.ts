@@ -200,7 +200,7 @@ describe("chat-agent flow", () => {
     expect(result.error).toBeNull();
   });
 
-  it("emits block_output items", async () => {
+  it("emits block_trace items", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
@@ -213,7 +213,7 @@ describe("chat-agent flow", () => {
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

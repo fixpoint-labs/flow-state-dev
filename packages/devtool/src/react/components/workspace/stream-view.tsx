@@ -38,7 +38,7 @@ type RequestGroup = {
 const STREAM_TYPES = new Set([
   "message",
   "reasoning",
-  "block_tool_output",
+  "tool_output",
   "error",
   "component",
   "container",

@@ -1,7 +1,7 @@
 /**
  * Token usage aggregation utilities.
  *
- * Scans OutputItem arrays for BlockOutputItem.modelUsage and produces
+ * Scans OutputItem arrays for BlockTraceItem.modelUsage and produces
  * per-model and total summaries for display in request headers and
  * session-level panels.
  */
@@ -48,8 +48,8 @@ export function aggregateTokenUsage(items: DevtoolItem[]): TokenSummary {
   let calls = 0;
 
   for (const item of items) {
-    if (item.type !== "block_output") continue;
-    const usage = (item as DevtoolItem & { type: "block_output" }).modelUsage;
+    if (item.type !== "block_trace") continue;
+    const usage = (item as DevtoolItem & { type: "block_trace" }).modelUsage;
     if (!usage) continue;
 
     calls++;

@@ -127,7 +127,7 @@ import { testItems } from "@flow-state-dev/testing";
 const items = testItems(result.items);
 
 items.messages();       // MessageItem[]
-items.blockOutputs();   // BlockOutputItem[]
+items.blockOutputs();   // BlockTraceItem[]
 items.ofType("tool_call");  // Items of specific type
 ```
 

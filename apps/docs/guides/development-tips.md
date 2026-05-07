@@ -130,7 +130,7 @@ Check that the generator has `emit` configured correctly. By default, generators
 
 ### Stream connects but no items?
 
-Confirm the client is filtering correctly. `useSession(id, { items: { visibility: "ui" } })` shows only UI-visible items. Some item types (e.g. `block_output` without `toolCall`) are devtools-only. Check the [streaming docs](/docs/streaming/overview) for which types go to the client.
+Confirm the client is filtering correctly. `useSession(id, { items: { visibility: "ui" } })` shows only UI-visible items. Some item types (e.g. `block_trace` without `toolCall`) are devtools-only. Check the [streaming docs](/docs/streaming/overview) for which types go to the client.
 
 ### Session not persisting between requests?
 

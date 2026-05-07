@@ -88,7 +88,7 @@ const adapted = someBlock.connectOutput((out) => ({
 
 ## Model-visible tool output: `mapModelOutput`
 
-When a block is installed as a tool on a generator, its output flows to two consumers: the LLM (as the tool result it sees on the next turn) and the framework's observation surfaces (`block_tool_output` items, devtool, replay, tests). For tools with rich structured envelopes, that's a bad tradeoff — fields the LLM can't reason about cost tokens, and trimming the result strips inspection value.
+When a block is installed as a tool on a generator, its output flows to two consumers: the LLM (as the tool result it sees on the next turn) and the framework's observation surfaces (`tool_output` items, devtool, replay, tests). For tools with rich structured envelopes, that's a bad tradeoff — fields the LLM can't reason about cost tokens, and trimming the result strips inspection value.
 
 `mapModelOutput` declares a separate, model-visible representation. The structured `TOutput` keeps flowing through the framework. The mapper only fires at the AI SDK bridge boundary, producing the value the LLM observes.
 
@@ -100,7 +100,7 @@ const recallTool = recallSeq.mapModelOutput((result) => {
 })
 ```
 
-The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserved — downstream sequencer steps and `block_tool_output` items still see the full structured envelope.
+The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserved — downstream sequencer steps and `tool_output` items still see the full structured envelope.
 
 ### How it differs from `connectOutput`
 
@@ -108,7 +108,7 @@ The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserv
 | -- | -- | -- |
 | Rewrites `TOutputSchema` | yes | no |
 | Visible to downstream block consumers | yes | no |
-| Visible in `block_tool_output` items | yes | no |
+| Visible in `tool_output` items | yes | no |
 | Fires when the block is used as a non-tool step | yes | no — silently inert |
 | Fires when the block is installed as a tool | yes | yes, at the bridge boundary |
 
@@ -118,7 +118,7 @@ The mapper is expected to be deterministic: history replay re-runs it on the per
 
 ### Devtool inspection
 
-When a tool block declares `mapModelOutput`, the framework emits a transient `block_debug` item carrying the mapper's string output alongside the regular `block_tool_output` item that carries the structured value. Devtool surfaces both, so you can see what the LLM saw next to what the block actually produced. Gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in dev/test, off in production).
+When a tool block declares `mapModelOutput`, the model-visible string flows to the AI SDK via `toModelOutput` on the tool entry. The structured value lives on the regular `tool_output` item. Devtool reads both, so you can see what the LLM saw next to what the block actually produced. Gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in dev/test, off in production).
 
 ## State handoffs
 

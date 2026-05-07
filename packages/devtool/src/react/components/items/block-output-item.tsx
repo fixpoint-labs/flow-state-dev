@@ -5,13 +5,13 @@
  * Regular outputs: "▸ blockName → completed" collapsed, full JSON on expand.
  */
 import { useState } from "react";
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
 import { BlockValueView } from "../shared/block-value-view";
 import { safeParseJson } from "../../lib/utils";
 
-export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
+export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
   const [expanded, setExpanded] = useState(false);
   const isToolCall = !!item.toolCall;
   const isInProgress = item.status === "in_progress";

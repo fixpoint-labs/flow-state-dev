@@ -1880,8 +1880,8 @@ describe("execution runtime", () => {
     });
 
     expect(withNoopSeams.output).toBe(baseline.output);
-    expect(baseline.items.at(-1)?.type).toBe("block_output");
-    expect(withNoopSeams.items.at(-1)?.type).toBe("block_output");
+    expect(baseline.items.at(-1)?.type).toBe("block_trace");
+    expect(withNoopSeams.items.at(-1)?.type).toBe("block_trace");
     // FIX-413: block_output items carry BlockValue<T>, not the raw T. Handlers
     // are leaves — always inline.
     expect(withNoopSeams.items.at(-1)).toMatchObject({
@@ -1922,7 +1922,7 @@ describe("execution runtime", () => {
 });
 
 describe("transient block output", () => {
-  it("transient block produces zero store records after execution", async () => {
+  it("transient block: block_trace is canonical retained (always persisted)", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-flow",
@@ -1952,13 +1952,16 @@ describe("transient block output", () => {
     expect(result.error).toBeUndefined();
     expect(result.output).toBe("processed:test");
 
+    // FIX-573 §3.8: block_trace is always retained, regardless of the
+    // originating block's `transient` flag.
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
-    const blockOutputItems = storedItems.filter((item) => item.type === "block_output");
-    expect(blockOutputItems.length).toBe(0);
+    const blockOutputItems = storedItems.filter((item) => item.type === "block_trace");
+    expect(blockOutputItems.length).toBeGreaterThanOrEqual(1);
+    expect(blockOutputItems.every((i) => i.transient !== true)).toBe(true);
   });
 
-  it("transient block output streams to client during execution", async () => {
+  it("transient block: block_trace streams to client and is non-transient", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-stream-flow",
@@ -1986,10 +1989,11 @@ describe("transient block output", () => {
     });
 
     expect(result.error).toBeUndefined();
-    // The in-flight items should contain the transient block output
-    const blockOutputItems = result.items.filter((item) => item.type === "block_output");
+    // FIX-573 §3.8: block_trace is the canonical retained record and is
+    // always non-transient regardless of the producing block's transient flag.
+    const blockOutputItems = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputItems.length).toBe(1);
-    expect(blockOutputItems[0]?.transient).toBe(true);
+    expect(blockOutputItems[0]?.transient).not.toBe(true);
   });
 
   it("non-transient blocks in the same flow are unaffected", async () => {
@@ -2050,24 +2054,25 @@ describe("transient block output", () => {
     expect(result.error).toBeUndefined();
 
     // In-flight items include both transient and non-transient
-    const allBlockOutputs = result.items.filter((item) => item.type === "block_output");
+    const allBlockOutputs = result.items.filter((item) => item.type === "block_trace");
     expect(allBlockOutputs.length).toBeGreaterThanOrEqual(1);
 
     // Persisted items should exclude transient block output but include durable
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
     const storedBlockOutputNames = storedItems
-      .filter((item) => item.type === "block_output")
+      .filter((item) => item.type === "block_trace")
       .map((item) => (item as { blockName: string }).blockName);
 
     // The sequencer's own block output is durable (sequencer is not transient)
     expect(storedBlockOutputNames).toContain("mixed-sequencer");
   });
 
-  it("transient block: emitMessage produces persisted message; only block_output traces are stripped", async () => {
+  it("transient block: emitMessage produces persisted message; block_trace is canonical retained", async () => {
     // FIX-478: explicit emit calls are user-facing content. They no longer
-    // inherit the producing block's `transient` flag — only the auto-emitted
-    // block_output bookkeeping does.
+    // inherit the producing block's `transient` flag.
+    // FIX-573 §3.8: block_trace is always retained, regardless of the
+    // originating block's `transient` flag.
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-gen-flow",
@@ -2114,11 +2119,12 @@ describe("transient block output", () => {
     );
     expect(storedMessages.length).toBe(1);
 
-    // Block-level transient still suppresses the auto-emitted block_output trace.
+    // FIX-573 §3.8: block_trace is canonical retained and is persisted.
     const storedBlockOutputs = (requestRecord?.items ?? []).filter(
-      (item) => item.type === "block_output"
+      (item) => item.type === "block_trace"
     );
-    expect(storedBlockOutputs.length).toBe(0);
+    expect(storedBlockOutputs.length).toBeGreaterThanOrEqual(1);
+    expect(storedBlockOutputs.every((i) => i.transient !== true)).toBe(true);
   });
 
   describe("emit* default semantics (FIX-478)", () => {

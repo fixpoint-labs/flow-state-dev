@@ -8,7 +8,7 @@
  * Lifted out of `evented-actors.tsx` so task-plan can adopt the
  * same vocabulary without forking the parser.
  */
-import type { BlockToolOutputItem } from "@flow-state-dev/core/items";
+import type { ToolOutputItem } from "@flow-state-dev/core/items";
 
 export type ToolCallSummary = {
   name: string;
@@ -29,7 +29,7 @@ export function formatToolName(name: string): string {
 
 /**
  * Extract a {@link ToolCallSummary} from a substrate
- * `BlockToolOutputItem`. Robust to:
+ * `ToolOutputItem`. Robust to:
  * - Plain string outputs (first line, truncated)
  * - Array-of-results outputs (first 5 entries; `title`/`name`/`url`)
  * - `{ results | items | data: [...] }` wrappers (same heuristic)
@@ -38,7 +38,7 @@ export function formatToolName(name: string): string {
  * just the name — never throws.
  */
 export function extractToolCallSummary(
-  item: BlockToolOutputItem,
+  item: ToolOutputItem,
 ): ToolCallSummary {
   const name = item.toolCall.name;
   let query: string | undefined;
