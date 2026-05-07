@@ -11,6 +11,10 @@ import {
   useFlow,
   useClientData,
   useRequestStream,
+  useResourceCollection,
+  useResourceCollectionItem,
+  useResourceCollectionList,
+  useResourceManifest,
   useSession
 } from "../src";
 
@@ -39,6 +43,13 @@ describe("hook exports and types", () => {
 
   it("useRequestStream is a function", () => {
     expect(typeof useRequestStream).toBe("function");
+  });
+
+  it("FIX-427 collection hooks are exported as functions", () => {
+    expect(typeof useResourceCollection).toBe("function");
+    expect(typeof useResourceCollectionList).toBe("function");
+    expect(typeof useResourceCollectionItem).toBe("function");
+    expect(typeof useResourceManifest).toBe("function");
   });
 });
 

@@ -42,8 +42,24 @@ export {
   useResourceCollection,
   type CollectionActions,
   type CollectionItem,
+  type CollectionListOptions,
   type UseResourceCollectionResult
 } from "./hooks/useResourceCollection";
+
+export {
+  useResourceCollectionList,
+  type UseResourceCollectionListResult
+} from "./hooks/useResourceCollectionList";
+
+export {
+  useResourceCollectionItem,
+  type UseResourceCollectionItemResult
+} from "./hooks/useResourceCollectionItem";
+
+export {
+  useResourceManifest,
+  type UseResourceManifestResult
+} from "./hooks/useResourceManifest";
 
 export {
   useAction,
