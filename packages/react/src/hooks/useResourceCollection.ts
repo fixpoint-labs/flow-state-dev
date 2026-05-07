@@ -192,6 +192,30 @@ export function useResourceCollection(
     }
   }, [session.items, ref, invalidate]);
 
+  const collectionEntry = useMemo(
+    () => findCollectionEntry(session, ref),
+    [session.snapshot?.resources, ref]
+  );
+
+  // Snapshot refresh as a fallback invalidator. `resource_change` items are
+  // dropped by useSession's default filter, so the items-watching effect
+  // above misses them when the consumer isn't subscribed. useSession does
+  // call `refreshSnapshot()` at request completion when any resource changed
+  // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
+  // Invalidate whenever count moves so cached pages refetch on the next
+  // call. Conservative: a snapshot refresh that doesn't change count
+  // (e.g., update-in-place that leaves cardinality unchanged) won't trigger
+  // — but the items-watching path catches those when the resource_change
+  // is in the user's filter.
+  const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
+  useEffect(() => {
+    const next = collectionEntry?.count;
+    if (next !== lastSeenCountRef.current) {
+      lastSeenCountRef.current = next;
+      invalidate();
+    }
+  }, [collectionEntry?.count, invalidate]);
+
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
       const sessionId = session.sessionId;
@@ -257,11 +281,6 @@ export function useResourceCollection(
       invalidate();
     }
   }), [client, ref, session.sessionId, invalidate]);
-
-  const collectionEntry = useMemo(
-    () => findCollectionEntry(session, ref),
-    [session.snapshot?.resources, ref]
-  );
 
   const wrap = useCallback(
     (raw: { topic: string; clientData?: unknown; content?: string }) =>
