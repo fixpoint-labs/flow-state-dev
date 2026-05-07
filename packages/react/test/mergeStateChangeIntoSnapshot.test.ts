@@ -174,6 +174,27 @@ describe("mergeStateChangeIntoSnapshot", () => {
     });
   });
 
+  it("setStateRecord targeting a field literally named 'path' still merges (sentinel disambiguation)", () => {
+    // Regression: the keyed-updater sentinel (`{ path: keyName }` with a
+    // string keyName) must not falsely match a setStateRecord delta whose
+    // `delta.path` is an object record.
+    const prev = snapshot({ session: { path: { existing: 1 } } });
+    const next = mergeStateChangeIntoSnapshot(
+      prev,
+      sc({
+        scope: "session",
+        operation: "patch",
+        version: 1,
+        path: "path.added",
+        delta: { path: { added: 2 } }
+      })
+    );
+    expect(next?.clientData.session?.path).toEqual({
+      existing: 1,
+      added: 2
+    });
+  });
+
   it("ignores setStateRecord targeting a non-exposed field", () => {
     const prev = snapshot({ session: { flags: { active: true } } });
     const next = mergeStateChangeIntoSnapshot(

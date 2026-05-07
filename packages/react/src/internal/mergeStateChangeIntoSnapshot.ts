@@ -67,15 +67,18 @@ function reduceScopeData(
   const prev = prevScope;
   switch (sc.operation) {
     case "patch": {
-      // patchState(key, updater) emits delta `{ path: key }` with no resolved
-      // value — nothing to merge.
+      // patchState(key, updater) emits delta `{ path: <keyName> }` with no
+      // resolved value — nothing to merge. Distinguished from setStateRecord
+      // by `delta.path` being a string keyName here vs. an object record
+      // there.
       if (typeof sc.path === "string" && sc.delta !== undefined) {
         const d = sc.delta as Record<string, unknown>;
         if (
           d !== null &&
           typeof d === "object" &&
           Object.keys(d).length === 1 &&
-          hasOwn(d, "path")
+          hasOwn(d, "path") &&
+          typeof d.path === "string"
         ) {
           return prev;
         }
