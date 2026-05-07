@@ -1,6 +1,11 @@
 /**
  * Retry policy resolution and retry-loop execution utilities for runtime blocks/actions.
+ *
+ * The retry loop itself is delegated to `p-retry`; this file owns the
+ * framework-specific policy merge, retryable-error classification, abort
+ * mapping, and the `onRetry` "scheduled" semantics.
  */
+import pRetry, { AbortError, type FailedAttemptError } from "p-retry";
 import type { RetryPolicy } from "@flow-state-dev/core/types";
 import { FlowError } from "../errors/flow-error";
 
@@ -75,39 +80,16 @@ export function isRetryableError(
 }
 
 /**
- * Waits for a retry delay and exits early when aborted.
- */
-async function waitWithAbort(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (ms <= 0) {
-    return;
-  }
-
-  if (signal?.aborted === true) {
-    throw new Error("Retry aborted");
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-
-    const onAbort = (): void => {
-      clearTimeout(timeout);
-      cleanup();
-      reject(new Error("Retry aborted"));
-    };
-
-    const cleanup = (): void => {
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-/**
  * Executes work with retry/backoff semantics and optional abort support.
+ *
+ * Non-retryable throws are converted to `p-retry`'s `AbortError` at the throw
+ * site so the loop terminates without further attempts. Non-`Error` throws
+ * are normalized to `Error("Unknown retry failure")`. Signal aborts surface
+ * as `Error("Retry aborted")` regardless of when the abort fires (before the
+ * first call, during a backoff wait, or while the function is in flight).
+ *
+ * `onRetry` fires only when another attempt will be scheduled — i.e., it
+ * reports retries that are about to happen, not the final terminal failure.
  */
 export async function retryWithPolicy<TValue>(
   run: () => Promise<TValue>,
@@ -121,30 +103,65 @@ export async function retryWithPolicy<TValue>(
     return run();
   }
 
-  let attempt = 0;
-  while (attempt < policy.maxAttempts) {
-    attempt += 1;
-
-    try {
-      return await run();
-    } catch (error) {
-      const normalized =
-        error instanceof Error ? error : new Error("Unknown retry failure");
-      const canRetry =
-        attempt < policy.maxAttempts && isRetryableError(normalized, policy);
-
-      if (!canRetry) {
-        throw normalized;
-      }
-
-      await options.onRetry?.(attempt, normalized);
-      const delayMs = Math.min(
-        policy.maxDelayMs,
-        policy.baseDelayMs * Math.pow(2, attempt - 1)
-      );
-      await waitWithAbort(delayMs, options.signal);
-    }
+  // Defensive guard against an unmerged policy with maxAttempts <= 0;
+  // mergeRetryPolicy clamps to 1, so this is unreachable in normal paths.
+  if (policy.maxAttempts <= 0) {
+    throw new Error("Retry loop exited unexpectedly");
   }
 
-  throw new Error("Retry loop exited unexpectedly");
+  // p-retry doesn't short-circuit on a pre-aborted signal (it only attaches
+  // its abort listener when `!signal.aborted`), so the caller's expectation
+  // of "abort means abort" wouldn't hold without this pre-flight check.
+  if (options.signal?.aborted === true) {
+    throw new Error("Retry aborted");
+  }
+
+  try {
+    return await pRetry(
+      async () => {
+        try {
+          return await run();
+        } catch (caught) {
+          const normalized =
+            caught instanceof Error ? caught : new Error("Unknown retry failure");
+          if (!isRetryableError(normalized, policy)) {
+            throw new AbortError(normalized);
+          }
+          throw normalized;
+        }
+      },
+      {
+        retries: policy.maxAttempts - 1,
+        factor: 2,
+        minTimeout: policy.baseDelayMs,
+        maxTimeout: policy.maxDelayMs,
+        randomize: false,
+        signal: options.signal,
+        onFailedAttempt: async (attemptError: FailedAttemptError) => {
+          // Fire only when another attempt will run, so callers (e.g.
+          // `executeBlock`'s "retry scheduled" log) don't see the terminal
+          // failure. p-retry decorates the thrown error in-place — not a
+          // wrapper — so forward as-is rather than reading `.cause`.
+          if (attemptError.retriesLeft <= 0) return;
+          await options.onRetry?.(attemptError.attemptNumber, attemptError);
+        }
+      }
+    );
+  } catch (err) {
+    // Normalize signal aborts to a stable message — but only when the
+    // rejection itself is an abort, not when an unrelated non-retryable
+    // error happens to coincide with an abort fired between the inner
+    // rejection and this catch handler. Checking the error identity (vs.
+    // checking `signal.aborted`) avoids silently relabeling a real
+    // failure as "Retry aborted" when the abort lands during the gap.
+    if (isAbortError(err)) {
+      throw new Error("Retry aborted");
+    }
+    throw err;
+  }
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === "AbortError";
 }
