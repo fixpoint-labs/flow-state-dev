@@ -12,6 +12,7 @@ export {
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemStores,
+  createFilesystemTraceStore,
   createFilesystemUserStore,
   createInMemoryContentStore,
   createInMemoryProjectStore,
@@ -23,6 +24,7 @@ export {
   createScopeStateOps,
   createStateContainer,
   resolveOrgStorageKey,
+  resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS
 } from "./stores";

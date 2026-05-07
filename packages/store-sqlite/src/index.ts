@@ -10,6 +10,15 @@ import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 import { createSQLiteCheckpointStore } from "./checkpoint-store";
 import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-store";
 
+// Inlined to avoid a value import from `@flow-state-dev/server` — the
+// store-sqlite package boundary forbids value imports from server, and the
+// shared helper in server is the same three lines. Drift risk is low: the
+// constants are documented in the trace-channel reference doc.
+function resolveTraceMaxRequests(explicit?: number): number {
+  if (explicit !== undefined) return explicit;
+  return process.env.NODE_ENV === "development" ? 1000 : 50;
+}
+
 export type SQLiteStoreOptions = {
   /** File path to the SQLite database, or ":memory:" for in-memory */
   filename: string;
@@ -50,7 +59,10 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
     checkpoints: createSQLiteCheckpointStore(db),
-    traces: createSQLiteTraceStore(db, options.traceStore),
+    traces: createSQLiteTraceStore(db, {
+      ...options.traceStore,
+      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
+    }),
     close() {
       db.close();
     }

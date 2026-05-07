@@ -35,11 +35,13 @@ stores.close();
 
 ## Configuration
 
-The `createSQLiteStores` factory accepts a single option:
+`createSQLiteStores` accepts:
 
 | Option | Type | Description |
 |--------|------|-------------|
 | `filename` | `string` | Path to the SQLite database file, or `":memory:"` for an in-memory database. If the file doesn't exist, it will be created automatically. |
+| `skipSchemaInit` | `boolean` | Skip the `CREATE TABLE/INDEX` and rename-migration step on construction. Per-connection PRAGMAs are always applied. Default `false`. |
+| `traceStore` | `{ maxRequests?: number }` | Trace event retention. When unset, defaults to 1000 if `NODE_ENV=development` and 50 otherwise. Explicit values override the env-aware default. |
 
 ## WAL Mode
 
