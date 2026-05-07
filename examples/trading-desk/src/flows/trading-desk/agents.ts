@@ -1,0 +1,69 @@
+/**
+ * Canonical agent identity table for the Trading Desk example.
+ *
+ * Mirrors the Claude Design handoff (2026-05-06) verbatim. All twelve agents
+ * across phases P1–P5 ship in this table from Phase 1 — the sidebar phase
+ * groups for P2–P5 render in `pending` styling and become live as later
+ * phases land.
+ *
+ * - `role`: human-readable label rendered in the transcript and memo header.
+ * - `glyph`: 2-character mark inside the agent badge.
+ * - `hue`: OKLCH hue (degrees) used for the per-agent accent color via the
+ *   `--c` custom property in `AgentBadge`.
+ * - `team`: phase grouping (analyst | research | trade | risk | pm) used by
+ *   the sidebar to bucket entries.
+ */
+export type AgentTeam = "analyst" | "research" | "trade" | "risk" | "pm";
+
+export type AgentMeta = {
+  readonly role: string;
+  readonly glyph: string;
+  readonly hue: number;
+  readonly team: AgentTeam;
+};
+
+export const AGENTS = {
+  // Phase 1 — analyst fan-out
+  fundamentalsAnalyst: { role: "Fundamentals Analyst", glyph: "Fn", hue: 28, team: "analyst" },
+  sentimentAnalyst:    { role: "Sentiment Analyst",    glyph: "Sn", hue: 48, team: "analyst" },
+  newsAnalyst:         { role: "News Analyst",         glyph: "Nw", hue: 78, team: "analyst" },
+  technicalAnalyst:    { role: "Technical Analyst",    glyph: "Tc", hue: 138, team: "analyst" },
+  // Phase 2 — research debate
+  bullResearcher:      { role: "Bull Researcher",      glyph: "B+", hue: 158, team: "research" },
+  bearResearcher:      { role: "Bear Researcher",      glyph: "B-", hue: 18, team: "research" },
+  researchManager:     { role: "Research Manager",     glyph: "RM", hue: 268, team: "research" },
+  // Phase 3 — trader
+  trader:              { role: "Trader",               glyph: "Tr", hue: 248, team: "trade" },
+  // Phase 4 — risk debate
+  aggressiveRisk:      { role: "Aggressive Risk",      glyph: "A!", hue: 8, team: "risk" },
+  conservativeRisk:    { role: "Conservative Risk",    glyph: "C.", hue: 218, team: "risk" },
+  neutralRisk:         { role: "Neutral Risk",         glyph: "N°", hue: 178, team: "risk" },
+  // Phase 5 — portfolio manager
+  portfolioManager:    { role: "Portfolio Manager",    glyph: "PM", hue: 298, team: "pm" },
+} as const satisfies Record<string, AgentMeta>;
+
+export type AgentName = keyof typeof AGENTS;
+
+/** Phase grouping the sidebar uses to bucket entries (rendered top-down P5 → P1). */
+export const PHASE_GROUPS: ReadonlyArray<{
+  id: "p5" | "p4" | "p3" | "p2" | "p1";
+  label: string;
+  agents: ReadonlyArray<AgentName>;
+}> = [
+  { id: "p5", label: "Phase 5 — Portfolio Manager", agents: ["portfolioManager"] },
+  { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk"] },
+  { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
+  { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
+  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst"] },
+];
+
+/** Resource storage keys for Phase 1 memos. The shortName is the suffix
+ *  after the phase prefix (e.g. `memos/p1/fundamentals`). */
+export const PHASE_1_MEMO_KEYS = {
+  fundamentals: { agentName: "fundamentalsAnalyst", memoKey: "memos/p1/fundamentals" },
+  sentiment:    { agentName: "sentimentAnalyst",    memoKey: "memos/p1/sentiment" },
+  news:         { agentName: "newsAnalyst",         memoKey: "memos/p1/news" },
+  technical:    { agentName: "technicalAnalyst",    memoKey: "memos/p1/technical" },
+} as const satisfies Record<string, { agentName: AgentName; memoKey: string }>;
+
+export type Phase1MemoShortName = keyof typeof PHASE_1_MEMO_KEYS;

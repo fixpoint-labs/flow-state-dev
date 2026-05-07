@@ -1,0 +1,38 @@
+{
+  "name": "@flow-state-dev/example-trading-desk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "typecheck": "tsc --noEmit",
+    "dev:watch": "node scripts/dev-watch.mjs",
+    "build": "next build",
+    "start": "next start",
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.30",
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "ai": "^6.0.97",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.575.0",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@tailwindcss/postcss": "^4.2.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.0",
+    "typescript": "^5.9.3"
+  }
+}
