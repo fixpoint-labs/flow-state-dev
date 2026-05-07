@@ -57,7 +57,7 @@ interface BlockContext {
 }
 ```
 
-Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, block_tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
+Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -429,7 +429,7 @@ const researcher = generator({
 });
 ```
 
-Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_trace`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
+Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_trace`, `router_decision`, `state_snapshot`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
 
 ### `agentName`
 
@@ -469,5 +469,5 @@ const output = ctx.getBlockOutput(validateBlock);
 These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.
 
 
-`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_output.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
+`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_trace.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
 

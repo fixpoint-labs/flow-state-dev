@@ -349,4 +349,14 @@ export type SequencerRuntimeState = {
    * and for ops that don't dispatch a child (`.map`, `.exitIf`, etc.).
    */
   lastChildPath?: string;
+  /**
+   * Running BlockValue descriptor for the sequencer's value as it would feed
+   * into the next op (FIX-573 §3.3). Mirrors the running output descriptor at
+   * sequencer level, but expressed as a `BlockValueInternal` source so it can
+   * be stamped directly onto the next child's `input.source`. Aggregator ops
+   * (`.parallel`, `.thenAll`, `.forEach`) write a `structure` here so the
+   * downstream sequential op stamps a structure-shaped input rather than a
+   * single ref.
+   */
+  lastChildInputHint?: import("../items/types").BlockValueInternal<unknown>;
 };

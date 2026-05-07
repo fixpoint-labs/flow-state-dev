@@ -209,6 +209,38 @@ function stashInputHint(ctx: BlockContext, hint: BlockValueInternal<unknown>): v
   (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = hint;
 }
 
+/**
+ * Compute the sequential input hint for a child block invoked by an op that
+ * receives the upstream sequencer value. Prefers an explicit
+ * `runtime.lastChildInputHint` (set by aggregator ops to carry a structure)
+ * and falls back to `runtime.lastChildPath` for single-child predecessors.
+ * Returns `inline` for the sequencer head so the server-side handler stamps
+ * the raw input value.
+ */
+function sequentialInputHint(
+  ctx: BlockContext,
+  runtime: SequencerRuntimeState
+): BlockValueInternal<unknown> {
+  if (runtime.lastChildInputHint !== undefined) return runtime.lastChildInputHint;
+  return inputDescriptorFromPrevPath(ctx, runtime.lastChildPath);
+}
+
+/**
+ * Stash a sequential input hint and record the child's path on runtime state
+ * so the next op can chain. Centralises the bookkeeping for ops that dispatch
+ * a single child block (`.then`, `.thenIf`, `.tap`, `.tapIf`, `.branch`, etc.).
+ * Clears any aggregator-set `lastChildInputHint` after consuming it.
+ */
+function prepareSequentialChild(
+  ctx: BlockContext,
+  runtime: SequencerRuntimeState,
+  childPath: string
+): void {
+  stashInputHint(ctx, sequentialInputHint(ctx, runtime));
+  runtime.lastChildPath = childPath;
+  runtime.lastChildInputHint = undefined;
+}
+
 type WorkOptions = {
   name?: string;
 };
@@ -618,7 +650,8 @@ function createRuntimeState(): SequencerRuntimeState {
     workTasks: [],
     stateVersion: 0,
     scopeId: `seq_scope_${sequencerScopeCounter}`,
-    lastChildPath: undefined
+    lastChildPath: undefined,
+    lastChildInputHint: undefined
   };
 }
 
@@ -768,6 +801,8 @@ function runSequencerOperations(
           }
 
           const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
+          // Rescue receives the thrown error inline — no upstream item to ref.
+          stashInputHint(ctx, { kind: "inline", value: undefined });
           const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
           // A rescue branch passes through to the handler block's output.
           const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
@@ -909,8 +944,9 @@ function createSequencer<TInput, TOutput>(
         return extend<TNext>(
           {
             name: block.name,
-            run: async (value, ctx, _runtime, stepIndex) => {
+            run: async (value, ctx, runtime, stepIndex) => {
               const path = childBlockPath(ctx, "then", stepIndex);
+              prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, value, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
             }
@@ -931,9 +967,10 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: block.name,
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
             const path = childBlockPath(ctx, "then", stepIndex);
+            prepareSequentialChild(ctx, runtime, path);
             const output = await executeBlock(block, nextInput, ctx, path);
             return { value: output, descriptor: refDescriptorForPath(ctx, path) };
           }
@@ -959,7 +996,7 @@ function createSequencer<TInput, TOutput>(
             ...operations,
             {
               name: `if:${block.name}`,
-              run: async (value, ctx, _runtime, stepIndex) => {
+              run: async (value, ctx, runtime, stepIndex) => {
                 const matches = await condition(value as TOutput, ctx);
                 if (!matches) {
                   // Condition not matched: carry running descriptor forward.
@@ -967,6 +1004,7 @@ function createSequencer<TInput, TOutput>(
                 }
 
                 const path = childBlockPath(ctx, "thenIf", stepIndex);
+                prepareSequentialChild(ctx, runtime, path);
                 const output = await executeBlock(block, value, ctx, path);
                 return { value: output, descriptor: refDescriptorForPath(ctx, path) };
               }
@@ -992,7 +1030,7 @@ function createSequencer<TInput, TOutput>(
           ...operations,
           {
             name: `if:${block.name}`,
-            run: async (value, ctx, _runtime, stepIndex) => {
+            run: async (value, ctx, runtime, stepIndex) => {
               const matches = await condition(value as TOutput, ctx);
               if (!matches) {
                 return { value };
@@ -1000,6 +1038,7 @@ function createSequencer<TInput, TOutput>(
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
               const path = childBlockPath(ctx, "thenIf", stepIndex);
+              prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, nextInput, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
             }
@@ -1047,10 +1086,14 @@ function createSequencer<TInput, TOutput>(
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
           name: "parallel",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
             const parallelPath = childBlockPath(ctx, "parallel", stepIndex);
             const branchPaths: string[] = [];
+            // Each branch sees the same upstream input — capture the shared
+            // hint once before dispatching so every branch stamps the same
+            // input source (FIX-573 §3.3 fan-out).
+            const branchInputHint = sequentialInputHint(ctx, runtime);
             const outputs = await mapWithConcurrency(
               entries,
               options?.maxConcurrency,
@@ -1058,10 +1101,12 @@ function createSequencer<TInput, TOutput>(
                 const branchPath = extendBlockPath(parallelPath, blockPathSegment("branch", branchIndex));
                 branchPaths[branchIndex] = branchPath;
                 if (isBlockDefinition(step)) {
+                  stashInputHint(ctx, branchInputHint);
                   return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
                 }
 
                 const connected = await step.connector(value as TOutput, ctx);
+                stashInputHint(ctx, branchInputHint);
                 return executeBlock(step.block, connected, ctx, branchPath);
               }
             );
@@ -1084,6 +1129,15 @@ function createSequencer<TInput, TOutput>(
                   ? { kind: "ref", sourceItemId: ref.sourceItemId }
                   : { kind: "inline", value: outputs[index] };
             });
+
+            // Downstream sequential ops should see this object as their input
+            // source. `lastChildPath` is meaningless for an aggregator, so
+            // record the structure as `lastChildInputHint` instead.
+            const branchEntries: Array<{ key: string; path: string }> = entries.map(
+              ([key], index) => ({ key: String(key), path: branchPaths[index] })
+            );
+            runtime.lastChildPath = undefined;
+            runtime.lastChildInputHint = inputDescriptorFromBranches(ctx, branchEntries, "object");
 
             return {
               value: result,
@@ -1128,7 +1182,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TStepOut[]>(
         {
           name: "forEach",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
@@ -1146,6 +1200,8 @@ function createSequencer<TInput, TOutput>(
 
               const path = childBlockPath(ctx, "forEach", stepIndex, index);
               iterationPaths[index] = path;
+              // Each iteration's child sees the element inline (FIX-573 §5).
+              stashInputHint(ctx, { kind: "inline", value: item });
               return executeBlock(block, item, ctx, path);
             });
 
@@ -1157,6 +1213,13 @@ function createSequencer<TInput, TOutput>(
                 ? { kind: "ref", sourceItemId: ref.sourceItemId }
                 : { kind: "inline", value: outputs[i] };
             });
+
+            runtime.lastChildPath = undefined;
+            runtime.lastChildInputHint = inputDescriptorFromBranches(
+              ctx,
+              iterationPaths.map((path) => ({ path })),
+              "array"
+            );
 
             return {
               value: outputs,
@@ -1232,7 +1295,9 @@ function createSequencer<TInput, TOutput>(
                 try {
                   // Background iterations run in the "work" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
-                  // position-based default role (work → "trace").
+                  // position-based default role (work → "trace"). Element is
+                  // the iteration's input — stamp it inline (FIX-573 §5).
+                  stashInputHint(ctx, { kind: "inline", value: item });
                   const result = await executeBlock(block, item, ctx, path, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
@@ -1280,17 +1345,23 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doUntil:${block.name}`,
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let guard = 0;
             let iteration = 0;
+            // First iteration sees the upstream sequencer value; later
+            // iterations see the prior iteration's emitted item (FIX-573 §5).
+            let pendingHint: BlockValueInternal<unknown> = sequentialInputHint(ctx, runtime);
 
             while (true) {
               const path = childBlockPath(ctx, "doUntil", stepIndex, iteration);
+              stashInputHint(ctx, pendingHint);
               const output = await executeBlock(block, nextInput, ctx, path);
               const done = await condition(output as TNext, ctx);
               if (done) {
+                runtime.lastChildPath = path;
+                runtime.lastChildInputHint = undefined;
                 // Pass-through to the final iteration's item.
                 return { value: output, descriptor: refDescriptorForPath(ctx, path) };
               }
@@ -1302,6 +1373,7 @@ function createSequencer<TInput, TOutput>(
 
               nextInput = output;
               iteration += 1;
+              pendingHint = inputDescriptorFromPrevPath(ctx, path);
             }
           }
         },
@@ -1323,11 +1395,12 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doWhile:${block.name}`,
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let iteration = 0;
             let lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+            stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             let output = await executeBlock(block, nextInput, ctx, lastPath);
             let guard = 0;
 
@@ -1339,10 +1412,14 @@ function createSequencer<TInput, TOutput>(
 
               iteration += 1;
               nextInput = output;
+              const prevPath = lastPath;
               lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+              stashInputHint(ctx, inputDescriptorFromPrevPath(ctx, prevPath));
               output = await executeBlock(block, nextInput, ctx, lastPath);
             }
 
+            runtime.lastChildPath = lastPath;
+            runtime.lastChildInputHint = undefined;
             // Pass-through to the final iteration's item.
             return { value: output, descriptor: refDescriptorForPath(ctx, lastPath) };
           }
@@ -1405,6 +1482,8 @@ function createSequencer<TInput, TOutput>(
             const path = childBlockPath(ctx, "work", stepIndex);
             // work() dispatches run in the "work" phase so nested generators
             // see phase === "work" and apply the trace default for emissions.
+            // The work block's input is the parent step's output (FIX-573 §5).
+            stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
@@ -1449,6 +1528,7 @@ function createSequencer<TInput, TOutput>(
 
             const path = childBlockPath(ctx, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
+            stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
@@ -1531,8 +1611,13 @@ function createSequencer<TInput, TOutput>(
         return extend<TOutput>(
           {
             name: `tap:${block.name}`,
-            run: async (value, ctx, _runtime, stepIndex) => {
+            run: async (value, ctx, runtime, stepIndex) => {
               const path = childBlockPath(ctx, "tap", stepIndex);
+              // .tap is a side-effect — its child sees the upstream sequencer
+              // value, but the sequencer's running output is unchanged. Stash
+              // the hint without rewriting `lastChildPath`/`lastChildInputHint`
+              // so subsequent ops still chain from the prior producer.
+              stashInputHint(ctx, sequentialInputHint(ctx, runtime));
               await executeBlock(block, value, ctx, path);
               return { value };
             }
@@ -1557,10 +1642,12 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tap",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const path = childBlockPath(ctx, "tap", stepIndex);
+            const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
+                stashInputHint(ctx, tapHint);
                 await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
@@ -1570,6 +1657,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
+              stashInputHint(ctx, tapHint);
               await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
@@ -1601,15 +1689,17 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tapIf",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const matches = await condition(value as TOutput, ctx);
             if (!matches) {
               return { value };
             }
 
             const path = childBlockPath(ctx, "tapIf", stepIndex);
+            const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
+                stashInputHint(ctx, tapHint);
                 await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
@@ -1619,6 +1709,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
+              stashInputHint(ctx, tapHint);
               await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
@@ -1662,8 +1753,9 @@ function createSequencer<TInput, TOutput>(
       return extend<BranchStepOutput<TBranches[keyof TBranches]>>(
         {
           name: "branch",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const basePath = childBlockPath(ctx, "branch", stepIndex);
+            const branchHint = sequentialInputHint(ctx, runtime);
             for (const key of Object.keys(branches) as Array<keyof TBranches>) {
               const [connector, condition, block] = branches[key];
               const connectedInput = await connector(value as TOutput, ctx);
@@ -1673,6 +1765,10 @@ function createSequencer<TInput, TOutput>(
               }
 
               const branchPath = extendBlockPath(basePath, blockPathBranch(String(key)));
+              prepareSequentialChild(ctx, runtime, branchPath);
+              // prepareSequentialChild used the previous-op hint; reapply the
+              // captured one to be explicit about branch input semantics.
+              stashInputHint(ctx, branchHint);
               const output = await executeBlock(block, connectedInput, ctx, branchPath);
               // Pass-through from the selected branch's item.
               return { value: output, descriptor: refDescriptorForPath(ctx, branchPath) };
@@ -1699,9 +1795,10 @@ function createSequencer<TInput, TOutput>(
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
           name: "thenAll",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const basePath = childBlockPath(ctx, "thenAll", stepIndex);
             const branchPaths: string[] = [];
+            const branchInputHint = sequentialInputHint(ctx, runtime);
             const outputs = await mapWithConcurrency(
               steps,
               options?.maxConcurrency,
@@ -1709,10 +1806,12 @@ function createSequencer<TInput, TOutput>(
                 const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
                 branchPaths[branchIndex] = branchPath;
                 if (isBlockDefinition(step)) {
+                  stashInputHint(ctx, branchInputHint);
                   return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
                 }
 
                 const connected = await step.connector(value as TOutput, ctx);
+                stashInputHint(ctx, branchInputHint);
                 return executeBlock(step.block, connected, ctx, branchPath);
               }
             );
@@ -1725,6 +1824,13 @@ function createSequencer<TInput, TOutput>(
                 ? { kind: "ref", sourceItemId: ref.sourceItemId }
                 : { kind: "inline", value: outputs[i] };
             });
+
+            runtime.lastChildPath = undefined;
+            runtime.lastChildInputHint = inputDescriptorFromBranches(
+              ctx,
+              branchPaths.map((path) => ({ path })),
+              "array"
+            );
 
             return {
               value: outputs,
@@ -1745,7 +1851,7 @@ function createSequencer<TInput, TOutput>(
       return extend<unknown>(
         {
           name: "thenAny",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             if (blocks.length === 0) {
               throw new AggregateError([], "thenAny called with no blocks");
             }
@@ -1753,12 +1859,16 @@ function createSequencer<TInput, TOutput>(
             // Try each block sequentially; return the first that succeeds.
             const basePath = childBlockPath(ctx, "thenAny", stepIndex);
             const errors: Error[] = [];
+            const branchInputHint = sequentialInputHint(ctx, runtime);
 
             for (let branchIndex = 0; branchIndex < blocks.length; branchIndex += 1) {
               const block = blocks[branchIndex];
               try {
                 const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
+                stashInputHint(ctx, branchInputHint);
                 const output = await executeBlock(block, value, ctx, branchPath);
+                runtime.lastChildPath = branchPath;
+                runtime.lastChildInputHint = undefined;
                 return { value: output, descriptor: refDescriptorForPath(ctx, branchPath) };
               } catch (error) {
                 errors.push(toError(error));
@@ -1782,16 +1892,20 @@ function createSequencer<TInput, TOutput>(
       return extend<unknown>(
         {
           name: "race",
-          run: async (value, ctx, _runtime, stepIndex) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             if (blocks.length === 0) {
               throw new Error("race called with no blocks");
             }
 
             const basePath = childBlockPath(ctx, "race", stepIndex);
+            const branchInputHint = sequentialInputHint(ctx, runtime);
 
             if (blocks.length === 1) {
               const singlePath = extendBlockPath(basePath, blockPathSegment("branch", 0));
+              stashInputHint(ctx, branchInputHint);
               const output = await executeBlock(blocks[0], value, ctx, singlePath);
+              runtime.lastChildPath = singlePath;
+              runtime.lastChildInputHint = undefined;
               return { value: output, descriptor: refDescriptorForPath(ctx, singlePath) };
             }
 
@@ -1819,6 +1933,7 @@ function createSequencer<TInput, TOutput>(
                     nextIndex += 1;
                     try {
                       const branchPath = extendBlockPath(basePath, blockPathSegment("branch", currentIndex));
+                      stashInputHint(derivedCtx, branchInputHint);
                       const output = await executeBlock(blocks[currentIndex], value, derivedCtx, branchPath);
                       if (!resolved) {
                         resolved = true;
@@ -1845,6 +1960,7 @@ function createSequencer<TInput, TOutput>(
                   for (let i = 0; i < blocks.length; i += 1) {
                     const block = blocks[i];
                     const branchPath = extendBlockPath(basePath, blockPathSegment("branch", i));
+                    stashInputHint(derivedCtx, branchInputHint);
                     executeBlock(block, value, derivedCtx, branchPath).then(
                       (output) => {
                         if (!resolved) {
@@ -1873,6 +1989,10 @@ function createSequencer<TInput, TOutput>(
               throw new AggregateError(errors, "All blocks in race failed");
             }
 
+            if (winnerPath !== undefined) {
+              runtime.lastChildPath = winnerPath;
+              runtime.lastChildInputHint = undefined;
+            }
             return {
               value: resolvedValue,
               descriptor: winnerPath !== undefined ? refDescriptorForPath(ctx, winnerPath) : { kind: "inline" }

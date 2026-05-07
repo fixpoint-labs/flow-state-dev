@@ -3089,11 +3089,11 @@ export async function createExecutionContext<
             (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
           }
 
-          // FIX-573: fire the `output` phase trace capture. Suppressed only
-          // for tool calls — the generator's tool wrapper emits a richer
-          // `tool_output` item that supersedes this trace.
-          const suppressTrace = resolvedParent.isToolCall === true;
-          if (!suppressTrace) {
+          // FIX-573: fire the `output` phase trace capture. The block_trace
+          // is emitted for every block — even tool calls — because Path A
+          // emits `tool_output` separately and the called block's trace
+          // refs it via `_blockOutputHint` (see generator.ts).
+          {
             const completedAt = Date.now();
             // Flatten-at-emit (FIX-413): if the hint refs an item whose own
             // output is itself a ref, take the inner sourceItemId so emitted
@@ -3135,11 +3135,12 @@ export async function createExecutionContext<
               },
               childContext
             );
-          } else if (parentChain === undefined && capturedHint !== undefined) {
-            // Root block case: server's executeBlock reads the hint off the
-            // outer (non-scoped) ctx. Forward the child's hint so the root's
-            // block_trace can be emitted as ref/structure (FIX-413).
-            (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
+            if (parentChain === undefined && capturedHint !== undefined) {
+              // Root block case: server's executeBlock reads the hint off
+              // the outer (non-scoped) ctx. Forward the child's hint so the
+              // root's block_trace can be emitted as ref/structure (FIX-413).
+              (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
+            }
           }
 
           return output;
@@ -3152,8 +3153,7 @@ export async function createExecutionContext<
             scope: "block"
           });
 
-          const suppressFailureTrace = resolvedParent.isToolCall === true;
-          if (!suppressFailureTrace) {
+          {
             const completedAt = Date.now();
             const generatorModelUsage = (childContext as { _generatorModelUsage?: BlockTraceItem["modelUsage"] })._generatorModelUsage;
             if (generatorModelUsage !== undefined) {

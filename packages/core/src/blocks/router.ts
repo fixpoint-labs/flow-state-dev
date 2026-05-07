@@ -192,7 +192,17 @@ export function router<
       ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name, ctx._blockIdentity?.blockInstanceId);
 
       const startedAt = Date.now();
+      // FIX-573 §5: the routed block's input source matches whatever the
+      // router itself received. Forward the router's own `_blockInputHint`
+      // (or fall back to inline-rawInput for the request entry point) onto
+      // the scoped child ctx so its `added`-phase trace stamps the right
+      // source.
+      const routerInputHint =
+        (ctx as { _blockInputHint?: import("../items/types").BlockValueInternal<unknown> })._blockInputHint
+        ?? ({ kind: "inline" as const, value: input });
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
+        (scopedCtx as { _blockInputHint?: import("../items/types").BlockValueInternal<unknown> })
+          ._blockInputHint = routerInputHint;
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
         resolveActiveStatusMessage(selected, input, scopedCtx);
         try {

@@ -50,7 +50,7 @@ For `block_trace`: When the item has `toolCall` metadata (legacy tool invocation
 
 ### Visibility Resolution
 
-`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_trace`, `router_decision`, `state_snapshot`, and `block_debug` are devtool-only.
+`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_trace`, `router_decision`, and `state_snapshot` are devtool-only.
 
 ### Container Ownership (`ownedBy`)
 
@@ -168,7 +168,7 @@ Because events are operationally independent from items, they can be:
 - Retained with a different policy (e.g., capped collection, age-based pruning)
 - Disabled entirely in production without affecting app behavior
 
-This separation means observability-only item types (like `state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
+This separation means observability-only item types (like `state_snapshot`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
 
 ### Durability ordering
 

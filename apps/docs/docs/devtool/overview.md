@@ -72,7 +72,11 @@ Watch items arrive in real-time as blocks execute. Messages, tool calls, state c
 
 Visualizes the execution tree. Every item carries provenance: block name, instance ID, parent block, phase, step index. The trace view assembles this into a timeline, grouping items by block and showing parent-child relationships.
 
-Click a generator block in the trace and the detail panel shows what the model actually saw on that turn: the resolved system prompt, the user-slot messages for this turn, and the conversation history that came in alongside them. Tools and the resolved model identifier appear in the same panel. This is observability data — gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in development) — so you can leave it on while iterating and switch it off in production.
+Pick a block from the tree and the detail panel opens with two symmetric sections, Input and Output. Each is a `BlockValue`: it can be inline content, a ref to an upstream item that the panel resolves and renders, or a structure of refs (for fan-in steps like `thenAll` or `parallel`). Clicking a ref jumps to the source block.
+
+Blocks that are still running show their live status. A `block_trace` row appears as soon as the block starts, with input filled in and output empty. As patches arrive — connector input, generator bundle, model usage — the panel updates in place. The Output section becomes live once the block returns.
+
+For generator blocks, the panel also shows what the model actually saw on that turn: the resolved system prompt, the user-slot messages for this turn, and the conversation history that came in alongside them. Tools and the resolved model identifier appear in the same panel. This is observability data — gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in development) — so you can leave it on while iterating and switch it off in production.
 
 ## Session state
 

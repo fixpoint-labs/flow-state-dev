@@ -700,111 +700,111 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        try {
-          const output = await runWithRetry(
-            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-            retry
-          );
-          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-
-          // Emit block_tool_output item so tool results appear in the stream
-          // and can be replayed into LLM context on subsequent requests.
-          // `agentType` / `agentName` carry the parent generator's identity
-          // so `resolveItemVisibility()` can route the item correctly:
-          // sub-agent tool calls render to the client but are excluded from
-          // primary-agent LLM history.
-          if (options?.toolCallId !== undefined) {
-            const identity = scopedCtx._blockIdentity;
-            const toolOutputItem = {
-              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "tool_output" as const,
-              status: "completed" as const,
-              requestId: scopedCtx.request.identity.id,
-              itemIndex: getEmitterItemCount(scopedCtx.response),
-              provenance: {
-                blockName: identity?.blockName ?? tool.name,
-                blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: identity?.phase ?? "main"
-              },
-              ts: Date.now(),
-              ownedBy: identity?.ownedBy,
-              ...(agentType !== undefined ? { agentType } : {}),
-              ...(agentName !== undefined ? { agentName } : {}),
-              blockName: tool.name,
-              output,
-              toolCall: {
-                callId: options.toolCallId,
-                name: tool.name,
-                // Sanitised alias the LLM saw — what history replay must use
-                // for `toolName` fields on tool-call / tool-result content
-                // parts. Storing it here avoids re-deriving it later from the
-                // framework name (which can mismatch when the model resolver
-                // disambiguates colliding aliases).
-                alias: sanitizeToolName(tool.name),
-                arguments: typeof args === "string" ? args : JSON.stringify(args),
-                generatorBlock: generatorBlockName
-              }
-            };
-            await scopedCtx.response.emit({ type: "item.added", item: toolOutputItem });
-            await scopedCtx.response.emit({ type: "item.done", item: toolOutputItem });
-
-            // FIX-573: the standalone block_debug item carrying modelOutput
-            // is gone. The model-visible string flows to the AI SDK via
-            // toModelOutput on the tool entry, and the structured output is
-            // already on the tool_output item above.
+      // FIX-573 Path A: when this tool is invoked through a model loop, emit a
+      // `tool_output` placeholder BEFORE the called block runs, then patch it
+      // in place once the block returns. The called block's own block_trace
+      // captures `output` as a ref to this tool_output, so the two items stay
+      // decoupled but the called block doesn't duplicate the tool result.
+      const buildPlaceholderTool = (parentIdentity: typeof ctx._blockIdentity): {
+        item: any;
+        emit: () => Promise<void>;
+      } | undefined => {
+        if (options?.toolCallId === undefined) return undefined;
+        const item: any = {
+          id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          type: "tool_output" as const,
+          status: "in_progress" as const,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance: {
+            blockName: parentIdentity?.blockName ?? tool.name,
+            blockInstanceId: parentIdentity?.blockInstanceId ?? tool.name,
+            parentBlockInstanceId: parentIdentity?.parentBlockInstanceId,
+            phase: parentIdentity?.phase ?? "main"
+          },
+          ts: Date.now(),
+          ownedBy: parentIdentity?.ownedBy,
+          ...(agentType !== undefined ? { agentType } : {}),
+          ...(agentName !== undefined ? { agentName } : {}),
+          blockName: tool.name,
+          output: undefined,
+          toolCall: {
+            callId: options.toolCallId,
+            name: tool.name,
+            alias: sanitizeToolName(tool.name),
+            arguments: typeof args === "string" ? args : JSON.stringify(args),
+            generatorBlock: generatorBlockName
           }
+        };
+        return {
+          item,
+          emit: async () => {
+            await ctx.response.emit({ type: "item.added", item });
+          }
+        };
+      };
 
+      const runTool = async (
+        scopedCtx: BlockContext,
+        toolOutputId: string | undefined,
+      ): Promise<unknown> => {
+        // Stash the tool_output id as the called block's output hint so its
+        // block_trace `output` becomes a ref to the tool_output (Path A).
+        if (toolOutputId !== undefined) {
+          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+        }
+        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+        const output = await runWithRetry(
+          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+          retry
+        );
+        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+        return output;
+      };
+
+      const finishToolOutput = async (
+        placeholder: { item: any } | undefined,
+        result: { kind: "ok"; output: unknown } | { kind: "err"; error: Error },
+      ): Promise<void> => {
+        if (placeholder === undefined) return;
+        const item = placeholder.item;
+        if (result.kind === "ok") {
+          item.status = "completed";
+          item.output = result.output;
+        } else {
+          item.status = "failed";
+          item.output = undefined;
+          item.error = {
+            message: result.error.message,
+            code: (result.error as any).code
+          };
+        }
+        // Emit `item.updated` to patch the in-progress placeholder, then
+        // `item.done` so the row settles. Consumers reconcile by id.
+        const patch: Record<string, unknown> = result.kind === "ok"
+          ? { status: item.status, output: item.output }
+          : { status: item.status, output: undefined, error: item.error };
+        await ctx.response.emit({ type: "item.updated", id: item.id, patch });
+        await ctx.response.emit({ type: "item.done", item });
+      };
+
+      const placeholder = buildPlaceholderTool(ctx._blockIdentity);
+      if (placeholder !== undefined) {
+        await placeholder.emit();
+      }
+
+      if (ctx._withExecutionScope === undefined) {
+        try {
+          const output = await runTool(ctx, placeholder?.item.id);
+          await finishToolOutput(placeholder, { kind: "ok", output });
           return output;
         } catch (error) {
           const err = toError(error);
-          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
-
-          // Emit a failed block_tool_output so the devtool can display the error
-          if (options?.toolCallId !== undefined) {
-            const identity = scopedCtx._blockIdentity;
-            const toolErrorItem = {
-              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              type: "tool_output" as const,
-              status: "failed" as const,
-              requestId: scopedCtx.request.identity.id,
-              itemIndex: getEmitterItemCount(scopedCtx.response),
-              provenance: {
-                blockName: identity?.blockName ?? tool.name,
-                blockInstanceId: identity?.blockInstanceId ?? tool.name,
-                parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: identity?.phase ?? "main"
-              },
-              ts: Date.now(),
-              ownedBy: identity?.ownedBy,
-              ...(agentType !== undefined ? { agentType } : {}),
-              ...(agentName !== undefined ? { agentName } : {}),
-              blockName: tool.name,
-              output: undefined,
-              toolCall: {
-                callId: options.toolCallId,
-                name: tool.name,
-                alias: sanitizeToolName(tool.name),
-                arguments: typeof args === "string" ? args : JSON.stringify(args),
-                generatorBlock: generatorBlockName
-              },
-              error: {
-                message: err.message,
-                code: (err as any).code
-              }
-            };
-            await scopedCtx.response.emit({ type: "item.added", item: toolErrorItem });
-            await scopedCtx.response.emit({ type: "item.done", item: toolErrorItem });
-          }
-
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
+          await finishToolOutput(placeholder, { kind: "err", error: err });
           throw err;
         }
-      };
-
-      if (ctx._withExecutionScope === undefined) {
-        return runTool(ctx);
       }
 
       // Derive a deterministic path for this tool invocation. The model's
@@ -821,19 +821,25 @@ function compileToolsWithExecute(
         0
       );
 
-      return ctx._withExecutionScope(
-        {
-          name: tool.name,
-          kind: tool.kind,
-          instanceId: toolInstanceId,
-          path: toolPath,
-          input: args,
-          // Suppress the default block_output trace — the tool wrapper above
-          // emits a richer block_tool_output that supersedes it.
-          isToolCall: true
-        },
-        runTool
-      );
+      try {
+        const output = await ctx._withExecutionScope(
+          {
+            name: tool.name,
+            kind: tool.kind,
+            instanceId: toolInstanceId,
+            path: toolPath,
+            input: args
+          },
+          (scopedCtx) => runTool(scopedCtx, placeholder?.item.id)
+        );
+        await finishToolOutput(placeholder, { kind: "ok", output });
+        return output;
+      } catch (error) {
+        const err = toError(error);
+        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
+        await finishToolOutput(placeholder, { kind: "err", error: err });
+        throw err;
+      }
     }
     };
   });

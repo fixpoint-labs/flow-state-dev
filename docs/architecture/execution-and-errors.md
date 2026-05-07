@@ -42,7 +42,7 @@ The framework calls `block.run(input, ctx)` which handles input/output validatio
 1. Assemble prompt/context/history/user messages
 2. Resolve model via `ctx.resolveModel(modelId, blockName)`
 3. Run tool loop until `outputSchema` is satisfied (or repair fails)
-4. Emit items: reasoning, message (streaming), tool call block_outputs, final block_output
+4. Emit items: reasoning, message (streaming), tool_output per tool invocation, and the block_trace lifecycle (added → updated → done)
 5. Return parsed `outputSchema` output
 
 **Sequencer:**
