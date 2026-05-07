@@ -2622,7 +2622,7 @@ export async function createExecutionContext<
     response: emissionResponse,
     provenance: () => ({
       blockName: "runtime",
-      blockInstanceId: `runtime_${requestRef.current.id}`,
+      blockInstanceId: "runtime",
       phase: "main" as const
     }),
     nextItemIndex: () => emittedItemCount++,
@@ -2750,41 +2750,16 @@ export async function createExecutionContext<
           // Apply phase patch in-place. Last-write-wins on chained calls
           // (multi-step tool loops): the most recent `generator` capture
           // overwrites prior model/prompt fields, matching how the model
-          // re-resolves between turns. Build the wire patch from the same
-          // fields so subscribers see the partial update without having to
-          // diff the whole row.
+          // re-resolves between turns. The wire patch mirrors the in-memory
+          // mutation so subscribers don't have to diff the whole row.
           const patch: Record<string, unknown> = {};
-          if (payload.data.input !== undefined) {
-            existing.input = payload.data.input;
-            patch.input = payload.data.input;
-          }
-          if (payload.data.generator !== undefined) {
-            existing.generator = payload.data.generator;
-            patch.generator = payload.data.generator;
-          }
-          if (payload.data.modelUsage !== undefined) {
-            existing.modelUsage = payload.data.modelUsage;
-            patch.modelUsage = payload.data.modelUsage;
-          }
-          if (payload.data.output !== undefined) {
-            existing.output = payload.data.output;
-            patch.output = payload.data.output;
-          }
-          if (payload.data.error !== undefined) {
-            existing.error = payload.data.error;
-            patch.error = payload.data.error;
-          }
-          if (payload.data.completedAt !== undefined) {
-            existing.completedAt = payload.data.completedAt;
-            patch.completedAt = payload.data.completedAt;
-          }
-          if (payload.data.duration !== undefined) {
-            existing.duration = payload.data.duration;
-            patch.duration = payload.data.duration;
-          }
-          if (payload.data.status !== undefined) {
-            existing.status = payload.data.status;
-            patch.status = payload.data.status;
+          const data = payload.data as Record<string, unknown>;
+          const target = existing as Record<string, unknown>;
+          for (const key of Object.keys(data)) {
+            const value = data[key];
+            if (value === undefined) continue;
+            target[key] = value;
+            patch[key] = value;
           }
           // Emit item.updated for in-flight phases. The FIX-572 dedicated
           // channel is used when available; the duck-typed fallback adapter
