@@ -7,6 +7,15 @@
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type { Pool, PoolConfig } from "pg";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
+import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
+import { createPostgresSessionStore } from "./session-store";
+import { createPostgresRequestStore } from "./request-store";
+import { createPostgresUserStore } from "./user-store";
+import { createPostgresOrgStore } from "./org-store";
+import { createPostgresActiveRequestRegistry } from "./active-request-registry";
+import { createPostgresContentStore } from "./content-store";
+import { createPostgresCheckpointStore } from "./checkpoint-store";
+import { createInMemoryTraceStore } from "@flow-state-dev/server";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
 
@@ -17,15 +26,6 @@ function resolveLiveTailPoolMax(): number {
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_LIVE_TAIL_POOL_MAX;
 }
-import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
-import { createPostgresSessionStore } from "./session-store";
-import { createPostgresRequestStore } from "./request-store";
-import { createPostgresUserStore } from "./user-store";
-import { createPostgresOrgStore } from "./org-store";
-import { createPostgresActiveRequestRegistry } from "./active-request-registry";
-import { createPostgresContentStore } from "./content-store";
-import { createPostgresCheckpointStore } from "./checkpoint-store";
-import { createInMemoryTraceStore } from "@flow-state-dev/server";
 
 export type PostgresStoreRegistry = StoreRegistry & {
   /** Drain the connection pool and disconnect */
