@@ -113,6 +113,61 @@ describe("RequestWorkPool", () => {
     expect(pool.hasPendingForScope("scope-x")).toBe(false);
   });
 
+  it("drainScope drains settled-but-undrained entries — failures are not lost", async () => {
+    // Regression: a fast-failing .work() task can settle before .waitForWork()
+    // runs. `hasPendingForScope` returns false in that window, but the entry
+    // is still in the pool and its failure must surface through drainScope —
+    // otherwise failOnError silently drops fast failures.
+    const pool = createRequestWorkPool();
+    const err = new Error("fast failure");
+    pool.addTask({ promise: Promise.reject(err), meta: meta("scope-fast", "fast-fail") });
+
+    // Wait for the task to settle.
+    await new Promise<void>((r) => queueMicrotask(r));
+    expect(pool.hasPendingForScope("scope-fast")).toBe(false);
+    expect(pool.pendingCount()).toBe(0);
+
+    // drainScope still surfaces the failure.
+    const result = await pool.drainScope("scope-fast");
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]!.reason).toBe(err);
+  });
+
+  it("drainScope with failOnError throws even when tasks have already settled", async () => {
+    // Regression: with the previous `hasPendingForScope` early-return guard,
+    // a failed task that settled before .waitForWork({ failOnError: true })
+    // ran was silently swallowed. drainScope must throw on the captured
+    // failure regardless of timing.
+    const pool = createRequestWorkPool();
+    pool.addTask({
+      promise: Promise.reject(new Error("settled-before-wait")),
+      meta: meta("scope-fast", "fast-fail")
+    });
+    await new Promise<void>((r) => queueMicrotask(r));
+
+    await expect(pool.drainScope("scope-fast", { failOnError: true })).rejects.toThrow(
+      "settled-before-wait"
+    );
+  });
+
+  it("drainAll surfaces settled-but-undrained failures even when pendingCount is 0", async () => {
+    // Regression: drainRequestWorkPool used to early-return on
+    // `pool.pendingCount() === 0`, dropping failures from tasks that had
+    // already settled. drainAll itself reads the entries array and must
+    // still process them.
+    const pool = createRequestWorkPool();
+    pool.addTask({
+      promise: Promise.reject(new Error("late-drain")),
+      meta: meta("scope-drain", "late")
+    });
+    await new Promise<void>((r) => queueMicrotask(r));
+    expect(pool.pendingCount()).toBe(0);
+
+    const result = await pool.drainAll();
+    expect(result.failed).toHaveLength(1);
+    expect((result.failed[0]!.reason as Error).message).toBe("late-drain");
+  });
+
   it("drainAll honors AbortSignal — short-circuits without waiting", async () => {
     const pool = createRequestWorkPool();
     // A task that never settles.

@@ -1462,9 +1462,11 @@ function createSequencer<TInput, TOutput>(
           run: async (value, ctx, runtime) => {
             const pool = getRequestWorkPool(ctx);
             if (pool !== undefined) {
-              if (!pool.hasPendingForScope(runtime.scopeId)) {
-                return { value };
-              }
+              // No early-return on hasPendingForScope: a task can settle
+              // (resolve or reject) between dispatch and this barrier, but
+              // settled-but-undrained entries still need to be drained so
+              // their failures surface. drainScope is a no-op when no
+              // entries match — let it handle the empty case.
               const result = await withTimeout(
                 pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError }),
                 options?.timeoutMs,

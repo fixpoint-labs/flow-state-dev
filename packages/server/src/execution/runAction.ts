@@ -73,9 +73,14 @@ async function drainRequestWorkPool(
   signal: AbortSignal
 ): Promise<void> {
   const pool = getRequestWorkPool(ctx);
-  if (pool === undefined || pool.pendingCount() === 0) {
+  if (pool === undefined) {
     return;
   }
+  // No early-return on pendingCount === 0: tasks may have already settled
+  // by the time we reach this point, but their entries remain in the pool
+  // until drainAll removes them. Settled-but-undrained tasks still need
+  // their failures logged. drainAll is a cheap no-op when there are no
+  // entries left.
 
   const safeEmit = (count: number): void => {
     try {
@@ -85,16 +90,19 @@ async function drainRequestWorkPool(
     }
   };
 
-  try {
-    const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
-    for (const f of result.failed) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[runAction] Background work "${f.meta.name}" failed:`,
-        (f.reason as { message?: string } | undefined)?.message ?? f.reason
-      );
-    }
-  } finally {
+  const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
+  for (const f of result.failed) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[runAction] Background work "${f.meta.name}" failed:`,
+      (f.reason as { message?: string } | undefined)?.message ?? f.reason
+    );
+  }
+
+  // Emit terminal `backgroundTasks: 0` only when we actually drained
+  // something, so requests that never queued work don't emit a spurious
+  // status item.
+  if (result.completed.length + result.failed.length > 0) {
     safeEmit(0);
   }
 }
