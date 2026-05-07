@@ -39,7 +39,7 @@ function ChatApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const messageCount = Number(
-    session.snapshot?.state?.session?.messageCount ?? 0
+    session.snapshot?.clientData?.session?.messageCount ?? 0
   );
 
   // Auto-scroll to bottom when new items arrive

@@ -152,6 +152,22 @@ function PlanRenderer({ item }: { item: ContainerItem }) {
 
 `source` accepts either a `SessionView` (indexed O(1) lookups) or an `OutputItem[]` array.
 
+### `useResourceCollection(session, ref)`
+
+Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance and invalidated on observed `resource_change` items for the affected ref.
+
+### `useResourceCollectionList(session, ref, { limit?, topicPrefix? })`
+
+Convenience hook for paginated list views. Returns `items` (array of `CollectionItemHandle`), `pagination`, `isLoading`, `error`, `loadMore`, `refetch`. Surfaces the snapshot's `prefetched` window as the initial paint when set.
+
+### `useResourceCollectionItem(session, ref, topic)`
+
+Single-item lookup by topic. Returns `null` when not present.
+
+### `useResourceManifest(session)`
+
+Fetches the static manifest of public resources for the session's flow. Cached module-level by `flowKind` so all components share one fetch.
+
 ### `useAction(options)`
 
 Low-level hook for direct action execution without session management.

@@ -181,6 +181,8 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 
 Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.
 
+`defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.

@@ -47,7 +47,7 @@ function ChatView(): ReactElement {
   const flow = useFlow({ autoCreateSession: true });
   const session = useSession(flow.activeSessionId);
 
-  const messageCount = Number(session.snapshot?.state?.session?.messageCount ?? 0);
+  const messageCount = Number(session.snapshot?.clientData?.session?.messageCount ?? 0);
 
   const handleSend = async (): Promise<void> => {
     if (flow.activeSessionId === undefined || message.trim().length === 0) {

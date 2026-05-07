@@ -12,6 +12,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Hooks `onBlockDebugCapture` and `onConnectedInput` collapsed into a single `onBlockTraceCapture(payload, ctx)` keyed by phase (`added` / `input` / `generator` / `output`).
 - Migration: rename `block_output` → `block_trace` and `block_tool_output` → `tool_output` at consumer dispatch sites. The old `block_debug` payload moves under `block_trace.generator` and `block_trace.input.connected`. See `apps/docs/docs/streaming/items.md` for the full rename table.
 
+### Lazy collection state, query interface, and resource manifest (FIX-427) — breaking
+
+- Collection snapshots dropped the eager `items` map; entries now carry `count` (always) and an opt-in `prefetched` window. Per-item `clientData` in the window requires the new `client.state.read` permission.
+- New paginated list endpoint (`GET /sessions/:id/resources/:ref?limit=&offset=&topicPrefix=`) and single-item state endpoint (`GET /sessions/:id/resources/:ref/:topic`). Pagination returns `{ offset, limit, total, hasMore, nextOffset }`; the get-state endpoint returns `null` body when absent.
+- New manifest endpoint (`GET /sessions/:id/manifest`) describes every public resource on a flow — kind, scope, pattern, declared permissions, prefetchWindow. Static per `flowKind`.
+- `defineResourceCollection` gains `prefetchWindow?: number`. Items are selected by **lexicographic storage-key sort**, not by recency.
+- React surface: `useResourceCollection` returns `{ list, get, query, actions, refetch, prefetched, count }`; new `useResourceCollectionList`, `useResourceCollectionItem`, and `useResourceManifest` hooks for the common cases.
+
 ### `item.updated` SSE event for shallow-merge field deltas (FIX-572)
 
 Items whose non-text fields evolve between `item.added` and `item.done` now have a structured update primitive on the wire, replacing the prior choice between re-emitting whole items or never reflecting mid-flight state.

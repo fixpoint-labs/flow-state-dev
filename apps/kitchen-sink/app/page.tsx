@@ -6,7 +6,7 @@ import {
   useFlow,
   useSession,
   useClientData,
-  useResourceCollection,
+  useResourceCollectionList,
   useVoice,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
@@ -133,7 +133,7 @@ function KitchenSinkApp() {
   }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
-  const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
+  const { items: artifactItems, loadMore: loadMoreArtifacts, pagination: artifactsPagination } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null; activeSkills?: Array<{ name: string; source: string }> } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string; preferredProvider: string } | undefined;
@@ -146,18 +146,19 @@ function KitchenSinkApp() {
     return inferThinkingStyle(requestItems);
   }, [session.items]);
 
-  // Derive artifact summaries from the resource collection snapshot.
-  // Content is loaded lazily when a specific artifact is opened.
+  // Derive artifact summaries from the paginated artifact list. Content is
+  // loaded lazily via item.fetchContent() when an artifact is opened.
   const artifacts = useMemo(() => {
-    return Object.entries(artifactItems).map(([key, item]) => {
+    return artifactItems.map((item) => {
       const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
       return {
-        id: key.replace("artifacts/", ""),
+        id: item.topic.replace("artifacts/", ""),
         title: data?.title ?? "Untitled",
         summary: data?.summary ?? "",
         updatedAt: data?.updatedAt ?? 0,
         extension: data?.extension ?? null,
         content: data?.content ?? "",
+        _handle: item,
       };
     });
   }, [artifactItems]);
@@ -198,7 +199,7 @@ function KitchenSinkApp() {
       return;
     }
     const storageKey = `artifacts/${selectedArtifactId}`;
-    const item = artifactItems[storageKey];
+    const item = artifactItems.find((i) => i.topic === storageKey);
     if (!item) {
       setArtifactContent(null);
       return;

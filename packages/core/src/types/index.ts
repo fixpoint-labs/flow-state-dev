@@ -93,6 +93,7 @@ export type {
 export type {
   CollectionClientConfig,
   CollectionClientContentConfig,
+  CollectionStateClientConfig,
   ContextOf,
   DefinedResource,
   MessageLike,

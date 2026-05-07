@@ -205,6 +205,43 @@ describe("parseFlowRoute (router-backed)", () => {
         topic: "note_42"
       });
     });
+
+    it("GET /sessions/:sessionId/resources/:ref → list_collection_state", () => {
+      expect(parse("GET", "/sessions/sess_1/resources/notes")).toEqual({
+        kind: "list_collection_state",
+        sessionId: "sess_1",
+        ref: "notes"
+      });
+    });
+
+    it("GET /sessions/:sessionId/resources/:ref/:topic → get_collection_item_state", () => {
+      expect(parse("GET", "/sessions/sess_1/resources/notes/note_42")).toEqual({
+        kind: "get_collection_item_state",
+        sessionId: "sess_1",
+        ref: "notes",
+        topic: "note_42"
+      });
+    });
+
+    it("GET /sessions/:sessionId/resources/:ref/content prefers content over state-get (literal segment wins)", () => {
+      // Topics literally called "content" are not addressable via the state-get
+      // route; the existing /content endpoint takes precedence by literal-segment
+      // specificity. Documented as a routing constraint.
+      expect(
+        parse("GET", "/sessions/sess_1/resources/profile/content")
+      ).toEqual({
+        kind: "get_resource_content",
+        sessionId: "sess_1",
+        ref: "profile"
+      });
+    });
+
+    it("GET /sessions/:sessionId/manifest → get_resource_manifest", () => {
+      expect(parse("GET", "/sessions/sess_1/manifest")).toEqual({
+        kind: "get_resource_manifest",
+        sessionId: "sess_1"
+      });
+    });
   });
 
   describe("non-matching paths", () => {

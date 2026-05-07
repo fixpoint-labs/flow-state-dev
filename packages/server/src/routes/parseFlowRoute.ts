@@ -27,6 +27,9 @@ export type ParsedFlowRoute =
   | { kind: "create_collection_item"; sessionId: string; ref: string }
   | { kind: "update_resource_content"; sessionId: string; ref: string; topic: string }
   | { kind: "delete_collection_item"; sessionId: string; ref: string; topic: string }
+  | { kind: "list_collection_state"; sessionId: string; ref: string }
+  | { kind: "get_collection_item_state"; sessionId: string; ref: string; topic: string }
+  | { kind: "get_resource_manifest"; sessionId: string }
   | { kind: "abort_request"; flowKind: string; requestId: string }
   | { kind: "request_status"; flowKind: string; requestId: string }
   | { kind: "not_found" };

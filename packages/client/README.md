@@ -109,8 +109,17 @@ const { newRequestId } = await recovery.retry({
 - `createSSEClient(options)` — Request stream consumer
 - `createUserSSEClient(options)` — User-level stream consumer
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
+- `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest
 - `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
 - `ClientHttpError` — Typed HTTP error class
+
+### Resource client methods (collections)
+
+- `listCollectionItems(sessionId, ref, { limit?, offset?, topicPrefix? })` → `CollectionListPage`
+- `getCollectionItemState(sessionId, ref, topic)` → `CollectionItemState | null`
+- `getResourceManifest(sessionId)` → `ResourceManifest`
+
+The list/get-state methods require `client.state.read: true` on the collection. The manifest endpoint enumerates every public resource on the session's flow.
 
 ## Notes
 

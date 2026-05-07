@@ -40,6 +40,7 @@ export const artifactsCollection = defineResourceCollection({
   stateSchema: artifactStateSchema,
   client: {
     content: { read: true, update: true },
+    state: { read: true },
     data: (state) => ({
       title: state.title ?? "Untitled",
       summary: state.summary ?? "",

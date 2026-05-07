@@ -111,7 +111,7 @@ export function createAudioPlayer(
 
     enqueue(audioData: string, mediaType: string) {
       const bytes = base64ToBytes(audioData);
-      const blob = new Blob([bytes], { type: mediaType });
+      const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mediaType });
       const blobUrl = URL.createObjectURL(blob);
       queue.push({ blobUrl });
 
