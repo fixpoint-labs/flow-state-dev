@@ -195,12 +195,12 @@ function buildEnvelopeRepair<TKeys extends string>(
 
   return (candidate: unknown) => {
     if (Array.isArray(candidate)) {
-      return { [primaryKey]: candidate }
+      return { ...empty(), [primaryKey]: candidate }
     }
 
     if (typeof candidate === 'string') {
       const parsed = parseJsonLoose(candidate)
-      if (Array.isArray(parsed)) return { [primaryKey]: parsed }
+      if (Array.isArray(parsed)) return { ...empty(), [primaryKey]: parsed }
       if (parsed && typeof parsed === 'object') return parsed
       console.warn(
         `[tf.memory] consolidation/prune output unrecoverable; falling back to empty envelope (${candidate.length} chars)`,
