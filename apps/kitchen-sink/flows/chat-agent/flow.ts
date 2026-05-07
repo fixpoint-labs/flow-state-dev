@@ -307,51 +307,6 @@ const applyFeatures = handler({
   },
 });
 
-/**
- * One-time legacy-state migration.
- *
- * Earlier versions of this flow tracked a tier-style `preferredModel`,
- * a brand `preferredProvider`, and a session-scoped `resolvedModel`. The
- * current flow stores a concrete `selectedModel` plus a `thinkingEnabled`
- * boolean on user state and removes the session-scoped resolved-model
- * field entirely. This handler detects any of the legacy keys and clears
- * them on the next run so persisted user state from the old shape doesn't
- * stick around. Zod's strip behaviour drops session-state keys we no
- * longer declare in the schema, so `resolvedModel` cleans itself up
- * without an explicit unset here.
- */
-const migrateLegacyState = handler({
-  name: "migrate-legacy-state",
-  // Tolerate the legacy keys long enough to detect them — the schema below
-  // is `passthrough` so the read doesn't fail on stored old fields. We
-  // immediately overwrite with the new shape via `patchState`.
-  userStateSchema: z
-    .object({
-      displayName: z.string().default("Developer"),
-      selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
-      thinkingEnabled: z.boolean().default(false),
-      preferredModel: z.string().optional(),
-      preferredProvider: z.string().optional(),
-    })
-    .passthrough(),
-  execute: async (_input, ctx) => {
-    const raw = (ctx.user!.state as Record<string, unknown>) ?? {};
-    const hasLegacy =
-      "preferredModel" in raw || "preferredProvider" in raw;
-    if (!hasLegacy) return;
-    // Replace legacy fields with the new shape. We unset the legacy keys
-    // explicitly via `undefined` so the store layer drops them — Zod parse
-    // of the canonical user schema (no legacy keys) will also strip them
-    // on the next read either way.
-    await ctx.user!.patchState({
-      selectedModel: DEFAULT_KITCHEN_SINK_MODEL,
-      thinkingEnabled: false,
-      preferredModel: undefined,
-      preferredProvider: undefined,
-    } as Record<string, unknown>);
-  },
-});
-
 // Bias check pipeline — runs in background after the router produces output.
 // Wraps biasAnalyzer in responseAuditor for threshold filtering + UI display.
 // Skips the LLM calls entirely when the feature is disabled.
@@ -462,9 +417,6 @@ const setThinkingEnabledHandler = handler({
 // ---------------------------------------------------------------------------
 
 const runSequencer = sequencer({ name: "run", inputSchema })
-  // One-time clear of the legacy `preferredModel` / `preferredProvider`
-  // user-state keys. Cheap no-op once a user has the new shape.
-  .tap(migrateLegacyState)
   .tap(applyRequestedMode)
   .tap(applyFeatures)
   // FIX-421: up-front skill router. Decides activeSkills before the
