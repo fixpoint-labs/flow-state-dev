@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+/*
+ * OKLCH theme tokens ported from the Claude Design handoff (2026-05-06).
+ * Light theme is warm-neutral; dark is cool-neutral. Per-agent accent hue
+ * is supplied at the component level via the `--c` custom property.
+ *
+ * The `data-theme="light|dark"` attribute on <html> selects the active set.
+ */
+
+:root,
+[data-theme="light"] {
+  --c-bg:        oklch(98% 0.005 70);
+  --c-surface:   oklch(96% 0.008 70);
+  --c-surface-2: oklch(93% 0.010 70);
+  --c-border:    oklch(88% 0.010 70);
+  --c-fg:        oklch(22% 0.020 70);
+  --c-fg-muted:  oklch(46% 0.015 70);
+  --c-fg-faint:  oklch(62% 0.012 70);
+  --c-accent:    oklch(55% 0.16 248);
+  --c-accent-2:  oklch(58% 0.13 268);
+  --c-warn:      oklch(56% 0.16 28);
+  --c-fixture:   oklch(60% 0.04 220);
+  --c-live:      oklch(58% 0.14 148);
+  --c-pulse:     oklch(60% 0.16 28);
+}
+
+[data-theme="dark"] {
+  --c-bg:        oklch(16% 0.012 250);
+  --c-surface:   oklch(20% 0.012 250);
+  --c-surface-2: oklch(24% 0.012 250);
+  --c-border:    oklch(30% 0.012 250);
+  --c-fg:        oklch(94% 0.005 250);
+  --c-fg-muted:  oklch(72% 0.010 250);
+  --c-fg-faint:  oklch(54% 0.010 250);
+  --c-accent:    oklch(70% 0.14 248);
+  --c-accent-2:  oklch(72% 0.12 268);
+  --c-warn:      oklch(72% 0.16 28);
+  --c-fixture:   oklch(64% 0.05 220);
+  --c-live:      oklch(70% 0.13 148);
+  --c-pulse:     oklch(70% 0.16 28);
+}
+
+@theme {
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "ss02", "cv11";
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Pulse dot used by the status bar while a request is streaming. */
+@keyframes td-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.td-pulse {
+  animation: td-pulse 1.4s ease-in-out infinite;
+}
+
+/* Blinking caret used by streaming speak rows. */
+@keyframes td-caret {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.td-caret {
+  animation: td-caret 1s steps(1, end) infinite;
+}
