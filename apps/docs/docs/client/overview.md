@@ -132,6 +132,10 @@ State snapshots include `clientData` — derived values computed from state and 
 
 Request a snapshot after `request.completed` for the authoritative final state. The stream gives you live updates; the snapshot gives you correctness.
 
+## Resource methods
+
+Collection resources expose paginated read methods on the resource client: `listCollectionItems` returns a page of item state, `getCollectionItemState` fetches a single item by topic. A separate `getResourceManifest` returns the static description of every public resource on a session's flow. See [Resource Collections — lazy state](/docs/resources/collections#lazy-state-by-default) and [Resource Manifest](/docs/resources/manifest) for the full mental model and React hook surface in [client/react](/docs/client/react#resource-collection-hooks).
+
 ## Transcription helper
 
 For voice flows, the client exports a transcription helper:

@@ -170,3 +170,105 @@ If the set is bounded and predictable (three artifact slots), a static resource 
 ## Exposing collections to clients
 
 Collections can declare a `client` config to make their items visible to the frontend. This gives you React hooks for listing items, lazy-loading content, and performing CRUD operations. See [Client Access](/docs/resources/client-access) for the full reference.
+
+## Lazy state by default
+
+Collection state is fetched on demand. The session snapshot no longer carries every item's state — that approach broke down once collections grew past a few dozen items, and shared (org-scoped) collections made the bloat unworkable across sessions.
+
+What the snapshot carries for each client-visible collection:
+
+```ts
+resources: {
+  session: {
+    artifacts: {
+      count: 132,        // total items, always emitted
+      prefetched?: [...]  // optional, only when prefetchWindow is set
+    }
+  }
+}
+```
+
+There's no `items` map anymore. Clients fetch a page when they need one.
+
+### Listing items from a client
+
+Two surfaces, same data:
+
+- **HTTP**: `GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=` returns one page.
+- **React**: [`useResourceCollectionList`](/docs/client/react) wraps that endpoint and handles the React state lifecycle.
+
+A minimal example:
+
+```tsx
+const { items, pagination, loadMore } = useResourceCollectionList(session, "artifacts", {
+  limit: 50,
+});
+
+return (
+  <>
+    {items.map((item) => <ArtifactRow key={item.topic} item={item} />)}
+    {pagination?.hasMore && <button onClick={loadMore}>Load more</button>}
+  </>
+);
+```
+
+Each item is a `CollectionItemHandle` with `topic`, `clientData`, and a lazy `fetchContent()` that hits the existing content endpoint.
+
+The page response shape mirrors the rest of the framework:
+
+```ts
+{
+  items: [{ topic: string, clientData?: unknown }],
+  pagination: { offset, limit, total, hasMore, nextOffset }
+}
+```
+
+`limit` defaults to 50 and is capped at 200.
+
+### Filtering with topicPrefix
+
+Pass `topicPrefix` to narrow the page. The prefix matches the **full storage key**, not just the topic suffix. So for a collection with pattern `artifacts/**`, items have keys like `artifacts/projects/abc/spec.md`, and `topicPrefix: "artifacts/projects/abc"` matches all items under that namespace.
+
+```tsx
+useResourceCollectionList(session, "artifacts", {
+  topicPrefix: "artifacts/projects/abc",
+});
+```
+
+This pairs with the namespacing convention from parameterized patterns — `[topic]/observations` keys naturally compose into prefix queries.
+
+### prefetchWindow
+
+For small, always-needed collections, the snapshot can carry the first N items inline. Set `prefetchWindow` on the collection definition:
+
+```ts
+defineResourceCollection({
+  pattern: "artifacts/**",
+  stateSchema: artifactSchema,
+  client: {
+    state: { read: true },
+    data: (state) => ({ title: state.title }),
+  },
+  prefetchWindow: 20,
+});
+```
+
+The snapshot then includes `prefetched: [{ topic, clientData }, ...]` for the first 20 items. Consumers render immediately without an extra round-trip; the convenience hook surfaces them as the initial paint.
+
+Ordering is by **lexicographic storage key**, not by recency. There's no per-item `updatedAt` on the storage layer today, so picking the "most recently updated" 20 items would require schema work that's deliberately out of scope for this version. Apps that need recency can encode timestamps into topic keys (e.g., `2026-05-06T12:00|spec.md`); a future revision may add a richer ordering model.
+
+The default is `0` (no prefetched window).
+
+### Server-side projections still work
+
+Scope-level `clientData` functions that call `collection.list()` continue to work. Lazy snapshots changed what the server *emits*, not what it *loads* — the full `persisted` map is still available to the projection function.
+
+### Migration from earlier versions
+
+The old snapshot carried `resources[scope][ref].items` as a record of every item's `clientData`. That field is gone except via an internal escape hatch that's removed before the next minor release. To migrate:
+
+1. Replace `useResourceCollection({ items, actions })` destructure with `useResourceCollectionList(session, ref, { limit })` for paginated rendering, or call `list()` directly from `useResourceCollection` for custom flows.
+2. Add `client: { state: { read: true } }` to any collection whose per-item `clientData` should remain visible to clients. State is gated separately from content now.
+3. If you relied on `Object.keys(items).length` for a count, read the always-emitted `count` field from the snapshot.
+
+See the changelog entry for the per-version detail.
