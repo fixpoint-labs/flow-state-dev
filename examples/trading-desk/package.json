@@ -9,8 +9,8 @@
     "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "start": "next start",
-    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
-    "test:watch": "vitest --root ."
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root . --passWithNoTests",
+    "test:watch": "vitest --root . --passWithNoTests"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",
