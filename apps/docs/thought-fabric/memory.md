@@ -112,6 +112,28 @@ const mem = memorySystem({
 
 Semantic requires episodic. You can't have semantic without episodic, because consolidation draws from the episodic store.
 
+### Choosing models per generator
+
+Every memory generator (observe, consolidate, prune) defaults to the top-level `model`. Two knobs let you tune that:
+
+- **Fallback chains.** `model` accepts a `string[]` instead of a single id. The framework wires the array into a fallback chain — generators walk the list on retryable provider errors.
+- **Per-block overrides.** `consolidationModel` and `pruneModel` override `model` for those specific generators. Consolidation has heavier structured-output demands than the observer, so a stronger primary with a cheap fallback is often worth it.
+
+```ts
+memorySystem({
+  model: 'gpt-5-mini',                          // observer default
+  consolidationModel: ['gpt-5', 'gpt-5-mini'],  // primary with fallback
+  pruneModel: 'gpt-5',
+  working: true,
+  episodic: true,
+  semantic: true,
+})
+```
+
+The recall tool still uses a single id (no fallback yet). When `model` is an array, the recall tool defaults to the first entry — pass `tool.model` to override.
+
+The consolidation and prune generators also include an output-repair hook that re-shapes common LLM mis-shapes (bare arrays, narrative text wrapping a JSON block, missing array keys) back into the expected envelope before the schema re-validates. Smaller models occasionally drop out of structured-output mode; the repair hook turns most of those into a recovered run instead of a step error.
+
 ## Capability Surface
 
 Every `memory.system()` instance exposes a `capability` field that wraps the memory system's resources, context formatting, and helper functions into a single `defineCapability()` surface. Declare it in `uses` and the framework installs everything automatically.

@@ -260,8 +260,22 @@ export interface MemoryToolConfig {
 
 /** Top-level configuration for memory.system(). */
 export interface MemorySystemConfig {
-  /** Model ID for the observer LLM. */
-  model: string
+  /**
+   * Default model id (or fallback chain) used by every memory generator
+   * unless overridden. Pass an array (e.g. `['gpt-5-mini', 'gpt-5']`) to
+   * build a fallback chain — the generator walks the list on retryable
+   * provider errors.
+   */
+  model: string | string[]
+  /**
+   * Model override for the consolidation generator. Defaults to `model`.
+   * Consolidation has heavier structured-output demands than the observer,
+   * so a stronger primary with a cheap fallback (e.g.
+   * `['gpt-5', 'gpt-5-mini']`) is a common configuration.
+   */
+  consolidationModel?: string | string[]
+  /** Model override for the prune generator. Defaults to `model`. */
+  pruneModel?: string | string[]
   /** Working memory config. `true` for defaults. Required. */
   working: WorkingMemorySystemConfig | true
   /** Episodic memory config. `true` for defaults. Omit to disable. */
@@ -852,6 +866,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const blocksConfig = {
     name: config.name,
     model: config.model,
+    consolidationModel: config.consolidationModel,
+    pruneModel: config.pruneModel,
     working: resolvedWorking,
     episodic: episodicConfig,
     _episodicResource: episodicResource,
@@ -896,8 +912,12 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // every generator that installs it. Strategy is created here so the
   // underlying generator block (for llm-filter) is cached.
   const toolConfig = config.tool ?? {}
+  // The recall-tool strategy uses a single model id (no fallback chain). When
+  // the caller supplied an array on `config.model`, pick the primary entry as
+  // the strategy's model — they can override explicitly via `tool.model`.
+  const fallbackPrimary = Array.isArray(config.model) ? config.model[0] : config.model
   const recallStrategy = resolveStrategy(toolConfig.strategy ?? 'llm-filter', {
-    model: toolConfig.model ?? config.model,
+    model: toolConfig.model ?? fallbackPrimary,
   })
   const recallToolBlock = createRecallTool({
     strategy: recallStrategy,

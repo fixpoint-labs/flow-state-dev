@@ -30,7 +30,23 @@ import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
 
 export interface MemorySystemBlocksConfig {
   name?: string
-  model: string
+  /**
+   * Default model id (or fallback chain). When an array is provided, it is
+   * resolved into a `createFallbackModel` chain — the generator walks the
+   * list on retryable provider errors. See `resolveModel` in core.
+   */
+  model: string | string[]
+  /**
+   * Model override for the consolidation generator. Defaults to `model`.
+   * Consolidation has heavier structured-output demands than the observer,
+   * so a stronger primary with a cheap fallback (e.g.
+   * `['gpt-5', 'gpt-5-mini']`) is a common configuration.
+   */
+  consolidationModel?: string | string[]
+  /**
+   * Model override for the prune generator. Defaults to `model`.
+   */
+  pruneModel?: string | string[]
   working: WorkingMemoryHelperConfig
   episodic?: {
     scope: 'user' | 'org'
@@ -92,6 +108,123 @@ export const consolidationOutputSchema = z.object({
 })
 
 export type ConsolidationOutput = z.infer<typeof consolidationOutputSchema>
+
+// ---------------------------------------------------------------------------
+// Output repair helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk a JSON-ish string and return the still-open bracket stack at the end
+ * of input. String-aware so quoted braces/brackets don't shift the depth.
+ */
+function jsonOpenStack(text: string): string[] {
+  const stack: string[] = []
+  let inString = false
+  let escape = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (escape) { escape = false; continue }
+    if (c === '\\') { escape = true; continue }
+    if (c === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (c === '{' || c === '[') stack.push(c)
+    else if (c === '}' || c === ']') stack.pop()
+  }
+  return stack
+}
+
+/**
+ * Best-effort recovery for JSON output truncated mid-stream — typically when
+ * the model hits `max_output_tokens` during a long array of items. Walks back
+ * to each `}` candidate, drops a trailing `,`, and synthesizes closers for
+ * any still-open structures. Loop terminates naturally: each iteration moves
+ * `cursor` strictly left, and `lastIndexOf('}', -1)` returns -1.
+ */
+function repairTruncatedJson(text: string): unknown {
+  const trimmed = text.trim()
+  let cursor = trimmed.length
+  while (cursor > 0) {
+    const lastBrace = trimmed.lastIndexOf('}', cursor - 1)
+    if (lastBrace < 0) return undefined
+    let prefix = trimmed.slice(0, lastBrace + 1).replace(/,\s*$/, '')
+    const opens = jsonOpenStack(prefix)
+    let closer = ''
+    for (let j = opens.length - 1; j >= 0; j--) {
+      closer += opens[j] === '{' ? '}' : ']'
+    }
+    try {
+      return JSON.parse(prefix + closer)
+    } catch {
+      cursor = lastBrace
+    }
+  }
+  return undefined
+}
+
+function parseJsonLoose(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const body = (fenced ? fenced[1] : text).trim()
+  const start = body.search(/[{[]/)
+  if (start < 0) return undefined
+  const sliced = body.slice(start)
+  try {
+    return JSON.parse(sliced)
+  } catch {
+    return repairTruncatedJson(sliced)
+  }
+}
+
+/**
+ * Build a `repairOutput` function that coerces common LLM mis-shapes back into
+ * the expected `{ [arrayKey]: [...] }` (or, for prune, `{ removals, merges }`)
+ * envelope. Handles bare arrays, narrative text wrapping JSON, truncated
+ * output, and partial objects missing one of the expected array keys.
+ *
+ * Core's `attemptDefaultRepair` covers `{ output }` unwrap and the simple
+ * string→JSON.parse case, but is bypassed entirely once `repairOutput` is set
+ * (see `applyRepairPolicy` in core's generator), so the simple legs are
+ * re-implemented here. Unrecoverable strings degrade to an empty envelope so
+ * a single bad consolidation cycle doesn't crash the background `.work()`.
+ */
+function buildEnvelopeRepair<TKeys extends string>(
+  arrayKeys: readonly TKeys[],
+): (candidate: unknown) => unknown {
+  const primaryKey = arrayKeys[0]
+  const empty = (): Record<string, unknown[]> =>
+    Object.fromEntries(arrayKeys.map((k) => [k, []]))
+
+  return (candidate: unknown) => {
+    if (Array.isArray(candidate)) {
+      return { ...empty(), [primaryKey]: candidate }
+    }
+
+    if (typeof candidate === 'string') {
+      const parsed = parseJsonLoose(candidate)
+      if (Array.isArray(parsed)) return { ...empty(), [primaryKey]: parsed }
+      if (parsed && typeof parsed === 'object') return parsed
+      console.warn(
+        `[tf.memory] consolidation/prune output unrecoverable; falling back to empty envelope (${candidate.length} chars)`,
+      )
+      return empty()
+    }
+
+    if (candidate && typeof candidate === 'object') {
+      const obj = candidate as Record<string, unknown>
+      if ('output' in obj) return obj.output
+      const patched: Record<string, unknown> = { ...obj }
+      let touched = false
+      for (const key of arrayKeys) {
+        if (!(key in patched)) {
+          patched[key] = []
+          touched = true
+        }
+      }
+      return touched ? patched : obj
+    }
+
+    return candidate
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Block factories
@@ -652,17 +785,20 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
 
   return generator({
     name: config.name ? `${config.name}/consolidate/generate` : 'tf.memory/consolidate/generate',
-    model: config.model,
+    model: config.consolidationModel ?? config.model,
     inputSchema: z.any(),
     outputSchema: consolidationOutputSchema,
     prompt: consolidationPrompt,
     context: buildContext,
     user: (_input: unknown) => 'Consolidate the episodes into semantic facts.',
-    // Small models occasionally drop out of structured-output mode and return
-    // narrative text instead of JSON. Allow more repair attempts than the
-    // default (1) so the pipeline can recover before the background task
-    // fails (a failed `block_output` will then surface on the trace channel).
+    // Small models occasionally drop out of structured-output mode and emit
+    // narrative text or a bare array instead of `{ facts: [...] }`.
+    // `repairOutput` re-shapes those candidates so the schema can
+    // re-validate; `maxAttempts: 3` lets the pipeline recover before the
+    // background task fails (a failed `block_output` will then surface on
+    // the trace channel).
     repair: { mode: 'auto', maxAttempts: 3 },
+    repairOutput: buildEnvelopeRepair(['facts']),
     agentType: "trace",
   })
 }
@@ -960,12 +1096,14 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
 
   return generator({
     name: config.name ? `${config.name}/prune/generate` : 'tf.memory/prune/generate',
-    model: config.model,
+    model: config.pruneModel ?? config.model,
     inputSchema: z.any(),
     outputSchema: pruneOutputSchema,
     prompt: prunePrompt,
     context: buildContext,
     user: (_input: unknown) => 'Review the facts and identify removals and merges.',
+    repair: { mode: 'auto', maxAttempts: 3 },
+    repairOutput: buildEnvelopeRepair(['removals', 'merges']),
     agentType: "trace",
   })
 }
