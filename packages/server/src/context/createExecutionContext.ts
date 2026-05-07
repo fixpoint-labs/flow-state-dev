@@ -3178,10 +3178,15 @@ export async function createExecutionContext<
               completedAt,
               duration
             };
+            // Clear the handle before emitting so a throw from emitItemUpdated
+            // or emitItemDone can't re-enter the failure-path close in the
+            // catch and produce a contradictory `completed → failed` sequence.
+            const closing = containerItem;
+            containerItem = undefined;
             if (containerResponse.emitItemUpdated !== undefined) {
-              await containerResponse.emitItemUpdated(containerItem.id, patch);
+              await containerResponse.emitItemUpdated(closing.id, patch);
             }
-            const finalItem: ContainerItem = { ...containerItem, ...patch };
+            const finalItem: ContainerItem = { ...closing, ...patch };
             await containerResponse.emitItemDone(finalItem);
           }
 
