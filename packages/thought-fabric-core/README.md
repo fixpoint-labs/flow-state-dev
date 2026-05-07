@@ -264,6 +264,28 @@ const text = ctx.cap.digestMemory.content()
 
 The digest's scope is inherited from `semantic` — there is no separate `digest.scope` knob.
 
+### Model selection and fallback chains
+
+Every memory generator (observe, consolidate, prune) defaults to the top-level `model`. Two knobs exist for tuning:
+
+- **Fallback chains** — `model` accepts a `string[]` in addition to a single id. The framework wires the array into a fallback chain (via `createFallbackModel`), walking the list on retryable provider errors.
+- **Per-block overrides** — `consolidationModel` and `pruneModel` override `model` for those generators only. Consolidation has heavier structured-output demands than the observer, so a stronger primary with a cheap fallback is a common configuration.
+
+```ts
+memorySystem({
+  model: 'gpt-5-mini',                          // observer default
+  consolidationModel: ['gpt-5', 'gpt-5-mini'],  // primary with fallback
+  pruneModel: 'gpt-5',                          // override for prune only
+  working: true,
+  episodic: true,
+  semantic: true,
+})
+```
+
+The recall tool uses a single model id (no fallback chain support yet). When `model` is an array, the recall tool defaults to the first entry; pass `tool.model` to override explicitly.
+
+The consolidation and prune generators also include a `repairOutput` hook that re-shapes common LLM mis-shapes (bare arrays, narrative text wrapping a JSON block, missing array keys) back into the expected envelope before the schema re-validates — so structured-output drift on smaller models doesn't surface as a step error on the first hiccup.
+
 ## Memory Recall Tool
 
 Agent-invocable search over stored memory (semantic facts + past episodes). Working memory is intentionally excluded — it lives in the formatter.
