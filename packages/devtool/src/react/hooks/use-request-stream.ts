@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus, RequestStreamEvent } from "@flow-state-dev/core/items";
+import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
 import type { RequestStreamHandle } from "@flow-state-dev/client";
 import { connectRequestStream } from "../lib/client";
 import { useDevTool } from "../context/devtool-context";
@@ -170,6 +171,20 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         state.lastSequenceNumber = event.sequence_number;
         const item = event.item;
         state.items.set(item.id, item);
+        scheduleFlush();
+      },
+      onItemUpdated: (event) => {
+        state.lastSequenceNumber = event.sequence_number;
+        const existing = state.items.get(event.itemId);
+        // Out-of-order: update arrived before item.added (e.g. mid-stream
+        // reconnect). Drop silently — itemOrder isn't mutated either way.
+        if (!existing) return;
+        const sanitized: Record<string, unknown> = {};
+        for (const key of Object.keys(event.patch)) {
+          if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
+          sanitized[key] = event.patch[key];
+        }
+        state.items.set(event.itemId, { ...existing, ...sanitized } as OutputItem);
         scheduleFlush();
       },
       onContentDelta: (event) => {
