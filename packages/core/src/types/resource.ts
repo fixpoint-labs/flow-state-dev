@@ -59,12 +59,32 @@ export type ResourceClientConfig = {
 };
 
 /**
+ * Client-side state access permissions for a collection resource.
+ * Collection-only — single resources gate state access via `clientData` directly.
+ */
+export type CollectionStateClientConfig = {
+  /**
+   * Allow clients to read per-item `clientData` via the list/get-state endpoints
+   * and inline in the snapshot's `prefetched` window. The collection's `count`
+   * is always emitted regardless of this flag — it's a cardinality affordance,
+   * not state.
+   */
+  read?: boolean;
+};
+
+/**
  * Client visibility configuration for a collection resource.
  * Controls what data is exposed to the client and how.
  */
 export type CollectionClientConfig = {
   /** Content access permissions — governs access to rendered content bodies and CRUD operations. */
   content?: CollectionClientContentConfig;
+  /**
+   * State access permissions — governs the new list/get-state endpoints and
+   * whether `prefetched` snapshot entries carry per-item `clientData`. Has no
+   * effect on the always-emitted `count`.
+   */
+  state?: CollectionStateClientConfig;
   /** Derives client-visible metadata from each instance's state. Appears under `resources[ref].items[topic].clientData` in the snapshot. */
   data?: ResourceClientDataFn;
 };

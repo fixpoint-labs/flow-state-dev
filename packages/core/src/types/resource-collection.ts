@@ -51,6 +51,16 @@ export type ResourceCollectionConfig = {
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig;
 
+  /**
+   * Number of items to inline in the snapshot's `prefetched` window for this
+   * collection. Default `0` (lazy — clients fetch items via the list endpoint
+   * or `useResourceCollectionList`). Items are selected in lexicographic
+   * storage-key order, not by recency. Per-item `clientData` is included only
+   * when `client.state.read` is also `true`; otherwise prefetched entries
+   * carry just the `topic`.
+   */
+  prefetchWindow?: number;
+
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;
   /** Fires when a specific instance's state is updated. */
@@ -150,6 +160,20 @@ export function defineResourceCollection<
 
   if (config.eviction !== undefined && config.eviction !== "none" && config.maxInstances === undefined) {
     throw new Error("defineResourceCollection() eviction requires maxInstances");
+  }
+
+  if (config.prefetchWindow !== undefined) {
+    if (!Number.isInteger(config.prefetchWindow) || config.prefetchWindow < 0) {
+      throw new Error(
+        `defineResourceCollection() prefetchWindow must be a non-negative integer (got ${JSON.stringify(config.prefetchWindow)})`
+      );
+    }
+    if (config.prefetchWindow > 100) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `defineResourceCollection(): prefetchWindow=${config.prefetchWindow} is large; prefetched items inflate every snapshot. Consider lazy reads via the list endpoint instead.`
+      );
+    }
   }
 
   return Object.assign({}, config, {
