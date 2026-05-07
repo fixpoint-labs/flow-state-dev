@@ -1,10 +1,8 @@
 /**
- * SSE heartbeat injection for long-lived streams.
- *
- * Wraps a ReadableStream to inject periodic SSE comment frames (`: ping\n\n`)
- * that keep intermediate proxies and load balancers from closing idle
- * connections, and let clients run an inactivity watchdog without false
- * positives during long pauses (e.g. while an LLM is thinking).
+ * SSE heartbeat injection — legacy stream-wrapping helper retained for the
+ * Vercel adapter's public re-export. New code should construct an
+ * `SSEStreamHandle` via `createSSEStream({ pingIntervalMs })`, which owns
+ * the heartbeat timer alongside frame writes and lifecycle.
  */
 
 const encoder = new TextEncoder();

@@ -1,9 +1,8 @@
 /**
- * LiveRequestStream — bridges ResponseEmitter events to a ReadableStream for SSE transport.
- *
- * When the ResponseEmitter emits an event via its onEvent callback, the event is
- * SSE-encoded and enqueued to the ReadableStream controller. The SSE endpoint returns
- * the readable side as the Response body — delivering events to the client in real-time.
+ * LiveRequestStream — bridges `ResponseEmitter` events to an SSE-shaped
+ * `ReadableStream` for transport. Each emitted event is encoded and written
+ * to the underlying `SSEStreamHandle`; the handle owns frame serialization,
+ * the heartbeat timer, and lifecycle.
  */
 import type { RequestStreamEventWithId } from "./response-emitter";
 import { encodeStreamEvent } from "./encode-event";
@@ -13,7 +12,7 @@ import {
 } from "./response-emitter";
 import type { InternalStreamingSeams } from "./internal/seams";
 import { createClientEventFilter } from "./client-filter";
-import { injectHeartbeat } from "./heartbeat";
+import { createSSEStream } from "./sse-stream";
 
 export type LiveRequestStream = {
   readonly requestId: string;
@@ -28,62 +27,38 @@ export type CreateLiveRequestStreamOptions = {
   internalSeams?: InternalStreamingSeams;
   /**
    * SSE heartbeat interval in milliseconds. When set to a positive number,
-   * the readable stream emits periodic `: ping\n\n` comment frames to keep
-   * proxies/load balancers from closing idle connections and to give
-   * clients a wire-level signal for inactivity watchdogs. When 0, undefined,
-   * or negative, the stream is returned unwrapped.
+   * the stream emits periodic `: ping\n\n` comment frames so proxies / load
+   * balancers don't close the idle connection and clients have a wire-level
+   * inactivity signal. `0`, `undefined`, or a non-positive value disables
+   * the heartbeat.
    */
   sseHeartbeatMs?: number;
 };
 
-const encoder = new TextEncoder();
-
 /**
- * Creates a LiveRequestStream that bridges a ResponseEmitter to a ReadableStream.
- *
- * The emitter's onEvent callback SSE-encodes each event and enqueues it to the
- * stream controller. The readable side can be returned directly as an SSE Response body.
+ * Creates a LiveRequestStream that bridges a `ResponseEmitter` to an
+ * SSE-shaped readable stream. Events that pass the client-visible filter are
+ * forwarded to the underlying handle; trace items are dropped at this layer.
  */
 export function createLiveRequestStream(
   options: CreateLiveRequestStreamOptions
 ): LiveRequestStream {
   const { requestId } = options;
 
-  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-  let closed = false;
-
-  const rawReadable = new ReadableStream<Uint8Array>({
-    start(c) {
-      controller = c;
-    },
-    cancel() {
-      closed = true;
-    }
+  const handle = createSSEStream({
+    pingIntervalMs: options.sseHeartbeatMs
   });
-
-  const readable =
-    options.sseHeartbeatMs !== undefined && options.sseHeartbeatMs > 0
-      ? injectHeartbeat(rawReadable, options.sseHeartbeatMs)
-      : rawReadable;
 
   const shouldForward = createClientEventFilter();
 
   const onEvent = (event: RequestStreamEventWithId): void => {
-    if (closed || controller === undefined) {
+    if (handle.closed) {
       return;
     }
-
     if (!shouldForward(event)) {
       return;
     }
-
-    try {
-      const sseFrame = encodeStreamEvent(event);
-      controller.enqueue(encoder.encode(sseFrame));
-    } catch (err) {
-      console.warn("[flow-state] LiveStream event delivery failed:", err);
-      closed = true;
-    }
+    handle.writeRaw(encodeStreamEvent(event));
   };
 
   const emitter = createInternalResponseEmitter({
@@ -93,22 +68,10 @@ export function createLiveRequestStream(
     internalSeams: options.internalSeams
   });
 
-  function close(): void {
-    if (closed) {
-      return;
-    }
-    closed = true;
-    try {
-      controller?.close();
-    } catch {
-      // Controller may already be closed (e.g. client disconnected)
-    }
-  }
-
   return {
     requestId,
     emitter,
-    readable,
-    close
+    readable: handle.readable,
+    close: () => handle.close()
   };
 }

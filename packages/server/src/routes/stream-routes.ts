@@ -13,11 +13,11 @@ import {
   filterClientEvents
 } from "../streaming/client-filter";
 import { encodeStreamEvent } from "../streaming/encode-event";
-import { injectHeartbeat } from "../streaming/heartbeat";
 import {
   resolveRequestReplayCursor,
   replayRequestEvents
 } from "../streaming/resume";
+import { createSSEStream } from "../streaming/sse-stream";
 import {
   buildReplayEvents,
   getBooleanFlag,
@@ -38,8 +38,6 @@ type StreamRouteContext = {
    */
   defaultSseHeartbeatMs?: number;
 };
-
-const textEncoder = new TextEncoder();
 
 export async function handleRequestStream(
   request: Request,
@@ -71,81 +69,59 @@ export async function handleRequestStream(
       startingAfter: url.searchParams.get("starting_after")
     });
 
-    // Replay buffered events after cursor (or all if no cursor), then tail live.
-    // Always creates a fresh subscriber ReadableStream — the original
-    // activeStream.readable is single-use and becomes unusable after the
-    // first client disconnects.
+    // Both the buffered replay and the live observer feed write to one
+    // SSEStreamHandle — the dual-`ReadableStream` smell from the old
+    // implementation goes away; framing, heartbeat, and lifecycle live
+    // inside the handle.
     const minSeq = cursor.sequenceNumber ?? -1;
     const emitter = activeStream.emitter;
+    const shouldForward = includeTrace ? undefined : createClientEventFilter();
 
-    const readable = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const shouldForward = includeTrace ? undefined : createClientEventFilter();
+    const handle = createSSEStream({ pingIntervalMs: sseHeartbeatMs });
 
-        // 1. Replay buffered events after the cursor.
-        // FIX-479: content.delta is non-replayable. The reconnecting
-        // client snaps forward to the latest item snapshot from
-        // item.added/done payloads; it picks up live deltas from the
-        // observer subscription (step 2) onward.
-        const buffered = emitter.getEvents();
-        for (const event of buffered) {
-          if (event.sequence_number <= minSeq) continue;
-          if (
-            event.type === "ping" ||
-            event.type === "debug" ||
-            event.type === "content.delta"
-          ) {
-            continue;
-          }
-          if (shouldForward && !shouldForward(event)) continue;
-          const frame = encodeStreamEvent(event);
-          controller.enqueue(textEncoder.encode(frame));
-        }
+    // 1. Replay buffered events after the cursor.
+    // FIX-479: content.delta is non-replayable. The reconnecting client
+    // snaps forward to the latest item snapshot from item.added/done
+    // payloads; it picks up live deltas from the observer (step 2) onward.
+    const buffered = emitter.getEvents();
+    for (const event of buffered) {
+      if (event.sequence_number <= minSeq) continue;
+      if (
+        event.type === "ping" ||
+        event.type === "debug" ||
+        event.type === "content.delta"
+      ) {
+        continue;
+      }
+      if (shouldForward && !shouldForward(event)) continue;
+      handle.writeRaw(encodeStreamEvent(event));
+    }
 
-        // 2. Subscribe to new events going forward. content.delta is
-        // forwarded live here — the resume contract drops only the
-        // historical (buffered) deltas, not the in-flight stream.
-        emitter.addEventObserver((event) => {
-          if (event.sequence_number <= minSeq) return;
-          if (event.type === "ping" || event.type === "debug") return;
-          if (shouldForward && !shouldForward(event)) return;
-          try {
-            const frame = encodeStreamEvent(event);
-            controller.enqueue(textEncoder.encode(frame));
-          } catch {
-            // Controller closed — client disconnected or navigated away.
-            // This is expected during long-running background work
-            // (e.g. forEachBackground dispatches). Silently ignore.
-          }
+    // 2. Subscribe to new events going forward. content.delta is forwarded
+    // live here — the resume contract drops only the historical (buffered)
+    // deltas, not the in-flight stream.
+    emitter.addEventObserver((event) => {
+      if (handle.closed) return;
+      if (event.sequence_number <= minSeq) return;
+      if (event.type === "ping" || event.type === "debug") return;
+      if (shouldForward && !shouldForward(event)) return;
+      handle.writeRaw(encodeStreamEvent(event));
 
-          // Close when terminal status is reached.
-          const status = (event as { status?: string }).status;
-          if (
-            event.type === "request.completed" ||
-            event.type === "request.failed" ||
-            event.type === "request.incomplete" ||
-            event.type === "request.aborted" ||
-            (event.type === "request.interrupted" && status === "interrupted")
-          ) {
-            try {
-              controller.close();
-            } catch {
-              // Already closed.
-            }
-          }
-        });
-      },
-      cancel() {
-        // Client disconnected — nothing to clean up for observers.
+      // Close on terminal status. The handle's writes after close are
+      // no-ops, so any racing observer firings are safely dropped.
+      const status = (event as { status?: string }).status;
+      if (
+        event.type === "request.completed" ||
+        event.type === "request.failed" ||
+        event.type === "request.incomplete" ||
+        event.type === "request.aborted" ||
+        (event.type === "request.interrupted" && status === "interrupted")
+      ) {
+        handle.close();
       }
     });
 
-    const wrapped =
-      sseHeartbeatMs !== undefined && sseHeartbeatMs > 0
-        ? injectHeartbeat(readable, sseHeartbeatMs)
-        : readable;
-
-    return new Response(wrapped, {
+    return new Response(handle.readable, {
       status: 200,
       headers: SSE_HEADERS
     });
