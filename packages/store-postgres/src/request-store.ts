@@ -1,17 +1,55 @@
 /**
  * PostgreSQL RequestStore implementation.
- * Extends the generic pg record store with item persistence (microtask batching)
- * and event persistence (separate request_events table).
+ *
+ * Two persistence paths layer on top of the generic record store:
+ * - items: microtask-batched, last-write-wins, atomic jsonb_set merge.
+ * - events: per-row INSERT INTO request_events with `pg_notify('flow_events', ...)`
+ *   inside the same transaction. The notify is suppressed on rollback —
+ *   subscribers never see signals for events that aren't durable (FIX-569 §3.4).
+ *
+ * `subscribeToEvents` consumes notifications via a dedicated `pg.Client`
+ * checked out from `liveTailPool` and uses the dirty-bit Notifier Pattern:
+ * one drain query per dirty cycle, regardless of NOTIFY volume. When
+ * `liveTailPool` is absent (PGlite, raw QueryExecutor injection) it falls
+ * back to polling on the same shape as SQLite.
  */
 
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type {
-  RequestListOptions,
-  RequestRecord,
-  RequestStore
+import {
+  isTerminalRequestStreamEvent,
+  synthesizeRequestInterrupted,
+  StoreSubscriptionError,
+  type RequestListOptions,
+  type RequestRecord,
+  type RequestStore,
+  type SubscribeToEventsOptions
 } from "@flow-state-dev/server";
+import type { Pool, PoolClient } from "pg";
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";
+
+const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
+const DEFAULT_POLL_INTERVAL_MS = 250;
+const NOTIFY_CHANNEL = "flow_events";
+const RECONNECT_BUDGET = 5;
+const RECONNECT_BACKOFF_MIN_MS = 100;
+const RECONNECT_BACKOFF_MAX_MS = 1_600;
+
+export type CreatePostgresRequestStoreOptions = {
+  /**
+   * Dedicated `pg.Pool` for `LISTEN flow_events` checkouts. Reusing the
+   * main query pool would pin one connection per concurrent subscriber
+   * and starve query traffic. Set to `null` to disable LISTEN entirely
+   * and fall back to polling. Default: undefined (caller wires it via
+   * `createPostgresStores`).
+   */
+  liveTailPool?: Pool | null;
+  /**
+   * Poll interval (ms) for the no-LISTEN fallback path used when
+   * `liveTailPool` is absent (PGlite, raw QueryExecutor). Default 250ms.
+   */
+  subscribePollIntervalMs?: number;
+};
 
 /**
  * Backfill `source` on records persisted before FIX-438 added the field.
@@ -23,7 +61,14 @@ function withSourceDefault(record: RequestRecord | undefined): RequestRecord | u
   return { ...record, source: "http" };
 }
 
-export function createPostgresRequestStore(executor: QueryExecutor): RequestStore {
+export function createPostgresRequestStore(
+  executor: QueryExecutor,
+  options: CreatePostgresRequestStoreOptions = {}
+): RequestStore {
+  const liveTailPool = options.liveTailPool ?? null;
+  const pollIntervalMs =
+    options.subscribePollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
     columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
@@ -71,6 +116,26 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
   const pendingEventWrites = new Map<string, Promise<void>>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
+
+  async function readEvents(
+    requestId: string,
+    fromSequence?: number
+  ): Promise<RequestStreamEvent[]> {
+    const result =
+      fromSequence === undefined
+        ? await executor.query(
+            "SELECT event_data FROM request_events WHERE request_id = $1 ORDER BY sequence_number ASC",
+            [requestId]
+          )
+        : await executor.query(
+            "SELECT event_data FROM request_events WHERE request_id = $1 AND sequence_number > $2 ORDER BY sequence_number ASC",
+            [requestId, fromSequence]
+          );
+    return result.rows.map((row) => {
+      const data = row.event_data;
+      return (typeof data === "string" ? JSON.parse(data) : data) as RequestStreamEvent;
+    });
+  }
 
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
@@ -148,12 +213,25 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
             try {
               const newEvents = pendingNewEvents.get(requestId) ?? [];
               pendingNewEvents.delete(requestId);
-              // Insert only newly accumulated events. ON CONFLICT handles
-              // duplicate sequence numbers from retries.
+              // Each event row carries its own (request_id, sequence_number)
+              // PK so duplicates from retries are handled by ON CONFLICT.
+              // `pg_notify` runs in the same statement so it's elided on
+              // rollback (OQ-4 inside-transaction): subscribers never see a
+              // signal for an event that didn't make it to the table.
               for (const event of newEvents) {
                 await executor.query(
-                  "INSERT INTO request_events (request_id, sequence_number, event_data) VALUES ($1, $2, $3) ON CONFLICT (request_id, sequence_number) DO UPDATE SET event_data = $3",
-                  [requestId, event.sequence_number, JSON.stringify(event)]
+                  "WITH inserted AS (" +
+                    "INSERT INTO request_events (request_id, sequence_number, event_data) " +
+                    "VALUES ($1, $2, $3) " +
+                    "ON CONFLICT (request_id, sequence_number) DO UPDATE SET event_data = $3 " +
+                    "RETURNING request_id, sequence_number" +
+                  ") SELECT pg_notify($4, request_id || ':' || sequence_number) FROM inserted",
+                  [
+                    requestId,
+                    event.sequence_number,
+                    JSON.stringify(event),
+                    NOTIFY_CHANNEL
+                  ]
                 );
               }
             } finally {
@@ -173,15 +251,227 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
       if (pending) await pending;
     },
 
-    async getEvents(requestId: string): Promise<RequestStreamEvent[]> {
-      const result = await executor.query(
-        "SELECT event_data FROM request_events WHERE request_id = $1 ORDER BY sequence_number ASC",
-        [requestId]
-      );
-      return result.rows.map((row) => {
-        const data = row.event_data;
-        return (typeof data === "string" ? JSON.parse(data) : data) as RequestStreamEvent;
-      });
+    getEvents: readEvents,
+
+    subscribeToEvents(
+      requestId: string,
+      options: SubscribeToEventsOptions
+    ): AsyncIterableIterator<RequestStreamEvent> {
+      if (liveTailPool !== null) {
+        return subscribeViaListen(liveTailPool, readEvents, requestId, options);
+      }
+      return subscribeViaPolling(readEvents, pollIntervalMs, requestId, options);
     }
   };
+}
+
+type ReadEvents = (
+  requestId: string,
+  fromSequence?: number
+) => Promise<RequestStreamEvent[]>;
+
+/**
+ * Polling fallback used when `liveTailPool` is absent (PGlite or raw
+ * `QueryExecutor`). Same shape as the SQLite/filesystem polling
+ * subscription — see FIX-569 §3.4 PGlite fallback.
+ */
+async function* subscribeViaPolling(
+  readEvents: ReadEvents,
+  pollIntervalMs: number,
+  requestId: string,
+  options: SubscribeToEventsOptions
+): AsyncIterableIterator<RequestStreamEvent> {
+  const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
+
+  const initial = await readEvents(requestId, options.fromSequence);
+  let lastSeen = options.fromSequence;
+  for (const event of initial) {
+    yield event;
+    lastSeen = event.sequence_number;
+    if (isTerminalRequestStreamEvent(event)) return;
+  }
+
+  let lastTickAt = Date.now();
+
+  while (!options.signal?.aborted) {
+    await sleep(pollIntervalMs, options.signal);
+    if (options.signal?.aborted) return;
+
+    const next = await readEvents(requestId, lastSeen);
+    if (next.length > 0) {
+      lastTickAt = Date.now();
+      for (const event of next) {
+        yield event;
+        lastSeen = event.sequence_number;
+        if (isTerminalRequestStreamEvent(event)) return;
+      }
+    } else if (Date.now() - lastTickAt > livenessMs) {
+      yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
+      return;
+    }
+  }
+}
+
+/**
+ * `LISTEN flow_events` subscription on a dedicated checkout from
+ * `liveTailPool`. Implements the Notifier Pattern: NOTIFYs are signals
+ * only; the dirty-bit promise is resolved on each notification, and the
+ * drain loop reads `getEvents(id, lastSeen)` once per cycle so N
+ * notifications collapse into one query.
+ *
+ * Reconnection budget: 5 attempts with exponential backoff (100ms →
+ * 1.6s). Exhaustion yields `StoreSubscriptionError("listen_unrecoverable")`.
+ */
+async function* subscribeViaListen(
+  pool: Pool,
+  readEvents: ReadEvents,
+  requestId: string,
+  options: SubscribeToEventsOptions
+): AsyncIterableIterator<RequestStreamEvent> {
+  const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
+
+  const initial = await readEvents(requestId, options.fromSequence);
+  let lastSeen = options.fromSequence;
+  for (const event of initial) {
+    yield event;
+    lastSeen = event.sequence_number;
+    if (isTerminalRequestStreamEvent(event)) return;
+  }
+
+  let attempt = 0;
+  let lastTickAt = Date.now();
+
+  while (!options.signal?.aborted) {
+    let client: PoolClient | undefined;
+    let dirty = false;
+    let dirtyResolve: (() => void) | undefined;
+    let connectionFailed = false;
+
+    const onNotification = (msg: { channel: string; payload?: string }): void => {
+      if (msg.channel !== NOTIFY_CHANNEL) return;
+      if (msg.payload === undefined) return;
+      const colon = msg.payload.indexOf(":");
+      const id = colon === -1 ? msg.payload : msg.payload.slice(0, colon);
+      if (id !== requestId) return;
+      dirty = true;
+      const resolve = dirtyResolve;
+      dirtyResolve = undefined;
+      resolve?.();
+    };
+
+    const onClientError = (): void => {
+      connectionFailed = true;
+      const resolve = dirtyResolve;
+      dirtyResolve = undefined;
+      resolve?.();
+    };
+
+    try {
+      client = await pool.connect();
+      client.on("notification", onNotification);
+      client.on("error", onClientError);
+      await client.query(`LISTEN ${NOTIFY_CHANNEL}`);
+      attempt = 0;
+
+      // Drain anything persisted between the catch-up SELECT and LISTEN setup.
+      const gap = await readEvents(requestId, lastSeen);
+      for (const event of gap) {
+        yield event;
+        lastSeen = event.sequence_number;
+        if (isTerminalRequestStreamEvent(event)) return;
+      }
+      if (gap.length > 0) lastTickAt = Date.now();
+
+      while (!options.signal?.aborted && !connectionFailed) {
+        // Wait for dirty-bit OR liveness timeout — whichever comes first.
+        await new Promise<void>((resolve) => {
+          dirtyResolve = resolve;
+          if (options.signal?.aborted || dirty || connectionFailed) {
+            const r = dirtyResolve;
+            dirtyResolve = undefined;
+            r?.();
+            return;
+          }
+          const onAbort = (): void => {
+            options.signal?.removeEventListener("abort", onAbort);
+            const r = dirtyResolve;
+            dirtyResolve = undefined;
+            r?.();
+          };
+          options.signal?.addEventListener("abort", onAbort, { once: true });
+          setTimeout(() => {
+            options.signal?.removeEventListener("abort", onAbort);
+            const r = dirtyResolve;
+            dirtyResolve = undefined;
+            r?.();
+          }, livenessMs).unref?.();
+        });
+
+        if (options.signal?.aborted) return;
+        if (connectionFailed) break;
+
+        if (dirty) {
+          dirty = false;
+          const next = await readEvents(requestId, lastSeen);
+          if (next.length > 0) {
+            lastTickAt = Date.now();
+            for (const event of next) {
+              yield event;
+              lastSeen = event.sequence_number;
+              if (isTerminalRequestStreamEvent(event)) return;
+            }
+          }
+        } else if (Date.now() - lastTickAt > livenessMs) {
+          yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
+          return;
+        }
+      }
+    } catch {
+      connectionFailed = true;
+    } finally {
+      if (client !== undefined) {
+        try {
+          client.removeListener("notification", onNotification);
+          client.removeListener("error", onClientError);
+          await client.query(`UNLISTEN ${NOTIFY_CHANNEL}`).catch(() => {});
+        } catch {
+          // Ignore — release will return a broken client to the pool which
+          // will discard it.
+        }
+        client.release();
+      }
+    }
+
+    if (options.signal?.aborted) return;
+
+    // Connection dropped or LISTEN setup failed — try to reconnect within budget.
+    attempt += 1;
+    if (attempt > RECONNECT_BUDGET) {
+      throw new StoreSubscriptionError(
+        "listen_unrecoverable",
+        `Postgres LISTEN connection unrecoverable after ${RECONNECT_BUDGET} attempts`
+      );
+    }
+    const backoff = Math.min(
+      RECONNECT_BACKOFF_MIN_MS * 2 ** (attempt - 1),
+      RECONNECT_BACKOFF_MAX_MS
+    );
+    await sleep(backoff, options.signal);
+  }
+}
+
+/** Abort-aware sleep used by the polling loop and reconnect backoff. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

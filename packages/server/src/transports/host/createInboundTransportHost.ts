@@ -16,11 +16,6 @@ import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeLogger } from "../../execution/logging";
-import {
-  canRegisterStream,
-  registerStream,
-  removeStream
-} from "../../streaming/active-streams";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
@@ -108,13 +103,6 @@ export function createInboundTransportHost(
           })
         : null;
 
-    if (liveStream !== null) {
-      if (!canRegisterStream()) {
-        throw new Error("Server is at active stream capacity. Retry shortly.");
-      }
-      registerStream(requestId, liveStream);
-    }
-
     // Pick the emitter in priority order: caller-provided emitter wins when
     // present (skips the live-stream branch above by construction), otherwise
     // the host's live-stream emitter, otherwise a fresh internal emitter so
@@ -145,7 +133,6 @@ export function createInboundTransportHost(
     }).finally(() => {
       if (liveStream !== null) {
         liveStream.close();
-        removeStream(requestId);
       }
       // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
       stores.activeRequests.deregister(requestId).catch(() => {});

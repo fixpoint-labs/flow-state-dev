@@ -3,7 +3,10 @@ import type { StoreRegistry } from "@flow-state-dev/server";
 import { InMemoryContentStore } from "./content-store";
 import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
-import { createSQLiteRequestStore } from "./request-store";
+import {
+  createSQLiteRequestStore,
+  type CreateSQLiteRequestStoreOptions
+} from "./request-store";
 import { createSQLiteUserStore } from "./user-store";
 import { createSQLiteOrgStore } from "./org-store";
 import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
@@ -30,6 +33,8 @@ export type SQLiteStoreOptions = {
   skipSchemaInit?: boolean;
   /** Trace store retention options. Defaults to `maxRequests: 50`. */
   traceStore?: SQLiteTraceStoreOptions;
+  /** Request store live-tail subscription options. */
+  requestStore?: CreateSQLiteRequestStoreOptions;
 };
 
 export type SQLiteStoreRegistry = StoreRegistry & {
@@ -53,7 +58,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
 
   return {
     session: createSQLiteSessionStore(db),
-    request: createSQLiteRequestStore(db),
+    request: createSQLiteRequestStore(db, options.requestStore),
     user: createSQLiteUserStore(db),
     org: createSQLiteOrgStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
@@ -80,5 +85,6 @@ export {
 };
 
 export type { SQLiteTraceStoreOptions };
+export type { CreateSQLiteRequestStoreOptions } from "./request-store";
 
 export { initializeSchema, initializeSchemaDDL, applyConnectionPragmas } from "./schema";

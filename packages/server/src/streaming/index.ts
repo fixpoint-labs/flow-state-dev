@@ -44,12 +44,3 @@ export { createSSEStream } from "./sse-stream";
 export type { SSEStreamHandle, CreateSSEStreamOptions } from "./sse-stream";
 
 export { injectHeartbeat } from "./heartbeat";
-
-export {
-  canRegisterStream,
-  cleanupStaleStreams,
-  configureActiveStreamRegistry,
-  registerStream,
-  getActiveStream,
-  removeStream
-} from "./active-streams";

@@ -9,3 +9,9 @@ export {
   type CreateTraceStoreConformanceTestsOptions,
   type MakeTraceEventOptions
 } from "./stores/testing/trace-store-conformance";
+export {
+  createRequestStoreConformanceTests,
+  makeRequestStreamEvent,
+  makeRequestCompletedEvent,
+  type CreateRequestStoreConformanceTestsOptions
+} from "./stores/testing/request-store-conformance";

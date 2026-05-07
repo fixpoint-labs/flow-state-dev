@@ -1,13 +1,15 @@
 /**
  * SSE streaming and transcription route handlers.
+ *
+ * Live tail is store-driven (FIX-569): `store.request.subscribeToEvents`
+ * yields catch-up + live events for in-flight requests, regardless of which
+ * instance is hosting the runner. The completed-request flat-string replay
+ * branch is unchanged.
  */
 import type { TranscriptionResolver } from "@flow-state-dev/core/types";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
-import {
-  cleanupStaleStreams,
-  getActiveStream
-} from "../streaming/active-streams";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import {
   createClientEventFilter,
   filterClientEvents
@@ -18,6 +20,7 @@ import {
   replayRequestEvents
 } from "../streaming/resume";
 import { createSSEStream } from "../streaming/sse-stream";
+import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
 import {
   buildReplayEvents,
   getBooleanFlag,
@@ -27,6 +30,16 @@ import {
   SSE_HEADERS
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+
+/** Default cross-process liveness timeout — overridable via `LIVE_TAIL_LIVENESS_MS`. */
+const DEFAULT_LIVE_TAIL_LIVENESS_MS = 30_000;
+
+function resolveLivenessTimeoutMs(): number {
+  const raw = process.env.LIVE_TAIL_LIVENESS_MS;
+  if (raw === undefined || raw === "") return DEFAULT_LIVE_TAIL_LIVENESS_MS;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LIVE_TAIL_LIVENESS_MS;
+}
 
 type StreamRouteContext = {
   registry: FlowRegistry;
@@ -40,44 +53,29 @@ type StreamRouteContext = {
 };
 
 /**
- * Whether an event should reach the SSE wire on the live-attach path.
- * Drops events at or before the resume cursor, internal-only types
- * (`ping`, `debug`), and — only on the buffered-replay leg — `content.delta`
- * (FIX-479: deltas don't replay; the reconnecting client snaps to the next
- * item.added/done snapshot). The optional `shouldForward` filter strips
- * trace-channel items unless `?include=trace` was set.
+ * Whether an event should reach the SSE wire. Drops internal-only types
+ * (`ping`, `debug`). Trace-channel filtering is applied via the optional
+ * `shouldForward` predicate (`?include=trace` keeps it undefined, retaining
+ * trace events).
  */
 function shouldEmitToWire(
-  event: { type: string; sequence_number: number },
-  minSeq: number,
-  shouldForward: ((event: { type: string }) => boolean) | undefined,
-  isReplay: boolean
+  event: { type: string },
+  shouldForward: ((event: { type: string }) => boolean) | undefined
 ): boolean {
-  if (event.sequence_number <= minSeq) return false;
   if (event.type === "ping" || event.type === "debug") return false;
-  if (isReplay && event.type === "content.delta") return false;
   if (shouldForward && !shouldForward(event)) return false;
   return true;
 }
 
-/**
- * Whether an event marks the end of a request stream — the SSE handle
- * should close after writing one of these. `request.interrupted` only
- * counts as terminal once the status flips to `"interrupted"`; the
- * intermediate transitions are ignored.
- */
-function isTerminalRequestEvent(event: { type: string }): boolean {
-  switch (event.type) {
-    case "request.completed":
-    case "request.failed":
-    case "request.incomplete":
-    case "request.aborted":
-      return true;
-    case "request.interrupted":
-      return (event as { status?: string }).status === "interrupted";
-    default:
-      return false;
-  }
+/** Whether a request status is past the in-flight phase. */
+function isTerminalStatus(status: RequestRecord["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "incomplete" ||
+    status === "interrupted" ||
+    status === "aborted"
+  );
 }
 
 export async function handleRequestStream(
@@ -85,7 +83,6 @@ export async function handleRequestStream(
   route: Extract<ParsedFlowRoute, { kind: "request_stream" }>,
   ctx: StreamRouteContext
 ): Promise<Response> {
-  cleanupStaleStreams();
   const flow = ctx.registry.get(route.flowKind);
   if (flow === undefined) {
     return jsonResponse(404, {
@@ -100,43 +97,6 @@ export async function handleRequestStream(
   const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
   const sseHeartbeatMs =
     flowHeartbeatMs !== undefined ? flowHeartbeatMs : ctx.defaultSseHeartbeatMs;
-
-  const activeStream = getActiveStream(route.requestId);
-  if (activeStream !== undefined) {
-    const cursor = resolveRequestReplayCursor({
-      requestId: route.requestId,
-      lastEventId: request.headers.get("last-event-id"),
-      startingAfter: url.searchParams.get("starting_after")
-    });
-
-    const minSeq = cursor.sequenceNumber ?? -1;
-    const emitter = activeStream.emitter;
-    const shouldForward = includeTrace ? undefined : createClientEventFilter();
-
-    const handle = createSSEStream({ pingIntervalMs: sseHeartbeatMs });
-
-    // FIX-479: content.delta is dropped from the buffered replay (the
-    // reconnecting client snaps to the latest item.added/done snapshot)
-    // but is forwarded live by the observer below.
-    for (const event of emitter.getEvents()) {
-      if (!shouldEmitToWire(event, minSeq, shouldForward, true)) continue;
-      handle.writeRaw(encodeStreamEvent(event));
-    }
-
-    emitter.addEventObserver((event) => {
-      if (handle.closed) return;
-      if (!shouldEmitToWire(event, minSeq, shouldForward, false)) return;
-      handle.writeRaw(encodeStreamEvent(event));
-      if (isTerminalRequestEvent(event)) {
-        handle.close();
-      }
-    });
-
-    return new Response(handle.readable, {
-      status: 200,
-      headers: SSE_HEADERS
-    });
-  }
 
   let requestRecord = await ctx.stores.request.get(route.requestId);
 
@@ -156,32 +116,71 @@ export async function handleRequestStream(
     }
   }
 
-  // If the record still doesn't exist, check whether events were persisted
-  // (events are written before the main record via incremental persistence hooks).
-  if (requestRecord === undefined) {
-    const events = await ctx.stores.request.getEvents(route.requestId);
-    if (events.length > 0) {
-      let replay = replayRequestEvents({
-        requestId: route.requestId,
-        events,
-        lastEventId: request.headers.get("last-event-id"),
-        startingAfter: url.searchParams.get("starting_after")
+  // Live-tail branch: a known-in-flight request streams via subscribeToEvents.
+  if (requestRecord !== undefined && !isTerminalStatus(requestRecord.status)) {
+    if (requestRecord.flowKind !== flow.kind) {
+      return jsonResponse(404, {
+        error: `Unknown request "${route.requestId}"`
       });
-      if (!includeTrace) replay = filterClientEvents(replay);
-      const payload = replay.map((event) => encodeStreamEvent(event)).join("");
-      return new Response(payload, { status: 200, headers: SSE_HEADERS });
     }
+
+    const cursor = resolveRequestReplayCursor({
+      requestId: route.requestId,
+      lastEventId: request.headers.get("last-event-id"),
+      startingAfter: url.searchParams.get("starting_after")
+    });
+
+    const fromSequence = cursor.sequenceNumber ?? 0;
+    const shouldForward = includeTrace ? undefined : createClientEventFilter();
+    const handle = createSSEStream({
+      pingIntervalMs: sseHeartbeatMs,
+      signal: request.signal
+    });
+
+    const subscription = ctx.stores.request.subscribeToEvents(
+      route.requestId,
+      {
+        fromSequence,
+        signal: request.signal,
+        livenessTimeoutMs: resolveLivenessTimeoutMs()
+      }
+    );
+
+    void pumpSubscription(subscription, handle, shouldForward);
+
+    return new Response(handle.readable, {
+      status: 200,
+      headers: SSE_HEADERS
+    });
   }
 
-  if (
-    requestRecord === undefined ||
-    requestRecord.flowKind !== flow.kind
-  ) {
+  // No record AND no events: 404. The completed-request branch below covers
+  // the case where a record was GC'd but events survive.
+  if (requestRecord === undefined) {
+    const events = await ctx.stores.request.getEvents(route.requestId);
+    if (events.length === 0) {
+      return jsonResponse(404, {
+        error: `Unknown request "${route.requestId}"`
+      });
+    }
+    let replay = replayRequestEvents({
+      requestId: route.requestId,
+      events,
+      lastEventId: request.headers.get("last-event-id"),
+      startingAfter: url.searchParams.get("starting_after")
+    });
+    if (!includeTrace) replay = filterClientEvents(replay);
+    const payload = replay.map((event) => encodeStreamEvent(event)).join("");
+    return new Response(payload, { status: 200, headers: SSE_HEADERS });
+  }
+
+  if (requestRecord.flowKind !== flow.kind) {
     return jsonResponse(404, {
       error: `Unknown request "${route.requestId}"`
     });
   }
 
+  // Terminal request: completed-request flat-string replay (unchanged).
   const session =
     requestRecord.sessionId !== undefined
       ? await ctx.stores.session.get(requestRecord.sessionId)
@@ -207,6 +206,34 @@ export async function handleRequestStream(
     status: 200,
     headers: SSE_HEADERS
   });
+}
+
+/**
+ * Drains the store subscription onto the SSE handle. Errors thrown from the
+ * iterator (e.g. `StoreSubscriptionError`) close the wire after a best-effort
+ * encoded error frame. Terminal events (including the synthetic
+ * `request.interrupted` from the liveness timeout) close the wire after
+ * yielding.
+ */
+async function pumpSubscription(
+  subscription: AsyncIterableIterator<RequestStreamEvent>,
+  handle: ReturnType<typeof createSSEStream>,
+  shouldForward: ((event: { type: string }) => boolean) | undefined
+): Promise<void> {
+  try {
+    for await (const event of subscription) {
+      if (handle.closed) break;
+      if (!shouldEmitToWire(event, shouldForward)) continue;
+      handle.writeRaw(encodeStreamEvent(event));
+      if (isTerminalRequestStreamEvent(event)) break;
+    }
+  } catch {
+    // Swallow — the SSE consumer's `last-event-id` reconnect path is the
+    // intended recovery channel. Logging here would leak internals to the
+    // operator log without giving the client anything actionable.
+  } finally {
+    handle.close();
+  }
 }
 
 export async function handleTranscribe(
@@ -301,3 +328,5 @@ export async function handleTranscribe(
     language: result.language
   });
 }
+
+void getBooleanFlag;

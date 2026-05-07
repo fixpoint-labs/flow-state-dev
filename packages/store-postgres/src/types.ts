@@ -27,6 +27,25 @@ export type CommonPostgresStoreOptions = {
    *  serverless platforms this removes ~30 idempotent DDL roundtrips and the
    *  advisory-lock dance from every cold start. */
   skipSchemaInit?: boolean;
+  /**
+   * Dedicated `pg.Pool` for cross-process live tail (`LISTEN flow_events`).
+   * Supplied separately from the main query executor because LISTEN
+   * requires a true `pg.Client` checkout, which only `pg.Pool` provides
+   * (PGlite and arbitrary `QueryExecutor`s can't honor it).
+   *
+   * Behavior:
+   * - Omitted (`undefined`): when the store is constructed from
+   *   `{ connectionString, ... }` or `{ pool }`, `createPostgresStores`
+   *   auto-creates a fresh `Pool` with `max: ENV.LIVE_TAIL_POOL_MAX ?? 10`
+   *   so out-of-the-box deployments get cross-process tail with no
+   *   wiring. Construction shapes that can't carry a Pool (`{ executor }`
+   *   for PGlite) fall back to polling.
+   * - Provided: the supplied Pool is used as-is. Caller manages lifecycle.
+   * - `null`: explicitly disable LISTEN; `subscribeToEvents` polls instead.
+   *
+   * See FIX-569 §3.4.
+   */
+  liveTailPool?: Pool | null;
 };
 
 export type PostgresStoreOptions = CommonPostgresStoreOptions &

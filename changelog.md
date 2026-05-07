@@ -4,6 +4,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### Store-driven live tail (FIX-569)
+
+The in-process active-streams registry is replaced by `RequestStore.subscribeToEvents`. SSE clients can now tail an in-flight request from any instance, including multi-instance Postgres deployments and serverless deployments with shared Postgres.
+
+- New `subscribeToEvents(requestId, options)` on the `RequestStore` interface, returning an `AsyncIterableIterator<RequestStreamEvent>`. `getEvents` widens with optional `fromSequence` for cursor reads (backward compatible — omitting it returns the full log).
+- Per-store implementations: memory uses an in-process bus; SQLite, filesystem, and Postgres-without-`liveTailPool` poll on a fixed interval; Postgres with `liveTailPool` uses `LISTEN flow_events` on a dedicated client with a signal-only payload, single global channel, and dirty-bit burst coalescing (Notifier Pattern). PGlite falls back to polling.
+- `createPostgresStores` accepts `liveTailPool` separately. When omitted on the connection-string shape it auto-creates a fresh `Pool({ max: LIVE_TAIL_POOL_MAX ?? 10 })`. The liveness timeout (`LIVE_TAIL_LIVENESS_MS`, default 30s) governs writer-death detection — on stall the iterator yields a synthetic `request.interrupted`.
+- Conformance harness `createRequestStoreConformanceTests` shipped via `@flow-state-dev/server/testing`; memory, SQLite, and filesystem stores all run it.
+- Long-running flows are no longer at risk of registry eviction — the legacy 5-minute stale-stream TTL is gone. SSE wire format and `createFlowApiRouter()` shape are unchanged.
+
 ### Debate pattern (FIX-328)
 
 New `debate` factory in `@flow-state-dev/patterns` for multi-round adversarial argumentation with assigned stances and a single judge that runs once at the end. Built on the Round Robin chassis with three structural specializations: every debater carries an assigned `stance`, every debater sees all prior arguments from all agents, and the judge produces a structured `{ verdict, winner, reasoning }` after the loop instead of terminating it round-by-round.

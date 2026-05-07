@@ -8,11 +8,6 @@ import type {
   RequestRecord,
   StoreRegistry
 } from "../stores/types";
-import {
-  canRegisterStream,
-  registerStream,
-  removeStream
-} from "../streaming/active-streams";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
@@ -138,12 +133,6 @@ export async function retryRequest(
   const newRequestId = generateId("req");
   const liveStream = createLiveRequestStream({ requestId: newRequestId });
 
-  if (!canRegisterStream()) {
-    throw new Error("Server is at active stream capacity");
-  }
-
-  registerStream(newRequestId, liveStream);
-
   // Preserve the original request's transport provenance on retry so the
   // RequestRecord chain is consistent. Falls back to "http" for records
   // persisted before FIX-438.
@@ -170,7 +159,6 @@ export async function retryRequest(
     logger
   }).finally(() => {
     liveStream.close();
-    removeStream(newRequestId);
   });
 
   logRuntimeEvent(logger, "info", "[flow-state] retrying interrupted request", {
