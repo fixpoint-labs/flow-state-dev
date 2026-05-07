@@ -176,10 +176,54 @@ export interface RequestStore {
 
   /**
    * Retrieve persisted stream events for a request.
-   * Returns events sorted by sequence_number.
-   * Used for completed-request replay instead of item-based reconstruction.
+   * Returns events sorted by sequence_number. When `fromSequence` is
+   * provided, only events with `sequence_number > fromSequence` are
+   * returned; omitting it returns the full log (used by the
+   * completed-request replay path).
    */
-  getEvents(requestId: string): Promise<RequestStreamEvent[]>;
+  getEvents(requestId: string, fromSequence?: number): Promise<RequestStreamEvent[]>;
+
+  /**
+   * Yields events for a request as they are persisted. Catch-up replay
+   * covers events with `sequence_number > options.fromSequence`; the live
+   * phase yields events as they arrive until the iterator aborts, sees a
+   * terminal request status, or hits the liveness timeout. The "close"
+   * path is `signal.abort()`; there is no separate `.close()` method.
+   *
+   * Backends without a cross-process push primitive (SQLite, filesystem,
+   * Postgres-without-`liveTailPool`) poll. Memory uses an in-process bus
+   * shared with the persistence path.
+   */
+  subscribeToEvents(
+    requestId: string,
+    options: SubscribeToEventsOptions
+  ): AsyncIterableIterator<RequestStreamEvent>;
+}
+
+/**
+ * Options for `RequestStore.subscribeToEvents`. `fromSequence` is required
+ * — a subscriber that has seen nothing passes `0`. Optionality would
+ * invite the bug where a reconnecting client with a stale `Last-Event-ID`
+ * accidentally re-receives the entire log.
+ */
+export interface SubscribeToEventsOptions {
+  /** Subscriber's last-seen sequence number; `0` means no events seen. */
+  fromSequence: number;
+  /** Aborts the subscription cleanly when the SSE client disconnects. */
+  signal?: AbortSignal;
+  /**
+   * If no events arrive in this window AND no terminal status is observed
+   * in the store, the iterator yields a synthetic `request.interrupted`
+   * event (not persisted) and closes. Default `30000`. Ignored for the
+   * in-memory store, where there is no cross-process death scenario.
+   */
+  livenessTimeoutMs?: number;
+  /**
+   * Per-subscription bounded queue capacity. On overflow the iterator
+   * throws `StoreSubscriptionError("backpressure_overflow")`. Default
+   * `1000`.
+   */
+  maxPendingEvents?: number;
 }
 
 export interface UserStore {

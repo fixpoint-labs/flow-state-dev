@@ -12,6 +12,8 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 |---------|------------|-------------|
 | **In-memory** (default) | None — data is lost on restart | Development, testing, demos |
 | **File** | JSON files on disk | Local development with persistence, single-server deployments |
+| **SQLite** | Embedded SQLite database | Single-server deployments wanting concurrency-safe writes |
+| **Postgres** | PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail | Production, multi-instance fleets, serverless with shared Postgres |
 | **MongoDB** | MongoDB collection | Production, multi-server deployments |
 
 ### In-memory (default)
@@ -85,16 +87,17 @@ MongoDB provides the concurrency safety that CAS (Compare-and-Swap) operations r
 
 ## Custom stores
 
-The store interface is pluggable. If you need Redis, PostgreSQL, or another backend, implement the `Store` interface:
+The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/server`.
 
-```ts
-interface Store {
-  getScope(identity: ScopeIdentity): Promise<ScopeData | undefined>;
-  setScope(identity: ScopeIdentity, data: ScopeData): Promise<void>;
-  deleteScope(identity: ScopeIdentity): Promise<void>;
-  listSessions(params: ListParams): Promise<SessionListResult>;
-}
-```
+### Live tail
+
+`RequestStore` exposes `subscribeToEvents(requestId, options)` so the SSE wire can serve a request started on any instance. Stores choose their own delivery mechanism:
+
+- The in-memory store fans out from an in-process bus.
+- SQLite and the filesystem store poll `getEvents(requestId, fromSequence)`.
+- Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
+
+`getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests.
 
 The exact interface may evolve. Check the `@flow-state-dev/server` package source for the current contract.
 

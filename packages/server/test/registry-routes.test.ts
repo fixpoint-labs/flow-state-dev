@@ -852,33 +852,9 @@ describe("createFlowApiRouter", () => {
     expect(body.resources!.session!.counter).toEqual({ clientData: { count: 0 } });
   });
 
-  it("returns 503 when active stream capacity is reached", async () => {
-    const registry = createFlowRegistry();
-    const stores = createInMemoryStores();
-    registry.register(makeSlowFlow("capacity"));
-    const router = createFlowApiRouter({
-      registry,
-      stores,
-      maxConcurrentStreams: 1
-    });
-
-    const first = await router.POST(
-      new Request("http://localhost/api/flows/capacity/sess_cap_1/actions/run", {
-        method: "POST",
-        body: JSON.stringify({ userId: "user_cap", input: { value: "ok1" } })
-      }),
-      { params: { path: ["capacity", "sess_cap_1", "actions", "run"] } }
-    );
-    expect(first.status).toBe(202);
-
-    const second = await router.POST(
-      new Request("http://localhost/api/flows/capacity/sess_cap_2/actions/run", {
-        method: "POST",
-        body: JSON.stringify({ userId: "user_cap", input: { value: "ok2" } })
-      }),
-      { params: { path: ["capacity", "sess_cap_2", "actions", "run"] } }
-    );
-
-    expect(second.status).toBe(503);
-  });
+  // FIX-569: the active-streams capacity mechanism is gone — live tail is
+  // owned by the store interface and the per-process registry no longer
+  // exists. The `maxConcurrentStreams` knob is preserved for source-compat
+  // but has no behavioral effect. The 503-at-capacity test was removed
+  // along with the registry.
 });

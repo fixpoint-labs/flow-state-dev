@@ -95,6 +95,7 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  SubscribeToEventsOptions,
   TraceEvent,
   TraceStore,
   UserListOptions,
