@@ -127,6 +127,15 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
+`createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](../../apps/docs/docs/streaming/trace-channel.md) for the full backend list and file layout.
+
+```ts
+const stores = createFilesystemStores({
+  rootDir: ".fsdev/data",
+  traceStore: { maxRequests: 200 }
+});
+```
+
 ## Session retention policies
 
 Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.

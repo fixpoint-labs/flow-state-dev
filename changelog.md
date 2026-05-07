@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-07
+
+### Filesystem trace store + dev-mode retention defaults (FIX-558)
+
+Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts. `createFilesystemStores` wires a paired filesystem trace store under `{rootDir}/traces/` instead of falling back to in-memory.
+
+- New `FilesystemTraceStore` and `createFilesystemTraceStore` (exported from `@flow-state-dev/server`). Append-only `.ndjson` per request plus a `_roster.json` for FIFO insertion order; coalesces concurrent appends per request and round-trips arbitrary request IDs via URL-encoded filenames.
+- Registry factories pick `traceStore.maxRequests` from the environment: 1000 when `NODE_ENV=development`, 50 otherwise. An explicit `traceStore: { maxRequests }` always wins. Applies to in-memory, filesystem, and SQLite.
+- New shared `createTraceStoreConformanceTests` helper exposed at `@flow-state-dev/server/testing`. The in-memory, filesystem, and SQLite stores all run the same conformance suite; backend-specific cases stay alongside each implementation.
+- Trace channel reference doc gains backend overview, local-dev subsection, and production subsection. Server and store-sqlite READMEs document the new option.
+
 ## 2026-05-06
 
 ### Round Robin pattern (FIX-318)

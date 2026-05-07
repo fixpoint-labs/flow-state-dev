@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import type { StoreRegistry } from "@flow-state-dev/server";
+import { resolveTraceMaxRequests } from "@flow-state-dev/server";
 import { InMemoryContentStore } from "./content-store";
 import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
@@ -50,7 +51,10 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
     checkpoints: createSQLiteCheckpointStore(db),
-    traces: createSQLiteTraceStore(db, options.traceStore),
+    traces: createSQLiteTraceStore(db, {
+      ...options.traceStore,
+      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
+    }),
     close() {
       db.close();
     }
