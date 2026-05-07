@@ -346,6 +346,15 @@ export interface BlockContext<
    * emissions are visible to the parent that spawned them.
    */
   _outputTracker?: { lastBlockOutputItemId?: string };
+
+  /**
+   * @internal Per-request background work pool. Set by the server's request
+   * executor; absent in unit-test contexts. Sequencer DSL pushes here from
+   * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
+   * drains the pool exactly once before terminal status. When absent (unit
+   * tests), sequencer DSL falls back to per-sequencer auto-await.
+   */
+  _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
 }
 
 /**
