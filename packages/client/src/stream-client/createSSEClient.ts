@@ -548,6 +548,11 @@ function dispatchRequestEvent(
     return;
   }
 
+  if (event.type === "item.updated") {
+    callbacks.onItemUpdated?.(event);
+    return;
+  }
+
   if (event.type === "content.added") {
     callbacks.onContentAdded?.(event);
     return;

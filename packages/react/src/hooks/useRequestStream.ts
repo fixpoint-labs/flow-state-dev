@@ -13,6 +13,7 @@ import type {
   RequestStatus,
   StatusItem
 } from "@flow-state-dev/core/items";
+import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 
 /**
@@ -124,6 +125,22 @@ export function useRequestStream(
             item.id === event.item.id ? event.item : item
           )
         );
+      },
+      onItemUpdated: (event) => {
+        setItems((prev: OutputItem[]) => {
+          let changed = false;
+          const next = prev.map((item: OutputItem) => {
+            if (item.id !== event.itemId) return item;
+            const sanitized: Record<string, unknown> = {};
+            for (const key of Object.keys(event.patch)) {
+              if ((ITEM_UPDATE_INVARIANT_KEYS as ReadonlyArray<string>).includes(key)) continue;
+              sanitized[key] = event.patch[key];
+            }
+            changed = true;
+            return { ...item, ...sanitized } as OutputItem;
+          });
+          return changed ? next : prev;
+        });
       },
       onError: () => {
         setIsStreaming(false);

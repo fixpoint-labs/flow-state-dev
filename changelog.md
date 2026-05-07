@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### `item.updated` SSE event for shallow-merge field deltas (FIX-572)
+
+Items whose non-text fields evolve between `item.added` and `item.done` now have a structured update primitive on the wire, replacing the prior choice between re-emitting whole items or never reflecting mid-flight state.
+
+- New `item.updated` SSE event carrying `{ itemId, patch }` with shallow top-level merge semantics. Producers re-supply nested objects in full as new top-level values; identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped server-side and ignored client-side.
+- New `emitItemUpdated(itemId, patch)` on `ResponseEmitter`, sibling to `emitItemAdded` / `emitItemDone`. Also reachable via `response.emit({ type: "item.updated", ... })`. Updates for an unknown `itemId` are dropped with a debug event; updates after `item.done` apply normally.
+- Client SSE dispatcher routes the event to a new `onItemUpdated` callback. The DevTool stream consumer and `@flow-state-dev/react`'s `useRequestStream` apply the merge to their items map without touching item order.
+- No producers ship in this change — `block_trace` and `container` lifecycles adopt the primitive in follow-up PRs.
+
 ### Filesystem trace store + dev-mode retention defaults (FIX-558)
 
 Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts. `createFilesystemStores` wires a paired filesystem trace store under `{rootDir}/traces/` instead of falling back to in-memory.

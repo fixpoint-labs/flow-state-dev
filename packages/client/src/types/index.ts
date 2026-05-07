@@ -7,6 +7,7 @@ import type {
   ContentPartDoneEvent,
   ItemAddedEvent,
   ItemDoneEvent,
+  ItemUpdatedEvent,
   RequestCreatedEvent,
   RequestDebugEvent,
   RequestResourceChangedEvent,
@@ -323,6 +324,13 @@ export type RequestSSECallbacks = {
   onRequestStatus?: (event: RequestStatusEvent) => void;
   onItemAdded?: (event: ItemAddedEvent) => void;
   onItemDone?: (event: ItemDoneEvent) => void;
+  /**
+   * Fired when an `item.updated` event arrives. The patch is a shallow
+   * top-level merge into the previously-added item; identity-invariant
+   * keys (`id`, `type`, `provenance`, `agentType`, `transient`) are
+   * stripped server-side and should also be ignored defensively here.
+   */
+  onItemUpdated?: (event: ItemUpdatedEvent) => void;
   onContentAdded?: (event: ContentPartAddedEvent) => void;
   onContentDelta?: (event: ContentPartDeltaEvent) => void;
   onContentDone?: (event: ContentPartDoneEvent) => void;
