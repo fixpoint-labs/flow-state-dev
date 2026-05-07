@@ -319,38 +319,12 @@ export async function computeClientData(options: {
   return out;
 }
 
-/** Per-collection cap when the `includeItems` escape hatch is set. */
-export const INCLUDE_ITEMS_CAP = 1000;
-
-/**
- * Thrown by `buildResourceSnapshot` when `includeItems: true` is requested on
- * a collection that exceeds {@link INCLUDE_ITEMS_CAP}. Routes catch this to
- * return a 400 to the caller.
- */
-export class IncludeItemsCapExceeded extends Error {
-  readonly resourceName: string;
-  readonly cap: number;
-  readonly actual: number;
-  constructor(resourceName: string, actual: number) {
-    super(
-      `Collection "${resourceName}" has ${actual} items; ?includeItems=true is capped at ${INCLUDE_ITEMS_CAP}`
-    );
-    this.name = "IncludeItemsCapExceeded";
-    this.resourceName = resourceName;
-    this.cap = INCLUDE_ITEMS_CAP;
-    this.actual = actual;
-  }
-}
-
 /**
  * Builds the client-visible `resources` snapshot for one scope.
  *
  * Collections (FIX-427): emit `count` always, plus a `prefetched` window when
  * the collection declares `prefetchWindow > 0`. Per-item `clientData` in the
- * window is included only when `client.state.read === true`. The legacy
- * eager `items` map is emitted only when `includeItems: true` is passed —
- * an internal escape hatch for the DevTool migration window, capped per
- * collection at {@link INCLUDE_ITEMS_CAP}.
+ * window is included only when `client.state.read === true`.
  *
  * Single resources retain their existing shape (clientData + optional
  * prefetched content).
@@ -366,16 +340,10 @@ export async function buildResourceSnapshot(options: {
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
   includeInternal?: boolean;
-  /**
-   * @internal DevTool migration window only. When true, emit the legacy
-   * eager `items` map. Capped per collection at {@link INCLUDE_ITEMS_CAP}.
-   */
-  includeItems?: boolean;
 }): Promise<Record<string, unknown> | undefined> {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
   const includeInternal = options.includeInternal === true;
-  const includeItems = options.includeItems === true;
   let hasAny = false;
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
@@ -430,30 +398,6 @@ export async function buildResourceSnapshot(options: {
           prefetched.push(item);
         }
         collectionEntry.prefetched = prefetched;
-      }
-
-      // Escape hatch: legacy eager `items` map. DevTool migration window
-      // only — removed in the same PR once DevTool is migrated. Production
-      // callers do not pass this flag.
-      if (includeItems) {
-        if (count > INCLUDE_ITEMS_CAP) {
-          throw new IncludeItemsCapExceeded(resourceName, count);
-        }
-        const items: Record<string, unknown> = {};
-        for (const key of matchedKeys) {
-          const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
-          const entry: Record<string, unknown> = {};
-          if (clientDataFn) {
-            entry.clientData = await clientDataFn(state);
-          } else if (!hasClient) {
-            entry.clientData = state;
-          }
-          if (prefetchContent && contentMap[key] !== undefined) {
-            entry.content = contentMap[key];
-          }
-          items[key] = entry;
-        }
-        collectionEntry.items = items;
       }
 
       if (!hasClient) collectionEntry.internal = true;

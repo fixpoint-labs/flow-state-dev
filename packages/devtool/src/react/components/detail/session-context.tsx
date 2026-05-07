@@ -271,9 +271,9 @@ function countRecords(data: Record<string, unknown>): number {
 /**
  * Snapshot entries arrive as wrappers, never raw state — single resources are
  * `{ clientData?, content?, internal? }`. Collections (FIX-427) are
- * `{ count?, prefetched?, items?, internal? }`; `items` only appears under the
- * legacy escape hatch and is dropped post-migration. Unwrap so the displayed
- * body reflects actual data, not envelope.
+ * `{ count?, prefetched?, internal? }`. The displayed body reflects the
+ * inlined `prefetched` window when set; the count badge reflects the always-
+ * emitted total cardinality.
  */
 function unwrapResourceEntry(entry: Record<string, unknown>): {
   data: unknown;
@@ -283,27 +283,16 @@ function unwrapResourceEntry(entry: Record<string, unknown>): {
   count: number | null;
 } {
   const isInternal = entry.internal === true;
-  if ("items" in entry || "count" in entry || "prefetched" in entry) {
-    // Collection. Prefer the eager `items` map (legacy escape-hatch path)
-    // when present so the DevTool keeps showing full state during the
-    // migration window. Otherwise fall back to the inlined `prefetched`
-    // window. The `count` badge always reflects total cardinality.
-    const items = entry.items as Record<string, unknown> | undefined;
+  if ("count" in entry || "prefetched" in entry) {
     const prefetched = entry.prefetched as
       | Array<{ topic: string; clientData?: unknown }>
       | undefined;
-    let data: unknown;
-    if (items !== undefined) {
-      data = items;
-    } else if (prefetched !== undefined) {
-      const asMap: Record<string, unknown> = {};
+    const asMap: Record<string, unknown> = {};
+    if (prefetched !== undefined) {
       for (const p of prefetched) asMap[p.topic] = { clientData: p.clientData };
-      data = asMap;
-    } else {
-      data = {};
     }
     return {
-      data,
+      data: asMap,
       isCollection: true,
       hasContent: false,
       isInternal,

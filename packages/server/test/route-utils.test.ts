@@ -11,8 +11,6 @@ import { z } from "zod";
 import { defineResource } from "@flow-state-dev/core/types";
 import { defineResourceCollection } from "@flow-state-dev/core/types";
 import {
-  IncludeItemsCapExceeded,
-  INCLUDE_ITEMS_CAP,
   buildResourceSnapshot,
 } from "../src/routes/route-utils";
 
@@ -119,36 +117,6 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
       persisted: { "secrets/key": {} },
     });
     expect(out).toBeUndefined();
-  });
-
-  it("includes legacy items map only when includeItems is set", async () => {
-    const out = await buildResourceSnapshot({
-      configs: {
-        artifacts: makeArtifactsCollection({
-          clientState: { read: true },
-          clientData: (s) => ({ title: s.title }),
-        }),
-      },
-      persisted: persistedFor(2),
-      includeItems: true,
-    });
-    const entry = out?.artifacts as { count: number; items: Record<string, unknown> };
-    expect(entry.count).toBe(2);
-    expect(entry.items).toEqual({
-      "artifacts/item-000": { clientData: { title: "Item 0" } },
-      "artifacts/item-001": { clientData: { title: "Item 1" } },
-    });
-  });
-
-  it("throws IncludeItemsCapExceeded when includeItems exceeds the cap", async () => {
-    const persisted = persistedFor(INCLUDE_ITEMS_CAP + 1);
-    await expect(
-      buildResourceSnapshot({
-        configs: { artifacts: makeArtifactsCollection({ clientState: { read: true } }) },
-        persisted,
-        includeItems: true,
-      })
-    ).rejects.toBeInstanceOf(IncludeItemsCapExceeded);
   });
 
   it("emits count = 0 with no prefetched for an empty collection", async () => {

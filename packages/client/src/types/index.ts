@@ -221,16 +221,6 @@ export type CollectionSnapshotEntry = {
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
   /**
-   * Legacy eager item map. Only present when the snapshot was requested with
-   * the `?includeItems=true` escape hatch (DevTool migration window only).
-   * @internal
-   * @deprecated Removed once DevTool migration completes.
-   */
-  items?: Record<string, {
-    clientData?: unknown;
-    content?: string;
-  }>;
-  /**
    * True when the collection has no `client` config. See `ResourceSnapshotEntry.internal`.
    */
   internal?: boolean;

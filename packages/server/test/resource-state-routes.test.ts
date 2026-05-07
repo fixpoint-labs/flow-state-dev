@@ -270,6 +270,44 @@ describe("handleListCollectionState", () => {
     expect(res.status).toBe(400);
   });
 
+  it("paginates a 60-item collection with limit=20", async () => {
+    const artifacts: Record<string, { title?: string }> = {};
+    for (let i = 0; i < 60; i++) {
+      artifacts[`item-${String(i).padStart(3, "0")}`] = { title: `Item ${i}` };
+    }
+    const ctx = await setupCtx({ artifacts });
+
+    const page1 = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body1 = await page1.json();
+    expect(body1.items).toHaveLength(20);
+    expect(body1.pagination).toEqual({
+      offset: 0, limit: 20, total: 60, hasMore: true, nextOffset: 20
+    });
+
+    const page2 = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=20"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body2 = await page2.json();
+    expect(body2.items).toHaveLength(20);
+    expect(body2.items[0].topic).toBe("artifacts/item-020");
+    expect(body2.pagination.nextOffset).toBe(40);
+
+    const page3 = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=40"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body3 = await page3.json();
+    expect(body3.items).toHaveLength(20);
+    expect(body3.pagination.hasMore).toBe(false);
+  });
+
   it("returns total: 0 / items: [] for empty collection", async () => {
     const ctx = await setupCtx();
     const res = await handleListCollectionState(
