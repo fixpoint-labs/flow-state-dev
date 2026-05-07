@@ -1,11 +1,11 @@
 /**
- * Testing entry point for `@flow-state-dev/server`.
- *
- * Imported as `@flow-state-dev/server/testing`. Hosts conformance harnesses
- * for the store interfaces — currently `TraceStore`, with future suites
- * (request, session, content) plugging in alongside.
+ * Testing entry point for `@flow-state-dev/server`. Imported as
+ * `@flow-state-dev/server/testing`. Hosts conformance harnesses and
+ * fixture builders for store-interface tests.
  */
 export {
   createTraceStoreConformanceTests,
-  type CreateTraceStoreConformanceTestsOptions
+  makeTraceEvent,
+  type CreateTraceStoreConformanceTestsOptions,
+  type MakeTraceEventOptions
 } from "./stores/testing/trace-store-conformance";

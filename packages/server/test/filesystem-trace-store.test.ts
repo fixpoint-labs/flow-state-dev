@@ -4,10 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createFilesystemTraceStore,
-  type TraceEvent,
   type TraceStore
 } from "../src/stores";
-import { createTraceStoreConformanceTests } from "../src/testing";
+import {
+  createTraceStoreConformanceTests,
+  makeTraceEvent
+} from "../src/testing";
 
 const trackedRootDirs: string[] = [];
 
@@ -34,25 +36,6 @@ createTraceStoreConformanceTests({
   }
 });
 
-function makeEvent(
-  requestId: string,
-  sequenceNumber: number,
-  ts: number
-): TraceEvent {
-  return {
-    requestId,
-    sequenceNumber,
-    ts,
-    type: "trace.item.added",
-    item: {
-      type: "block_debug",
-      itemId: `item_${sequenceNumber}`,
-      ts,
-      blockName: "test"
-    } as unknown as TraceEvent["item"]
-  };
-}
-
 describe("FilesystemTraceStore (backend-specific)", () => {
   let rootDir: string;
   let store: TraceStore;
@@ -63,13 +46,12 @@ describe("FilesystemTraceStore (backend-specific)", () => {
   });
 
   it("persists events across instance reconstruction", async () => {
-    await store.appendEvent("r1", makeEvent("r1", 1, 100));
-    await store.appendEvent("r1", makeEvent("r1", 2, 101));
-    await store.appendEvent("r2", makeEvent("r2", 1, 102));
+    await store.appendEvent("r1", makeTraceEvent("r1", 1));
+    await store.appendEvent("r1", makeTraceEvent("r1", 2));
+    await store.appendEvent("r2", makeTraceEvent("r2", 1));
     await store.flush("r1");
     await store.flush("r2");
 
-    // Discard the instance and rebuild against the same rootDir.
     const reopened = createFilesystemTraceStore({ rootDir });
     expect(await reopened.listRequestIds()).toEqual(["r1", "r2"]);
     const r1Events = await reopened.getEvents("r1");
@@ -79,7 +61,7 @@ describe("FilesystemTraceStore (backend-specific)", () => {
   });
 
   it("writes a stable JSON shape to _roster.json", async () => {
-    await store.appendEvent("req-with/slash", makeEvent("req-with/slash", 1, 100));
+    await store.appendEvent("req-with/slash", makeTraceEvent("req-with/slash", 1));
     const raw = await readFile(path.join(rootDir, "_roster.json"), "utf8");
     const parsed = JSON.parse(raw) as Array<{ requestId: string; insertedAt: number }>;
     expect(parsed).toHaveLength(1);
@@ -89,7 +71,7 @@ describe("FilesystemTraceStore (backend-specific)", () => {
 
   it("encodes URL-unsafe characters in the .ndjson filename", async () => {
     const id = "req with/slash";
-    await store.appendEvent(id, makeEvent(id, 1, 100));
+    await store.appendEvent(id, makeTraceEvent(id, 1));
     const filePath = path.join(rootDir, `${encodeURIComponent(id)}.ndjson`);
     const raw = await readFile(filePath, "utf8");
     expect(raw.trimEnd().split("\n")).toHaveLength(1);
@@ -105,7 +87,7 @@ describe("FilesystemTraceStore (backend-specific)", () => {
     await writeFile(path.join(rootDir, "_roster.json"), "{not json", "utf8");
     expect(await store.listRequestIds()).toEqual([]);
 
-    await store.appendEvent("r1", makeEvent("r1", 1, 100));
+    await store.appendEvent("r1", makeTraceEvent("r1", 1));
     expect(await store.listRequestIds()).toEqual(["r1"]);
 
     const rebuilt = createFilesystemTraceStore({ rootDir });
@@ -113,11 +95,10 @@ describe("FilesystemTraceStore (backend-specific)", () => {
   });
 
   it("skips corrupted lines on getEvents", async () => {
-    await store.appendEvent("r1", makeEvent("r1", 1, 100));
-    await store.appendEvent("r1", makeEvent("r1", 2, 101));
+    await store.appendEvent("r1", makeTraceEvent("r1", 1));
+    await store.appendEvent("r1", makeTraceEvent("r1", 2));
     await store.flush("r1");
 
-    // Inject a corrupted line by rewriting the file directly.
     const filePath = path.join(rootDir, `${encodeURIComponent("r1")}.ndjson`);
     const original = await readFile(filePath, "utf8");
     await writeFile(filePath, `${original}{corrupt\n`, "utf8");
@@ -128,12 +109,11 @@ describe("FilesystemTraceStore (backend-specific)", () => {
 
   it("evicts request files from disk when maxRequests is exceeded", async () => {
     const small = createFilesystemTraceStore({ rootDir, maxRequests: 2 });
-    await small.appendEvent("r1", makeEvent("r1", 1, 100));
-    await small.appendEvent("r2", makeEvent("r2", 1, 101));
-    await small.appendEvent("r3", makeEvent("r3", 1, 102));
+    await small.appendEvent("r1", makeTraceEvent("r1", 1));
+    await small.appendEvent("r2", makeTraceEvent("r2", 1));
+    await small.appendEvent("r3", makeTraceEvent("r3", 1));
 
     expect(await small.listRequestIds()).toEqual(["r2", "r3"]);
-    // Reopening must agree — eviction must have written through to disk.
     const reopened = createFilesystemTraceStore({ rootDir, maxRequests: 2 });
     expect(await reopened.listRequestIds()).toEqual(["r2", "r3"]);
     expect(await reopened.getEvents("r1")).toEqual([]);
@@ -142,7 +122,7 @@ describe("FilesystemTraceStore (backend-specific)", () => {
   it("coalesces concurrent appends into a single write", async () => {
     await Promise.all(
       Array.from({ length: 10 }, (_, i) =>
-        store.appendEvent("r1", makeEvent("r1", i + 1, 100 + i))
+        store.appendEvent("r1", makeTraceEvent("r1", i + 1))
       )
     );
     const events = await store.getEvents("r1");

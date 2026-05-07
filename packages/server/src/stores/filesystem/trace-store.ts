@@ -1,25 +1,24 @@
 /**
- * Filesystem-backed trace event store with FIFO retention by request (FIX-558).
+ * Filesystem-backed trace event store with FIFO retention by request.
  *
- * Two on-disk artifacts under `{rootDir}`:
- *   - `_roster.json` — array of `{ requestId, insertedAt }` in insertion order.
- *     Source of truth for `listRequestIds` and the `maxRequests` cap.
+ * On-disk layout under `{rootDir}`:
+ *   - `_roster.json` — `[{ requestId, insertedAt }]`, source of truth for
+ *     `listRequestIds` and the `maxRequests` cap.
  *   - `{encodeURIComponent(requestId)}.ndjson` — one trace event per line,
  *     append-only.
  *
- * Concurrent appends to the same request are coalesced into one filesystem
- * write via a per-request `SerializedWriteQueue`. Roster mutations (the
- * size-checked eviction path) are serialized through a shared lock so size
- * checks and the corresponding `rm` of evicted files are atomic.
+ * Concurrent appends to the same request coalesce into one batched
+ * `appendFile` via a per-request `SerializedWriteQueue`. Roster mutations
+ * (size-checked eviction) serialize through a single roster lock.
  */
-import { appendFile, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
 } from "../../utils/serialized-write-queue";
 import type { TraceEvent, TraceStore } from "../types";
-import { ensureDirectory } from "./shared";
+import { atomicWrite, ensureDirectory } from "./shared";
 
 export type FilesystemTraceStoreOptions = {
   rootDir: string;
@@ -31,6 +30,12 @@ const ROSTER_FILE = "_roster.json";
 
 type RosterEntry = { requestId: string; insertedAt: number };
 
+type RequestState = {
+  queue: SerializedWriteQueue;
+  pending: TraceEvent[];
+  inflight: Promise<void> | undefined;
+};
+
 function rosterPath(rootDir: string): string {
   return path.join(rootDir, ROSTER_FILE);
 }
@@ -39,29 +44,18 @@ function eventsPath(rootDir: string, requestId: string): string {
   return path.join(rootDir, `${encodeURIComponent(requestId)}.ndjson`);
 }
 
-/**
- * Module-scoped so the "warn once per corrupted file" guarantee holds across
- * `FilesystemTraceStore` instances within the same process — restarting the
- * store object during tests or registry rebuilds shouldn't re-spam logs for
- * the same on-disk file.
- */
+// Module-scoped so the "warn once per corrupted file" guarantee holds across
+// `FilesystemTraceStore` instances within the same process.
 const corruptionWarned = new Set<string>();
 
 export class FilesystemTraceStore implements TraceStore {
   private readonly rootDir: string;
   private readonly maxRequests: number;
-  private readonly writeQueues = new Map<string, SerializedWriteQueue>();
-  private readonly pendingEvents = new Map<string, TraceEvent[]>();
-  /**
-   * One in-flight batch promise per request. Concurrent `appendEvent` calls
-   * for the same request all await the same promise, so a single coalesced
-   * write satisfies them collectively and a write failure rejects every
-   * caller (instead of silently logging via the queue's `onError` hook).
-   */
-  private readonly pendingWrite = new Map<string, Promise<void>>();
+  private readonly state = new Map<string, RequestState>();
   private readonly roster = new Map<string, number>();
   private rosterLock: Promise<unknown> = Promise.resolve();
   private rosterReady: Promise<void> | undefined;
+  private dirReady: Promise<void> | undefined;
 
   constructor(options: FilesystemTraceStoreOptions) {
     this.rootDir = options.rootDir;
@@ -69,54 +63,47 @@ export class FilesystemTraceStore implements TraceStore {
   }
 
   appendEvent(requestId: string, event: TraceEvent): Promise<void> {
-    let pending = this.pendingEvents.get(requestId);
-    if (pending === undefined) {
-      pending = [];
-      this.pendingEvents.set(requestId, pending);
-    }
-    pending.push(event);
+    const state = this.getOrCreateState(requestId);
+    state.pending.push(event);
 
-    let inflight = this.pendingWrite.get(requestId);
-    if (inflight === undefined) {
-      // Construct the inflight promise BEFORE enqueueing so the
-      // `pendingWrite.set` below runs before the queue task's
-      // `pendingWrite.delete` — `queue.enqueue` synchronously starts the
-      // task up to its first `await`, which would otherwise leave a stale
-      // `pendingWrite` entry that suppresses every subsequent batch.
-      let resolveInflight!: () => void;
-      let rejectInflight!: (err: Error) => void;
-      inflight = new Promise<void>((resolve, reject) => {
-        resolveInflight = resolve;
-        rejectInflight = reject;
-      });
-      this.pendingWrite.set(requestId, inflight);
+    if (state.inflight !== undefined) return state.inflight;
 
-      const queue = this.getOrCreateWriteQueue(requestId);
-      queue.enqueue(async () => {
-        this.pendingWrite.delete(requestId);
-        const events = this.pendingEvents.get(requestId) ?? [];
-        this.pendingEvents.delete(requestId);
-        if (events.length === 0) {
-          resolveInflight();
-          return;
-        }
-        try {
-          await this.ensureRosterEntry(requestId);
-          await ensureDirectory(this.rootDir);
-          const lines = events.map((e) => `${JSON.stringify(e)}\n`).join("");
-          await appendFile(eventsPath(this.rootDir, requestId), lines, "utf8");
-          resolveInflight();
-        } catch (err) {
-          rejectInflight(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
-    }
+    let resolveInflight!: () => void;
+    let rejectInflight!: (err: Error) => void;
+    const inflight = new Promise<void>((resolve, reject) => {
+      resolveInflight = resolve;
+      rejectInflight = reject;
+    });
+    state.inflight = inflight;
+
+    // The queued task runs synchronously up to its first `await` and clears
+    // `state.inflight` then — capture the promise in a local so the caller
+    // returns the original handle even after the task nulls the field.
+    state.queue.enqueue(async () => {
+      const events = state.pending;
+      state.pending = [];
+      state.inflight = undefined;
+      if (events.length === 0) {
+        resolveInflight();
+        return;
+      }
+      try {
+        await this.ensureRosterEntry(requestId);
+        await this.ensureRootDir();
+        const lines = events.map((e) => `${JSON.stringify(e)}\n`).join("");
+        await appendFile(eventsPath(this.rootDir, requestId), lines, "utf8");
+        resolveInflight();
+      } catch (err) {
+        rejectInflight(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+
     return inflight;
   }
 
   async flush(requestId: string): Promise<void> {
-    const queue = this.writeQueues.get(requestId);
-    if (queue !== undefined) await queue.drain();
+    const state = this.state.get(requestId);
+    if (state !== undefined) await state.queue.drain();
   }
 
   async getEvents(requestId: string, fromSequence?: number): Promise<TraceEvent[]> {
@@ -128,8 +115,7 @@ export class FilesystemTraceStore implements TraceStore {
     try {
       raw = await readFile(filePath, "utf8");
     } catch (err) {
-      const e = err as NodeJS.ErrnoException;
-      if (e.code === "ENOENT") return [];
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw err;
     }
 
@@ -158,6 +144,34 @@ export class FilesystemTraceStore implements TraceStore {
     return Array.from(this.roster.keys());
   }
 
+  private getOrCreateState(requestId: string): RequestState {
+    let state = this.state.get(requestId);
+    if (state !== undefined) return state;
+    state = {
+      queue: createSerializedWriteQueue({
+        label: `trace-events:${requestId}`,
+        // Backstop for callers that never await `appendEvent`. The primary
+        // error channel is the `inflight` promise rejection.
+        onError: (err) => {
+          console.error(
+            `[flow-state] trace event persistence failed for ${requestId}`,
+            err
+          );
+        }
+      }),
+      pending: [],
+      inflight: undefined
+    };
+    this.state.set(requestId, state);
+    return state;
+  }
+
+  private ensureRootDir(): Promise<void> {
+    if (this.dirReady !== undefined) return this.dirReady;
+    this.dirReady = ensureDirectory(this.rootDir);
+    return this.dirReady;
+  }
+
   private loadRoster(): Promise<void> {
     if (this.rosterReady !== undefined) return this.rosterReady;
     this.rosterReady = (async () => {
@@ -168,11 +182,9 @@ export class FilesystemTraceStore implements TraceStore {
           this.roster.set(entry.requestId, entry.insertedAt);
         }
       } catch (err) {
-        const e = err as NodeJS.ErrnoException;
-        if (e.code === "ENOENT") return;
-        // Malformed roster: treat as empty so the next write overwrites it
-        // with valid JSON. We don't unlink it — operators can still recover
-        // the bad file by hand if they care.
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+        // Treat malformed roster as empty so the next write overwrites it.
+        // We don't unlink — operators can still recover the bad file by hand.
         console.warn(
           `[flow-state] trace roster at ${rosterPath(this.rootDir)} is unreadable; treating as empty`,
           err
@@ -182,9 +194,9 @@ export class FilesystemTraceStore implements TraceStore {
     return this.rosterReady;
   }
 
-  // `.then(fn, fn)` runs the callback regardless of whether the prior holder
-  // resolved or rejected — a failed roster mutation must not block subsequent
-  // ones, and we explicitly catch the chained rejection so it doesn't leak.
+  // `.then(fn, fn)` runs `fn` after either outcome so a rejected mutation
+  // doesn't block the chain; the trailing `.catch` keeps the rejection from
+  // leaking as an unhandled-rejection warning.
   private withRosterLock<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.rosterLock.then(fn, fn);
     this.rosterLock = next.catch(() => undefined);
@@ -208,63 +220,33 @@ export class FilesystemTraceStore implements TraceStore {
 
       await this.writeRoster();
 
-      for (const id of evicted) {
-        // Drop in-memory bookkeeping for evicted requests so the maps don't
-        // grow unbounded over a long-running process. A concurrent
-        // appendEvent that beat the roster mutation has already captured
-        // the pending events into its queued task — its appendFile may
-        // create an orphan file, which the spec accepts as the documented
-        // "append wins / eviction wins" trade-off.
-        this.pendingEvents.delete(id);
-        this.pendingWrite.delete(id);
-        this.writeQueues.delete(id);
-        try {
-          await rm(eventsPath(this.rootDir, id));
-        } catch (err) {
-          const e = err as NodeJS.ErrnoException;
-          if (e.code !== "ENOENT") {
-            console.error(
-              `[flow-state] failed to remove evicted trace events for ${id}`,
-              err
-            );
-          }
-        }
-      }
+      // Drop bookkeeping for evicted requests; in-flight appends that beat
+      // the lock have already captured their pending events into the queued
+      // task, so their `appendFile` may create an orphan file (accepted per
+      // the spec's "append wins / eviction wins" trade-off).
+      for (const id of evicted) this.state.delete(id);
+      await Promise.allSettled(
+        evicted.map((id) =>
+          rm(eventsPath(this.rootDir, id)).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+              console.error(
+                `[flow-state] failed to remove evicted trace events for ${id}`,
+                err
+              );
+            }
+          })
+        )
+      );
     });
   }
 
   private async writeRoster(): Promise<void> {
-    await ensureDirectory(this.rootDir);
+    await this.ensureRootDir();
     const entries: RosterEntry[] = [];
     for (const [requestId, insertedAt] of this.roster) {
       entries.push({ requestId, insertedAt });
     }
-    const target = rosterPath(this.rootDir);
-    const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2)}`;
-    await writeFile(tmp, JSON.stringify(entries), "utf8");
-    await rename(tmp, target);
-  }
-
-  private getOrCreateWriteQueue(requestId: string): SerializedWriteQueue {
-    let queue = this.writeQueues.get(requestId);
-    if (queue === undefined) {
-      // The queue's own `onError` is a backstop for callers that didn't
-      // await `appendEvent`. The primary error channel is the `inflight`
-      // promise rejection in `appendEvent`.
-      queue = createSerializedWriteQueue({
-        label: `trace-events:${requestId}`,
-        onError: (err) => {
-          console.error(
-            `[flow-state] trace event persistence failed for ${requestId}`,
-            err
-          );
-        }
-      });
-      this.writeQueues.set(requestId, queue);
-    }
-    return queue;
+    await atomicWrite(rosterPath(this.rootDir), JSON.stringify(entries));
   }
 }
 

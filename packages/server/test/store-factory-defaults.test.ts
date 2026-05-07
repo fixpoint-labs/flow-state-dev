@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createFilesystemStores,
   createInMemoryStores,
-  resolveTraceMaxRequests,
-  type TraceEvent
+  resolveTraceMaxRequests
 } from "../src/stores";
+import { makeTraceEvent } from "../src/testing";
 
 const trackedRootDirs: string[] = [];
 
@@ -21,21 +21,6 @@ async function freshRootDir(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "fsd-trace-defaults-"));
   trackedRootDirs.push(dir);
   return dir;
-}
-
-function makeEvent(requestId: string, sequenceNumber: number): TraceEvent {
-  return {
-    requestId,
-    sequenceNumber,
-    ts: 0,
-    type: "trace.item.added",
-    item: {
-      type: "block_debug",
-      itemId: `item_${sequenceNumber}`,
-      ts: 0,
-      blockName: "test"
-    } as unknown as TraceEvent["item"]
-  };
 }
 
 describe("resolveTraceMaxRequests", () => {
@@ -80,7 +65,7 @@ describe("createInMemoryStores trace defaults", () => {
     process.env.NODE_ENV = "development";
     const stores = createInMemoryStores();
     for (let i = 0; i < 1001; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     const ids = await stores.traces.listRequestIds();
     expect(ids.length).toBe(1000);
@@ -92,7 +77,7 @@ describe("createInMemoryStores trace defaults", () => {
     process.env.NODE_ENV = "production";
     const stores = createInMemoryStores();
     for (let i = 0; i < 60; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     expect((await stores.traces.listRequestIds()).length).toBe(50);
   });
@@ -101,7 +86,7 @@ describe("createInMemoryStores trace defaults", () => {
     process.env.NODE_ENV = "development";
     const stores = createInMemoryStores({ traceStore: { maxRequests: 3 } });
     for (let i = 0; i < 5; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     expect((await stores.traces.listRequestIds()).length).toBe(3);
   });
@@ -118,7 +103,7 @@ describe("createFilesystemStores trace defaults", () => {
     const rootDir = await freshRootDir();
     const stores = createFilesystemStores({ rootDir });
     for (let i = 0; i < 1001; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     const ids = await stores.traces.listRequestIds();
     expect(ids.length).toBe(1000);
@@ -131,7 +116,7 @@ describe("createFilesystemStores trace defaults", () => {
     const rootDir = await freshRootDir();
     const stores = createFilesystemStores({ rootDir });
     for (let i = 0; i < 60; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     const ids = await stores.traces.listRequestIds();
     expect(ids.length).toBe(50);
@@ -147,7 +132,7 @@ describe("createFilesystemStores trace defaults", () => {
       traceStore: { maxRequests: 4 }
     });
     for (let i = 0; i < 6; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeEvent(`r${i}`, 1));
+      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
     }
     expect((await stores.traces.listRequestIds()).length).toBe(4);
   });
@@ -156,8 +141,7 @@ describe("createFilesystemStores trace defaults", () => {
     process.env.NODE_ENV = "development";
     const rootDir = await freshRootDir();
     const stores = createFilesystemStores({ rootDir });
-    await stores.traces.appendEvent("r1", makeEvent("r1", 1));
-    // Re-open against the same rootDir using a fresh registry: data must persist.
+    await stores.traces.appendEvent("r1", makeTraceEvent("r1", 1));
     const reopened = createFilesystemStores({ rootDir });
     expect(await reopened.traces.listRequestIds()).toContain("r1");
   });
