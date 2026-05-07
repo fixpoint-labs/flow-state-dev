@@ -172,6 +172,27 @@ Override any roster entry by passing a `block`; override the judge or the synthe
 
 **Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`
 
+### Debate
+
+Multi-round adversarial argumentation with assigned stances and a single judge that runs once at the end. Every debater speaks every round and sees all prior arguments from all debaters. The judge reads the full transcript and returns `{ verdict, winner, reasoning }`. Bias mitigations — name anonymization and per-round argument shuffling for the judge — are on by default.
+
+```typescript
+import { debate } from "@flow-state-dev/patterns/debate";
+
+const proCon = debate({
+  name: "feature-debate",
+  debaters: [
+    { name: "advocate", stance: "ship now" },
+    { name: "skeptic", stance: "do not ship now" },
+  ],
+  maxRounds: 2,
+});
+```
+
+Built on the Round Robin chassis; see that section for the loop substrate. Override any debater by passing a `block`; override the judge or the synthesizer with custom blocks. See [Debate](https://flow-state.dev/docs/patterns/debate) for the full reference, the bias-mitigation toggles, and the documented failure modes.
+
+**Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`
+
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.

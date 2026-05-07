@@ -160,6 +160,7 @@ The default synthesizer is a generator that composes the transcript into a unifi
 
 ## See also
 
+- [Debate](./debate) — same chassis, but the judge runs once at the end with a verdict instead of per-round as a terminator. Use it when you want adversarial argumentation across assigned positions rather than collaborative turn-taking.
 - [Routed Specialists](./routed-specialists) — for when the next speaker depends on context.
 - [Supervisor](./supervisor) — for per-task review with retry, not full-roster turn-taking.
 - [Patterns overview](./overview).

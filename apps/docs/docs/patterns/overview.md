@@ -60,6 +60,8 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 
 **Round Robin** — fixed-roster, deterministic-order turn-taking. Every agent contributes once per round, in declared order, seeing the full prior transcript. After each round a judge decides whether to keep going. Use it for editorial review, committee deliberation, or multi-perspective critique panels where the roster and the order are part of the design.
 
+**Debate** — multi-round adversarial argumentation with assigned stances and a single judge that runs once at the end. Built on the Round Robin chassis, but the judge is the verdict-producer rather than the loop terminator. Ships bias mitigations (name anonymization, per-round argument shuffling) on by default. Use it for fact verification, decisions with genuine tradeoffs, and scalable-oversight setups where you want the disagreement surfaced rather than averaged.
+
 **Reactive Blackboard** — stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics and react automatically when matching entries are written. No controller, no loop. Use it for event-driven systems, continuous monitoring, and broadcast scenarios where coordination is emergent.
 
 **Drain Pool** — concurrent streaming dispatch over a dynamic, durable queue. N workers continuously pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion. Bounded concurrency (exactly N workers, not `N^depth`), at-least-once semantics, durable via session resources.
@@ -89,6 +91,7 @@ More specifically:
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Controller-driven multi-agent workspace (incremental synthesis)** → [Routed Specialists](./routed-specialists)
 - **Fixed-roster turn-taking with a judge deciding when to stop** → [Round Robin](./round-robin)
+- **Adversarial argumentation across assigned positions with a final judge** → [Debate](./debate)
 - **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
 - **Concurrent dependency-aware drain over a Task Collection** → Task Board (see `@flow-state-dev/patterns/task-board`)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`

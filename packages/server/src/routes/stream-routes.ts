@@ -13,11 +13,11 @@ import {
   filterClientEvents
 } from "../streaming/client-filter";
 import { encodeStreamEvent } from "../streaming/encode-event";
-import { injectHeartbeat } from "../streaming/heartbeat";
 import {
   resolveRequestReplayCursor,
   replayRequestEvents
 } from "../streaming/resume";
+import { createSSEStream } from "../streaming/sse-stream";
 import {
   buildReplayEvents,
   getBooleanFlag,
@@ -39,7 +39,46 @@ type StreamRouteContext = {
   defaultSseHeartbeatMs?: number;
 };
 
-const textEncoder = new TextEncoder();
+/**
+ * Whether an event should reach the SSE wire on the live-attach path.
+ * Drops events at or before the resume cursor, internal-only types
+ * (`ping`, `debug`), and — only on the buffered-replay leg — `content.delta`
+ * (FIX-479: deltas don't replay; the reconnecting client snaps to the next
+ * item.added/done snapshot). The optional `shouldForward` filter strips
+ * trace-channel items unless `?include=trace` was set.
+ */
+function shouldEmitToWire(
+  event: { type: string; sequence_number: number },
+  minSeq: number,
+  shouldForward: ((event: { type: string }) => boolean) | undefined,
+  isReplay: boolean
+): boolean {
+  if (event.sequence_number <= minSeq) return false;
+  if (event.type === "ping" || event.type === "debug") return false;
+  if (isReplay && event.type === "content.delta") return false;
+  if (shouldForward && !shouldForward(event)) return false;
+  return true;
+}
+
+/**
+ * Whether an event marks the end of a request stream — the SSE handle
+ * should close after writing one of these. `request.interrupted` only
+ * counts as terminal once the status flips to `"interrupted"`; the
+ * intermediate transitions are ignored.
+ */
+function isTerminalRequestEvent(event: { type: string }): boolean {
+  switch (event.type) {
+    case "request.completed":
+    case "request.failed":
+    case "request.incomplete":
+    case "request.aborted":
+      return true;
+    case "request.interrupted":
+      return (event as { status?: string }).status === "interrupted";
+    default:
+      return false;
+  }
+}
 
 export async function handleRequestStream(
   request: Request,
@@ -64,88 +103,36 @@ export async function handleRequestStream(
 
   const activeStream = getActiveStream(route.requestId);
   if (activeStream !== undefined) {
-    // Resolve cursor from request headers/params.
     const cursor = resolveRequestReplayCursor({
       requestId: route.requestId,
       lastEventId: request.headers.get("last-event-id"),
       startingAfter: url.searchParams.get("starting_after")
     });
 
-    // Replay buffered events after cursor (or all if no cursor), then tail live.
-    // Always creates a fresh subscriber ReadableStream — the original
-    // activeStream.readable is single-use and becomes unusable after the
-    // first client disconnects.
     const minSeq = cursor.sequenceNumber ?? -1;
     const emitter = activeStream.emitter;
+    const shouldForward = includeTrace ? undefined : createClientEventFilter();
 
-    const readable = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const shouldForward = includeTrace ? undefined : createClientEventFilter();
+    const handle = createSSEStream({ pingIntervalMs: sseHeartbeatMs });
 
-        // 1. Replay buffered events after the cursor.
-        // FIX-479: content.delta is non-replayable. The reconnecting
-        // client snaps forward to the latest item snapshot from
-        // item.added/done payloads; it picks up live deltas from the
-        // observer subscription (step 2) onward.
-        const buffered = emitter.getEvents();
-        for (const event of buffered) {
-          if (event.sequence_number <= minSeq) continue;
-          if (
-            event.type === "ping" ||
-            event.type === "debug" ||
-            event.type === "content.delta"
-          ) {
-            continue;
-          }
-          if (shouldForward && !shouldForward(event)) continue;
-          const frame = encodeStreamEvent(event);
-          controller.enqueue(textEncoder.encode(frame));
-        }
+    // FIX-479: content.delta is dropped from the buffered replay (the
+    // reconnecting client snaps to the latest item.added/done snapshot)
+    // but is forwarded live by the observer below.
+    for (const event of emitter.getEvents()) {
+      if (!shouldEmitToWire(event, minSeq, shouldForward, true)) continue;
+      handle.writeRaw(encodeStreamEvent(event));
+    }
 
-        // 2. Subscribe to new events going forward. content.delta is
-        // forwarded live here — the resume contract drops only the
-        // historical (buffered) deltas, not the in-flight stream.
-        emitter.addEventObserver((event) => {
-          if (event.sequence_number <= minSeq) return;
-          if (event.type === "ping" || event.type === "debug") return;
-          if (shouldForward && !shouldForward(event)) return;
-          try {
-            const frame = encodeStreamEvent(event);
-            controller.enqueue(textEncoder.encode(frame));
-          } catch {
-            // Controller closed — client disconnected or navigated away.
-            // This is expected during long-running background work
-            // (e.g. forEachBackground dispatches). Silently ignore.
-          }
-
-          // Close when terminal status is reached.
-          const status = (event as { status?: string }).status;
-          if (
-            event.type === "request.completed" ||
-            event.type === "request.failed" ||
-            event.type === "request.incomplete" ||
-            event.type === "request.aborted" ||
-            (event.type === "request.interrupted" && status === "interrupted")
-          ) {
-            try {
-              controller.close();
-            } catch {
-              // Already closed.
-            }
-          }
-        });
-      },
-      cancel() {
-        // Client disconnected — nothing to clean up for observers.
+    emitter.addEventObserver((event) => {
+      if (handle.closed) return;
+      if (!shouldEmitToWire(event, minSeq, shouldForward, false)) return;
+      handle.writeRaw(encodeStreamEvent(event));
+      if (isTerminalRequestEvent(event)) {
+        handle.close();
       }
     });
 
-    const wrapped =
-      sseHeartbeatMs !== undefined && sseHeartbeatMs > 0
-        ? injectHeartbeat(readable, sseHeartbeatMs)
-        : readable;
-
-    return new Response(wrapped, {
+    return new Response(handle.readable, {
       status: 200,
       headers: SSE_HEADERS
     });

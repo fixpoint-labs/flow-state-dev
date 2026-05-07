@@ -112,6 +112,7 @@ const sidebars: SidebarsConfig = {
                 "patterns/plan-and-execute",
                 "patterns/routed-specialists",
                 "patterns/round-robin",
+                "patterns/debate",
                 "patterns/event-actors",
               ],
             },

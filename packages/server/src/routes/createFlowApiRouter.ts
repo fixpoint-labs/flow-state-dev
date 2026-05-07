@@ -26,6 +26,11 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import type { MatchFunction } from "path-to-regexp";
+import {
+  compileTransportPattern,
+  matchTransportRoute
+} from "./router";
 import type {
   InboundTransportAdapter,
   PrincipalResolver,
@@ -240,12 +245,22 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
 
   // Build the custom-adapter route table for non-HTTP adapters. Routes
   // declared by the built-in HTTP adapter are intentionally skipped — the
-  // canonical handler already covers them via the catch-all.
-  const customRoutes: { adapterSource: string; route: TransportRoute }[] = [];
+  // canonical handler already covers them via the catch-all. Patterns are
+  // compiled once at registration so dispatch is allocation-free per call.
+  type CompiledRoute = {
+    adapterSource: string;
+    route: TransportRoute;
+    matcher: MatchFunction<Record<string, string | string[]>>;
+  };
+  const customRoutes: CompiledRoute[] = [];
   for (const { adapter, bindings } of allBindings) {
     if (adapter.source === HTTP_TRANSPORT_SOURCE) continue;
     for (const route of bindings.routes ?? []) {
-      customRoutes.push({ adapterSource: adapter.source, route });
+      customRoutes.push({
+        adapterSource: adapter.source,
+        route,
+        matcher: compileTransportPattern(route.path)
+      });
     }
   }
 
@@ -259,9 +274,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     // and gives custom transports an unambiguous path.
     if (customRoutes.length > 0) {
       const url = new URL(req.url);
-      for (const { route } of customRoutes) {
+      for (const { route, matcher } of customRoutes) {
         if (route.method.toUpperCase() !== req.method.toUpperCase()) continue;
-        const matched = matchRoute(route.path, url.pathname);
+        const matched = matchTransportRoute(matcher, url.pathname);
         if (matched !== null) {
           return route.handler(req, { params: matched });
         }
@@ -328,36 +343,3 @@ function validateRouteUniqueness(allBindings: AdapterBindings[]): void {
   }
 }
 
-/**
- * Minimal path matcher with `:param` and `*` wildcard support. Returns the
- * captured params on match, `null` otherwise. Adapter-declared routes use
- * this matcher; the canonical `/api/flows` table parses paths through
- * `parseFlowRoute` and does not go through this code.
- */
-function matchRoute(
-  pattern: string,
-  pathname: string
-): Record<string, string> | null {
-  const normalizedPattern = pattern.startsWith("/") ? pattern : `/${pattern}`;
-  const patternSegments = normalizedPattern.split("/").filter((s) => s.length > 0);
-  const pathSegments = pathname.split("/").filter((s) => s.length > 0);
-  const params: Record<string, string> = {};
-
-  for (let i = 0; i < patternSegments.length; i++) {
-    const patternSeg = patternSegments[i] as string;
-    if (patternSeg === "*") {
-      // Wildcard absorbs the remainder of the path.
-      params.rest = pathSegments.slice(i).join("/");
-      return params;
-    }
-    const pathSeg = pathSegments[i];
-    if (pathSeg === undefined) return null;
-    if (patternSeg.startsWith(":")) {
-      params[patternSeg.slice(1)] = pathSeg;
-      continue;
-    }
-    if (patternSeg !== pathSeg) return null;
-  }
-  if (patternSegments.length !== pathSegments.length) return null;
-  return params;
-}
