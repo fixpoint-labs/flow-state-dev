@@ -1,0 +1,262 @@
+/**
+ * Method-aware route table for the canonical `/api/flows` surface and a
+ * shared compile helper for transport-adapter routes.
+ *
+ * Replaces the long if-chain in `parseFlowRoute.ts` and the hand-rolled
+ * `:param` + `*` matcher in `createFlowApiRouter.ts` with a single
+ * `path-to-regexp@^8` driver. Routes are organized by `ParsedFlowRoute`
+ * kind, so omitting a kind is a TypeScript error at this file's level.
+ *
+ * Same-length method+path overlaps are resolved by `path-to-regexp`'s
+ * specificity ranking (literal segments beat parameter segments). Every
+ * same-length pair under this table differs in at least one literal
+ * position (`requests`, `resources`, `state`, `actions`, `recovery`); the
+ * router test snapshots every parser branch to verify parity with the
+ * legacy if-chain.
+ */
+import { match, type MatchFunction } from "path-to-regexp";
+import type { ParsedFlowRoute } from "./parseFlowRoute";
+
+type CoveredKind = Exclude<ParsedFlowRoute["kind"], "not_found">;
+
+type Builder<K extends CoveredKind> = (
+  params: Record<string, string>
+) => Extract<ParsedFlowRoute, { kind: K }>;
+
+interface RouteEntry<K extends CoveredKind = CoveredKind> {
+  method: string;
+  pattern: string;
+  matcher: MatchFunction<Record<string, string | string[]>>;
+  build: Builder<K>;
+}
+
+function entry<K extends CoveredKind>(
+  method: string,
+  pattern: string,
+  build: Builder<K>
+): RouteEntry<K> {
+  return {
+    method: method.toUpperCase(),
+    pattern,
+    matcher: match(pattern, { decode: decodeURIComponent }),
+    build
+  };
+}
+
+/**
+ * Routes grouped by `ParsedFlowRoute` kind. The `Record<CoveredKind, ...>`
+ * type forces every kind to have at least one entry — a missing kind is a
+ * compile error here, not a silent 404. `execute_action` carries two
+ * entries (session-bound and session-less variants) sharing one kind.
+ */
+const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
+  list_flows: [entry("GET", "/", () => ({ kind: "list_flows" }))],
+  capabilities: [entry("GET", "/capabilities", () => ({ kind: "capabilities" }))],
+  list_sessions: [entry("GET", "/sessions", () => ({ kind: "list_sessions" }))],
+  active_requests: [entry("GET", "/active-requests", () => ({ kind: "active_requests" }))],
+  transcribe: [entry("POST", "/transcribe", () => ({ kind: "transcribe" }))],
+  get_session: [
+    entry("GET", "/sessions/:sessionId", (p) => ({
+      kind: "get_session",
+      sessionId: p.sessionId
+    }))
+  ],
+  delete_session: [
+    entry("DELETE", "/sessions/:sessionId", (p) => ({
+      kind: "delete_session",
+      sessionId: p.sessionId
+    }))
+  ],
+  patch_session_metadata: [
+    entry("PATCH", "/sessions/:sessionId/metadata", (p) => ({
+      kind: "patch_session_metadata",
+      sessionId: p.sessionId
+    }))
+  ],
+  list_session_requests: [
+    entry("GET", "/sessions/:sessionId/requests", (p) => ({
+      kind: "list_session_requests",
+      sessionId: p.sessionId
+    }))
+  ],
+  get_session_state: [
+    entry("GET", "/sessions/:sessionId/state", (p) => ({
+      kind: "get_session_state",
+      sessionId: p.sessionId
+    }))
+  ],
+  user_stream: [
+    entry("GET", "/users/:userId/stream", (p) => ({
+      kind: "user_stream",
+      userId: p.userId
+    }))
+  ],
+  check_interrupted_requests: [
+    entry("POST", "/users/:userId/check-interrupted", (p) => ({
+      kind: "check_interrupted_requests",
+      userId: p.userId
+    }))
+  ],
+  create_session: [
+    entry("POST", "/:flowKind/sessions", (p) => ({
+      kind: "create_session",
+      flowKind: p.flowKind
+    }))
+  ],
+  execute_action: [
+    entry("POST", "/:flowKind/actions/:actionName", (p) => ({
+      kind: "execute_action",
+      flowKind: p.flowKind,
+      actionName: p.actionName
+    })),
+    entry("POST", "/:flowKind/:sessionId/actions/:actionName", (p) => ({
+      kind: "execute_action",
+      flowKind: p.flowKind,
+      sessionId: p.sessionId,
+      actionName: p.actionName
+    }))
+  ],
+  request_stream: [
+    entry("GET", "/:flowKind/requests/:requestId/stream", (p) => ({
+      kind: "request_stream",
+      flowKind: p.flowKind,
+      requestId: p.requestId
+    }))
+  ],
+  abort_request: [
+    entry("POST", "/:flowKind/requests/:requestId/abort", (p) => ({
+      kind: "abort_request",
+      flowKind: p.flowKind,
+      requestId: p.requestId
+    }))
+  ],
+  request_status: [
+    entry("GET", "/:flowKind/requests/:requestId/status", (p) => ({
+      kind: "request_status",
+      flowKind: p.flowKind,
+      requestId: p.requestId
+    }))
+  ],
+  retry_request: [
+    entry(
+      "POST",
+      "/:flowKind/sessions/:sessionId/requests/:requestId/retry",
+      (p) => ({
+        kind: "retry_request",
+        flowKind: p.flowKind,
+        sessionId: p.sessionId,
+        requestId: p.requestId
+      })
+    )
+  ],
+  get_resource_content: [
+    entry("GET", "/sessions/:sessionId/resources/:ref/content", (p) => ({
+      kind: "get_resource_content",
+      sessionId: p.sessionId,
+      ref: p.ref
+    }))
+  ],
+  get_collection_item_content: [
+    entry(
+      "GET",
+      "/sessions/:sessionId/resources/:ref/:topic/content",
+      (p) => ({
+        kind: "get_collection_item_content",
+        sessionId: p.sessionId,
+        ref: p.ref,
+        topic: p.topic
+      })
+    )
+  ],
+  create_collection_item: [
+    entry("POST", "/sessions/:sessionId/resources/:ref", (p) => ({
+      kind: "create_collection_item",
+      sessionId: p.sessionId,
+      ref: p.ref
+    }))
+  ],
+  update_resource_content: [
+    entry(
+      "PATCH",
+      "/sessions/:sessionId/resources/:ref/:topic/content",
+      (p) => ({
+        kind: "update_resource_content",
+        sessionId: p.sessionId,
+        ref: p.ref,
+        topic: p.topic
+      })
+    )
+  ],
+  delete_collection_item: [
+    entry("DELETE", "/sessions/:sessionId/resources/:ref/:topic", (p) => ({
+      kind: "delete_collection_item",
+      sessionId: p.sessionId,
+      ref: p.ref,
+      topic: p.topic
+    }))
+  ]
+};
+
+const FLAT_ROUTES: RouteEntry[] = (
+  Object.values(ROUTES_BY_KIND) as RouteEntry[][]
+).flat();
+
+/**
+ * Resolves a method+path pair to the canonical `ParsedFlowRoute`. Returns
+ * `{ kind: "not_found" }` when no entry matches. Iteration order matches
+ * `ROUTES_BY_KIND` declaration order; same-method same-length overlaps are
+ * disambiguated by literal-segment specificity (handled by
+ * `path-to-regexp`).
+ */
+export function matchFlowRoute(method: string, path: string): ParsedFlowRoute {
+  const upperMethod = method.toUpperCase();
+  for (const route of FLAT_ROUTES) {
+    if (route.method !== upperMethod) continue;
+    const result = route.matcher(path);
+    if (result === false) continue;
+    const params = stringifyParams(result.params);
+    return route.build(params);
+  }
+  return { kind: "not_found" };
+}
+
+/**
+ * Compiles a transport-adapter route pattern (`:param` and trailing `*`) to
+ * a path-to-regexp matcher. Adapter routes historically expose the catch-all
+ * remainder as `params.rest` — joined by `/`. Preserve that contract: when
+ * the legacy pattern ends in `/*`, rewrite to `/*rest` and join the captured
+ * segment array on match.
+ */
+export function compileTransportPattern(
+  pattern: string
+): MatchFunction<Record<string, string | string[]>> {
+  const normalized = (pattern.startsWith("/") ? pattern : `/${pattern}`).replace(
+    /\/\*$/,
+    "/*rest"
+  );
+  return match(normalized, { decode: decodeURIComponent });
+}
+
+/**
+ * Match an adapter route by precompiled matcher; returns the params bag
+ * with array-valued catch-all params joined on `/` (legacy contract).
+ */
+export function matchTransportRoute(
+  matcher: MatchFunction<Record<string, string | string[]>>,
+  pathname: string
+): Record<string, string> | null {
+  const result = matcher(pathname);
+  if (result === false) return null;
+  return stringifyParams(result.params);
+}
+
+function stringifyParams(
+  params: Record<string, string | string[] | undefined>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    out[key] = Array.isArray(value) ? value.join("/") : String(value);
+  }
+  return out;
+}
