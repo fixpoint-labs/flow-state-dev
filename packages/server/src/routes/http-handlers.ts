@@ -48,7 +48,10 @@ import {
   handleGetCollectionItemContent,
   handleCreateCollectionItem,
   handleUpdateResourceContent,
-  handleDeleteCollectionItem
+  handleDeleteCollectionItem,
+  handleListCollectionState,
+  handleGetCollectionItemState,
+  handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
@@ -423,6 +426,27 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "delete_collection_item") {
         return await handleDeleteCollectionItem(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "list_collection_state") {
+        return await handleListCollectionState(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "get_collection_item_state") {
+        return await handleGetCollectionItemState(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "get_resource_manifest") {
+        return await handleGetResourceManifest(request, route, {
           registry: options.registry,
           stores
         });

@@ -258,6 +258,248 @@ export async function handleUpdateResourceContent(
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
 
+// ---------------------------------------------------------------------------
+// FIX-427 — list-state, get-state, manifest
+// ---------------------------------------------------------------------------
+
+const STATE_LIST_DEFAULT_LIMIT = 50;
+const STATE_LIST_MAX_LIMIT = 200;
+
+function applyClientData(
+  config: { client?: { data?: unknown } },
+  state: JsonObject
+): unknown {
+  const fn = typeof config.client?.data === "function"
+    ? (config.client!.data as (s: JsonObject) => unknown)
+    : undefined;
+  return fn ? fn(state) : undefined;
+}
+
+/**
+ * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
+ *
+ * Returns one paginated page of a collection's per-item state. Items are
+ * sorted lexicographically by storage key. Gated by `client.state.read`.
+ * Session scope only at v1; non-session collections must be read via the
+ * snapshot's `prefetched` window.
+ */
+export async function handleListCollectionState(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "list_collection_state" }>,
+  ctx: ResourceRouteContext
+): Promise<Response> {
+  const session = await ctx.stores.session.get(route.sessionId);
+  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+
+  const flow = ctx.registry.get(session.flowKind);
+  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+
+  const found = findResourceConfig(flow, route.ref);
+  if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
+
+  const { config, scope } = found;
+  if (!isCollectionConfig(config)) {
+    return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
+  }
+
+  if (scope !== "session") {
+    return jsonResponse(501, {
+      error: `list endpoint not yet supported for ${scope} scope`
+    });
+  }
+
+  if (config.client?.state?.read !== true) {
+    return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
+  }
+
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get("limit");
+  const offsetParam = url.searchParams.get("offset");
+  const topicPrefix = url.searchParams.get("topicPrefix") ?? undefined;
+
+  const limit = limitParam !== null ? Number.parseInt(limitParam, 10) : STATE_LIST_DEFAULT_LIMIT;
+  const offset = offsetParam !== null ? Number.parseInt(offsetParam, 10) : 0;
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > STATE_LIST_MAX_LIMIT) {
+    return jsonResponse(400, {
+      error: `limit must be 1–${STATE_LIST_MAX_LIMIT}`
+    });
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    return jsonResponse(400, { error: "offset must be >= 0" });
+  }
+
+  const persisted = (session.resources ?? {}) as Record<string, unknown>;
+  const matchedKeys = Object.keys(persisted)
+    .filter((k) => matchesPattern(config.pattern, k))
+    .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
+    .sort();
+  const total = matchedKeys.length;
+
+  const pageKeys = matchedKeys.slice(offset, offset + limit);
+  const items: Array<{ topic: string; clientData?: unknown }> = [];
+  for (const key of pageKeys) {
+    const state = isJsonObject(persisted[key]) ? (persisted[key] as JsonObject) : {};
+    const item: { topic: string; clientData?: unknown } = { topic: key };
+    const data = applyClientData(config, state);
+    if (data !== undefined) item.clientData = data;
+    items.push(item);
+  }
+
+  return jsonResponse(200, {
+    items,
+    pagination: {
+      offset,
+      limit,
+      total,
+      hasMore: offset + limit < total,
+      nextOffset: Math.min(offset + limit, total)
+    }
+  });
+}
+
+/**
+ * GET /sessions/:sessionId/resources/:ref/:topic
+ *
+ * Returns a single collection item's state. 200 with `null` body if the topic
+ * is not present in the collection. Gated by `client.state.read`.
+ */
+export async function handleGetCollectionItemState(
+  _request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
+  ctx: ResourceRouteContext
+): Promise<Response> {
+  const session = await ctx.stores.session.get(route.sessionId);
+  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+
+  const flow = ctx.registry.get(session.flowKind);
+  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+
+  const found = findResourceConfig(flow, route.ref);
+  if (!found) return jsonResponse(404, { error: `Unknown resource "${route.ref}"` });
+
+  const { config, scope } = found;
+  if (!isCollectionConfig(config)) {
+    return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
+  }
+
+  if (scope !== "session") {
+    return jsonResponse(501, {
+      error: `get-state endpoint not yet supported for ${scope} scope`
+    });
+  }
+
+  if (config.client?.state?.read !== true) {
+    return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
+  }
+
+  // Topic may arrive as either a bare key or the full storage key (mirrors
+  // the existing content endpoint conventions).
+  let storageKey = route.topic;
+  if (!matchesPattern(config.pattern, storageKey)) {
+    storageKey = resolveCollectionKey(config.pattern, route.topic);
+    if (!matchesPattern(config.pattern, storageKey)) {
+      return jsonResponse(400, {
+        error: `Topic "${route.topic}" does not match collection pattern`
+      });
+    }
+  }
+
+  const persisted = (session.resources ?? {}) as Record<string, unknown>;
+  const value = persisted[storageKey];
+  if (value === undefined) {
+    // 200 + null body: the topic isn't present, but the collection itself is
+    // readable. Distinguishes "no such item" from "no permission" or "no
+    // collection" without forcing callers to special-case 404.
+    return jsonResponse(200, null);
+  }
+
+  const state = isJsonObject(value) ? (value as JsonObject) : {};
+  const out: { topic: string; clientData?: unknown } = { topic: storageKey };
+  const data = applyClientData(config, state);
+  if (data !== undefined) out.clientData = data;
+  return jsonResponse(200, out);
+}
+
+/**
+ * GET /sessions/:sessionId/manifest
+ *
+ * Returns the static set of public resources exposed by the session's flow,
+ * along with each one's declared client capabilities. Pure metadata; no
+ * permission gate beyond session existence — the manifest is the public
+ * surface, by design.
+ */
+export async function handleGetResourceManifest(
+  _request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "get_resource_manifest" }>,
+  ctx: ResourceRouteContext
+): Promise<Response> {
+  const session = await ctx.stores.session.get(route.sessionId);
+  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+
+  const flow = ctx.registry.get(session.flowKind);
+  if (!flow) return jsonResponse(404, { error: `Unknown flow "${session.flowKind}"` });
+
+  const flatResources = (flow.resources ?? {}) as Record<string, unknown>;
+  const entries: Array<Record<string, unknown>> = [];
+
+  for (const [ref, raw] of Object.entries(flatResources)) {
+    const isCollection = isCollectionConfig(raw);
+    if (!isCollection && typeof raw !== "object") continue;
+    const cfg = raw as Record<string, unknown>;
+    const client = cfg.client as Record<string, unknown> | undefined;
+    if (!client) continue;
+
+    const content = client.content as Record<string, unknown> | undefined;
+    const state = client.state as Record<string, unknown> | undefined;
+    const hasClientData = typeof (client.data) === "function";
+
+    // Inclusion rule: presence of any client-visible affordance — a truthy
+    // permission flag in `content`/`state`, or a `data` projection. Mirrors
+    // the snapshot's inclusion rule (snapshot emits an entry whenever any
+    // client surface exists). All-false / empty `client: {}` is treated as
+    // private.
+    const anyTruthy = (() => {
+      if (hasClientData) return true;
+      if (content) {
+        for (const v of Object.values(content)) if (v === true) return true;
+      }
+      if (state) {
+        for (const v of Object.values(state)) if (v === true) return true;
+      }
+      return false;
+    })();
+    if (!anyTruthy) continue;
+
+    const scope = cfg.scope as string;
+
+    const entry: Record<string, unknown> = {
+      ref,
+      kind: isCollection ? "collection" : "single",
+      scope,
+      hasClientData,
+      client: {
+        ...(content ? { content: { ...content } } : {}),
+        ...(state ? { state: { ...state } } : {})
+      }
+    };
+
+    if (isCollection) {
+      entry.pattern = (cfg.pattern as string | undefined) ?? "";
+      entry.prefetchWindow = typeof cfg.prefetchWindow === "number"
+        ? cfg.prefetchWindow
+        : 0;
+    }
+
+    entries.push(entry);
+  }
+
+  return jsonResponse(200, {
+    flowKind: session.flowKind,
+    resources: entries
+  });
+}
+
 /**
  * DELETE /sessions/:sessionId/resources/:ref/:topic
  * Deletes a collection item.
