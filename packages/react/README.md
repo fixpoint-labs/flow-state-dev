@@ -121,7 +121,7 @@ Returns:
 
 ### `useClientData(session, options)`
 
-Read client data values from the session snapshot:
+Read client data values from the session snapshot. Values update mid-stream as `state_change` items arrive on the SSE stream — components see `ctx.<scope>.patchState(...)` writes within the same paint, not only at request termination. This applies to `expose` keys; `derived` projections refresh once at terminal status.
 
 ```ts
 const data = useClientData(session, {

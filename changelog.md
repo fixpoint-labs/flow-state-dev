@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-07
 
+### `useClientData` reflects mid-stream state changes (FIX-576)
+
+- `ctx.session.patchState`, `ctx.user.patchState`, `ctx.org.patchState`, and `ctx.request.patchState` (and their `setState` / `incState` / `pushState` / `setStateRecord` / `deleteStateRecord` / `atomicState` siblings) now emit `state_change` SSE items with the matching `scope` value. Previously only sequencer / target-state writes emitted on the wire.
+- `useClientData` consumers in React see `expose` keys update mid-stream — within the same paint as the block's mutation — instead of waiting for the request to terminate. Derived projections continue to refresh once at terminal status.
+- React's `useSession` reduces incoming session/user/org-scope `state_change` deltas into the cached snapshot via a new pure `mergeStateChangeIntoSnapshot` helper that handles `patch`, `set`, `increment`, `push`, `delete_key`, and `setStateRecord` deltas, and skips `atomic` mutations (no structured delta).
+- The reducer only updates keys already present in `clientData[scope]` — non-exposed raw state keys can never leak through. Trade-off: the first set of an expose key whose initial value was `undefined` won't surface mid-stream; declare a default in the scope's `stateSchema` if that matters.
+- Re-render isolation is preserved: a delta touching one expose key doesn't churn consumers reading a different one — the reducer returns the prior snapshot reference when the merge is a no-op.
+
 ### Block trace unification (FIX-573) — BREAKING
 
 - Trace channel now uses a single `block_trace` item per block run, replacing the old `block_output` / `block_debug` split. Carries input, output, error, timing, and (for generators) the resolved prompt and model config.
