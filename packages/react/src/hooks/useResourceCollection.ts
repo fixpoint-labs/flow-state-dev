@@ -59,6 +59,14 @@ export type UseResourceCollectionResult = {
   prefetched: CollectionItemHandle[] | undefined;
   /** Total item count from the snapshot, when the collection is client-visible. */
   count: number | undefined;
+  /**
+   * Wraps a raw `{ topic, clientData? }` page item from `list()` as a
+   * `CollectionItemHandle` with the FIX-296 lazy `fetchContent()` ergonomic.
+   * Reuses the hook's resource client; the convenience hooks
+   * (`useResourceCollectionList` / `useResourceCollectionItem`) share this
+   * to avoid constructing redundant clients.
+   */
+  wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionItemHandle;
 };
 
 /** @deprecated keep for soft back-compat with callers reading `CollectionItem`. */
@@ -255,11 +263,17 @@ export function useResourceCollection(
     [session.snapshot?.resources, ref]
   );
 
+  const wrap = useCallback(
+    (raw: { topic: string; clientData?: unknown; content?: string }) =>
+      wrapItem(raw, client, session.sessionId, ref),
+    [client, session.sessionId, ref]
+  );
+
   const prefetched = useMemo<CollectionItemHandle[] | undefined>(() => {
     const raw = collectionEntry?.prefetched as CollectionSnapshotPrefetchedItem[] | undefined;
     if (raw === undefined) return undefined;
-    return raw.map((item) => wrapItem(item, client, session.sessionId, ref));
-  }, [collectionEntry, client, session.sessionId, ref]);
+    return raw.map(wrap);
+  }, [collectionEntry, wrap]);
 
   return {
     list,
@@ -269,5 +283,6 @@ export function useResourceCollection(
     refetch: invalidate,
     prefetched,
     count: collectionEntry?.count,
+    wrap,
   };
 }

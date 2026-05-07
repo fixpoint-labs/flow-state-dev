@@ -4,18 +4,16 @@
  * Manages the React state lifecycle for a paginated list view: loading,
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  createResourceClient,
-  type CollectionItemHandle,
-  type CollectionListPage
+import { useCallback, useEffect, useState } from "react";
+import type {
+  CollectionItemHandle,
+  CollectionListPage
 } from "@flow-state-dev/client";
 import {
   useResourceCollection,
   type CollectionListOptions
 } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
-import { useFlowContext } from "../context/FlowContext";
 
 export type UseResourceCollectionListResult = {
   /** Items accumulated across `loadMore` calls. */
@@ -35,9 +33,7 @@ export function useResourceCollectionList(
   ref: string,
   options: { limit?: number; topicPrefix?: string } = {}
 ): UseResourceCollectionListResult {
-  const { list, prefetched, count } = useResourceCollection(session, ref);
-  const { baseUrl } = useFlowContext();
-  const client = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
+  const { list, prefetched, count, wrap } = useResourceCollection(session, ref);
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
@@ -57,22 +53,10 @@ export function useResourceCollectionList(
         if (limit !== undefined) queryOptions.limit = limit;
         if (topicPrefix !== undefined) queryOptions.topicPrefix = topicPrefix;
         const page = await list(queryOptions);
-        // The hook's list() returns raw `{ topic, clientData? }`. Wrap each
-        // item in a CollectionItemHandle with fetchContent() — the prefetched
-        // window already exposes handles, so we mirror that ergonomic. We
-        // reuse the same client-construction path via a one-shot list of an
-        // empty key to read off the prefetched-style closure; in practice
-        // we just re-call useResourceCollection's plumbing below.
-        const handles: CollectionItemHandle[] = page.items.map((it) => ({
-          topic: it.topic,
-          clientData: it.clientData,
-          fetchContent: async () => {
-            const sessionId = session.sessionId;
-            if (!sessionId) return null;
-            const result = await client.getCollectionItemContent(sessionId, ref, it.topic);
-            return result.content;
-          },
-        }));
+        // Wrap raw `{ topic, clientData? }` page items as handles using the
+        // shared wrap helper from useResourceCollection (one client per
+        // hook tree, not one per convenience hook).
+        const handles = page.items.map(wrap);
         setPagination(page.pagination);
         setItems((prev) => (replace ? handles : [...prev, ...handles]));
       } catch (err) {
@@ -81,7 +65,7 @@ export function useResourceCollectionList(
         setIsLoading(false);
       }
     },
-    [list, client, limit, topicPrefix, session.sessionId, ref]
+    [list, wrap, limit, topicPrefix]
   );
 
   // Initial / re-fetch whenever inputs change. `generation` lets refetch()
@@ -99,13 +83,13 @@ export function useResourceCollectionList(
     void fetchPage(pagination.nextOffset, false);
   }, [fetchPage, pagination]);
 
-  // If a snapshot prefetched window exists and we have no fetched data yet,
-  // surface it as the initial paint. Lets consumers render immediately
-  // when `prefetchWindow > 0` without waiting on the network.
+  // Initial paint: when the snapshot exposes a prefetched window and we
+  // haven't yet received a fetched page, surface the prefetched items
+  // (including during the in-flight initial load). Once the first page
+  // resolves, `items` takes over. This is the whole point of declaring
+  // `prefetchWindow` — render immediately, no network round-trip.
   const surfaced =
-    items.length === 0 && prefetched !== undefined && !isLoading
-      ? prefetched
-      : items;
+    items.length === 0 && prefetched !== undefined ? prefetched : items;
   const surfacedPagination =
     pagination ??
     (count !== undefined && prefetched !== undefined

@@ -1,14 +1,10 @@
 /**
  * Convenience hook for fetching a single collection item by topic (FIX-427).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  createResourceClient,
-  type CollectionItemHandle
-} from "@flow-state-dev/client";
+import { useCallback, useEffect, useState } from "react";
+import type { CollectionItemHandle } from "@flow-state-dev/client";
 import { useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
-import { useFlowContext } from "../context/FlowContext";
 
 export type UseResourceCollectionItemResult = {
   item: CollectionItemHandle | null;
@@ -22,9 +18,7 @@ export function useResourceCollectionItem(
   ref: string,
   topic: string
 ): UseResourceCollectionItemResult {
-  const { get } = useResourceCollection(session, ref);
-  const { baseUrl } = useFlowContext();
-  const client = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
+  const { get, wrap } = useResourceCollection(session, ref);
 
   const [item, setItem] = useState<CollectionItemHandle | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -39,20 +33,7 @@ export function useResourceCollectionItem(
       try {
         const result = await get(topic);
         if (cancelled) return;
-        if (result === null) {
-          setItem(null);
-        } else {
-          setItem({
-            topic: result.topic,
-            clientData: result.clientData,
-            fetchContent: async () => {
-              const sessionId = session.sessionId;
-              if (!sessionId) return null;
-              const r = await client.getCollectionItemContent(sessionId, ref, result.topic);
-              return r.content;
-            }
-          });
-        }
+        setItem(result === null ? null : wrap(result));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err : new Error(String(err)));
@@ -64,7 +45,7 @@ export function useResourceCollectionItem(
     return () => {
       cancelled = true;
     };
-  }, [get, client, session.sessionId, ref, topic, generation]);
+  }, [get, wrap, topic, generation]);
 
   const refetch = useCallback(() => setGeneration((g) => g + 1), []);
 
