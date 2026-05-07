@@ -11,6 +11,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
+import { getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -56,6 +57,47 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
   blockInstanceId: "runtime",
   phase: "main"
 };
+
+/**
+ * Drains the request-scoped background work pool. Emits `backgroundTasks: N`
+ * status updates as tasks settle (parity with the legacy per-sequencer
+ * auto-await), logs failures via console.error, and emits a final
+ * `backgroundTasks: 0` status before the caller proceeds to terminal status.
+ *
+ * Best-effort: emit failures must never throw out of this helper, since the
+ * response emitter may have torn down on abort. Skipped entirely on the
+ * abort/disconnect/error paths — see callers in runActionInternal.
+ */
+async function drainRequestWorkPool(
+  ctx: ExecutionContext,
+  signal: AbortSignal
+): Promise<void> {
+  const pool = getRequestWorkPool(ctx);
+  if (pool === undefined || pool.pendingCount() === 0) {
+    return;
+  }
+
+  const safeEmit = (count: number): void => {
+    try {
+      ctx.emit.status(undefined, { blocked: false, backgroundTasks: count });
+    } catch {
+      // Emitter teardown race; non-fatal.
+    }
+  };
+
+  try {
+    const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
+    for (const f of result.failed) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[runAction] Background work "${f.meta.name}" failed:`,
+        (f.reason as { message?: string } | undefined)?.message ?? f.reason
+      );
+    }
+  } finally {
+    safeEmit(0);
+  }
+}
 
 /**
  * Resolves an action definition from a flow and validates that it exists.
@@ -726,6 +768,14 @@ export async function runActionInternal<
       await ttsHook.finalize();
     }
     }
+
+    // Drain the request-scoped background work pool before terminal status.
+    // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
+    // the pool consolidates them and we wait once here. Skipped on the
+    // abort/disconnect/error paths below: in-flight tasks see ctx.signal and
+    // either short-circuit or run to completion in the void; either way the
+    // request must not block on them.
+    await drainRequestWorkPool(ctx, composedSignal);
 
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);

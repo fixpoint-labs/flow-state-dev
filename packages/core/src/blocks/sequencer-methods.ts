@@ -328,6 +328,18 @@ export type SequencerWorkTask = {
 export type SequencerRuntimeState = {
   stepHistory: string[];
   loopCounts: Map<string, number>;
+  /**
+   * Per-sequencer fallback work list. Populated only when the request-scoped
+   * work pool is absent (unit-test contexts without `_requestWorkPool`). When
+   * a pool is present, sequencer DSL pushes tasks onto the pool tagged with
+   * `scopeId`, and this list stays empty.
+   */
   workTasks: SequencerWorkTask[];
   stateVersion: number;
+  /**
+   * Per-sequencer-instance scope ID. `.work()` / `.workIf()` /
+   * `.forEachBackground()` tag pool tasks with this id so `.waitForWork()`
+   * drains only the calling sequencer's contributions to the pool.
+   */
+  scopeId: string;
 };

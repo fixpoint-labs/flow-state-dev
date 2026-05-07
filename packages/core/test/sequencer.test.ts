@@ -1100,7 +1100,12 @@ describe("sequencer builder", () => {
       await expect(runForTest(seq, 5, ctx)).resolves.toBe(5);
     });
 
-    it("works with background work (auto-await still happens)", async () => {
+    it("works with background work — per-sequencer fallback auto-awaits when no request pool is present", async () => {
+      // Without `_requestWorkPool` on ctx (the unit-test default), sequencer
+      // DSL falls back to the legacy per-sequencer auto-await so dispatcher
+      // tests don't need to construct a pool. The request-scoped pool
+      // behavior — inner sequencers do NOT block their parent — is asserted
+      // at the integration level (see packages/integration-tests).
       let workRan = false;
       const sideEffect = handler({
         name: "side-effect",
@@ -1122,9 +1127,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 5, ctx);
-      // exitIf condition is true (5 > 0), so addOne is skipped
       expect(result).toBe(5);
-      // But background work should have completed (auto-await)
       expect(workRan).toBe(true);
     });
 
