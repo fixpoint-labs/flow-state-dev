@@ -11,6 +11,7 @@ import {
   resolveUserStorageKey
 } from "../stores/scope-keys";
 import {
+  IncludeItemsCapExceeded,
   buildResourceSnapshot,
   computeClientData,
   createScopeResources,
@@ -71,6 +72,12 @@ export async function handleGetSessionState(
   );
   const includeInternalResources = getBooleanFlag(
     url.searchParams.get("include_internal_resources")
+  );
+  // @internal DevTool migration window only. Restores the legacy eager
+  // `items` map on collection snapshot entries; capped per collection at
+  // INCLUDE_ITEMS_CAP. Removed once DevTool is migrated to paginated reads.
+  const includeCollectionItems = getBooleanFlag(
+    url.searchParams.get("includeItems")
   );
   // FIX-505: opt-in escape hatch for raw scope state. Parallels FIX-506's
   // `?include=trace`. When unset (the default), the response carries no
@@ -188,26 +195,39 @@ export async function handleGetSessionState(
   // caller passes include_internal_resources=true (the DevTool does), also
   // include resources without a `client` config — they're flagged `internal`
   // and surface their raw state under `clientData`.
-  const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
-    buildResourceSnapshot({
-      configs: sessionConfigs,
-      persisted: session.resources as Record<string, unknown> | undefined,
-      persistedContent: sessionContent,
-      includeInternal: includeInternalResources,
-    }),
-    buildResourceSnapshot({
-      configs: userConfigs,
-      persisted: user?.resources as Record<string, unknown> | undefined,
-      persistedContent: userContent,
-      includeInternal: includeInternalResources,
-    }),
-    buildResourceSnapshot({
-      configs: orgConfigs,
-      persisted: org?.resources as Record<string, unknown> | undefined,
-      persistedContent: orgContent,
-      includeInternal: includeInternalResources,
-    }),
-  ]);
+  let sessionResourceSnapshot: Record<string, unknown> | undefined;
+  let userResourceSnapshot: Record<string, unknown> | undefined;
+  let orgResourceSnapshot: Record<string, unknown> | undefined;
+  try {
+    [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
+      buildResourceSnapshot({
+        configs: sessionConfigs,
+        persisted: session.resources as Record<string, unknown> | undefined,
+        persistedContent: sessionContent,
+        includeInternal: includeInternalResources,
+        includeItems: includeCollectionItems,
+      }),
+      buildResourceSnapshot({
+        configs: userConfigs,
+        persisted: user?.resources as Record<string, unknown> | undefined,
+        persistedContent: userContent,
+        includeInternal: includeInternalResources,
+        includeItems: includeCollectionItems,
+      }),
+      buildResourceSnapshot({
+        configs: orgConfigs,
+        persisted: org?.resources as Record<string, unknown> | undefined,
+        persistedContent: orgContent,
+        includeInternal: includeInternalResources,
+        includeItems: includeCollectionItems,
+      }),
+    ]);
+  } catch (err) {
+    if (err instanceof IncludeItemsCapExceeded) {
+      return jsonResponse(400, { error: err.message });
+    }
+    throw err;
+  }
 
   const hasResources =
     sessionResourceSnapshot !== undefined ||

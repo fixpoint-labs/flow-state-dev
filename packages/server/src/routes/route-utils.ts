@@ -319,12 +319,41 @@ export async function computeClientData(options: {
   return out;
 }
 
+/** Per-collection cap when the `includeItems` escape hatch is set. */
+export const INCLUDE_ITEMS_CAP = 1000;
+
+/**
+ * Thrown by `buildResourceSnapshot` when `includeItems: true` is requested on
+ * a collection that exceeds {@link INCLUDE_ITEMS_CAP}. Routes catch this to
+ * return a 400 to the caller.
+ */
+export class IncludeItemsCapExceeded extends Error {
+  readonly resourceName: string;
+  readonly cap: number;
+  readonly actual: number;
+  constructor(resourceName: string, actual: number) {
+    super(
+      `Collection "${resourceName}" has ${actual} items; ?includeItems=true is capped at ${INCLUDE_ITEMS_CAP}`
+    );
+    this.name = "IncludeItemsCapExceeded";
+    this.resourceName = resourceName;
+    this.cap = INCLUDE_ITEMS_CAP;
+    this.actual = actual;
+  }
+}
+
 /**
  * Builds the client-visible `resources` snapshot for one scope.
  *
- * For each resource with a `client` config, returns resource-level `clientData`
- * and optionally prefetched content. Resources without a `client` config are
- * excluded by default.
+ * Collections (FIX-427): emit `count` always, plus a `prefetched` window when
+ * the collection declares `prefetchWindow > 0`. Per-item `clientData` in the
+ * window is included only when `client.state.read === true`. The legacy
+ * eager `items` map is emitted only when `includeItems: true` is passed —
+ * an internal escape hatch for the DevTool migration window, capped per
+ * collection at {@link INCLUDE_ITEMS_CAP}.
+ *
+ * Single resources retain their existing shape (clientData + optional
+ * prefetched content).
  *
  * When `includeInternal: true`, resources without a `client` config are also
  * included with `internal: true` and the raw resource state surfaced in
@@ -337,10 +366,16 @@ export async function buildResourceSnapshot(options: {
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
   includeInternal?: boolean;
+  /**
+   * @internal DevTool migration window only. When true, emit the legacy
+   * eager `items` map. Capped per collection at {@link INCLUDE_ITEMS_CAP}.
+   */
+  includeItems?: boolean;
 }): Promise<Record<string, unknown> | undefined> {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
   const includeInternal = options.includeInternal === true;
+  const includeItems = options.includeItems === true;
   let hasAny = false;
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
@@ -353,29 +388,74 @@ export async function buildResourceSnapshot(options: {
       const clientDataFn = typeof maybeConfig.client?.data === "function"
         ? maybeConfig.client.data as (state: unknown) => unknown
         : undefined;
-      const prefetch = maybeConfig.client?.content?.prefetch === true;
+      const prefetchContent = maybeConfig.client?.content?.prefetch === true;
+      const stateReadable = maybeConfig.client?.state?.read === true;
+      const prefetchWindow = typeof maybeConfig.prefetchWindow === "number" && maybeConfig.prefetchWindow > 0
+        ? maybeConfig.prefetchWindow
+        : 0;
 
-      const items: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(persisted)) {
-        if (!matchesPattern(pattern, key)) continue;
+      const matchedKeys = Object.keys(persisted)
+        .filter((k) => matchesPattern(pattern, k))
+        .sort();
+      const count = matchedKeys.length;
 
-        const state = isJsonObject(value) ? value : {};
-        const entry: Record<string, unknown> = {};
-        if (clientDataFn) {
-          entry.clientData = await clientDataFn(state);
-        } else if (!hasClient) {
-          // Internal collection: surface raw state under clientData so the
-          // DevTool can inspect it. Production clients won't see this branch
-          // because they don't pass includeInternal.
-          entry.clientData = state;
-        }
-        if (prefetch && contentMap[key] !== undefined) {
-          entry.content = contentMap[key];
-        }
-        items[key] = entry;
+      const collectionEntry: Record<string, unknown> = {};
+
+      if (hasClient) {
+        // Always emit `count` for client-visible collections (FIX-427 §3.6).
+        // It's a single integer, not a leak of state, and supports
+        // "X items, log in for details" UIs without a state.read grant.
+        collectionEntry.count = count;
       }
 
-      const collectionEntry: Record<string, unknown> = { items };
+      // Prefetch window: first N keys by lex sort. clientData included only
+      // when state is explicitly readable; otherwise just the topic.
+      if (prefetchWindow > 0 && (hasClient || includeInternal)) {
+        const window = matchedKeys.slice(0, prefetchWindow);
+        const prefetched: Array<Record<string, unknown>> = [];
+        for (const key of window) {
+          const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
+          const item: Record<string, unknown> = { topic: key };
+          if (stateReadable || !hasClient) {
+            // Internal (no client config) under includeInternal: surface raw
+            // state under clientData, parallel to the single-resource branch.
+            item.clientData = clientDataFn
+              ? await clientDataFn(state)
+              : (!hasClient ? state : undefined);
+            if (item.clientData === undefined) delete item.clientData;
+          }
+          if (prefetchContent && contentMap[key] !== undefined) {
+            item.content = contentMap[key];
+          }
+          prefetched.push(item);
+        }
+        collectionEntry.prefetched = prefetched;
+      }
+
+      // Escape hatch: legacy eager `items` map. DevTool migration window
+      // only — removed in the same PR once DevTool is migrated. Production
+      // callers do not pass this flag.
+      if (includeItems) {
+        if (count > INCLUDE_ITEMS_CAP) {
+          throw new IncludeItemsCapExceeded(resourceName, count);
+        }
+        const items: Record<string, unknown> = {};
+        for (const key of matchedKeys) {
+          const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
+          const entry: Record<string, unknown> = {};
+          if (clientDataFn) {
+            entry.clientData = await clientDataFn(state);
+          } else if (!hasClient) {
+            entry.clientData = state;
+          }
+          if (prefetchContent && contentMap[key] !== undefined) {
+            entry.content = contentMap[key];
+          }
+          items[key] = entry;
+        }
+        collectionEntry.items = items;
+      }
+
       if (!hasClient) collectionEntry.internal = true;
       out[resourceName] = collectionEntry;
       hasAny = true;
