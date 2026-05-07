@@ -23,7 +23,6 @@ import { createSSEStream } from "../streaming/sse-stream";
 import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
 import {
   buildReplayEvents,
-  getBooleanFlag,
   getString,
   jsonResponse,
   parseJsonBody,
@@ -329,4 +328,3 @@ export async function handleTranscribe(
   });
 }
 
-void getBooleanFlag;

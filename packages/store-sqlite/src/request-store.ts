@@ -1,8 +1,7 @@
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import {
-  isTerminalRequestStreamEvent,
-  synthesizeRequestInterrupted,
+  pollEvents,
   type RequestListOptions,
   type RequestRecord,
   type RequestStore,
@@ -10,7 +9,6 @@ import {
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
-const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 
 export type CreateSQLiteRequestStoreOptions = {
@@ -187,55 +185,11 @@ export function createSQLiteRequestStore(
 
     getEvents: readEvents,
 
-    async *subscribeToEvents(
+    subscribeToEvents(
       requestId: string,
       options: SubscribeToEventsOptions
     ): AsyncIterableIterator<RequestStreamEvent> {
-      const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
-
-      const initial = await readEvents(requestId, options.fromSequence);
-      let lastSeen = options.fromSequence;
-      for (const event of initial) {
-        yield event;
-        lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
-      }
-
-      let lastTickAt = Date.now();
-
-      while (!options.signal?.aborted) {
-        await sleep(pollIntervalMs, options.signal);
-        if (options.signal?.aborted) return;
-
-        const next = await readEvents(requestId, lastSeen);
-        if (next.length > 0) {
-          lastTickAt = Date.now();
-          for (const event of next) {
-            yield event;
-            lastSeen = event.sequence_number;
-            if (isTerminalRequestStreamEvent(event)) return;
-          }
-        } else if (Date.now() - lastTickAt > livenessMs) {
-          yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
-          return;
-        }
-      }
+      return pollEvents(readEvents, requestId, options, pollIntervalMs);
     }
   };
-}
-
-/** Abort-aware sleep used by the polling subscription loop. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

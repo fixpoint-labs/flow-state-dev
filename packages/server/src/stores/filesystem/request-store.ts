@@ -13,17 +13,13 @@ import {
 } from "./shared";
 import { ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
-import {
-  isTerminalRequestStreamEvent,
-  synthesizeRequestInterrupted
-} from "../subscribe-helpers";
+import { pollEvents } from "../subscribe-helpers";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
 } from "../../utils/serialized-write-queue";
 
-const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 
 export type FilesystemRequestStoreOptions = {
@@ -235,39 +231,16 @@ export class FilesystemRequestStore implements RequestStore {
     return events.filter((e) => e.sequence_number > fromSequence);
   }
 
-  async *subscribeToEvents(
+  subscribeToEvents(
     requestId: string,
     options: SubscribeToEventsOptions
   ): AsyncIterableIterator<RequestStreamEvent> {
-    const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
-
-    const initial = await this.getEvents(requestId, options.fromSequence);
-    let lastSeen = options.fromSequence;
-    for (const event of initial) {
-      yield event;
-      lastSeen = event.sequence_number;
-      if (isTerminalRequestStreamEvent(event)) return;
-    }
-
-    let lastTickAt = Date.now();
-
-    while (!options.signal?.aborted) {
-      await sleep(this.pollIntervalMs, options.signal);
-      if (options.signal?.aborted) return;
-
-      const next = await this.getEvents(requestId, lastSeen);
-      if (next.length > 0) {
-        lastTickAt = Date.now();
-        for (const event of next) {
-          yield event;
-          lastSeen = event.sequence_number;
-          if (isTerminalRequestStreamEvent(event)) return;
-        }
-      } else if (Date.now() - lastTickAt > livenessMs) {
-        yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
-        return;
-      }
-    }
+    return pollEvents(
+      (id, fromSequence) => this.getEvents(id, fromSequence),
+      requestId,
+      options,
+      this.pollIntervalMs
+    );
   }
 
   private getOrCreateEventWriteQueue(requestId: string): SerializedWriteQueue {
@@ -314,20 +287,4 @@ export function createFilesystemRequestStore(
   options: FilesystemRequestStoreOptions
 ): RequestStore {
   return new FilesystemRequestStore(options);
-}
-
-/** Abort-aware sleep used by the polling subscription loop. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

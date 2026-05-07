@@ -7,8 +7,7 @@ import { FlowError } from "./flow-error";
 
 export const STORE_SUBSCRIPTION_ERROR_CODES = [
   "backpressure_overflow",
-  "listen_unrecoverable",
-  "liveness_timeout"
+  "listen_unrecoverable"
 ] as const;
 
 export type StoreSubscriptionErrorCode =

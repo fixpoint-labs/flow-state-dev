@@ -7,6 +7,9 @@
  * sentinel.
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { SubscribeToEventsOptions } from "./types";
+
+const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 
 /**
  * Whether an event marks the end of the per-request stream. Iterators
@@ -49,4 +52,68 @@ export function synthesizeRequestInterrupted(
     sequence_number: sequenceNumber,
     ts: Date.now()
   } as RequestStreamEvent;
+}
+
+/** Abort-aware sleep used by polling subscription loops. */
+export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export type ReadEventsFn = (
+  requestId: string,
+  fromSequence?: number
+) => Promise<RequestStreamEvent[]>;
+
+/**
+ * Shared polling subscription loop for the SQLite, filesystem, and
+ * Postgres-without-`liveTailPool` backends. Yields the catch-up phase via
+ * `readEvents`, then polls on `pollIntervalMs` until aborted, terminal,
+ * or stalled past `livenessTimeoutMs` (synthesizes a `request.interrupted`).
+ */
+export async function* pollEvents(
+  readEvents: ReadEventsFn,
+  requestId: string,
+  options: SubscribeToEventsOptions,
+  pollIntervalMs: number
+): AsyncIterableIterator<RequestStreamEvent> {
+  const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
+
+  const initial = await readEvents(requestId, options.fromSequence);
+  let lastSeen = options.fromSequence;
+  for (const event of initial) {
+    yield event;
+    lastSeen = event.sequence_number;
+    if (isTerminalRequestStreamEvent(event)) return;
+  }
+
+  let lastTickAt = Date.now();
+
+  while (!options.signal?.aborted) {
+    await abortableSleep(pollIntervalMs, options.signal);
+    if (options.signal?.aborted) return;
+
+    const next = await readEvents(requestId, lastSeen);
+    if (next.length > 0) {
+      lastTickAt = Date.now();
+      for (const event of next) {
+        yield event;
+        lastSeen = event.sequence_number;
+        if (isTerminalRequestStreamEvent(event)) return;
+      }
+    } else if (Date.now() - lastTickAt > livenessMs) {
+      yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
+      return;
+    }
+  }
 }

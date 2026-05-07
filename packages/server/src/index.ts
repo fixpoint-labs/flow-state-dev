@@ -122,7 +122,10 @@ export { BoundedQueue } from "./utils/bounded-queue";
 export type { BoundedQueuePushResult } from "./utils/bounded-queue";
 export {
   isTerminalRequestStreamEvent,
-  synthesizeRequestInterrupted
+  synthesizeRequestInterrupted,
+  pollEvents,
+  abortableSleep,
+  type ReadEventsFn
 } from "./stores/subscribe-helpers";
 export {
   OrgBindingMismatchError,

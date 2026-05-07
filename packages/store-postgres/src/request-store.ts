@@ -16,9 +16,12 @@
 
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import {
+  abortableSleep,
   isTerminalRequestStreamEvent,
+  pollEvents,
   synthesizeRequestInterrupted,
   StoreSubscriptionError,
+  type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
   type RequestStore,
@@ -260,56 +263,10 @@ export function createPostgresRequestStore(
       if (liveTailPool !== null) {
         return subscribeViaListen(liveTailPool, readEvents, requestId, options);
       }
-      return subscribeViaPolling(readEvents, pollIntervalMs, requestId, options);
+      // PGlite / raw `QueryExecutor`: poll on the same shape as SQLite.
+      return pollEvents(readEvents, requestId, options, pollIntervalMs);
     }
   };
-}
-
-type ReadEvents = (
-  requestId: string,
-  fromSequence?: number
-) => Promise<RequestStreamEvent[]>;
-
-/**
- * Polling fallback used when `liveTailPool` is absent (PGlite or raw
- * `QueryExecutor`). Same shape as the SQLite/filesystem polling
- * subscription — see FIX-569 §3.4 PGlite fallback.
- */
-async function* subscribeViaPolling(
-  readEvents: ReadEvents,
-  pollIntervalMs: number,
-  requestId: string,
-  options: SubscribeToEventsOptions
-): AsyncIterableIterator<RequestStreamEvent> {
-  const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
-
-  const initial = await readEvents(requestId, options.fromSequence);
-  let lastSeen = options.fromSequence;
-  for (const event of initial) {
-    yield event;
-    lastSeen = event.sequence_number;
-    if (isTerminalRequestStreamEvent(event)) return;
-  }
-
-  let lastTickAt = Date.now();
-
-  while (!options.signal?.aborted) {
-    await sleep(pollIntervalMs, options.signal);
-    if (options.signal?.aborted) return;
-
-    const next = await readEvents(requestId, lastSeen);
-    if (next.length > 0) {
-      lastTickAt = Date.now();
-      for (const event of next) {
-        yield event;
-        lastSeen = event.sequence_number;
-        if (isTerminalRequestStreamEvent(event)) return;
-      }
-    } else if (Date.now() - lastTickAt > livenessMs) {
-      yield synthesizeRequestInterrupted(requestId, lastSeen + 1);
-      return;
-    }
-  }
 }
 
 /**
@@ -324,7 +281,7 @@ async function* subscribeViaPolling(
  */
 async function* subscribeViaListen(
   pool: Pool,
-  readEvents: ReadEvents,
+  readEvents: ReadEventsFn,
   requestId: string,
   options: SubscribeToEventsOptions
 ): AsyncIterableIterator<RequestStreamEvent> {
@@ -384,28 +341,27 @@ async function* subscribeViaListen(
 
       while (!options.signal?.aborted && !connectionFailed) {
         // Wait for dirty-bit OR liveness timeout — whichever comes first.
+        // The timer and abort listener are torn down on every wakeup path
+        // so they don't accumulate across cycles on a long-lived
+        // subscription.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let onAbort: (() => void) | undefined;
         await new Promise<void>((resolve) => {
-          dirtyResolve = resolve;
           if (options.signal?.aborted || dirty || connectionFailed) {
-            const r = dirtyResolve;
-            dirtyResolve = undefined;
-            r?.();
+            resolve();
             return;
           }
-          const onAbort = (): void => {
-            options.signal?.removeEventListener("abort", onAbort);
-            const r = dirtyResolve;
-            dirtyResolve = undefined;
-            r?.();
-          };
+          dirtyResolve = resolve;
+          onAbort = resolve;
           options.signal?.addEventListener("abort", onAbort, { once: true });
-          setTimeout(() => {
-            options.signal?.removeEventListener("abort", onAbort);
-            const r = dirtyResolve;
-            dirtyResolve = undefined;
-            r?.();
-          }, livenessMs).unref?.();
+          timer = setTimeout(resolve, livenessMs);
+          timer.unref();
         });
+        if (timer !== undefined) clearTimeout(timer);
+        if (onAbort !== undefined) {
+          options.signal?.removeEventListener("abort", onAbort);
+        }
+        dirtyResolve = undefined;
 
         if (options.signal?.aborted) return;
         if (connectionFailed) break;
@@ -433,12 +389,16 @@ async function* subscribeViaListen(
         try {
           client.removeListener("notification", onNotification);
           client.removeListener("error", onClientError);
-          await client.query(`UNLISTEN ${NOTIFY_CHANNEL}`).catch(() => {});
+          if (!connectionFailed) {
+            await client.query(`UNLISTEN ${NOTIFY_CHANNEL}`).catch(() => {});
+          }
         } catch {
-          // Ignore — release will return a broken client to the pool which
-          // will discard it.
+          // Best-effort cleanup. The release call below decides whether the
+          // client returns to the pool clean or is discarded.
         }
-        client.release();
+        // Pass `true` for a broken connection so `pg` discards it instead of
+        // returning a half-dead client to the pool.
+        client.release(connectionFailed ? true : undefined);
       }
     }
 
@@ -456,22 +416,6 @@ async function* subscribeViaListen(
       RECONNECT_BACKOFF_MIN_MS * 2 ** (attempt - 1),
       RECONNECT_BACKOFF_MAX_MS
     );
-    await sleep(backoff, options.signal);
+    await abortableSleep(backoff, options.signal);
   }
-}
-
-/** Abort-aware sleep used by the polling loop and reconnect backoff. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

@@ -11,7 +11,7 @@ import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
-import { isTerminalRequestStreamEvent, synthesizeRequestInterrupted } from "../subscribe-helpers";
+import { isTerminalRequestStreamEvent } from "../subscribe-helpers";
 
 const DEFAULT_MAX_PENDING_EVENTS = 1000;
 
@@ -145,12 +145,8 @@ export class InMemoryRequestStore implements RequestStore {
       }
       queue.close();
     }
-
-    // Memory deliberately ignores `livenessTimeoutMs` — there is no
-    // cross-process death scenario; the originating process either has
-    // the data or doesn't. `synthesizeRequestInterrupted` exists only so
-    // SQLite/filesystem/Postgres can share the construction helper.
-    void synthesizeRequestInterrupted;
+    // Memory deliberately ignores `livenessTimeoutMs` — no cross-process
+    // death scenario applies; the originating process is the only producer.
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
