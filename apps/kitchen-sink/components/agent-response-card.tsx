@@ -15,7 +15,7 @@ type AgentOutput = {
 /**
  * Extract the resolved payload from a BlockValue. For this card we only care
  * about the inline case — the agent generator is a leaf that produces novel
- * content, so its block_output always carries `kind: "inline"` (FIX-413).
+ * content, so its block_trace.output always carries `kind: "inline"` (FIX-413).
  * Defensive fallback for any legacy/ref shapes just returns undefined.
  */
 function unwrapInline(value: BlockValueInternal<unknown> | undefined): AgentOutput | undefined {

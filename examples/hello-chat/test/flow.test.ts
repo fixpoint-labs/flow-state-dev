@@ -81,7 +81,7 @@ describe("hello-chat", () => {
     expect(result.output).toBeDefined();
   });
 
-  it("emits block_output items", async () => {
+  it("emits block_trace items", async () => {
     const chatFixture = createChatFixture();
     const result = await testFlow({
       flow: helloChatFlow,

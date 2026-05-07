@@ -216,8 +216,8 @@ export function router<
       };
 
       // Router output is always pass-through from the selected route (FIX-413).
-      // After the selected block emits its block_output, record a `ref`
-      // descriptor on the outer ctx so the router's own block_output carries
+      // After the selected block emits its block_trace, record a `ref`
+      // descriptor on the outer ctx so the router's own block_trace.output carries
       // the ref instead of duplicating content. Set AFTER runSelected below.
       const installRouterHint = (selectedInstanceId: string): void => {
         const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
@@ -282,7 +282,7 @@ export function router<
         runSelected
       );
 
-      // After the selected block has emitted its block_output, record the
+      // After the selected block has emitted its block_trace, record the
       // router's own ref descriptor so its outer emitter carries a ref, not
       // a duplicate of the selected block's content (FIX-413).
       installRouterHint(selectedInstanceId);

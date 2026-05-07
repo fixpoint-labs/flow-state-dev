@@ -91,13 +91,6 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
-  /**
-   * True when this scope represents a tool invocation from a generator.
-   * Suppresses the redundant `block_output` trace item — the generator's
-   * tool wrapper emits a richer `block_tool_output` item that fully
-   * describes the tool call (name, arguments, result, error).
-   */
-  isToolCall?: boolean;
 };
 
 export interface ResponseEmitterHandle {
@@ -321,16 +314,6 @@ export interface BlockContext<
      * {@link BlockTraceCapturePayload} for the per-phase data contract.
      */
     onBlockTraceCapture?: (payload: BlockTraceCapturePayload, ctx: BlockContext) => void;
-    /**
-     * Emits the `added` phase trace item for a nested block. Wired by the
-     * server when trace observability is enabled; no-op otherwise. Called
-     * from core's sequencer.ts executeBlock before the nested block runs,
-     * so the devtool sees a trace row for every block — not just the root.
-     */
-    emitNestedBlockTrace?: (
-      block: { name: string; kind: string; inputSchema?: unknown; outputSchema?: unknown; config: unknown; transient?: boolean },
-      scopedCtx: unknown
-    ) => void | Promise<void>;
   };
 
   /** @internal Current block's identity within the execution chain. */
@@ -360,9 +343,9 @@ export interface BlockContext<
 
   /**
    * @internal Hint written by a sequencer/router's execute right before
-   * returning to describe the BlockValue kind its block_output should carry
-   * (FIX-413). Emitters wrap the returned output as `inline` when no hint is
-   * set (the default for generators, handlers, and transforms).
+   * returning to describe the BlockValue kind its `block_trace.output` should
+   * carry (FIX-413). Emitters wrap the returned output as `inline` when no
+   * hint is set (the default for generators, handlers, and transforms).
    */
   _blockOutputHint?: BlockOutputHint;
 
@@ -377,7 +360,7 @@ export interface BlockContext<
 
   /**
    * @internal Shared mutable slot that tracks the id of the most recently
-   * emitted `block_output` item. Sequencer operations read this immediately
+   * emitted `block_trace` item. Sequencer operations read this immediately
    * after calling a child block so they can record a `ref` descriptor pointing
    * at the child's item. Lives on a ref passed through every scope so child
    * emissions are visible to the parent that spawned them.
@@ -395,7 +378,7 @@ export interface BlockContext<
 }
 
 /**
- * Hint communicated from a block's `execute` out to the block_output emitter
+ * Hint communicated from a block's `execute` out to the block_trace emitter
  * (FIX-413). One of:
  * - unset / `kind: "inline"` — wrap the returned output as `{ kind: "inline", value: output }`.
  * - `kind: "ref"` — emit `{ kind: "ref", sourceItemId }`; executor flattens
@@ -524,7 +507,7 @@ export interface BlockDefinition<
    * observes on its next turn.
    *
    * The structured `TOutput` continues to flow through the block graph
-   * unchanged: `block_tool_output` items, downstream sequencer steps, devtool,
+   * unchanged: `tool_output` items, downstream sequencer steps, devtool,
    * tests, and replay all see the original value. Both `TInputSchema` and
    * `TOutputSchema` are preserved.
    *

@@ -200,7 +200,7 @@ describe("chat-agent flow", () => {
     expect(result.error).toBeNull();
   });
 
-  it("emits block_output items", async () => {
+  it("emits block_trace items", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {

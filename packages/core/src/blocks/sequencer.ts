@@ -121,7 +121,7 @@ type SequencerOperation = {
  * Safe under concurrency because each parallel branch is invoked at a unique
  * path and therefore has a unique `blockInstanceId`.
  */
-function findEmittedBlockOutputId(
+function findEmittedBlockTraceId(
   ctx: BlockContext,
   childInstanceId: string
 ): string | undefined {
@@ -144,7 +144,7 @@ function findEmittedBlockOutputId(
  */
 function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint {
   const instanceId = buildBlockInstanceId(ctx.request.identity.id, path, 0);
-  const itemId = findEmittedBlockOutputId(ctx, instanceId);
+  const itemId = findEmittedBlockTraceId(ctx, instanceId);
   if (itemId === undefined) return { kind: "inline" };
   return { kind: "ref", sourceItemId: itemId };
 }
@@ -513,18 +513,8 @@ async function executeBlock(
         } as BlockContext
       : scopedCtx;
 
-    // FIX-573: nested-block trace emission is driven by `onBlockTraceCapture`
-    // firing the `added` phase from build-block.ts. The `emitNestedBlockTrace`
-    // hook is reserved for adapters that need to short-circuit the `added`
-    // emission (e.g., custom traces); core no longer drives it itself.
-    if (scopedCtx._runtimeHooks?.emitNestedBlockTrace !== undefined) {
-      try {
-        await scopedCtx._runtimeHooks.emitNestedBlockTrace(block, scopedCtx);
-      } catch {
-        // Trace emission is best-effort; never fail a block because of it.
-      }
-    }
-
+    // FIX-573: nested-block trace emission is driven entirely by
+    // `onBlockTraceCapture` firing the `added` phase from build-block.ts.
     try {
       const output = await asRuntime(block).run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);

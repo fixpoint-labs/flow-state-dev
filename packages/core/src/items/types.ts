@@ -23,7 +23,7 @@ export type ItemVisibility = {
  *   do not reach the client SSE stream and are not in history.
  *
  * A generator that declares no `agentType` produces no auto-emitted items —
- * only its typed `block_output` flows to parents via graph edges.
+ * only its typed `block_trace` output flows to parents via graph edges.
  */
 export type AgentType = "primary" | "sub" | "trace";
 
@@ -66,8 +66,8 @@ export type OutputItemBase = {
   /**
    * Identity of the generator that produced this item. Governs visibility
    * via `resolveItemVisibility()` for conversational item types
-   * (`message`, `reasoning`, `block_tool_output`). Structural items
-   * (status, component, block_output, etc.) ignore this field.
+   * (`message`, `reasoning`, `tool_output`). Structural items
+   * (status, component, block_trace, etc.) ignore this field.
    */
   agentType?: AgentType;
   /**

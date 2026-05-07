@@ -773,10 +773,10 @@ function TaskOutput({ text }: { text: string }) {
  * inside a section card stacks frames and reads poorly.
  *
  * Item dispatch:
- *   - `block_tool_output`        → `<TaskToolItem>`
+ *   - `tool_output`              → `<TaskToolItem>`
  *   - `message`                  → compact line (assistant text only)
  *   - `reasoning`                → muted compact line
- *   - everything else            → ignored (block_output is hidden by
+ *   - everything else            → ignored (block_trace is hidden by
  *     design — `task.output` carries the canonical worker result and
  *     renders as the timeline's final entry via `<TaskOutput>`)
  */

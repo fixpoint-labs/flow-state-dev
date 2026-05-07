@@ -1,8 +1,6 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
@@ -50,104 +48,13 @@ type GeneratorModelUsageMeta = {
   cacheCreationTokens?: number;
 };
 
-function hasItemEmitter(response: unknown): response is {
-  emitItemAdded: (item: BlockTraceItem) => Promise<unknown>;
-  emitItemDone: (item: BlockTraceItem) => Promise<unknown>;
-} {
-  return (
-    typeof response === "object" &&
-    response !== null &&
-    typeof (response as { emitItemAdded?: unknown }).emitItemAdded === "function" &&
-    typeof (response as { emitItemDone?: unknown }).emitItemDone === "function"
-  );
-}
-
-
-
-/**
- * Builds a BlockValue from the raw output and a caller-supplied hint (FIX-413).
- * Performs flatten-at-emit for refs: if the target item's own output is also
- * a ref, takes that inner sourceItemId instead so every emitted ref is one hop
- * from a content-bearing item.
- */
-function buildBlockValueForEmit(
-  output: unknown,
-  hint: BlockOutputHint | undefined,
-  items: import("./internal/response").RuntimeItem[]
-): BlockValueInternal<unknown> {
-  if (hint === undefined || hint.kind === "inline") {
-    return { kind: "inline", value: output };
-  }
-  if (hint.kind === "structure") {
-    return { kind: "structure", shape: hint.shape };
-  }
-  // ref — flatten one hop if the target's own output is itself a ref.
-  let sourceItemId = hint.sourceItemId;
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item.type === "block_trace" && item.id === sourceItemId) {
-      const targetValue = (item as BlockTraceItem).output;
-      if (targetValue !== undefined && typeof targetValue === "object" && "kind" in targetValue && targetValue.kind === "ref") {
-        sourceItemId = targetValue.sourceItemId;
-      }
-      break;
-    }
-  }
-  return { kind: "ref", sourceItemId };
-}
-
-/**
- * Fire the `output` phase of `onBlockTraceCapture` for a root block. The
- * unified hook implementation in createExecutionContext patches the existing
- * in-progress block_trace item (created at `added`) with output, modelUsage,
- * and timing; emits item.done.
- */
-function emitBlockOutputItem(
-  options: {
-    block: BlockDefinition<any, any>;
-    output: unknown;
-    ctx: ExecuteBlockContext;
-    metadata: ExecutionMetadata;
-    startedAt: number;
-    modelUsage?: GeneratorModelUsageMeta;
-    status?: "completed" | "failed";
-    error?: { message: string; code?: string };
-    hint?: BlockOutputHint;
-  }
-): void {
-  if (!hasItemEmitter(options.ctx.response)) {
-    return;
-  }
-
-  const completedAt = Date.now();
-  const items = getResponseItems(options.ctx.response);
-  const blockValue = options.status === "failed"
-    ? ({ kind: "inline", value: undefined } as BlockValueInternal<unknown>)
-    : buildBlockValueForEmit(options.output, options.hint, items);
-
-  options.ctx._runtimeHooks?.onBlockTraceCapture?.(
-    {
-      phase: "output",
-      data: {
-        status: options.status ?? "completed",
-        output: blockValue,
-        completedAt,
-        duration: completedAt - options.startedAt,
-        modelUsage: options.modelUsage,
-        error: options.error,
-      },
-    },
-    options.ctx as unknown as BlockContext
-  );
-}
-
 /**
  * Dispatches block execution to the runtime for each supported block kind.
  *
- * Note: observability hooks (`onBlockDebugCapture`, `onConnectedInput`) are
- * installed on the shared `_runtimeHooks` inside `createExecutionContext`.
- * They're visible to every context (root and nested) via the same shared
- * reference, so this function no longer wires them per-block.
+ * Observability hooks (`onBlockTraceCapture`) are installed on the shared
+ * `_runtimeHooks` inside `createExecutionContext`. They're visible to every
+ * context (root and nested) via the same shared reference, so this function
+ * no longer wires them per-block.
  */
 async function executeByKind(
   block: BlockDefinition,
@@ -211,7 +118,7 @@ async function executeByKind(
       await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
 
       // FIX-480: streaming-text generators write `_blockOutputHint` on
-      // their ctx to signal a ref-to-message block_output. The spread
+      // their ctx to signal a ref-to-message `block_trace.output`. The spread
       // above creates a new object, so the hint write doesn't propagate
       // naturally — forward it back to the outer ctx so executeBlock's
       // hint capture path picks it up.
@@ -508,9 +415,6 @@ export async function executeBlock(
     if (capturedHint !== undefined) {
       (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
     }
-    void emitBlockOutputItem;
-    void buildBlockValueForEmit;
-    void buildBlockInstanceId;
     void attempt;
 
     return {

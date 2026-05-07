@@ -13,9 +13,8 @@ import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 
-// FIX-573: legacy detail-panel shape, synthesized from `block_trace.generator`
-// and `block_trace.input.connected` in trace-tree.ts. The detail components
-// below still render these fields directly.
+// Generator config + connected-input view used by DebugPayloadSection.
+// Sourced directly from `block_trace.generator` and `block_trace.input.connected`.
 type BlockDebugPayload = {
   model?: string;
   prompt?: string;
@@ -63,6 +62,15 @@ export function ItemDetail() {
  */
 function BlockNodeDetail({ node }: { node: TraceNode }) {
   const traceItem = node.traceItem as BlockTraceItem | undefined;
+  const generator = traceItem?.generator;
+  const connectedInput = traceItem?.input?.connected;
+  const debugPayload: BlockDebugPayload | undefined =
+    generator !== undefined || connectedInput !== undefined
+      ? {
+          ...(generator ?? {}),
+          ...(connectedInput !== undefined ? { connectedInput } : {}),
+        }
+      : undefined;
 
   const handleCopy = () => {
     const payload = {
@@ -73,7 +81,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         status: node.blockStatus,
         durationMs: node.blockDuration,
       },
-      debug: node.debugPayload,
+      debug: debugPayload,
       stateSnapshots: node.stateSnapshots,
       output: traceItem?.output,
       error: traceItem?.error,
@@ -81,7 +89,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
     void navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
   };
 
-  const prompt = node.debugPayload?.prompt;
+  const prompt = debugPayload?.prompt;
 
   return (
     <div className="space-y-3 text-xs">
@@ -127,27 +135,27 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       )}
 
       {/* User message(s) for this turn — what the caller actually sent in */}
-      {node.debugPayload?.user && node.debugPayload.user.length > 0 && (
+      {debugPayload?.user && debugPayload.user.length > 0 && (
         <CollapsibleSection
-          title={`User Message${node.debugPayload.user.length > 1 ? `s (${node.debugPayload.user.length})` : ""}`}
+          title={`User Message${debugPayload.user.length > 1 ? `s (${debugPayload.user.length})` : ""}`}
           defaultOpen
         >
-          <MessageList messages={node.debugPayload.user} />
+          <MessageList messages={debugPayload.user} />
         </CollapsibleSection>
       )}
 
       {/* Conversation history sent alongside the user message */}
-      {node.debugPayload?.history && node.debugPayload.history.length > 0 && (
+      {debugPayload?.history && debugPayload.history.length > 0 && (
         <CollapsibleSection
-          title={`History (${node.debugPayload.history.length})`}
+          title={`History (${debugPayload.history.length})`}
           defaultOpen={false}
         >
-          <MessageList messages={node.debugPayload.history} />
+          <MessageList messages={debugPayload.history} />
         </CollapsibleSection>
       )}
 
       {/* Resolved generator config */}
-      {node.debugPayload && <DebugPayloadSection payload={node.debugPayload} />}
+      {debugPayload && <DebugPayloadSection payload={debugPayload} />}
 
       {/* State snapshots timeline (sequencers) */}
       {node.stateSnapshots && node.stateSnapshots.length > 0 && (

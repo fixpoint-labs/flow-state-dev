@@ -170,8 +170,8 @@ describe("buildTraceTree", () => {
   });
 
   it("nests child blocks even when trace item appears before regular items", () => {
-    // Simulates the scenario where a block_output trace item (from
-    // emitNestedBlockTrace) is the first item for a child block. The
+    // Simulates the scenario where a block_trace item (the `added` phase
+    // emission) is the first item for a child block. The
     // parentBlockInstanceId must still be resolved from subsequent items.
     const items = [
       // Parent router

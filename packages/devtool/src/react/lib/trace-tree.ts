@@ -38,17 +38,6 @@ export type TraceNode = {
   traceItem?: DevtoolItem;
   /** State snapshots for sequencer blocks, ordered by step execution. */
   stateSnapshots?: StateSnapshot[];
-  /** @deprecated FIX-573: synthesized from `traceItem.generator` and
-   *  `traceItem.input.connected` for legacy detail-panel rendering. */
-  debugPayload?: {
-    model?: string;
-    prompt?: string;
-    tools?: string[];
-    user?: unknown[];
-    history?: unknown[];
-    connectedInput?: unknown;
-    modelOutput?: string;
-  };
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -154,24 +143,12 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
         if (item.status === "completed") blockNode.blockStatus = "completed";
         if (item.status === "failed") blockNode.blockStatus = "failed";
-        // Every block_output is lifecycle metadata — never render as a visible
-        // child. Store as traceItem so block nodes can be selected for detail.
-        // Two trace sources emit for the same block: executeBlock (has output)
-        // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
+        // block_trace is lifecycle metadata — never render as a visible child.
+        // Store as traceItem so block nodes can be selected for detail. The
+        // initial `added` row arrives without output; later phase patches fill
+        // it in. Keep whichever has output (settled wins over in-progress).
         if (!blockNode.traceItem || bo.output !== undefined) {
           blockNode.traceItem = item;
-        }
-        // FIX-573: synthesize the legacy debugPayload shape from the
-        // unified block_trace item so existing detail-panel rendering keeps
-        // working. Generator config lives at `traceItem.generator`; the
-        // post-connectInput value at `traceItem.input.connected`.
-        const gen = bo.generator;
-        const conn = bo.input?.connected;
-        if (gen !== undefined || conn !== undefined) {
-          blockNode.debugPayload = {
-            ...(gen ?? {}),
-            ...(conn !== undefined ? { connectedInput: conn } : {}),
-          };
         }
         continue;
       }

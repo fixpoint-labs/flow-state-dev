@@ -22,7 +22,7 @@ type ContainerItem = OutputItem & { type: "container"; container?: string };
  *    evented-actors (the pattern wraps a taskBoard internally and that
  *    inner board emits its own meta items)
  * 4. task-board-meta with key including "supervisor" → supervisor
- * 5. supervisor block_output → supervisor
+ * 5. supervisor block_trace → supervisor
  * 6. any task-board-meta → plan-and-execute (catch-all for the other
  *    taskBoard-backed pattern)
  */

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";
@@ -291,14 +291,20 @@ function TraceNodeView({
               {traceError}
             </span>
           )}
-          {node.debugPayload && (
-            <span
-              className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
-              title={node.debugPayload.prompt ? "Resolved prompt captured" : "Connected input captured"}
-            >
-              D
-            </span>
-          )}
+          {(() => {
+            const trace = node.traceItem as BlockTraceItem | undefined;
+            const hasGenerator = trace?.generator !== undefined;
+            const hasConnected = trace?.input?.connected !== undefined;
+            if (!hasGenerator && !hasConnected) return null;
+            return (
+              <span
+                className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
+                title={trace?.generator?.prompt ? "Resolved prompt captured" : "Connected input captured"}
+              >
+                D
+              </span>
+            );
+          })()}
           {node.stateSnapshots && node.stateSnapshots.length > 0 && (
             <span
               className="text-[10px] font-mono text-amber-500/70 px-1 rounded border border-amber-800/40"

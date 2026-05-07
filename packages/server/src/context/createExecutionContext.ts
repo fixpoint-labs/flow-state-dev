@@ -68,7 +68,6 @@ import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
-import { buildInitialBlockTraceItem } from "../execution/internal/trace-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -1170,6 +1169,7 @@ type EmissionContext = {
   response: {
     emitItemAdded(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
     emitItemDone(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
+    emitItemUpdated?(itemId: string, patch: Record<string, unknown>): Promise<unknown>;
     emitItemOneShot?(item: OutputItem | BlockTraceItem | RouterDecisionItem | StateSnapshotItem): Promise<unknown>;
     emitContentAdded?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
     emitContentDelta?(itemId: string, contentIndex: number, delta: string): Promise<unknown>;
@@ -1207,7 +1207,7 @@ function createEmitMessage(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
     // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // auto-emitted block_trace item. Per-call
     // `{ transient: true }` is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -1255,7 +1255,7 @@ function createEmitComponent(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
     // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // auto-emitted block_trace item. Per-call
     // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
     // with dedup).
     // FIX-491: when a `key` is supplied, derive a deterministic item ID from
@@ -2611,6 +2611,9 @@ export async function createExecutionContext<
         },
         async emitItemDone(item: OutputItem) {
           await response.emit({ type: "item.done", item });
+        },
+        async emitItemUpdated(itemId: string, patch: Record<string, unknown>) {
+          await response.emit({ type: "item.updated", id: itemId, patch });
         }
       };
 
@@ -2713,12 +2716,14 @@ export async function createExecutionContext<
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
             const itemIndex = emittedItemCount++;
-            const transient = (identity as { transient?: boolean }).transient || undefined;
+            // Spec §3.8: block_trace is the canonical retained record and is
+            // always non-transient, regardless of the originating block's
+            // transient flag.
             const item: BlockTraceItem = {
               id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "block_trace",
               status: payload.data.status ?? "in_progress",
-              transient,
+              transient: false,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
@@ -2745,30 +2750,59 @@ export async function createExecutionContext<
           // Apply phase patch in-place. Last-write-wins on chained calls
           // (multi-step tool loops): the most recent `generator` capture
           // overwrites prior model/prompt fields, matching how the model
-          // re-resolves between turns.
-          if (payload.data.input !== undefined) existing.input = payload.data.input;
-          if (payload.data.generator !== undefined) existing.generator = payload.data.generator;
-          if (payload.data.modelUsage !== undefined) existing.modelUsage = payload.data.modelUsage;
-          if (payload.data.output !== undefined) existing.output = payload.data.output;
-          if (payload.data.error !== undefined) existing.error = payload.data.error;
-          if (payload.data.completedAt !== undefined) existing.completedAt = payload.data.completedAt;
-          if (payload.data.duration !== undefined) existing.duration = payload.data.duration;
-          if (payload.data.status !== undefined) existing.status = payload.data.status;
+          // re-resolves between turns. Build the wire patch from the same
+          // fields so subscribers see the partial update without having to
+          // diff the whole row.
+          const patch: Record<string, unknown> = {};
+          if (payload.data.input !== undefined) {
+            existing.input = payload.data.input;
+            patch.input = payload.data.input;
+          }
+          if (payload.data.generator !== undefined) {
+            existing.generator = payload.data.generator;
+            patch.generator = payload.data.generator;
+          }
+          if (payload.data.modelUsage !== undefined) {
+            existing.modelUsage = payload.data.modelUsage;
+            patch.modelUsage = payload.data.modelUsage;
+          }
+          if (payload.data.output !== undefined) {
+            existing.output = payload.data.output;
+            patch.output = payload.data.output;
+          }
+          if (payload.data.error !== undefined) {
+            existing.error = payload.data.error;
+            patch.error = payload.data.error;
+          }
+          if (payload.data.completedAt !== undefined) {
+            existing.completedAt = payload.data.completedAt;
+            patch.completedAt = payload.data.completedAt;
+          }
+          if (payload.data.duration !== undefined) {
+            existing.duration = payload.data.duration;
+            patch.duration = payload.data.duration;
+          }
+          if (payload.data.status !== undefined) {
+            existing.status = payload.data.status;
+            patch.status = payload.data.status;
+          }
+          // Emit item.updated for in-flight phases. The FIX-572 dedicated
+          // channel is used when available; the duck-typed fallback adapter
+          // synthesizes an `item.updated` event via the generic `emit()`.
+          if (emissionResponse.emitItemUpdated !== undefined) {
+            void emissionResponse
+              .emitItemUpdated(existing.id, patch)
+              .catch(() => { /* best-effort */ });
+          }
           if (payload.phase === "output") {
             // Final emission: emit done so consumers know the row is settled.
             void emissionResponse
               .emitItemDone(existing)
               .catch(() => { /* best-effort */ });
             blockTraceMap.delete(instanceId);
-          } else {
-            // input / generator phases — update in place. Emit item.added
-            // again as a patch when the response emitter doesn't support
-            // a dedicated updated channel; the consuming side dedupes by id.
-            void emissionResponse.emitItemAdded(existing).catch(() => { /* best-effort */ });
           }
         }
       : undefined,
-    emitNestedBlockTrace: undefined,
   };
 
   // Per-request trace map. Keyed by blockInstanceId; entries are removed

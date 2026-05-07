@@ -6,17 +6,11 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ### Block trace unification (FIX-573) — BREAKING
 
-Replaces the prior split between `block_output` (terminal lifecycle), `block_debug` (start-time generator config + connectInput capture), and `block_tool_output` (tool result) with a unified two-item taxonomy:
-
-- New `block_trace` item — single row per block instance, emitted at block start with `status: "in_progress"` and patched in place across four lifecycle phases (`added` → `input` → `generator` → `output`). Carries the prior `block_output` fields (`output`, `modelUsage`, `toolCall`, timing, `error`) plus the resolved generator config (`generator: { model, prompt, tools, user, history }`) and the connector-transformed input (`input.connected`).
-- `block_tool_output` renamed to `tool_output` with the same field shape; conversational visibility unchanged (sub-agent tool calls render to clients but skip primary-agent history).
-- `block_output` and `block_debug` types removed entirely. Any consumer reading items by `type` must migrate: `block_output` → `block_trace`, `block_debug` → `block_trace.generator` / `block_trace.input.connected`, `block_tool_output` → `tool_output`.
-- Hook surface consolidated: `_runtimeHooks.onBlockDebugCapture` and `onConnectedInput` are gone; one `onBlockTraceCapture(payload, ctx)` fires four phases keyed by `payload.phase`. The server-side handler maintains a per-request `Map<blockInstanceId, BlockTraceItem>` so phase patches mutate one item rather than emitting fresh ones.
-- Generator behavior: tool-loop `generator` captures last-write-win on chained model calls; the standalone block_debug item that previously carried `mapModelOutput`'s string is gone — the AI SDK consumes the mapper directly via `toModelOutput`.
-- DevTool: `block_debug` row removed; the block detail panel reads generator config and connected input from the unified `block_trace` item. The "D" indicator in the trace tree is gone.
-- Type renames in `@flow-state-dev/core/items`: `BlockOutputItem` → `BlockTraceItem`, `BlockToolOutputItem` → `ToolOutputItem`. `BlockDebugItem` and `BlockDebugPayload` removed. `BlockTraceCapturePayload` and `BlockTraceCapturePhase` exported from `@flow-state-dev/core/types`.
-- Path A tool ordering: the tool wrapper now seeds the `tool_output` item before invoking the called block, so the block's `input.source` can ref the tool_output item it executes against.
-- Suppression for tool-call traces preserved (the richer `tool_output` supersedes); generator suppression removed (generators now go through the unified lifecycle like every other block kind, with modelUsage forwarded onto the `output` phase via `_generatorModelUsage`).
+- Trace channel now uses a single `block_trace` item per block run, replacing the old `block_output` / `block_debug` split. Carries input, output, error, timing, and (for generators) the resolved prompt and model config.
+- `block_tool_output` renamed to `tool_output`. Both `tool_output` and `block_trace` now emit when a block runs as a tool; the called block's output is a `ref` to the tool_output to avoid duplication.
+- Block traces stream live: an in-progress trace appears the moment a block starts, with input, prompt, and output filled in via `item.updated` events as they resolve.
+- Hooks `onBlockDebugCapture` and `onConnectedInput` collapsed into a single `onBlockTraceCapture(payload, ctx)` keyed by phase (`added` / `input` / `generator` / `output`).
+- Migration: rename `block_output` → `block_trace` and `block_tool_output` → `tool_output` at consumer dispatch sites. The old `block_debug` payload moves under `block_trace.generator` and `block_trace.input.connected`. See `apps/docs/docs/streaming/items.md` for the full rename table.
 
 ### `item.updated` SSE event for shallow-merge field deltas (FIX-572)
 

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Tool call rendering for block_output and block_tool_output items.
+ * Tool call rendering for block_trace and tool_output items.
  *
  * Two presentations:
  *
@@ -12,7 +12,7 @@
  *    labels the batch ("Ran 3 searches, wrote a file") and expands to show
  *    each individual tool call as its own collapsible detail row.
  *
- * Consecutive `block_tool_output` items in the chat stream are wrapped in a
+ * Consecutive `tool_output` items in the chat stream are wrapped in a
  * <ToolGroup>. Singletons use the same wrapper for visual consistency.
  */
 
@@ -220,8 +220,8 @@ function getToolArgs(item: ToolItem): unknown {
 }
 
 /**
- * Extract the raw tool payload. `block_tool_output.output` is always raw.
- * `block_output.output` is a BlockValue discriminated union (FIX-413); for
+ * Extract the raw tool payload. `tool_output.output` is always raw.
+ * `block_trace.output` is a BlockValue discriminated union (FIX-413); for
  * tool-call items the generator is a leaf, so we only see the `inline` case.
  */
 function unwrapToolOutput(item: ToolItem): unknown {

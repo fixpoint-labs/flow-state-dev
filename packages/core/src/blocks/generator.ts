@@ -343,7 +343,7 @@ export interface GeneratorConfig<
    * - `"trace"`: observability-only emissions (devtool/replay). Not on the
    *   client stream, not in history.
    * - *unset* (default): **no auto-emission**. Only the generator's typed
-   *   `block_output` flows to parents via graph edges.
+   *   `block_trace` output flows to parents via graph edges.
    *
    * There is no position-inferred default — every generator declares its
    * own identity explicitly. Pattern factories set identity on their
@@ -684,10 +684,10 @@ function compileToolsWithExecute(
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
     // resulting tool entry so the AI SDK substitutes the mapper's string for
     // the structured output when materialising next-turn tool-result content.
-    // The wrapper's `block_tool_output` emit path below continues to use the
-    // raw structured `output`; the mapper's string is captured separately on
-    // a `block_debug` item so devtool can render what the LLM saw alongside
-    // the structured output.
+    // The wrapper's `tool_output` emit path below continues to use the raw
+    // structured `output`; the mapper's string is captured on the unified
+    // `block_trace` item's `mapModelOutput` field so devtool can render what
+    // the LLM saw alongside the structured output.
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
     return {
     name: tool.name,
@@ -961,7 +961,7 @@ const UNPARSEABLE_CANDIDATE_MAX_CHARS = 2000;
  * Log the candidate that failed final schema validation so operators can
  * inspect what the model actually returned. Truncates at
  * `UNPARSEABLE_CANDIDATE_MAX_CHARS` to keep stderr legible — full payloads
- * can still be recovered from the request's block_debug item.
+ * can still be recovered from the request's block_trace item.
  */
 function logUnparseableCandidate(
   blockName: string,
@@ -1432,7 +1432,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // FIX-480 §3.2: when this generator's logical output IS the streamed
-  // text, emit a `block_output { kind: "ref", sourceItemId: <messageId> }`
+  // text, emit a `block_trace.output { kind: "ref", sourceItemId: <messageId> }`
   // instead of inlining the same string. The `parsed.data === accumulated`
   // check guards against post-validation transforms (e.g.
   // `z.string().transform(s => s.trim())`) where the returned value
@@ -1718,11 +1718,11 @@ export function generator<
       const maxSteps = resolveMaxIterations(normalizedConfig);
 
       // Identity: generators without `agentType` produce no auto-emitted
-      // items (only block_output via graph edges). When set, `agentName`
+      // items (only block_trace output via graph edges). When set, `agentName`
       // defaults to the block name so collaborating generators can be
       // given a shared name explicitly.
       // Resolved BEFORE `compileToolsWithExecute` so the tool runner can
-      // stamp `agentType`/`agentName` on emitted `block_tool_output`
+      // stamp `agentType`/`agentName` on emitted `tool_output`
       // items — `resolveItemVisibility()` uses those to decide
       // sub-agent visibility (client: true, history: false).
       const agentType = normalizedConfig.agentType;
@@ -1851,7 +1851,7 @@ export function generator<
 
       // Emit a completed assistant message when the generator has identity
       // and produced text output. Identity-less generators skip emission —
-      // their typed `block_output` is the only signal to downstream blocks.
+      // their typed `block_trace` output is the only signal to downstream blocks.
       if (agentType !== undefined && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
@@ -1880,11 +1880,11 @@ export function generator<
         await ctx.response.emit({ type: "item.added", item: messageItem });
         await ctx.response.emit({ type: "item.done", item: messageItem });
 
-        // FIX-480 §3.2: emit `block_output` as a ref to this message
+        // FIX-480 §3.2: emit `block_trace.output` as a ref to this message
         // instead of an inline copy of the same text. The message's
         // content equals `output` by construction (built from `output`
         // above), so no defensive equality check is needed here. Skip
-        // empty strings to keep block_output inline for the trivial case.
+        // empty strings to keep block_trace.output inline for the trivial case.
         if (output.length > 0) {
           ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
         }

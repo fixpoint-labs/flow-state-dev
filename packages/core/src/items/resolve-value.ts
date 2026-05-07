@@ -1,7 +1,7 @@
 /**
  * BlockValue construction, resolution, and type-guard helpers.
  *
- * `BlockValue<T>` is the discriminated union carried on `BlockOutputItem.output`
+ * `BlockValue<T>` is the discriminated union carried on `BlockTraceItem.output`
  * (FIX-413). This module owns the pure functions that:
  *  - construct the three cases (`inline`, `ref`, `structure`),
  *  - resolve a `BlockValue` to its typed payload `T` via an item-id lookup,
@@ -11,7 +11,7 @@
  * every `ref` points directly to a content-bearing item, never another ref.
  *
  * FIX-480 §3.2: refs may now point at `MessageItem` ids (in addition to
- * `BlockOutputItem` ids), so a streaming-text generator's `block_output`
+ * `BlockTraceItem` ids), so a streaming-text generator's `block_trace.output`
  * can carry a ref to its own emitted message instead of duplicating the
  * text. Resolution returns the joined `output_text` content.
  */
@@ -150,7 +150,7 @@ function joinMessageText(item: MessageItem): string {
 
 /**
  * Build a lookup closure from a flat items list. Indexes every item by
- * id (not just `block_output`) so refs may resolve to `message` items
+ * id (not just `block_trace`) so refs may resolve to `message` items
  * as well — FIX-480 widened the source pool. Callers with a Map already
  * indexed by id should wrap that directly.
  */

@@ -56,7 +56,7 @@ import type { RendererRegistry } from "@flow-state-dev/react";
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: ChatAgentMessage,
-  block_output: AgentResponseCard,
+  block_trace: AgentResponseCard,
 };
 
 
