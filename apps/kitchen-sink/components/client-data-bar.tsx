@@ -8,9 +8,8 @@ import { cn } from "@/lib/utils";
 
 interface ClientDataBarProps {
   displayName?: string;
-  preferredModel?: string;
-  /** Actual model string returned by the provider (e.g. "claude-sonnet-4-5"). */
-  resolvedModel?: string;
+  /** Concrete gateway model string the user has selected. */
+  selectedModel?: string;
   /** The user's thinking style selection ("auto", "default", etc.). */
   thinkingStyleMode?: string;
   /** The resolved thinking style from the most recent request. */
@@ -25,7 +24,7 @@ interface ClientDataBarProps {
 
 export function ClientDataBar({
   displayName,
-  resolvedModel,
+  selectedModel,
   thinkingStyleMode,
   thinkingStyle,
   activeSkills,
@@ -41,12 +40,12 @@ export function ClientDataBar({
         <User className="h-3.5 w-3.5" />
         <span>{displayName ?? "Developer"}</span>
       </div>
-      {resolvedModel && (
+      {selectedModel && (
         <>
           <Separator orientation="vertical" className="hidden h-4 md:block" />
           <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
             <Cpu className="h-3.5 w-3.5" />
-            <span>{resolvedModel}</span>
+            <span>{selectedModel}</span>
           </div>
         </>
       )}

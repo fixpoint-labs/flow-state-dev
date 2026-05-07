@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import type { MessageItem } from "@flow-state-dev/core/items";
 import { Message } from "@/components/flow-state/message";
 import { useSessionItems } from "@/components/flow-state/session-items-context";
-import { useModelPreset } from "@/components/model-preset-context";
 import { getStyleOption, type ThinkingStyle } from "@/components/thinking-style-selector";
 import { inferThinkingStyle } from "@/lib/item-inference";
 import { cn } from "@/lib/utils";
@@ -30,7 +29,6 @@ function StyleBadge({ style }: { style: ThinkingStyle }) {
 
 export function ChatAgentMessage({ item }: { item: MessageItem }) {
   const allItems = useSessionItems();
-  const modelPreset = useModelPreset();
 
   const style = useMemo(() => {
     if (item.role !== "assistant") return null;
