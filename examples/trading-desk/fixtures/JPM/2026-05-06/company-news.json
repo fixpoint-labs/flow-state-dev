@@ -1,0 +1,9 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "items": [
+    { "date": "2026-05-04", "headline": "Fed dot-plot shifts hawkish; net interest income tailwind extends", "source": "Bloomberg", "category": "macro" },
+    { "date": "2026-05-02", "headline": "JPM expands its private-credit JV; commits additional $5B", "source": "WSJ", "category": "strategy" },
+    { "date": "2026-04-30", "headline": "CFPB credit-card late-fee cap remand stalls again", "source": "Reuters", "category": "regulation" }
+  ]
+}

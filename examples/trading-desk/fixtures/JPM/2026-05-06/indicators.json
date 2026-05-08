@@ -1,0 +1,10 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "rsi14": 58.7,
+  "macd": { "line": 0.65, "signal": 0.40, "histogram": 0.25 },
+  "atr14": 1.45,
+  "trend": "up",
+  "sma50": 213.2,
+  "sma200": 198.6
+}

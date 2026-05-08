@@ -13,7 +13,8 @@ Hand-curated JSON fixtures keyed by `(ticker, date)`. The fixture
 
 ## Tool-name files
 
-Each fixture directory ships one JSON file per canonical tool name:
+Each per-ticker fixture directory ships one JSON file per ticker-keyed
+canonical tool name:
 
 - `balance-sheet.json` — `get_balance_sheet`
 - `income-statement.json` — `get_income_statement`
@@ -22,12 +23,13 @@ Each fixture directory ships one JSON file per canonical tool name:
 - `prices.json` — `get_price_history`
 - `indicators.json` — `compute_indicators`
 - `company-news.json` — `search_news`
-- `macro-indicators.json` — `get_macro_indicators`
 - `social-sentiment.json` — `get_social_sentiment`
 - `reddit-mentions.json` — `get_reddit_mentions`
 
-Files land in Steps 5 and 6 of the implementation sequence; this directory
-is the pre-allocated home for them.
+Macro indicators are date-keyed but ticker-agnostic, so they live under a
+sentinel directory:
+
+- `_macro/{YYYY-MM-DD}/macro-indicators.json` — `get_macro_indicators`
 
 ## Adding a new fixture
 

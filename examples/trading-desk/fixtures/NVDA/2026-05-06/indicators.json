@@ -1,0 +1,10 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "rsi14": 56.4,
+  "macd": { "line": 1.42, "signal": 1.28, "histogram": 0.14 },
+  "atr14": 2.65,
+  "trend": "up",
+  "sma50": 124.8,
+  "sma200": 112.3
+}

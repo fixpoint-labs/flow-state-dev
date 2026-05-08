@@ -1,0 +1,36 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "items": [
+    {
+      "date": "2026-05-05",
+      "headline": "Hyperscaler Q1 capex prints above consensus; AI infra orders accelerate",
+      "source": "Bloomberg",
+      "category": "demand"
+    },
+    {
+      "date": "2026-05-04",
+      "headline": "DOJ extends antitrust review of NVIDIA's networking-stack bundling",
+      "source": "Reuters",
+      "category": "regulation"
+    },
+    {
+      "date": "2026-05-02",
+      "headline": "Foundry partner reports 3nm yield improvement, ahead of plan",
+      "source": "Nikkei",
+      "category": "supply"
+    },
+    {
+      "date": "2026-04-30",
+      "headline": "Insider selling: VP of Sales files for ~$8M secondary",
+      "source": "SEC Form 4",
+      "category": "insider"
+    },
+    {
+      "date": "2026-04-28",
+      "headline": "Sovereign AI deal with Saudi PIF for 100k GPUs disclosed",
+      "source": "WSJ",
+      "category": "demand"
+    }
+  ]
+}
