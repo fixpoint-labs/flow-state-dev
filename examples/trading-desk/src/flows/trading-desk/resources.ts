@@ -51,6 +51,14 @@ export const memoStateSchema = z.object({
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   errorMessage: z.string().nullable(),
+  // Phase 2 InvestmentThesis extension. Only the research-manager memo
+  // (`memos/p2/research-manager`) populates these; all other memos leave
+  // them `null`. Read by Phase 3+ to reason about the debate's outcome.
+  stance: z.enum(["bullish", "bearish", "neutral"]).nullable().default(null),
+  conviction: z.number().min(0).max(1).nullable().default(null),
+  keyRisks: z.array(z.string()).nullable().default(null),
+  keyOpportunities: z.array(z.string()).nullable().default(null),
+  unresolvedDisagreements: z.array(z.string()).nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;
@@ -79,6 +87,11 @@ export const memosCollection = defineResourceCollection({
       startedAt: state.startedAt,
       completedAt: state.completedAt,
       errorMessage: state.errorMessage,
+      stance: state.stance,
+      conviction: state.conviction,
+      keyRisks: state.keyRisks,
+      keyOpportunities: state.keyOpportunities,
+      unresolvedDisagreements: state.unresolvedDisagreements,
     }),
   },
 });

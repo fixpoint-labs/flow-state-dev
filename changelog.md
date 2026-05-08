@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-08
 
+### Trading Desk example: Phase 2 bull/bear research debate and investment thesis synthesis (FIX-561)
+
+- The `analyze` action now runs through Phase 2 after the analyst fan-out: a bounded bull-vs-bear loop driven by the Round Robin pattern, then three new memos for `bullResearcher`, `bearResearcher`, and `researchManager` cycling `pending → writing → published`. The cheap preset runs one round; the full preset runs two. The ceiling is enforced at the schema boundary regardless of caller input.
+- The research manager emits a typed `InvestmentThesis` carrying five extension fields on the memo state — `stance`, `conviction`, `keyRisks`, `keyOpportunities`, and an explicit `unresolvedDisagreements` list. Empty is acceptable but should be the exception on a non-trivial trade. Phase 3+ read these directly to reason about non-convergence rather than papering over it.
+- Phase 2 picks Round Robin over Debate because the research manager is a synthesizer, not a judge. The pattern's required judge slot is filled with a 3-line stub that always returns `done: false`, leaning on `maxRounds` for termination — the canonical idiom for fixed-length loops. Phase 4's risk debate keeps `debate()` for its real risk judge.
+- A router selects among four pre-built `roundRobin()` instances at runtime, one per `(maxDebateRounds, costPreset)` combination, since the pattern's `model` and `maxRounds` are fixed at construction time.
+- The transcript renders the phase divider, bull/bear speak rows tagged by round, and the research manager's `InvestmentThesis` as a structured-output card. The right-pane sidebar now lights up the three Phase 2 entries live.
+
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)
 
 - The `analyze` action now runs end-to-end: `seedSession → phase-1-analysts (parallel × 4)`. Four `Thesis`-shaped memo resources are pre-created in `pending`, then transition `pending → writing → published` (or `error`) live mid-stream as each analyst sub-sequencer commits or rescues.

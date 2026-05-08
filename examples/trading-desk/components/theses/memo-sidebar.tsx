@@ -16,13 +16,13 @@ import {
   PHASE_GROUPS,
   shortNameForAgent,
   type AgentName,
-  type Phase1MemoShortName,
+  type AnyMemoShortName,
 } from "@/src/flows/trading-desk/agents";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 
 type MemoSidebarProps = {
-  memoStatus: Partial<Record<Phase1MemoShortName, MemoStatus>>;
+  memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
   selectedAgent: AgentName | null;
   onSelectAgent: (agent: AgentName) => void;
 };
