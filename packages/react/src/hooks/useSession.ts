@@ -20,9 +20,14 @@ import type {
   MessageItem,
   OutputItem,
   ReasoningItem,
-  SessionMetadataChangedEvent
+  SessionMetadataChangedEvent,
+  StateChangeItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
+import {
+  isReducibleStateChange,
+  mergeStateChangeIntoSnapshot
+} from "../internal/mergeStateChangeIntoSnapshot";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -734,6 +739,16 @@ export function useSession(
           // completion. The onRequestStatus handler checks this flag.
           if (event.item.type === "resource_change") {
             resourceChangedDuringStreamRef.current = true;
+          }
+
+          // FIX-576: reduce session/user/org-scope state_change items into the
+          // cached snapshot's clientData so useClientData reflects mid-stream
+          // patches without waiting for the terminal-status snapshot refresh.
+          // Falls through to the items-log path below for non-transient cases.
+          if (isReducibleStateChange(event.item)) {
+            setSnapshot((prev) =>
+              mergeStateChangeIntoSnapshot(prev, event.item as StateChangeItem)
+            );
           }
 
           if (!passesItemFilter(event.item, filter)) {

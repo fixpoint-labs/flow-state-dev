@@ -1584,6 +1584,128 @@ function createTargetStateOps<TState extends JsonObject>(options: {
     }
   };
 }
+
+/**
+ * Wraps the bare `createScopeStateOps` result for a request/session/user/org
+ * scope so each successful mutation emits a `state_change` SSE item carrying
+ * the scope, operation, structured delta, and post-mutation version. The
+ * shape mirrors `createTargetStateOps` (which handles the `block_instance`
+ * scope) so React's `useSession` can reduce these into `snapshot.clientData`
+ * mid-stream — see FIX-576.
+ *
+ * Behavior notes:
+ * - No-op mutations (when the base op returns `false`) skip the emit, preserving
+ *   the FIX-477 deep-equal short-circuit.
+ * - `atomicState` emits with `delta: undefined` because the base op gives no
+ *   structured diff; clients ignore atomic emits for clientData reduction and
+ *   fall back to terminal-status snapshot refresh for those scopes.
+ * - Provenance is fixed to `"runtime"` because scope-level mutations are not
+ *   tied to a particular block instance.
+ */
+function wrapScopeOpsWithEmit<TState extends JsonObject>(args: {
+  scope: "request" | "session" | "user" | "org";
+  baseOps: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">;
+  container: ReturnType<typeof createStateContainer<TState>>;
+  getResponse: () => unknown;
+  requestId: string;
+  nextItemIndex: () => number;
+  transient: boolean;
+}): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
+  const provenance = (): ItemProvenance => ({
+    blockName: "runtime",
+    blockInstanceId: "runtime",
+    phase: "main" as const
+  });
+
+  const emit = (params: {
+    operation: StateChangeOperation;
+    delta?: unknown;
+    path?: string;
+  }): Promise<void> =>
+    emitStateChangeItem({
+      response: args.getResponse(),
+      requestId: args.requestId,
+      nextItemIndex: args.nextItemIndex,
+      provenance,
+      scope: args.scope,
+      operation: params.operation,
+      delta: params.delta,
+      path: params.path,
+      version: args.container.getVersion(),
+      transient: args.transient
+    });
+
+  return {
+    async patchState(
+      updatesOrKey: Partial<TState> | keyof TState,
+      updater?: (current: TState[keyof TState]) => TState[keyof TState]
+    ) {
+      const committed = await (args.baseOps.patchState as (
+        updatesOrKey: Partial<TState> | keyof TState,
+        updater?: (current: TState[keyof TState]) => TState[keyof TState]
+      ) => Promise<boolean>)(updatesOrKey, updater);
+      if (!committed) return false;
+      if (typeof updatesOrKey === "string") {
+        await emit({
+          operation: "patch",
+          path: updatesOrKey,
+          delta: { path: updatesOrKey }
+        });
+      } else {
+        await emit({
+          operation: "patch",
+          delta: updatesOrKey as Record<string, unknown>
+        });
+      }
+      return true;
+    },
+    async setState(nextState: TState) {
+      const committed = await args.baseOps.setState(nextState);
+      if (!committed) return false;
+      await emit({ operation: "set", delta: nextState as Record<string, unknown> });
+      return true;
+    },
+    async incState(increments: Record<string, number>) {
+      const committed = await args.baseOps.incState(increments);
+      if (!committed) return false;
+      await emit({ operation: "increment", delta: increments });
+      return true;
+    },
+    async pushState(field: string, value: unknown) {
+      const committed = await args.baseOps.pushState(field, value);
+      if (!committed) return false;
+      await emit({ operation: "push", path: field, delta: value });
+      return true;
+    },
+    async setStateRecord(field: string, key: string, value: unknown) {
+      const committed = await args.baseOps.setStateRecord(field, key, value);
+      if (!committed) return false;
+      await emit({
+        operation: "patch",
+        path: `${field}.${key}`,
+        delta: { [field]: { [key]: value } }
+      });
+      return true;
+    },
+    async deleteStateRecord(field: string, key: string) {
+      const committed = await args.baseOps.deleteStateRecord(field, key);
+      if (!committed) return false;
+      await emit({
+        operation: "delete_key",
+        path: `${field}.${key}`,
+        delta: { [field]: key }
+      });
+      return true;
+    },
+    async atomicState(mutator: (state: Readonly<TState>) => Partial<TState>) {
+      const committed = await args.baseOps.atomicState(mutator);
+      if (!committed) return false;
+      await emit({ operation: "atomic" });
+      return true;
+    }
+  };
+}
+
 /**
  * Request-scoped status slot. Shared across every `createEmitStatus` call
  * within a single request so nested scopes see the same "current message"
@@ -2184,6 +2306,13 @@ export async function createExecutionContext<
     console.warn("[flow-state] Scope state exceeds recommended CAS size", detail);
   };
 
+  // Hoisted so scope-handle ops can close over these refs and emit
+  // `state_change` items on mutation (FIX-576). `responseRef.current` is
+  // assigned once `response` is constructed below; until then no scope op
+  // can run.
+  const responseRef: { current: unknown } = { current: undefined };
+  let emittedItemCount = 0;
+
   const requestOps = createScopeStateOps(requestContainer, {
     onStateSizeWarning,
     persist: createScopePersist<TRequestState, RequestRecord>(
@@ -2389,6 +2518,23 @@ export async function createExecutionContext<
     return { totalUSD, byModel };
   };
 
+  function emitWrap<TState extends JsonObject>(
+    scope: "request" | "session" | "user" | "org",
+    baseOps: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">,
+    container: ReturnType<typeof createStateContainer<TState>>
+  ) {
+    return wrapScopeOpsWithEmit({
+      scope,
+      baseOps,
+      container,
+      getResponse: () => responseRef.current,
+      requestId: requestRef.current.id,
+      nextItemIndex: () => emittedItemCount++,
+      transient: transientStateChanges
+    });
+  }
+
+  const requestOpsEmitting = emitWrap("request", requestOps, requestContainer);
   const requestHandle = defineStateProperty(
     {
       identity: {
@@ -2403,11 +2549,12 @@ export async function createExecutionContext<
       get costEstimate() {
         return computeCostEstimate();
       },
-      ...requestOps
+      ...requestOpsEmitting
     },
     () => requestContainer.read()
   ) as RequestScopeHandle<TRequestState>;
 
+  const userOpsEmitting = emitWrap("user", userOps, userContainer);
   const userHandle = defineStateProperty(
     {
       identity: {
@@ -2415,11 +2562,12 @@ export async function createExecutionContext<
         id: userRef.current.id,
         userId: userRef.current.userId
       },
-      ...userOps
+      ...userOpsEmitting
     },
     () => userContainer.read()
   ) as UserScopeHandle<TUserState>;
 
+  const sessionOpsEmitting = emitWrap("session", sessionOps, sessionContainer);
   const sessionHandle = defineStateProperty(
     {
       identity: {
@@ -2512,13 +2660,17 @@ export async function createExecutionContext<
           ...(input.metadata !== undefined ? { metadata: input.metadata } : {})
         });
       },
-      ...sessionOps
+      ...sessionOpsEmitting
     },
     () => sessionContainer.read()
   ) as SessionScopeHandle<TSessionState>;
 
+  const orgOpsEmitting =
+    orgOps === undefined || orgContainer === undefined
+      ? undefined
+      : emitWrap("org", orgOps, orgContainer);
   const orgHandle =
-    orgRef.current === undefined || orgOps === undefined || orgContainer === undefined
+    orgRef.current === undefined || orgOpsEmitting === undefined || orgContainer === undefined
       ? undefined
       : (defineStateProperty(
           {
@@ -2528,7 +2680,7 @@ export async function createExecutionContext<
               userId: orgRef.current.userId,
               orgId: orgRef.current.orgId
             },
-            ...orgOps
+            ...orgOpsEmitting
           },
           () => orgContainer.read()
         ) as OrgScopeHandle<TOrgState>);
@@ -2580,14 +2732,11 @@ export async function createExecutionContext<
   const response = options.response ?? {
     emit: async () => undefined
   };
-  const responseRef: { current: unknown } = {
-    current: response
-  };
+  responseRef.current = response;
 
   // Emission context used by emitMessage/emitComponent/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
-  let emittedItemCount = 0;
 
   // Per-request background work pool. Sequencer DSL pushes `.work()` /
   // `.workIf()` / `.forEachBackground()` tasks here; runActionInternal

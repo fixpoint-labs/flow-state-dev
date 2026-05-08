@@ -212,6 +212,8 @@ Internal state — intermediate processing, raw resource contents, block-private
 
 During streaming, `state_change` and `resource_change` events signal that the client view may be stale. The client refetches the authoritative snapshot on `request.completed`.
 
+Mutations to session, user, org, and request state all emit `state_change` items on the wire — the same shape that block-instance / sequencer target state has always emitted — so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data).
+
 This mirrors how resources work: a resource without a `client` config is invisible to clients (see [Resources: client access](/docs/resources/client-access)). One mental model — `client` everywhere — instead of two.
 
 ### Migrating from `clientData`

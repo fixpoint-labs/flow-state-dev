@@ -1153,6 +1153,305 @@ describe("execution runtime", () => {
     expect(scopedItems.every((item) => item.transient === false)).toBe(true);
   });
 
+  it("emits state_change items for session-scope state ops with monotonic version (FIX-576)", async () => {
+    type SessionState = {
+      count: number;
+      total: number;
+      status: string;
+      notes: string[];
+      flags: Record<string, boolean>;
+    };
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "scope-state-change",
+      sessionStateSchema: z.object({
+        count: z.number().default(0),
+        total: z.number().default(0),
+        status: z.string().default("idle"),
+        notes: z.array(z.string()).default([]),
+        flags: z.record(z.boolean()).default({})
+      }),
+      actions: {
+        run: {
+          inputSchema: z.number(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.number(),
+            outputSchema: z.number(),
+            execute: (input) => input
+          })
+        }
+      }
+    })();
+
+    const response = createResponseEmitter({ requestId: "req_session_scope" });
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_session_scope",
+      sessionId: "sess_session_scope",
+      userId: "user_session_scope",
+      stores,
+      response,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate() {
+          return { text: "ok" };
+        }
+      })
+    });
+
+    const session = ctx.session as unknown as {
+      patchState: (...args: unknown[]) => Promise<boolean>;
+      setState: (next: SessionState) => Promise<boolean>;
+      incState: (incs: Record<string, number>) => Promise<boolean>;
+      pushState: (field: string, value: unknown) => Promise<boolean>;
+      setStateRecord: (field: string, key: string, value: unknown) => Promise<boolean>;
+      deleteStateRecord: (field: string, key: string) => Promise<boolean>;
+      atomicState: (mutator: (state: SessionState) => Partial<SessionState>) => Promise<boolean>;
+    };
+
+    await session.patchState({ status: "running" });
+    await session.setState({
+      count: 5,
+      total: 3,
+      status: "set",
+      notes: ["seed"],
+      flags: { active: true }
+    });
+    await session.incState({ count: 2 });
+    await session.pushState("notes", "next");
+    await session.setStateRecord("flags", "seen", true);
+    await session.deleteStateRecord("flags", "active");
+    await session.atomicState((state) => ({
+      status: `${String(state.status)}:done`
+    }));
+
+    const items = response
+      .getItems()
+      .filter((item) => item.type === "state_change");
+
+    expect(items).toHaveLength(7);
+    expect(items.every((item) => item.scope === "session")).toBe(true);
+    expect(items.every((item) => item.blockInstanceId === undefined)).toBe(true);
+    expect(items.map((item) => item.operation)).toEqual([
+      "patch",
+      "set",
+      "increment",
+      "push",
+      "patch",
+      "delete_key",
+      "atomic"
+    ]);
+    expect(items.map((item) => item.version)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(items[0]?.delta).toEqual({ status: "running" });
+    expect(items[2]?.delta).toEqual({ count: 2 });
+    expect(items[3]?.delta).toBe("next");
+    expect(items[3]?.path).toBe("notes");
+    expect(items[4]?.delta).toEqual({ flags: { seen: true } });
+    expect(items[5]?.delta).toEqual({ flags: "active" });
+    expect(items[5]?.path).toBe("flags.active");
+    expect(items[6]?.delta).toBeUndefined();
+  });
+
+  it("emits state_change items for user, org, and request scopes (FIX-576)", async () => {
+    const stores = createInMemoryStores();
+    await stores.org.set(
+      "org_scope",
+      {
+        id: "org_scope",
+        userId: "user_scope_emit",
+        orgId: "org_scope",
+        state: { tier: "free" },
+        version: 0,
+        createdAt: 0,
+        updatedAt: 0
+      },
+      "any"
+    );
+    const flow = defineFlow({
+      kind: "scope-state-change-multi",
+      requestStateSchema: z.object({ phase: z.string().default("idle") }),
+      sessionStateSchema: z.object({}).passthrough(),
+      userStateSchema: z.object({ role: z.string().default("guest") }),
+      orgStateSchema: z.object({ tier: z.string().default("free") }),
+      actions: {
+        run: {
+          inputSchema: z.number(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.number(),
+            outputSchema: z.number(),
+            execute: (input) => input
+          })
+        }
+      }
+    })();
+
+    const response = createResponseEmitter({ requestId: "req_multi_scope" });
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_multi_scope",
+      sessionId: "sess_multi_scope",
+      userId: "user_scope_emit",
+      orgId: "org_scope",
+      stores,
+      response,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate() {
+          return { text: "ok" };
+        }
+      })
+    });
+
+    await ctx.user.patchState({ role: "admin" });
+    await ctx.request.patchState({ phase: "running" });
+    if (ctx.org !== undefined) {
+      await ctx.org.patchState({ tier: "pro" });
+    }
+
+    const byScope = (scope: string) =>
+      response
+        .getItems()
+        .filter((item) => item.type === "state_change" && item.scope === scope);
+
+    const userItems = byScope("user");
+    const requestItems = byScope("request");
+    const orgItems = byScope("org");
+
+    expect(userItems).toHaveLength(1);
+    expect(userItems[0]?.delta).toEqual({ role: "admin" });
+    expect(userItems[0]?.operation).toBe("patch");
+    expect(userItems[0]?.blockInstanceId).toBeUndefined();
+    expect(userItems[0]?.provenance.blockName).toBe("runtime");
+
+    expect(requestItems).toHaveLength(1);
+    expect(requestItems[0]?.delta).toEqual({ phase: "running" });
+
+    expect(orgItems).toHaveLength(1);
+    expect(orgItems[0]?.delta).toEqual({ tier: "pro" });
+  });
+
+  it("suppresses scope-level state_change emit when patch is a no-op (FIX-576)", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "scope-state-change-noop",
+      sessionStateSchema: z.object({ status: z.string().default("idle") }),
+      actions: {
+        run: {
+          inputSchema: z.number(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.number(),
+            outputSchema: z.number(),
+            execute: (input) => input
+          })
+        }
+      }
+    })();
+
+    const response = createResponseEmitter({ requestId: "req_scope_noop" });
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_scope_noop",
+      sessionId: "sess_scope_noop",
+      userId: "user_scope_noop",
+      sessionState: { status: "idle" },
+      stores,
+      response,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate() {
+          return { text: "ok" };
+        }
+      })
+    });
+
+    // schema default already sets status to "idle" — patch with the same value
+    // is a no-op and must not emit.
+    await (ctx.session as unknown as { patchState: (u: Record<string, unknown>) => Promise<boolean> }).patchState({ status: "idle" });
+
+    const items = response
+      .getItems()
+      .filter((item) => item.type === "state_change");
+    expect(items).toHaveLength(0);
+  });
+
+  it("scope-level state_change items honor transient default in production (FIX-576)", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "scope-state-change-transient",
+        sessionStateSchema: z.object({ status: z.string().default("idle") }),
+        actions: {
+          run: {
+            inputSchema: z.number(),
+            block: handler({
+              name: "noop",
+              inputSchema: z.number(),
+              outputSchema: z.number(),
+              execute: (input) => input
+            })
+          }
+        }
+      })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
+
+      const prodResponse = createResponseEmitter({ requestId: "req_scope_prod" });
+      const prodCtx = await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_scope_prod",
+        sessionId: "sess_scope_prod",
+        userId: "user_scope_prod",
+        stores,
+        response: prodResponse,
+        modelResolver: (modelId) => ({
+          modelId,
+          async generate() {
+            return { text: "ok" };
+          }
+        })
+      });
+      await (prodCtx.session as unknown as { patchState: (u: Record<string, unknown>) => Promise<boolean> }).patchState({ status: "running" });
+      const prodItems = prodResponse
+        .getItems()
+        .filter((item) => item.type === "state_change");
+      expect(prodItems).toHaveLength(1);
+      expect(prodItems[0]?.transient).toBe(true);
+
+      flow.persistStateChanges = true;
+      const persistedResponse = createResponseEmitter({ requestId: "req_scope_persist" });
+      const persistedCtx = await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_scope_persist",
+        sessionId: "sess_scope_persist",
+        userId: "user_scope_persist",
+        stores,
+        response: persistedResponse,
+        modelResolver: (modelId) => ({
+          modelId,
+          async generate() {
+            return { text: "ok" };
+          }
+        })
+      });
+      await (persistedCtx.session as unknown as { patchState: (u: Record<string, unknown>) => Promise<boolean> }).patchState({ status: "running" });
+      const persistedItems = persistedResponse
+        .getItems()
+        .filter((item) => item.type === "state_change");
+      expect(persistedItems).toHaveLength(1);
+      expect(persistedItems[0]?.transient).toBe(false);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
   it("uses transient state_change items in production unless persistStateChanges is enabled", async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";

@@ -116,6 +116,17 @@ const clientData = useClientData(session, {
 });
 ```
 
+#### Live updates
+
+Values update mid-stream as `state_change` items arrive over SSE — components re-render within the same paint as the corresponding `ctx.<scope>.patchState(...)` call, not only after the request terminates. This applies to keys declared in the flow's `client.<scope>.expose` config (the "expose half" of `clientData`). Derived projections (declared in `client.<scope>.derived`) refresh once at terminal request status, since the framework can't recompute their projection functions client-side.
+
+Two limitations to know about:
+
+- Mid-stream updates only apply to expose keys whose initial value is already present in the snapshot. If a flow exposes `foo` but `state.foo` is `undefined` at session start, the first `patchState({ foo: ... })` won't surface until terminal refresh. Declare a default in the scope's `stateSchema` if that case matters.
+- `atomicState` mutations don't carry a structured delta on the wire, so values affected by an atomic write also stay stale until terminal refresh.
+
+See [`state_change` items](../streaming/items.md) for the wire format and [State and scopes](../fundamentals/state-and-scopes.md) for the scope model.
+
 ### `useAction` — Low-Level
 
 For direct action execution without session management:

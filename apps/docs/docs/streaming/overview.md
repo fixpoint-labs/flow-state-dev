@@ -139,7 +139,7 @@ For reference, here's the complete registry:
 | `container` | Groups child items for visual layout | ✓ | — | — |
 | `source` | URL reference from web search, etc. | ✓ | — | — |
 | `status` | Progress indicator | ✓ | — | Always |
-| `state_change` | State mutation notification | ✓ | — | Production |
+| `state_change` | State mutation notification (scope: `request` / `session` / `user` / `org` / `block_instance`) | ✓ | — | Production |
 | `resource_change` | Resource mutation notification | ✓ | — | Always |
 | `error` | Terminal request error | ✓ | — | — |
 | `block_trace` | Execution record | — | — | — |
