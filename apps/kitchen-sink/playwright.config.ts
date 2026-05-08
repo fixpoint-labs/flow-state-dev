@@ -33,8 +33,10 @@ export default defineConfig({
         // The kitchen-sink production build is expected to already exist
         // (run `pnpm --filter @flow-state-dev/kitchen-sink build` first; CI
         // does this in a dedicated step). Splitting build from start keeps
-        // failures on each side clearly attributable.
-        command: `pnpm --filter @flow-state-dev/kitchen-sink start --port ${PORT}`,
+        // failures on each side clearly attributable. Using `pnpm exec`
+        // avoids pnpm's arg-passing quirks when forwarding `--port` through
+        // a `--filter`-targeted script.
+        command: `pnpm exec next start --port ${PORT}`,
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
