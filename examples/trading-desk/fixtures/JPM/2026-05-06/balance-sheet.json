@@ -1,0 +1,10 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-03-31",
+  "totalAssets": 4150.0,
+  "totalLiabilities": 3815.0,
+  "totalEquity": 335.0,
+  "cashAndEquivalents": 575.0,
+  "totalDebt": 410.0,
+  "unit": "USD billions"
+}

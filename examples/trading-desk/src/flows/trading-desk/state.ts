@@ -1,0 +1,24 @@
+/**
+ * Flow-level session state schema, lifted out of `flow.ts` so blocks can
+ * reference it without creating an import cycle.
+ *
+ * `memoStatus` is a per-memo-key mirror of each resource's `status` field.
+ * The navigator reads it via `useClientData` (the flow file passes it in
+ * `client.expose`) so memos transition `pending → writing → published`
+ * live mid-stream — body content still loads from `useResourceCollection`
+ * at the terminal snapshot.
+ */
+import { z } from "zod";
+
+export const sessionStateSchema = z.object({
+  ticker: z.string().default("NVDA"),
+  date: z.string().default("2026-05-06"),
+  costPreset: z.enum(["fast", "full"]).default("fast"),
+  dataSource: z.enum(["fixture", "live"]).default("fixture"),
+  activePhase: z.enum(["idle", "phase-1"]).default("idle"),
+  memoStatus: z
+    .record(z.string(), z.enum(["pending", "writing", "published", "error"]))
+    .default({}),
+});
+
+export type SessionState = z.infer<typeof sessionStateSchema>;

@@ -1,0 +1,10 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "rsi14": 52.1,
+  "macd": { "line": 0.42, "signal": 0.51, "histogram": -0.09 },
+  "atr14": 1.85,
+  "trend": "flat",
+  "sma50": 193.6,
+  "sma200": 188.4
+}

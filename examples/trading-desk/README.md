@@ -36,14 +36,36 @@ pnpm install
 pnpm --filter @flow-state-dev/example-trading-desk dev
 ```
 
-Defaults to `NVDA / 2026-05-06`. Change ticker or date in the top bar and
-press **re-run**.
+Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
 
-## Live data toggle
+- **ticker** — text input, defaults to `NVDA`.
+- **date** — text input, defaults to `2026-05-06`.
+- **preset** — `fast` (cheap utility models) or `full` (higher-tier chat models).
+  Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
+  so the concrete model depends on which provider key is configured.
+- **source** — `fixture` (canonical hand-curated JSON) or `live` (Yahoo Finance
+  for prices and fundamentals; news and sentiment fall back to fixtures with a
+  noted follow-on).
 
-Set `dataSource: "live"` when invoking `analyze` to use real data. Phase 1
-supports live prices and fundamentals via `yahoo-finance2` (no key); news
-and sentiment remain fixture-only with a noted follow-on.
+Press **re-run** to dispatch a new `analyze` request.
+
+The cheap-preset run completes end-to-end in well under a minute on default
+models with one provider key configured. Each analyst writes a structured
+`Thesis` resource observable via `useResourceCollection`; the navigator's live
+`pending → writing → published` flicker comes from `useClientData` reading the
+session-state `memoStatus` mirror.
+
+## Provider keys
+
+The flow uses the framework's model resolver. Configure at least one provider
+key (typically `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) so the `intent/utility`
+and `intent/chat` intents can resolve. The example does not bundle a
+default-model assumption — extend `lib/server.ts`'s `createModelResolver` call
+if you want to wire intents to specific gateway models.
+
+`yahoo-finance2` is keyless. The live source for news and sentiment is a
+fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
+sentiment lands in a follow-on.
 
 ## Architecture in brief
 

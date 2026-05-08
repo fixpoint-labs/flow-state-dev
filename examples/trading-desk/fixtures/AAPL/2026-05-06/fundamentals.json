@@ -1,0 +1,10 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "marketCap": 2810.0,
+  "forwardPE": 27.4,
+  "priceToSales": 7.1,
+  "returnOnEquity": 1.65,
+  "operatingMargin": 0.31,
+  "grossMargin": 0.45
+}

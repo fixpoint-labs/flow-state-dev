@@ -1,0 +1,10 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-01-26",
+  "revenue": 130.5,
+  "grossProfit": 96.5,
+  "operatingIncome": 81.0,
+  "netIncome": 70.0,
+  "yoyRevenueGrowth": 0.42,
+  "unit": "USD billions"
+}

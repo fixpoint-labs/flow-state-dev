@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-08
+
+### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)
+
+- The `analyze` action now runs end-to-end: `seedSession → phase-1-analysts (parallel × 4)`. Four `Thesis`-shaped memo resources are pre-created in `pending`, then transition `pending → writing → published` (or `error`) live mid-stream as each analyst sub-sequencer commits or rescues.
+- Ten canonical tools land behind a `DataSource` interface — fixture-backed by hand-curated NVDA / 2026-05-06 JSON (with minimum-viable AAPL and JPM fixtures), and a `LiveDataSource` wrapper that wires Yahoo Finance for prices and fundamentals (no key required); news, sentiment, and macro stay fixture-only with a follow-on.
+- The top bar exposes `preset` (`fast` → `intent/utility`, `full` → `intent/chat`) and `source` (`fixture` / `live`) segmented controls so the live-data toggle is observable to a user running the demo.
+- Transcript pane renders phase dividers, tool rows with `FIXTURE` / `LIVE` source pills, and analyst speak rows with a streaming-caret tail. The right pane dispatches `(agentName, status)` to `pending` / `writing skeleton` / `ThesisHeader + ThesisBody` / `error`, with `PMHero` shipped (exercised first in Phase 5).
+- Session client-data fields (`ticker`, `date`, `costPreset`, `dataSource`, `activePhase`, `memoStatus`) flipped from `client.derived` to `client.expose` so the navigator's mid-stream status flicker comes from `useClientData` directly. Body content reads from `useResourceCollectionItem` keyed on each memo's `collectionKey`.
+
 ## 2026-05-07
 
 ### `useClientData` reflects mid-stream state changes (FIX-576)

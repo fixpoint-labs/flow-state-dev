@@ -14,7 +14,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   PHASE_GROUPS,
-  PHASE_1_MEMO_KEYS,
+  shortNameForAgent,
   type AgentName,
   type Phase1MemoShortName,
 } from "@/src/flows/trading-desk/agents";
@@ -39,14 +39,9 @@ function statusForAgent(
   agent: AgentName,
   memoStatus: MemoSidebarProps["memoStatus"],
 ): MemoStatus | "unavailable" {
-  for (const [shortName, mapping] of Object.entries(PHASE_1_MEMO_KEYS) as Array<
-    [Phase1MemoShortName, (typeof PHASE_1_MEMO_KEYS)[Phase1MemoShortName]]
-  >) {
-    if (mapping.agentName === agent) {
-      return memoStatus[shortName] ?? "pending";
-    }
-  }
-  return "unavailable";
+  const shortName = shortNameForAgent(agent);
+  if (shortName === undefined) return "unavailable";
+  return memoStatus[shortName] ?? "pending";
 }
 
 export function MemoSidebar({
