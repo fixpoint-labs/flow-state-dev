@@ -56,6 +56,12 @@ jobs:
       - name: Build packages
         run: pnpm --filter './packages/*' -r build
 
+      - name: Build kitchen-sink (test mode)
+        run: pnpm --filter @flow-state-dev/kitchen-sink build
+        env:
+          KITCHEN_SINK_TEST_MODE: "1"
+          NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1"
+
       - name: Install Playwright browsers
         run: pnpm --filter @flow-state-dev/kitchen-sink exec playwright install --with-deps chromium
 

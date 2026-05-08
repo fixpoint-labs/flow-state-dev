@@ -30,10 +30,14 @@ export default defineConfig({
   webServer: process.env.KITCHEN_SINK_URL
     ? undefined
     : {
-        command: `pnpm --filter @flow-state-dev/kitchen-sink build && pnpm --filter @flow-state-dev/kitchen-sink start --port ${PORT}`,
+        // The kitchen-sink production build is expected to already exist
+        // (run `pnpm --filter @flow-state-dev/kitchen-sink build` first; CI
+        // does this in a dedicated step). Splitting build from start keeps
+        // failures on each side clearly attributable.
+        command: `pnpm --filter @flow-state-dev/kitchen-sink start --port ${PORT}`,
         url: baseURL,
         reuseExistingServer: !process.env.CI,
-        timeout: 180_000,
+        timeout: 120_000,
         env: {
           KITCHEN_SINK_TEST_MODE: "1",
           NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
