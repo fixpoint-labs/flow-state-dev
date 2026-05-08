@@ -7,6 +7,8 @@ import {
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
+import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
+import { e2eMockScript } from "./e2e-mock-script";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -31,7 +33,20 @@ const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 // leave the openai slot empty so availability-based resolution can route
 // openai/* model strings through the configured gateway.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-const modelResolver = createModelResolver({
+const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
+  ? createMockModelResolver({
+      // chat-agent's primary generator. Other generator blocks (auto-title,
+      // bias-check, thinking-style workers) fall through to the no-op model
+      // because of `policy: "allow"` — that's enough for round-trip tests.
+      generators: {
+        "assistant-generator": mockGenerator({
+          name: "assistant-generator",
+          script: e2eMockScript,
+        }),
+      },
+      policy: "allow",
+    })
+  : createModelResolver({
   gateways: gatewayApiKey
     ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,

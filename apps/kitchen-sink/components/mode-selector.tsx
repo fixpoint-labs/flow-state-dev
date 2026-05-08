@@ -78,6 +78,7 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          data-testid="mode-selector"
           variant="outline"
           size="sm"
           disabled={disabled}

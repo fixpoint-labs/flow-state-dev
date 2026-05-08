@@ -90,6 +90,7 @@ const sidebars: SidebarsConfig = {
             "testing/overview",
             "testing/testing-flows",
             "testing/flow-integration-tests",
+            "testing/end-to-end-tests",
           ],
         },
       ],
