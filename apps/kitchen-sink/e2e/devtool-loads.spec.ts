@@ -1,4 +1,4 @@
-import { test, expect, openKitchenSink } from "./fixtures";
+import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("devtool: embedded panel mounts at /devtool without errors", async ({
   page,
@@ -6,5 +6,5 @@ test("devtool: embedded panel mounts at /devtool without errors", async ({
   consoleErrors: _consoleErrors,
 }) => {
   await openKitchenSink(page, userId, "/devtool");
-  await expect(page.getByTestId("devtool-panel")).toBeVisible();
+  await expect(byTestId(page, "devtool-panel")).toBeVisible();
 });

@@ -10,8 +10,19 @@
  *   param and waits for the message input to be enabled — the cheapest
  *   readiness signal for the FlowProvider.
  */
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page, type Locator } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+
+/**
+ * Kitchen-sink renders both a mobile and a desktop ChatPanel into the DOM
+ * at all times (visibility is CSS-controlled via Tailwind breakpoints). A
+ * raw `page.getByTestId(...)` therefore matches two elements at the desktop
+ * viewport and trips strict-mode. Filtering by `:visible` picks the one
+ * that's actually rendered for the current viewport.
+ */
+export function byTestId(page: Page, id: string): Locator {
+  return page.locator(`[data-testid="${id}"]:visible`);
+}
 
 type Fixtures = {
   userId: string;
@@ -48,6 +59,6 @@ export async function openKitchenSink(
   const sep = path.includes("?") ? "&" : "?";
   await page.goto(`${path}${sep}e2eUserId=${encodeURIComponent(userId)}`);
   if (path === "/") {
-    await expect(page.getByTestId("message-input")).toBeEnabled();
+    await expect(byTestId(page, "message-input")).toBeEnabled();
   }
 }

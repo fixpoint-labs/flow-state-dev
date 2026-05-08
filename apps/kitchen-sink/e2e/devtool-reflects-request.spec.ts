@@ -1,4 +1,4 @@
-import { test, expect, openKitchenSink } from "./fixtures";
+import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("devtool reflects a live request from the chat surface", async ({
   page,
@@ -7,22 +7,21 @@ test("devtool reflects a live request from the chat surface", async ({
 }) => {
   await openKitchenSink(page, userId);
 
-  await page
-    .getByTestId("message-input")
-    .fill("[scenario:devtool] hi from e2e");
-  await page.getByTestId("message-submit").click();
+  await byTestId(page, "message-input").fill("[scenario:devtool] hi from e2e");
+  await byTestId(page, "message-submit").click();
 
   await expect(
-    page.locator('[data-testid="message"][data-message-role="assistant"]').first(),
+    page
+      .locator(
+        '[data-testid="message"][data-message-role="assistant"]:visible',
+      )
+      .first(),
   ).toContainText("DevTool scenario response.");
 
   await page.goto(`/devtool?e2eUserId=${encodeURIComponent(userId)}`);
-  await expect(page.getByTestId("devtool-panel")).toBeVisible();
+  await expect(byTestId(page, "devtool-panel")).toBeVisible();
 
-  // The user message snippet should appear somewhere inside the navigator.
-  // We don't bind to a specific tree node — the DevTool renders sessions /
-  // requests in its own UI that may evolve.
-  await expect(page.getByTestId("devtool-panel")).toContainText(
+  await expect(byTestId(page, "devtool-panel")).toContainText(
     /\[scenario:devtool\]/,
   );
 });
