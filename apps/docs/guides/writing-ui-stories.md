@@ -8,7 +8,7 @@ description: How to add and run Storybook stories for components in @flow-state-
 
 Components in `@flow-state-dev/ui` ship with Storybook stories. A story is a file that exports one or more example uses of a component, and Storybook is a small dev server that renders each one in isolation. The hosted build lives at [storybook.flow-state.dev](https://storybook.flow-state.dev) and gets a preview URL on every PR that touches `packages/ui`.
 
-If you're new to the registry itself, start with the [UI overview](../docs/ui/overview.md).
+If you're new to the registry itself, start with the [UI overview](/docs/ui/overview).
 
 ## Where stories live
 
@@ -96,5 +96,5 @@ Two or three named exports per component is typical.
 
 ## Further reading
 
-- [UI overview](../docs/ui/overview.md) — what the registry is and how it's distributed.
+- [UI overview](/docs/ui/overview) — what the registry is and how it's distributed.
 - [Storybook CSF 3 reference](https://storybook.js.org/docs/writing-stories) — full story format spec.
