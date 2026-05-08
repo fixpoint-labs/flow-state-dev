@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const config: StorybookConfig = {
   framework: "@storybook/react-vite",
   stories: ["../registry/components/**/*.stories.@(ts|tsx)"],
-  addons: ["@storybook/addon-essentials"],
+  addons: [],
   typescript: { check: false },
   async viteFinal(viteConfig) {
     const tailwindcss = (await import("@tailwindcss/vite")).default;
