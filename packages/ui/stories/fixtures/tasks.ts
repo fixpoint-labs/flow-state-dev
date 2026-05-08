@@ -38,6 +38,7 @@ export function makeTaskChange(options: TaskChangeOptions): ComponentItem {
     component: TASK_CHANGE_COMPONENT,
     data: {
       collectionId,
+      taskId: task.id,
       task,
       ...(kind !== undefined ? { kind } : {}),
     },
