@@ -119,7 +119,7 @@ export class LiveDataSource implements DataSource {
 function numberFrom(raw: unknown): number {
   if (raw == null) return 0;
   if (typeof raw === "number") return raw;
-  if (typeof raw === "object" && raw !== null && "raw" in raw) {
+  if (typeof raw === "object" && "raw" in raw) {
     const v = (raw as { raw?: unknown }).raw;
     return typeof v === "number" ? v : 0;
   }
