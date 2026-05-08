@@ -1,82 +1,110 @@
 /**
- * Deterministic mock scripts for kitchen-sink E2E tests. Loaded only when
- * `KITCHEN_SINK_TEST_MODE=1`.
+ * Deterministic mock generators for kitchen-sink E2E tests. Loaded only
+ * when `KITCHEN_SINK_TEST_MODE=1`.
  *
- * The chat-agent flow runs several generators per turn beyond the primary
- * assistant. Each script below matches one of those slots:
+ * The chat-agent flow runs four generators per turn (intent-classifier,
+ * thinking-style-classifier, assistant-generator, auto-title). Each gets
+ * its own mock instance below. `policy: "allow"` (set in `lib/server.ts`)
+ * catches anything else with a no-op model.
  *
- *   - `assistantScript` → assistant-generator's text response.
- *   - `thinkingStyleClassifierScript` → returns a low-confidence "default"
- *     match so `applyClassifiedStyle` falls back to the default pipeline
- *     (which is the assistant-generator). Avoids running plan-and-execute,
- *     supervisor, or any other thinking-style worker pattern in tests.
- *   - `intentClassifierScript` → returns an empty `activeSkills` list so
- *     no skill is activated. Keeps the system prompt minimal.
- *   - `titleScript` → returns a short title so auto-title doesn't crash on
- *     an empty noop response.
- *
- * Predicates are matched per call. Tool-call scenarios place the tool-call
- * entries before the terminal text so the mock's tool loop fires the tools
- * first and returns the terminal text last.
+ * `assistantMock` uses a hand-rolled scenario dispatcher because the
+ * built-in `mockGenerator` only supports either plain sequential steps
+ * (consumed once) or predicates (matched repeatedly with a fixed `then`).
+ * Tool-call scenarios need a sequence of distinct steps per turn that's
+ * also keyed by the user-message sentinel — neither shape covers that.
  */
-import type { MockGeneratorScriptEntry } from "@flow-state-dev/testing";
+import type {
+  MockGeneratorInstance,
+  MockGeneratorScriptStep,
+  MockGeneratorScriptEntry,
+} from "@flow-state-dev/testing";
+import { mockGenerator } from "@flow-state-dev/testing";
 
-const inputContains = (needle: string) => (input: unknown) =>
-  JSON.stringify(input).includes(needle);
+type ScenarioScript = {
+  match: (json: string) => boolean;
+  steps: MockGeneratorScriptStep[];
+};
 
-const alwaysTrue = (_input: unknown) => true;
-
-export const assistantScript: MockGeneratorScriptEntry[] = [
+const SCENARIO_SCRIPTS: ScenarioScript[] = [
   {
-    when: inputContains("[scenario:tool-1]"),
-    then: {
-      toolCalls: [
-        { toolCallId: "tc_1", toolName: "search", args: { query: "alpha" } },
-      ],
-    },
+    match: (json) => json.includes("[scenario:tool-1]"),
+    steps: [
+      {
+        toolCalls: [
+          { toolCallId: "tc_1", toolName: "search", args: { query: "alpha" } },
+        ],
+      },
+      {
+        toolCalls: [
+          { toolCallId: "tc_2", toolName: "search", args: { query: "beta" } },
+        ],
+      },
+      { text: "Found alpha and beta." },
+    ],
   },
   {
-    when: inputContains("[scenario:tool-1]"),
-    then: {
-      toolCalls: [
-        { toolCallId: "tc_2", toolName: "search", args: { query: "beta" } },
-      ],
-    },
+    match: (json) => json.includes("[scenario:mode-build]"),
+    steps: [{ text: "Build mode acknowledged." }],
   },
   {
-    when: inputContains("[scenario:tool-1]"),
-    then: { text: "Found alpha and beta." },
+    match: (json) => json.includes("[scenario:devtool]"),
+    steps: [{ text: "DevTool scenario response." }],
   },
   {
-    when: inputContains("[scenario:mode-build]"),
-    then: { text: "Build mode acknowledged." },
+    match: (json) => json.includes("[scenario:resume]"),
+    steps: [{ text: "I will remember." }],
   },
   {
-    when: inputContains("[scenario:devtool]"),
-    then: { text: "DevTool scenario response." },
-  },
-  {
-    when: inputContains("[scenario:resume]"),
-    then: { text: "I will remember." },
-  },
-  {
-    when: inputContains("[scenario:smoke]"),
-    then: { text: "Smoke test response." },
+    match: (json) => json.includes("[scenario:smoke]"),
+    steps: [{ text: "Smoke test response." }],
   },
 ];
 
 /**
- * Low-confidence match → `applyClassifiedStyle` resolves to "default" and
- * the thinking-style router falls through to the assistant generator.
+ * `MockGeneratorInstance`-shaped dispatcher: routes by the message
+ * sentinel and walks the matched scenario's plain-step list per call.
+ * The framework calls `next()` once per generator step, including each
+ * iteration of the internal tool loop, so a single turn that wants two
+ * tool calls + a terminal text needs three sequential entries.
  */
-export const thinkingStyleClassifierScript: MockGeneratorScriptEntry[] = [
+function buildAssistantMock(): MockGeneratorInstance {
+  const cursors = new Map<ScenarioScript, number>();
+  const calls: MockGeneratorInstance["calls"] = [];
+
+  const next = (input?: unknown): MockGeneratorScriptStep | undefined => {
+    const json = JSON.stringify(input ?? "");
+    const scenario = SCENARIO_SCRIPTS.find((s) => s.match(json));
+    if (!scenario) {
+      return { text: "Test mode (no scenario sentinel matched)." };
+    }
+    const i = cursors.get(scenario) ?? 0;
+    const step = scenario.steps[Math.min(i, scenario.steps.length - 1)];
+    cursors.set(scenario, i + 1);
+    return step;
+  };
+
+  return {
+    name: "assistant-generator",
+    calls,
+    next,
+    reset: () => cursors.clear(),
+  };
+}
+
+export const assistantMock = buildAssistantMock();
+
+const alwaysTrue = (_input: unknown) => true;
+
+/** Low-confidence "default" → router falls through to assistant-generator. */
+const thinkingStyleClassifierScript: MockGeneratorScriptEntry[] = [
   {
     when: alwaysTrue,
     then: { structuredOutput: { category: "default", confidence: 0 } },
   },
 ];
 
-export const intentClassifierScript: MockGeneratorScriptEntry[] = [
+/** Empty active-skills → no skill activation in test mode. */
+const intentClassifierScript: MockGeneratorScriptEntry[] = [
   {
     when: alwaysTrue,
     then: {
@@ -85,6 +113,21 @@ export const intentClassifierScript: MockGeneratorScriptEntry[] = [
   },
 ];
 
-export const titleScript: MockGeneratorScriptEntry[] = [
+const titleScript: MockGeneratorScriptEntry[] = [
   { when: alwaysTrue, then: { text: "E2E session" } },
 ];
+
+export const thinkingStyleClassifierMock = mockGenerator({
+  name: "thinking-style-classifier",
+  script: thinkingStyleClassifierScript,
+});
+
+export const intentClassifierMock = mockGenerator({
+  name: "intent-classifier",
+  script: intentClassifierScript,
+});
+
+export const autoTitleMock = mockGenerator({
+  name: "auto-title",
+  script: titleScript,
+});

@@ -7,12 +7,12 @@ import {
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
-import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
+import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  assistantScript,
-  thinkingStyleClassifierScript,
-  intentClassifierScript,
-  titleScript,
+  assistantMock,
+  thinkingStyleClassifierMock,
+  intentClassifierMock,
+  autoTitleMock,
 } from "./e2e-mock-script";
 import {
   createFlowApiRouter,
@@ -46,22 +46,10 @@ const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
       // side-effect blocks whose silence doesn't break the user-visible
       // response.
       generators: {
-        "assistant-generator": mockGenerator({
-          name: "assistant-generator",
-          script: assistantScript,
-        }),
-        "thinking-style-classifier": mockGenerator({
-          name: "thinking-style-classifier",
-          script: thinkingStyleClassifierScript,
-        }),
-        "intent-classifier": mockGenerator({
-          name: "intent-classifier",
-          script: intentClassifierScript,
-        }),
-        "auto-title": mockGenerator({
-          name: "auto-title",
-          script: titleScript,
-        }),
+        "assistant-generator": assistantMock,
+        "thinking-style-classifier": thinkingStyleClassifierMock,
+        "intent-classifier": intentClassifierMock,
+        "auto-title": autoTitleMock,
       },
       policy: "allow",
     })
