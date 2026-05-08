@@ -24,6 +24,9 @@ import type {
   PrepareStepFn,
   ProviderTool
 } from "../types/model";
+import type { ModelSelection } from "../models/selectModel";
+import { isModelSelection } from "../models/selectModel";
+import type { ProviderPreference } from "../models/types";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
@@ -125,7 +128,10 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
   | GeneratorModel
-  | ((input: TInput, ctx: TCtx) => MaybePromise<string | string[] | GeneratorModel>);
+  | ((
+      input: TInput,
+      ctx: TCtx
+    ) => MaybePromise<string | string[] | GeneratorModel | ModelSelection>);
 type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
   | Record<string, unknown>
   | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
@@ -461,25 +467,37 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
 ): Promise<{ modelId: string; model: GeneratorModel }> {
   const resolved = typeof value === "function" ? await value(input, ctx) : value;
 
-  if (typeof resolved === "string") {
+  // Unwrap structured selection from selectModel into a model value plus
+  // optional per-call preferProvider that threads into ctx.resolveModel.
+  let modelValue: string | string[] | GeneratorModel;
+  let preferProvider: ProviderPreference | undefined;
+  if (isModelSelection(resolved)) {
+    modelValue = resolved.model;
+    preferProvider = resolved.preferProvider;
+  } else {
+    modelValue = resolved as string | string[] | GeneratorModel;
+  }
+  const callOptions = preferProvider !== undefined ? { preferProvider } : undefined;
+
+  if (typeof modelValue === "string") {
     return {
-      modelId: resolved,
-      model: ctx.resolveModel(resolved, blockName)
+      modelId: modelValue,
+      model: ctx.resolveModel(modelValue, blockName, callOptions),
     };
   }
 
-  if (Array.isArray(resolved)) {
-    if (resolved.length === 0) {
+  if (Array.isArray(modelValue)) {
+    if (modelValue.length === 0) {
       throw new Error(`Generator "${blockName}" model array cannot be empty`);
     }
     const { createFallbackModel } = await import("../models/fallbackModel");
     const { parseModelString } = await import("../models/providerDetection");
-    const entries = resolved.map((modelStr) => {
+    const entries = modelValue.map((modelStr) => {
       const parsed = parseModelString(modelStr);
       return {
         modelId: modelStr,
         providerName: parsed.provider ?? "unknown",
-        model: ctx.resolveModel(modelStr, blockName),
+        model: ctx.resolveModel(modelStr, blockName, callOptions),
       };
     });
     const fallback = createFallbackModel({
@@ -487,13 +505,13 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
       models: entries,
       retryPolicy: { maxAttemptsPerModel: 2, baseDelayMs: 1000, maxDelayMs: 10000 },
     });
-    return { modelId: resolved[0], model: fallback };
+    return { modelId: modelValue[0], model: fallback };
   }
 
-  if (isGeneratorModel(resolved)) {
+  if (isGeneratorModel(modelValue)) {
     return {
-      modelId: resolved.modelId,
-      model: resolved
+      modelId: modelValue.modelId,
+      model: modelValue,
     };
   }
 

@@ -16,7 +16,7 @@ import { z } from "zod";
 ```ts
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -259,6 +259,33 @@ pnpm --filter @flow-state-dev/core test
 - [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
 - [Resources and Client Data](../../docs/architecture/resources-and-client-data.md) — Data containers and derived client views
 
+
+## Model intents
+
+Generators reference a model with a string. The string can be:
+
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4.6"`
+- `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
+- `intent/<name>` — a named routing group resolved by the model resolver
+
+Configure intents on the resolver. Each intent maps a name to an ordered list of candidate model strings. Resolution walks the list, filters to providers the app has keys for, and falls back to `defaultModel` when nothing in the intent is reachable.
+
+```ts
+import { createModelResolver } from "@flow-state-dev/core/models";
+
+const resolver = createModelResolver({
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+  },
+});
+```
+
+The framework documents six canonical intent names — `utility`, `chat`, `plan`, `synthesize`, `code`, `reason` — but apps can add their own. `synthesize` doubles as the structured-JSON intent: point it at JSON-reliable models, not the cheapest tier.
+
+Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
 
 ## Token and Cost Adapters
 

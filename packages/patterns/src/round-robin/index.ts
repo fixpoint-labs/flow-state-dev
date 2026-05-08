@@ -115,7 +115,7 @@ export interface RoundRobinConfig<
   outputSchema?: TOutputSchema;
   /** Pattern-level instructions injected into default blocks only. */
   instructions?: InstructionsSlot;
-  /** Default model for internal generators. Default `"preset/fast"`. */
+  /** Default model for internal generators. Default `"intent/chat"`. */
   model?: string;
   /** Capabilities forwarded to default roster agents, judge, synthesizer. */
   uses?: UsesSlot;

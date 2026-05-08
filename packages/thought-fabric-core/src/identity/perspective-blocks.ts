@@ -104,7 +104,7 @@ export interface PerspectiveBlockConfig {
 
 /** Config for generator-based perspective blocks. */
 export interface PerspectiveAnalyzeConfig extends PerspectiveBlockConfig {
-  /** Model ID for the LLM call. Default: 'preset/fast'. */
+  /** Model ID for the LLM call. Default: 'intent/utility'. */
   model?: string
 }
 
@@ -190,7 +190,7 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
 
   return generator({
     name: blockName,
-    model: config.model ?? 'preset/fast',
+    model: config.model ?? 'intent/utility',
     inputSchema: perspectiveInputSchema,
     outputSchema: perspectiveAnalysisSchema,
     maxTokens: 4096,

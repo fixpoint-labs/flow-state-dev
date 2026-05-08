@@ -222,26 +222,38 @@ export interface GeneratorModel {
   resolveSearchTool?(config: GeneratorSearchConfig): { name: string; tool: unknown } | undefined;
 }
 
+/**
+ * Per-call options for the {@link ModelResolver} callable. Currently only
+ * carries `preferProvider` — a provider preference that overrides any
+ * resolver-level default for this single resolution. Used to plumb a
+ * `selectModel`-collected preference through to intent resolution.
+ */
+export interface ResolveModelCallOptions {
+  /** Preferred provider(s). Overrides resolver-level providerPreference. */
+  preferProvider?: string | string[];
+}
+
 export type ModelResolver = ((
   modelId: string,
-  blockName?: string
+  blockName?: string,
+  options?: ResolveModelCallOptions
 ) => GeneratorModel) & {
   /**
    * Returns the primary underlying model string for any model reference.
-   * For presets, returns the first available provider/model string (applying
+   * For intents, returns the first available provider/model string (applying
    * the resolver's provider preference and any call-site override).
    * For direct model strings, returns the input as-is.
    *
    * @example
-   * resolver.resolveId("preset/medium")
+   * resolver.resolveId("intent/chat")
    *   // → "anthropic/claude-sonnet-4-6"
-   * resolver.resolveId("preset/medium", { prefer: "openai" })
-   *   // → "openai/gpt-5.4" (reorders the preset before walking it)
+   * resolver.resolveId("intent/chat", { preferProvider: "openai" })
+   *   // → "openai/gpt-5.4" (reorders the intent before walking it)
    * resolver.resolveId("anthropic/claude-sonnet-4-6")
    *   // → "anthropic/claude-sonnet-4-6"
    */
   resolveId(
     modelId: string,
-    options?: { prefer?: string | string[] }
+    options?: { preferProvider?: string | string[] }
   ): string;
 };

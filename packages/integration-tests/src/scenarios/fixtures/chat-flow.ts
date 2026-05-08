@@ -26,7 +26,7 @@ const searchTool = handler({
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant. Use the search tool when needed.",
   inputSchema: chatInputSchema,
   user: (input) => input.message,

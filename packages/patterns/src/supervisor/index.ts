@@ -111,7 +111,7 @@ function buildDefaultReviewer(opts: {
       : "";
   return generator({
     name: `${opts.name}-reviewer`,
-    model: "preset/fast",
+    model: "intent/synthesize",
     inputSchema: reviewerInputSchema,
     outputSchema: reviewerVerdictSchema,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
@@ -180,7 +180,7 @@ function buildDefaultSynthesizer(opts: {
   ].join("\n");
   return generator({
     name: `${opts.name}-synthesizer`,
-    model: "preset/fast",
+    model: "intent/synthesize",
     outputSchema: opts.outputSchema ?? z.string(),
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.history !== undefined ? { history: opts.history } : {}),

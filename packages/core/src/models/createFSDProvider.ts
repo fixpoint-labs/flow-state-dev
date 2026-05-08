@@ -104,10 +104,19 @@ interface ResolvedCandidate {
  * ```ts
  * const provider = createFSDProvider({ groups: defaultGroups });
  * const gen = generator({ model: provider('fast') });
- * // brand preference — orthogonal to the group/preset tier:
- * const gen2 = generator({ model: provider('fast', { prefer: 'anthropic' }) });
+ * // brand preference — orthogonal to the group tier:
+ * const gen2 = generator({ model: provider('fast', { preferProvider: 'anthropic' }) });
  * ```
  */
+const LEGACY_PREFER_MIGRATION_MESSAGE =
+  "createFSDProvider: the `prefer` option has been renamed to `preferProvider`. See FIX-512 for context.";
+
+function rejectLegacyPrefer(options: ResolveOptions | undefined): void {
+  if (options && "prefer" in options) {
+    throw new Error(LEGACY_PREFER_MIGRATION_MESSAGE);
+  }
+}
+
 export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
   const retryPolicy: Required<RetryPolicy> = {
     ...DEFAULT_RETRY_POLICY,
@@ -128,14 +137,16 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
   function effectivePreference(options: ResolveOptions | undefined): string[] {
     // Call-site overrides provider-level default (FIX-425 precedence).
     const raw =
-      options?.prefer !== undefined ? options.prefer : config.providerPreference;
+      options?.preferProvider !== undefined
+        ? options.preferProvider
+        : config.providerPreference;
     return normalizePreference(raw) ?? [];
   }
 
   function cacheKey(groupName: string, options: ResolveOptions | undefined): string {
-    const prefer = effectivePreference(options);
+    const preferProvider = effectivePreference(options);
     const strict = options?.strict === true;
-    return `${groupName}::${prefer.join("|")}::${strict ? "s" : ""}`;
+    return `${groupName}::${preferProvider.join("|")}::${strict ? "s" : ""}`;
   }
 
   /**
@@ -200,6 +211,7 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     groupName: string,
     options?: ResolveOptions
   ): GeneratorModel {
+    rejectLegacyPrefer(options);
     const key = cacheKey(groupName, options);
     const cached = groupCache.get(key);
     if (cached) return cached;
@@ -212,13 +224,13 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
       );
     }
 
-    const prefer = effectivePreference(options);
+    const preferProvider = effectivePreference(options);
     const strict = options?.strict === true;
 
-    if (strict && prefer.length > 0) {
-      if (!hasPreferredProvider(built.candidates, prefer)) {
+    if (strict && preferProvider.length > 0) {
+      if (!hasPreferredProvider(built.candidates, preferProvider)) {
         throw new Error(
-          `Preset "${groupName}" contains no models from preferred provider(s) [${prefer.join(
+          `Preset "${groupName}" contains no models from preferred provider(s) [${preferProvider.join(
             ", "
           )}]. Add a model from one of those providers to the preset or disable strict mode.`
         );
@@ -226,16 +238,16 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     }
 
     // Reorder (stable) by preference, then filter to only available models.
-    const reordered = reorderByPreference(built.candidates, prefer);
+    const reordered = reorderByPreference(built.candidates, preferProvider);
     const availableEntries = reordered.filter((c) => c.available);
 
-    if (strict && prefer.length > 0) {
+    if (strict && preferProvider.length > 0) {
       const anyPreferredAvailable = availableEntries.some((c) =>
-        prefer.includes(c.providerName)
+        preferProvider.includes(c.providerName)
       );
       if (!anyPreferredAvailable) {
         throw new Error(
-          `Preset "${groupName}" has no available models from preferred provider(s) [${prefer.join(
+          `Preset "${groupName}" has no available models from preferred provider(s) [${preferProvider.join(
             ", "
           )}]. Configure an API key or gateway for one of those providers, or disable strict mode.`
         );
@@ -261,6 +273,7 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     groupName: string,
     options?: ResolveOptions
   ): GeneratorModel {
+    rejectLegacyPrefer(options);
     return resolveGroup(groupName, options);
   } as FSDProvider;
 
@@ -269,21 +282,23 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
   provider.groups = () => Object.keys(config.groups);
 
   provider.available = (groupName: string, options?: ResolveOptions) => {
+    rejectLegacyPrefer(options);
     const built = buildCandidates(groupName);
     if (!built) return [];
-    const prefer = effectivePreference(options);
-    return reorderByPreference(built.candidates, prefer)
+    const preferProvider = effectivePreference(options);
+    return reorderByPreference(built.candidates, preferProvider)
       .filter((c) => c.available)
       .map((c) => c.modelId);
   };
 
   provider.explain = (groupName: string, options?: ResolveOptions): ExplainResult => {
+    rejectLegacyPrefer(options);
     const built = buildCandidates(groupName);
     if (!built) {
       return { preset: groupName, prefer: [], candidates: [], willUse: null };
     }
-    const prefer = effectivePreference(options);
-    const reordered = reorderByPreference(built.candidates, prefer);
+    const preferProvider = effectivePreference(options);
+    const reordered = reorderByPreference(built.candidates, preferProvider);
     const firstAvailable = reordered.find((c) => c.available);
     const candidates: ExplainCandidate[] = reordered.map((c) => {
       const row: ExplainCandidate = {
@@ -301,7 +316,7 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     });
     return {
       preset: groupName,
-      prefer,
+      prefer: preferProvider,
       candidates,
       willUse: firstAvailable?.modelId ?? null,
     };

@@ -40,7 +40,7 @@ export function composer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "intent/synthesize",
     outputSchema,
     prompt: [
       "You are a composition assistant.",

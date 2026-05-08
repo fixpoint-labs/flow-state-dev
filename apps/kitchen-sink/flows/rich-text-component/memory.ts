@@ -13,8 +13,14 @@
  * `mem.recall` which falls back gracefully when working memory is empty.
  */
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { DEFAULT_KITCHEN_SINK_MODEL } from "../../lib/models";
 
-export const MODEL_ID = "preset/small";
+/**
+ * Concrete model used by this flow's memory system. Independent of the
+ * chat-agent's user-controlled selection — the rich-text-component flow
+ * runs internal memory observation/recall on a single fixed model.
+ */
+export const MODEL_ID = DEFAULT_KITCHEN_SINK_MODEL;
 
 export const mem = memorySystem({
   model: MODEL_ID,

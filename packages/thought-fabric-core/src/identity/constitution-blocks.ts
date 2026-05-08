@@ -41,7 +41,7 @@ export interface ConstitutionReviewBlockConfig {
   name?: string
   /** The constitution to evaluate against. */
   constitution: ConstitutionDefinition
-  /** Model ID for the LLM review. Default: 'preset/fast'. */
+  /** Model ID for the LLM review. Default: 'intent/utility'. */
   model?: string
 }
 
@@ -61,7 +61,7 @@ export interface ConstitutionAuditorBlockConfig {
   name?: string
   /** The constitution to audit against. */
   constitution: ConstitutionDefinition
-  /** Model ID for the LLM review step. Default: 'preset/fast'. */
+  /** Model ID for the LLM review step. Default: 'intent/utility'. */
   model?: string
   /** Per-principle compliance threshold. Default: 0.7. */
   complianceThreshold?: number
@@ -103,7 +103,7 @@ type ReviewStepOutput = z.infer<typeof reviewStepOutputSchema>
  *
  * const review = constitutionReview({
  *   constitution: advisorValues,
- *   model: 'preset/fast',
+ *   model: 'intent/utility',
  * })
  * ```
  */
@@ -116,7 +116,7 @@ export function constitutionReview(config: ConstitutionReviewBlockConfig) {
 
   return generator({
     name,
-    model: config.model ?? 'preset/fast',
+    model: config.model ?? 'intent/utility',
     inputSchema: constitutionReviewInputSchema,
     outputSchema: reviewStepOutputSchema,
     maxTokens: 4096,
@@ -215,7 +215,7 @@ export function constitutionEnforce(config: ConstitutionEnforceBlockConfig) {
  *
  * const auditor = constitutionAuditor({
  *   constitution: advisorValues,
- *   model: 'preset/fast',
+ *   model: 'intent/utility',
  * })
  *
  * // As a sequencer step:

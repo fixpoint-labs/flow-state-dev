@@ -27,20 +27,20 @@ describe("capability agentType filter", () => {
       name: "primary-gen",
       uses: [cap],
       agentType: "primary",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
       agentType: "sub",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const untagged = generator({
       name: "untagged-gen",
       uses: [cap],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 
@@ -60,14 +60,14 @@ describe("capability agentType filter", () => {
       name: "primary-gen",
       uses: [cap],
       agentType: "primary",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
       agentType: "sub",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 
@@ -85,7 +85,7 @@ describe("capability agentType filter", () => {
     const gen = generator({
       name: "untagged-gen",
       uses: [cap],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 
@@ -103,21 +103,21 @@ describe("capability agentType filter", () => {
       name: "p",
       uses: [cap],
       agentType: "primary",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const trace = generator({
       name: "t",
       uses: [cap],
       agentType: "trace",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "s",
       uses: [cap],
       agentType: "sub",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 
@@ -147,14 +147,14 @@ describe("capability agentType filter", () => {
       name: "primary-gen",
       uses: [cap],
       agentType: "primary",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
       agentType: "sub",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 
@@ -181,7 +181,7 @@ describe("capability agentType filter", () => {
       name: "sub-gen",
       uses: [mainCap, sharedCap],
       agentType: "sub",
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "x",
     });
 

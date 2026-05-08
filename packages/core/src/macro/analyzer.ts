@@ -45,7 +45,7 @@ export function analyzer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "intent/utility",
     outputSchema,
     prompt: [
       "You are an analysis assistant.",

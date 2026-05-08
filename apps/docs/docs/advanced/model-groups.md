@@ -10,50 +10,43 @@ How to use semantic model labels with automatic fallback across providers.
 
 Every production AI app needs model fallback. API keys expire, providers go down, rate limits hit. Hardcoding a single model ID means a single point of failure.
 
-Model groups solve this. Instead of `model: "gpt-5.4"`, you write `model: "preset/fast"` or pass an array of models. The framework resolves to the best available model at execution time, retries on failure, and falls back to the next provider automatically.
+Two mechanisms in the framework solve this. **Intents** are named routing groups configured on the model resolver — generators reference them with `model: "intent/<name>"`. **Model groups** are the same idea inside the `createFSDProvider` factory, used when you want a callable provider object (`provider("fast")`) instead of a magic string. Both walk an ordered candidate list, filter to providers the app has keys for, retry on failure, and fall back to the next entry.
 
-## Quick Start
+## Quick Start: Intents
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
 import { generator } from "@flow-state-dev/core";
 
 const resolver = createModelResolver({
-  presets: {
-    fast: { models: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.4-mini", "google/gemini-3-flash"] },
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5", "google/gemini-2.5-pro"],
   },
 });
 
 const chat = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
 });
 ```
 
-`"preset/fast"` resolves to the first available model in the preset's list. No changes to your generator code — it's a drop-in replacement for any model reference.
-
-Generators also support array fallback directly:
+`"intent/chat"` resolves to the first available candidate. If none of an intent's models are reachable, the resolver falls back to `defaultModel`. Generators also accept array fallback directly:
 
 ```ts
 const chat = generator({
   name: "chat",
-  model: ["openai/gpt-5.4", "anthropic/claude-sonnet-4-6"],
+  model: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"],
   prompt: "You are a helpful assistant.",
 });
 ```
 
-## Default Presets
+## Canonical intent names
 
-Three built-in presets ship with the framework:
+The framework documents six intent names — `utility`, `chat`, `plan`, `synthesize`, `code`, `reason`. Apps configure their own model lists; the framework does not ship default model strings. See [Models](/docs/fundamentals/models#canonical-intent-names) for the cognitive shape of each.
 
-| Preset | Models (preference order) | Defaults |
-|--------|--------------------------|----------|
-| `fast` | anthropic/claude-sonnet-4-6, openai/gpt-5.4-mini, google/gemini-3-flash | `maxTokens: 1024` |
-| `thinking` | anthropic/claude-opus-4-6, openai/gpt-5.4, google/gemini-3.1-pro-preview | Anthropic extended thinking enabled |
-| `balanced` | anthropic/claude-sonnet-4-6, openai/gpt-5.4, google/gemini-3-flash | None |
-
-The first available model in each list is used. "Available" means the app has an API key for that provider (direct key or gateway).
+`synthesize` doubles as the structured-JSON intent. Apps should point it at JSON-reliable models, not the cheapest tier.
 
 ## Provider Detection
 
@@ -65,7 +58,7 @@ The model resolver auto-detects which providers are available by checking enviro
 | OpenAI | `OPENAI_API_KEY` |
 | Google | `GOOGLE_GENERATIVE_AI_API_KEY` |
 
-If only `ANTHROPIC_API_KEY` is set and you use `"preset/fast"`, it resolves to `anthropic/claude-sonnet-4-6`. If that key later fails, it skips to `openai/gpt-5.4-mini` — which won't be available either, so it moves to `google/gemini-3-flash`. If nothing works, you get a clear error listing what was tried.
+If only `ANTHROPIC_API_KEY` is set and an intent's first candidate is `anthropic/claude-sonnet-4.6`, that's what runs. If that key later fails, the resolver skips to the next candidate, and so on.
 
 ### Explicit Keys
 
@@ -89,8 +82,8 @@ Gateways are availability multipliers. A single gateway key makes all providers 
 Zero-config on Vercel deployments. If `AI_GATEWAY_API_KEY` is set (or auto-provided via Vercel OIDC), all providers are available. Use the `vercel/` prefix in model strings to route through the gateway:
 
 ```
-"vercel/openai/gpt-5.4"    — OpenAI via Vercel gateway
-"vercel/anthropic/claude-sonnet-4-6"  — Anthropic via gateway
+"vercel/openai/gpt-5.5"                — OpenAI via Vercel gateway
+"vercel/anthropic/claude-sonnet-4.6"   — Anthropic via gateway
 ```
 
 The gateway is auto-detected from `AI_GATEWAY_API_KEY` even without explicit config. Just deploy to Vercel and it works.
@@ -103,86 +96,31 @@ Uses `OPENROUTER_API_KEY`.
 
 Direct API keys take priority over gateways. If you have `ANTHROPIC_API_KEY` set and a Vercel gateway configured, Anthropic models use the direct key (lower latency, no intermediary). Other providers route through the gateway.
 
-## Custom Presets
-
-Override defaults or add new presets:
-
-```ts
-import { createModelResolver } from "@flow-state-dev/core/models";
-
-const resolver = createModelResolver({
-  presets: {
-    // Override built-in
-    fast: {
-      models: ["openai/gpt-5.4-nano", "google/gemini-3.1-flash-lite-preview"],
-      defaults: { maxTokens: 512 },
-    },
-    // Add new
-    coding: {
-      models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-      defaults: { maxTokens: 8192 },
-    },
-  },
-});
-
-const coder = generator({
-  name: "coder",
-  model: "preset/coding",
-});
-```
-
-### Preset Defaults
-
-Preset `defaults` set baseline generation config. Caller config always wins:
-
-```ts
-const resolver = createModelResolver({
-  presets: {
-    thinking: {
-      models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-      defaults: {
-        maxTokens: 4096,
-        providerOptions: {
-          anthropic: { thinking: { budgetTokens: 10000 } },
-        },
-      },
-    },
-  },
-});
-```
-
-Provider-specific options are filtered at runtime. If `thinking` resolves to an OpenAI model, the `anthropic` provider options are stripped — they won't leak to the wrong provider.
-
 ## Provider Preference
 
-Presets encode a capability tier — "how capable, how fast." They do not encode a brand choice. If you want to say "I prefer Anthropic across the board," that is an orthogonal axis called **provider preference**.
+Intents encode a use-case shape — "what kind of work." They do not encode a brand choice. If you want to say "I prefer Anthropic across the board," that is an orthogonal axis called **provider preference**.
 
-Two axes, combined at resolution time:
+The option name is `preferProvider` everywhere it appears: `selectModel`, `createFSDProvider`, and the per-call resolver options.
 
-| Axis | Answers | Set by |
-|------|---------|--------|
-| Preset / tier | "How capable?" | Preset author; `model: "preset/x"` |
-| Provider preference | "Which brand, when multiple are available?" | User, flow, block, or skill |
-
-The resolver walks the preset's list, but reorders it first: models from preferred providers come first (in the order you give), the rest come after in their original order. Availability filtering and retry/fallback run on the reordered list.
+The resolver walks the intent's list, but reorders it first: models from preferred providers come first (in the order you give), the rest come after in their original order. Availability filtering and retry/fallback run on the reordered list.
 
 ### With `createFSDProvider`
 
-Per-call preference:
+`createFSDProvider` exposes the same idea as a callable factory. Per-call preference:
 
 ```ts
 import { createFSDProvider, defaultGroups } from "@flow-state-dev/core/models";
 
 const provider = createFSDProvider({ groups: defaultGroups });
 
-// Default: preset's natural order
+// Default: group's natural order
 provider("balanced");
 
-// Prefer Anthropic; fall back to the rest of the preset if no Anthropic model is available
-provider("balanced", { prefer: "anthropic" });
+// Prefer Anthropic; fall back to the rest of the group if no Anthropic model is available
+provider("balanced", { preferProvider: "anthropic" });
 
 // Ordered preference
-provider("balanced", { prefer: ["anthropic", "google"] });
+provider("balanced", { preferProvider: ["anthropic", "google"] });
 ```
 
 Provider-level default (applies to every call unless overridden):
@@ -193,52 +131,60 @@ const provider = createFSDProvider({
   providerPreference: "anthropic",
 });
 
-provider("balanced");                             // uses anthropic models first
-provider("balanced", { prefer: "openai" });       // call-site wins
-provider("balanced", { prefer: [] });             // explicit "no preference"
+provider("balanced");                                       // uses anthropic models first
+provider("balanced", { preferProvider: "openai" });         // call-site wins
+provider("balanced", { preferProvider: [] });               // explicit "no preference"
 ```
 
 ### With `createModelResolver`
 
-Set the default on the resolver; every `"preset/x"` string reorders accordingly:
+Set the default on the resolver. Every `intent/<name>` resolution reorders accordingly:
 
 ```ts
 const resolver = createModelResolver({
   providerPreference: "anthropic",
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: { chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"] },
 });
+```
+
+Per-call override flows through the resolver callable's third argument:
+
+```ts
+resolver("intent/chat", "block-name", { preferProvider: "openai" });
 ```
 
 ### Reordering example
 
-Preset `preset/large` = `[openai/gpt-5.4, anthropic/opus, google/gemini-3, anthropic/sonnet]`.
+Intent `chat` = `["openai/gpt-5.5", "anthropic/claude-opus-4.7", "google/gemini-2.5-pro", "anthropic/claude-sonnet-4.6"]`.
 
-| `prefer` | Order used |
-|----------|-----------|
-| `undefined` | openai/gpt-5.4, anthropic/opus, google/gemini-3, anthropic/sonnet |
-| `"anthropic"` | anthropic/opus, anthropic/sonnet, openai/gpt-5.4, google/gemini-3 |
-| `["anthropic","google"]` | anthropic/opus, anthropic/sonnet, google/gemini-3, openai/gpt-5.4 |
+| `preferProvider` | Order used |
+|------------------|------------|
+| `undefined` | openai/gpt-5.5, anthropic/claude-opus-4.7, google/gemini-2.5-pro, anthropic/claude-sonnet-4.6 |
+| `"anthropic"` | anthropic/claude-opus-4.7, anthropic/claude-sonnet-4.6, openai/gpt-5.5, google/gemini-2.5-pro |
+| `["anthropic","google"]` | anthropic/claude-opus-4.7, anthropic/claude-sonnet-4.6, google/gemini-2.5-pro, openai/gpt-5.5 |
 
-Relative order within a provider bucket is preserved — opus stays before sonnet.
+Relative order within a provider bucket is preserved.
 
 ### Strict mode
 
-By default, preference is a soft preference — if no preferred model is available, the rest of the preset is still tried. Opt in to strict mode for compliance-style use cases ("only ever Anthropic"):
+By default, `preferProvider` is a soft preference — if no preferred model is available, the rest of the group is still tried. Opt in to strict mode for compliance-style use cases ("only ever Anthropic"):
 
 ```ts
-provider("balanced", { prefer: "anthropic", strict: true });
+provider("balanced", { preferProvider: "anthropic", strict: true });
 ```
 
-Strict mode throws when no model from the preferred providers is available (either because the preset has none, or because the key/gateway for those providers is missing). The error message names the preset and the preferred providers.
+Strict mode throws when no model from the preferred providers is available. The error message names the group and the preferred providers.
 
 ### Precedence
 
 Highest wins:
 
-1. Call-site `{ prefer }` on `provider(...)`
+1. Call-site `{ preferProvider }` on `provider(...)` or on the resolver's per-call options
 2. `createFSDProvider({ providerPreference })` (or `createModelResolver({ providerPreference })`)
-3. Nothing — preset's natural order (today's behavior; fully backward-compatible)
+3. Nothing — the group's natural order
 
-Call-site `prefer` is an override, not a merge. An empty array `prefer: []` explicitly means "no preference" — it does not re-inherit the provider-level default.
+Call-site `preferProvider` is an override, not a merge. An empty array `preferProvider: []` explicitly means "no preference" — it does not re-inherit the group-level default.
 
 ### Dynamic preference (per-input or per-user)
 
@@ -248,30 +194,30 @@ Use the existing `model: (input, ctx) => ...` callback form, not a new mechanism
 const chat = generator({
   name: "chat",
   model: (input, ctx) =>
-    provider("balanced", { prefer: ctx.user.state.preferredProvider }),
+    provider("balanced", { preferProvider: ctx.user.state.preferredProvider }),
 });
 ```
 
-The framework has one dynamism mechanism. Call sites that need per-request preference read user state (or input, or any other source) and pass the result explicitly.
+For declarative selection, `selectModel` exposes a `preferProvider` rule kind that *collects* (does not short-circuit) — it composes with `when` rules so you can choose an intent and a provider preference independently. See [Models — selectModel](/docs/fundamentals/models#selectmodel).
 
 ### Introspection
 
 `provider.explain(groupName, options?)` returns the ordered candidate list with availability status, plus the model the resolver would choose. Useful for debugging and for building UI selectors.
 
 ```ts
-provider.explain("balanced", { prefer: "anthropic" });
+provider.explain("balanced", { preferProvider: "anthropic" });
 // {
 //   preset: "balanced",
 //   prefer: ["anthropic"],
 //   candidates: [
-//     { modelId: "anthropic/claude-sonnet-4-6", providerName: "anthropic",
+//     { modelId: "anthropic/claude-sonnet-4.6", providerName: "anthropic",
 //       available: true, source: "key" },
-//     { modelId: "openai/gpt-5.4", providerName: "openai",
+//     { modelId: "openai/gpt-5.5", providerName: "openai",
 //       available: true, source: "gateway", gateway: "vercel" },
-//     { modelId: "google/gemini-3-flash", providerName: "google",
+//     { modelId: "google/gemini-2.5-pro", providerName: "google",
 //       available: false, reason: "no-key-no-gateway" },
 //   ],
-//   willUse: "anthropic/claude-sonnet-4-6",
+//   willUse: "anthropic/claude-sonnet-4.6",
 // }
 ```
 
@@ -306,43 +252,17 @@ Model strings use slash format:
 
 | Format | Example | Description |
 |--------|---------|-------------|
-| `provider/model` | `"openai/gpt-5.4"` | Direct provider |
-| `gateway/provider/model` | `"vercel/openai/gpt-5.4"` | Via gateway |
-| `preset/name` | `"preset/fast"` | Built-in preset |
-
-## Introspection
-
-Check what's available at runtime:
-
-```ts
-resolver.presets();              // ["fast", "thinking", "balanced"]
-resolver.available("fast");      // ["anthropic/claude-sonnet-4-6", "openai/gpt-5.4-mini"]
-```
-
-`available()` returns only the models in a preset that have a working provider configured.
-
-## Dynamic Model Selection
-
-Use a function for `model` to pick presets based on input:
-
-```ts
-const adaptive = generator({
-  name: "adaptive",
-  model: (input, ctx) => {
-    return input.needsReasoning
-      ? "preset/thinking-small"
-      : "preset/small";
-  },
-});
-```
+| `provider/model` | `"openai/gpt-5.5"` | Direct provider |
+| `gateway/provider/model` | `"vercel/openai/gpt-5.5"` | Via gateway |
+| `intent/<name>` | `"intent/chat"` | Named intent (resolver-configured) |
 
 ## Relationship to Model Resolver
 
-`createModelResolver` handles both model resolution and presets in a unified API:
+`createModelResolver` handles direct strings, gateway strings, intents, and array fallback in one API:
 
-- **Model strings** like `"openai/gpt-5.4"` are resolved to concrete AI SDK model instances
-- **Presets** like `"preset/fast"` resolve through the preset's model list with built-in fallback
-- **Array fallback** like `["openai/gpt-5.4", "anthropic/claude-sonnet-4-6"]` tries models in order
+- **Model strings** like `"openai/gpt-5.5"` are resolved to concrete AI SDK model instances
+- **Intents** like `"intent/chat"` resolve through the configured candidate list with built-in fallback to `defaultModel`
+- **Array fallback** like `["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"]` tries models in order
 
 Zero-config usage auto-detects providers from environment variables:
 

@@ -458,7 +458,7 @@ describe('memory/capabilities', () => {
   describe('system() capability integration', () => {
     it('system() returns capability fields', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
         episodic: true,
         semantic: true,
@@ -473,7 +473,7 @@ describe('memory/capabilities', () => {
 
     it('composed capability has name "memory"', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -482,7 +482,7 @@ describe('memory/capabilities', () => {
 
     it('composed capability uses working memory sub-capability', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -492,7 +492,7 @@ describe('memory/capabilities', () => {
 
     it('composed capability declares the five orthogonal section presets with the standard default-on set', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
         episodic: true,
         semantic: true,
@@ -511,7 +511,7 @@ describe('memory/capabilities', () => {
 
     it('digest + working presets register their own context entries; recall installs the recall tool', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
         episodic: true,
         semantic: true,
@@ -533,7 +533,7 @@ describe('memory/capabilities', () => {
 
     it('digest preset is empty (no context entry) when digest tier is not configured', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -547,7 +547,7 @@ describe('memory/capabilities', () => {
 
     it('semantic + episodic presets are empty when their tier is not configured', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -559,7 +559,7 @@ describe('memory/capabilities', () => {
 
     it('composed capability fns expose recall', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -571,7 +571,7 @@ describe('memory/capabilities', () => {
 
     it('recall() returns working memory entries', async () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -599,7 +599,7 @@ describe('memory/capabilities', () => {
 
     it('system() without episodic does not include episodic capability', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
       })
 
@@ -609,7 +609,7 @@ describe('memory/capabilities', () => {
 
     it('system() with episodic+semantic includes all capabilities', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
         episodic: true,
         semantic: true,
@@ -623,7 +623,7 @@ describe('memory/capabilities', () => {
 
     it('tier capabilities from system() have correct names', () => {
       const mem = system({
-        model: 'preset/fast',
+        model: 'intent/utility',
         working: true,
         episodic: true,
         semantic: true,

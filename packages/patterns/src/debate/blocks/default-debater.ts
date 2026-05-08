@@ -66,7 +66,7 @@ export function createDebater(opts: CreateDebaterOptions) {
     : null;
   return generator({
     name: `${opts.name}-debater-${opts.agentName}`,
-    model: opts.model ?? "preset/fast",
+    model: opts.model ?? "intent/chat",
     outputSchema: debaterOutputSchema,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,

@@ -268,7 +268,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
 
   return generator({
     name: `${config.name}-executor`,
-    model: config.model ?? "preset/small",
+    model: config.model ?? "intent/synthesize",
     inputSchema: z.object({
       stepId: z.string(),
       goal: z.string(),

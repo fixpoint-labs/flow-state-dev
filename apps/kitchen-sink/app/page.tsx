@@ -33,11 +33,9 @@ import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
-import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
-import {
-  ProviderPreferenceSelector,
-  type ProviderPreference,
-} from "@/components/provider-preference-selector";
+import { ModelSelector, type ModelId } from "@/components/model-selector";
+import { ThinkingToggle } from "@/components/thinking-toggle";
+import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { inferThinkingStyle } from "@/lib/item-inference";
@@ -48,7 +46,6 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
-import { ModelPresetProvider } from "@/components/model-preset-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -87,9 +84,6 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
-  const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
-  const [providerPreference, setProviderPreference] =
-    useState<ProviderPreference>("");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -135,8 +129,8 @@ function KitchenSinkApp() {
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems, loadMore: loadMoreArtifacts, pagination: artifactsPagination } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null; activeSkills?: Array<{ name: string; source: string }> } | undefined;
-  const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string; preferredProvider: string } | undefined;
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; activeSkills?: Array<{ name: string; source: string }> } | undefined;
+  const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
 
   // Derive resolved thinking style from the most recent request's items.
   const resolvedThinkingStyle = useMemo(() => {
@@ -163,26 +157,12 @@ function KitchenSinkApp() {
     });
   }, [artifactItems]);
 
-  // Sync local model preset from server state on initial load / session switch.
-  const serverPreferredModel = userPrefs?.preferredModel;
-  const prevServerModel = useRef(serverPreferredModel);
-  useEffect(() => {
-    if (serverPreferredModel && serverPreferredModel !== prevServerModel.current) {
-      prevServerModel.current = serverPreferredModel;
-      setModelPreset(serverPreferredModel as ModelPreset);
-    }
-  }, [serverPreferredModel]);
-
-  // Sync local provider preference from server state. Treat undefined and ""
-  // as the same "no preference" state so a fresh session doesn't thrash.
-  const serverPreferredProvider = userPrefs?.preferredProvider ?? "";
-  const prevServerProvider = useRef(serverPreferredProvider);
-  useEffect(() => {
-    if (serverPreferredProvider !== prevServerProvider.current) {
-      prevServerProvider.current = serverPreferredProvider;
-      setProviderPreference(serverPreferredProvider as ProviderPreference);
-    }
-  }, [serverPreferredProvider]);
+  // Server is the source of truth for selectedModel + thinkingEnabled. Fall
+  // back to the catalog default while user state is still loading.
+  const selectedModel: ModelId =
+    (userPrefs?.selectedModel as ModelId | undefined) ??
+    DEFAULT_KITCHEN_SINK_MODEL;
+  const thinkingEnabled = userPrefs?.thinkingEnabled ?? false;
 
   // Artifact content is loaded lazily when an artifact is selected.
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
@@ -249,24 +229,18 @@ function KitchenSinkApp() {
     [flow]
   );
 
-  const handleModelPresetChange = useCallback(
-    (preset: ModelPreset) => {
-      setModelPreset(preset);
-      if (flow.activeSessionId) {
-        void session.sendAction("setPreferredModel", { preferredModel: preset });
-      }
+  const handleSelectedModelChange = useCallback(
+    (next: ModelId) => {
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setSelectedModel", { selectedModel: next });
     },
     [flow.activeSessionId, session],
   );
 
-  const handleProviderPreferenceChange = useCallback(
-    (preference: ProviderPreference) => {
-      setProviderPreference(preference);
-      if (flow.activeSessionId) {
-        void session.sendAction("setPreferredProvider", {
-          preferredProvider: preference,
-        });
-      }
+  const handleThinkingEnabledChange = useCallback(
+    (next: boolean) => {
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setThinkingEnabled", { thinkingEnabled: next });
     },
     [flow.activeSessionId, session],
   );
@@ -361,7 +335,7 @@ function KitchenSinkApp() {
 
         <ClientDataBar
           displayName={userPrefs?.displayName}
-          resolvedModel={modeStatus?.resolvedModel ?? undefined}
+          selectedModel={selectedModel}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
           activeSkills={modeStatus?.activeSkills}
@@ -373,8 +347,8 @@ function KitchenSinkApp() {
               message={message}
               mode={mode}
               thinkingStyle={thinkingStyle}
-              modelPreset={modelPreset}
-              providerPreference={providerPreference}
+              selectedModel={selectedModel}
+              thinkingEnabled={thinkingEnabled}
               features={features}
               isDisabled={isDisabled}
               session={session}
@@ -384,8 +358,8 @@ function KitchenSinkApp() {
               onSetMessage={setMessage}
               onSetMode={handleModeChange}
               onSetThinkingStyle={setThinkingStyle}
-              onModelPresetChange={handleModelPresetChange}
-              onProviderPreferenceChange={handleProviderPreferenceChange}
+              onSelectedModelChange={handleSelectedModelChange}
+              onThinkingEnabledChange={handleThinkingEnabledChange}
               onSetFeatures={setFeatures}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
@@ -409,8 +383,8 @@ function KitchenSinkApp() {
             message={message}
             mode={mode}
             thinkingStyle={thinkingStyle}
-            modelPreset={modelPreset}
-            providerPreference={providerPreference}
+            selectedModel={selectedModel}
+            thinkingEnabled={thinkingEnabled}
             features={features}
             isDisabled={isDisabled}
             session={session}
@@ -420,8 +394,8 @@ function KitchenSinkApp() {
             onSetMessage={setMessage}
             onSetMode={handleModeChange}
             onSetThinkingStyle={setThinkingStyle}
-            onModelPresetChange={handleModelPresetChange}
-            onProviderPreferenceChange={handleProviderPreferenceChange}
+            onSelectedModelChange={handleSelectedModelChange}
+            onThinkingEnabledChange={handleThinkingEnabledChange}
             onSetFeatures={setFeatures}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
@@ -455,8 +429,8 @@ interface ChatPanelProps {
   message: string;
   mode: Mode;
   thinkingStyle: ThinkingStyle;
-  modelPreset: string;
-  providerPreference: string;
+  selectedModel: ModelId;
+  thinkingEnabled: boolean;
   features: Features;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
@@ -466,8 +440,8 @@ interface ChatPanelProps {
   onSetMessage: (value: string) => void;
   onSetMode: (value: Mode) => void;
   onSetThinkingStyle: (value: ThinkingStyle) => void;
-  onModelPresetChange: (value: ModelPreset) => void;
-  onProviderPreferenceChange: (value: ProviderPreference) => void;
+  onSelectedModelChange: (value: ModelId) => void;
+  onThinkingEnabledChange: (value: boolean) => void;
   onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
@@ -480,36 +454,32 @@ const ConversationBody = memo(function ConversationBody({
   statusMessage,
   isLoading,
   error,
-  modelPreset,
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
   statusMessage: string;
   isLoading: boolean;
   error: { message: string } | null;
-  modelPreset: string;
 }) {
   return (
     <>
       <ScrollOnNewRequest items={items} />
-      <ModelPresetProvider value={modelPreset}>
-        <SessionItemsProvider value={items}>
-          <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-            {items.length === 0 && !isLoading && (
-              <ConversationEmptyState
-                title="Kitchen Sink"
-                description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
-              />
-            )}
-            <RequestGroupRenderer items={items} isStreaming={isStreaming} statusMessage={statusMessage} />
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                <span>{error.message}</span>
-              </div>
-            )}
-          </ConversationContent>
-        </SessionItemsProvider>
-      </ModelPresetProvider>
+      <SessionItemsProvider value={items}>
+        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+          {items.length === 0 && !isLoading && (
+            <ConversationEmptyState
+              title="Kitchen Sink"
+              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
+            />
+          )}
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} statusMessage={statusMessage} />
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span>{error.message}</span>
+            </div>
+          )}
+        </ConversationContent>
+      </SessionItemsProvider>
     </>
   );
 });
@@ -564,8 +534,8 @@ function ChatPanel({
   message,
   mode,
   thinkingStyle,
-  modelPreset,
-  providerPreference,
+  selectedModel,
+  thinkingEnabled,
   features,
   isDisabled,
   session,
@@ -575,8 +545,8 @@ function ChatPanel({
   onSetMessage,
   onSetMode,
   onSetThinkingStyle,
-  onModelPresetChange,
-  onProviderPreferenceChange,
+  onSelectedModelChange,
+  onThinkingEnabledChange,
   onSetFeatures,
   onSubmit,
   onSuggestionClick,
@@ -590,7 +560,6 @@ function ChatPanel({
           statusMessage={session.statusMessage}
           isLoading={session.isLoading}
           error={session.error}
-          modelPreset={modelPreset}
         />
         <ConversationScrollButton />
       </Conversation>
@@ -603,12 +572,8 @@ function ChatPanel({
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
-            <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
-            <ProviderPreferenceSelector
-              value={providerPreference}
-              onValueChange={onProviderPreferenceChange}
-              disabled={isDisabled}
-            />
+            <ModelSelector value={selectedModel} onValueChange={onSelectedModelChange} disabled={isDisabled} />
+            <ThinkingToggle value={thinkingEnabled} onValueChange={onThinkingEnabledChange} disabled={isDisabled} />
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>

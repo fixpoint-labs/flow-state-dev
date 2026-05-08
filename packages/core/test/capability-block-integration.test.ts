@@ -131,7 +131,7 @@ describe("generator with uses", () => {
     const gen = generator({
       name: "test",
       uses: [cap],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "test",
     });
 
@@ -150,7 +150,7 @@ describe("generator with uses", () => {
     const gen = generator({
       name: "test",
       uses: [cap],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "test",
     });
 
@@ -170,7 +170,7 @@ describe("generator with uses", () => {
     const gen = generator({
       name: "test",
       uses: [cap.presets({ extra: false })],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "test",
     });
 
@@ -381,7 +381,7 @@ describe("block-kind compatibility", () => {
     const g = generator({
       name: "g",
       uses: [cap],
-      model: "preset/fast",
+      model: "intent/utility",
       prompt: "test",
     });
     expect(g.declaredResources?.res1).toBe(res1);

@@ -30,7 +30,7 @@ import { handler, generator, sequencer } from '@flow-state-dev/core'
 
 // Full system — working + episodic + semantic + digest
 const mem = memorySystem({
-  model: 'preset/fast',
+  model: 'intent/utility',
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -40,7 +40,7 @@ const mem = memorySystem({
 // Generator: auto-installs resources, context formatter, and typed helpers
 const chat = generator({
   name: 'chat',
-  model: 'preset/fast',
+  model: 'intent/utility',
   uses: [mem.capability],
   user: (input) => input,
 })
@@ -248,7 +248,7 @@ The digest is a single LLM-generated narrative paragraph that summarises stable 
 
 ```ts
 const mem = memorySystem({
-  model: 'preset/fast',
+  model: 'intent/utility',
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -363,7 +363,7 @@ const values = constitution({
 // Full pipeline: LLM review → deterministic enforcement
 const auditor = constitutionAuditor({
   constitution: values,
-  model: 'preset/fast',
+  model: 'intent/utility',
 })
 
 // Standalone usage
@@ -585,7 +585,7 @@ Analyzes AI responses for agreement bias, sycophantic patterns, and cognitive bi
 import { biasAnalyzer } from '@thought-fabric/core/metacognition'
 
 // Full pipeline: detect → classify → score → counterpoint → format
-const audit = biasAnalyzer({ model: 'preset/fast' })
+const audit = biasAnalyzer({ model: 'intent/utility' })
 
 // Standalone usage
 const result = await audit.run({

@@ -28,7 +28,7 @@ export const forkInputSchema = z.object({
   body: z.string(),
   /** Catalog keys the skill is allowed to invoke. */
   allowedToolNames: z.array(z.string()),
-  /** Optional model id override. Defaults to `preset/medium`. */
+  /** Optional model id override. Defaults to `intent/chat`. */
   modelId: z.string().optional(),
 });
 
@@ -57,7 +57,7 @@ export function createSkillForkGenerator(
 ) {
   const {
     catalog,
-    defaultModelId = "preset/medium",
+    defaultModelId = "intent/chat",
     maxSteps = 12,
     maxTokens,
   } = options;

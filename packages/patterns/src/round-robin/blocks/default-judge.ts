@@ -37,7 +37,7 @@ export interface CreateJudgeOptions {
 export function createJudge(opts: CreateJudgeOptions) {
   return generator({
     name: `${opts.name}-judge`,
-    model: opts.model ?? "preset/fast",
+    model: opts.model ?? "intent/synthesize",
     outputSchema: roundRobinJudgeOutputSchema,
     resources: { contributions: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,

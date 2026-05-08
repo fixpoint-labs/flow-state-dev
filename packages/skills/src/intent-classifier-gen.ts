@@ -48,7 +48,7 @@ export type IntentClassifierOutput = z.infer<typeof intentClassifierOutputSchema
 
 export interface IntentClassifierOptions {
   collectionKey: string;
-  /** Model to drive the classifier with. Default `"preset/fast"`. */
+  /** Model to drive the classifier with. Default `"intent/utility"`. */
   classifierModel?: string;
   /** Confidence threshold for accepting a match. */
   confidenceThreshold?: number;
@@ -91,7 +91,7 @@ export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
 
   const classifier = generator({
     name: "intent-classifier",
-    model: opts.classifierModel ?? "preset/fast",
+    model: opts.classifierModel ?? "intent/utility",
     inputSchema,
     outputSchema: intentClassifierOutputSchema,
     agentType: "trace",

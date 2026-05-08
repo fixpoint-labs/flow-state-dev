@@ -128,17 +128,30 @@ export function detectAvailableProviders(config: {
 // ---------------------------------------------------------------------------
 
 export interface ParsedModelString {
-  /** "direct" = provider/model, "gateway" = gateway/provider/model, "preset" = preset/name */
-  type: "direct" | "gateway" | "preset";
+  /** "direct" = provider/model, "gateway" = gateway/provider/model, "intent" = intent/name */
+  type: "direct" | "gateway" | "intent";
   /** Provider name (e.g., "openai"). Present for direct and gateway types. */
   provider?: string;
   /** Model ID (e.g., "gpt-5.4"). Present for direct and gateway types. */
   modelId?: string;
   /** Gateway name (e.g., "vercel"). Only present for gateway type. */
   gateway?: string;
-  /** Preset name (e.g., "fast"). Only present for preset type. */
-  presetName?: string;
+  /** Intent name (e.g., "utility"). Only present for intent type. */
+  intentName?: string;
 }
+
+const PRESET_MIGRATION_MESSAGE =
+  "preset/* model strings have been removed. Migrate to intent/<name> via\n" +
+  "createModelResolver({ intents }). Common mappings:\n" +
+  "  preset/fast, preset/tiny, preset/small  → intent/utility\n" +
+  "  preset/medium                           → intent/chat\n" +
+  "  preset/large                            → intent/code or intent/reason\n" +
+  "  preset/thinking-*                       → intent/reason or intent/plan\n" +
+  "                                            with reasoning enabled (FIX-517)\n" +
+  "See https://linear.app/.../fix-512 for context.";
+
+/** Allowed shape for intent names referenced via `intent/<name>`. */
+export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /**
  * Parse a model string into its components.
@@ -146,7 +159,9 @@ export interface ParsedModelString {
  * Supported formats:
  * - `"provider/model"` → direct provider access
  * - `"gateway/provider/model"` → route through a gateway
- * - `"preset/name"` → resolve a named preset
+ * - `"intent/name"` → resolve a named intent (configured via createModelResolver)
+ *
+ * `preset/*` strings are no longer supported and throw a migration error.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
@@ -158,12 +173,29 @@ export function parseModelString(modelString: string): ParsedModelString {
 
   if (parts.length === 2) {
     if (parts[0] === "preset") {
-      return { type: "preset", presetName: parts[1] };
+      throw new Error(PRESET_MIGRATION_MESSAGE);
+    }
+    if (parts[0] === "intent") {
+      const name = parts[1];
+      if (!INTENT_NAME_REGEX.test(name)) {
+        throw new Error(
+          `Invalid intent name: "${name}". Intent names must match ${INTENT_NAME_REGEX.source}.`
+        );
+      }
+      return { type: "intent", intentName: name };
     }
     return { type: "direct", provider: parts[0], modelId: parts[1] };
   }
 
   if (parts.length === 3) {
+    if (parts[0] === "intent" || parts[0] === "preset") {
+      if (parts[0] === "preset") {
+        throw new Error(PRESET_MIGRATION_MESSAGE);
+      }
+      throw new Error(
+        `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
+      );
+    }
     return {
       type: "gateway",
       gateway: parts[0],
@@ -177,4 +209,19 @@ export function parseModelString(modelString: string): ParsedModelString {
       `Expected "provider/model" (e.g., "openai/gpt-5.4") or ` +
       `"gateway/provider/model" (e.g., "vercel/openai/gpt-5.4").`
   );
+}
+
+/**
+ * Extract the provider segment from a model string. For direct strings this
+ * is `parts[0]`; for gateway strings it is the inner provider segment
+ * (`parts[1]`). Returns `"unknown"` for malformed strings or intent strings.
+ */
+export function extractProviderName(modelString: string): string {
+  try {
+    const parsed = parseModelString(modelString);
+    if (parsed.type === "intent") return "unknown";
+    return parsed.provider ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
