@@ -32,7 +32,24 @@ function wrapResolverWithStream(base: ModelResolver): ModelResolver {
       ...model,
       async *stream(streamOptions: Parameters<NonNullable<typeof model.stream>>[0]) {
         const result = await model.generate(streamOptions);
+        const toolByName = new Map(
+          (streamOptions.tools ?? []).map((t) => [t.name, t] as const),
+        );
         for (const tc of result.toolCalls ?? []) {
+          // Invoke the registered tool's execute closure so the framework's
+          // wrapper emits a `tool_output` placeholder item — the kitchen-sink
+          // ToolGroup component groups consecutive `tool_output` items.
+          // Errors (e.g. real network calls without credentials) are
+          // intentionally swallowed: the placeholder fired before the run,
+          // which is enough to drive the UI grouping.
+          const tool = toolByName.get(tc.toolName);
+          if (tool?.execute !== undefined) {
+            try {
+              await tool.execute(tc.args, { toolCallId: tc.toolCallId });
+            } catch {
+              /* test-mode: ignore tool errors */
+            }
+          }
           yield {
             type: "tool_call_delta" as const,
             toolCallDelta: {
