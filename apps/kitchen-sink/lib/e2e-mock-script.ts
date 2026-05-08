@@ -1,25 +1,32 @@
 /**
- * Deterministic mock script for kitchen-sink E2E tests. Loaded only when
- * `KITCHEN_SINK_TEST_MODE=1`. Each scenario sends a message containing a
- * unique sentinel substring (e.g. `[scenario:smoke]`); the matching predicate
- * returns a scripted assistant turn so tests don't hit a real LLM.
+ * Deterministic mock scripts for kitchen-sink E2E tests. Loaded only when
+ * `KITCHEN_SINK_TEST_MODE=1`.
  *
- * Predicate entries are repeatable, and `mockGenerator` walks them in order
- * on every call. Tool-call entries are placed before the terminal text entry
- * for the same sentinel so the in-flight tool loop fires the tools first and
- * the terminal text last.
+ * The chat-agent flow runs several generators per turn beyond the primary
+ * assistant. Each script below matches one of those slots:
+ *
+ *   - `assistantScript` → assistant-generator's text response.
+ *   - `thinkingStyleClassifierScript` → returns a low-confidence "default"
+ *     match so `applyClassifiedStyle` falls back to the default pipeline
+ *     (which is the assistant-generator). Avoids running plan-and-execute,
+ *     supervisor, or any other thinking-style worker pattern in tests.
+ *   - `intentClassifierScript` → returns an empty `activeSkills` list so
+ *     no skill is activated. Keeps the system prompt minimal.
+ *   - `titleScript` → returns a short title so auto-title doesn't crash on
+ *     an empty noop response.
+ *
+ * Predicates are matched per call. Tool-call scenarios place the tool-call
+ * entries before the terminal text so the mock's tool loop fires the tools
+ * first and returns the terminal text last.
  */
 import type { MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 
 const inputContains = (needle: string) => (input: unknown) =>
   JSON.stringify(input).includes(needle);
 
-export const e2eMockScript: MockGeneratorScriptEntry[] = [
-  // Tool-call scenario — predicates are matched in order on each generate()
-  // call. The first call returns the first tool batch (the mock executes the
-  // tools and pulls the next step internally), the second call returns the
-  // second batch, and finally the third call returns the terminal text.
-  // Because predicates are walked top-down, we place batches before the text.
+const alwaysTrue = (_input: unknown) => true;
+
+export const assistantScript: MockGeneratorScriptEntry[] = [
   {
     when: inputContains("[scenario:tool-1]"),
     then: {
@@ -40,30 +47,44 @@ export const e2eMockScript: MockGeneratorScriptEntry[] = [
     when: inputContains("[scenario:tool-1]"),
     then: { text: "Found alpha and beta." },
   },
-
-  // Mode-switching scenario — second message after mode is switched to Build.
   {
     when: inputContains("[scenario:mode-build]"),
     then: { text: "Build mode acknowledged." },
   },
-
-  // DevTool reflection — same as smoke but uses a distinct sentinel so the
-  // navigator entry can be matched in the panel.
   {
     when: inputContains("[scenario:devtool]"),
     then: { text: "DevTool scenario response." },
   },
-
-  // Session resume scenario.
   {
     when: inputContains("[scenario:resume]"),
     then: { text: "I will remember." },
   },
-
-  // Default smoke / streaming-indicator scenario. Matches anything
-  // containing `[scenario:smoke]`.
   {
     when: inputContains("[scenario:smoke]"),
     then: { text: "Smoke test response." },
   },
+];
+
+/**
+ * Low-confidence match → `applyClassifiedStyle` resolves to "default" and
+ * the thinking-style router falls through to the assistant generator.
+ */
+export const thinkingStyleClassifierScript: MockGeneratorScriptEntry[] = [
+  {
+    when: alwaysTrue,
+    then: { structuredOutput: { category: "default", confidence: 0 } },
+  },
+];
+
+export const intentClassifierScript: MockGeneratorScriptEntry[] = [
+  {
+    when: alwaysTrue,
+    then: {
+      structuredOutput: { reasoning: "test mode", activeSkills: [] },
+    },
+  },
+];
+
+export const titleScript: MockGeneratorScriptEntry[] = [
+  { when: alwaysTrue, then: { text: "E2E session" } },
 ];

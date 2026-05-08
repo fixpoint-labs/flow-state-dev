@@ -8,7 +8,12 @@ import {
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { e2eMockScript } from "./e2e-mock-script";
+import {
+  assistantScript,
+  thinkingStyleClassifierScript,
+  intentClassifierScript,
+  titleScript,
+} from "./e2e-mock-script";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -35,13 +40,27 @@ const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
   ? createMockModelResolver({
-      // chat-agent's primary generator. Other generator blocks (auto-title,
-      // bias-check, thinking-style workers) fall through to the no-op model
-      // because of `policy: "allow"` — that's enough for round-trip tests.
+      // Mock every generator on the chat-agent run path. `policy: "allow"`
+      // catches any straggler we don't know about (memory capture, bias
+      // analyzers, etc.) by returning an empty no-op result — they're
+      // side-effect blocks whose silence doesn't break the user-visible
+      // response.
       generators: {
         "assistant-generator": mockGenerator({
           name: "assistant-generator",
-          script: e2eMockScript,
+          script: assistantScript,
+        }),
+        "thinking-style-classifier": mockGenerator({
+          name: "thinking-style-classifier",
+          script: thinkingStyleClassifierScript,
+        }),
+        "intent-classifier": mockGenerator({
+          name: "intent-classifier",
+          script: intentClassifierScript,
+        }),
+        "auto-title": mockGenerator({
+          name: "auto-title",
+          script: titleScript,
         }),
       },
       policy: "allow",
