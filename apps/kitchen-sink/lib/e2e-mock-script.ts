@@ -29,17 +29,19 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
   {
     match: (json) => json.includes("[scenario:tool-1]"),
     steps: [
+      // Terminal step (text is set) carrying tool calls — the mock skips
+      // its internal tool-execute loop in this branch, which is what we
+      // want: the registered `search` tool would otherwise try to hit a
+      // real backend without credentials. The framework still emits both
+      // the tool-call items and the assistant text from this single
+      // generator return.
       {
+        text: "Found alpha and beta.",
         toolCalls: [
           { toolCallId: "tc_1", toolName: "search", args: { query: "alpha" } },
-        ],
-      },
-      {
-        toolCalls: [
           { toolCallId: "tc_2", toolName: "search", args: { query: "beta" } },
         ],
       },
-      { text: "Found alpha and beta." },
     ],
   },
   {
