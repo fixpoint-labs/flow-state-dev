@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   FlowProvider,
@@ -71,6 +71,17 @@ const CLIENT_DATA_OPTIONS = {
 };
 
 export default function Page() {
+  // useSearchParams() must be wrapped in Suspense in Next.js app router —
+  // it opts the route out of prerender. The wrapper keeps SSR happy without
+  // forcing the production landing page to be fully dynamic.
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
+  );
+}
+
+function PageInner() {
   // Under E2E test mode only, allow tests to mint a per-test userId via
   // ?e2eUserId=... so parallel scenarios don't share session state. The env
   // var is `NEXT_PUBLIC_*` so the gate evaluates on the client; production

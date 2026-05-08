@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { DevToolPanel } from "@flow-state-dev/devtool/react";
 
@@ -16,6 +17,14 @@ import { DevToolPanel } from "@flow-state-dev/devtool/react";
  * identity here.
  */
 export default function DevToolPage() {
+  return (
+    <Suspense fallback={null}>
+      <DevToolPageInner />
+    </Suspense>
+  );
+}
+
+function DevToolPageInner() {
   const searchParams = useSearchParams();
   const e2eUserId =
     process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
