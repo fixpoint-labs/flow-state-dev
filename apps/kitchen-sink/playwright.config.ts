@@ -19,7 +19,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  reporter: process.env.CI
+    ? [["list"], ["html", { open: "never" }], ["github"]]
+    : [["list"]],
   use: {
     baseURL,
     trace: "on-first-retry",
@@ -40,6 +42,10 @@ export default defineConfig({
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
+        // Pipe webServer output so any startup error surfaces in CI logs
+        // instead of being silently swallowed by Playwright's default.
+        stdout: "pipe",
+        stderr: "pipe",
         env: {
           KITCHEN_SINK_TEST_MODE: "1",
           NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
