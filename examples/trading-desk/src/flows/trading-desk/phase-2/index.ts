@@ -34,6 +34,7 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
+  markPhase2ErrorOnWriting,
   markWritingP2,
 } from "./writer";
 
@@ -102,6 +103,12 @@ export const phase2Pipeline = sequencer({
   // Research manager synthesis
   .tap(markWritingP2("researchManager"))
   .then(researchManagerGenerator)
-  .tap(commitResearchManagerMemo);
+  .tap(commitResearchManagerMemo)
+  // Catch-all: if any p2 step fails, flip the in-flight memo from
+  // `writing` to `error` so the navigator's red dot and the document
+  // area's error treatment surface. Mirrors Phase 1's per-analyst
+  // `.rescue([{ block: markError(shortName) }])` convention but at the
+  // pipeline level since Phase 2's steps run sequentially.
+  .rescue([{ block: markPhase2ErrorOnWriting }]);
 
 export type { Phase2State };

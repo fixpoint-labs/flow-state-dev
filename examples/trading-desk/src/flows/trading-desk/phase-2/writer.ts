@@ -72,7 +72,50 @@ export function markWritingP2(shortName: Phase2MemoShortName) {
   });
 }
 
-/** Mark a Phase 2 memo as `error` with the rescued error's message. */
+/**
+ * Rescue handler: marks any Phase 2 memo currently in `writing` status as
+ * `error` with the rescued error's message. Used as the outer Phase 2
+ * pipeline's rescue branch — whichever generator was running when the
+ * pipeline failed has already flipped its memo to `writing` (via
+ * `markWritingP2`), so this scans `session.memoStatus` for the in-flight
+ * entry rather than hardcoding which step failed.
+ */
+export const markPhase2ErrorOnWriting = handler({
+  name: "mark-error-p2-writing",
+  inputSchema: z.object({ error: z.unknown() }).passthrough(),
+  outputSchema: z.object({ status: z.literal("error") }),
+  sessionStateSchema,
+  resources: memoResources,
+  execute: async (input, ctx) => {
+    const error = (input as { error?: unknown }).error;
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "Phase 2 generator failed.";
+    const memoStatus = ctx.session.state.memoStatus;
+    const completedAt = new Date().toISOString();
+    for (const shortName of Object.keys(PHASE_2_MEMO_KEYS) as Phase2MemoShortName[]) {
+      if (memoStatus[shortName] === "writing") {
+        const ref = ctx.resources.memos.getOptional(
+          PHASE_2_MEMO_KEYS[shortName].collectionKey,
+        );
+        if (ref !== undefined) {
+          await ref.patchState({
+            status: "error",
+            errorMessage: message,
+            completedAt,
+          });
+        }
+        await ctx.session.setStateRecord("memoStatus", shortName, "error");
+      }
+    }
+    return { status: "error" as const };
+  },
+});
+
+/** Mark a specific Phase 2 memo as `error` with the rescued error's message. */
 export function markErrorP2(shortName: Phase2MemoShortName) {
   const { collectionKey } = PHASE_2_MEMO_KEYS[shortName];
   return handler({

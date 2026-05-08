@@ -10,19 +10,7 @@
  * opportunities, and explicit unresolved disagreements).
  */
 import { z } from "zod";
-
-const thesisSection = z.union([
-  z.object({
-    h: z.string(),
-    p: z.string(),
-    items: z.array(z.string()).optional(),
-  }),
-  z.object({
-    h: z.string(),
-    items: z.array(z.string()),
-    p: z.string().optional(),
-  }),
-]);
+import { thesisSection } from "../resources";
 
 /** Bull researcher consolidation output. Rating is fixed `"buy"`. */
 export const bullThesisOutputSchema = z.object({

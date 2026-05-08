@@ -12,6 +12,7 @@ import {
   commitBullMemo,
   commitResearchManagerMemo,
   markErrorP2,
+  markPhase2ErrorOnWriting,
   markWritingP2,
 } from "../src/flows/trading-desk/phase-2/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
@@ -28,6 +29,7 @@ const fixtureFlow = defineFlow({
     commitBear: { block: commitBearMemo },
     commitRM: { block: commitResearchManagerMemo },
     errorBull: { block: errorBull },
+    rescueAll: { block: markPhase2ErrorOnWriting },
   },
   session: { stateSchema: sessionStateSchema },
   resources: { memos: memosCollection },
@@ -162,6 +164,29 @@ describe("Phase 2 writer taps", () => {
     expect(result.error).toBeNull();
     const last = lastSessionState(result);
     expect(last.memoStatus.researchManager).toBe("published");
+  });
+
+  it("markPhase2ErrorOnWriting flips whichever memo is in writing to error", async () => {
+    // Bear is the in-flight memo; bull already published, RM still pending.
+    const result = await testBlock(markPhase2ErrorOnWriting, {
+      input: { error: new Error("RM upstream blew up") },
+      flow: fixtureFlow,
+      session: {
+        state: {
+          ...baseSessionState,
+          memoStatus: {
+            bull: "published",
+            bear: "writing",
+            researchManager: "pending",
+          },
+        },
+      },
+    });
+    expect(result.error).toBeNull();
+    const last = lastSessionState(result);
+    expect(last.memoStatus.bull).toBe("published");
+    expect(last.memoStatus.bear).toBe("error");
+    expect(last.memoStatus.researchManager).toBe("pending");
   });
 
   it("markErrorP2 flips bull to error and stamps the message", async () => {

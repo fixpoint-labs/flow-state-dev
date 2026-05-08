@@ -17,7 +17,11 @@ export const memoStatusSchema = z.enum(["pending", "writing", "published", "erro
 
 export type MemoStatus = z.infer<typeof memoStatusSchema>;
 
-const thesisSection = z.union([
+/** Shared `Thesis` body section shape — every analyst, bull/bear, and
+ *  research-manager memo body is `Array<thesisSection>`. Exported so
+ *  Phase 2 schemas (and any later phase) can reuse it instead of
+ *  redeclaring the same union. */
+export const thesisSection = z.union([
   z.object({
     h: z.string(),
     p: z.string(),

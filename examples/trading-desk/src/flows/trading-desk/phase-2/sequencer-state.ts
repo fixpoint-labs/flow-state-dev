@@ -9,19 +9,7 @@
  */
 import { z } from "zod";
 import { roundRobinContributionEntrySchema } from "@flow-state-dev/patterns/round-robin";
-
-const thesisSection = z.union([
-  z.object({
-    h: z.string(),
-    p: z.string(),
-    items: z.array(z.string()).optional(),
-  }),
-  z.object({
-    h: z.string(),
-    items: z.array(z.string()),
-    p: z.string().optional(),
-  }),
-]);
+import { thesisSection } from "../resources";
 
 const bullThesisShape = z
   .object({
