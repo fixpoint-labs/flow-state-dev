@@ -62,11 +62,14 @@ export function markWriting(shortName: Phase1MemoShortName) {
           errorMessage: null,
         });
       }
-      const memoStatus = {
-        ...ctx.session.state.memoStatus,
-        [shortName]: "writing" as const,
-      };
-      await ctx.session.patchState({ memoStatus });
+      const memoStatus = ctx.session.state.memoStatus;
+      // `setStateRecord` is atomic on the per-key write — required because the
+      // four analysts run in parallel and a `{...prev, [name]: ...}` pattern
+      // would race on shared `memoStatus`. `patchState` is still safe for
+      // setup-time bulk seeding (single writer).
+      if (memoStatus[shortName] !== "writing") {
+        await ctx.session.setStateRecord("memoStatus", shortName, "writing");
+      }
     },
   });
 }
@@ -101,11 +104,10 @@ export function commitMemo(shortName: Phase1MemoShortName) {
       if (ref !== undefined) {
         await ref.patchState(patch);
       }
-      const memoStatus = {
-        ...ctx.session.state.memoStatus,
-        [shortName]: "published" as const,
-      };
-      await ctx.session.patchState({ memoStatus });
+      const memoStatus = ctx.session.state.memoStatus;
+      if (memoStatus[shortName] !== "published") {
+        await ctx.session.setStateRecord("memoStatus", shortName, "published");
+      }
     },
   });
 }
@@ -138,11 +140,10 @@ export function markError(shortName: Phase1MemoShortName) {
           completedAt: new Date().toISOString(),
         });
       }
-      const memoStatus = {
-        ...ctx.session.state.memoStatus,
-        [shortName]: "error" as const,
-      };
-      await ctx.session.patchState({ memoStatus });
+      const memoStatus = ctx.session.state.memoStatus;
+      if (memoStatus[shortName] !== "error") {
+        await ctx.session.setStateRecord("memoStatus", shortName, "error");
+      }
       return { status: "error" as const };
     },
   });
