@@ -177,6 +177,20 @@ pnpm --filter @flow-state-dev/ui test
 pnpm --filter @flow-state-dev/ui typecheck
 ```
 
+## Storybook
+
+The registry components ship with stories so contributors can preview them in isolation without standing up a host app. The hosted build lives at [storybook.flow-state.dev](https://storybook.flow-state.dev) and gets per-PR preview URLs through Vercel.
+
+```bash
+# Run Storybook locally on http://localhost:6006
+pnpm --filter @flow-state-dev/ui storybook
+
+# Static build (matches the CI smoke check)
+pnpm --filter @flow-state-dev/ui storybook:build
+```
+
+See [Writing UI Stories](../../apps/docs/guides/writing-ui-stories.md) for authoring conventions and fixtures.
+
 ## Adding New Components
 
 1. Create the component in `registry/components/`
