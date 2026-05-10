@@ -45,7 +45,7 @@ export async function GET() {
   // Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` if the env is set.
   // Reuse the same secret for the framework dispatch.
   const url = new URL(
-    "/api/flows/billing/schedules/monthlyInvoices/dispatch",
+    "/api/flows/billing/schedules/monthly-invoices/dispatch",
     process.env.NEXT_PUBLIC_BASE_URL!
   );
   const res = await fetch(url, {
@@ -93,7 +93,7 @@ defineFlow({
   },
   schedules: {
     static: {
-      monthlyInvoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
     }
   },
   actions: { /* ... */ }
@@ -116,7 +116,7 @@ locally:
    the action itself.
 
 ```bash
-curl -X POST http://localhost:3000/api/flows/billing/schedules/monthlyInvoices/dispatch \
+curl -X POST http://localhost:3000/api/flows/billing/schedules/monthly-invoices/dispatch \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"nominalFireTime":"2026-06-01T00:00:00Z"}'

@@ -1,30 +1,19 @@
 /**
- * Reference dynamic-store resolver.
+ * Reference resolver for resource-collection-backed dynamic schedules.
  *
- * Wires `schedules.resolve` to a flow-state resource collection in one
- * line. The dispatch URL id is parsed into `(userId, collectionKey)`,
- * the resource is read via `stores.content.get`, and a `ScheduleConfig`
- * is synthesized with `principal: { userId }` so the action runs as the
- * schedule's owner — not as the gateway's system principal.
- *
- * Hosts that prefer their own storage (DB table, external service)
- * implement `schedules.resolve` directly. The contract this helper
- * satisfies — `(scheduleId, ctx) → ScheduleConfig | null` — is the only
- * thing the dispatch handler depends on.
- *
- * The default id format is `<userId>/<collectionKey>`. Custom
- * `parseId` / `formatId` hooks support richer compositions.
+ * Parses the dispatch URL id into `(userId, collectionKey)`, reads the
+ * resource via `stores.content.get("user", userId, ...)`, and
+ * synthesizes `principal: { userId }` so the action runs as the
+ * schedule's owner. The user-scoped storage key acts as the
+ * impersonation guard: a URL like `evil/key` looks up
+ * `("user", "evil", ...)` which won't find a resource owned by another
+ * user.
  */
 import type {
   ScheduleConfig,
   ScheduleResolutionContext
 } from "@flow-state-dev/core/types";
 
-/**
- * Persisted state shape for a schedule resource. Mirrors `ScheduleConfig`
- * minus the synthesized `principal` (the helper assigns this from the
- * resource's owning userId at resolution time).
- */
 export interface ScheduleResourceState {
   cron: string;
   action: string;
@@ -35,43 +24,27 @@ export interface ScheduleResourceState {
   enabled?: boolean;
 }
 
-/**
- * Minimal collection-shape required by the helper. Keeps the helper
- * decoupled from the full `ResourceCollectionRef` type so consumers can
- * pass either a `defineResourceCollection` result or a structurally
- * compatible value (a stub in tests).
- */
-export interface ScheduleResolverCollection {
-  /** Glob-style pattern, e.g., `"schedules/*"`. The helper extracts the prefix to build the resource key. */
-  pattern: string;
-}
-
 export interface ParsedScheduleId {
   userId: string;
   collectionKey: string;
 }
 
 export interface CreateResourceCollectionScheduleResolverOptions {
-  /** The resource collection that holds schedule rows. */
-  collection: ScheduleResolverCollection;
+  /**
+   * The resource collection that holds schedule rows. Pass either a
+   * `defineResourceCollection(...)` result or any value with a
+   * `pattern` string. The helper extracts the literal prefix (everything
+   * before `*`) to build the storage key.
+   */
+  collection: { pattern: string };
   /**
    * Map a dispatch URL id back to `(userId, collectionKey)`. Default:
    * split on the first `/`. Return `null` to 404 the dispatch.
    */
   parseId?: (scheduleId: string) => ParsedScheduleId | null;
-  /**
-   * Compose a dispatch URL id from a `(userId, collectionKey)` pair. Not
-   * used by the helper itself but provided to callers so they can build
-   * dispatch URLs without re-implementing the convention. Default mirrors
-   * `parseId`.
-   */
-  formatId?: (parsed: ParsedScheduleId) => string;
 }
 
-/**
- * Default `parseId`. Splits on the first `/`. Both halves must be
- * non-empty.
- */
+/** Default `parseId`. Splits on the first `/`; both halves must be non-empty. */
 export function defaultParseScheduleId(
   scheduleId: string
 ): ParsedScheduleId | null {
@@ -83,30 +56,22 @@ export function defaultParseScheduleId(
   return { userId, collectionKey };
 }
 
-export function defaultFormatScheduleId(parsed: ParsedScheduleId): string {
-  return `${parsed.userId}/${parsed.collectionKey}`;
-}
-
-/**
- * Build a `schedules.resolve` function that reads from the given
- * resource collection. The collection's pattern must end with `/*` (or
- * be `*`), and the resolver concatenates the parsed key onto the
- * collection's prefix to form the storage key.
- */
 export function createResourceCollectionScheduleResolver(
   options: CreateResourceCollectionScheduleResolverOptions
 ): (
   scheduleId: string,
   ctx: ScheduleResolutionContext
 ) => Promise<ScheduleConfig | null> {
-  const { collection } = options;
   const parseId = options.parseId ?? defaultParseScheduleId;
-  const prefix = extractCollectionPrefix(collection.pattern);
+  const prefix = collectionPrefix(options.collection.pattern);
 
   return async (scheduleId, ctx) => {
     const parsed = parseId(scheduleId);
     if (parsed === null) return null;
 
+    // The parsed userId is both the action's principal AND the storage
+    // scope, so a URL aimed at another user's data reads from a scope
+    // that doesn't contain it. No separate ownership check is needed.
     const resourceKey = `${prefix}${parsed.collectionKey}`;
     const raw = await ctx.stores.content.get("user", parsed.userId, resourceKey);
     if (raw === undefined) return null;
@@ -118,13 +83,8 @@ export function createResourceCollectionScheduleResolver(
       return null;
     }
 
-    if (state === null || typeof state !== "object") return null;
     if (state.enabled === false) return null;
     if (typeof state.cron !== "string" || typeof state.action !== "string") {
-      // Helper does not throw — the dispatch route validates and surfaces a
-      // 400 only when the schedule has fields the runtime can interpret.
-      // Returning null produces a 404 which is the right answer for a row
-      // missing required fields.
       return null;
     }
 
@@ -138,29 +98,15 @@ export function createResourceCollectionScheduleResolver(
     if (state.onOverlap === "skip" || state.onOverlap === "allow") {
       config.onOverlap = state.onOverlap;
     }
-    if (typeof state.description === "string") config.description = state.description;
+    if (typeof state.description === "string") {
+      config.description = state.description;
+    }
 
     return config;
   };
 }
 
-/**
- * Extract the literal prefix from a collection pattern. Mirrors the
- * convention used elsewhere in the framework — `"schedules/*"` →
- * `"schedules/"`, `"foo/[topic]/bar"` → `"foo/"`. Patterns that do not
- * start with a literal segment (rare) fall back to an empty prefix and
- * the parsed key becomes the storage key as-is.
- */
-function extractCollectionPrefix(pattern: string): string {
-  const idx = firstWildcardIndex(pattern);
-  if (idx === -1) return pattern;
-  return pattern.slice(0, idx);
-}
-
-function firstWildcardIndex(pattern: string): number {
-  for (let i = 0; i < pattern.length; i++) {
-    const ch = pattern[i];
-    if (ch === "*" || ch === "[") return i;
-  }
-  return -1;
+function collectionPrefix(pattern: string): string {
+  const idx = pattern.search(/[*[]/);
+  return idx === -1 ? pattern : pattern.slice(0, idx);
 }

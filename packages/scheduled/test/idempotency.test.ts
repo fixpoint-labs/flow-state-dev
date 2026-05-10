@@ -38,4 +38,21 @@ describe("createIdempotencyCache", () => {
     expect(cache.seen("flow", "k2")).toBe(true);
     expect(cache.seen("flow", "k3")).toBe(true);
   });
+
+  it("expires older entries even after intervening seen() calls", () => {
+    // Regression: an earlier implementation reordered Map entries on
+    // seen(), which broke the early-break in evictExpired and let
+    // already-expired entries linger.
+    let now = 0;
+    const cache = createIdempotencyCache(60_000, { now: () => now });
+    cache.record("flow", "old");
+    now = 30_000;
+    cache.record("flow", "newer");
+    // Touch the older entry several times — must not refresh its TTL.
+    expect(cache.seen("flow", "old")).toBe(true);
+    expect(cache.seen("flow", "old")).toBe(true);
+    now = 70_000; // old entry is now 70s ahead of its 60s TTL.
+    expect(cache.seen("flow", "old")).toBe(false);
+    expect(cache.seen("flow", "newer")).toBe(true);
+  });
 });

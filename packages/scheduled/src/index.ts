@@ -27,8 +27,7 @@
 export {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE,
-  type CreateScheduledTransportAdapterOptions,
-  type ScheduledTransportSource
+  type CreateScheduledTransportAdapterOptions
 } from "./createScheduledTransportAdapter";
 
 export { findScheduledRequest } from "./findScheduledRequest";
@@ -36,11 +35,7 @@ export { findScheduledRequest } from "./findScheduledRequest";
 export {
   createResourceCollectionScheduleResolver,
   defaultParseScheduleId,
-  defaultFormatScheduleId,
   type CreateResourceCollectionScheduleResolverOptions,
   type ParsedScheduleId,
-  type ScheduleResolverCollection,
   type ScheduleResourceState
 } from "./createResourceCollectionScheduleResolver";
-
-export { ScheduleNotFoundError, ScheduleDispatchError } from "./errors";

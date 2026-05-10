@@ -59,7 +59,7 @@ defineFlow({
   kind: "billing",
   schedules: {
     static: {
-      monthlyInvoices: {
+      monthly-invoices: {
         cron: "0 0 1 * *",
         action: "generateMonthlyInvoices",
         description: "First of the month, 00:00 UTC"
@@ -163,7 +163,7 @@ body.
 Example call:
 
 ```bash
-curl -X POST https://app.example.com/api/flows/billing/schedules/monthlyInvoices/dispatch \
+curl -X POST https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch \
   -H "Authorization: Bearer ${FSDEV_SCHEDULER_SECRET}" \
   -H "Content-Type: application/json" \
   -d '{"nominalFireTime":"2026-06-01T00:00:00Z"}'
@@ -201,7 +201,7 @@ defineFlow({
   },
   schedules: {
     static: {
-      monthlyInvoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
     }
   },
   actions: { /* ... */ }
@@ -276,7 +276,7 @@ enumerate).
 {
   "static": [
     {
-      "id": "monthlyInvoices",
+      "id": "monthly-invoices",
       "cron": "0 0 1 * *",
       "timezone": "UTC",
       "action": "generateMonthlyInvoices",

@@ -518,6 +518,111 @@ describe("createScheduledTransportAdapter — list", () => {
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(404);
   });
+
+  it("returns 401 when the principal resolver rejects the listing request", async () => {
+    const adapter = createScheduledTransportAdapter();
+    const host = withFlow(
+      createMockTransportHost({
+        resolvePrincipal: () => {
+          throw new PrincipalResolutionError("nope", { status: 401 });
+        }
+      }),
+      buildFlow()
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "GET")!;
+    const { request, ctx } = listRequest("billing");
+    const response = await route.handler(request, ctx);
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("createScheduledTransportAdapter — edge cases", () => {
+  it("static schedule wins when both static and dynamic resolvers match the id", async () => {
+    const adapter = createScheduledTransportAdapter();
+    const flow = defineFlow({
+      kind: "billing",
+      actions: {
+        run: { inputSchema: z.object({ value: z.string().optional() }), block: noopBlock }
+      },
+      schedules: {
+        static: {
+          shared: { cron: "0 0 1 * *", action: "run", description: "static-wins" }
+        },
+        resolve: () => ({
+          cron: "* * * * *",
+          action: "run",
+          description: "should-not-be-used"
+        })
+      }
+    });
+    const host = withFlow(
+      withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
+      flow
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("billing", "shared");
+    const response = await route.handler(request, ctx);
+    expect(response.status).toBe(202);
+    const json = (await response.json()) as { origin: string };
+    expect(json.origin).toBe("static");
+
+    const envelope = host.dispatchCalls[0]?.envelope;
+    expect((envelope?.metadata as Record<string, unknown>)?.cron).toBe("0 0 1 * *");
+  });
+
+  it("returns 503 when host.dispatch throws (flow unregistered between resolve and dispatch)", async () => {
+    const adapter = createScheduledTransportAdapter();
+    const baseHost = withFlow(
+      withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
+      buildFlow()
+    );
+    (baseHost as unknown as { dispatch: () => never }).dispatch = () => {
+      throw new Error("Unknown flow");
+    };
+    const route = adapter.createBindings(baseHost).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("billing", "monthly-invoices");
+    const response = await route.handler(request, ctx);
+    expect(response.status).toBe(503);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toBe("flow_unregistered");
+  });
+
+  it("treats an empty body as no nominalFireTime and synthesizes one", async () => {
+    const adapter = createScheduledTransportAdapter();
+    const host = withFlow(
+      withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
+      buildFlow()
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
+    // Use a fresh request with no body — exercise the empty-body path.
+    const request = new Request(
+      "http://localhost/api/flows/billing/schedules/monthly-invoices/dispatch",
+      { method: "POST" }
+    );
+    const response = await route.handler(request, {
+      params: { flowKind: "billing", scheduleId: "monthly-invoices" }
+    });
+    expect(response.status).toBe(202);
+    const envelope = host.dispatchCalls[0]?.envelope;
+    expect(typeof (envelope?.metadata as Record<string, unknown>)?.nominalFireTime).toBe("string");
+  });
+
+  it("treats unparseable JSON as an empty body", async () => {
+    const adapter = createScheduledTransportAdapter();
+    const host = withFlow(
+      withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
+      buildFlow()
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const request = new Request(
+      "http://localhost/api/flows/billing/schedules/monthly-invoices/dispatch",
+      { method: "POST", body: "not json", headers: { "Content-Type": "application/json" } }
+    );
+    const response = await route.handler(request, {
+      params: { flowKind: "billing", scheduleId: "monthly-invoices" }
+    });
+    expect(response.status).toBe(202);
+  });
 });
 
 createInboundTransportConformanceTests({

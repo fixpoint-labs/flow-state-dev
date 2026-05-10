@@ -225,27 +225,13 @@ export function validateScheduleConfig(args: {
     );
   }
 
-  if (typeof schedule.cron !== "string" || schedule.cron.length === 0) {
-    throw new Error(
-      `Flow "${kind}" schedule "${id}" is missing a cron expression. ` +
-        `Provide a POSIX 5-field cron string (minute hour day-of-month month day-of-week).`
-    );
-  }
-
   try {
     CronExpressionParser.parse(schedule.cron);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Flow "${kind}" schedule "${id}" has an invalid cron expression "${schedule.cron}": ${message}. ` +
+      `Flow "${kind}" schedule "${id}" has an invalid cron expression ${JSON.stringify(schedule.cron)}: ${message}. ` +
         `Expected POSIX 5-field syntax (minute hour day-of-month month day-of-week).`
-    );
-  }
-
-  if (typeof schedule.action !== "string" || schedule.action.length === 0) {
-    throw new Error(
-      `Flow "${kind}" schedule "${id}" is missing the "action" field. ` +
-        `Set it to one of the flow's declared action names.`
     );
   }
 

@@ -1,22 +1,9 @@
 /**
- * Scheduled actions transport adapter.
- *
- * Mounts a single dispatch endpoint and a listing endpoint per flow:
- *
- *   POST {basePath}/:flowKind/schedules/:scheduleId/dispatch
- *   GET  {basePath}/:flowKind/schedules
- *
- * The adapter never runs a scheduler — hosts wire up Vercel Cron, Cloud
- * Scheduler, EventBridge, GitHub Actions, or `node-cron` themselves and
- * point them at the dispatch endpoint. The framework owns the dispatch
- * contract, two-phase auth (gateway → schedule.principal), idempotency
- * dedupe, overlap policy, and provenance stamping (`source: 'scheduled'`,
- * `metadata.scheduleId`, `metadata.origin`).
- *
- * Static schedules are validated at flow registration time (via
- * `validateSchedulesConfig` in `@flow-state-dev/core`); dynamic schedules
- * returned by `flow.schedules.resolve` are validated at dispatch time and
- * surface as `400 invalid_schedule` on malformed data.
+ * Scheduled-actions transport adapter. Mounts
+ * `POST /api/flows/:flowKind/schedules/:scheduleId/dispatch` and
+ * `GET /api/flows/:flowKind/schedules` per flow. Hosts run the actual
+ * scheduler; the adapter handles auth, validation, idempotency, overlap
+ * policy, and `source: "scheduled"` provenance.
  */
 import type {
   InboundTransportAdapter,
@@ -28,12 +15,7 @@ import {
   type CreateIdempotencyCacheOptions
 } from "./idempotency";
 
-/**
- * Stable `InboundSource` identifier stamped onto every scheduled request.
- * Surfaces as `RequestRecord.source` and is the value DevTool renders.
- */
 export const SCHEDULED_TRANSPORT_SOURCE = "scheduled" as const;
-export type ScheduledTransportSource = typeof SCHEDULED_TRANSPORT_SOURCE;
 
 export interface CreateScheduledTransportAdapterOptions {
   /**

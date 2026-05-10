@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createResourceCollectionScheduleResolver,
-  defaultParseScheduleId,
-  defaultFormatScheduleId
+  defaultParseScheduleId
 } from "../src";
 import type { ScheduleResolutionContext } from "@flow-state-dev/core/types";
 
@@ -47,17 +46,6 @@ describe("defaultParseScheduleId", () => {
     expect(defaultParseScheduleId("u_1/nested/key/path")).toEqual({
       userId: "u_1",
       collectionKey: "nested/key/path"
-    });
-  });
-});
-
-describe("defaultFormatScheduleId", () => {
-  it("round-trips the parsed shape", () => {
-    const id = defaultFormatScheduleId({ userId: "u_1", collectionKey: "weekly-digest" });
-    expect(id).toBe("u_1/weekly-digest");
-    expect(defaultParseScheduleId(id)).toEqual({
-      userId: "u_1",
-      collectionKey: "weekly-digest"
     });
   });
 });

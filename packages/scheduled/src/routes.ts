@@ -1,15 +1,9 @@
 /**
- * Dispatch + listing route handlers for the scheduled transport.
- *
- * `handleDispatch` orchestrates the full per-tick lifecycle:
- *   schedule-id format check → flow lookup → body parse →
- *   idempotency dedupe → gateway auth → static-then-dynamic resolution →
- *   dispatch-time validation → overlap check → effective principal →
- *   input resolution → fire-and-forget `host.dispatch`.
- *
- * `handleList` exposes static schedules plus a `dynamic.provided` flag
- * so operators can confirm a flow has scheduled-action wiring without
- * exposing per-user/dynamic data.
+ * Dispatch + listing handlers for the scheduled transport. Order of
+ * operations in `handleDispatch` is load-bearing: id check → flow →
+ * body → idempotency → gateway auth → static-then-dynamic resolve →
+ * dispatch-time validation → overlap → effective principal → input →
+ * fire-and-forget dispatch.
  */
 import {
   PrincipalResolutionError,
@@ -21,19 +15,16 @@ import {
   validateScheduleConfig,
   type ActionConfig,
   type ScheduleConfig,
+  type ScheduleResolutionStores,
   type SchedulesConfig
 } from "@flow-state-dev/core/types";
 import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
 import { findScheduledRequest } from "./findScheduledRequest";
 import type { IdempotencyCache } from "./idempotency";
 
-/**
- * URL-encoded path segments are not supported in v1 — schedule ids are
- * required to be drawn from a simple URL-safe character set. The pattern
- * is wider than the static-id pattern in core (which forbids `/` and
- * `:`) so dynamic ids like `user/abc/weekly-digest` and
- * `agent-followup:lead-456` round-trip cleanly.
- */
+// Wider than the static-id pattern in core: dynamic ids can carry `/`
+// and `:` so composite keys like `user/abc/weekly-digest` round-trip.
+// URL-encoded segments are not supported in v1.
 const DYNAMIC_SCHEDULE_ID_RE = /^[a-z0-9][a-z0-9:/_-]{0,127}$/;
 
 interface DispatchBody {
@@ -50,33 +41,20 @@ export async function handleDispatch(
   const flowKind = ctx.params.flowKind ?? "";
   const scheduleId = ctx.params.scheduleId ?? "";
 
-  // 1. Validate the schedule id against the URL pattern. Cheap; happens
-  //    before any I/O.
   if (!DYNAMIC_SCHEDULE_ID_RE.test(scheduleId)) {
     return jsonResponse(400, { error: "invalid_schedule_id" });
   }
 
-  // 2. Resolve flow.
   const flow = host.registry.get(flowKind);
   if (!flow) {
     return jsonResponse(404, { error: "flow_not_found" });
   }
 
-  // 3. Parse body (small, optional). Preserved as rawBody for resolvers
-  //    that want to verify a body signature.
   const rawBody = new Uint8Array(await req.arrayBuffer());
   const body = parseDispatchBody(rawBody);
 
-  // 4. Idempotency dedupe — short-circuits before any work.
-  const dedupeKey = body.idempotencyKey ?? `${scheduleId}:${body.nominalFireTime ?? ""}`;
-  if (idempotency.seen(flowKind, dedupeKey)) {
-    return jsonResponse(200, { status: "duplicate", scheduleId });
-  }
-
-  // 5. Gateway auth: prove the dispatch caller is the trusted scheduler.
-  //    For static schedules, this is the *only* auth. For dynamic
-  //    schedules, this happens before the resolver runs so resolvers can
-  //    trust they're being called by the framework gateway.
+  // Auth before idempotency so an unauthenticated caller can't probe
+  // dispatch history via the duplicate-vs-401 response oracle.
   let gatewayPrincipal: ResolvedPrincipal;
   try {
     gatewayPrincipal = await host.resolvePrincipal({
@@ -105,7 +83,11 @@ export async function handleDispatch(
     throw err;
   }
 
-  // 6. Resolve schedule. Static lookup first, then dynamic resolver.
+  const dedupeKey = body.idempotencyKey ?? `${scheduleId}:${body.nominalFireTime ?? ""}`;
+  if (idempotency.seen(flowKind, dedupeKey)) {
+    return jsonResponse(200, { status: "duplicate", scheduleId });
+  }
+
   const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
   let schedule: ScheduleConfig | null = schedules?.static?.[scheduleId] ?? null;
   let origin: "static" | "dynamic" = "static";
@@ -116,9 +98,7 @@ export async function handleDispatch(
         flowKind,
         gatewayPrincipal,
         request: req,
-        // Pass the host's full StoreRegistry; the type narrows it to
-        // `ScheduleResolutionStores` in the resolver signature.
-        stores: host.stores as unknown as Parameters<NonNullable<SchedulesConfig["resolve"]>>[1]["stores"]
+        stores: host.stores as ScheduleResolutionStores
       });
       schedule = resolved ?? null;
       origin = "dynamic";
@@ -134,8 +114,6 @@ export async function handleDispatch(
     return jsonResponse(404, { error: "schedule_not_found" });
   }
 
-  // 7. Validate the (possibly dynamic) schedule. Static was already
-  //    validated at registration; dynamic gets validated here.
   try {
     validateScheduleConfig({
       kind: flowKind,
@@ -151,8 +129,9 @@ export async function handleDispatch(
     });
   }
 
-  // 8. Overlap policy: short-circuit if a request is already in flight
-  //    for this schedule id. Best-effort — TOCTOU race documented.
+  // Best-effort overlap skip — TOCTOU race is documented; two near-
+  // simultaneous ticks may both pass before either calls dispatch. The
+  // idempotency cache catches the duplicate when nominalFireTime matches.
   if (schedule.onOverlap !== "allow") {
     const inFlight = await findScheduledRequest(
       host.stores.activeRequests,
@@ -168,12 +147,11 @@ export async function handleDispatch(
     }
   }
 
-  // 9. Effective principal: schedule.principal (the *target*) wins over
-  //    the gateway principal (the *caller*). For static framework-level
-  //    schedules without `schedule.principal`, fall back to the gateway.
+  // schedule.principal is the action's *target*; gateway is the *caller*.
+  // Static framework cron jobs typically rely on the gateway fallback;
+  // dynamic schedules almost always carry an explicit principal.
   const effectivePrincipal: ResolvedPrincipal = schedule.principal ?? gatewayPrincipal;
 
-  // 10. Resolve input.
   const nominalFireTime = body.nominalFireTime ?? new Date().toISOString();
   let input: unknown;
   try {
@@ -195,7 +173,6 @@ export async function handleDispatch(
     });
   }
 
-  // 11. Build envelope and dispatch fire-and-forget.
   const envelope: InboundRequestEnvelope = {
     source: SCHEDULED_TRANSPORT_SOURCE,
     flowKind,
@@ -259,7 +236,7 @@ export async function handleList(
   }
 
   // Listing runs through the same principal resolver as dispatch — cron
-  // strings and descriptions are operationally sensitive (Q7).
+  // strings and descriptions are operationally sensitive.
   try {
     await host.resolvePrincipal({
       source: SCHEDULED_TRANSPORT_SOURCE,

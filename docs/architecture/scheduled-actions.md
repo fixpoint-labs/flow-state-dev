@@ -344,17 +344,20 @@ schedules: {
 Internally on `resolve(scheduleId, ctx)`:
 
 1. Parse `scheduleId` into `(userId, collectionKey)`.
-2. Read `ctx.stores.resources.read(userScope(userId), "schedules/" + collectionKey)`.
+2. Read `ctx.stores.content.get("user", userId, "schedules/" + collectionKey)`.
    Absent → return `null`.
-3. Synthesize `principal: { userId }` from the resource's owning user
-   scope.
+3. Synthesize `principal: { userId }` from the parsed userId (which is
+   also the storage scope).
 4. Return the `ScheduleConfig`.
 
-The helper guards URL-driven impersonation. If the parsed `userId`
-doesn't match the resource's owning user, the helper returns `null`
-(404) and logs a warning. Custom resolvers must implement the
-equivalent check themselves — the framework can't do it for arbitrary
-ID schemes because it doesn't know how the id maps to ownership.
+URL-driven impersonation is structurally prevented by the user-scoped
+lookup: the parsed userId is both the principal and the storage scope,
+so a URL aimed at another user's data reads from a scope where no
+record exists and the helper returns `null` (404). Custom resolvers
+using a global storage key (e.g. a SQL row keyed only by schedule id)
+must implement an explicit ownership check; the framework can't do it
+for arbitrary id schemes because it doesn't know how the id maps to
+ownership.
 
 ## Adapter mounting
 

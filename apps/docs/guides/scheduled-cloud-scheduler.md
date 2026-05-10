@@ -22,7 +22,7 @@ the value as a header on every fire.
 gcloud scheduler jobs create http monthly-invoices \
   --schedule="0 0 1 * *" \
   --time-zone="UTC" \
-  --uri="https://app.example.com/api/flows/billing/schedules/monthlyInvoices/dispatch" \
+  --uri="https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch" \
   --http-method=POST \
   --headers="Authorization=Bearer ${FSDEV_SCHEDULER_SECRET},Content-Type=application/json" \
   --message-body='{"nominalFireTime":"2026-06-01T00:00:00Z"}' \
@@ -53,7 +53,7 @@ defineFlow({
   },
   schedules: {
     static: {
-      monthlyInvoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
     }
   },
   actions: { /* ... */ }
@@ -69,7 +69,7 @@ on the job and verify the resulting JWT in `resolvePrincipal`:
 ```bash
 gcloud scheduler jobs create http monthly-invoices \
   --schedule="0 0 1 * *" \
-  --uri="https://app.example.com/api/flows/billing/schedules/monthlyInvoices/dispatch" \
+  --uri="https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch" \
   --http-method=POST \
   --oidc-service-account-email="scheduler@my-project.iam.gserviceaccount.com" \
   --oidc-token-audience="https://app.example.com"

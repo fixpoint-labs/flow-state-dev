@@ -60,7 +60,7 @@ aws scheduler create-schedule \
       "Arn": "arn:aws:sqs:us-east-1:123456789012:scheduler-dlq"
     }
   }' \
-  --target-uri "https://app.example.com/api/flows/billing/schedules/monthlyInvoices/dispatch"
+  --target-uri "https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch"
 ```
 
 The header value is templated at create time. To rotate the secret,

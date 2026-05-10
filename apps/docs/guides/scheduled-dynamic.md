@@ -255,18 +255,20 @@ job too, or it keeps firing past the user's intent.
 
 ## URL-driven impersonation guard
 
-The default resource-collection helper parses `<userId>/<key>` from
-the URL and uses the parsed userId to read the resource. If the
-parsed userId doesn't match the resource's owning user scope, the
-helper returns `null` (404) instead of returning a config that would
-run as the wrong user.
+The default helper parses `<userId>/<key>` from the URL and reads the
+resource at user scope `parsed.userId`. The user-scoped storage key is
+the guard: a request like `/schedules/u_evil/k/dispatch` reads
+`("user", "u_evil", "schedules/k")` — there's no resource at that key
+unless `u_evil` owns one. A URL aimed at another user's data simply
+doesn't find anything and the helper returns `null` (404).
 
-This matters because the URL is attacker-controllable from anyone who
-has the bearer secret. The shared secret proves the caller is the
+This matters because the URL is attacker-controllable from anyone
+holding the bearer secret. The shared secret proves the caller is the
 trusted scheduler, not that the caller is the user named in the URL.
-The guard is on by default; custom resolvers should implement the
-equivalent check themselves. The framework cannot do it for arbitrary
-resolvers because it doesn't know how the id maps to ownership.
+Custom resolvers using a global key (e.g. a SQL row keyed only by
+schedule id, not by user) need to implement an explicit ownership
+check themselves. The framework can't do it for arbitrary resolvers
+because it doesn't know how the id maps to ownership.
 
 ## Dispatch principal
 

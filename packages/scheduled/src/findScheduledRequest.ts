@@ -1,18 +1,6 @@
 /**
- * In-flight scan helper for the scheduled adapter.
- *
- * Resolves the question "is there an active request for this
- * `(flowKind, scheduleId)` right now?" by scanning the active-request
- * registry. The adapter calls this when a schedule's `onOverlap` policy
- * is `"skip"` (the default) — a non-null result short-circuits the
- * dispatch with a 200 `{ status: "skipped" }`.
- *
- * This lives in the scheduled package, not on the
- * `ActiveRequestRegistry` interface itself: the v1 cardinality of
- * in-flight scheduled requests is tiny and the scan over `listAll()`
- * keeps every store backend free of churn. Promoting to an interface
- * method with backend-specific indexes is a non-breaking follow-up if
- * production telemetry shows the scan as hot.
+ * Find an in-flight scheduled request matching `(flowKind, scheduleId)`.
+ * Used by the dispatch handler to honor `onOverlap: "skip"`.
  */
 import type {
   ActiveRequestEntry,
