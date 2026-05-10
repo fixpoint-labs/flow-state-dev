@@ -11,8 +11,6 @@
  * without threading them through input schemas.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { RoundRobinFinalShape } from "@flow-state-dev/patterns/round-robin";
-import { z } from "zod";
 import {
   consolidateBearMemo,
   consolidateBullMemo,
@@ -22,6 +20,7 @@ import { phase2StateSchema, type Phase2State } from "./sequencer-state";
 import {
   deriveDebateGoal,
   phase2RoundRobinRouter,
+  roundRobinFinalShapeSchema,
 } from "./round-robin";
 import { setupPhase2Memos } from "./setup";
 import {
@@ -41,13 +40,12 @@ import {
 /** Capture the loop transcript on exit so downstream generators can read it. */
 const stashContributions = handler({
   name: "p2-stash-contributions",
-  inputSchema: z.any(),
-  outputSchema: z.any(),
+  inputSchema: roundRobinFinalShapeSchema,
+  outputSchema: roundRobinFinalShapeSchema,
   sequencerStateSchema: phase2StateSchema,
   execute: async (input, ctx) => {
-    const final = input as RoundRobinFinalShape;
     await ctx.sequencer!.patchState({
-      contributions: final?.contributions ?? [],
+      contributions: input.contributions,
     });
     return input;
   },

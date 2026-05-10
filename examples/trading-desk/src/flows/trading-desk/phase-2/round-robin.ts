@@ -13,6 +13,7 @@
 import { handler, router } from "@flow-state-dev/core";
 import {
   roundRobin,
+  roundRobinContributionEntrySchema,
   roundRobinInputSchema,
 } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
@@ -97,10 +98,22 @@ export const deriveDebateGoal = handler({
  * the chosen round-robin returns — `RoundRobinFinalShape` because all four
  * instances pass `synthesizer: false`.
  */
+/**
+ * Mirror of `RoundRobinFinalShape` as a zod schema. The pattern only
+ * exports the TS interface, but a real schema lets the router and the
+ * downstream stash handler carry typed input/output instead of `any`.
+ */
+export const roundRobinFinalShapeSchema = z.object({
+  rounds: z.number(),
+  done: z.boolean(),
+  summary: z.string(),
+  contributions: z.array(roundRobinContributionEntrySchema),
+});
+
 export const phase2RoundRobinRouter = router({
   name: "phase-2-rr-router",
   inputSchema: roundRobinInputSchema,
-  outputSchema: z.any(),
+  outputSchema: roundRobinFinalShapeSchema,
   routes: [
     phase2RoundRobin_1round_fast,
     phase2RoundRobin_1round_full,
