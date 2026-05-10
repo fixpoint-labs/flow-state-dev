@@ -29,6 +29,11 @@ export {
 export { defaultBodyUserIdPrincipalResolver } from "./auth/defaultBodyUserIdPrincipalResolver";
 
 export {
+  createBearerSecretPrincipalResolver,
+  type CreateBearerSecretPrincipalResolverOptions
+} from "./auth/createBearerSecretPrincipalResolver";
+
+export {
   createHmacVerifier,
   type CreateHmacVerifierOptions,
   type HmacAlgorithm,
