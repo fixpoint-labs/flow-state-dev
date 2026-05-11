@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### Resource API: multi-segment collection topics now resolve (FIX-561)
+
+- `GET /sessions/:id/resources/:ref/:topic`, `GET /sessions/:id/resources/:ref/:topic/content`, `PATCH .../:topic/content`, and `DELETE .../:topic` now match topics that contain `/`. Previously `:topic` was a single-segment path-to-regexp parameter, so any collection with a `**` pattern (topics like `p1/fundamentals`, `p2/research-manager`) returned 404 from these endpoints even when the resource existed on the server.
+- Visible symptom that motivated the fix: React `useResourceCollectionItem` calls failed silently for the trading-desk example's `memos/**` collection — sessions had all 7 memos persisted, but the per-item REST fetch the UI depends on 404'd, so the theses pane and DevTool item bodies appeared empty.
+- The route table now uses `*topic` (path-to-regexp v8 wildcard); `stringifyParams` joins the captured array on `/` before the route builder runs, so the resulting `topic` is still a string for downstream handlers. New regression tests cover state, content, and delete with slash-bearing topics.
+- Constraint: a topic literally named `"content"` is shadowed by the `/:ref/content` resource-content route and remains unaddressable through the state-get endpoint. Documented in `apps/docs/docs/resources/client-access.md`.
+
 ### `makeSchemaStrict` is now public; BP-016 codifies OpenAI strict-mode rules for generator outputs (FIX-561)
 
 - `@flow-state-dev/core` re-exports `makeSchemaStrict(schema)` from the package root. The helper was previously internal; the framework still calls it automatically before serializing schemas to the AI SDK, but authors can now import it to assert their generator `outputSchema` passes OpenAI strict mode at test time.

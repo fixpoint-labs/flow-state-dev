@@ -70,31 +70,15 @@ export const memosCollection = defineResourceCollection({
   scope: "session",
   stateSchema: memoStateSchema,
   client: {
-    // Project the full memo state so the document area renders structured
-    // body sections, the metrics row, and any error message without
-    // round-tripping content fetches. The body payload is structured prose
+    content: { read: true, prefetch: true },
+    state: { read: true },
+    // Project the full memo state into `clientData` so the document area
+    // renders structured body sections, the metrics row, and any error
+    // message without round-tripping content fetches. Without this the
+    // get-collection-item-state endpoint returns `{ topic }` only and the
+    // theses pane has nothing to render. Body payload is structured prose
     // (not arbitrary content) so the projection size stays bounded.
-    data: (state) => ({
-      status: state.status,
-      agentName: state.agentName,
-      agentTeam: state.agentTeam,
-      phaseId: state.phaseId,
-      ticker: state.ticker,
-      date: state.date,
-      label: state.label,
-      headline: state.headline,
-      rating: state.rating,
-      body: state.body,
-      metrics: state.metrics,
-      startedAt: state.startedAt,
-      completedAt: state.completedAt,
-      errorMessage: state.errorMessage,
-      stance: state.stance,
-      conviction: state.conviction,
-      keyRisks: state.keyRisks,
-      keyOpportunities: state.keyOpportunities,
-      unresolvedDisagreements: state.unresolvedDisagreements,
-    }),
+    data: (state) => state,
   },
 });
 

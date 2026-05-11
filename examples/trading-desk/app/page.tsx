@@ -89,7 +89,7 @@ function TradingDeskApp(): ReactElement {
       />
       <main
         className="grid overflow-hidden"
-        style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}
+        style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}
       >
         <TranscriptPane session={session} />
         <ThesesPane session={session} memoStatus={memoStatus} />
