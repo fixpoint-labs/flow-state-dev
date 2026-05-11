@@ -13,6 +13,7 @@ import type { SessionDetail } from "@flow-state-dev/client";
 import { useSessionState } from "../../hooks/use-session-state";
 import { useRelativeTime } from "../../hooks/use-relative-time";
 import { deepEqual } from "../../lib/utils";
+import { ResourcesPanel } from "./resources-panel";
 
 type SessionContextPanelProps = {
   sessionId: string | null;
@@ -31,12 +32,12 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
 
   const relativeTime = useRelativeTime(lastFetchedAt);
 
-  // Count items and changes per section.
+  // Count items and changes per section. Resources moved to the debug
+  // ResourcesPanel; this aggregate now covers only client-data scopes.
   const stats = useMemo(() => {
     if (!snapshot) return null;
     return {
       clientData: sectionStats(snapshot.clientData, prevSnapshot?.clientData),
-      resources: sectionStats(snapshot.resources, prevSnapshot?.resources),
     };
   }, [snapshot, prevSnapshot]);
 
@@ -62,7 +63,6 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
   }
 
   const hasClientData = snapshot.clientData && Object.values(snapshot.clientData).some((v) => v && Object.keys(v).length > 0);
-  const hasResources = snapshot.resources && Object.values(snapshot.resources).some((v) => v && Object.keys(v).length > 0);
 
   return (
     <div className="space-y-2 text-xs">
@@ -80,7 +80,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         <SessionMetadataSection detail={detail} />
       )}
 
-      {!hasClientData && !hasResources && !detail && (
+      {!hasClientData && !detail && (
         <EmptyState message="Session state is empty. Execute an action to populate state." />
       )}
 
@@ -98,19 +98,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         </CollapsibleSection>
       )}
 
-      {hasResources && (
-        <CollapsibleSection title="Resources" count={stats?.resources.count} changed={stats?.resources.changed}>
-          {snapshot.resources!.session && Object.keys(snapshot.resources!.session).length > 0 && (
-            <ResourceScope label="Session" resources={snapshot.resources!.session} prevResources={prevSnapshot?.resources?.session} />
-          )}
-          {snapshot.resources!.user && Object.keys(snapshot.resources!.user).length > 0 && (
-            <ResourceScope label="User" resources={snapshot.resources!.user} prevResources={prevSnapshot?.resources?.user} />
-          )}
-          {snapshot.resources!.org && Object.keys(snapshot.resources!.org).length > 0 && (
-            <ResourceScope label="Org" resources={snapshot.resources!.org} prevResources={prevSnapshot?.resources?.org} />
-          )}
-        </CollapsibleSection>
-      )}
+      <ResourcesPanel sessionId={sessionId} />
     </div>
   );
 }
@@ -181,206 +169,6 @@ function CollapsibleSection({
         )}
       </button>
       {open && <div className="pl-4">{children}</div>}
-    </div>
-  );
-}
-
-function ResourceScope({
-  label,
-  resources,
-  prevResources,
-}: {
-  label: string;
-  resources: Record<string, Record<string, unknown>>;
-  prevResources?: Record<string, Record<string, unknown>>;
-}) {
-  const entries = Object.entries(resources);
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="mb-2">
-      <span className="text-[10px] text-slate-600 uppercase">{label}</span>
-      <div className="mt-0.5 space-y-0.5">
-        {entries.map(([name, entry]) => {
-          const prev = prevResources?.[name];
-          const changed = prev !== undefined && !deepEqual(entry, prev);
-          const isNew = prev === undefined && prevResources !== undefined;
-          return (
-            <ResourceItem
-              key={name}
-              name={name}
-              entry={entry ?? {}}
-              changed={changed}
-              isNew={isNew}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Sum "records" across a single-resource state body. Arrays contribute their
- * length (so an empty array is 0); scalars contribute 1 when non-zero / non-
- * nullish, 0 otherwise; nested objects contribute 1 if they have any keys.
- *
- * The intent is "how much actual data lives here", not "how many top-level
- * fields are declared" — useful for resources whose state is mostly a single
- * collection field plus a couple of counters.
- */
-function countRecords(data: Record<string, unknown>): number {
-  let total = 0;
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value)) {
-      total += value.length;
-      continue;
-    }
-    if (value === null || value === undefined) continue;
-    if (typeof value === "number" && value === 0) continue;
-    if (typeof value === "boolean" && value === false) continue;
-    if (typeof value === "string" && value.length === 0) continue;
-    if (typeof value === "object") {
-      total += Object.keys(value as Record<string, unknown>).length > 0 ? 1 : 0;
-      continue;
-    }
-    total += 1;
-  }
-  return total;
-}
-
-/**
- * Snapshot entries arrive as wrappers, never raw state — single resources are
- * `{ clientData?, content?, internal? }`. Collections (FIX-427) are
- * `{ count?, prefetched?, internal? }`. The displayed body reflects the
- * inlined `prefetched` window when set; the count badge reflects the always-
- * emitted total cardinality.
- */
-function unwrapResourceEntry(entry: Record<string, unknown>): {
-  data: unknown;
-  isCollection: boolean;
-  hasContent: boolean;
-  isInternal: boolean;
-  count: number | null;
-} {
-  const isInternal = entry.internal === true;
-  if ("count" in entry || "prefetched" in entry) {
-    const prefetched = entry.prefetched as
-      | Array<{ topic: string; clientData?: unknown }>
-      | undefined;
-    const asMap: Record<string, unknown> = {};
-    if (prefetched !== undefined) {
-      for (const p of prefetched) asMap[p.topic] = { clientData: p.clientData };
-    }
-    return {
-      data: asMap,
-      isCollection: true,
-      hasContent: false,
-      isInternal,
-      count: typeof entry.count === "number" ? entry.count : null,
-    };
-  }
-  return {
-    data: entry.clientData,
-    isCollection: false,
-    hasContent: entry.content !== undefined,
-    isInternal,
-    count: null,
-  };
-}
-
-function ResourceItem({
-  name,
-  entry,
-  changed,
-  isNew,
-}: {
-  name: string;
-  entry: Record<string, unknown>;
-  changed: boolean;
-  isNew: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const { data, isCollection, hasContent, isInternal, count } = unwrapResourceEntry(entry);
-
-  // Collection count: prefer the explicit `count` field from the snapshot
-  // (FIX-427); fall back to the items map size when the legacy escape hatch
-  // surfaced an eager `items` map. Single resources still show a record sum.
-  const inlinedCount = isCollection && data && typeof data === "object"
-    ? Object.keys(data as Record<string, unknown>).length
-    : null;
-  const recordCount = !isCollection && data && typeof data === "object"
-    ? countRecords(data as Record<string, unknown>)
-    : null;
-  const itemCount = isCollection
-    ? count !== null
-      ? count
-      : inlinedCount
-    : null;
-  const truncated =
-    isCollection && itemCount !== null && inlinedCount !== null && inlinedCount < itemCount;
-  const countLabel = isCollection
-    ? itemCount !== null
-      ? truncated
-        ? `${inlinedCount}/${itemCount} ${itemCount === 1 ? "item" : "items"}`
-        : `${itemCount} ${itemCount === 1 ? "item" : "items"}`
-      : null
-    : recordCount !== null
-      ? `${recordCount} ${recordCount === 1 ? "record" : "records"}`
-      : null;
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard.writeText(JSON.stringify(data ?? {}, null, 2));
-  };
-
-  return (
-    <div>
-      <button
-        className="flex items-center gap-1.5 w-full text-left py-0.5 hover:bg-slate-800/30 rounded px-1 -mx-1"
-        onClick={() => setOpen(!open)}
-      >
-        {open
-          ? <ChevronDown className="h-2.5 w-2.5 text-slate-600 shrink-0" />
-          : <ChevronRight className="h-2.5 w-2.5 text-slate-600 shrink-0" />}
-        <span className={`text-[11px] font-mono truncate ${isInternal ? "text-slate-500 italic" : "text-slate-400"}`}>
-          {name}
-        </span>
-        {countLabel !== null && (
-          <span className="text-[10px] font-mono text-slate-700">{countLabel}</span>
-        )}
-        {hasContent && (
-          <span
-            className="text-[9px] font-mono text-slate-500 bg-slate-800/40 px-1 rounded-full"
-            title="Resource also has prefetched content (not shown — see network response)"
-          >
-            +content
-          </span>
-        )}
-        {isInternal && (
-          <span
-            className="text-[9px] font-mono text-slate-500 bg-slate-800/40 px-1 rounded-full"
-            title="No client config — raw state shown for development. Production clients don't see this resource in the snapshot."
-          >
-            internal
-          </span>
-        )}
-        {isNew && (
-          <span className="text-[9px] font-mono text-green-500 bg-green-900/20 px-1 rounded-full">new</span>
-        )}
-        {changed && (
-          <span className="text-[9px] font-mono text-amber-500 bg-amber-900/20 px-1 rounded-full">changed</span>
-        )}
-        <span className="flex-1" />
-        <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy resource data">
-          <Copy className="h-2.5 w-2.5 text-slate-700" />
-        </Button>
-      </button>
-      {open && (
-        <div className="pl-4 mt-0.5">
-          <JsonViewer data={data ?? {}} className="mt-0" />
-        </div>
-      )}
     </div>
   );
 }
