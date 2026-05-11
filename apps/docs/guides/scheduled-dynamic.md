@@ -171,20 +171,70 @@ recipes cover most setups.
 
 ### Polling loop
 
-A small in-process worker scans an index on an interval, evaluates
-each schedule's cron against the last fire time, and POSTs to the
-dispatch endpoint when due. The framework only does per-user reads,
-so the host maintains a separate index over `(userId, key, cron,
-nextFireAt)` — written when the schedule is created, updated after
-each fire, removed on delete. The index is what the loop reads;
-the schedule resource is what the dispatch resolver reads.
+A small in-process worker scans an index on an interval and POSTs
+to the dispatch endpoint when due. The framework only does per-user
+reads, so the host maintains a separate index keyed on `(userId,
+key)` that scans by `nextFireAt`. The schedule resource collection is
+the source of truth; the index is a derived read-model the tick
+scans.
+
+The write side is `defineScheduleCollection`. It wraps
+`defineResourceCollection` with the schedule state schema and mirrors
+every create/update/delete into the index for you:
+
+```ts
+import { defineScheduleCollection } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
+
+const scheduleIndex = createSQLiteScheduleIndex(db);
+
+export const schedules = defineScheduleCollection({
+  pattern: "schedules/*",
+  index: scheduleIndex
+});
+```
+
+Each row in the index carries `(userId, key, cron, timezone,
+nextFireAt)`. `nextFireAt` is ms since epoch; cron parsing happens at
+write time. Rows with `enabled: false` are removed from the index, so
+toggling a schedule off stops it firing without deleting the record.
+
+The tick side is `createScheduleTickHandler` from
+`@flow-state-dev/vercel/schedules` — see
+[Scheduled actions on Vercel Cron](/guides/scheduled-vercel-cron#dynamic-schedules-at-scale)
+for the dispatch wiring. The same index works behind any cron source;
+the tick handler is small enough to inline elsewhere.
+
+The index is the load-bearing piece. Without it, every tick has to
+scan every user's schedules collection — which the resource API
+doesn't even support in one query, and which doesn't scale anyway.
+With it, the tick reads `O(due)` rows regardless of total user count.
+See the [Schedule index reference](/docs/server/schedule-index) for
+the interface, the at-most-once contract, and how to plug in a custom
+backend.
+
+Practical notes:
+
+- **At-most-once.** `claimDue` advances rows before returning them.
+  A dispatch that fails after the row was advanced is dropped. Hook
+  `onDispatch` on the tick handler if you need to see status codes.
+- **Multi-process.** The Postgres backend uses `SELECT ... FOR UPDATE
+  SKIP LOCKED` so multiple replicas can tick concurrently without
+  double-firing. SQLite serializes claims via `BEGIN IMMEDIATE`.
+- **Granularity.** A one-minute tick handles minute-granular cron
+  comfortably. Coarser ticks (5 min, 30 min) cost less in compute
+  but introduce lag — a `0 9 * * *` schedule polled at :30 fires
+  at 09:30, not 09:00. Match the tick to the tightest cron you
+  intend to support.
+
+#### Advanced: implement the polling loop by hand
+
+If your storage doesn't fit the `ScheduleIndex` interface, or you
+need at-least-once semantics with a custom acknowledgement step:
 
 ```ts
 import { CronExpressionParser } from "cron-parser";
 
-// The index: one row per active schedule. Backed by Postgres, SQLite,
-// Redis, or even a flow-state org-scope resource — anything that
-// supports a "where nextFireAt <= now" query.
 type ScheduleIndexRow = {
   userId: string;
   key: string;
@@ -192,8 +242,6 @@ type ScheduleIndexRow = {
   nextFireAt: number; // ms since epoch
 };
 
-// Maintain the index alongside the schedule resource. Write on
-// create, update after each fire, delete when the user cancels.
 async function indexSchedule(row: ScheduleIndexRow) { /* INSERT/UPSERT */ }
 async function dueSchedules(now: number): Promise<ScheduleIndexRow[]> { /* SELECT ... WHERE nextFireAt <= $1 */ }
 async function advanceIndex(row: ScheduleIndexRow, now: number) {
@@ -209,7 +257,6 @@ setInterval(async () => {
   const now = Date.now();
   const due = await dueSchedules(now);
 
-  // Optional: bound concurrency to protect your own runtime.
   await Promise.allSettled(
     due.map(async (row) => {
       const res = await fetch(
@@ -232,31 +279,17 @@ setInterval(async () => {
 }, TICK_INTERVAL_MS);
 ```
 
-The index is the load-bearing piece. Without it, every tick has to
-scan every user's schedules collection — which the resource API
-doesn't even support in one query, and which doesn't scale anyway.
-With it, the tick reads `O(due)` rows regardless of total user count.
+This is an at-least-once shape: `advanceIndex` runs only on 2xx, so a
+failed dispatch re-fires next tick. The framework's 60-second
+idempotency window dedupes `(scheduleId, nominalFireTime)` within
+that window. Tradeoff vs. the helper: more code to maintain, and
+multi-process safety is your problem to solve (leader election,
+row-level locks, etc.).
 
-Practical notes:
+## Schedule Index
 
-- **Idempotency.** `advanceIndex` only runs on a 2xx, so a failed
-  dispatch (network error, framework 5xx) re-fires next tick. The
-  framework's 60-second idempotency window dedupes `(scheduleId,
-  nominalFireTime)` within that window if the retry lands too fast.
-- **Catch-up.** If the tick has been down for an hour and four
-  daily-at-9am schedules are now overdue, the loop will fire them
-  all at once on next startup. If that's not desired, advance
-  `nextFireAt` past `now` to the next future slot instead of firing.
-- **Multi-process.** Run the tick on a single worker (leader
-  election, a dedicated cron node, or a lock per row in the SQL
-  case). Multiple replicas all firing the same rows produces
-  duplicates the 60-second framework window catches but only
-  within that window.
-- **Granularity.** A 30-second tick handles minute-granular cron
-  comfortably. Coarser ticks (5 min, 30 min) cost less in compute
-  but introduce lag — a `0 9 * * *` schedule polled at :30 fires
-  at 09:30, not 09:00. Match the tick to the tightest cron you
-  intend to support.
+The interface, provided implementations, and conformance tests are
+documented in the [Schedule index reference](/docs/server/schedule-index).
 
 ### External scheduler API
 
