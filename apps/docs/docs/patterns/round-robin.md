@@ -137,6 +137,10 @@ The pattern's `init-contributions` tap clears the resource at the start of every
 
 Most consumers only need the `name` and `role` fields. The default agent will produce a contribution that builds on the prior transcript.
 
+The default agent streams plain text as it generates — no `outputSchema` is set, so the framework's streaming gate fires and `message` items are emitted live. The roster entry's `name` is stamped on the underlying generator as `agentName`, so each emitted item carries identity — chat-style transcripts that scope to a known set of agents render the debate in real time without any extra wiring. The recorder (`record-contribution`) coerces strings via `coerceText`, so the contributions resource ends up with the same `{ round, agentName, text }` entries regardless.
+
+If you need a roster agent to emit structured output instead — e.g. a "vote" roster where each agent emits `{ choice: "A" }` — supply your own `block` via the roster entry (see below). Setting `outputSchema` directly on the default agent isn't a configuration option; it's a different shape of agent and belongs in an override.
+
 For full control, supply a `block`:
 
 ```ts

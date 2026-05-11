@@ -155,11 +155,11 @@ describe("session resources are persisted after analyze run", () => {
         }),
         "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
           name: "p2-research-debate-1r-fast-roster-bullResearcher",
-          script: [{ structuredOutput: { text: "Bull r1." } }],
+          script: [{ text: "Bull r1." }],
         }),
         "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
           name: "p2-research-debate-1r-fast-roster-bearResearcher",
-          script: [{ structuredOutput: { text: "Bear r1." } }],
+          script: [{ text: "Bear r1." }],
         }),
         "consolidate-bull-memo": mockGenerator({
           name: "consolidate-bull-memo",

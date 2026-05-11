@@ -146,13 +146,16 @@ function makeAnalystAndRosterMocks() {
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
     }),
+    // Roster agents stream plain text now (no structured outputSchema) so
+    // they emit `message` items visible in the transcript. Mock text matches
+    // that shape; record-contribution coerces strings via `coerceText`.
     "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
       name: "p2-research-debate-1r-fast-roster-bullResearcher",
-      script: [{ structuredOutput: { text: "Bull round 1 contribution." } }],
+      script: [{ text: "Bull round 1 contribution." }],
     }),
     "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
       name: "p2-research-debate-1r-fast-roster-bearResearcher",
-      script: [{ structuredOutput: { text: "Bear round 1 contribution." } }],
+      script: [{ text: "Bear round 1 contribution." }],
     }),
   };
 }

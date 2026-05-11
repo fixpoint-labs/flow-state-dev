@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### Round Robin: default roster agents stream text into the transcript (FIX-561)
+
+- The default roster agent (`createRosterAgent`) no longer hardcodes a `z.object({ text })` output schema. It now uses the generator's default `z.string()` output, which makes the streaming gate fire and emit live `message` items — chat-style transcripts render the debate in real time without any custom wiring.
+- The default roster agent now stamps `agentName` on its underlying generator. Without this, emitted message items carried no identity and chat-style transcripts that scope to known agents (e.g. `if (AGENTS[message.agentName] === undefined) continue`) silently dropped the messages even though the streaming path was working.
+- The contributions resource is unchanged. `record-contribution` already coerces both string and `{ text }` outputs via `coerceText`, so consumers that read the contributions transcript see the same `{ round, agentName, text }` entries.
+- Override path: callers who need a roster agent to emit structured output (a vote roster, a structured proposal) supply their own `block` via `RosterEntry`. Setting `outputSchema` on the default agent isn't a configuration option; that's a different agent shape and belongs in an override.
+- Visible symptom that motivated the change: trading-desk Phase 2 bull/bear contributions never showed up in the transcript because the default agent's structured-output path skipped the streaming gate at [`generator.ts:1765`](packages/core/src/blocks/generator.ts) (`isTextOutputSchema` returns false for object schemas), and once that was fixed the missing `agentName` caused the consumer-side filter to drop the messages a second time.
+
 ### Resource API: multi-segment collection topics now resolve (FIX-561)
 
 - `GET /sessions/:id/resources/:ref/:topic`, `GET /sessions/:id/resources/:ref/:topic/content`, `PATCH .../:topic/content`, and `DELETE .../:topic` now match topics that contain `/`. Previously `:topic` was a single-segment path-to-regexp parameter, so any collection with a `**` pattern (topics like `p1/fundamentals`, `p2/research-manager`) returned 404 from these endpoints even when the resource existed on the server.
