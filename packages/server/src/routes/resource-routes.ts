@@ -455,13 +455,16 @@ export async function handleGetResourceManifest(
 
     const content = client.content as Record<string, unknown> | undefined;
     const state = client.state as Record<string, unknown> | undefined;
-    // clientData ships whenever the resource actually delivers per-item state
-    // to the client. For collections that's `state.read === true` — the
-    // list/get-state routes and snapshot prefetch both gate on it. A
-    // projection (`data` / `expose` / `exclude`) without `state.read` is
-    // dormant. For single resources the snapshot always populates
-    // `clientData` when a `client` config is present.
-    const hasClientData = isCollection ? state?.read === true : true;
+    // clientData ships whenever the resource actually delivers per-item
+    // state. For collections that's `state.read === true` — the
+    // list/get-state routes and snapshot prefetch both gate on it. For
+    // single resources, a declared projection (`data` / `expose` /
+    // `exclude`) is the opt-in; content-only resources stay state-private.
+    const hasProjection =
+      typeof client.data === "function" ||
+      Array.isArray(client.expose) ||
+      Array.isArray(client.exclude);
+    const hasClientData = isCollection ? state?.read === true : hasProjection;
 
     // Inclusion rule: presence of any client-visible affordance — a truthy
     // permission flag in `content`/`state`, or a `data` projection. Mirrors

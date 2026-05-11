@@ -95,13 +95,20 @@ client: {
 Omit `expose`, `exclude`, and `data`. The full state is sent to the client.
 
 ```ts
+// Collection: identity ships per-item state when state.read is true
+client: {
+  state: { read: true },
+  // no projection — clientData carries the full state
+}
+
+// Single resource: a content-only client stays state-private
 client: {
   content: { read: true },
-  // no projection — clientData carries the full state
+  // no projection declared → clientData is omitted from the snapshot
 }
 ```
 
-This is the default when `state.read: true` (or any `client` config) is set without a projection. Earlier versions returned a `{ topic }`-only shape in this case, which silently hid every field; that behavior is gone.
+For collections, the identity default replaces the prior `{ topic }`-only shape that `state.read: true` used to return without a `data` projection. For single resources there's no `state.read` gate — declaring a projection (`expose`, `exclude`, or `data`) is the opt-in. A `client` config without any of those keeps state private, matching pre-existing behavior.
 
 ### Mutual exclusivity
 

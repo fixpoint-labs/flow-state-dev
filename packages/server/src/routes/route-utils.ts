@@ -411,13 +411,21 @@ export async function buildResourceSnapshot(options: {
 
     const state = normalizeResourceState(config, options.persisted?.[resourceName]);
     const prefetch = config.client?.content?.prefetch === true;
+    // Single resources have no `state.read` gate; the projection itself is
+    // the opt-in. Resources that declare `client: { content: ... }` with no
+    // projection stay state-private — the snapshot omits `clientData`
+    // entirely, matching the pre-FIX-580 behavior.
+    const hasProjection =
+      typeof config.client?.data === "function" ||
+      Array.isArray(config.client?.expose) ||
+      Array.isArray(config.client?.exclude);
 
     const entry: Record<string, unknown> = {};
-    if (hasClient) {
-      entry.clientData = await resolveClientProjection(config.client, state);
-    } else {
+    if (!hasClient) {
       // Internal resource: raw state under clientData (see collection branch).
       entry.clientData = state;
+    } else if (hasProjection) {
+      entry.clientData = await resolveClientProjection(config.client, state);
     }
     if (prefetch && contentMap[resourceName] !== undefined) {
       entry.content = contentMap[resourceName];
