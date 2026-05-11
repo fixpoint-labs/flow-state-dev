@@ -148,9 +148,15 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
     }))
   ],
   get_collection_item_content: [
+    // `*topic` is a wildcard in path-to-regexp v8 — required because
+    // collection topics commonly contain `/` (e.g. trading-desk's
+    // `memos/**` pattern uses keys like `p1/fundamentals`). A `:topic`
+    // single-segment param 404s on any slash-bearing topic.
+    // `stringifyParams` joins the captured array on `/` before the build
+    // callback runs, so `p.topic` remains a string.
     entry(
       "GET",
-      "/sessions/:sessionId/resources/:ref/:topic/content",
+      "/sessions/:sessionId/resources/:ref/*topic/content",
       (p) => ({
         kind: "get_collection_item_content",
         sessionId: p.sessionId,
@@ -169,7 +175,7 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
   update_resource_content: [
     entry(
       "PATCH",
-      "/sessions/:sessionId/resources/:ref/:topic/content",
+      "/sessions/:sessionId/resources/:ref/*topic/content",
       (p) => ({
         kind: "update_resource_content",
         sessionId: p.sessionId,
@@ -179,7 +185,7 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
     )
   ],
   delete_collection_item: [
-    entry("DELETE", "/sessions/:sessionId/resources/:ref/:topic", (p) => ({
+    entry("DELETE", "/sessions/:sessionId/resources/:ref/*topic", (p) => ({
       kind: "delete_collection_item",
       sessionId: p.sessionId,
       ref: p.ref,
@@ -194,7 +200,7 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
     }))
   ],
   get_collection_item_state: [
-    entry("GET", "/sessions/:sessionId/resources/:ref/:topic", (p) => ({
+    entry("GET", "/sessions/:sessionId/resources/:ref/*topic", (p) => ({
       kind: "get_collection_item_state",
       sessionId: p.sessionId,
       ref: p.ref,
