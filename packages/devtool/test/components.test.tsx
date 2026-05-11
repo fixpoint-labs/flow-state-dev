@@ -134,4 +134,48 @@ describe("RequestSeparator (transport source surface)", () => {
     renderSeparator({ ...baseProps });
     expect(screen.queryByText("Webhook")).not.toBeInTheDocument();
   });
+
+  it("appends · scheduleId to the source chip for scheduled requests", () => {
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: { scheduleId: "monthly-invoices", origin: "static" },
+    });
+    expect(screen.getByText(/Scheduled\s*·\s*monthly-invoices/)).toBeInTheDocument();
+  });
+
+  it("renders an origin badge alongside the scheduled chip", () => {
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: { scheduleId: "u_1/digest", origin: "dynamic" },
+    });
+    expect(screen.getByText("dynamic")).toBeInTheDocument();
+  });
+
+  it("truncates long schedule ids in the middle for the chip", () => {
+    const longId = "a".repeat(20) + "/" + "b".repeat(40);
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: { scheduleId: longId, origin: "dynamic" },
+    });
+    expect(screen.getByText(/…/)).toBeInTheDocument();
+  });
+
+  it("opens the provenance panel when the source chip is clicked", () => {
+    renderSeparator({
+      ...baseProps,
+      source: "scheduled",
+      metadata: {
+        scheduleId: "monthly-invoices",
+        origin: "static",
+        cron: "0 0 1 * *",
+        nominalFireTime: "2026-06-01T00:00:00Z",
+      },
+    });
+    fireEvent.click(screen.getByText(/Scheduled/));
+    expect(screen.getByText("Provenance")).toBeInTheDocument();
+    expect(screen.getByText("0 0 1 * *")).toBeInTheDocument();
+  });
 });

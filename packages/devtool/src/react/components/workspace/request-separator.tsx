@@ -19,10 +19,30 @@ type RequestSeparatorProps = {
   totalTokens?: number;
   /** Inbound transport that produced the request. Undefined for legacy data. */
   source?: string;
+  /**
+   * Adapter-stamped provenance bag. Scheduled requests carry
+   * `scheduleId` (string) and `origin` (`"static" | "dynamic"`); other
+   * sources may carry their own keys without affecting rendering here.
+   */
+  metadata?: Record<string, unknown>;
   onReplayFull?: () => void;
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
 };
+
+/** Visual styling for the scheduled `origin` badge — small, secondary. */
+const ORIGIN_BADGE_CLASSNAMES: Record<string, string> = {
+  static: "border-slate-600 text-slate-400",
+  dynamic: "border-cyan-700 text-cyan-300"
+};
+
+const SCHEDULE_ID_DISPLAY_LIMIT = 32;
+
+function truncateMiddle(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const half = Math.floor((max - 1) / 2);
+  return `${value.slice(0, half)}…${value.slice(-half)}`;
+}
 
 /**
  * Visual treatment per known transport source. Unknown values render as
@@ -50,28 +70,70 @@ export function RequestSeparator({
   isActive,
   totalTokens,
   source,
+  metadata,
   onReplayFull,
   onReplayFromCursor,
   onReconnect,
 }: RequestSeparatorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [provenanceOpen, setProvenanceOpen] = useState(false);
   const { isDebugMode } = useDebug();
   const showReplayControls = status === "completed" || status === "failed";
   const hasOverflow = showReplayControls || isDebugMode;
   const durationText = formatDuration(duration, isActive);
 
+  // Scheduled requests carry first-class provenance (`scheduleId`,
+  // `origin`) — surface as a suffix on the source chip and a secondary
+  // origin badge so operators can tell static cron jobs apart from
+  // user/agent-created dynamic schedules at a glance.
+  const scheduleId =
+    source === "scheduled" && typeof metadata?.scheduleId === "string"
+      ? metadata.scheduleId
+      : undefined;
+  const origin =
+    source === "scheduled" && (metadata?.origin === "static" || metadata?.origin === "dynamic")
+      ? metadata.origin
+      : undefined;
+  const sourceChipText = (() => {
+    const baseLabel = source !== undefined ? (SOURCE_LABELS[source]?.label ?? source) : "";
+    if (scheduleId === undefined) return baseLabel;
+    return `${baseLabel} · ${truncateMiddle(scheduleId, SCHEDULE_ID_DISPLAY_LIMIT)}`;
+  })();
+
+  // Show a "Provenance" affordance for non-default sources so operators
+  // can drill into source/origin/scheduleId/cron/nominalFireTime without
+  // needing a custom panel. The chip is clickable for non-http sources.
+  const hasProvenanceDetails =
+    source !== undefined && source !== "http" && metadata !== undefined;
+
   return (
-    <div className="sticky top-0 z-10 flex select-none items-center gap-2 border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm px-4 py-1.5">
+    <div className="sticky top-0 z-10 select-none border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm">
+    <div className="flex items-center gap-2 px-4 py-1.5">
       <span className="text-xs font-medium text-slate-300">{action}</span>
       <StatusBadge status={status} />
       {source !== undefined && source !== "http" && (
-        <span
-          className={`rounded border px-1.5 py-0 text-[10px] font-medium ${
+        <button
+          type="button"
+          className={`rounded border px-1.5 py-0 text-[10px] font-medium hover:opacity-80 ${
             SOURCE_LABELS[source]?.className ?? "border-slate-700 text-slate-400"
           }`}
-          title={`Source: ${source}`}
+          title={
+            hasProvenanceDetails
+              ? `Source: ${source}${scheduleId !== undefined ? ` · ${scheduleId}` : ""} — click for provenance`
+              : `Source: ${source}`
+          }
+          onClick={() => setProvenanceOpen((open) => !open)}
+          disabled={!hasProvenanceDetails}
         >
-          {SOURCE_LABELS[source]?.label ?? source}
+          {sourceChipText}
+        </button>
+      )}
+      {origin !== undefined && (
+        <span
+          className={`rounded border px-1.5 py-0 text-[10px] font-medium ${ORIGIN_BADGE_CLASSNAMES[origin]}`}
+          title={`Schedule origin: ${origin}`}
+        >
+          {origin}
         </span>
       )}
       {durationText && (
@@ -126,7 +188,57 @@ export function RequestSeparator({
         </div>
       )}
     </div>
+    {provenanceOpen && hasProvenanceDetails && (
+      <ProvenanceDetails source={source!} metadata={metadata!} />
+    )}
+    </div>
   );
+}
+
+/**
+ * Expandable provenance section. Renders source, origin (when scheduled),
+ * and the full adapter-stamped metadata bag. Hidden by default — opens
+ * when the user clicks the source chip on the request separator.
+ */
+function ProvenanceDetails({
+  source,
+  metadata,
+}: {
+  source: string;
+  metadata: Record<string, unknown>;
+}) {
+  const entries: Array<[string, unknown]> = [["source", source]];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined) continue;
+    entries.push([key, value]);
+  }
+
+  return (
+    <div className="border-t border-slate-800/40 bg-slate-950/70 px-4 py-2">
+      <div className="text-[10px] font-medium uppercase text-slate-500 mb-1">Provenance</div>
+      <div className="space-y-0.5 text-[11px]">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex items-start justify-between gap-2">
+            <span className="text-slate-500 shrink-0 font-mono">{key}</span>
+            <span className="text-slate-300 text-right break-all font-mono">
+              {formatProvenanceValue(value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatProvenanceValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function OverflowButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {

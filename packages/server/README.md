@@ -43,6 +43,7 @@ const router = createFlowApiRouter({
   stores,
   adapters: [
     // createMcpTransportAdapter({ /* ... */ }),
+    // createScheduledTransportAdapter({ /* ... */ }), // @flow-state-dev/scheduled
     // createWebhookTransportAdapter({ /* ... */ }),
   ],
 });
@@ -99,9 +100,11 @@ const stripeFlow = defineFlow({
 `requireUser: false` opts the flow out of user-scope identity at build
 time — `defineFlow` rejects user-scope state, `clientData`, and resource
 declarations on such flows. Bundled helpers `createHmacVerifier` (Stripe
-and GitHub-style signatures), `createHs256JwtVerifier`, and
-`extractBearerToken` cover the most common verification patterns; hosts
-plug in their own for anything else.
+and GitHub-style signatures), `createHs256JwtVerifier`,
+`createBearerSecretPrincipalResolver` (constant-time bearer-token check
+for scheduled and webhook callers), and `extractBearerToken` cover the
+most common verification patterns; hosts plug in their own for anything
+else.
 
 See [`docs/architecture/authentication.md`](../../docs/architecture/authentication.md)
 for the full contract, resolution order, and `requireUser: false`

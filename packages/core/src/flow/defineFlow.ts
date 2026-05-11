@@ -29,6 +29,7 @@ import type {
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
+import { validateSchedulesConfig } from "../types/schedules";
 import { warnDeprecated } from "../utils/deprecation";
 import { introspectStateKeys } from "../utils/zod-introspect";
 
@@ -515,6 +516,9 @@ function createFlowInstance(
   const mcp = definition.mcp;
   validateMcpConfig(kind, mcp, actions);
 
+  const schedules = definition.schedules;
+  validateSchedulesConfig(kind, schedules, actions);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -532,6 +536,7 @@ function createFlowInstance(
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
     mcp,
+    schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
@@ -582,6 +587,7 @@ export function defineFlow<
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
     mcp: baseInstance.mcp,
+    schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,

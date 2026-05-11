@@ -1,0 +1,37 @@
+{
+  "name": "@flow-state-dev/scheduled",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "cron-parser": "^5.0.0"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "zod": "^3.25.76"
+  },
+  "scripts": {
+    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/testing build && vitest --root ."
+  }
+}
