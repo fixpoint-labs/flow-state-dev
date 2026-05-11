@@ -8,6 +8,7 @@ import type {
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ResourceCollectionRef } from "./resource-collection";
+import { validateClientProjection } from "../utils/client-projection";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -50,12 +51,20 @@ export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
 /**
  * Client visibility configuration for a single resource.
  * Controls what data is exposed to the client and how.
+ *
+ * Field-projection fields (`expose`, `exclude`, `data`) are mutually
+ * exclusive — set at most one per resource. With none set, the full state
+ * is sent to the client (identity default).
  */
-export type ResourceClientConfig = {
+export type ResourceClientConfig<TState extends JsonObject = JsonObject> = {
   /** Content access permissions — governs access to the rendered content body. */
   content?: ResourceClientContentConfig;
-  /** Derives client-visible metadata from the resource's state. Appears under `resources[ref].clientData` in the snapshot. */
-  data?: ResourceClientDataFn;
+  /** Whitelist: only these state fields reach the client. Mutually exclusive with `exclude` and `data`. */
+  expose?: ReadonlyArray<keyof TState & string>;
+  /** Blacklist: every state field reaches the client EXCEPT these. Mutually exclusive with `expose` and `data`. */
+  exclude?: ReadonlyArray<keyof TState & string>;
+  /** Escape hatch for computed / transformed projections. Mutually exclusive with `expose` and `exclude`. */
+  data?: ResourceClientDataFn<TState>;
 };
 
 /**
@@ -75,8 +84,12 @@ export type CollectionStateClientConfig = {
 /**
  * Client visibility configuration for a collection resource.
  * Controls what data is exposed to the client and how.
+ *
+ * Field-projection fields (`expose`, `exclude`, `data`) are mutually
+ * exclusive — set at most one per collection. With none set, each item's
+ * full state is sent to the client (identity default).
  */
-export type CollectionClientConfig = {
+export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
   /** Content access permissions — governs access to rendered content bodies and CRUD operations. */
   content?: CollectionClientContentConfig;
   /**
@@ -85,15 +98,20 @@ export type CollectionClientConfig = {
    * effect on the always-emitted `count`.
    */
   state?: CollectionStateClientConfig;
+  /** Whitelist: only these state fields reach the client. Mutually exclusive with `exclude` and `data`. */
+  expose?: ReadonlyArray<keyof TState & string>;
+  /** Blacklist: every state field reaches the client EXCEPT these. Mutually exclusive with `expose` and `data`. */
+  exclude?: ReadonlyArray<keyof TState & string>;
   /**
-   * Derives client-visible metadata from each instance's state. Surfaces as
-   * `clientData` on items returned by the list/get-state endpoints and on
-   * snapshot `prefetched` entries (the latter only when `state.read: true`).
+   * Escape hatch for computed / transformed per-item projections. Mutually
+   * exclusive with `expose` and `exclude`. Surfaces as `clientData` on items
+   * returned by the list/get-state endpoints and on snapshot `prefetched`
+   * entries (the latter only when `state.read: true`).
    */
-  data?: ResourceClientDataFn;
+  data?: ResourceClientDataFn<TState>;
 };
 
-export type ResourceConfig = {
+export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Logical reference name. Used as the storage namespace identifier
    * (combined with `scope` and `flowIsolation` to form the storage key).
@@ -133,7 +151,7 @@ export type ResourceConfig = {
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
-  client?: ResourceClientConfig;
+  client?: ResourceClientConfig<TState>;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -218,7 +236,7 @@ export type ResourceRefOptions = {
 
 export function defineResource<
   const TStateSchema extends ZodTypeAny,
-  const TConfig extends ResourceConfig & { stateSchema: TStateSchema }
+  const TConfig extends ResourceConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
 ): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
@@ -237,6 +255,13 @@ export function defineResource<
       `defineResource() rejects flowIsolation:true on session-scoped resources — sessions are intrinsically flow-bound`
     );
   }
+
+  validateClientProjection({
+    definer: "defineResource()",
+    ref: config.ref ?? "(unnamed)",
+    stateSchema: config.stateSchema,
+    client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
+  });
 
   return config as unknown as TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>>;
 }

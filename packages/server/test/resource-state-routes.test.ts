@@ -32,7 +32,7 @@ const artifactsCollection = defineResourceCollection({
   client: {
     content: { read: true, create: true, update: true, delete: true },
     state: { read: true },
-    data: (state) => ({ title: state.title }),
+    expose: ["title"],
   },
 });
 
@@ -450,5 +450,110 @@ describe("handleGetResourceManifest", () => {
       { registry: ctx.registry, stores: ctx.stores }
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-580: client projection shapes (identity, expose, exclude, data)
+// ---------------------------------------------------------------------------
+
+describe("client projection shapes (FIX-580)", () => {
+  const itemStateSchema = z.object({
+    title: z.string(),
+    body: z.string(),
+    secret: z.string(),
+  });
+
+  function buildProjectionCtx(client: Parameters<typeof defineResourceCollection>[0]["client"]) {
+    const items = defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: itemStateSchema,
+      client: {
+        ...(client as object),
+      },
+    });
+    const block = handler({
+      name: "noop",
+      resources: { items },
+      execute: () => "ok",
+    });
+    const flow = defineFlow({
+      kind: "projection-flow",
+      actions: { run: { inputSchema: z.string(), block } },
+    })();
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const sessionId = "sess_proj";
+    const session: SessionRecord = {
+      id: sessionId,
+      flowKind: "projection-flow",
+      userId: "user_1",
+      state: {},
+      resources: {
+        "items/one": { title: "T", body: "B", secret: "S" },
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    return stores.session.set(sessionId, session, "any").then(() => ({
+      registry,
+      stores,
+      sessionId,
+    }));
+  }
+
+  it("ships identity state when state.read: true and no projection is set", async () => {
+    const ctx = await buildProjectionCtx({ state: { read: true } });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_proj/resources/items"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "items" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body = await res.json();
+    expect(body.items[0].clientData).toEqual({ title: "T", body: "B", secret: "S" });
+  });
+
+  it("ships only `expose` fields", async () => {
+    const ctx = await buildProjectionCtx({
+      state: { read: true },
+      expose: ["title"],
+    });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_proj/resources/items"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "items" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body = await res.json();
+    expect(body.items[0].clientData).toEqual({ title: "T" });
+  });
+
+  it("omits `exclude` fields and keeps the rest", async () => {
+    const ctx = await buildProjectionCtx({
+      state: { read: true },
+      exclude: ["secret"],
+    });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_proj/resources/items"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "items" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body = await res.json();
+    expect(body.items[0].clientData).toEqual({ title: "T", body: "B" });
+  });
+
+  it("invokes `data` when set (escape hatch still works)", async () => {
+    const ctx = await buildProjectionCtx({
+      state: { read: true },
+      data: (s) => ({ summary: `${s.title}/${s.body}` }),
+    });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_proj/resources/items"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "items" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body = await res.json();
+    expect(body.items[0].clientData).toEqual({ summary: "T/B" });
   });
 });

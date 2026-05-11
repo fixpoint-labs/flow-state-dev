@@ -60,26 +60,8 @@ export const memosCollection = defineResourceCollection({
   scope: "session",
   stateSchema: memoStateSchema,
   client: {
-    // Project the full memo state so the document area renders structured
-    // body sections, the metrics row, and any error message without
-    // round-tripping content fetches. The body payload is structured prose
-    // (not arbitrary content) so the projection size stays bounded.
-    data: (state) => ({
-      status: state.status,
-      agentName: state.agentName,
-      agentTeam: state.agentTeam,
-      phaseId: state.phaseId,
-      ticker: state.ticker,
-      date: state.date,
-      label: state.label,
-      headline: state.headline,
-      rating: state.rating,
-      body: state.body,
-      metrics: state.metrics,
-      startedAt: state.startedAt,
-      completedAt: state.completedAt,
-      errorMessage: state.errorMessage,
-    }),
+    // No projection declared — the renderer needs every field on the memo
+    // state, so the identity default ships the whole state to the client.
   },
 });
 

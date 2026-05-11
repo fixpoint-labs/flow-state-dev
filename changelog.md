@@ -2,7 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
-## 2026-05-08
+## 2026-05-11
+
+### Resource client projection shortcuts: `expose`, `exclude`, and identity default (FIX-580)
+
+- `defineResource` and `defineResourceCollection` now accept `client.expose` (whitelist) and `client.exclude` (blacklist) alongside the existing `client.data` function. Field names in `expose` / `exclude` are type-checked against the state schema, so typos fail at build time with a `Valid keys: …` error.
+- The three projection forms are mutually exclusive. Setting more than one throws at definition time with a clear "pick one" message. Omit all three to ship the full state — the new identity default.
+- The previous silent-empty footgun is gone: `client.state.read: true` without a `data` projection no longer returns the empty-looking `{ topic }` shape. List and snapshot responses now always carry per-item `clientData` when state reading is gated on.
+- Trading-desk's `memosCollection` and the `eventActors` workspace resource migrate to the new shortcuts. The function-form `data` keeps working unchanged — it's now the documented escape hatch for computed fields.
+
+
 
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)
 

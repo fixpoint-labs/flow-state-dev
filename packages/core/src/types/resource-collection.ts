@@ -31,7 +31,7 @@ export type CollectionHookContext = {
   scopeType: ScopeType;
 };
 
-export type ResourceCollectionConfig = {
+export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
   /**
@@ -49,7 +49,7 @@ export type ResourceCollectionConfig = {
   eviction?: EvictionPolicy;
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
-  client?: CollectionClientConfig;
+  client?: CollectionClientConfig<TState>;
 
   /**
    * Number of items to inline in the snapshot's `prefetched` window for this
@@ -133,10 +133,11 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { validatePattern } from "./collection-patterns";
+import { validateClientProjection } from "../utils/client-projection";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,
-  const TConfig extends ResourceCollectionConfig & { stateSchema: TStateSchema }
+  const TConfig extends ResourceCollectionConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
 ): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
@@ -175,6 +176,13 @@ export function defineResourceCollection<
       );
     }
   }
+
+  validateClientProjection({
+    definer: "defineResourceCollection()",
+    ref: config.pattern,
+    stateSchema: config.stateSchema,
+    client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
+  });
 
   return Object.assign({}, config, {
     __brand: "ResourceCollection" as const,
