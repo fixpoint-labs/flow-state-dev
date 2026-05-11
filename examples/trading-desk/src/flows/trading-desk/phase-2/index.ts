@@ -20,7 +20,7 @@ import {
 import { phase2StateSchema, type Phase2State } from "./sequencer-state";
 import {
   deriveDebateGoal,
-  phase2RoundRobinRouter,
+  phase2RoundRobin,
   roundRobinFinalShapeSchema,
 } from "./round-robin";
 import { setupPhase2Memos } from "./setup";
@@ -84,7 +84,7 @@ export const phase2Pipeline = sequencer({
 })
   .tap(setupPhase2Memos)
   .then(deriveDebateGoal)
-  .then(phase2RoundRobinRouter)
+  .then(phase2RoundRobin)
   .tap(stashContributions)
   // Bull consolidation
   .tap(markWritingP2("bull"))

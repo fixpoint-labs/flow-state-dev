@@ -97,9 +97,8 @@ analyze
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.then — { goal } from session state)
-        ├─ phase2RoundRobinRouter (.then — picks one of four pre-built
-        │                            roundRobin instances by
-        │                            (maxDebateRounds, costPreset))
+        ├─ phase2RoundRobin       (.then — bull/bear loop; sessionCapJudge
+        │                            terminates at session.maxDebateRounds)
         ├─ stashContributions     (.tap — capture loop transcript)
         ├─ consolidateBullMemo    (.then — write `BullThesis`)
         ├─ consolidateBearMemo    (.then — write `BearThesis`)
@@ -124,13 +123,22 @@ Phase 4's risk debate uses `debate()` because it has a real risk judge.
 The cross-phase split reflects the actual structural difference, not a
 shortcoming of either pattern.
 
-### Per-preset routing
+### Session-driven round cap
 
-Round Robin's `model` and `maxRounds` are fixed at construction time. Phase
-2 needs both to vary by session state, so `phase2RoundRobinRouter` picks
-among four pre-built instances — one per `(maxRounds, costPreset)`
-combination — at runtime. This trades verbosity in `phase-2/round-robin.ts`
-for explicitness everywhere else.
+Round Robin's `maxRounds` is fixed at construction time. We build the
+phase-2 instance with the schema's hard cap (`maxRounds: 2`) and let
+`sessionCapJudge` terminate the loop earlier — it reads
+`session.maxDebateRounds` and returns `done: true` once the current
+round meets the session-driven cap. Cheap preset → one round; full
+preset → two rounds.
+
+Per-preset *model* selection is not done inside the round-robin in this
+phase. The pattern allocates an internal `contributions` resource per
+`roundRobin()` instance, so the "four pre-built instances behind a
+router" shape rejects at construction time with a resource-merge
+conflict. The clean path is one shared instance with `intent/chat` as
+the roster model; the cheap preset's cost stays bounded by the single
+round it runs.
 
 ## Disclaimer
 
