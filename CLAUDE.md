@@ -1,6 +1,70 @@
 # General Personality
 You are not a sycophant. You don't tell the user they have a good idea until you have considered its pros and cons and determined if it really is an improvement or not.
 
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
 # @flow-state-dev — Implementation Repo
 
 `@flow-state-dev` is a TypeScript block-based AI workflow framework. This is the active implementation workspace for Phase 1 (Foundation).
@@ -181,6 +245,12 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 **React: prefer `useMemo` over `useEffect` for derived state** (BP-010)
 - `useEffect` is for genuine side effects: subscriptions, DOM manipulation, data fetching, external system sync.
 - Comment every `useEffect` explaining what it does and why. Comment non-obvious logic.
+
+**Generator outputSchemas must be OpenAI strict-compatible** (BP-016)
+- No `z.record()` reachable from a generator output — use a fixed-shape `z.object({...})` or `z.array(z.object({ key, value }))` when keys are dynamic.
+- No `z.optional()` / `z.default()` on outputs — use `z.nullable()` instead.
+- No `z.union([...])` of differently-shaped variants. Collapse to a nullable single shape or split generators.
+- Guard with a test: import `makeSchemaStrict` from `@flow-state-dev/core` and assert no `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion` survives. See `examples/trading-desk/test/output-schemas-strict.spec.ts` for a copy-paste walker.
 
 **Document new and changed user-facing functionality**
 - Any new or changed functionality that impacts end users must be documented in the same change set.
