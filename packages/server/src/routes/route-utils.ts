@@ -6,7 +6,7 @@ import type {
   ResourceConfig,
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
-import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/utils";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
@@ -34,6 +34,23 @@ export function jsonResponse(status: number, body: unknown): Response {
 
 export function emptyResponse(status: number): Response {
   return new Response(null, { status });
+}
+
+/**
+ * Strip the static pattern prefix from a full storage key, leaving the
+ * "bare topic" — the identifying portion a collection author addresses
+ * items by. Returns the full key unchanged when the prefix doesn't match
+ * (defensive against caller mismatches).
+ *
+ * Example: extractBareTopic("memos/[topic]", "memos/abc") -> "abc".
+ */
+export function extractBareTopic(pattern: string, fullKey: string): string {
+  const prefix = getPatternPrefix(pattern);
+  if (prefix.length === 0) return fullKey;
+  if (fullKey === prefix) return "";
+  const sep = prefix + "/";
+  if (fullKey.startsWith(sep)) return fullKey.slice(sep.length);
+  return fullKey;
 }
 
 export function asObject(value: unknown): Record<string, unknown> | undefined {

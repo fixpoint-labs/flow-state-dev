@@ -17,7 +17,7 @@ import type {
   ResourceCollectionConfig,
   ResourceConfig
 } from "@flow-state-dev/core/types";
-import { matchesPattern } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/utils";
 import {
   getPersistedData,
@@ -27,7 +27,7 @@ import {
   type ResourcePersistenceContext
 } from "../resources/internal";
 import { isJsonObject } from "../utils/json-helpers";
-import { isResourceConfig } from "./route-utils";
+import { extractBareTopic, isResourceConfig } from "./route-utils";
 
 /**
  * Per-entry projection result. `null` means "not applicable" (e.g. no state
@@ -232,14 +232,10 @@ function deriveContentType(
   return "text/plain";
 }
 
-/** Storage prefix used by the panel to label a collection (display only). */
+/** Display-friendly storage prefix (e.g. "memos/" for "memos/[topic]"). */
 function deriveStoragePrefix(pattern: string): string {
-  const idx = pattern.indexOf("[");
-  const wildcard = pattern.indexOf("*");
-  const cuts = [idx, wildcard].filter((n) => n >= 0);
-  if (cuts.length === 0) return pattern;
-  const cut = Math.min(...cuts);
-  return pattern.slice(0, cut);
+  const prefix = getPatternPrefix(pattern);
+  return prefix.length === 0 ? "" : `${prefix}/`;
 }
 
 /**
@@ -355,4 +351,231 @@ export async function buildDebugResourceTree(opts: {
     generatedAt: new Date().toISOString(),
     resources: entries
   };
+}
+
+/**
+ * One item in a collection's paginated debug listing.
+ */
+export interface DebugCollectionItem {
+  topic: string;
+  storageKey: string;
+  state: JsonObject | null;
+  clientView: ClientView;
+  hasContent: boolean;
+  contentByteLength?: number;
+  contentType?: string;
+  contentVisibleToClient: boolean;
+}
+
+export interface DebugCollectionItemsResponse {
+  items: DebugCollectionItem[];
+  nextCursor: string | null;
+}
+
+/** Outcome of `buildDebugCollectionItems` — distinguishes 404 vs 400. */
+export type BuildItemsResult =
+  | { ok: true; data: DebugCollectionItemsResponse }
+  | {
+      ok: false;
+      kind: "session_not_found" | "resource_not_found" | "not_collection" | "bad_request";
+      detail?: string;
+    };
+
+const MAX_PAGE_LIMIT = 500;
+const DEFAULT_PAGE_LIMIT = 50;
+
+/**
+ * Build a paginated debug listing of a collection's items. Topic filter is a
+ * case-sensitive substring match on the bare topic. Pagination uses an opaque
+ * base64 cursor encoding the last-yielded storage key in sorted order.
+ */
+export async function buildDebugCollectionItems(opts: {
+  sessionId: string;
+  ref: string;
+  limit: number | null;
+  cursor: string | null;
+  topicFilter: string | null;
+  ctx: ResourcePersistenceContext;
+}): Promise<BuildItemsResult> {
+  const { sessionId, ref, ctx } = opts;
+  const limit = clampLimit(opts.limit);
+  if (limit === null) {
+    return { ok: false, kind: "bad_request", detail: "invalid_limit" };
+  }
+  const after = decodeCursor(opts.cursor);
+  if (after === undefined) {
+    return { ok: false, kind: "bad_request", detail: "invalid_cursor" };
+  }
+
+  const session = await ctx.stores.session.get(sessionId);
+  if (!session) return { ok: false, kind: "session_not_found" };
+  const flow = ctx.registry.get(session.flowKind);
+  if (!flow) return { ok: false, kind: "session_not_found" };
+
+  // Locate the requested config via grouping so dual-registered aliases
+  // resolve to the same collection regardless of which name was used.
+  const groups = groupResources(flow as ResourceFlowLike);
+  const group = groups.find((g) => g.aliases.includes(ref));
+  if (!group) return { ok: false, kind: "resource_not_found" };
+  if (!isCollectionConfig(group.config)) {
+    return { ok: false, kind: "not_collection" };
+  }
+  const config = group.config;
+  const pattern = config.pattern;
+
+  const persisted = await getPersistedData(
+    ctx,
+    flow as ResourceFlowLike,
+    sessionId,
+    group.scope
+  );
+  if (!persisted) {
+    return {
+      ok: true,
+      data: { items: [], nextCursor: null }
+    };
+  }
+
+  const allKeys = Object.keys(persisted.resources)
+    .filter((k) => matchesPattern(pattern, k))
+    .sort();
+  const startIdx =
+    after === null ? 0 : findCursorIndex(allKeys, after);
+  const filter = opts.topicFilter ?? "";
+  const items: DebugCollectionItem[] = [];
+  let scanned = startIdx;
+  for (; scanned < allKeys.length && items.length < limit; scanned++) {
+    const storageKey = allKeys[scanned]!;
+    const topic = extractBareTopic(pattern, storageKey);
+    if (filter.length > 0 && !topic.includes(filter)) continue;
+    const rawState = persisted.resources[storageKey];
+    const state: JsonObject | null = isJsonObject(rawState)
+      ? (rawState as JsonObject)
+      : null;
+    const rawContent = persisted.content[storageKey];
+    const hasContent = typeof rawContent === "string";
+    items.push({
+      topic,
+      storageKey,
+      state,
+      clientView: computeClientView(config, state),
+      hasContent,
+      contentByteLength: hasContent
+        ? Buffer.byteLength(rawContent!, "utf-8")
+        : undefined,
+      contentType: hasContent ? deriveContentType(config) : undefined,
+      contentVisibleToClient: config.client?.content?.read === true
+    });
+  }
+
+  const nextCursor =
+    scanned < allKeys.length ? encodeCursor(allKeys[scanned - 1]!) : null;
+  return { ok: true, data: { items, nextCursor } };
+}
+
+function clampLimit(raw: number | null): number | null {
+  if (raw === null) return DEFAULT_PAGE_LIMIT;
+  if (!Number.isFinite(raw) || raw <= 0 || raw > MAX_PAGE_LIMIT) return null;
+  return Math.floor(raw);
+}
+
+function encodeCursor(storageKey: string): string {
+  return Buffer.from(storageKey, "utf-8").toString("base64url");
+}
+
+/**
+ * Decode a pagination cursor. Returns `null` for an absent cursor (start of
+ * list), a decoded string for a valid cursor, and `undefined` when the cursor
+ * is malformed (handler returns 400).
+ */
+function decodeCursor(raw: string | null): string | null | undefined {
+  if (raw === null) return null;
+  try {
+    const decoded = Buffer.from(raw, "base64url").toString("utf-8");
+    return decoded;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resume index after a cursor. Returns the index of the first key strictly
+ * greater than the cursor key; uses linear scan since `allKeys` is already
+ * sorted and bounded by `debugCountLimit` upstream.
+ */
+function findCursorIndex(allKeys: string[], cursor: string): number {
+  for (let i = 0; i < allKeys.length; i++) {
+    if (allKeys[i]! > cursor) return i;
+  }
+  return allKeys.length;
+}
+
+/** Result returned by `lookupDebugContent`. */
+export type DebugContentResult =
+  | { ok: true; body: string; contentType: string }
+  | {
+      ok: false;
+      kind:
+        | "session_not_found"
+        | "resource_not_found"
+        | "not_collection"
+        | "is_collection"
+        | "content_not_found";
+    };
+
+/**
+ * Locate a content blob for a single resource (when `topic` is null) or for
+ * one item of a collection. Bypasses `client.content.read` since this is the
+ * debug surface. Returns a typed failure when the session, ref, or content
+ * cannot be resolved.
+ */
+export async function lookupDebugContent(opts: {
+  sessionId: string;
+  ref: string;
+  topic: string | null;
+  ctx: ResourcePersistenceContext;
+}): Promise<DebugContentResult> {
+  const { sessionId, ref, topic, ctx } = opts;
+  const session = await ctx.stores.session.get(sessionId);
+  if (!session) return { ok: false, kind: "session_not_found" };
+  const flow = ctx.registry.get(session.flowKind);
+  if (!flow) return { ok: false, kind: "session_not_found" };
+
+  const groups = groupResources(flow as ResourceFlowLike);
+  const group = groups.find((g) => g.aliases.includes(ref));
+  if (!group) return { ok: false, kind: "resource_not_found" };
+  const isColl = isCollectionConfig(group.config);
+  if (topic === null && isColl) return { ok: false, kind: "is_collection" };
+  if (topic !== null && !isColl) return { ok: false, kind: "not_collection" };
+
+  const persisted = await getPersistedData(
+    ctx,
+    flow as ResourceFlowLike,
+    sessionId,
+    group.scope
+  );
+  if (!persisted) return { ok: false, kind: "content_not_found" };
+
+  const storageKey =
+    topic === null
+      ? group.aliases[0]!
+      : joinPatternTopic(
+          (group.config as ResourceCollectionConfig).pattern,
+          topic
+        );
+  const body = persisted.content[storageKey];
+  if (typeof body !== "string") {
+    return { ok: false, kind: "content_not_found" };
+  }
+  return {
+    ok: true,
+    body,
+    contentType: deriveContentType(group.config)
+  };
+}
+
+/** Compose a full collection storage key from pattern prefix + bare topic. */
+function joinPatternTopic(pattern: string, topic: string): string {
+  const prefix = getPatternPrefix(pattern);
+  return prefix.length === 0 ? topic : `${prefix}/${topic}`;
 }

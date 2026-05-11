@@ -13,7 +13,12 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse } from "./route-utils";
-import { buildDebugResourceTree } from "./debug-snapshot";
+import {
+  buildDebugCollectionItems,
+  buildDebugResourceTree,
+  lookupDebugContent,
+  type DebugContentResult
+} from "./debug-snapshot";
 
 /**
  * Resolved debug-endpoint configuration, with env-fallback + defaults applied.
@@ -121,8 +126,6 @@ function matchesAllowlist(origin: string, allowlist: string[]): boolean {
   return false;
 }
 
-const NOT_IMPLEMENTED = jsonResponse(501, { error: "not_implemented" });
-
 export async function handleDebugListResources(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "debug_list_resources" }>,
@@ -143,27 +146,69 @@ export async function handleDebugListResources(
 
 export async function handleDebugListCollectionItems(
   request: Request,
-  _route: Extract<ParsedFlowRoute, { kind: "debug_list_collection_items" }>,
+  route: Extract<ParsedFlowRoute, { kind: "debug_list_collection_items" }>,
   ctx: DebugRouteContext
 ): Promise<Response> {
   const denied = assertDebugAllowed(request, ctx.debug);
   if (denied !== null) return denied;
-  return NOT_IMPLEMENTED;
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get("limit");
+  const cursor = url.searchParams.get("cursor");
+  const topic = url.searchParams.get("topic");
+  const limit =
+    limitParam === null ? null : Number.parseInt(limitParam, 10);
+  if (limitParam !== null && !Number.isFinite(limit)) {
+    return jsonResponse(400, {
+      error: "bad_request",
+      details: "limit must be a positive integer"
+    });
+  }
+  const result = await buildDebugCollectionItems({
+    sessionId: route.sessionId,
+    ref: route.ref,
+    limit: limit as number | null,
+    cursor,
+    topicFilter: topic,
+    ctx: { registry: ctx.registry, stores: ctx.stores }
+  });
+  if (result.ok) return jsonResponse(200, result.data);
+  if (result.kind === "session_not_found") {
+    return jsonResponse(404, { error: "session_not_found" });
+  }
+  if (result.kind === "resource_not_found") {
+    return jsonResponse(404, { error: "resource_not_found", ref: route.ref });
+  }
+  if (result.kind === "not_collection") {
+    return jsonResponse(400, {
+      error: "bad_request",
+      details: "ref is not a collection"
+    });
+  }
+  return jsonResponse(400, {
+    error: "bad_request",
+    details: result.detail ?? "invalid_request"
+  });
 }
 
 export async function handleDebugGetResourceContent(
   request: Request,
-  _route: Extract<ParsedFlowRoute, { kind: "debug_get_resource_content" }>,
+  route: Extract<ParsedFlowRoute, { kind: "debug_get_resource_content" }>,
   ctx: DebugRouteContext
 ): Promise<Response> {
   const denied = assertDebugAllowed(request, ctx.debug);
   if (denied !== null) return denied;
-  return NOT_IMPLEMENTED;
+  const result = await lookupDebugContent({
+    sessionId: route.sessionId,
+    ref: route.ref,
+    topic: null,
+    ctx: { registry: ctx.registry, stores: ctx.stores }
+  });
+  return contentResponse(result, route.ref, null);
 }
 
 export async function handleDebugGetCollectionItemContent(
   request: Request,
-  _route: Extract<
+  route: Extract<
     ParsedFlowRoute,
     { kind: "debug_get_collection_item_content" }
   >,
@@ -171,5 +216,54 @@ export async function handleDebugGetCollectionItemContent(
 ): Promise<Response> {
   const denied = assertDebugAllowed(request, ctx.debug);
   if (denied !== null) return denied;
-  return NOT_IMPLEMENTED;
+  const result = await lookupDebugContent({
+    sessionId: route.sessionId,
+    ref: route.ref,
+    topic: route.topic,
+    ctx: { registry: ctx.registry, stores: ctx.stores }
+  });
+  return contentResponse(result, route.ref, route.topic);
+}
+
+/**
+ * Translate a `lookupDebugContent` result into the wire response. Success
+ * cases stream the body with its derived content-type; failures map to the
+ * canonical 404 / 400 error codes per the spec's error taxonomy.
+ */
+function contentResponse(
+  result: DebugContentResult,
+  ref: string,
+  topic: string | null
+): Response {
+  if (result.ok) {
+    return new Response(result.body, {
+      status: 200,
+      headers: {
+        "content-type": `${result.contentType}; charset=utf-8`
+      }
+    });
+  }
+  if (result.kind === "session_not_found") {
+    return jsonResponse(404, { error: "session_not_found" });
+  }
+  if (result.kind === "resource_not_found") {
+    return jsonResponse(404, { error: "resource_not_found", ref });
+  }
+  if (result.kind === "is_collection") {
+    return jsonResponse(400, {
+      error: "bad_request",
+      details: "ref is a collection — request /items or a specific topic"
+    });
+  }
+  if (result.kind === "not_collection") {
+    return jsonResponse(400, {
+      error: "bad_request",
+      details: "ref is not a collection but a topic was provided"
+    });
+  }
+  return jsonResponse(404, {
+    error: "content_not_found",
+    ref,
+    topic: topic ?? undefined
+  });
 }
