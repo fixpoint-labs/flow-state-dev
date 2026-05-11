@@ -8,9 +8,9 @@
 import type {
   CollectionClientConfig,
   JsonObject,
-  ResourceClientDataFn,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { resolveClientProjection } from "@flow-state-dev/core/utils";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
@@ -267,12 +267,11 @@ export async function handleUpdateResourceContent(
 const STATE_LIST_DEFAULT_LIMIT = 50;
 const STATE_LIST_MAX_LIMIT = 200;
 
-function applyClientData(
-  config: { client?: Pick<CollectionClientConfig, "data"> },
+async function applyClientData(
+  config: { client?: CollectionClientConfig },
   state: JsonObject
-): unknown {
-  const fn = config.client?.data as ResourceClientDataFn | undefined;
-  return typeof fn === "function" ? fn(state) : undefined;
+): Promise<unknown> {
+  return await resolveClientProjection(config.client, state);
 }
 
 function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
@@ -347,8 +346,7 @@ export async function handleListCollectionState(
   for (const key of pageKeys) {
     const state = isJsonObject(persisted[key]) ? (persisted[key] as JsonObject) : {};
     const item: { topic: string; clientData?: unknown } = { topic: key };
-    const data = applyClientData(config, state);
-    if (data !== undefined) item.clientData = data;
+    item.clientData = await applyClientData(config, state);
     items.push(item);
   }
 
@@ -422,8 +420,7 @@ export async function handleGetCollectionItemState(
 
   const state = isJsonObject(value) ? (value as JsonObject) : {};
   const out: { topic: string; clientData?: unknown } = { topic: storageKey };
-  const data = applyClientData(config, state);
-  if (data !== undefined) out.clientData = data;
+  out.clientData = await applyClientData(config, state);
   return jsonResponse(200, out);
 }
 
@@ -458,7 +455,16 @@ export async function handleGetResourceManifest(
 
     const content = client.content as Record<string, unknown> | undefined;
     const state = client.state as Record<string, unknown> | undefined;
-    const hasClientData = typeof client.data === "function";
+    // clientData ships whenever the resource actually delivers per-item
+    // state. For collections that's `state.read === true` — the
+    // list/get-state routes and snapshot prefetch both gate on it. For
+    // single resources, a declared projection (`data` / `expose` /
+    // `exclude`) is the opt-in; content-only resources stay state-private.
+    const hasProjection =
+      typeof client.data === "function" ||
+      Array.isArray(client.expose) ||
+      Array.isArray(client.exclude);
+    const hasClientData = isCollection ? state?.read === true : hasProjection;
 
     // Inclusion rule: presence of any client-visible affordance — a truthy
     // permission flag in `content`/`state`, or a `data` projection. Mirrors

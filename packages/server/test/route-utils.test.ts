@@ -140,4 +140,33 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
     });
     expect(out).toEqual({ profile: { clientData: { name: "Ada" } } });
   });
+
+  it("omits clientData for content-only single resources (no projection declared)", async () => {
+    const out = await buildResourceSnapshot({
+      configs: {
+        profile: defineResource({
+          scope: "session",
+          stateSchema: z.object({ secret: z.string() }),
+          client: { content: { read: true } },
+        }),
+      },
+      persisted: { profile: { secret: "S" } },
+    });
+    expect(out).toEqual({ profile: {} });
+  });
+
+  it("ships identity state for a single resource with no projection but no content gate either", async () => {
+    // expose: ["title"] is the explicit opt-in for a single resource
+    const out = await buildResourceSnapshot({
+      configs: {
+        doc: defineResource({
+          scope: "session",
+          stateSchema: z.object({ title: z.string(), secret: z.string() }),
+          client: { expose: ["title"] },
+        }),
+      },
+      persisted: { doc: { title: "T", secret: "S" } },
+    });
+    expect(out).toEqual({ doc: { clientData: { title: "T" } } });
+  });
 });
