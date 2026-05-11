@@ -62,6 +62,7 @@ export const memosCollection = defineResourceCollection({
   client: {
     // No projection declared — the renderer needs every field on the memo
     // state, so the identity default ships the whole state to the client.
+    state: { read: true },
   },
 });
 

@@ -11,7 +11,7 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - The previous silent-empty footgun is gone: `client.state.read: true` without a `data` projection no longer returns the empty-looking `{ topic }` shape. List and snapshot responses now always carry per-item `clientData` when state reading is gated on.
 - Trading-desk's `memosCollection` and the `eventActors` workspace resource migrate to the new shortcuts. The function-form `data` keeps working unchanged — it's now the documented escape hatch for computed fields.
 
-
+## 2026-05-08
 
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)
 
