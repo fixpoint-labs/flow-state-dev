@@ -11,6 +11,7 @@
  * without threading them through input schemas.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   consolidateBearMemo,
   consolidateBullMemo,
@@ -41,13 +42,12 @@ import {
 const stashContributions = handler({
   name: "p2-stash-contributions",
   inputSchema: roundRobinFinalShapeSchema,
-  outputSchema: roundRobinFinalShapeSchema,
+  outputSchema: z.void(),
   sequencerStateSchema: phase2StateSchema,
   execute: async (input, ctx) => {
     await ctx.sequencer!.patchState({
       contributions: input.contributions,
     });
-    return input;
   },
 });
 
@@ -55,11 +55,10 @@ const stashContributions = handler({
 const stashBullThesis = handler({
   name: "p2-stash-bull",
   inputSchema: bullThesisOutputSchema,
-  outputSchema: bullThesisOutputSchema,
+  outputSchema: z.void(),
   sequencerStateSchema: phase2StateSchema,
   execute: async (thesis: BullThesisOutput, ctx) => {
     await ctx.sequencer!.patchState({ bullThesis: thesis });
-    return thesis;
   },
 });
 
@@ -67,11 +66,10 @@ const stashBullThesis = handler({
 const stashBearThesis = handler({
   name: "p2-stash-bear",
   inputSchema: bearThesisOutputSchema,
-  outputSchema: bearThesisOutputSchema,
+  outputSchema: z.void(),
   sequencerStateSchema: phase2StateSchema,
   execute: async (thesis: BearThesisOutput, ctx) => {
     await ctx.sequencer!.patchState({ bearThesis: thesis });
-    return thesis;
   },
 });
 
