@@ -19,9 +19,11 @@
   },
   "dependencies": {
     "@flow-state-dev/server": "workspace:*",
-    "better-sqlite3": "^11.0.0"
+    "better-sqlite3": "^11.0.0",
+    "cron-parser": "^5.0.0"
   },
   "devDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0"
   },

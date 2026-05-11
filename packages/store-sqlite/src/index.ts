@@ -84,6 +84,8 @@ export {
   createSQLiteTraceStore
 };
 
+export { createSQLiteScheduleIndex } from "./schedule-index";
+
 export type { SQLiteTraceStoreOptions };
 export type { CreateSQLiteRequestStoreOptions } from "./request-store";
 

@@ -733,7 +733,13 @@ importers:
       better-sqlite3:
         specifier: ^11.0.0
         version: 11.10.0
+      cron-parser:
+        specifier: ^5.0.0
+        version: 5.5.0
     devDependencies:
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
