@@ -174,6 +174,7 @@ const sidebars: SidebarsConfig = {
             "devtool/overview",
             "devtool/setup",
             "devtool/embedding",
+            "devtool/debug-vs-client-state",
           ],
         },
       ],
