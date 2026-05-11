@@ -19,9 +19,13 @@ const SHARED_PREAMBLE = [
   "  - label:    a short title (e.g. \"Fundamentals memo\")",
   "  - headline: one sentence summarizing your conclusion",
   "  - rating:   exactly one of `constructive | neutral | cautious`",
-  "  - metrics:  the four-key map specified for your role (string values)",
+  "  - metrics:  an array of exactly four `{ key, value }` entries, using the",
+  "              four metric keys specified for your role (string values).",
+  "              Example: `[{\"key\":\"revGrowth\",\"value\":\"+42%\"}, ...]`.",
   "  - body:     an array of 4 sections in the order specified for your role,",
-  "              each `{ h: string, p: string, items?: string[] }`",
+  "              each `{ h: string, p: string | null, items: string[] | null }`.",
+  "              Populate at least one of `p` or `items` per section; set the",
+  "              other to `null`.",
 ].join("\n");
 
 export const fundamentalsPrompt = [

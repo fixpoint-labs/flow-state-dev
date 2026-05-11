@@ -55,17 +55,17 @@ describe("memo-writer taps", () => {
       label: "Fundamentals memo",
       headline: "Top-line growth durable; margins stable.",
       rating: "constructive" as const,
-      metrics: {
-        revGrowth: "+42%",
-        opMargin: "62%",
-        fcfConv: "91%",
-        forwardPE: "32.5x",
-      },
+      metrics: [
+        { key: "revGrowth", value: "+42%" },
+        { key: "opMargin", value: "62%" },
+        { key: "fcfConv", value: "91%" },
+        { key: "forwardPE", value: "32.5x" },
+      ],
       body: [
-        { h: "Top of book", p: "Revenue +42% YoY." },
-        { h: "Trend", p: "Sequential acceleration." },
-        { h: "Composite reading", p: "Fundamentals supportive." },
-        { h: "Material items", items: ["Cap-ex ramp"] },
+        { h: "Top of book", p: "Revenue +42% YoY.", items: null },
+        { h: "Trend", p: "Sequential acceleration.", items: null },
+        { h: "Composite reading", p: "Fundamentals supportive.", items: null },
+        { h: "Material items", p: null, items: ["Cap-ex ramp"] },
       ],
     };
     const result = await testBlock(commitBlock, {

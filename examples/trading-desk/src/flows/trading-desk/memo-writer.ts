@@ -97,7 +97,9 @@ export function commitMemo(shortName: Phase1MemoShortName) {
         headline: thesis.headline,
         rating: thesis.rating,
         body: thesis.body,
-        metrics: thesis.metrics,
+        // Flatten the array-of-pairs back into the stored `Record<string,string>`
+        // shape. See thesis-schema.ts for why the wire format is an array.
+        metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
         completedAt,
         errorMessage: null,
       };

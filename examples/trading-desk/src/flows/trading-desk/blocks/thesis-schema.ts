@@ -8,26 +8,23 @@
  * without round-tripping through the full memo state.
  */
 import { z } from "zod";
+import { thesisSection } from "../resources";
 
-const thesisSection = z.union([
-  z.object({
-    h: z.string(),
-    p: z.string(),
-    items: z.array(z.string()).optional(),
-  }),
-  z.object({
-    h: z.string(),
-    items: z.array(z.string()),
-    p: z.string().optional(),
-  }),
-]);
-
-/** Output schema enforced on the analyst generators. */
+/**
+ * Output schema enforced on the analyst generators.
+ *
+ * `metrics` is an array of `{ key, value }` pairs rather than a `Record`:
+ * OpenAI strict structured-output requires a closed `properties` set, so an
+ * open string-keyed map (`z.record`) trips the schema check. Each analyst
+ * still emits the four role-specific keys named in its prompt; the writer
+ * (`commitMemo`) flattens the array to a `Record<string, string>` before
+ * persisting, so the stored memo shape is unchanged.
+ */
 export const thesisOutputSchema = z.object({
   label: z.string(),
   headline: z.string(),
   rating: z.enum(["constructive", "neutral", "cautious"]),
-  metrics: z.record(z.string(), z.string()),
+  metrics: z.array(z.object({ key: z.string(), value: z.string() })),
   body: z.array(thesisSection),
 });
 

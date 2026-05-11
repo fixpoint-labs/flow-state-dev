@@ -21,18 +21,16 @@ export type MemoStatus = z.infer<typeof memoStatusSchema>;
  *  research-manager memo body is `Array<thesisSection>`. Exported so
  *  Phase 2 schemas (and any later phase) can reuse it instead of
  *  redeclaring the same union. */
-export const thesisSection = z.union([
-  z.object({
-    h: z.string(),
-    p: z.string(),
-    items: z.array(z.string()).optional(),
-  }),
-  z.object({
-    h: z.string(),
-    items: z.array(z.string()),
-    p: z.string().optional(),
-  }),
-]);
+// OpenAI strict structured-output requires every property to be in `required`.
+// `.nullable()` keeps the key required but allows null; `.optional()` drops the
+// key from `required` and trips the strict-mode schema check. At least one of
+// `p` or `items` should be non-null per section — enforced via prompt, not
+// schema.
+export const thesisSection = z.object({
+  h: z.string(),
+  p: z.string().nullable(),
+  items: z.array(z.string()).nullable(),
+});
 
 export type ThesisSection = z.infer<typeof thesisSection>;
 

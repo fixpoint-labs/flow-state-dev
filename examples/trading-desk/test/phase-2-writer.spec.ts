@@ -60,10 +60,10 @@ const bullThesis = {
     stop: "$132",
   },
   body: [
-    { h: "The setup", p: "Fundamentals durable; technicals trending." },
-    { h: "Why the short framing misses", p: "Bear over-weights short-term print risk." },
-    { h: "What I want to see to scale", p: "Sequential acceleration in DC revenue." },
-    { h: "Risks I am not dismissing", p: "Valuation rich; cap-ex deceleration." },
+    { h: "The setup", p: "Fundamentals durable; technicals trending.", items: null },
+    { h: "Why the short framing misses", p: "Bear over-weights short-term print risk.", items: null },
+    { h: "What I want to see to scale", p: "Sequential acceleration in DC revenue.", items: null },
+    { h: "Risks I am not dismissing", p: "Valuation rich; cap-ex deceleration.", items: null },
   ],
 };
 
@@ -78,10 +78,10 @@ const bearThesis = {
     trigger: "Next earnings",
   },
   body: [
-    { h: "The setup", p: "Multiple expansion has run ahead." },
-    { h: "Why the long framing misses", p: "Bull ignores demand-pull-forward risk." },
-    { h: "What I want to see to scale", p: "Customer commentary turning cautious." },
-    { h: "Risks I am not dismissing", p: "Squeeze on any positive surprise." },
+    { h: "The setup", p: "Multiple expansion has run ahead.", items: null },
+    { h: "Why the long framing misses", p: "Bull ignores demand-pull-forward risk.", items: null },
+    { h: "What I want to see to scale", p: "Customer commentary turning cautious.", items: null },
+    { h: "Risks I am not dismissing", p: "Squeeze on any positive surprise.", items: null },
   ],
 };
 
@@ -96,11 +96,11 @@ const investmentThesis = {
     outOfScope: "Trade sizing",
   },
   body: [
-    { h: "Resolution of the debate", p: "Bull and bear agree on durability of demand; disagree on cycle length." },
-    { h: "Synthesized thesis", p: "Lean long, smaller than max." },
-    { h: "What is in scope", p: "Direction and conviction." },
-    { h: "What is out of scope", p: "Position sizing." },
-    { h: "Key risks (named)", p: "Cycle pull-forward; cap-ex deceleration." },
+    { h: "Resolution of the debate", p: "Bull and bear agree on durability of demand; disagree on cycle length.", items: null },
+    { h: "Synthesized thesis", p: "Lean long, smaller than max.", items: null },
+    { h: "What is in scope", p: "Direction and conviction.", items: null },
+    { h: "What is out of scope", p: "Position sizing.", items: null },
+    { h: "Key risks (named)", p: "Cycle pull-forward; cap-ex deceleration.", items: null },
   ],
   stance: "bullish" as const,
   convictionScore: 0.55,
