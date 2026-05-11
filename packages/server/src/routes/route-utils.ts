@@ -7,6 +7,7 @@ import type {
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { resolveClientProjection } from "@flow-state-dev/core/utils";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord } from "../stores/types";
@@ -353,9 +354,7 @@ export async function buildResourceSnapshot(options: {
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};
-      const clientDataFn = typeof maybeConfig.client?.data === "function"
-        ? maybeConfig.client.data as (state: unknown) => unknown
-        : undefined;
+      const collectionClient = maybeConfig.client;
       const prefetchContent = maybeConfig.client?.content?.prefetch === true;
       const stateReadable = maybeConfig.client?.state?.read === true;
       const prefetchWindow = typeof maybeConfig.prefetchWindow === "number" && maybeConfig.prefetchWindow > 0
@@ -384,8 +383,8 @@ export async function buildResourceSnapshot(options: {
         for (const key of window) {
           const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
           const item: Record<string, unknown> = { topic: key };
-          if (stateReadable && clientDataFn) {
-            item.clientData = await clientDataFn(state);
+          if (stateReadable) {
+            item.clientData = await resolveClientProjection(collectionClient, state);
           } else if (!hasClient) {
             // Internal (no client config) under includeInternal: surface raw
             // state under clientData, parallel to the single-resource branch.
@@ -411,17 +410,22 @@ export async function buildResourceSnapshot(options: {
     if (!hasClient && !includeInternal) continue;
 
     const state = normalizeResourceState(config, options.persisted?.[resourceName]);
-    const clientDataFn = typeof config.client?.data === "function"
-      ? config.client.data as (state: unknown) => unknown
-      : undefined;
     const prefetch = config.client?.content?.prefetch === true;
+    // Single resources have no `state.read` gate; the projection itself is
+    // the opt-in. Resources that declare `client: { content: ... }` with no
+    // projection stay state-private — the snapshot omits `clientData`
+    // entirely, matching the pre-FIX-580 behavior.
+    const hasProjection =
+      typeof config.client?.data === "function" ||
+      Array.isArray(config.client?.expose) ||
+      Array.isArray(config.client?.exclude);
 
     const entry: Record<string, unknown> = {};
-    if (clientDataFn) {
-      entry.clientData = await clientDataFn(state);
-    } else if (!hasClient) {
+    if (!hasClient) {
       // Internal resource: raw state under clientData (see collection branch).
       entry.clientData = state;
+    } else if (hasProjection) {
+      entry.clientData = await resolveClientProjection(config.client, state);
     }
     if (prefetch && contentMap[resourceName] !== undefined) {
       entry.content = contentMap[resourceName];

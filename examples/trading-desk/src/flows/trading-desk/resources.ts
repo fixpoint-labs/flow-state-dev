@@ -70,15 +70,9 @@ export const memosCollection = defineResourceCollection({
   scope: "session",
   stateSchema: memoStateSchema,
   client: {
-    content: { read: true, prefetch: true },
+    // No projection declared — the renderer needs every field on the memo
+    // state, so the identity default ships the whole state to the client.
     state: { read: true },
-    // Project the full memo state into `clientData` so the document area
-    // renders structured body sections, the metrics row, and any error
-    // message without round-tripping content fetches. Without this the
-    // get-collection-item-state endpoint returns `{ topic }` only and the
-    // theses pane has nothing to render. Body payload is structured prose
-    // (not arbitrary content) so the projection size stays bounded.
-    data: (state) => state,
   },
 });
 

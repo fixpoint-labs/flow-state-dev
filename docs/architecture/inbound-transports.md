@@ -189,14 +189,54 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | Value | Used by |
 | -- | -- |
 | `http` | The default HTTP adapter |
-| `mcp` | MCP server adapter |
+| `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
-| `scheduled` | Scheduled dispatch |
+| `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
 | `notification` | Cross-flow event subscribers |
 
 Custom transports pick their own string. DevTool renders known sources
 with affordances (icon, label) and falls back to the raw value for
 anything else.
+
+## The scheduled adapter shape
+
+`@flow-state-dev/scheduled` (FIX-440) is the third concrete adapter
+after HTTP and MCP. It mounts a single dispatch route per flow
+(`POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`) and a
+listing sibling (`GET /api/flows/:flowKind/schedules`). Dispatch is
+fire-and-forget: the adapter builds an envelope with
+`responseEmitter: null` and returns 202 the moment `host.dispatch`
+returns the handle. Action work runs through the same runtime as
+HTTP, so `RequestRecord`, items, item log, and DevTool surface are
+identical.
+
+Schedules come in two shapes. Static schedules live on
+`flow.schedules.static` (a typed `Record<string, ScheduleConfig>`).
+Dynamic schedules are resolved at dispatch time by a
+`schedules.resolve(scheduleId, ctx) → ScheduleConfig | null` hook on
+the flow. The framework does not own schedule storage — the resolver
+backs the hook with a flow-state resource collection (via the
+reference helper `createResourceCollectionScheduleResolver`), a SQL
+table, or an external service. Static lookup happens first; the
+resolver is only called when `static[id]` returns nothing.
+
+Auth is two-phase. The dispatch endpoint runs through
+`host.resolvePrincipal` to establish the gateway principal — typically
+a system user proven via a shared scheduler secret
+(`createBearerSecretPrincipalResolver`, exported from
+`@flow-state-dev/server`). Each schedule then carries its own optional
+`principal` (the *target* user the action runs as), which wins over
+the gateway principal during dispatch. The runtime resolves
+`schedule.principal ?? gatewayPrincipal` and dispatches with that as
+the effective principal.
+
+Source and metadata propagate through to `RequestRecord` so DevTool
+and the trace channel can distinguish scheduled work: `source =
+"scheduled"`, `metadata.scheduleId`, `metadata.origin` (`"static"` or
+`"dynamic"`), `metadata.cron`, `metadata.nominalFireTime`,
+`metadata.dispatchedAt`, `metadata.timezone`. See
+[`scheduled-actions.md`](./scheduled-actions.md) for the full design
+notes.
 
 ## Conformance suite
 
@@ -216,9 +256,11 @@ createInboundTransportConformanceTests({
 });
 ```
 
-The HTTP adapter is the first conforming implementation. The MCP server
-adapter (`@flow-state-dev/mcp`) is the second; see
-[`mcp-server.md`](./mcp-server.md). Future webhook, scheduled, and
+The HTTP adapter is the first conforming implementation. The MCP
+server adapter (`@flow-state-dev/mcp`) is the second; see
+[`mcp-server.md`](./mcp-server.md). The scheduled adapter
+(`@flow-state-dev/scheduled`, FIX-440) is the third; see
+[`scheduled-actions.md`](./scheduled-actions.md). Future webhook and
 notification adapters plug into the same harness.
 
 ## Edge cases

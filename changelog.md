@@ -43,6 +43,26 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - The unused `markPhase2ErrorOnWriting` aggregate-rescue handler is removed.
 - New end-to-end spec (`examples/trading-desk/test/phase-2-e2e.spec.ts`) exercises the full `analyze` action against mocked generators and asserts all seven memos publish, the research-manager memo carries non-empty `unresolvedDisagreements`, and a bull-side failure isolates correctly.
 - New schema-strict regression spec (`examples/trading-desk/test/output-schemas-strict.spec.ts`) walks each generator output schema after `makeSchemaStrict` and fails on surviving `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion`. Copy-paste guard for any package defining generator outputs.
+- Trading-desk's `memosCollection` adopts FIX-580's identity default (omit `expose` / `exclude` / `data` and ship the full state) — replaces the interim `data: (state) => state` workaround that lived briefly during merge.
+
+### Resource client projection shortcuts: `expose`, `exclude`, and identity default (FIX-580)
+
+- `defineResource` and `defineResourceCollection` now accept `client.expose` (whitelist) and `client.exclude` (blacklist) alongside the existing `client.data` function. Field names in `expose` / `exclude` are type-checked against the state schema, so typos fail at build time with a `Valid keys: …` error.
+- The three projection forms are mutually exclusive. Setting more than one throws at definition time with a clear "pick one" message. Omit all three to ship the full state — the new identity default.
+- The previous silent-empty footgun is gone: `client.state.read: true` without a `data` projection no longer returns the empty-looking `{ topic }` shape. List and snapshot responses now always carry per-item `clientData` when state reading is gated on.
+- Trading-desk's `memosCollection` and the `eventActors` workspace resource migrate to the new shortcuts. The function-form `data` keeps working unchanged — it's now the documented escape hatch for computed fields.
+
+## 2026-05-10
+
+### Scheduled actions: declarative cron + dispatch endpoint (FIX-440)
+
+- New `schedules?` config block on `defineFlow` accepting a typed `static` map for framework-level cron jobs and a dynamic `resolve(scheduleId, ctx)` hook for per-user, per-record, and agent-created schedules. Cron strings (POSIX 5-field) are validated at registration for static entries and at dispatch for dynamic ones via `cron-parser`. The framework owns the dispatch contract; hosts run their own scheduler.
+- New `@flow-state-dev/scheduled` package shipping `createScheduledTransportAdapter`, `findScheduledRequest`, and `createResourceCollectionScheduleResolver`. Mounts `POST /api/flows/:kind/schedules/:scheduleId/dispatch` and a sibling `GET /api/flows/:kind/schedules` listing endpoint.
+- Two-phase auth: `host.resolvePrincipal` establishes the gateway principal (proves the dispatch caller is the trusted scheduler) and each schedule carries an optional `principal` that wins for the action's effective user. New `createBearerSecretPrincipalResolver` exported from `@flow-state-dev/server` for the canonical shared-scheduler-secret pattern, with constant-time `timingSafeEqual` comparison.
+- Resource-collection-backed dynamic schedules via `createResourceCollectionScheduleResolver`. Hosts that store schedule definitions in a flow-state user-scoped collection wire the resolver in one line; the helper parses `<userId>/<key>` from the URL, reads from the user-scoped store, and synthesizes `principal: { userId }`. Because the parsed userId is also the storage scope, a URL aimed at another user's data reads from an empty scope and 404s.
+- `RequestRecord.source = "scheduled"` plus structured `metadata` (`scheduleId`, `origin: "static" | "dynamic"`, `cron`, `nominalFireTime`, `dispatchedAt`, `timezone`). DevTool renders a per-row schedule-id label, a static/dynamic origin badge, and a Provenance section in the detail view.
+- Idempotency (per-process LRU keyed on `(scheduleId, nominalFireTime)`, default 60s window) and `onOverlap: "skip" | "allow"` (skip is default; uses `findScheduledRequest` over `stores.activeRequests.listAll()`). Multi-process deployments rely on the host scheduler's own idempotency.
+- Four integration guides shipped: Vercel Cron, Cloud Scheduler, EventBridge Scheduler, and a longer dynamic-schedules guide covering user-created and agent-created schedules end-to-end. Server reference page and architecture deep-dive added; locked-contracts reference and inbound-transports docs updated.
 
 ## 2026-05-08
 

@@ -74,6 +74,19 @@ next to the action. The known values are `http`, `mcp`, `webhook`,
 `scheduled`, `notification` — pick your own for custom transports, the
 framework does not enforce an enum.
 
+### Known sources
+
+| Value | Used by |
+| -- | -- |
+| `http` | The default HTTP adapter |
+| `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
+| `webhook` | Webhook receivers |
+| `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`) |
+| `notification` | Cross-flow event subscribers |
+
+DevTool renders known sources with a label and a small badge. Custom
+transport sources fall back to the raw string.
+
 `host.dispatch` is fire-and-forget. It returns a synchronous handle whose
 `liveStream` and `requestId` are available immediately, while `finished`
 resolves when the action completes. Adapters that need a streamed
@@ -95,6 +108,36 @@ from every adapter merge into the returned `{ GET, POST, PATCH, DELETE }`
 dispatcher. If two adapters declare the same `(method, path)` pair, the
 router throws `TransportRouteCollisionError` at construction time —
 better than ambiguous runtime dispatch.
+
+### Scheduled adapter shape
+
+`@flow-state-dev/scheduled` is the second concrete adapter after MCP.
+It mounts `POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`
+and a sibling `GET` for listing static schedules. Dispatch is
+fire-and-forget: the adapter constructs an envelope with
+`responseEmitter: null` and returns 202 the moment `host.dispatch`
+returns the handle. The action runs to completion under the framework
+runtime and surfaces in DevTool like any other request.
+
+Dynamic schedules are resolved at dispatch time via a hook on the flow
+definition (`schedules.resolve(scheduleId, ctx)`). The framework does
+not own schedule storage — the host backs the hook with a flow-state
+resource collection, a database table, or an external service.
+
+Auth is two-phase. The dispatch endpoint runs through
+`host.resolvePrincipal` like every other route to establish the
+gateway principal (typically a system user proven via a shared
+scheduler secret). Each schedule then carries its own `principal`,
+which wins over the gateway principal when the action runs. Static
+framework-level schedules usually omit it; per-user dynamic schedules
+synthesize it from the schedule's owner so the action runs as the
+right user.
+
+`source: "scheduled"`, `metadata.scheduleId`, `metadata.origin`
+(`"static"` or `"dynamic"`), `metadata.cron`, `metadata.nominalFireTime`,
+`metadata.dispatchedAt`, and `metadata.timezone` propagate to
+`RequestRecord` for trace and DevTool. See
+[Scheduled actions](/docs/server/scheduled) for the full surface.
 
 ## Auth
 

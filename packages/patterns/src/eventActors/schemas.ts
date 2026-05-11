@@ -15,8 +15,9 @@ import { z } from "zod";
  * append-only array. The actual entry shape is user-defined via config;
  * the resource stores them as `z.any()` to avoid generic depth issues.
  *
- * `client.data` projects the entries array so UI components can read the
- * reactive chain in real time.
+ * `client.expose` whitelists the `entries` field so UI components can read
+ * the reactive chain in real time without drifting if the state schema
+ * grows internal-only fields later.
  */
 export function createEventActorsWorkspaceResource() {
   return defineResource({
@@ -24,7 +25,7 @@ export function createEventActorsWorkspaceResource() {
     stateSchema: eventActorsWorkspaceStateSchema,
     writable: true,
     client: {
-      data: (state) => ({ entries: state.entries }),
+      expose: ["entries"],
     },
   });
 }

@@ -29,7 +29,9 @@ import type {
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
+import { validateSchedulesConfig } from "../types/schedules";
 import { warnDeprecated } from "../utils/deprecation";
+import { introspectStateKeys } from "../utils/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
 
@@ -38,22 +40,6 @@ type ScopeWithClient = {
   client?: ScopeClientConfig;
   clientData?: Record<string, unknown>;
 };
-
-/**
- * Pull the top-level field names from a Zod object-like schema, if possible.
- * Returns `undefined` when the schema isn't introspectable as an object —
- * `expose` validation is skipped silently in that case (per spec § 5).
- */
-function introspectStateKeys(stateSchema: unknown): Set<string> | undefined {
-  if (stateSchema === null || stateSchema === undefined) return undefined;
-  const schema = stateSchema as { _def?: { typeName?: string }; shape?: unknown };
-  if (schema._def?.typeName !== "ZodObject") return undefined;
-  const shape = typeof schema.shape === "function"
-    ? (schema as unknown as { shape: () => Record<string, unknown> }).shape()
-    : (schema.shape as Record<string, unknown> | undefined);
-  if (shape === undefined || shape === null || typeof shape !== "object") return undefined;
-  return new Set(Object.keys(shape));
-}
 
 /**
  * Collapse a scope's `{ client, clientData }` inputs into the canonical
@@ -530,6 +516,9 @@ function createFlowInstance(
   const mcp = definition.mcp;
   validateMcpConfig(kind, mcp, actions);
 
+  const schedules = definition.schedules;
+  validateSchedulesConfig(kind, schedules, actions);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -547,6 +536,7 @@ function createFlowInstance(
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
     mcp,
+    schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
@@ -597,6 +587,7 @@ export function defineFlow<
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
     mcp: baseInstance.mcp,
+    schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,

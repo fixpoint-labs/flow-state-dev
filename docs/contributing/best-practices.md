@@ -174,6 +174,18 @@ Update policy:
 - Why:
   - Returning `input` pollutes the items log with redundant echoes of data already present in prior items. Items should contain meaningful outputs (LLM responses, structured results), not passthrough copies. This is a generalization of BP-012: even when a handler is not state-mutation-only, echoing input as output is never correct behavior.
 
+### BP-015: Prefer `expose` / `exclude` over hand-rolled `data` projections on resource client config
+
+- Status: Active
+- Date: 2026-05-11
+- Rule:
+  - For projecting a resource or collection's state to clients, prefer `expose: [...]` for a whitelist or `exclude: [...]` for a blacklist. Reserve `data: (state) => ({...})` for computed fields that aren't on the state schema.
+  - One of the three per resource — never combine. `defineResource` and `defineResourceCollection` throw at definition time when more than one is set.
+  - Omit all three when you want the full state — that's the identity default.
+- Why:
+  - Hand-rolled `data: (state) => ({ ... })` literals drift from the state schema as fields are added. `expose` is type-checked against `stateSchema` at build time and impossible to drift silently.
+  - The identity default removes a footgun where `state.read: true` without a `data` projection returned the empty-looking `{ topic }` shape (bit trading-desk twice during Phase 2 development).
+
 ### BP-016: Generator outputSchemas must be OpenAI strict-compatible
 
 - Status: Active

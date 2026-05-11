@@ -213,6 +213,7 @@ function PanelContent({ className }: { className?: string }) {
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
         source: req.source,
+        metadata: req.metadata,
       });
     }
     if (activeRequestId && !requests.find((r) => r.id === activeRequestId)) {
