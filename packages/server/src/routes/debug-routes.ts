@@ -13,6 +13,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse } from "./route-utils";
+import { buildDebugResourceTree } from "./debug-snapshot";
 
 /**
  * Resolved debug-endpoint configuration, with env-fallback + defaults applied.
@@ -124,12 +125,20 @@ const NOT_IMPLEMENTED = jsonResponse(501, { error: "not_implemented" });
 
 export async function handleDebugListResources(
   request: Request,
-  _route: Extract<ParsedFlowRoute, { kind: "debug_list_resources" }>,
+  route: Extract<ParsedFlowRoute, { kind: "debug_list_resources" }>,
   ctx: DebugRouteContext
 ): Promise<Response> {
   const denied = assertDebugAllowed(request, ctx.debug);
   if (denied !== null) return denied;
-  return NOT_IMPLEMENTED;
+  const tree = await buildDebugResourceTree({
+    sessionId: route.sessionId,
+    ctx: { registry: ctx.registry, stores: ctx.stores },
+    countLimit: ctx.debug.countLimit
+  });
+  if (tree === null) {
+    return jsonResponse(404, { error: "session_not_found" });
+  }
+  return jsonResponse(200, tree);
 }
 
 export async function handleDebugListCollectionItems(
