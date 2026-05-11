@@ -57,7 +57,9 @@ import {
   handleDebugListResources,
   handleDebugListCollectionItems,
   handleDebugGetResourceContent,
-  handleDebugGetCollectionItemContent
+  handleDebugGetCollectionItemContent,
+  resolveDebugConfig,
+  type ResolvedDebugConfig
 } from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
@@ -157,6 +159,15 @@ export type CreateFlowRouteHandlersOptions = {
    * Default: 15000 (15 seconds). Set to 0 to disable.
    */
   defaultSseHeartbeatMs?: number;
+  /**
+   * Resolved debug-endpoint configuration. Threaded into the debug route
+   * handlers; consult `resolveDebugConfig` in `debug-routes.ts` for the
+   * env-fallback + defaults logic.
+   */
+  debugEndpointsEnabled?: boolean;
+  debugAllowedOrigins?: string[];
+  debugAllowAnonymousLocal?: boolean;
+  debugCountLimit?: number;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -194,6 +205,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   host: InboundTransportHost;
 } {
   const stores = resolveStores(options.stores);
+  const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
+    debugEndpointsEnabled: options.debugEndpointsEnabled,
+    debugAllowedOrigins: options.debugAllowedOrigins,
+    debugAllowAnonymousLocal: options.debugAllowAnonymousLocal,
+    debugCountLimit: options.debugCountLimit
+  });
   // FIX-569: the legacy active-streams registry (and its `maxConcurrentStreams`
   // / `staleStreamTtlMs` knobs) is gone. Live tail is owned by the store
   // interface; long-running flows are no longer at risk of registry eviction.
@@ -460,28 +477,32 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "debug_list_resources") {
         return await handleDebugListResources(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          debug: debugConfig
         });
       }
 
       if (route.kind === "debug_list_collection_items") {
         return await handleDebugListCollectionItems(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          debug: debugConfig
         });
       }
 
       if (route.kind === "debug_get_resource_content") {
         return await handleDebugGetResourceContent(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          debug: debugConfig
         });
       }
 
       if (route.kind === "debug_get_collection_item_content") {
         return await handleDebugGetCollectionItemContent(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          debug: debugConfig
         });
       }
 

@@ -110,6 +110,39 @@ export type CreateFlowApiRouterOptions = {
    * false positives. Default: 60000 (60 seconds).
    */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Enable the privileged read-only debug endpoint surface under
+   * `/api/flows/sessions/:id/debug/resources*`. Fail-closed: default
+   * `false`. Explicit `true` always wins over the env flag. When
+   * `undefined`, falls back to `process.env.FSDEV_DEBUG_ENDPOINTS === "1"`.
+   *
+   * The DevTool consumes this surface; `fsdev dev` opts in automatically.
+   * Production deployments must opt in deliberately.
+   */
+  debugEndpointsEnabled?: boolean;
+
+  /**
+   * Additional origins permitted to reach debug endpoints. Loopback
+   * (`http://localhost*`, `http://127.0.0.1*`, `http://[::1]*`) is allowed
+   * by default. Matching is by origin prefix.
+   */
+  debugAllowedOrigins?: string[];
+
+  /**
+   * Permit requests with no `Origin`/`Referer` header (e.g. curl, server-side
+   * fetches) to reach debug endpoints when the gate is enabled. Default `true`
+   * — curl-friendly for local debugging.
+   */
+  debugAllowAnonymousLocal?: boolean;
+
+  /**
+   * Cap on the number of keys enumerated when computing collection counts
+   * for the debug tree. Counts beyond this are reported as `truncated: true`.
+   * Default 1000 — bounds cost on org/flow-scope collections without
+   * starving the tree response.
+   */
+  debugCountLimit?: number;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {
