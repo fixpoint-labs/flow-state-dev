@@ -419,6 +419,81 @@ export type RequestSSECallbacks = {
 };
 
 /**
+ * Per-entry projection result on the privileged debug surface — the same
+ * shape `client.data` would have emitted (or a typed reason it didn't). See
+ * `@flow-state-dev/server` `debug-snapshot.ts` for the server-side producer.
+ */
+export type DebugClientView =
+  | { ok: true; value: unknown }
+  | {
+      ok: false;
+      reason: "no_client_data" | "state_read_false" | "threw";
+      error?: string;
+    }
+  | null;
+
+/** Snapshot of a resource's `client.*` config the panel renders next to each entry. */
+export type DebugResourceClientConfig = {
+  hasClient: boolean;
+  data: boolean;
+  stateRead: boolean;
+  contentRead: boolean;
+  prefetchWindow: number | null;
+};
+
+/** One row in the debug resource tree. */
+export type DebugResourceEntry = {
+  definitionId: string;
+  aliases: string[];
+  primaryName: string;
+  scope: "session" | "user" | "org";
+  isCollection: boolean;
+  state?: Record<string, unknown> | null;
+  clientView?: DebugClientView;
+  hasContent?: boolean;
+  contentByteLength?: number;
+  contentType?: string;
+  contentVisibleToClient?: boolean;
+  collectionPattern?: string;
+  itemCount?: number;
+  itemCountTruncated?: boolean;
+  storagePrefix?: string;
+  clientConfig: DebugResourceClientConfig;
+};
+
+export type DebugResourcesResponse = {
+  sessionId: string;
+  flowKind: string;
+  generatedAt: string;
+  resources: DebugResourceEntry[];
+};
+
+/** One item in a paginated collection debug listing. */
+export type DebugCollectionItem = {
+  topic: string;
+  storageKey: string;
+  state: Record<string, unknown> | null;
+  clientView: DebugClientView;
+  hasContent: boolean;
+  contentByteLength?: number;
+  contentType?: string;
+  contentVisibleToClient: boolean;
+};
+
+export type DebugCollectionItemsResponse = {
+  items: DebugCollectionItem[];
+  nextCursor: string | null;
+};
+
+/** Query options for the debug items endpoint. */
+export type ListDebugCollectionItemsOptions = {
+  limit?: number;
+  cursor?: string | null;
+  /** Case-sensitive substring filter on the bare topic. */
+  topic?: string;
+};
+
+/**
  * Callback set for optional user-stream SSE events.
  */
 export type UserSSECallbacks = {
