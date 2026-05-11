@@ -136,6 +136,10 @@ describe("handleListCollectionState", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.items.map((i: { topic: string }) => i.topic)).toEqual([
+      "a.md",
+      "m.md",
+    ]);
+    expect(body.items.map((i: { storageKey: string }) => i.storageKey)).toEqual([
       "artifacts/a.md",
       "artifacts/m.md",
     ]);
@@ -162,8 +166,8 @@ describe("handleListCollectionState", () => {
     );
     const body = await res.json();
     expect(body.items.map((i: { topic: string }) => i.topic)).toEqual([
-      "artifacts/c.md",
-      "artifacts/d.md",
+      "c.md",
+      "d.md",
     ]);
     expect(body.pagination.hasMore).toBe(false);
     expect(body.pagination.nextOffset).toBe(4);
@@ -182,8 +186,8 @@ describe("handleListCollectionState", () => {
     );
     const body = await res.json();
     expect(body.items.map((i: { topic: string }) => i.topic)).toEqual([
-      "artifacts/alpha-1",
-      "artifacts/alpha-2",
+      "alpha-1",
+      "alpha-2",
     ]);
     expect(body.pagination.total).toBe(2);
   });
@@ -295,7 +299,8 @@ describe("handleListCollectionState", () => {
     );
     const body2 = await page2.json();
     expect(body2.items).toHaveLength(20);
-    expect(body2.items[0].topic).toBe("artifacts/item-020");
+    expect(body2.items[0].topic).toBe("item-020");
+    expect(body2.items[0].storageKey).toBe("artifacts/item-020");
     expect(body2.pagination.nextOffset).toBe(40);
 
     const page3 = await handleListCollectionState(
@@ -334,7 +339,11 @@ describe("handleGetCollectionItemState", () => {
       { registry: ctx.registry, stores: ctx.stores }
     );
     const body = await res.json();
-    expect(body).toEqual({ topic: "artifacts/spec.md", clientData: { title: "Spec" } });
+    expect(body).toEqual({
+      topic: "spec.md",
+      storageKey: "artifacts/spec.md",
+      clientData: { title: "Spec" },
+    });
   });
 
   it("resolves bare topic to full storage key", async () => {
@@ -345,7 +354,8 @@ describe("handleGetCollectionItemState", () => {
       { registry: ctx.registry, stores: ctx.stores }
     );
     const body = await res.json();
-    expect(body.topic).toBe("artifacts/spec.md");
+    expect(body.topic).toBe("spec.md");
+    expect(body.storageKey).toBe("artifacts/spec.md");
   });
 
   it("returns 200 + null body when topic is not present", async () => {
