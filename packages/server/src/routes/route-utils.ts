@@ -347,27 +347,23 @@ export async function computeClientData(options: {
  * Single resources retain their existing shape (clientData + optional
  * prefetched content).
  *
- * When `includeInternal: true`, resources without a `client` config are also
- * included with `internal: true` and the raw resource state surfaced in
- * `clientData`. This is the DevTool's path — it lets developers see every
- * installed resource, including ones that haven't opted into the client.
- * Production clients should not pass this flag.
+ * Strictly client-shaped: resources without a `client` config are omitted.
+ * The DevTool's previous `includeInternal` escape hatch was removed in
+ * FIX-579 — use `/api/flows/sessions/:id/debug/resources*` for full
+ * server-side inspection.
  */
 export async function buildResourceSnapshot(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
-  includeInternal?: boolean;
 }): Promise<Record<string, unknown> | undefined> {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
-  const includeInternal = options.includeInternal === true;
   let hasAny = false;
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
-      const hasClient = maybeConfig.client !== undefined;
-      if (!hasClient && !includeInternal) continue;
+      if (maybeConfig.client === undefined) continue;
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};
@@ -383,18 +379,9 @@ export async function buildResourceSnapshot(options: {
         .sort();
       const count = matchedKeys.length;
 
-      const collectionEntry: Record<string, unknown> = {};
+      const collectionEntry: Record<string, unknown> = { count };
 
-      if (hasClient) {
-        // Always emit `count` for client-visible collections (FIX-427 §3.6).
-        // It's a single integer, not a leak of state, and supports
-        // "X items, log in for details" UIs without a state.read grant.
-        collectionEntry.count = count;
-      }
-
-      // Prefetch window: first N keys by lex sort. clientData included only
-      // when state is explicitly readable; otherwise just the topic.
-      if (prefetchWindow > 0 && (hasClient || includeInternal)) {
+      if (prefetchWindow > 0) {
         const window = matchedKeys.slice(0, prefetchWindow);
         const prefetched: Array<Record<string, unknown>> = [];
         for (const key of window) {
@@ -402,10 +389,6 @@ export async function buildResourceSnapshot(options: {
           const item: Record<string, unknown> = { topic: key };
           if (stateReadable) {
             item.clientData = await resolveClientProjection(collectionClient, state);
-          } else if (!hasClient) {
-            // Internal (no client config) under includeInternal: surface raw
-            // state under clientData, parallel to the single-resource branch.
-            item.clientData = state;
           }
           if (prefetchContent && contentMap[key] !== undefined) {
             item.content = contentMap[key];
@@ -415,7 +398,6 @@ export async function buildResourceSnapshot(options: {
         collectionEntry.prefetched = prefetched;
       }
 
-      if (!hasClient) collectionEntry.internal = true;
       out[resourceName] = collectionEntry;
       hasAny = true;
       continue;
@@ -423,31 +405,22 @@ export async function buildResourceSnapshot(options: {
 
     if (!isResourceConfig(maybeConfig)) continue;
     const config = maybeConfig as ResourceConfig;
-    const hasClient = config.client !== undefined;
-    if (!hasClient && !includeInternal) continue;
+    if (config.client === undefined) continue;
 
     const state = normalizeResourceState(config, options.persisted?.[resourceName]);
     const prefetch = config.client?.content?.prefetch === true;
-    // Single resources have no `state.read` gate; the projection itself is
-    // the opt-in. Resources that declare `client: { content: ... }` with no
-    // projection stay state-private — the snapshot omits `clientData`
-    // entirely, matching the pre-FIX-580 behavior.
     const hasProjection =
       typeof config.client?.data === "function" ||
       Array.isArray(config.client?.expose) ||
       Array.isArray(config.client?.exclude);
 
     const entry: Record<string, unknown> = {};
-    if (!hasClient) {
-      // Internal resource: raw state under clientData (see collection branch).
-      entry.clientData = state;
-    } else if (hasProjection) {
+    if (hasProjection) {
       entry.clientData = await resolveClientProjection(config.client, state);
     }
     if (prefetch && contentMap[resourceName] !== undefined) {
       entry.content = contentMap[resourceName];
     }
-    if (!hasClient) entry.internal = true;
     out[resourceName] = entry;
     hasAny = true;
   }

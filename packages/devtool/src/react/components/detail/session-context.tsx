@@ -35,7 +35,6 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
   const stats = useMemo(() => {
     if (!snapshot) return null;
     return {
-      state: sectionStats(snapshot.internalState, prevSnapshot?.internalState),
       clientData: sectionStats(snapshot.clientData, prevSnapshot?.clientData),
       resources: sectionStats(snapshot.resources, prevSnapshot?.resources),
     };
@@ -62,7 +61,6 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
     return <EmptyState message="Session state is empty. Execute an action to populate state." />;
   }
 
-  const hasState = snapshot.internalState && Object.values(snapshot.internalState).some((v) => v && Object.keys(v).length > 0);
   const hasClientData = snapshot.clientData && Object.values(snapshot.clientData).some((v) => v && Object.keys(v).length > 0);
   const hasResources = snapshot.resources && Object.values(snapshot.resources).some((v) => v && Object.keys(v).length > 0);
 
@@ -82,25 +80,8 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         <SessionMetadataSection detail={detail} />
       )}
 
-      {!hasState && !hasClientData && !hasResources && !detail && (
+      {!hasClientData && !hasResources && !detail && (
         <EmptyState message="Session state is empty. Execute an action to populate state." />
-      )}
-
-      {hasState && snapshot.internalState && (
-        <CollapsibleSection title="Server State" count={stats?.state.count} changed={stats?.state.changed}>
-          {snapshot.internalState.session && Object.keys(snapshot.internalState.session).length > 0 && (
-            <ScopeBlock label="Session" data={snapshot.internalState.session} />
-          )}
-          {snapshot.internalState.user && Object.keys(snapshot.internalState.user).length > 0 && (
-            <ScopeBlock label="User" data={snapshot.internalState.user} />
-          )}
-          {snapshot.internalState.org && Object.keys(snapshot.internalState.org).length > 0 && (
-            <ScopeBlock label="Org" data={snapshot.internalState.org} />
-          )}
-          {snapshot.internalState.request && Object.keys(snapshot.internalState.request).length > 0 && (
-            <ScopeBlock label="Request" data={snapshot.internalState.request} />
-          )}
-        </CollapsibleSection>
       )}
 
       {hasClientData && (

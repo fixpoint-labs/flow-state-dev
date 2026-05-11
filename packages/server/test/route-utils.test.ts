@@ -106,7 +106,7 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
     expect(entry.prefetched).toHaveLength(3);
   });
 
-  it("omits client-less collections when includeInternal is false", async () => {
+  it("omits client-less collections from the snapshot", async () => {
     const internal = defineResourceCollection({
       pattern: "secrets/*",
       scope: "session",

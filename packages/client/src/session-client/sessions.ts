@@ -47,19 +47,6 @@ export type GetSessionStateOptions = {
   itemTypes?: string[];
   offset?: number;
   limit?: number;
-  /**
-   * Include resources without a `client` config in the snapshot. They appear
-   * with `internal: true` and the raw resource state under `clientData`.
-   * Intended for development tooling (the DevTool sets this); production
-   * clients should leave it unset.
-   */
-  includeInternal?: boolean;
-  /**
-   * Include the raw scope state (`request`, `session`, `user`, `org`) under
-   * `internalState` on the response. Off by default — scope state is
-   * private to the server. Intended for development tooling only.
-   */
-  includeInternalState?: boolean;
 };
 
 /**
@@ -177,9 +164,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
               ? undefined
               : stateOptions.itemTypes.join(","),
           offset: stateOptions?.offset,
-          limit: stateOptions?.limit,
-          include_internal_resources: stateOptions?.includeInternal,
-          include: stateOptions?.includeInternalState ? "internal_state" : undefined
+          limit: stateOptions?.limit
         })
       })
     });

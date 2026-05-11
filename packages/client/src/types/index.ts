@@ -180,13 +180,6 @@ export type ResourceSnapshotEntry = {
   clientData?: unknown;
   /** Only present when `client.content.prefetch: true` is declared on the resource. */
   content?: string;
-  /**
-   * True when the resource has no `client` config. Only present when the
-   * snapshot was requested with `includeInternal: true` (DevTool path);
-   * `clientData` then carries the resource's raw state instead of the
-   * developer-curated client view.
-   */
-  internal?: boolean;
 };
 
 /**
@@ -221,10 +214,6 @@ export type CollectionSnapshotEntry = {
    * included only when `client.state.read: true`.
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
-  /**
-   * True when the collection has no `client` config. See `ResourceSnapshotEntry.internal`.
-   */
-  internal?: boolean;
 };
 
 /**
@@ -303,18 +292,6 @@ export type ResourceManifest = {
 export type SessionStateSnapshotResponse = {
   sessionId: string;
   flowKind: string;
-  /**
-   * Raw scope state. Only populated when the snapshot request opts in with
-   * `?include=internal_state`. The DevTool uses this; production callers
-   * should read `clientData` instead. Typed loosely as the trust boundary
-   * is opaque (no per-flow generic) — this is an escape hatch.
-   */
-  internalState?: {
-    request?: Record<string, unknown>;
-    session?: Record<string, unknown>;
-    user?: Record<string, unknown>;
-    org?: Record<string, unknown>;
-  };
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
