@@ -4,6 +4,18 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### Server: session-state schema defaults are pre-applied at session creation (FIX-561)
+
+- `handleCreateSession` now parses an empty `body.state` (or any caller override) through `flow.session.stateSchema` before persisting, so a brand-new session's `state` already contains every declared key with its initial value (`z.string().default("...")`, `z.record(...).default({})`, etc.). Previously `state` was initialized to `{}` and schema defaults only landed after the first `patchState` call.
+- This was the root cause of the trading-desk navigator showing memos jump `pending → published` with no `writing` flicker on first-run sessions. The chain: empty initial state → `expose`-projected `clientData[scope]` keys are `undefined` → `JSON.stringify` drops undefined values on the wire → client snapshot has no `memoStatus` key at all → `mergeStateChangeIntoSnapshot`'s `hasOwn(prev, field)` guard bails on every mid-stream `state_change` until the terminal-status snapshot refresh. Pre-applying defaults breaks the chain at step one.
+- Caller-supplied `body.state` still wins — the schema parse runs over `(body.state ?? {})`, so explicit overrides aren't clobbered. On schema-parse failure (caller supplied invalid data), the handler falls back to the raw caller state to preserve prior behavior; per-action validation still runs at execution time.
+
+### React: `useClientData` no longer misses mid-stream state changes on first-run sessions (FIX-561)
+
+- `useSession` now buffers `state_change` SSE items that arrive while the initial snapshot fetch is still in flight, and drains them onto the snapshot the moment it lands. Previously the reducer (`mergeStateChangeIntoSnapshot`) bailed when `prev === null` and silently dropped every state change between SSE subscribe and snapshot resolve.
+- This sits alongside the server-side default-application fix above; the buffer covers the snapshot-fetch-races-SSE case while the server fix covers the initial-state-empty case. Both classes of "first-run misses mid-stream updates" are addressed.
+- Internal cleanup: `pendingStateChangesRef` is cleared on session-id change so a session switch can't carry stale buffered events across.
+
 ### Round Robin: default roster agents stream text into the transcript (FIX-561)
 
 - The default roster agent (`createRosterAgent`) no longer hardcodes a `z.object({ text })` output schema. It now uses the generator's default `z.string()` output, which makes the streaming gate fire and emit live `message` items — chat-style transcripts render the debate in real time without any custom wiring.

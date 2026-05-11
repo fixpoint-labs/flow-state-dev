@@ -86,6 +86,31 @@ export async function handleCreateSession(
     });
   }
 
+  // Pre-apply the session state schema's defaults (`z.string().default("...")`,
+  // `z.record(...).default({})`, etc.) so a brand-new session's `state`
+  // contains every declared key with its initial value. Without this the
+  // initial state is `{}`, which causes two downstream bugs:
+  //  1. `expose`-projected `clientData[scope]` keys are `undefined`, which
+  //     JSON.stringify drops on the wire — clients receive no key at all,
+  //     so `mergeStateChangeIntoSnapshot`'s `hasOwn(prev, field)` guard
+  //     bails on every mid-stream `state_change` for those keys until the
+  //     terminal-status snapshot refresh.
+  //  2. Block code that reads `ctx.session.state.foo` before any patch
+  //     would observe `undefined` rather than the schema's default.
+  // Caller-supplied `body.state` overrides the defaults.
+  const callerState = asObject(body.state);
+  const stateSchema = flow.session?.stateSchema;
+  let initialState: JsonObject = (callerState ?? {}) as JsonObject;
+  if (stateSchema !== undefined) {
+    const parseResult = stateSchema.safeParse(callerState ?? {});
+    if (parseResult.success) {
+      initialState = parseResult.data as JsonObject;
+    }
+    // On schema-parse failure (caller supplied an invalid override), fall
+    // back to the caller's raw state — preserves prior behavior. Validation
+    // happens at action-execution time, not session-create time.
+  }
+
   const record: SessionRecord = {
     id: sessionId,
     flowKind: flow.kind,
@@ -95,7 +120,7 @@ export async function handleCreateSession(
     description: getString(body.description),
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
-    state: (asObject(body.state) ?? {}) as JsonObject,
+    state: initialState,
     version: 0,
     createdAt: now,
     updatedAt: now,
