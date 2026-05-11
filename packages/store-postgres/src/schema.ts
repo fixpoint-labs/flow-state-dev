@@ -172,6 +172,26 @@ const SEQUENCER_CHECKPOINTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id)"
 ];
 
+// FIX-581: optional schedule index for `createPostgresScheduleIndex`.
+// Keyed by (user_id, key) — the index is a derived read-model of
+// per-user schedule resource collections. `next_fire_at` is ms since
+// epoch and is scanned/advanced inside one transaction by claimDue
+// (SELECT ... FOR UPDATE SKIP LOCKED).
+const SCHEDULE_INDEX_TABLE = `
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  cron         TEXT NOT NULL,
+  timezone     TEXT,
+  next_fire_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+`;
+
+const SCHEDULE_INDEX_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at)"
+];
+
 /**
  * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
@@ -244,7 +264,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       REQUEST_EVENTS_TABLE,
-      SEQUENCER_CHECKPOINTS_TABLE
+      SEQUENCER_CHECKPOINTS_TABLE,
+      SCHEDULE_INDEX_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -254,7 +275,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
-      ...SEQUENCER_CHECKPOINTS_INDEXES
+      ...SEQUENCER_CHECKPOINTS_INDEXES,
+      ...SCHEDULE_INDEX_INDEXES
     ]
   };
 }

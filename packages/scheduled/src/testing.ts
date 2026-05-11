@@ -12,15 +12,8 @@
  * Tests are declared via the host's vitest globals at call-time.
  */
 
+import { describe, it, beforeEach, afterEach, expect } from "vitest";
 import type { ScheduleIndex } from "./scheduleIndex";
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-declare const describe: any;
-declare const it: any;
-declare const beforeEach: any;
-declare const afterEach: any;
-declare const expect: any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export interface ScheduleIndexConformanceOptions {
   /**

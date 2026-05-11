@@ -14,6 +14,26 @@ export type QueryResult = {
 
 export interface QueryExecutor {
   query(text: string, values?: unknown[]): Promise<QueryResult>;
+  /**
+   * Begin an interactive transaction bound to a single underlying
+   * connection. Required by `createPostgresScheduleIndex` (and any
+   * other feature needing `SELECT ... FOR UPDATE SKIP LOCKED` semantics
+   * inside a transaction). Optional on the interface so executors that
+   * cannot pin a connection (e.g. arbitrary HTTP-proxied query
+   * surfaces) remain valid for the rest of the store API.
+   */
+  beginTx?(): Promise<TxClient>;
+}
+
+/**
+ * A transaction handle. `query` runs on the pinned connection. The
+ * caller MUST eventually call exactly one of `commit` or `rollback`
+ * to release the connection back to the pool.
+ */
+export interface TxClient {
+  query(text: string, values?: unknown[]): Promise<QueryResult>;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
 }
 
 /** Re-export of `pg.PoolConfig` so callers don't need a direct `pg` import. */

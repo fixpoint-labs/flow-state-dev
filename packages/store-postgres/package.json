@@ -19,10 +19,12 @@
   },
   "dependencies": {
     "@flow-state-dev/server": "workspace:*",
+    "cron-parser": "^5.0.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
+    "@flow-state-dev/scheduled": "workspace:*",
     "@types/pg": "^8.11.0",
     "@types/node": "^22.0.0"
   },
