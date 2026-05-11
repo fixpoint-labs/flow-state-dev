@@ -58,5 +58,6 @@ export type {
 // Prompt caching (provider-specific cacheControl translation)
 export { applyCaching, DEFAULT_CACHING_CONFIG } from "./caching";
 
-// Internal utility (not re-exported from main index — used by model resolver)
+// Strict-mode schema helper. Re-exported from the package root so authors can
+// validate generator outputSchemas at test time. See BP-016.
 export { makeSchemaStrict } from "./makeSchemaStrict";

@@ -15,7 +15,7 @@ const modelResolver = createModelResolver({
   providers: { openai },
   defaultModel: "openai/gpt-5.5",
   intents: {
-    utility: ["openai/gpt-5.4-nano"],
+    utility: ["openai/gpt-5.4-mini"],
     chat: ["openai/gpt-5.5"],
   },
 });

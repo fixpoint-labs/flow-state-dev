@@ -38,6 +38,33 @@ const baseSessionState = {
   memoStatus: { fundamentals: "pending" as const },
 };
 
+/**
+ * `commitMemo` and `markError` both `get()` the pre-existing memo (throws
+ * when missing — see writer.ts). In the live pipeline, `setupPhase1Memos`
+ * pre-creates the memo before any analyst runs; the unit tests have to
+ * seed the equivalent state via the testBlock `session.resources` slot.
+ */
+const seededFundamentalsMemo = {
+  status: "writing" as const,
+  agentName: "fundamentalsAnalyst",
+  agentTeam: "analyst" as const,
+  phaseId: "p1",
+  ticker: "NVDA",
+  date: "2026-05-06",
+  label: null,
+  headline: null,
+  rating: null,
+  body: null,
+  metrics: null,
+  startedAt: new Date().toISOString(),
+  completedAt: null,
+  errorMessage: null,
+};
+
+const seededResources = {
+  "memos/p1/fundamentals": seededFundamentalsMemo,
+};
+
 describe("memo-writer taps", () => {
   it("markWriting flips memoStatus to writing", async () => {
     const result = await testBlock(writeBlock, {
@@ -73,6 +100,7 @@ describe("memo-writer taps", () => {
       flow: fixtureFlow,
       session: {
         state: { ...baseSessionState, memoStatus: { fundamentals: "writing" } },
+        resources: seededResources,
       },
     });
     expect(result.error).toBeNull();
@@ -86,6 +114,7 @@ describe("memo-writer taps", () => {
       flow: fixtureFlow,
       session: {
         state: { ...baseSessionState, memoStatus: { fundamentals: "writing" } },
+        resources: seededResources,
       },
     });
     expect(result.error).toBeNull();

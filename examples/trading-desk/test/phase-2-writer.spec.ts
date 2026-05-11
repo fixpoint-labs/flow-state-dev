@@ -12,7 +12,6 @@ import {
   commitBullMemo,
   commitResearchManagerMemo,
   markErrorP2,
-  markPhase2ErrorOnWriting,
   markWritingP2,
 } from "../src/flows/trading-desk/phase-2/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
@@ -29,7 +28,6 @@ const fixtureFlow = defineFlow({
     commitBear: { block: commitBearMemo },
     commitRM: { block: commitResearchManagerMemo },
     errorBull: { block: errorBull },
-    rescueAll: { block: markPhase2ErrorOnWriting },
   },
   session: { stateSchema: sessionStateSchema },
   resources: { memos: memosCollection },
@@ -47,6 +45,58 @@ const baseSessionState = {
     bear: "pending" as const,
     researchManager: "pending" as const,
   },
+};
+
+/**
+ * Seeded memo state for the three Phase 2 slots. The commit handlers
+ * `get()` the memo (throws when missing — see writer.ts), so the unit
+ * tests must seed equivalent state via the testBlock `session.resources`
+ * slot. In the live pipeline `setupPhase2Memos` does this pre-creation.
+ */
+function seededMemo(opts: {
+  shortName: "bull" | "bear" | "researchManager";
+  agentName: string;
+  startedAt?: string | null;
+}) {
+  return {
+    status: opts.startedAt ? ("writing" as const) : ("pending" as const),
+    agentName: opts.agentName,
+    agentTeam: "research" as const,
+    phaseId: "p2",
+    ticker: "NVDA",
+    date: "2026-05-06",
+    label: null,
+    headline: null,
+    rating: null,
+    body: null,
+    metrics: null,
+    startedAt: opts.startedAt ?? null,
+    completedAt: null,
+    errorMessage: null,
+    stance: null,
+    conviction: null,
+    keyRisks: null,
+    keyOpportunities: null,
+    unresolvedDisagreements: null,
+  };
+}
+
+const seededWritingResources = {
+  "memos/p2/bull": seededMemo({
+    shortName: "bull",
+    agentName: "bullResearcher",
+    startedAt: new Date().toISOString(),
+  }),
+  "memos/p2/bear": seededMemo({
+    shortName: "bear",
+    agentName: "bearResearcher",
+    startedAt: new Date().toISOString(),
+  }),
+  "memos/p2/research-manager": seededMemo({
+    shortName: "researchManager",
+    agentName: "researchManager",
+    startedAt: new Date().toISOString(),
+  }),
 };
 
 const bullThesis = {
@@ -130,6 +180,7 @@ describe("Phase 2 writer taps", () => {
       flow: fixtureFlow,
       session: {
         state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bull: "writing" } },
+        resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
@@ -143,6 +194,7 @@ describe("Phase 2 writer taps", () => {
       flow: fixtureFlow,
       session: {
         state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bear: "writing" } },
+        resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
@@ -159,34 +211,12 @@ describe("Phase 2 writer taps", () => {
           ...baseSessionState,
           memoStatus: { ...baseSessionState.memoStatus, researchManager: "writing" },
         },
+        resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();
     const last = lastSessionState(result);
     expect(last.memoStatus.researchManager).toBe("published");
-  });
-
-  it("markPhase2ErrorOnWriting flips whichever memo is in writing to error", async () => {
-    // Bear is the in-flight memo; bull already published, RM still pending.
-    const result = await testBlock(markPhase2ErrorOnWriting, {
-      input: { error: new Error("RM upstream blew up") },
-      flow: fixtureFlow,
-      session: {
-        state: {
-          ...baseSessionState,
-          memoStatus: {
-            bull: "published",
-            bear: "writing",
-            researchManager: "pending",
-          },
-        },
-      },
-    });
-    expect(result.error).toBeNull();
-    const last = lastSessionState(result);
-    expect(last.memoStatus.bull).toBe("published");
-    expect(last.memoStatus.bear).toBe("error");
-    expect(last.memoStatus.researchManager).toBe("pending");
   });
 
   it("markErrorP2 flips bull to error and stamps the message", async () => {
@@ -195,6 +225,7 @@ describe("Phase 2 writer taps", () => {
       flow: fixtureFlow,
       session: {
         state: { ...baseSessionState, memoStatus: { ...baseSessionState.memoStatus, bull: "writing" } },
+        resources: seededWritingResources,
       },
     });
     expect(result.error).toBeNull();

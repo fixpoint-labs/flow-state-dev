@@ -72,49 +72,6 @@ export function markWritingP2(shortName: Phase2MemoShortName) {
   });
 }
 
-/**
- * Rescue handler: marks any Phase 2 memo currently in `writing` status as
- * `error` with the rescued error's message. Used as the outer Phase 2
- * pipeline's rescue branch — whichever generator was running when the
- * pipeline failed has already flipped its memo to `writing` (via
- * `markWritingP2`), so this scans `session.memoStatus` for the in-flight
- * entry rather than hardcoding which step failed.
- */
-export const markPhase2ErrorOnWriting = handler({
-  name: "mark-error-p2-writing",
-  inputSchema: z.object({ error: z.unknown() }).passthrough(),
-  outputSchema: z.object({ status: z.literal("error") }),
-  sessionStateSchema,
-  resources: memoResources,
-  execute: async (input, ctx) => {
-    const error = (input as { error?: unknown }).error;
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : "Phase 2 generator failed.";
-    const memoStatus = ctx.session.state.memoStatus;
-    const completedAt = new Date().toISOString();
-    for (const shortName of Object.keys(PHASE_2_MEMO_KEYS) as Phase2MemoShortName[]) {
-      if (memoStatus[shortName] === "writing") {
-        const ref = ctx.resources.memos.getOptional(
-          PHASE_2_MEMO_KEYS[shortName].collectionKey,
-        );
-        if (ref !== undefined) {
-          await ref.patchState({
-            status: "error",
-            errorMessage: message,
-            completedAt,
-          });
-        }
-        await ctx.session.setStateRecord("memoStatus", shortName, "error");
-      }
-    }
-    return { status: "error" as const };
-  },
-});
-
 /** Mark a specific Phase 2 memo as `error` with the rescued error's message. */
 export function markErrorP2(shortName: Phase2MemoShortName) {
   const { collectionKey } = PHASE_2_MEMO_KEYS[shortName];
@@ -157,20 +114,23 @@ export const commitBullMemo = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (thesis: BullThesisOutput, ctx) => {
-    const ref = ctx.resources.memos.getOptional(PHASE_2_MEMO_KEYS.bull.collectionKey);
+    // Use `get()` (throws) rather than `getOptional()` — by commit time
+    // setupPhase2Memos and markWritingP2 have both created/patched the
+    // memo. A silent no-op here was masking a real bug where the resource
+    // wasn't visible across handler boundaries; surfacing the error sends
+    // the failure into the per-step rescue (BP-016 / FIX-561).
+    const ref = ctx.resources.memos.get(PHASE_2_MEMO_KEYS.bull.collectionKey);
     const completedAt = new Date().toISOString();
-    if (ref !== undefined) {
-      await ref.patchState({
-        status: "published",
-        label: thesis.label,
-        headline: thesis.headline,
-        rating: thesis.rating,
-        body: thesis.body,
-        metrics: thesis.metrics,
-        completedAt,
-        errorMessage: null,
-      });
-    }
+    await ref.patchState({
+      status: "published",
+      label: thesis.label,
+      headline: thesis.headline,
+      rating: thesis.rating,
+      body: thesis.body,
+      metrics: thesis.metrics,
+      completedAt,
+      errorMessage: null,
+    });
     const memoStatus = ctx.session.state.memoStatus;
     if (memoStatus.bull !== "published") {
       await ctx.session.setStateRecord("memoStatus", "bull", "published");
@@ -186,20 +146,18 @@ export const commitBearMemo = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (thesis: BearThesisOutput, ctx) => {
-    const ref = ctx.resources.memos.getOptional(PHASE_2_MEMO_KEYS.bear.collectionKey);
+    const ref = ctx.resources.memos.get(PHASE_2_MEMO_KEYS.bear.collectionKey);
     const completedAt = new Date().toISOString();
-    if (ref !== undefined) {
-      await ref.patchState({
-        status: "published",
-        label: thesis.label,
-        headline: thesis.headline,
-        rating: thesis.rating,
-        body: thesis.body,
-        metrics: thesis.metrics,
-        completedAt,
-        errorMessage: null,
-      });
-    }
+    await ref.patchState({
+      status: "published",
+      label: thesis.label,
+      headline: thesis.headline,
+      rating: thesis.rating,
+      body: thesis.body,
+      metrics: thesis.metrics,
+      completedAt,
+      errorMessage: null,
+    });
     const memoStatus = ctx.session.state.memoStatus;
     if (memoStatus.bear !== "published") {
       await ctx.session.setStateRecord("memoStatus", "bear", "published");
@@ -219,27 +177,25 @@ export const commitResearchManagerMemo = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (thesis: InvestmentThesisOutput, ctx) => {
-    const ref = ctx.resources.memos.getOptional(
+    const ref = ctx.resources.memos.get(
       PHASE_2_MEMO_KEYS.researchManager.collectionKey,
     );
     const completedAt = new Date().toISOString();
-    if (ref !== undefined) {
-      await ref.patchState({
-        status: "published",
-        label: thesis.label,
-        headline: thesis.headline,
-        rating: thesis.rating,
-        body: thesis.body,
-        metrics: thesis.metrics,
-        completedAt,
-        errorMessage: null,
-        stance: thesis.stance,
-        conviction: thesis.convictionScore,
-        keyRisks: thesis.keyRisks,
-        keyOpportunities: thesis.keyOpportunities,
-        unresolvedDisagreements: thesis.unresolvedDisagreements,
-      });
-    }
+    await ref.patchState({
+      status: "published",
+      label: thesis.label,
+      headline: thesis.headline,
+      rating: thesis.rating,
+      body: thesis.body,
+      metrics: thesis.metrics,
+      completedAt,
+      errorMessage: null,
+      stance: thesis.stance,
+      conviction: thesis.convictionScore,
+      keyRisks: thesis.keyRisks,
+      keyOpportunities: thesis.keyOpportunities,
+      unresolvedDisagreements: thesis.unresolvedDisagreements,
+    });
     const memoStatus = ctx.session.state.memoStatus;
     if (memoStatus.researchManager !== "published") {
       await ctx.session.setStateRecord(

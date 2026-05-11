@@ -2,6 +2,21 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-11
+
+### `makeSchemaStrict` is now public; BP-016 codifies OpenAI strict-mode rules for generator outputs (FIX-561)
+
+- `@flow-state-dev/core` re-exports `makeSchemaStrict(schema)` from the package root. The helper was previously internal; the framework still calls it automatically before serializing schemas to the AI SDK, but authors can now import it to assert their generator `outputSchema` passes OpenAI strict mode at test time.
+- `makeSchemaStrict` unwraps `optional` / `default` / `nullable`. It does NOT transform `z.record()` or `z.union()` of differently-shaped variants — both still fail OpenAI strict and must be rewritten at source.
+- BP-016 ("Generator outputSchemas must be OpenAI strict-compatible") lands in `docs/contributing/best-practices.md` with concrete rules and canonical patterns. Cross-referenced from the root `CLAUDE.md`.
+
+### Trading Desk example: Phase 2 per-step rescue + end-to-end integration coverage (FIX-561)
+
+- Phase 2's `phase2Pipeline` switched from a single pipeline-level `.rescue([...])` over bull → bear → research-manager to three independent sub-sequencers, each with its own rescue (mirroring Phase 1's per-analyst idiom). A single consolidator failing now flips only its own memo to `error` with a captured `errorMessage`; downstream consolidators still publish.
+- The unused `markPhase2ErrorOnWriting` aggregate-rescue handler is removed.
+- New end-to-end spec (`examples/trading-desk/test/phase-2-e2e.spec.ts`) exercises the full `analyze` action against mocked generators and asserts all seven memos publish, the research-manager memo carries non-empty `unresolvedDisagreements`, and a bull-side failure isolates correctly.
+- New schema-strict regression spec (`examples/trading-desk/test/output-schemas-strict.spec.ts`) walks each generator output schema after `makeSchemaStrict` and fails on surviving `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion`. Copy-paste guard for any package defining generator outputs.
+
 ## 2026-05-08
 
 ### Round Robin pattern: `contributions` config option for shared transcripts (FIX-561)
