@@ -7,21 +7,24 @@
  *     all four analyst memos, and the full debate transcript into an
  *     `InvestmentThesis` with explicit unresolved disagreements.
  *
- * Each reads contributions and prior consolidated theses off the Phase 2
- * sub-sequencer state (the round-robin pattern's contributions resource is
- * pattern-internal; we capture entries on the way out via the loop's
- * final shape and stash them in sequencer state).
+ * Contributions come from the shared `phase2Contributions` resource —
+ * passed to every `roundRobin()` instance and registered on the flow —
+ * so each generator just declares it on its own `resources:` slot and
+ * reads entries via `ctx.resources.contributions.state.entries`.
  */
 import { generator } from "@flow-state-dev/core";
-import type { RoundRobinContributionEntry } from "@flow-state-dev/patterns/round-robin";
+import type {
+  RoundRobinContributionEntry,
+  RoundRobinContributionsState,
+} from "@flow-state-dev/patterns/round-robin";
 import {
   AGENTS,
   PHASE_1_MEMO_KEYS,
   PHASE_2_MEMO_KEYS,
 } from "../agents";
-import { memoResources } from "../resources";
+import { memosCollection } from "../resources";
 import { sessionStateSchema } from "../state";
-import { phase2StateSchema, type Phase2State } from "./sequencer-state";
+import { phase2Contributions } from "./round-robin";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
@@ -32,6 +35,18 @@ import {
   BULL_CONSOLIDATION_PROMPT,
   RESEARCH_MANAGER_PROMPT,
 } from "./prompts";
+
+const generatorResources = {
+  memos: memosCollection,
+  contributions: phase2Contributions,
+} as const;
+
+function readContributions(ctx: any): RoundRobinContributionEntry[] {
+  const state = ctx.resources?.contributions?.state as
+    | RoundRobinContributionsState
+    | undefined;
+  return state?.entries ?? [];
+}
 
 function modelFor(costPreset: "fast" | "full" | undefined): string {
   return costPreset === "full" ? "intent/chat" : "intent/utility";
@@ -136,8 +151,7 @@ export const consolidateBullMemo = generator({
     modelFor((ctx.session.state.costPreset as "fast" | "full" | undefined) ?? "fast"),
   prompt: BULL_CONSOLIDATION_PROMPT,
   user: (_input, ctx) => {
-    const entries =
-      (ctx.sequencer!.state as Phase2State).contributions ?? [];
+    const entries = readContributions(ctx);
     const ticker = ctx.session.state.ticker as string;
     const date = ctx.session.state.date as string;
     return [
@@ -156,9 +170,8 @@ export const consolidateBullMemo = generator({
       "Now write the published Bull memo.",
     ].join("\n");
   },
-  resources: memoResources,
+  resources: generatorResources,
   sessionStateSchema,
-  sequencerStateSchema: phase2StateSchema,
   outputSchema: bullThesisOutputSchema,
 });
 
@@ -170,8 +183,7 @@ export const consolidateBearMemo = generator({
     modelFor((ctx.session.state.costPreset as "fast" | "full" | undefined) ?? "fast"),
   prompt: BEAR_CONSOLIDATION_PROMPT,
   user: (_input, ctx) => {
-    const entries =
-      (ctx.sequencer!.state as Phase2State).contributions ?? [];
+    const entries = readContributions(ctx);
     const ticker = ctx.session.state.ticker as string;
     const date = ctx.session.state.date as string;
     return [
@@ -190,9 +202,8 @@ export const consolidateBearMemo = generator({
       "Now write the published Bear memo.",
     ].join("\n");
   },
-  resources: memoResources,
+  resources: generatorResources,
   sessionStateSchema,
-  sequencerStateSchema: phase2StateSchema,
   outputSchema: bearThesisOutputSchema,
 });
 
@@ -209,8 +220,7 @@ export const researchManagerGenerator = generator({
     modelFor((ctx.session.state.costPreset as "fast" | "full" | undefined) ?? "fast"),
   prompt: RESEARCH_MANAGER_PROMPT,
   user: (_input, ctx) => {
-    const phase2 = ctx.sequencer!.state as Phase2State;
-    const entries = phase2.contributions ?? [];
+    const entries = readContributions(ctx);
     const ticker = ctx.session.state.ticker as string;
     const date = ctx.session.state.date as string;
     const bullMemoRef = ctx.resources.memos.getOptional(
@@ -240,8 +250,7 @@ export const researchManagerGenerator = generator({
       "and you justify that in the \"Resolution of the debate\" body section.",
     ].join("\n");
   },
-  resources: memoResources,
+  resources: generatorResources,
   sessionStateSchema,
-  sequencerStateSchema: phase2StateSchema,
   outputSchema: investmentThesisOutputSchema,
 });

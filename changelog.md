@@ -4,12 +4,18 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-08
 
+### Round Robin pattern: `contributions` config option for shared transcripts (FIX-561)
+
+- `roundRobin({ contributions })` accepts an externally-provided contributions resource. When omitted the pattern still creates its own internal instance, so existing consumers are unchanged.
+- Sharing one resource across multiple instances behind a `router()` now succeeds — previously the router's resource-merge rejected with `Resource conflict: "contributions" is declared with different defineResource() references`.
+- Consumer blocks outside the pattern can declare the shared resource on their own `resources:` slot and read entries via `ctx.resources` instead of threading the transcript through `RoundRobinFinalShape.contributions`.
+
 ### Trading Desk example: Phase 2 bull/bear research debate and investment thesis synthesis (FIX-561)
 
 - The `analyze` action now runs through Phase 2 after the analyst fan-out: a bounded bull-vs-bear loop driven by the Round Robin pattern, then three new memos for `bullResearcher`, `bearResearcher`, and `researchManager` cycling `pending → writing → published`. The cheap preset runs one round; the full preset runs two. The ceiling is enforced at the schema boundary regardless of caller input.
 - The research manager emits a typed `InvestmentThesis` carrying five extension fields on the memo state — `stance`, `conviction`, `keyRisks`, `keyOpportunities`, and an explicit `unresolvedDisagreements` list. Empty is acceptable but should be the exception on a non-trivial trade. Phase 3+ read these directly to reason about non-convergence rather than papering over it.
 - Phase 2 picks Round Robin over Debate because the research manager is a synthesizer, not a judge. The pattern's required judge slot is filled with a 3-line stub that always returns `done: false`, leaning on `maxRounds` for termination — the canonical idiom for fixed-length loops. Phase 4's risk debate keeps `debate()` for its real risk judge.
-- A router selects among four pre-built `roundRobin()` instances at runtime, one per `(maxDebateRounds, costPreset)` combination, since the pattern's `model` and `maxRounds` are fixed at construction time.
+- A router selects among four pre-built `roundRobin()` instances at runtime, one per `(maxDebateRounds, costPreset)` combination. All four share a single `phase2Contributions` resource registered on the flow; the bull/bear consolidation and research-manager generators declare it on their `resources:` slot and read entries from `ctx.resources`.
 - The transcript renders the phase divider, bull/bear speak rows tagged by round, and the research manager's `InvestmentThesis` as a structured-output card. The right-pane sidebar now lights up the three Phase 2 entries live.
 
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)

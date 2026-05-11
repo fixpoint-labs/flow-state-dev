@@ -75,6 +75,64 @@ When the loop ends, the pattern produces a `RoundRobinFinalShape`:
 
 If `synthesizer: false`, this shape is the pattern's output. Otherwise the synthesizer receives it and produces something matched to your `outputSchema`.
 
+## Sharing the contributions resource
+
+By default `roundRobin()` allocates its own internal transcript resource per call. That's fine for a single-instance use, but two patterns push you to share one across instances:
+
+- A `router()` that picks among multiple `roundRobin()` instances at runtime. The router merges declared resources across every route; two routes each holding their own `contributions` reference reject with `Resource conflict: "contributions" is declared with different defineResource() references`.
+- A post-loop block that needs to read the running transcript without threading it through `RoundRobinFinalShape.contributions`.
+
+Pass `contributions` to opt into a shared instance. Register the same resource on the flow's `resources` map so external consumer blocks can declare it on their own `resources:` slot.
+
+```ts
+import {
+  createRoundRobinContributions,
+  roundRobin,
+} from "@flow-state-dev/patterns/round-robin";
+
+const debateContributions = createRoundRobinContributions();
+
+const cheap = roundRobin({
+  name: "debate-cheap",
+  roster,
+  maxRounds: 1,
+  contributions: debateContributions,
+  // ...
+});
+
+const full = roundRobin({
+  name: "debate-full",
+  roster,
+  maxRounds: 2,
+  contributions: debateContributions,
+  // ...
+});
+
+const debateRouter = router({
+  name: "debate-router",
+  inputSchema: roundRobinInputSchema,
+  routes: [cheap, full],
+  execute: (_input, ctx) =>
+    ctx.session.state.budget === "high" ? full : cheap,
+});
+
+// In your flow definition:
+defineFlow({
+  // ...
+  resources: { debateContributions },
+});
+
+// Then a downstream block reads it directly:
+const consolidate = generator({
+  // ...
+  resources: { debateContributions },
+  user: (_input, ctx) =>
+    formatTranscript(ctx.resources.debateContributions.state.entries),
+});
+```
+
+The pattern's `init-contributions` tap clears the resource at the start of every run, so per-request isolation still holds.
+
 ## Customizing roster agents
 
 Most consumers only need the `name` and `role` fields. The default agent will produce a contribution that builds on the prior transcript.
@@ -127,6 +185,7 @@ The default synthesizer is a generator that composes the transcript into a unifi
 | `name` | `string` | (required) | Pattern instance name. Used as the audit collection id by default. |
 | `roster` | `RosterEntry[]` | (required) | Ordered list of agents. Names must be unique; at least one required. |
 | `maxRounds` | `number` | `5` | Hard cap on round cycling. |
+| `contributions` | `DefinedResource` | auto-created | Optional shared transcript resource. See [Sharing the contributions resource](#sharing-the-contributions-resource). |
 | `judge` | `BlockDefinition` | default LLM judge | Returns `{ done, summary }` after every round. |
 | `synthesizer` | `BlockDefinition \| false` | default LLM synthesizer | Final transformation step. `false` returns the raw shape. |
 | `outputSchema` | `ZodTypeAny` | — | Applied to the synthesizer's output. |

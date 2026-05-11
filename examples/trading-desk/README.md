@@ -97,13 +97,18 @@ analyze
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.then — { goal } from session state)
-        ├─ phase2RoundRobin       (.then — bull/bear loop; sessionCapJudge
-        │                            terminates at session.maxDebateRounds)
-        ├─ stashContributions     (.tap — capture loop transcript)
+        ├─ phase2RoundRobinRouter (.then — picks one of four pre-built
+        │                            roundRobin instances by
+        │                            (maxDebateRounds, costPreset))
         ├─ consolidateBullMemo    (.then — write `BullThesis`)
         ├─ consolidateBearMemo    (.then — write `BearThesis`)
         └─ researchManagerGenerator (.then — write `InvestmentThesis`)
 ```
+
+All four `roundRobin()` instances share one `phase2Contributions`
+resource (registered on the flow). The consolidation generators
+declare it on their `resources:` slot and read entries via
+`ctx.resources.contributions.state.entries`.
 
 Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
 with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
@@ -123,22 +128,14 @@ Phase 4's risk debate uses `debate()` because it has a real risk judge.
 The cross-phase split reflects the actual structural difference, not a
 shortcoming of either pattern.
 
-### Session-driven round cap
+### Per-preset routing
 
-Round Robin's `maxRounds` is fixed at construction time. We build the
-phase-2 instance with the schema's hard cap (`maxRounds: 2`) and let
-`sessionCapJudge` terminate the loop earlier — it reads
-`session.maxDebateRounds` and returns `done: true` once the current
-round meets the session-driven cap. Cheap preset → one round; full
-preset → two rounds.
-
-Per-preset *model* selection is not done inside the round-robin in this
-phase. The pattern allocates an internal `contributions` resource per
-`roundRobin()` instance, so the "four pre-built instances behind a
-router" shape rejects at construction time with a resource-merge
-conflict. The clean path is one shared instance with `intent/chat` as
-the roster model; the cheap preset's cost stays bounded by the single
-round it runs.
+Round Robin's `model` and `maxRounds` are fixed at construction time.
+Phase 2 needs both to vary by session state, so `phase2RoundRobinRouter`
+picks among four pre-built instances at runtime — one per
+`(maxRounds, costPreset)` combination. The four routes share one
+`contributions` resource (via the pattern's `contributions` config
+field), which is what lets the router's resource-merge succeed.
 
 ## Disclaimer
 

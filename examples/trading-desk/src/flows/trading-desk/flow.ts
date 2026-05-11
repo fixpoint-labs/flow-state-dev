@@ -14,6 +14,7 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { phase1Pipeline } from "./blocks/analyst-phase";
 import { phase2Pipeline } from "./phase-2";
+import { phase2Contributions } from "./phase-2/round-robin";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -88,6 +89,9 @@ const tradingDeskFlow = defineFlow({
 
   resources: {
     memos: memosCollection,
+    // Phase 2 transcript. Registered here so post-loop consolidation
+    // generators can declare it on their own `resources:` slot.
+    p2Contributions: phase2Contributions,
   },
 });
 

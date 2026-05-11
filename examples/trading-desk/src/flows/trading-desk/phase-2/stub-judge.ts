@@ -1,35 +1,23 @@
 /**
- * `sessionCapJudge` — Round Robin loop terminator for Phase 2.
+ * `stubJudge` — Round Robin loop terminator for Phase 2.
  *
- * Round Robin's `maxRounds` is fixed at construction time, but Phase 2's
- * round cap is session-driven (`session.maxDebateRounds`: 1 on the cheap
- * preset, 2 on full). We build the round-robin with `maxRounds: 2` (the
- * schema's hard cap) and let this judge stop the loop earlier when the
- * session asks for one round.
- *
- * Reads the current round from sequencer state (`roundRobinStateSchema`'s
- * `round` field) and compares against `session.maxDebateRounds`. Returns
- * `done: true` once the count is hit; no LLM call.
+ * Phase 2's research manager is a synthesizer, not a judge. Round Robin
+ * requires a judge slot to terminate the loop; we fill it with a 3-line
+ * handler that always returns `done: false` and lean on the pattern's
+ * `maxRounds` cap (driven per-preset by the four router-selected
+ * instances). This is the README's canonical idiom for fixed-length loops.
  */
 import { handler } from "@flow-state-dev/core";
-import { roundRobinStateSchema } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
-import { sessionStateSchema } from "../state";
 
 const judgeOutputSchema = z.object({
   done: z.boolean(),
   summary: z.string(),
 });
 
-export const sessionCapJudge = handler({
-  name: "p2-session-cap-judge",
+export const stubJudge = handler({
+  name: "p2-stub-judge",
   inputSchema: z.any(),
   outputSchema: judgeOutputSchema,
-  sessionStateSchema,
-  sequencerStateSchema: roundRobinStateSchema,
-  execute: (_input, ctx) => {
-    const max = (ctx.session.state.maxDebateRounds as number | undefined) ?? 1;
-    const current = ctx.sequencer!.state.round ?? 0;
-    return { done: current >= max, summary: "" };
-  },
+  execute: () => ({ done: false, summary: "" }),
 });
