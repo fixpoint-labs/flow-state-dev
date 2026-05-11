@@ -2,6 +2,18 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-10
+
+### Scheduled actions: declarative cron + dispatch endpoint (FIX-440)
+
+- New `schedules?` config block on `defineFlow` accepting a typed `static` map for framework-level cron jobs and a dynamic `resolve(scheduleId, ctx)` hook for per-user, per-record, and agent-created schedules. Cron strings (POSIX 5-field) are validated at registration for static entries and at dispatch for dynamic ones via `cron-parser`. The framework owns the dispatch contract; hosts run their own scheduler.
+- New `@flow-state-dev/scheduled` package shipping `createScheduledTransportAdapter`, `findScheduledRequest`, and `createResourceCollectionScheduleResolver`. Mounts `POST /api/flows/:kind/schedules/:scheduleId/dispatch` and a sibling `GET /api/flows/:kind/schedules` listing endpoint.
+- Two-phase auth: `host.resolvePrincipal` establishes the gateway principal (proves the dispatch caller is the trusted scheduler) and each schedule carries an optional `principal` that wins for the action's effective user. New `createBearerSecretPrincipalResolver` exported from `@flow-state-dev/server` for the canonical shared-scheduler-secret pattern, with constant-time `timingSafeEqual` comparison.
+- Resource-collection-backed dynamic schedules via `createResourceCollectionScheduleResolver`. Hosts that store schedule definitions in a flow-state user-scoped collection wire the resolver in one line; the helper parses `<userId>/<key>` from the URL, reads from the user-scoped store, and synthesizes `principal: { userId }`. Because the parsed userId is also the storage scope, a URL aimed at another user's data reads from an empty scope and 404s.
+- `RequestRecord.source = "scheduled"` plus structured `metadata` (`scheduleId`, `origin: "static" | "dynamic"`, `cron`, `nominalFireTime`, `dispatchedAt`, `timezone`). DevTool renders a per-row schedule-id label, a static/dynamic origin badge, and a Provenance section in the detail view.
+- Idempotency (per-process LRU keyed on `(scheduleId, nominalFireTime)`, default 60s window) and `onOverlap: "skip" | "allow"` (skip is default; uses `findScheduledRequest` over `stores.activeRequests.listAll()`). Multi-process deployments rely on the host scheduler's own idempotency.
+- Four integration guides shipped: Vercel Cron, Cloud Scheduler, EventBridge Scheduler, and a longer dynamic-schedules guide covering user-created and agent-created schedules end-to-end. Server reference page and architecture deep-dive added; locked-contracts reference and inbound-transports docs updated.
+
 ## 2026-05-08
 
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)

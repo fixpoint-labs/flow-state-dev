@@ -13,6 +13,7 @@ import type {
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
+import type { SchedulesConfig } from "./schedules";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
@@ -346,6 +347,15 @@ export type FlowDefinition<
    */
   mcp?: McpConfig;
 
+  /**
+   * Per-flow scheduled-action config. When set, the
+   * `@flow-state-dev/scheduled` adapter mounts
+   * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
+   * Static entries are validated at registration; dynamic entries
+   * returned by `resolve` are validated at dispatch.
+   */
+  schedules?: SchedulesConfig;
+
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
@@ -386,6 +396,7 @@ export type FlowInstanceOptions<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -422,6 +433,7 @@ export type FlowInstance<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState: boolean;
@@ -453,6 +465,7 @@ export type FlowType<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;
 

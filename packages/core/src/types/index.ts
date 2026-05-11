@@ -62,6 +62,17 @@ export type {
 } from "./auth";
 
 export type {
+  ScheduleConfig,
+  ScheduleInputContext,
+  ScheduleInputFn,
+  ScheduleResolutionContext,
+  ScheduleResolutionStores,
+  SchedulesConfig
+} from "./schedules";
+
+export { validateScheduleConfig, validateSchedulesConfig } from "./schedules";
+
+export type {
   SpeechModel,
   SpeechResolver,
   SpeechResult,
