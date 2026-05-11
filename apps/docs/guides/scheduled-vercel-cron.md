@@ -93,7 +93,7 @@ defineFlow({
   },
   schedules: {
     static: {
-      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      "monthly-invoices": { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
     }
   },
   actions: { /* ... */ }
@@ -103,6 +103,72 @@ defineFlow({
 The shared secret is the only auth on this surface. If it leaks,
 rotate `CRON_SECRET` in Vercel and on the host. Existing in-flight
 dispatches finish; new dispatches on the old value get 401.
+
+## Dynamic schedules at scale
+
+Vercel caps `vercel.json` cron entries (Pro: 40 per project at time
+of writing; lower on Hobby). That cap applies to the schedules
+declared in your config file, not to the number of *dispatches* you
+can issue from a single cron entry.
+
+For dynamic schedules — per-user reminders, agent-created
+follow-ups, anything created at runtime — do **not** add one
+`vercel.json` entry per schedule. Add one tick entry, and have its
+handler fan out per-schedule POSTs to the dispatch endpoint.
+
+```json title="vercel.json"
+{
+  "crons": [
+    { "path": "/api/cron/schedule-tick", "schedule": "*/1 * * * *" }
+  ]
+}
+```
+
+The tick handler reads your schedule index (a SQL table, a Redis
+sorted set by `nextFireAt`, whatever) and POSTs to the framework
+endpoint per due schedule:
+
+```ts title="app/api/cron/schedule-tick/route.ts"
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const now = Date.now();
+  const due = await dueSchedules(now); // your index query
+  await Promise.allSettled(
+    due.map(async (row) => {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}/api/flows/reminders/schedules/${row.userId}/${row.key}/dispatch`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${process.env.CRON_SECRET}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ nominalFireTime: new Date(now).toISOString() })
+        }
+      );
+      if (res.ok) await advanceIndex(row, now);
+    })
+  );
+  return new Response("ok");
+}
+```
+
+The full pattern — index shape, when to write/update/delete index
+rows, how to handle catch-up — is in
+[Dynamic scheduled actions](/guides/scheduled-dynamic). The
+takeaway for Vercel: one tick entry covers unbounded dynamic
+schedules. The `vercel.json` cap only matters for *static* entries
+you want Vercel itself to fire on a schedule.
+
+The tick cadence (`*/1 * * * *` above is once a minute) is the
+floor on how soon a newly-due schedule can fire. Coarser ticks
+trade lag for invocation cost. Vercel meters cron invocations on
+Pro, so a per-minute tick is ~43k invocations/month — usually fine
+but worth knowing.
 
 ## Local development
 

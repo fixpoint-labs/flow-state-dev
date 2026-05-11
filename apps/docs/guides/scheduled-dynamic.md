@@ -171,52 +171,92 @@ recipes cover most setups.
 
 ### Polling loop
 
-A small in-process worker scans the collection on an interval,
-checks each schedule's cron against the last fire time, and POSTs to
-the dispatch endpoint when due. Trivial to write, appropriate for
-self-hosted single-process deployments. Limited by `setInterval`
-granularity (minute floor in practice).
+A small in-process worker scans an index on an interval, evaluates
+each schedule's cron against the last fire time, and POSTs to the
+dispatch endpoint when due. The framework only does per-user reads,
+so the host maintains a separate index over `(userId, key, cron,
+nextFireAt)` — written when the schedule is created, updated after
+each fire, removed on delete. The index is what the loop reads;
+the schedule resource is what the dispatch resolver reads.
 
 ```ts
 import { CronExpressionParser } from "cron-parser";
 
-const POLL_INTERVAL_MS = 30_000;
+// The index: one row per active schedule. Backed by Postgres, SQLite,
+// Redis, or even a flow-state org-scope resource — anything that
+// supports a "where nextFireAt <= now" query.
+type ScheduleIndexRow = {
+  userId: string;
+  key: string;
+  cron: string;
+  nextFireAt: number; // ms since epoch
+};
+
+// Maintain the index alongside the schedule resource. Write on
+// create, update after each fire, delete when the user cancels.
+async function indexSchedule(row: ScheduleIndexRow) { /* INSERT/UPSERT */ }
+async function dueSchedules(now: number): Promise<ScheduleIndexRow[]> { /* SELECT ... WHERE nextFireAt <= $1 */ }
+async function advanceIndex(row: ScheduleIndexRow, now: number) {
+  const next = CronExpressionParser.parse(row.cron, { currentDate: new Date(now) })
+    .next()
+    .getTime();
+  await /* UPDATE ... SET nextFireAt = $1 WHERE userId = $2 AND key = $3 */ next;
+}
+
+const TICK_INTERVAL_MS = 30_000;
 
 setInterval(async () => {
-  const now = new Date();
-  const due = await listDueSchedules(stores, now);
-  for (const { userId, key, schedule } of due) {
-    await fetch(`${BASE_URL}/api/flows/reminders/schedules/${userId}/${key}/dispatch`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.FSDEV_SCHEDULER_SECRET}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ nominalFireTime: now.toISOString() })
-    });
-  }
-}, POLL_INTERVAL_MS);
+  const now = Date.now();
+  const due = await dueSchedules(now);
 
-async function listDueSchedules(stores, now) {
-  // walk users; for each, list schedules/* resources; evaluate cron.
-  // For deployments with many users, this needs a per-user pass that
-  // reads only their schedules collection — `listAll` across users
-  // is not supported by the framework on purpose. Cache the cron
-  // parses; persist `lastFiredAt` in the resource state.
-}
+  // Optional: bound concurrency to protect your own runtime.
+  await Promise.allSettled(
+    due.map(async (row) => {
+      const res = await fetch(
+        `${BASE_URL}/api/flows/reminders/schedules/${row.userId}/${row.key}/dispatch`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${process.env.FSDEV_SCHEDULER_SECRET}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ nominalFireTime: new Date(now).toISOString() })
+        }
+      );
+      if (res.ok) {
+        await advanceIndex(row, now);
+      }
+      // Non-2xx: leave nextFireAt unchanged. The next tick retries.
+    })
+  );
+}, TICK_INTERVAL_MS);
 ```
 
-Two practical notes:
+The index is the load-bearing piece. Without it, every tick has to
+scan every user's schedules collection — which the resource API
+doesn't even support in one query, and which doesn't scale anyway.
+With it, the tick reads `O(due)` rows regardless of total user count.
 
-- The polling loop has to know which users have schedules. The
-  framework exposes user-scoped reads, not cross-user enumeration.
-  Hosts that want a polling loop typically also keep a separate
-  index — a small set or table of `(userId, scheduleKey, nextFireAt)`
-  — written when a schedule is created and read by the loop.
-- Multi-process deployments need leader election or a single-writer
-  guarantee on the polling worker. Otherwise every replica fires
-  every schedule, and the framework's idempotency window only catches
-  the duplicates that land within ~60 seconds.
+Practical notes:
+
+- **Idempotency.** `advanceIndex` only runs on a 2xx, so a failed
+  dispatch (network error, framework 5xx) re-fires next tick. The
+  framework's 60-second idempotency window dedupes `(scheduleId,
+  nominalFireTime)` within that window if the retry lands too fast.
+- **Catch-up.** If the tick has been down for an hour and four
+  daily-at-9am schedules are now overdue, the loop will fire them
+  all at once on next startup. If that's not desired, advance
+  `nextFireAt` past `now` to the next future slot instead of firing.
+- **Multi-process.** Run the tick on a single worker (leader
+  election, a dedicated cron node, or a lock per row in the SQL
+  case). Multiple replicas all firing the same rows produces
+  duplicates the 60-second framework window catches but only
+  within that window.
+- **Granularity.** A 30-second tick handles minute-granular cron
+  comfortably. Coarser ticks (5 min, 30 min) cost less in compute
+  but introduce lag — a `0 9 * * *` schedule polled at :30 fires
+  at 09:30, not 09:00. Match the tick to the tightest cron you
+  intend to support.
 
 ### External scheduler API
 
