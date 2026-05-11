@@ -427,6 +427,15 @@ export function useSession(
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
+  /**
+   * Buffer for `state_change` items received before the initial snapshot
+   * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
+   * `prev === null`, so without this buffer any state mutations emitted
+   * between SSE subscribe and snapshot fetch resolution would be lost —
+   * users would only see the terminal snapshot's "all published" state
+   * with no intermediate transitions. Drained in `applySnapshot`.
+   */
+  const pendingStateChangesRef = useRef<StateChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
   const optimisticIdRef = useRef<string | null>(null);
   /** Maps container ownedBy values to sets of item IDs for O(1) container lookups. */
@@ -557,7 +566,23 @@ export function useSession(
 
   const applySnapshot = useCallback(
     (nextSnapshot: SessionStateSnapshotResponse) => {
-      setSnapshot(nextSnapshot);
+      // Drain any state_changes that arrived while snapshot was null. The
+      // snapshot represents server state at fetch time; replaying queued
+      // events on top brings the local view up to whatever state the
+      // server has emitted since. Events emitted *before* the snapshot's
+      // read time are already reflected in `nextSnapshot.clientData`, so
+      // re-applying them is at worst idempotent — the next forward
+      // state_change in the queue overwrites any momentary regression.
+      const pending = pendingStateChangesRef.current;
+      pendingStateChangesRef.current = [];
+      let merged: SessionStateSnapshotResponse = nextSnapshot;
+      for (const sc of pending) {
+        const next = mergeStateChangeIntoSnapshot(merged, sc);
+        if (next !== null) {
+          merged = next;
+        }
+      }
+      setSnapshot(merged);
 
       if (!itemConfig.enabled) {
         itemsByIdRef.current = new Map();
@@ -745,10 +770,22 @@ export function useSession(
           // cached snapshot's clientData so useClientData reflects mid-stream
           // patches without waiting for the terminal-status snapshot refresh.
           // Falls through to the items-log path below for non-transient cases.
+          //
+          // Race: the SSE stream subscribes immediately when an action is
+          // dispatched, but the initial snapshot fetch is async. State_change
+          // items that land before the snapshot resolves can't merge (the
+          // reducer needs a non-null prev), so buffer them here and replay
+          // in `applySnapshot` once the snapshot lands. Without this buffer,
+          // first-run sessions miss every intermediate state transition.
           if (isReducibleStateChange(event.item)) {
-            setSnapshot((prev) =>
-              mergeStateChangeIntoSnapshot(prev, event.item as StateChangeItem)
-            );
+            const sc = event.item as StateChangeItem;
+            setSnapshot((prev) => {
+              if (prev === null) {
+                pendingStateChangesRef.current.push(sc);
+                return prev;
+              }
+              return mergeStateChangeIntoSnapshot(prev, sc);
+            });
           }
 
           if (!passesItemFilter(event.item, filter)) {
@@ -960,6 +997,7 @@ export function useSession(
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();
       ownershipIndexRef.current = new Map();
+      pendingStateChangesRef.current = [];
       cancelScheduledFlush();
       setDetail(null);
       setSnapshot(null);

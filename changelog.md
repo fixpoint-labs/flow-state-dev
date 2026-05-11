@@ -4,6 +4,47 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### Server: session-state schema defaults are pre-applied at session creation (FIX-561)
+
+- `handleCreateSession` now parses an empty `body.state` (or any caller override) through `flow.session.stateSchema` before persisting, so a brand-new session's `state` already contains every declared key with its initial value (`z.string().default("...")`, `z.record(...).default({})`, etc.). Previously `state` was initialized to `{}` and schema defaults only landed after the first `patchState` call.
+- This was the root cause of the trading-desk navigator showing memos jump `pending → published` with no `writing` flicker on first-run sessions. The chain: empty initial state → `expose`-projected `clientData[scope]` keys are `undefined` → `JSON.stringify` drops undefined values on the wire → client snapshot has no `memoStatus` key at all → `mergeStateChangeIntoSnapshot`'s `hasOwn(prev, field)` guard bails on every mid-stream `state_change` until the terminal-status snapshot refresh. Pre-applying defaults breaks the chain at step one.
+- Caller-supplied `body.state` still wins — the schema parse runs over `(body.state ?? {})`, so explicit overrides aren't clobbered. On schema-parse failure (caller supplied invalid data), the handler falls back to the raw caller state to preserve prior behavior; per-action validation still runs at execution time.
+
+### React: `useClientData` no longer misses mid-stream state changes on first-run sessions (FIX-561)
+
+- `useSession` now buffers `state_change` SSE items that arrive while the initial snapshot fetch is still in flight, and drains them onto the snapshot the moment it lands. Previously the reducer (`mergeStateChangeIntoSnapshot`) bailed when `prev === null` and silently dropped every state change between SSE subscribe and snapshot resolve.
+- This sits alongside the server-side default-application fix above; the buffer covers the snapshot-fetch-races-SSE case while the server fix covers the initial-state-empty case. Both classes of "first-run misses mid-stream updates" are addressed.
+- Internal cleanup: `pendingStateChangesRef` is cleared on session-id change so a session switch can't carry stale buffered events across.
+
+### Round Robin: default roster agents stream text into the transcript (FIX-561)
+
+- The default roster agent (`createRosterAgent`) no longer hardcodes a `z.object({ text })` output schema. It now uses the generator's default `z.string()` output, which makes the streaming gate fire and emit live `message` items — chat-style transcripts render the debate in real time without any custom wiring.
+- The default roster agent now stamps `agentName` on its underlying generator. Without this, emitted message items carried no identity and chat-style transcripts that scope to known agents (e.g. `if (AGENTS[message.agentName] === undefined) continue`) silently dropped the messages even though the streaming path was working.
+- The contributions resource is unchanged. `record-contribution` already coerces both string and `{ text }` outputs via `coerceText`, so consumers that read the contributions transcript see the same `{ round, agentName, text }` entries.
+- Override path: callers who need a roster agent to emit structured output (a vote roster, a structured proposal) supply their own `block` via `RosterEntry`. Setting `outputSchema` on the default agent isn't a configuration option; that's a different agent shape and belongs in an override.
+- Visible symptom that motivated the change: trading-desk Phase 2 bull/bear contributions never showed up in the transcript because the default agent's structured-output path skipped the streaming gate at [`generator.ts:1765`](packages/core/src/blocks/generator.ts) (`isTextOutputSchema` returns false for object schemas), and once that was fixed the missing `agentName` caused the consumer-side filter to drop the messages a second time.
+
+### Resource API: multi-segment collection topics now resolve (FIX-561)
+
+- `GET /sessions/:id/resources/:ref/:topic`, `GET /sessions/:id/resources/:ref/:topic/content`, `PATCH .../:topic/content`, and `DELETE .../:topic` now match topics that contain `/`. Previously `:topic` was a single-segment path-to-regexp parameter, so any collection with a `**` pattern (topics like `p1/fundamentals`, `p2/research-manager`) returned 404 from these endpoints even when the resource existed on the server.
+- Visible symptom that motivated the fix: React `useResourceCollectionItem` calls failed silently for the trading-desk example's `memos/**` collection — sessions had all 7 memos persisted, but the per-item REST fetch the UI depends on 404'd, so the theses pane and DevTool item bodies appeared empty.
+- The route table now uses `*topic` (path-to-regexp v8 wildcard); `stringifyParams` joins the captured array on `/` before the route builder runs, so the resulting `topic` is still a string for downstream handlers. New regression tests cover state, content, and delete with slash-bearing topics.
+- Constraint: a topic literally named `"content"` is shadowed by the `/:ref/content` resource-content route and remains unaddressable through the state-get endpoint. Documented in `apps/docs/docs/resources/client-access.md`.
+
+### `makeSchemaStrict` is now public; BP-016 codifies OpenAI strict-mode rules for generator outputs (FIX-561)
+
+- `@flow-state-dev/core` re-exports `makeSchemaStrict(schema)` from the package root. The helper was previously internal; the framework still calls it automatically before serializing schemas to the AI SDK, but authors can now import it to assert their generator `outputSchema` passes OpenAI strict mode at test time.
+- `makeSchemaStrict` unwraps `optional` / `default` / `nullable`. It does NOT transform `z.record()` or `z.union()` of differently-shaped variants — both still fail OpenAI strict and must be rewritten at source.
+- BP-016 ("Generator outputSchemas must be OpenAI strict-compatible") lands in `docs/contributing/best-practices.md` with concrete rules and canonical patterns. Cross-referenced from the root `CLAUDE.md`.
+
+### Trading Desk example: Phase 2 per-step rescue + end-to-end integration coverage (FIX-561)
+
+- Phase 2's `phase2Pipeline` switched from a single pipeline-level `.rescue([...])` over bull → bear → research-manager to three independent sub-sequencers, each with its own rescue (mirroring Phase 1's per-analyst idiom). A single consolidator failing now flips only its own memo to `error` with a captured `errorMessage`; downstream consolidators still publish.
+- The unused `markPhase2ErrorOnWriting` aggregate-rescue handler is removed.
+- New end-to-end spec (`examples/trading-desk/test/phase-2-e2e.spec.ts`) exercises the full `analyze` action against mocked generators and asserts all seven memos publish, the research-manager memo carries non-empty `unresolvedDisagreements`, and a bull-side failure isolates correctly.
+- New schema-strict regression spec (`examples/trading-desk/test/output-schemas-strict.spec.ts`) walks each generator output schema after `makeSchemaStrict` and fails on surviving `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion`. Copy-paste guard for any package defining generator outputs.
+- Trading-desk's `memosCollection` adopts FIX-580's identity default (omit `expose` / `exclude` / `data` and ship the full state) — replaces the interim `data: (state) => state` workaround that lived briefly during merge.
+
 ### Resource client projection shortcuts: `expose`, `exclude`, and identity default (FIX-580)
 
 - `defineResource` and `defineResourceCollection` now accept `client.expose` (whitelist) and `client.exclude` (blacklist) alongside the existing `client.data` function. Field names in `expose` / `exclude` are type-checked against the state schema, so typos fail at build time with a `Valid keys: …` error.
@@ -24,6 +65,20 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Four integration guides shipped: Vercel Cron, Cloud Scheduler, EventBridge Scheduler, and a longer dynamic-schedules guide covering user-created and agent-created schedules end-to-end. Server reference page and architecture deep-dive added; locked-contracts reference and inbound-transports docs updated.
 
 ## 2026-05-08
+
+### Round Robin pattern: `contributions` config option for shared transcripts (FIX-561)
+
+- `roundRobin({ contributions })` accepts an externally-provided contributions resource. When omitted the pattern still creates its own internal instance, so existing consumers are unchanged.
+- Sharing one resource across multiple instances behind a `router()` now succeeds — previously the router's resource-merge rejected with `Resource conflict: "contributions" is declared with different defineResource() references`.
+- Consumer blocks outside the pattern can declare the shared resource on their own `resources:` slot and read entries via `ctx.resources` instead of threading the transcript through `RoundRobinFinalShape.contributions`.
+
+### Trading Desk example: Phase 2 bull/bear research debate and investment thesis synthesis (FIX-561)
+
+- The `analyze` action now runs through Phase 2 after the analyst fan-out: a bounded bull-vs-bear loop driven by the Round Robin pattern, then three new memos for `bullResearcher`, `bearResearcher`, and `researchManager` cycling `pending → writing → published`. The cheap preset runs one round; the full preset runs two. The ceiling is enforced at the schema boundary regardless of caller input.
+- The research manager emits a typed `InvestmentThesis` carrying five extension fields on the memo state — `stance`, `conviction`, `keyRisks`, `keyOpportunities`, and an explicit `unresolvedDisagreements` list. Empty is acceptable but should be the exception on a non-trivial trade. Phase 3+ read these directly to reason about non-convergence rather than papering over it.
+- Phase 2 picks Round Robin over Debate because the research manager is a synthesizer, not a judge. The pattern's required judge slot is filled with a 3-line stub that always returns `done: false`, leaning on `maxRounds` for termination — the canonical idiom for fixed-length loops. Phase 4's risk debate keeps `debate()` for its real risk judge.
+- A router selects among four pre-built `roundRobin()` instances at runtime, one per `(maxDebateRounds, costPreset)` combination. All four share a single `phase2Contributions` resource registered on the flow; the bull/bear consolidation and research-manager generators declare it on their `resources:` slot and read entries from `ctx.resources`.
+- The transcript renders the phase divider, bull/bear speak rows tagged by round, and the research manager's `InvestmentThesis` as a structured-output card. The right-pane sidebar now lights up the three Phase 2 entries live.
 
 ### Trading Desk example: Phase 1 analyst fan-out, data layer, and two-pane streaming UI (FIX-575)
 

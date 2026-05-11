@@ -7,7 +7,7 @@ import { StatusBar } from "@/components/status-bar";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
-import type { Phase1MemoShortName } from "@/src/flows/trading-desk/agents";
+import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 
 const DEFAULT_TICKER = "NVDA";
 const DEFAULT_DATE = "2026-05-06";
@@ -46,7 +46,7 @@ function TradingDeskApp(): ReactElement {
     (sessionClientData?.costPreset as CostPreset | undefined) ?? costPreset;
   const memoStatus =
     (sessionClientData?.memoStatus as
-      | Partial<Record<Phase1MemoShortName, MemoStatus>>
+      | Partial<Record<AnyMemoShortName, MemoStatus>>
       | undefined) ?? {};
 
   const handleRun = useCallback(() => {
@@ -89,7 +89,7 @@ function TradingDeskApp(): ReactElement {
       />
       <main
         className="grid overflow-hidden"
-        style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}
+        style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}
       >
         <TranscriptPane session={session} />
         <ThesesPane session={session} memoStatus={memoStatus} />

@@ -89,21 +89,24 @@ export function commitMemo(shortName: Phase1MemoShortName) {
     sessionStateSchema,
     resources: memoResources,
     execute: async (thesis: ThesisOutput, ctx) => {
-      const ref = ctx.resources.memos.getOptional(collectionKey);
+      // Use `get()` (throws) rather than `getOptional()` — by the time
+      // commitMemo runs, `setupPhase1Memos` has pre-created the memo and
+      // `markWriting` has flipped it to `writing`. If the ref isn't here,
+      // that's a real upstream bug worth surfacing (was a silent no-op).
+      const ref = ctx.resources.memos.get(collectionKey);
       const completedAt = new Date().toISOString();
-      const patch = {
+      await ref.patchState({
         status: "published" as const,
         label: thesis.label,
         headline: thesis.headline,
         rating: thesis.rating,
         body: thesis.body,
-        metrics: thesis.metrics,
+        // Flatten the array-of-pairs back into the stored `Record<string,string>`
+        // shape. See thesis-schema.ts for why the wire format is an array.
+        metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
         completedAt,
         errorMessage: null,
-      };
-      if (ref !== undefined) {
-        await ref.patchState(patch);
-      }
+      });
       const memoStatus = ctx.session.state.memoStatus;
       if (memoStatus[shortName] !== "published") {
         await ctx.session.setStateRecord("memoStatus", shortName, "published");

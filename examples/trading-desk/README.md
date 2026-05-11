@@ -2,15 +2,14 @@
 
 > **Research / demo only.** Not financial advice. No execution. No P&L.
 
-Phase 1 of a five-phase agent-pipeline showcase. A first-time developer types
-a ticker, watches four analyst memo slots appear in the navigator, and
-watches each transition through `pending → writing → published` with
-transcript bubbles streaming live. Phases 2–5 stack on top.
+A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
+watches analyst memo slots appear in the navigator, then watches a bull/bear
+debate unfold and a research manager synthesize an investment thesis. Phases
+3–5 stack on top.
 
-This phase is the foundation: scaffolding, fixture-vs-live data layer,
-two-pane streaming UI, and the first LLM stage (parallel analyst fan-out).
+## What's included (Phases 1 + 2)
 
-## What's included (Phase 1)
+Phase 1 — analyst fan-out:
 
 - **Parallel analyst fan-out** — four sub-agents (Fundamentals, Sentiment,
   News, Technical) running in parallel, each with a distinct identity.
@@ -22,9 +21,25 @@ two-pane streaming UI, and the first LLM stage (parallel analyst fan-out).
   via `yahoo-finance2` (no key required).
 - **Status-bar disclaimer** visible on every run.
 
-## What's not in Phase 1
+Phase 2 — research debate:
 
-- Phase 2 — Bull / Bear research debate and investment thesis synthesis
+- **Bounded bull-vs-bear loop** — the Round Robin pattern drives a fixed
+  number of turns where each side argues from the analyst memos and prior
+  contributions. Cheap preset runs one round; full preset runs two.
+- **Three p2 memos** — `bullResearcher`, `bearResearcher`, and
+  `researchManager` each cycle `pending → writing → published`. Bull and
+  bear consolidate their loop turns into typed `BullThesis` / `BearThesis`
+  memos. The research manager synthesizes both into an `InvestmentThesis`.
+- **Explicit unresolved disagreements** — the `InvestmentThesis` carries a
+  `unresolvedDisagreements` list. Empty is acceptable but should be the
+  exception on a non-trivial trade. Phase 3+ read this directly to reason
+  about non-convergence.
+- **Identity-driven transcript** — each turn shows the round number and the
+  speaking agent; the research manager's structured thesis renders as a
+  collapsible card in the transcript.
+
+## What's not yet shipped
+
 - Phase 3 — Trader synthesis and structured trade proposal
 - Phase 4 — Risk debate (aggressive / conservative / neutral)
 - Phase 5 — Portfolio manager final decision, full README, architecture doc
@@ -79,11 +94,48 @@ analyze
              ├─ sentimentAnalyst
              ├─ newsAnalyst
              └─ technicalAnalyst
+  └─ phase-2-research-debate      (sub-sequencer, container item)
+        ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
+        ├─ deriveDebateGoal       (.then — { goal } from session state)
+        ├─ phase2RoundRobinRouter (.then — picks one of four pre-built
+        │                            roundRobin instances by
+        │                            (maxDebateRounds, costPreset))
+        ├─ consolidateBullMemo    (.then — write `BullThesis`)
+        ├─ consolidateBearMemo    (.then — write `BearThesis`)
+        └─ researchManagerGenerator (.then — write `InvestmentThesis`)
 ```
+
+All four `roundRobin()` instances share one `phase2Contributions`
+resource (registered on the flow). The consolidation generators
+declare it on their `resources:` slot and read entries via
+`ctx.resources.contributions.state.entries`.
 
 Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
 with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
 publishes the structured memo body.
+
+### Why Round Robin and not Debate
+
+Both `roundRobin()` and `debate()` ship in `@flow-state-dev/patterns`. Phase
+2 picks Round Robin because the research manager is a *synthesizer*, not a
+judge. Round Robin's judge slot is a loop terminator — Phase 2 fills it
+with a 3-line stub that always returns `done: false` and leans on
+`maxRounds` for termination, which is the pattern's documented idiom for
+fixed-length loops. Debate's judge is the pattern's identity, so using
+Debate without a real judge would be reaching for the wrong primitive.
+
+Phase 4's risk debate uses `debate()` because it has a real risk judge.
+The cross-phase split reflects the actual structural difference, not a
+shortcoming of either pattern.
+
+### Per-preset routing
+
+Round Robin's `model` and `maxRounds` are fixed at construction time.
+Phase 2 needs both to vary by session state, so `phase2RoundRobinRouter`
+picks among four pre-built instances at runtime — one per
+`(maxRounds, costPreset)` combination. The four routes share one
+`contributions` resource (via the pattern's `contributions` config
+field), which is what lets the router's resource-merge succeed.
 
 ## Disclaimer
 

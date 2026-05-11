@@ -17,18 +17,20 @@ export const memoStatusSchema = z.enum(["pending", "writing", "published", "erro
 
 export type MemoStatus = z.infer<typeof memoStatusSchema>;
 
-const thesisSection = z.union([
-  z.object({
-    h: z.string(),
-    p: z.string(),
-    items: z.array(z.string()).optional(),
-  }),
-  z.object({
-    h: z.string(),
-    items: z.array(z.string()),
-    p: z.string().optional(),
-  }),
-]);
+/** Shared `Thesis` body section shape — every analyst, bull/bear, and
+ *  research-manager memo body is `Array<thesisSection>`. Exported so
+ *  Phase 2 schemas (and any later phase) can reuse it instead of
+ *  redeclaring the same union. */
+// OpenAI strict structured-output requires every property to be in `required`.
+// `.nullable()` keeps the key required but allows null; `.optional()` drops the
+// key from `required` and trips the strict-mode schema check. At least one of
+// `p` or `items` should be non-null per section — enforced via prompt, not
+// schema.
+export const thesisSection = z.object({
+  h: z.string(),
+  p: z.string().nullable(),
+  items: z.array(z.string()).nullable(),
+});
 
 export type ThesisSection = z.infer<typeof thesisSection>;
 
@@ -51,6 +53,14 @@ export const memoStateSchema = z.object({
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   errorMessage: z.string().nullable(),
+  // Phase 2 InvestmentThesis extension. Only the research-manager memo
+  // (`memos/p2/research-manager`) populates these; all other memos leave
+  // them `null`. Read by Phase 3+ to reason about the debate's outcome.
+  stance: z.enum(["bullish", "bearish", "neutral"]).nullable().default(null),
+  conviction: z.number().min(0).max(1).nullable().default(null),
+  keyRisks: z.array(z.string()).nullable().default(null),
+  keyOpportunities: z.array(z.string()).nullable().default(null),
+  unresolvedDisagreements: z.array(z.string()).nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;
