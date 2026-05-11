@@ -323,6 +323,13 @@ function updateObjectState(
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
+    /**
+     * Identifier of the concrete scope instance — `userId` for `"user"`,
+     * `orgId` for `"org"`, `sessionId` for `"session"`. Threaded into
+     * `CollectionHookContext.scopeId` so per-instance lifecycle hooks
+     * can correlate mutations back to the owning entity.
+     */
+    scopeId: string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
@@ -501,6 +508,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           // integration is handled at a higher level when available.
         },
         scopeType: options.scope,
+        scopeId: options.scopeId,
       };
 
       const nsHandle: ResourceCollectionRef<JsonObject> = {
@@ -2412,6 +2420,7 @@ export async function createExecutionContext<
 
   const userResources = createScopeResourceRegistry({
     scope: "user",
+    scopeId: userId,
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
@@ -2422,6 +2431,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
+    scopeId: sessionId,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     persistResources: persistSessionResources,
@@ -2435,6 +2445,7 @@ export async function createExecutionContext<
       ? undefined
       : createScopeResourceRegistry({
           scope: "org",
+          scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
