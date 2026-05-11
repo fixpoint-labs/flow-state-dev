@@ -53,6 +53,12 @@ import {
   handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
+import {
+  handleDebugListResources,
+  handleDebugListCollectionItems,
+  handleDebugGetResourceContent,
+  handleDebugGetCollectionItemContent
+} from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
@@ -446,6 +452,34 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "get_resource_manifest") {
         return await handleGetResourceManifest(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "debug_list_resources") {
+        return await handleDebugListResources(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "debug_list_collection_items") {
+        return await handleDebugListCollectionItems(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "debug_get_resource_content") {
+        return await handleDebugGetResourceContent(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "debug_get_collection_item_content") {
+        return await handleDebugGetCollectionItemContent(request, route, {
           registry: options.registry,
           stores
         });

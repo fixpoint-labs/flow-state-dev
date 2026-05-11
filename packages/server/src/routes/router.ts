@@ -206,6 +206,40 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       kind: "get_resource_manifest",
       sessionId: p.sessionId
     }))
+  ],
+
+  // --- Debug endpoints (gated; see debug-routes.ts) ---
+  debug_list_resources: [
+    entry("GET", "/sessions/:sessionId/debug/resources", (p) => ({
+      kind: "debug_list_resources",
+      sessionId: p.sessionId
+    }))
+  ],
+  debug_list_collection_items: [
+    entry("GET", "/sessions/:sessionId/debug/resources/:ref/items", (p) => ({
+      kind: "debug_list_collection_items",
+      sessionId: p.sessionId,
+      ref: p.ref
+    }))
+  ],
+  debug_get_resource_content: [
+    entry("GET", "/sessions/:sessionId/debug/resources/:ref/content", (p) => ({
+      kind: "debug_get_resource_content",
+      sessionId: p.sessionId,
+      ref: p.ref
+    }))
+  ],
+  debug_get_collection_item_content: [
+    entry(
+      "GET",
+      "/sessions/:sessionId/debug/resources/:ref/*topic/content",
+      (p) => ({
+        kind: "debug_get_collection_item_content",
+        sessionId: p.sessionId,
+        ref: p.ref,
+        topic: p.topic
+      })
+    )
   ]
 };
 

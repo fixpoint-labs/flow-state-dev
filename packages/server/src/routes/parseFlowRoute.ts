@@ -32,6 +32,15 @@ export type ParsedFlowRoute =
   | { kind: "get_resource_manifest"; sessionId: string }
   | { kind: "abort_request"; flowKind: string; requestId: string }
   | { kind: "request_status"; flowKind: string; requestId: string }
+  | { kind: "debug_list_resources"; sessionId: string }
+  | { kind: "debug_list_collection_items"; sessionId: string; ref: string }
+  | { kind: "debug_get_resource_content"; sessionId: string; ref: string }
+  | {
+      kind: "debug_get_collection_item_content";
+      sessionId: string;
+      ref: string;
+      topic: string;
+    }
   | { kind: "not_found" };
 
 /**
