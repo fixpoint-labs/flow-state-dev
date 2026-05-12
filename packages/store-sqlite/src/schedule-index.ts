@@ -3,9 +3,14 @@
  * polling tick.
  *
  * better-sqlite3 is synchronous and single-writer; `claimDue` uses
- * `db.transaction` (BEGIN IMMEDIATE by default) to read + advance the
- * batch atomically. The interface is async-shaped so a deployment can
- * swap in a remote `ScheduleIndex` without changing call sites.
+ * `db.transaction(...).immediate` (BEGIN IMMEDIATE) to read + advance
+ * the batch atomically. better-sqlite3's default is BEGIN DEFERRED,
+ * which doesn't acquire a write lock until the first write — two
+ * callers could both pass the SELECT and return the same rows. The
+ * `.immediate` modifier escalates the lock at BEGIN, so concurrent
+ * claimDue calls serialize. The interface is async-shaped so a
+ * deployment can swap in a remote `ScheduleIndex` without changing
+ * call sites.
  */
 
 import type Database from "better-sqlite3";
@@ -17,6 +22,12 @@ import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled"
  * given better-sqlite3 database. Caller owns the `Database` lifecycle.
  */
 export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex {
+  // De-dupe bad-cron warnings within a process. The row stays at its
+  // current nextFireAt so it keeps reappearing in claimDue (the spec
+  // chose loud repeat over silent drop), but we only log the first
+  // time we encounter each key — otherwise a single bad row produces
+  // unbounded log volume.
+  const warned = new Set<string>();
   const upsertStmt = db.prepare(
     `INSERT INTO schedule_index (user_id, key, cron, timezone, next_fire_at)
      VALUES (@userId, @key, @cron, @timezone, @nextFireAt)
@@ -42,10 +53,12 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
     "UPDATE schedule_index SET next_fire_at = ? WHERE user_id = ? AND key = ?"
   );
 
-  // `db.transaction` wraps the callback in BEGIN IMMEDIATE / COMMIT, with
-  // automatic ROLLBACK on throw. Single-writer SQLite means we don't need
-  // SKIP LOCKED — BEGIN IMMEDIATE serializes claimDue calls against each
-  // other and against writers.
+  // `.immediate` wraps the callback in BEGIN IMMEDIATE / COMMIT (with
+  // automatic ROLLBACK on throw). Single-writer SQLite means we don't
+  // need SKIP LOCKED — BEGIN IMMEDIATE serializes claimDue calls
+  // against each other and against writers. The plain `db.transaction`
+  // default is DEFERRED, which would let concurrent callers both pass
+  // the SELECT before either escalates to a write lock.
   const claimDueTx = db.transaction((now: number, limit: number): ScheduleIndexRow[] => {
     const rows = selectDueStmt.all(now, limit) as Array<{
       user_id: string;
@@ -65,14 +78,19 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
           .toDate()
           .getTime();
       } catch (err) {
-        // Bad cron: skip — leaves the row at its current nextFireAt so
-        // it will reappear on every tick until fixed. Logged so
-        // operators can surface it.
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[flow-state/store-sqlite] schedule_index row ${row.user_id}/${row.key} has unparseable cron "${row.cron}"; skipping advance`,
-          err
-        );
+        // Bad cron: skip — leaves the row at its current nextFireAt
+        // so it will reappear on every tick until fixed. Logged once
+        // per (user_id, key) per process so operators surface it
+        // without unbounded log volume.
+        const warnKey = `${row.user_id}/${row.key}`;
+        if (!warned.has(warnKey)) {
+          warned.add(warnKey);
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[flow-state/store-sqlite] schedule_index row ${warnKey} has unparseable cron "${row.cron}"; skipping advance`,
+            err
+          );
+        }
         continue;
       }
       claimed.push({
@@ -85,7 +103,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       advanceStmt.run(next, row.user_id, row.key);
     }
     return claimed;
-  });
+  }).immediate;
 
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
