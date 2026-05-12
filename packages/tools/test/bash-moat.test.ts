@@ -107,9 +107,9 @@ describe("moat builders", () => {
 
   it("generateMoatYaml: default-deny network when no allowHosts", () => {
     const yaml = generateMoatYaml({ name: "r1", grants: ["github"] });
-    expect(yaml).toContain("name: r1");
+    expect(yaml).toContain('name: "r1"');
     expect(yaml).toContain("grants:");
-    expect(yaml).toContain("- github");
+    expect(yaml).toContain('- "github"');
     expect(yaml).toContain('policy: "strict"');
     expect(yaml).toContain("allow:");
     // No host lines after `allow:` when allowHosts is empty.
@@ -121,8 +121,22 @@ describe("moat builders", () => {
       name: "r1",
       allowHosts: ["api.github.com", "registry.npmjs.org"],
     });
-    expect(yaml).toContain("- api.github.com");
-    expect(yaml).toContain("- registry.npmjs.org");
+    expect(yaml).toContain('- "api.github.com"');
+    expect(yaml).toContain('- "registry.npmjs.org"');
+  });
+
+  it("generateMoatYaml: quotes caller-supplied values to block YAML injection", () => {
+    const yaml = generateMoatYaml({
+      name: "r1",
+      grants: ["github\ngrants:\n  - evil_grant"],
+      allowHosts: ['"api.github.com"'],
+    });
+    // The injected payload must be inside a quoted scalar — no extra
+    // top-level `grants:` key reaching the document tree.
+    const grantsKeyMatches = yaml.match(/^grants:/gm) ?? [];
+    expect(grantsKeyMatches).toHaveLength(1);
+    // Embedded double-quotes must be escaped, not closing the string.
+    expect(yaml).toContain('- "\\"api.github.com\\""');
   });
 
   it("satisfiesMinVersion: accepts equal and higher", () => {

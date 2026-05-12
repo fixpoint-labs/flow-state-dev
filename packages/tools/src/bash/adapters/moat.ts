@@ -22,6 +22,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -171,19 +172,35 @@ export interface GenerateMoatYamlInput {
 }
 
 /**
+ * Quote a value as a YAML double-quoted scalar. Prevents newlines or other
+ * structural characters in caller-supplied strings (grants, hostnames sourced
+ * from env vars) from injecting extra YAML keys.
+ */
+function yamlQuote(value: string): string {
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t");
+  return `"${escaped}"`;
+}
+
+/**
  * Generate a transient `moat.yaml` representing the requested grants and
- * outbound network policy. Default-deny when no hosts are listed.
+ * outbound network policy. Default-deny when no hosts are listed. All
+ * caller-supplied values are quoted to avoid YAML injection.
  */
 export function generateMoatYaml(input: GenerateMoatYamlInput): string {
-  const lines: string[] = [`name: ${input.name}`];
+  const lines: string[] = [`name: ${yamlQuote(input.name)}`];
   if (input.grants && input.grants.length > 0) {
     lines.push("grants:");
-    for (const g of input.grants) lines.push(`  - ${g}`);
+    for (const g of input.grants) lines.push(`  - ${yamlQuote(g)}`);
   }
   lines.push("network:");
   lines.push('  policy: "strict"');
   lines.push("  allow:");
-  for (const h of input.allowHosts ?? []) lines.push(`    - ${h}`);
+  for (const h of input.allowHosts ?? []) lines.push(`    - ${yamlQuote(h)}`);
   return lines.join("\n") + "\n";
 }
 
@@ -420,7 +437,10 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
         timeoutMs: handle.execTimeoutMs,
       });
       if ((res.exitCode ?? 0) !== 0) {
-        if (/No such file/i.test(res.stderr) || (res.exitCode ?? 0) === 1) {
+        // Only stderr pattern reliably identifies a missing file — `cat` also
+        // exits 1 for permission denied, I/O errors, etc., which should
+        // surface as the generic MoatError so the cause isn't masked.
+        if (/No such file/i.test(res.stderr)) {
           throw new FileNotFoundError(filePath);
         }
         throw new MoatError(`readFile(${filePath}) failed: ${res.stderr || res.stdout}`);
@@ -529,6 +549,10 @@ export async function resolveMoatSandbox(
   // Resolve config: explicit path wins. If the explicit path lives outside
   // the workspace, copy it into the workspace root since MOAT reads
   // `moat.yaml` from the workspace and has no documented `--config` flag.
+  // When no `configPath` is supplied, generate a transient one — but refuse
+  // to silently overwrite a hand-authored `<workspace>/moat.yaml` (the
+  // teardown step would then delete the user's config). Caller must move
+  // their file or pass it explicitly via `configPath`.
   let tempDir: string | undefined;
   let copiedConfigPath: string | undefined;
   if (opts.configPath) {
@@ -540,6 +564,12 @@ export async function resolveMoatSandbox(
       copiedConfigPath = target;
     }
   } else {
+    const workspaceConfig = path.join(workspace, "moat.yaml");
+    if (existsSync(workspaceConfig)) {
+      throw new MoatError(
+        `Refusing to overwrite existing ${workspaceConfig}. Pass it explicitly via \`provider.configPath\` (it will be left untouched), or remove it.`,
+      );
+    }
     tempDir = path.join(os.tmpdir(), "fsdev-moat", opts.runName);
     await mkdir(tempDir, { recursive: true });
     const yaml = generateMoatYaml({
@@ -549,49 +579,76 @@ export async function resolveMoatSandbox(
     });
     await writeFile(path.join(tempDir, "moat.yaml"), yaml, "utf-8");
     // Also drop into the workspace so MOAT picks it up.
-    const workspaceConfig = path.join(workspace, "moat.yaml");
     await writeFile(workspaceConfig, yaml, "utf-8");
     copiedConfigPath = workspaceConfig;
   }
 
-  // Reuse a live run with the same name if present.
-  const runs = await listRuns(spawnFn, bin);
-  const existing = runs.find((r) => r.name === opts.runName && r.state === "running");
-  if (!existing) {
-    const args = buildRunArgs({
-      runName: opts.runName,
-      workspace,
-      mountTarget: opts.mountTarget,
-      runtime: opts.runtime,
-      grants: opts.grants,
-      allowHosts: opts.allowHosts,
-      noSandbox: opts.noSandbox,
-    });
-    const res = await spawnFn(bin, args, {});
-    if ((res.exitCode ?? 0) !== 0) {
-      throw new MoatRunStartError(res.stderr || res.stdout);
-    }
-    // Poll for readiness.
-    const deadline = Date.now() + (opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
-    const interval = opts.readiness?.intervalMs ?? DEFAULT_READY_INTERVAL_MS;
-    let ready = false;
-    while (Date.now() < deadline) {
-      const list = await listRuns(spawnFn, bin);
-      if (list.find((r) => r.name === opts.runName && r.state === "running")) {
-        ready = true;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, interval));
-    }
-    if (!ready) {
-      // Best-effort stop, then surface the timeout.
+  // From here on, any failure must clean up the artifacts we just wrote;
+  // otherwise a readiness-timeout (or `moat run` non-zero exit) leaves the
+  // generated `moat.yaml` and tempDir behind, since `MoatRunHandle` —
+  // and therefore `sandbox.stop()` — never gets constructed.
+  async function cleanupTransientArtifacts(): Promise<void> {
+    if (tempDir) {
       try {
-        await spawnFn(bin, ["stop", opts.runName], {});
+        await rm(tempDir, { recursive: true, force: true });
       } catch {
-        // Ignore — we are already in an error path.
+        // Best-effort.
       }
-      throw new MoatRunTimeoutError(opts.runName, opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
     }
+    if (copiedConfigPath && !opts.configPath) {
+      try {
+        await rm(copiedConfigPath, { force: true });
+      } catch {
+        // Best-effort.
+      }
+    }
+  }
+
+  try {
+    // Reuse a live run with the same name if present.
+    const runs = await listRuns(spawnFn, bin);
+    const existing = runs.find((r) => r.name === opts.runName && r.state === "running");
+    if (!existing) {
+      const args = buildRunArgs({
+        runName: opts.runName,
+        workspace,
+        mountTarget: opts.mountTarget,
+        runtime: opts.runtime,
+        grants: opts.grants,
+        allowHosts: opts.allowHosts,
+        noSandbox: opts.noSandbox,
+      });
+      const res = await spawnFn(bin, args, {});
+      if ((res.exitCode ?? 0) !== 0) {
+        throw new MoatRunStartError(res.stderr || res.stdout);
+      }
+      // Poll for readiness.
+      const deadline = Date.now() + (opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+      const interval = opts.readiness?.intervalMs ?? DEFAULT_READY_INTERVAL_MS;
+      let ready = false;
+      while (Date.now() < deadline) {
+        const list = await listRuns(spawnFn, bin);
+        if (list.find((r) => r.name === opts.runName && r.state === "running")) {
+          ready = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, interval));
+      }
+      if (!ready) {
+        // Best-effort stop, then surface the timeout.
+        try {
+          await spawnFn(bin, ["stop", opts.runName], {});
+        } catch {
+          // Ignore — we are already in an error path.
+        }
+        throw new MoatRunTimeoutError(opts.runName, opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+      }
+    }
+  } catch (err) {
+    // Tear down anything we wrote so the next attempt starts clean. The
+    // MoatRunHandle (and its `stop()`) was never constructed at this point.
+    await cleanupTransientArtifacts();
+    throw err;
   }
 
   const handle: MoatRunHandle = {
