@@ -6,12 +6,21 @@
  * for cooperative LLM agents — not a security boundary. True isolation requires
  * OS-level mechanisms (chroot, namespaces, seccomp) planned for v2.
  *
+ * The command guard performs two passes:
+ *  1. Raw-string regex checks for shell constructs whose mere presence is the
+ *     violation (`~/`, `$HOME`, `$(...)`, backticks, `<(...)`, `>(...)`, `../`).
+ *  2. Tokenization via `shell-quote` and per-token absolute-path validation,
+ *     so quoted strings and heredoc bodies are treated as opaque data rather
+ *     than scanned for slashes. If tokenization is unusable on a given input,
+ *     the guard falls back to a conservative raw-string absolute-path scan.
+ *
  * Two guards are exported:
  * - `assertCommandWithinWorkspace` — inspects a raw bash command string
  * - `resolveWithinWorkspace` — resolves and validates a file path
  */
 
 import path from "node:path";
+import { parse as shellParse } from "shell-quote";
 
 // ---------------------------------------------------------------------------
 // Safe system paths allowlist
@@ -40,6 +49,150 @@ function isSafeSystemPath(absPath: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Heredoc preprocessing
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip heredoc bodies from a command string before tokenization.
+ *
+ * `shell-quote` does not treat heredoc bodies as opaque — it splits them into
+ * tokens, which would re-introduce the false-positive class we are fixing
+ * (e.g. a body line `x = 1 / 2` would surface a `/` candidate). Bodies are
+ * data, so we remove them outright before parsing.
+ *
+ * Handles `<<DELIM`, `<<-DELIM`, and quoted-delimiter forms (`<<'DELIM'`,
+ * `<<"DELIM"`). The terminator line may have leading tabs only for the
+ * `<<-` form.
+ *
+ * Heredoc-redirect operators (`<<`, `<<-`) themselves are preserved in the
+ * stripped command, so a downstream parse still sees the redirection shape.
+ */
+function stripHeredocBodies(command: string): string {
+  const startPattern = /<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/g;
+  let result = command;
+  let match: RegExpExecArray | null;
+  let searchFrom = 0;
+  while ((match = startPattern.exec(result.slice(searchFrom))) !== null) {
+    const absoluteStart = searchFrom + match.index;
+    const absoluteAfterStart = absoluteStart + match[0].length;
+    const dash = match[1];
+    const delim = match[3];
+    const tabPrefix = dash === "-" ? "\\t*" : "";
+    const terminator = new RegExp(`\\n${tabPrefix}${delim}(?=\\n|$)`);
+    const remaining = result.slice(absoluteAfterStart);
+    const termMatch = terminator.exec(remaining);
+    if (!termMatch) {
+      // Malformed or unclosed heredoc — stop processing and let the fallback
+      // raw-string scan inspect what we have.
+      break;
+    }
+    const termEndInRemaining = termMatch.index + termMatch[0].length;
+    result =
+      result.slice(0, absoluteAfterStart) +
+      result.slice(absoluteAfterStart + termEndInRemaining);
+    searchFrom = absoluteAfterStart;
+    startPattern.lastIndex = 0;
+  }
+  return result;
+}
+
+/**
+ * Replace the bodies of quoted strings (both single- and double-quoted) with
+ * a fixed placeholder before tokenization.
+ *
+ * Quoted-string contents are data, not paths. Without this step, `shell-quote`
+ * would return the content as a string token that could trigger absolute-path
+ * validation when the quoted text happens to start with `/` (regex literals,
+ * URL strings, echo of an absolute-path literal). The placeholder is
+ * deliberately path-shape-free.
+ *
+ * This trades one edge: a user-supplied quoted absolute path argument
+ * (`cat "/etc/passwd"`) is treated the same as an arbitrary string literal.
+ * That trade-off is documented in the package README. The unquoted form
+ * (`cat /etc/passwd`) is still rejected.
+ */
+function stripQuotedStringBodies(command: string): string {
+  return command
+    .replace(/'[^']*'/g, "'__FSDEV_QUOTED__'")
+    .replace(/"(?:\\.|[^"\\])*"/g, '"__FSDEV_QUOTED__"');
+}
+
+// ---------------------------------------------------------------------------
+// Per-token absolute-path validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate one path-shaped token against the workspace root, the optional
+ * virtual destination, and the safe-system allowlist. Throws with a message
+ * that names the offending token if validation fails.
+ */
+function validateAbsolutePathToken(
+  token: string,
+  normalizedRoot: string,
+  destination: string | undefined,
+): void {
+  if (isSafeSystemPath(token)) return;
+  const resolved = path.resolve(token);
+  if (
+    resolved === normalizedRoot ||
+    resolved.startsWith(normalizedRoot + path.sep)
+  ) {
+    return;
+  }
+  if (destination) {
+    const normalizedDest = path.resolve(destination);
+    if (
+      resolved === normalizedDest ||
+      resolved.startsWith(normalizedDest + path.sep)
+    ) {
+      return;
+    }
+  }
+  throw new Error(
+    `Command rejected: token "${token}" resolves to a path outside the workspace root` +
+      ` (${normalizedRoot}). Use relative paths or paths within the workspace.`,
+  );
+}
+
+/**
+ * Fallback raw-string absolute-path scan. Used when `shell-quote` cannot
+ * produce useful tokens for the input. Mirrors the pre-fix behavior so
+ * dangerous commands are still caught when we cannot understand the syntax.
+ */
+function fallbackAbsolutePathScan(
+  command: string,
+  normalizedRoot: string,
+  destination: string | undefined,
+): void {
+  const absolutePathPattern = /(?:^|[\s;|&<>=])(\/{1,2}[^\s;|&<>()'"`]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = absolutePathPattern.exec(command)) !== null) {
+    const absPath = match[1];
+    if (isSafeSystemPath(absPath)) continue;
+    const resolved = path.resolve(absPath);
+    if (
+      resolved === normalizedRoot ||
+      resolved.startsWith(normalizedRoot + path.sep)
+    ) {
+      continue;
+    }
+    if (destination) {
+      const normalizedDest = path.resolve(destination);
+      if (
+        resolved === normalizedDest ||
+        resolved.startsWith(normalizedDest + path.sep)
+      ) {
+        continue;
+      }
+    }
+    throw new Error(
+      `Command rejected: references path "${absPath}" outside the workspace root` +
+        ` (${normalizedRoot}). Use relative paths or paths within the workspace.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Command guard
 // ---------------------------------------------------------------------------
 
@@ -53,7 +206,10 @@ function isSafeSystemPath(absPath: string): boolean {
  * 3. Command substitution (`$(...)` and backticks)
  * 4. Process substitution (`<(...)`, `>(...)`)
  * 5. Path traversals (`../`)
- * 6. Absolute paths not rooted in the workspace or virtual destination
+ * 6. Absolute paths not rooted in the workspace or virtual destination,
+ *    detected by tokenizing the command (after stripping heredoc bodies) and
+ *    inspecting only path-shaped tokens. Quoted-string contents and heredoc
+ *    bodies are treated as opaque data and are not scanned.
  *
  * @param workspaceRoot - Real filesystem path to the workspace (e.g. `/tmp/workspaces/session-1/`)
  * @param command - Raw bash command string to validate
@@ -112,42 +268,44 @@ export function assertCommandWithinWorkspace(
     );
   }
 
-  // 6. Absolute paths outside workspace
-  //    Extract tokens that look like absolute paths, then verify each one
-  //    is within the workspace root, the virtual destination, or the safe list.
-  const absolutePathPattern = /(?:^|[\s;|&<>=])(\/{1,2}[^\s;|&<>()'"`]*)/g;
-  let match;
-  while ((match = absolutePathPattern.exec(command)) !== null) {
-    const absPath = match[1];
+  // 6. Absolute paths outside workspace — tokenize and validate.
+  //    Heredoc bodies are stripped first because shell-quote does not treat
+  //    them as opaque. An env function returns placeholders for `$VAR`
+  //    expansions so an empty expansion never produces a stray `/` token.
+  const trimmed = command.trim();
+  if (trimmed === "") return;
 
-    // Skip safe system paths (/dev/null, etc.)
-    if (isSafeSystemPath(absPath)) continue;
+  const stripped = stripQuotedStringBodies(stripHeredocBodies(command));
 
-    const resolved = path.resolve(absPath);
+  let tokens: ReturnType<typeof shellParse> | null = null;
+  try {
+    tokens = shellParse(stripped, (key) => `__FSDEV_VAR_${key}__`);
+  } catch {
+    tokens = null;
+  }
 
-    // Allow paths within the real workspace root
-    if (
-      resolved === normalizedRoot ||
-      resolved.startsWith(normalizedRoot + path.sep)
-    ) {
+  if (!tokens || (tokens.length === 0 && stripped.trim() !== "")) {
+    fallbackAbsolutePathScan(command, normalizedRoot, destination);
+    return;
+  }
+
+  for (const token of tokens) {
+    if (typeof token === "string") {
+      if (token.startsWith("/")) {
+        validateAbsolutePathToken(token, normalizedRoot, destination);
+      }
       continue;
     }
-
-    // Allow paths within the virtual destination prefix
-    if (destination) {
-      const normalizedDest = path.resolve(destination);
-      if (
-        resolved === normalizedDest ||
-        resolved.startsWith(normalizedDest + path.sep)
-      ) {
-        continue;
+    // Object tokens. The `op` operators (`|`, `&&`, `;`, `>`, `<`, `<<`, etc.)
+    // are control flow we already screen for at the raw-string level when
+    // they matter (checks 3 and 4). Globs carry an absolute-or-relative
+    // pattern we treat like a string token.
+    if (token && typeof token === "object" && "pattern" in token) {
+      const pattern = (token as { pattern: string }).pattern;
+      if (typeof pattern === "string" && pattern.startsWith("/")) {
+        validateAbsolutePathToken(pattern, normalizedRoot, destination);
       }
     }
-
-    throw new Error(
-      `Command rejected: references path "${absPath}" outside the workspace root` +
-        ` (${normalizedRoot}). Use relative paths or paths within the workspace.`,
-    );
   }
 }
 

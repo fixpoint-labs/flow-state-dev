@@ -177,23 +177,26 @@ createBashTool({
 
 ### Workspace path restrictions (Local FS)
 
-The local adapter enforces that all filesystem operations stay within the workspace root. This is enabled by default (`strictPaths: true`) and protects against accidental workspace escapes by LLM agents.
+The local adapter validates commands and file paths against the workspace root before execution. This is enabled by default (`strictPaths: true`). It is a best-effort defense for cooperative agents, not a security boundary.
 
-Guarded operations:
-- **`executeCommand`** — rejects commands containing absolute paths outside the workspace, path traversals (`../`), home references (`~/`, `$HOME`), and command substitution (`$()`, backticks).
-- **`readFile` / `writeFile`** — resolves paths against the workspace root and rejects any result that falls outside it.
+**What the guard checks.** Before tokenizing, the raw command is screened for shell constructs whose presence is itself the violation: home references (`~/`), `$HOME`, command substitution (`$()`, backticks), process substitution (`<(...)`, `>(...)`), and path traversals (`../`). The command is then split into tokens (the same way bash splits words) and each path-shaped token is checked: tokens that resolve outside the workspace root and outside the safe-system allowlist (e.g. `/dev/null`) are rejected. `readFile` and `writeFile` resolve their argument against the workspace root and reject anything that escapes it.
+
+**What the guard does not check.** Content inside quoted strings, heredoc bodies, and similar opaque arguments is treated as data, not as candidate paths. `python3 -c "x = 1 / 2"` is allowed because the inner script is a quoted argument. `cat << EOF\n/etc/passwd\nEOF` is allowed because the body of a heredoc is data, not a filesystem reference. The trade-off is deliberate: scanning quoted content produced unacceptable false positives in inline-code use cases, and one consequence is that a literal absolute path inside quotes (`cat "/etc/passwd"`) is no longer rejected — the unquoted form (`cat /etc/passwd`) still is.
 
 ```typescript
 // Default: strictPaths is true
 provider: { type: "local", cwd: "./workspace" }
 
+// Allowed (inline code with arithmetic):
+//   python3 -c "x = 1 / 2"
+// Rejected (unquoted absolute path outside workspace):
+//   cat /etc/passwd
+
 // Opt out for power users (logs a warning):
 provider: { type: "local", cwd: "./workspace", strictPaths: false }
 ```
 
-When a command or path is rejected, the error message describes what was blocked and why, so the LLM agent can self-correct.
-
-This is a best-effort defense layer for cooperative agents. For true isolation, use the `just-bash` adapter (in-memory emulation) or plan for OS-level sandboxing in a future release.
+When a command is rejected, the error message names the specific offending token so the agent can self-correct. For true isolation, use the `just-bash` adapter (in-memory emulation) or wait for OS-level sandboxing in a future release.
 
 ### Direct adapter constructors
 
