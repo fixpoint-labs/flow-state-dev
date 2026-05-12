@@ -7,7 +7,7 @@ watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold and a research manager synthesize an investment thesis. Phases
 3–5 stack on top.
 
-## What's included (Phases 1 + 2)
+## What's included (Phases 1 + 2 + 3)
 
 Phase 1 — analyst fan-out:
 
@@ -38,9 +38,21 @@ Phase 2 — research debate:
   speaking agent; the research manager's structured thesis renders as a
   collapsible card in the transcript.
 
+Phase 3 — trader synthesis:
+
+- **Single-shot structured synthesis** — one trader generator, no loop.
+  Reads the Phase 2 `InvestmentThesis` and writes a typed `TradeProposal`.
+- **Typed extension fields** — `direction`, `sizePct`, `stopPrice`,
+  `targetPrice`, `holdingPeriod`, `invalidationCriteria`, `dependsOn`.
+  These keep the trader's output auditable rather than opaque LLM JSON,
+  and let Phase 4 (risk) and Phase 5 (PM) read structured values without
+  parsing strings.
+- **Cost-preset gates prompt depth** — the cheap preset reads the thesis
+  and its extension fields only; the full preset adds the four analyst
+  memos and the full bull/bear debate transcript.
+
 ## What's not yet shipped
 
-- Phase 3 — Trader synthesis and structured trade proposal
 - Phase 4 — Risk debate (aggressive / conservative / neutral)
 - Phase 5 — Portfolio manager final decision, full README, architecture doc
 
@@ -103,6 +115,13 @@ analyze
         ├─ consolidateBullMemo    (.then — write `BullThesis`)
         ├─ consolidateBearMemo    (.then — write `BearThesis`)
         └─ researchManagerGenerator (.then — write `InvestmentThesis`)
+  └─ phase-3-trader               (sub-sequencer, container item)
+        ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
+        └─ traderStep
+             ├─ markWritingP3
+             ├─ traderGenerator   (.then — write `TradeProposal`)
+             ├─ commitTraderMemo  (.tap)
+             └─ markErrorP3       (.rescue)
 ```
 
 All four `roundRobin()` instances share one `phase2Contributions`

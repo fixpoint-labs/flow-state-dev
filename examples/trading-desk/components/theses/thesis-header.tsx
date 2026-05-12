@@ -76,10 +76,15 @@ export function ThesisHeader({
 function ratingClass(rating: string): string {
   switch (rating) {
     case "constructive":
+    case "buy":
+    case "long":
       return "text-[color:var(--c-live)]";
     case "cautious":
+    case "underweight":
+    case "short":
       return "text-[color:var(--c-warn)]";
     case "neutral":
+    case "flat":
     default:
       return "text-[color:var(--c-fg-muted)]";
   }

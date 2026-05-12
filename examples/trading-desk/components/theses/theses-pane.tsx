@@ -61,6 +61,7 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "bull",
   "bear",
   "researchManager",
+  "trader",
 ];
 
 export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactElement {
@@ -263,9 +264,9 @@ function PendingDoc({ agent }: { agent: AgentName }): ReactElement {
         </div>
       </div>
       <p className="text-[12px] leading-relaxed text-[color:var(--c-fg-muted)]">
-        This memo will populate once the upstream phases land. Phase 1 ships
-        the four analyst entries (Fundamentals, Sentiment, News, Technical);
-        Phase 2–5 entries are scaffolding.
+        This memo will populate once the upstream phases land. Phases 1–3
+        ship the analyst, debate, and trader memos. Phase 4–5 entries are
+        scaffolding.
       </p>
     </div>
   );

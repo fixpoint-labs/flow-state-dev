@@ -61,6 +61,19 @@ export const memoStateSchema = z.object({
   keyRisks: z.array(z.string()).nullable().default(null),
   keyOpportunities: z.array(z.string()).nullable().default(null),
   unresolvedDisagreements: z.array(z.string()).nullable().default(null),
+  // Phase 3 TradeProposal extension. Only the trader memo
+  // (`memos/p3/trader`) populates these; all other memos leave them `null`.
+  // Read by Phase 4+ to reason about the proposed trade.
+  direction: z.enum(["long", "short", "flat"]).nullable().default(null),
+  sizePct: z.number().nullable().default(null),
+  stopPrice: z.number().nullable().default(null),
+  targetPrice: z.number().nullable().default(null),
+  holdingPeriod: z
+    .enum(["days", "weeks", "months", "quarters"])
+    .nullable()
+    .default(null),
+  invalidationCriteria: z.array(z.string()).nullable().default(null),
+  dependsOn: z.array(z.string()).nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;
