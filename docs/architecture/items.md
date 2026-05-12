@@ -70,6 +70,8 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), and on failure the error. This is how the devtool builds its execution trace tree.
 
+`block_trace.error` (and `tool_output.error`) is `{ message: string; code?: string; details?: Record<string, unknown> }`. The runtime auto-populates `details` for known framework-internal cases: generator output-validation failures attach `rawOutput` (the raw text the model returned), `issues` (the Zod issues), and `phase` (`"stream"` | `"final"`). Author-thrown `FlowError.details` flows through verbatim. Authors may attach arbitrary additional keys to their own `FlowError.details`; the devtool renders `details` via a generic JSON view, with dedicated panels for the well-known keys.
+
 Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) → zero or more `item.updated` patches (connector input, generator bundle, model usage) → `item.done` (terminal status, output written, timing closed). Consumers reconcile by id. Late subscribers see only the final settled row.
 
 `block_trace.output` is a `BlockValue<T>` discriminated union with three cases:

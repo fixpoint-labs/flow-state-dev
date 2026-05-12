@@ -165,6 +165,45 @@ describe("generator builder", () => {
     warnSpy.mockRestore();
   });
 
+  it("throws OutputValidationError with rawOutput + issues on schema failure", async () => {
+    const { OutputValidationError } = await import("../src/errors/output-validation-error");
+
+    const block = generator({
+      name: "ov-final",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.boolean() }),
+      repair: { mode: "fail" }
+    });
+
+    const ctx = createMockContext({
+      resolveModel: ((() => ({
+        modelId: "m",
+        async generate() {
+          return { text: "Sorry, not JSON." };
+        }
+      })) as unknown) as any
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runForTest(block, { value: 1 }, ctx);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(OutputValidationError);
+      const oe = err as InstanceType<typeof OutputValidationError>;
+      expect(oe.code).toBe("output_validation_error");
+      expect(oe.retryable).toBe(false);
+      expect(oe.details.phase).toBe("final");
+      expect(typeof oe.details.rawOutput).toBe("string");
+      expect(oe.details.rawOutput).toContain("Sorry, not JSON.");
+      expect(Array.isArray(oe.details.issues)).toBe(true);
+      expect(oe.details.issues.length).toBeGreaterThan(0);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("runs model-requested tools via execute wrappers", async () => {
     // The generator compiles tools with `execute` closures. The model layer
     // (AI SDK) calls `execute` during its built-in multi-step loop.

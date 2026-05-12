@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-12
+
+### DevTool: surface enough context on block failures to debug without reproduction (FIX-582)
+
+- `block_trace.error` and `tool_output.error` gain an optional `details: Record<string, unknown>` field. The runtime auto-populates it for framework-internal cases that previously discarded context; author-thrown `FlowError.details` flows through verbatim.
+- Generator output-validation failures now throw `OutputValidationError` carrying `{ rawOutput, issues, phase }`. The raw model text and the Zod issues survive to the trace instead of collapsing to a single message string.
+- `FlowError` relocated to `@flow-state-dev/core` so handler authors in third-party packages can throw it without a server dependency. Server's typed subclasses still extend it; existing `instanceof FlowError` checks keep working unchanged.
+- DevTool's failed-block detail panel renders a dedicated "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a generic "Details" JSON panel for any other keys. Failed tool-invoked blocks gain Input and Tool call sections, closing the "Input: null" gap on the failure path.
+- New advanced docs page on error handling, cross-linked from the rescue and DevTool pages.
+
 ## 2026-05-11
 
 ### Server: session-state schema defaults are pre-applied at session creation (FIX-561)

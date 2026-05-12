@@ -185,6 +185,7 @@ const sidebars: SidebarsConfig = {
         "advanced/capabilities-authoring",
         "advanced/flow-isolation",
         "advanced/generator-context",
+        "advanced/error-handling",
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",

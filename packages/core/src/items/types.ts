@@ -186,6 +186,13 @@ export type BlockTraceItem = OutputItemBase & {
   error?: {
     message: string;
     code?: string;
+    /**
+     * Open structured payload attached at failure time. Runtime auto-populates
+     * well-known keys (`rawOutput`, `issues`, `phase`) for generator
+     * output-validation failures; author-thrown `FlowError.details` flows
+     * through verbatim.
+     */
+    details?: Record<string, unknown>;
   };
 };
 
@@ -219,6 +226,11 @@ export type ToolOutputItem = OutputItemBase & {
   error?: {
     message: string;
     code?: string;
+    /**
+     * Open structured payload attached at failure time. Shape matches
+     * `BlockTraceItem.error.details` so the two items render identically.
+     */
+    details?: Record<string, unknown>;
   };
 };
 
