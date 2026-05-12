@@ -636,6 +636,9 @@ importers:
       cron-parser:
         specifier: ^5.0.0
         version: 5.5.0
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@flow-state-dev/testing':
         specifier: workspace:*
@@ -646,9 +649,6 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
 
   packages/server:
     dependencies:
