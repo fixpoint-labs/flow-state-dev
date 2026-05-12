@@ -24,6 +24,12 @@ export type UseDebugCollectionItemsResult = {
   refresh: () => Promise<void>;
 };
 
+// Hard ceiling on accumulated items per session view. Server pages cap
+// individual responses at 500, but unbounded "Load more" clicks would let a
+// massive collection grow this array without limit — the panel renders every
+// item, so we cap accumulation rather than virtualizing.
+const MAX_ACCUMULATED_ITEMS = 5000;
+
 export function useDebugCollectionItems(
   sessionId: string | null,
   ref: string | null,
@@ -49,9 +55,17 @@ export function useDebugCollectionItems(
           limit: pageSize,
           topic: topicFilter && topicFilter.length > 0 ? topicFilter : undefined
         });
-        setItems((prev) => (cursor === null ? result.items : [...prev, ...result.items]));
-        cursorRef.current = result.nextCursor;
-        setHasMore(result.nextCursor !== null);
+        let capped = false;
+        setItems((prev) => {
+          const merged = cursor === null ? result.items : [...prev, ...result.items];
+          if (merged.length >= MAX_ACCUMULATED_ITEMS) {
+            capped = true;
+            return merged.slice(0, MAX_ACCUMULATED_ITEMS);
+          }
+          return merged;
+        });
+        cursorRef.current = capped ? null : result.nextCursor;
+        setHasMore(!capped && result.nextCursor !== null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch collection items");
       } finally {

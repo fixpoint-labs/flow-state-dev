@@ -18,7 +18,7 @@ import type {
   ResourceConfig
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
-import { resolveClientProjection } from "@flow-state-dev/core/utils";
+import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/core/utils";
 import {
   getPersistedData,
   isCollectionConfig,
@@ -96,24 +96,18 @@ export function computeClientView(
   if (!config.client) return { ok: false, reason: "no_client_data" };
   // Collections gate state visibility through `client.state.read`. Single
   // resources have no such gate — the projection itself is the opt-in.
-  if (isCollectionConfig(config)) {
-    if (config.client.state?.read !== true) {
-      return { ok: false, reason: "state_read_false" };
-    }
+  if (isCollectionConfig(config) && config.client.state?.read !== true) {
+    return { ok: false, reason: "state_read_false" };
   }
-  const client = config.client;
-  const hasProjection =
-    typeof client.data === "function" ||
-    Array.isArray(client.expose) ||
-    Array.isArray(client.exclude);
-  if (!hasProjection) return { ok: false, reason: "no_client_data" };
+  if (!hasClientProjection(config.client)) {
+    return { ok: false, reason: "no_client_data" };
+  }
   try {
-    const value = resolveClientProjection(client, state);
+    const value = resolveClientProjection(config.client, state);
     if (value instanceof Promise) {
-      // resolveClientProjection is synchronous in practice for the cases we
-      // care about (expose/exclude/data over plain JsonObjects). Promise
-      // returns are author-supplied async `data` functions — uncommon but
-      // not forbidden. Surface as "threw" so the caller can resolve it.
+      // Author-supplied async `data` functions are uncommon but not forbidden.
+      // The debug snapshot is synchronous-only; surface as "threw" so the
+      // panel renders the same explanatory chip as a real exception.
       throw new Error(
         "client.data returned a Promise; async projection not supported in debug snapshot"
       );
@@ -133,23 +127,25 @@ function describeClientConfig(
   config: ResourceConfig | ResourceCollectionConfig
 ): DebugResourceClientConfig {
   const client = config.client;
-  const isColl = isCollectionConfig(config);
-  const stateRead = isColl
-    ? (config as ResourceCollectionConfig).client?.state?.read === true
-    : client !== undefined;
+  const hasClient = client !== undefined;
+  const data = hasClientProjection(client);
+  const contentRead = client?.content?.read === true;
+  if (isCollectionConfig(config)) {
+    return {
+      hasClient,
+      data,
+      stateRead: config.client?.state?.read === true,
+      contentRead,
+      prefetchWindow:
+        typeof config.prefetchWindow === "number" ? config.prefetchWindow : null
+    };
+  }
   return {
-    hasClient: client !== undefined,
-    data:
-      typeof client?.data === "function" ||
-      Array.isArray(client?.expose) ||
-      Array.isArray(client?.exclude),
-    stateRead,
-    contentRead: client?.content?.read === true,
-    prefetchWindow:
-      isColl &&
-      typeof (config as ResourceCollectionConfig).prefetchWindow === "number"
-        ? (config as ResourceCollectionConfig).prefetchWindow!
-        : null
+    hasClient,
+    data,
+    stateRead: hasClient,
+    contentRead,
+    prefetchWindow: null
   };
 }
 
@@ -256,29 +252,31 @@ export async function buildDebugResourceTree(opts: {
 
   const groups = groupResources(flow as ResourceFlowLike);
 
-  // Lazy per-scope persisted data; loaded only when a group needs it.
+  // Pre-warm distinct scopes in parallel — each scope hits a different store
+  // (session/user/org), so the three round trips can overlap.
+  const distinctScopes = Array.from(new Set(groups.map((g) => g.scope)));
   const persistedCache = new Map<
     ResolvedResourceScope,
     { resources: Record<string, JsonObject>; content: Record<string, string> } | null
   >();
-  async function loadPersisted(scope: ResolvedResourceScope) {
-    if (persistedCache.has(scope)) return persistedCache.get(scope) ?? null;
-    const data = await getPersistedData(
-      ctx,
-      flow as ResourceFlowLike,
-      sessionId,
-      scope
-    );
-    persistedCache.set(scope, data ?? null);
-    return data ?? null;
-  }
+  await Promise.all(
+    distinctScopes.map(async (scope) => {
+      const data = await getPersistedData(
+        ctx,
+        flow as ResourceFlowLike,
+        sessionId,
+        scope
+      );
+      persistedCache.set(scope, data ?? null);
+    })
+  );
 
   const entries: DebugResourceEntry[] = [];
   let counter = 0;
   for (const group of groups) {
     counter++;
     const definitionId = `dr_${counter}`;
-    const persisted = await loadPersisted(group.scope);
+    const persisted = persistedCache.get(group.scope) ?? null;
     const clientConfig = describeClientConfig(group.config);
     const primaryName = group.aliases[0]!;
 

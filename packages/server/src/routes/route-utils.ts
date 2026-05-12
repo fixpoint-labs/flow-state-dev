@@ -7,7 +7,7 @@ import type {
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
-import { resolveClientProjection } from "@flow-state-dev/core/utils";
+import { resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/utils";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord } from "../stores/types";
@@ -409,13 +409,9 @@ export async function buildResourceSnapshot(options: {
 
     const state = normalizeResourceState(config, options.persisted?.[resourceName]);
     const prefetch = config.client?.content?.prefetch === true;
-    const hasProjection =
-      typeof config.client?.data === "function" ||
-      Array.isArray(config.client?.expose) ||
-      Array.isArray(config.client?.exclude);
 
     const entry: Record<string, unknown> = {};
-    if (hasProjection) {
+    if (hasClientProjection(config.client)) {
       entry.clientData = await resolveClientProjection(config.client, state);
     }
     if (prefetch && contentMap[resourceName] !== undefined) {

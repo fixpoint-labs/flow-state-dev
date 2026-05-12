@@ -27,15 +27,7 @@ export function ResourceStateView({ state, clientView }: ResourceStateViewProps)
   const [mode, setMode] = useState<Mode>("server");
 
   if (!resolved.diverges) {
-    return (
-      <div>
-        {state === null || state === undefined ? (
-          <span className="text-[11px] italic text-slate-500">No state persisted.</span>
-        ) : (
-          <JsonViewer data={state} />
-        )}
-      </div>
-    );
+    return <div><ServerPane state={state} /></div>;
   }
 
   return (

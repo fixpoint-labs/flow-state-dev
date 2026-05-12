@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import type {
+  DebugClientView,
   DebugResourceEntry,
   DebugResourceClientConfig
 } from "@flow-state-dev/client";
@@ -269,7 +270,7 @@ function CollectionItemRow({
     topic: string;
     storageKey: string;
     state: Record<string, unknown> | null;
-    clientView: import("@flow-state-dev/client").DebugClientView;
+    clientView: DebugClientView;
     hasContent: boolean;
     contentByteLength?: number;
     contentType?: string;
