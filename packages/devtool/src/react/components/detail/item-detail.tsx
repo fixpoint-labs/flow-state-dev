@@ -174,8 +174,8 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         <CollapsibleSection title="Model Usage" defaultOpen={false}>
           <div className="space-y-1">
             {traceItem.modelUsage.model && <MetadataRow label="Model" value={traceItem.modelUsage.model} />}
-            {traceItem.modelUsage.promptTokens !== undefined && <MetadataRow label="Prompt tokens" value={String(traceItem.modelUsage.promptTokens)} />}
-            {traceItem.modelUsage.completionTokens !== undefined && <MetadataRow label="Completion tokens" value={String(traceItem.modelUsage.completionTokens)} />}
+            {traceItem.modelUsage.promptTokens !== undefined && <MetadataRow label="Input tokens" value={String(traceItem.modelUsage.promptTokens)} />}
+            {traceItem.modelUsage.completionTokens !== undefined && <MetadataRow label="Output tokens" value={String(traceItem.modelUsage.completionTokens)} />}
             {traceItem.modelUsage.cacheReadTokens !== undefined && <MetadataRow label="Cache read" value={String(traceItem.modelUsage.cacheReadTokens)} />}
           </div>
         </CollapsibleSection>
@@ -468,8 +468,8 @@ function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_trace"
         <CollapsibleSection title="Model Usage" defaultOpen>
           <div className="space-y-1">
             {item.modelUsage.model && <MetadataRow label="Model" value={item.modelUsage.model} />}
-            {item.modelUsage.promptTokens !== undefined && <MetadataRow label="Prompt tokens" value={String(item.modelUsage.promptTokens)} />}
-            {item.modelUsage.completionTokens !== undefined && <MetadataRow label="Completion tokens" value={String(item.modelUsage.completionTokens)} />}
+            {item.modelUsage.promptTokens !== undefined && <MetadataRow label="Input tokens" value={String(item.modelUsage.promptTokens)} />}
+            {item.modelUsage.completionTokens !== undefined && <MetadataRow label="Output tokens" value={String(item.modelUsage.completionTokens)} />}
             {item.modelUsage.cacheReadTokens !== undefined && <MetadataRow label="Cache read" value={String(item.modelUsage.cacheReadTokens)} />}
           </div>
         </CollapsibleSection>
