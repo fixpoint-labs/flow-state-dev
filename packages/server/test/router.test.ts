@@ -223,6 +223,49 @@ describe("parseFlowRoute (router-backed)", () => {
       });
     });
 
+    it("multi-segment topic — get_collection_item_state captures `p1/fundamentals`", () => {
+      // Collection patterns like `memos/**` produce topic keys with slashes
+      // (e.g. `p1/fundamentals`). The router must capture the full topic
+      // rather than 404 because the parameter is single-segment. Regression
+      // for the bug where trading-desk memo fetches returned 404.
+      expect(
+        parse("GET", "/sessions/sess_1/resources/memos/p1/fundamentals")
+      ).toEqual({
+        kind: "get_collection_item_state",
+        sessionId: "sess_1",
+        ref: "memos",
+        topic: "p1/fundamentals"
+      });
+    });
+
+    it("multi-segment topic — get_collection_item_content captures across slashes", () => {
+      expect(
+        parse(
+          "GET",
+          "/sessions/sess_1/resources/memos/p1/fundamentals/content"
+        )
+      ).toEqual({
+        kind: "get_collection_item_content",
+        sessionId: "sess_1",
+        ref: "memos",
+        topic: "p1/fundamentals"
+      });
+    });
+
+    it("multi-segment topic — delete_collection_item captures across slashes", () => {
+      expect(
+        parse(
+          "DELETE",
+          "/sessions/sess_1/resources/memos/p2/research-manager"
+        )
+      ).toEqual({
+        kind: "delete_collection_item",
+        sessionId: "sess_1",
+        ref: "memos",
+        topic: "p2/research-manager"
+      });
+    });
+
     it("GET /sessions/:sessionId/resources/:ref/content prefers content over state-get (literal segment wins)", () => {
       // Topics literally called "content" are not addressable via the state-get
       // route; the existing /content endpoint takes precedence by literal-segment

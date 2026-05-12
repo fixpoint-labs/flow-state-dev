@@ -92,12 +92,46 @@ export const PHASE_1_MEMO_KEYS = {
 
 export type Phase1MemoShortName = keyof typeof PHASE_1_MEMO_KEYS;
 
-/** Reverse lookup: which Phase 1 short name owns this agent (if any)? */
+/** Resource storage keys for Phase 2 memos (bull, bear, research manager).
+ *  Same shape as `PHASE_1_MEMO_KEYS`. */
+export const PHASE_2_MEMO_KEYS = {
+  bull: {
+    agentName: "bullResearcher",
+    memoKey: "memos/p2/bull",
+    collectionKey: "p2/bull",
+  },
+  bear: {
+    agentName: "bearResearcher",
+    memoKey: "memos/p2/bear",
+    collectionKey: "p2/bear",
+  },
+  researchManager: {
+    agentName: "researchManager",
+    memoKey: "memos/p2/research-manager",
+    collectionKey: "p2/research-manager",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase2MemoShortName = keyof typeof PHASE_2_MEMO_KEYS;
+
+/** Combined memo-key map across all shipped phases. The sidebar iterates
+ *  this single table; future phases append their own entries. */
+export const ALL_MEMO_KEYS = {
+  ...PHASE_1_MEMO_KEYS,
+  ...PHASE_2_MEMO_KEYS,
+} as const;
+
+export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;
+
+/** Reverse lookup: which short name owns this agent across any phase? */
 export function shortNameForAgent(
   agent: AgentName,
-): Phase1MemoShortName | undefined {
-  for (const [shortName, mapping] of Object.entries(PHASE_1_MEMO_KEYS) as Array<
-    [Phase1MemoShortName, (typeof PHASE_1_MEMO_KEYS)[Phase1MemoShortName]]
+): AnyMemoShortName | undefined {
+  for (const [shortName, mapping] of Object.entries(ALL_MEMO_KEYS) as Array<
+    [AnyMemoShortName, (typeof ALL_MEMO_KEYS)[AnyMemoShortName]]
   >) {
     if (mapping.agentName === agent) return shortName;
   }

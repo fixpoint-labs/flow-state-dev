@@ -14,7 +14,6 @@ import type {
   UsesSlot,
 } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
-import { z } from "zod";
 import {
   roundRobinStateSchema,
   type RoundRobinContributionsState,
@@ -24,8 +23,6 @@ import {
 export type RosterAgentInstructions =
   | string
   | ((input: any, ctx: any) => string | Promise<string>);
-
-const rosterAgentOutputSchema = z.object({ text: z.string() });
 
 function formatPrior(entries: { round: number; agentName: string; text: string }[]) {
   if (entries.length === 0) return "";
@@ -66,13 +63,26 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
   const roleLine = opts.role
     ? `You are ${opts.role} contributing to a round-robin coordination process.`
     : "You are an agent contributing to a round-robin coordination process.";
+  // Output is plain text (no `outputSchema` override) so the generator's
+  // streaming gate enables — the agent emits live `message` items as it
+  // types, which makes the round-robin visible to chat-style transcripts
+  // without forcing every consumer to write a custom roster block. The
+  // recorder (`record-contribution.ts`) coerces strings via `coerceText`,
+  // so the contributions resource is unchanged. Authors who genuinely need
+  // structured roster output (e.g. a vote roster emitting `{ choice }`)
+  // should pass `block:` on their RosterEntry to override the default.
+  //
+  // `agentName` is forwarded so emitted items carry identity. Without it,
+  // chat transcripts that filter by known agent (e.g. trading-desk's
+  // theses pane) silently drop the messages even though the streaming
+  // path works correctly.
   return generator({
     name: `${opts.name}-roster-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
-    outputSchema: rosterAgentOutputSchema,
     resources: { contributions: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     agentType: opts.agentType ?? "sub",
+    agentName: opts.agentName,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),

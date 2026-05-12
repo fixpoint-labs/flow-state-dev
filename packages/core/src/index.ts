@@ -191,7 +191,8 @@ export {
   selectModel,
   isModelSelection,
   applyCaching,
-  DEFAULT_CACHING_CONFIG
+  DEFAULT_CACHING_CONFIG,
+  makeSchemaStrict
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,

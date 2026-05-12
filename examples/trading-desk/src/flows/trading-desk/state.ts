@@ -7,6 +7,10 @@
  * `client.expose`) so memos transition `pending → writing → published`
  * live mid-stream — body content still loads from `useResourceCollection`
  * at the terminal snapshot.
+ *
+ * `maxDebateRounds` caps the Phase 2 bull/bear loop. The cheap preset sets
+ * it to 1 and the full preset to 2. The schema enforces the ceiling so
+ * caller input cannot exceed it.
  */
 import { z } from "zod";
 
@@ -15,7 +19,8 @@ export const sessionStateSchema = z.object({
   date: z.string().default("2026-05-06"),
   costPreset: z.enum(["fast", "full"]).default("fast"),
   dataSource: z.enum(["fixture", "live"]).default("fixture"),
-  activePhase: z.enum(["idle", "phase-1"]).default("idle"),
+  activePhase: z.enum(["idle", "phase-1", "phase-2"]).default("idle"),
+  maxDebateRounds: z.number().int().min(1).max(2).default(1),
   memoStatus: z
     .record(z.string(), z.enum(["pending", "writing", "published", "error"]))
     .default({}),

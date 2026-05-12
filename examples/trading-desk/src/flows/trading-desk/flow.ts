@@ -13,6 +13,8 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { phase1Pipeline } from "./blocks/analyst-phase";
+import { phase2Pipeline } from "./phase-2";
+import { phase2Contributions } from "./phase-2/round-robin";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -43,6 +45,9 @@ const seedSession = handler({
       costPreset: input.costPreset,
       dataSource: input.dataSource,
       activePhase: "idle",
+      // Cheap preset runs one bull/bear round; full preset runs two. Caller
+      // input never sets this — the schema's `max(2)` enforces the ceiling.
+      maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       memoStatus: {} as Record<string, MemoStatus>,
     });
     return input;
@@ -54,7 +59,8 @@ const analyzePipeline = sequencer({
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
-  .then(phase1Pipeline);
+  .then(phase1Pipeline)
+  .then(phase2Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
@@ -75,6 +81,7 @@ const tradingDeskFlow = defineFlow({
         "costPreset",
         "dataSource",
         "activePhase",
+        "maxDebateRounds",
         "memoStatus",
       ],
     },
@@ -82,6 +89,9 @@ const tradingDeskFlow = defineFlow({
 
   resources: {
     memos: memosCollection,
+    // Phase 2 transcript. Registered here so post-loop consolidation
+    // generators can declare it on their own `resources:` slot.
+    p2Contributions: phase2Contributions,
   },
 });
 

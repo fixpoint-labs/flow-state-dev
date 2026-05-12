@@ -348,6 +348,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@flow-state-dev/patterns':
+        specifier: workspace:*
+        version: link:../../packages/patterns
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react

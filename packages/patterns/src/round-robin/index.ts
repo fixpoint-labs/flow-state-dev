@@ -103,6 +103,23 @@ export interface RoundRobinConfig<
   /** Default 5. Hard cap on round cycling regardless of judge verdict. */
   maxRounds?: number;
   /**
+   * Optional shared contributions resource. When omitted, the pattern
+   * creates its own internal instance via `createRoundRobinContributions()`.
+   *
+   * Pass an external instance when:
+   * - Multiple `roundRobin()` instances need to share state — e.g. behind
+   *   a `router()` that picks one at runtime. The pattern allocates the
+   *   resource per call, so without a shared reference the router's
+   *   resource-merge would reject with `Resource conflict: "contributions"`.
+   * - Consumer blocks outside the pattern need to read the running
+   *   transcript via `ctx.resources` instead of threading it through
+   *   `RoundRobinFinalShape.contributions`.
+   *
+   * Register the shared resource on the flow's `resources` map so
+   * external consumers can declare it on their own `resources:` slot.
+   */
+  contributions?: DefinedResource;
+  /**
    * Judge override. Must produce `{ done: boolean, summary: string }`.
    * Pass `false` is NOT permitted — Round Robin requires a terminator.
    * Use a stub judge that always returns `{ done: false }` to lean on
@@ -176,7 +193,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   }
 
   const collectionId = config.collectionId ?? name;
-  const contributions = createRoundRobinContributions();
+  const contributions = config.contributions ?? createRoundRobinContributions();
   const warnedAgents = new Set<string>();
 
   const initContributions = createInitContributions({

@@ -36,10 +36,10 @@ import { PmHero } from "./pm-hero";
 import { WritingSkeleton } from "./writing-skeleton";
 import {
   AGENTS,
-  PHASE_1_MEMO_KEYS,
+  ALL_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
-  type Phase1MemoShortName,
+  type AnyMemoShortName,
 } from "@/src/flows/trading-desk/agents";
 import type {
   MemoStatus,
@@ -49,14 +49,18 @@ import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {
   session: SessionView;
-  memoStatus: Partial<Record<Phase1MemoShortName, MemoStatus>>;
+  memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
 };
 
-const PUBLISH_ORDER: ReadonlyArray<Phase1MemoShortName> = [
+/** Order memos are expected to publish in. Auto-follow walks back-to-front. */
+const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "fundamentals",
   "sentiment",
   "news",
   "technical",
+  "bull",
+  "bear",
+  "researchManager",
 ];
 
 export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactElement {
@@ -78,15 +82,10 @@ export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactEleme
     const lastPublished = [...PUBLISH_ORDER]
       .reverse()
       .find((s) => memoStatus[s] === "published");
+    const writing = PUBLISH_ORDER.find((s) => memoStatus[s] === "writing");
     const target =
-      (lastPublished !== undefined
-        ? PHASE_1_MEMO_KEYS[lastPublished].agentName
-        : undefined) ??
-      (PUBLISH_ORDER.find((s) => memoStatus[s] === "writing") !== undefined
-        ? PHASE_1_MEMO_KEYS[
-            PUBLISH_ORDER.find((s) => memoStatus[s] === "writing") as Phase1MemoShortName
-          ].agentName
-        : undefined);
+      (lastPublished !== undefined ? ALL_MEMO_KEYS[lastPublished].agentName : undefined) ??
+      (writing !== undefined ? ALL_MEMO_KEYS[writing].agentName : undefined);
     if (target !== undefined) {
       setSelectedAgent(target as AgentName);
     }
@@ -124,7 +123,7 @@ export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactEleme
 
 function statusForAgent(
   agent: AgentName,
-  memoStatus: Partial<Record<Phase1MemoShortName, MemoStatus>>,
+  memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>,
 ): MemoStatus | "unavailable" {
   const shortName = shortNameForAgent(agent);
   if (shortName === undefined) return "unavailable";
@@ -162,7 +161,7 @@ type MemoClientData = {
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
   const shortName = shortNameForAgent(agent);
   const collectionKey =
-    shortName !== undefined ? PHASE_1_MEMO_KEYS[shortName].collectionKey : undefined;
+    shortName !== undefined ? ALL_MEMO_KEYS[shortName].collectionKey : undefined;
 
   // The memos collection always exists at the flow level; only call the
   // hook for known phase-1 short names. PMHero / Phase 2+ memos go through

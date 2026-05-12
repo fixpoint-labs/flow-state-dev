@@ -351,8 +351,11 @@ Under the hood, these hooks and clients talk to these endpoints:
 | `POST` | `/sessions/:id/resources/:ref` | Create collection item |
 | `PATCH` | `/sessions/:id/resources/:ref/:topic/content` | Update item content |
 | `DELETE` | `/sessions/:id/resources/:ref/:topic` | Delete collection item |
+| `GET` | `/sessions/:id/resources/:ref/:topic` | Fetch collection item state |
 
 All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404.
+
+`:topic` is a multi-segment wildcard. Collections whose pattern allows nested keys (e.g. `memos/**` with topics like `p1/fundamentals`) work without special encoding — the client encodes slashes as `%2F` and the server decodes them back into the captured topic. The only restriction: a topic literally named `"content"` is shadowed by the `/:ref/content` route and isn't addressable via the state-get endpoint.
 
 ## Live updates
 

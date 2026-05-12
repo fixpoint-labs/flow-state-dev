@@ -9,6 +9,7 @@ import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
+  createRoundRobinContributions,
   roundRobin,
   type RoundRobinFinalShape,
 } from "../src/round-robin";
@@ -253,6 +254,46 @@ describe("round-robin", () => {
         outputSchema: z.string(),
       }),
     ).toThrow(/outputSchema/);
+  });
+
+  it("uses an externally-provided contributions resource when supplied", async () => {
+    // Two roundRobin() instances sharing one contributions resource. With
+    // this option, both routes can sit behind a router() without the
+    // resource-merge throwing "Resource conflict: contributions".
+    const sharedContributions = createRoundRobinContributions();
+    const optionA = roundRobin({
+      name: "rr-shared-a",
+      roster: [{ name: "a", block: makeAgent("a") }],
+      judge: makeJudge([true]),
+      synthesizer: false,
+      contributions: sharedContributions,
+    });
+    const optionB = roundRobin({
+      name: "rr-shared-b",
+      roster: [{ name: "b", block: makeAgent("b") }],
+      judge: makeJudge([true]),
+      synthesizer: false,
+      contributions: sharedContributions,
+    });
+    // Both routes declare the same `contributions` reference; merging the
+    // pattern would have thrown if the references diverged.
+    const resultA = await testBlock(optionA, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+    expect(resultA.error).toBeNull();
+    const finalA = resultA.output as RoundRobinFinalShape;
+    expect(finalA.contributions.map((e) => e.agentName)).toEqual(["a"]);
+
+    // Run optionB against a fresh seed — the shared resource isolates per
+    // request; the init tap inside the pattern clears entries each run.
+    const resultB = await testBlock(optionB, {
+      input: { goal: "y" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+    expect(resultB.error).toBeNull();
+    const finalB = resultB.output as RoundRobinFinalShape;
+    expect(finalB.contributions.map((e) => e.agentName)).toEqual(["b"]);
   });
 
   it("emits one task-change per (round, agent) turn", async () => {
