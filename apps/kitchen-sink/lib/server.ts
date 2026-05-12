@@ -28,6 +28,7 @@ import {
   type ScheduleIndexRow,
 } from "@flow-state-dev/scheduled";
 import { Client as NeonClient } from "@neondatabase/serverless";
+import { Pool } from "pg";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
@@ -153,17 +154,10 @@ async function createStores(): Promise<StoreRegistry> {
   if (dbUrl) {
     const onVercel = !!process.env.VERCEL;
     const isNeon = dbUrl.includes(".neon.tech");
-    // Dynamic import of `pg` — same path `createPostgresStores` takes
-    // internally when given a connection string. We build the pool here
-    // so the executor it backs can also drive `createPostgresScheduleIndex`.
-    // `pg` is reachable at runtime via the `@flow-state-dev/store-postgres`
-    // dependency; the kitchen-sink itself doesn't declare it, so the type
-    // import goes through `any`.
-    // @ts-ignore — pg is a transitive runtime dep, not a typed direct dep
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pgModule = (await import("pg")) as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pool: any = new pgModule.default.Pool({
+    // Build the pool here (rather than letting `createPostgresStores`
+    // build it from `connectionString`) so the same executor backs both
+    // the stores and `createPostgresScheduleIndex`.
+    const pool = new Pool({
       connectionString: dbUrl,
       max: 10,
       connectionTimeoutMillis: 10_000,

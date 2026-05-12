@@ -196,6 +196,6 @@ the right tool — use a queue with explicit acks.
 ## See also
 
 - [Scheduled actions](./scheduled.md) — the dispatch contract and `defineFlow.schedules`.
-- [Scheduled actions on Vercel Cron](../../guides/scheduled-vercel-cron.md) — host-side wiring.
-- [Dynamic scheduled actions](../../guides/scheduled-dynamic.md) — when and why dynamic schedules.
-- [Deploying to Vercel](../../guides/deploying-to-vercel.md) and [Deploying to Railway](../../guides/deploying-to-railway.md) — broader deployment context.
+- [Scheduled actions on Vercel Cron](/guides/scheduled-vercel-cron) — host-side wiring.
+- [Dynamic scheduled actions](/guides/scheduled-dynamic) — when and why dynamic schedules.
+- [Deploying to Vercel](/guides/deploying-to-vercel) and [Deploying to Railway](/guides/deploying-to-railway) — broader deployment context.
