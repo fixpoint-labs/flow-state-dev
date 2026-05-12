@@ -2875,7 +2875,7 @@ export async function createExecutionContext<
               id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "block_trace",
               status: payload.data.status ?? "in_progress",
-              transient: identity.transient === true ? true : false,
+              transient: identity.transient === true ? true : undefined,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
