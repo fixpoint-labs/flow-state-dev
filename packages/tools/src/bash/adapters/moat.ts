@@ -313,15 +313,25 @@ export function satisfiesMinVersion(actual: string, range: string): boolean {
   return true;
 }
 
+/**
+ * Cap on every control-plane spawn (`version`, `grant list`, `list`, `run`,
+ * `stop`, `destroy`). Without it, a hung MOAT subprocess would deadlock the
+ * resolver indefinitely — including making `readiness.timeoutMs` unreachable.
+ */
+const CONTROL_PLANE_TIMEOUT_MS = 10_000;
+
 async function verifyBinary(spawnFn: SpawnFn, bin: string): Promise<{ version: string }> {
   let res: SpawnResult;
   try {
-    res = await spawnFn(bin, ["version", "--json"], {});
+    res = await spawnFn(bin, ["version", "--json"], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new MoatNotInstalledError(bin);
     }
     throw err;
+  }
+  if (res.timedOut) {
+    throw new MoatError(`\`${bin} version --json\` timed out after ${CONTROL_PLANE_TIMEOUT_MS}ms.`);
   }
   if (res.exitCode !== 0) {
     throw new MoatError(`\`${bin} version --json\` failed: ${res.stderr || res.stdout}`);
@@ -342,7 +352,10 @@ async function verifyBinary(spawnFn: SpawnFn, bin: string): Promise<{ version: s
 
 async function verifyGrants(spawnFn: SpawnFn, bin: string, required: string[]): Promise<void> {
   if (required.length === 0) return;
-  const res = await spawnFn(bin, ["grant", "list", "--json"], {});
+  const res = await spawnFn(bin, ["grant", "list", "--json"], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
+  if (res.timedOut) {
+    throw new MoatError(`\`${bin} grant list --json\` timed out after ${CONTROL_PLANE_TIMEOUT_MS}ms.`);
+  }
   if (res.exitCode !== 0) {
     throw new MoatError(`\`${bin} grant list --json\` failed: ${res.stderr || res.stdout}`);
   }
@@ -369,9 +382,15 @@ interface RunRecord {
   state: string;
 }
 
-async function listRuns(spawnFn: SpawnFn, bin: string): Promise<RunRecord[]> {
-  const res = await spawnFn(bin, ["list", "--json"], {});
-  if (res.exitCode !== 0) return [];
+/**
+ * Bounded `moat list --json`. Treats timeouts the same as non-zero exits —
+ * returns `[]` so the readiness loop's outer deadline check stays authoritative.
+ */
+async function listRuns(spawnFn: SpawnFn, bin: string, timeoutMs?: number): Promise<RunRecord[]> {
+  const res = await spawnFn(bin, ["list", "--json"], {
+    timeoutMs: timeoutMs ?? CONTROL_PLANE_TIMEOUT_MS,
+  });
+  if (res.timedOut || res.exitCode !== 0) return [];
   try {
     const parsed = JSON.parse(res.stdout || "[]");
     if (!Array.isArray(parsed)) return [];
@@ -471,12 +490,16 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       if (handle.stopped) return;
       handle.stopped = true;
       try {
-        await handle.spawnFn(handle.bin, ["stop", handle.runName], {});
+        await handle.spawnFn(handle.bin, ["stop", handle.runName], {
+          timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+        });
       } catch (err) {
         console.warn(`[moat] stop failed for ${handle.runName}:`, (err as Error).message);
       }
       try {
-        await handle.spawnFn(handle.bin, ["destroy", handle.runName], {});
+        await handle.spawnFn(handle.bin, ["destroy", handle.runName], {
+          timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+        });
       } catch (err) {
         console.warn(`[moat] destroy failed for ${handle.runName}:`, (err as Error).message);
       }
@@ -623,16 +646,25 @@ export async function resolveMoatSandbox(
         allowHosts: opts.allowHosts,
         noSandbox: opts.noSandbox,
       });
-      const res = await spawnFn(bin, args, {});
+      // `moat run -d` returns immediately after the daemon hands back the
+      // container ID. Bound it so a hung start never wedges the resolver.
+      const res = await spawnFn(bin, args, { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
+      if (res.timedOut) {
+        throw new MoatRunStartError(`\`${bin} run\` timed out after ${CONTROL_PLANE_TIMEOUT_MS}ms.`);
+      }
       if ((res.exitCode ?? 0) !== 0) {
         throw new MoatRunStartError(res.stderr || res.stdout);
       }
-      // Poll for readiness.
-      const deadline = Date.now() + (opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+      // Poll for readiness. Each `listRuns` call gets the smaller of the
+      // remaining deadline budget or the standard control-plane cap, so a
+      // stalled `moat list` cannot push us past `readiness.timeoutMs`.
+      const readyTimeoutMs = opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+      const deadline = Date.now() + readyTimeoutMs;
       const interval = opts.readiness?.intervalMs ?? DEFAULT_READY_INTERVAL_MS;
       let ready = false;
       while (Date.now() < deadline) {
-        const list = await listRuns(spawnFn, bin);
+        const remaining = deadline - Date.now();
+        const list = await listRuns(spawnFn, bin, Math.min(remaining, CONTROL_PLANE_TIMEOUT_MS));
         if (list.find((r) => r.name === opts.runName && r.state === "running")) {
           ready = true;
           break;
@@ -642,11 +674,11 @@ export async function resolveMoatSandbox(
       if (!ready) {
         // Best-effort stop, then surface the timeout.
         try {
-          await spawnFn(bin, ["stop", opts.runName], {});
+          await spawnFn(bin, ["stop", opts.runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
         } catch {
           // Ignore — we are already in an error path.
         }
-        throw new MoatRunTimeoutError(opts.runName, opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+        throw new MoatRunTimeoutError(opts.runName, readyTimeoutMs);
       }
     }
   } catch (err) {
