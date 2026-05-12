@@ -160,7 +160,7 @@ function SingleBody({
       {entry.hasContent && (
         <ContentFetcher
           sessionId={sessionId}
-          ref={entry.primaryName}
+          resourceRef={entry.primaryName}
           topic={null}
           contentType={entry.contentType}
           byteLength={entry.contentByteLength}
@@ -217,7 +217,7 @@ function CollectionBody({
           <CollectionItemRow
             key={item.storageKey}
             sessionId={sessionId}
-            ref={entry.primaryName}
+            resourceRef={entry.primaryName}
             item={item}
           />
         ))}
@@ -238,11 +238,11 @@ function CollectionBody({
 
 function CollectionItemRow({
   sessionId,
-  ref,
+  resourceRef,
   item
 }: {
   sessionId: string;
-  ref: string;
+  resourceRef: string;
   item: {
     topic: string;
     storageKey: string;
@@ -280,7 +280,7 @@ function CollectionItemRow({
           {item.hasContent && (
             <ContentFetcher
               sessionId={sessionId}
-              ref={ref}
+              resourceRef={resourceRef}
               topic={item.topic}
               contentType={item.contentType}
               byteLength={item.contentByteLength}
@@ -295,20 +295,20 @@ function CollectionItemRow({
 
 function ContentFetcher({
   sessionId,
-  ref,
+  resourceRef,
   topic,
   contentType,
   byteLength,
   visibleToClient
 }: {
   sessionId: string;
-  ref: string;
+  resourceRef: string;
   topic: string | null;
   contentType: string | undefined;
   byteLength: number | undefined;
   visibleToClient: boolean | undefined;
 }) {
-  const { content, isLoading, error, fetch } = useDebugResourceContent(sessionId, ref, topic);
+  const { content, isLoading, error, fetch } = useDebugResourceContent(sessionId, resourceRef, topic);
   const isText = (contentType ?? "text/plain").startsWith("text/");
 
   const handleDownload = () => {
@@ -317,7 +317,7 @@ function ContentFetcher({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = topic ?? ref;
+    a.download = topic ?? resourceRef;
     a.click();
     URL.revokeObjectURL(url);
   };
