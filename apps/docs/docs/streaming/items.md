@@ -108,6 +108,8 @@ One row per block execution. The same row is emitted at `item.added`, patched in
 
 `block_trace` carries both input and output as `BlockValue` descriptors. A block downstream of another block stamps its `input.source` as a `ref` to the upstream `block_trace`, so the input area in DevTool can dedupe rather than repeat the upstream content. Aggregator steps (`thenAll`, `parallel`, `forEach`) stamp a `structure` source that carries refs to each branch.
 
+When a block fails, `block_trace.error` is `{ message: string, code?: string, details?: Record<string, unknown> }`. `tool_output.error` shares the same shape. The runtime auto-populates `details` for generator output-validation failures with `rawOutput` (the raw text the model returned), `issues` (the Zod issues), and `phase` (`"stream"` or `"final"`); author-thrown `FlowError.details` flows through verbatim. See [Error handling](/docs/advanced/error-handling).
+
 ### `tool_output`
 
 When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns:

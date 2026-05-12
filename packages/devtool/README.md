@@ -4,6 +4,8 @@
 
 This package ships the compiled DevTool SPA. The CLI uses it to serve the DevTool UI alongside flow API routes. You don't interact with this package directly — install it, and `fsdev dev` picks it up.
 
+The trace view's failed-block detail panel surfaces the error message, the `code`, and any `details` the runtime captured — raw model output and Zod issues for generator validation failures, and whatever an author attached to a thrown `FlowError`.
+
 ## Quick Start
 
 ```bash

@@ -3363,7 +3363,11 @@ export async function createExecutionContext<
                   output: { kind: "inline", value: undefined },
                   completedAt,
                   duration: completedAt - traceStartedAt,
-                  error: { message: normalized.message, code: normalized.code },
+                  error: {
+                    message: normalized.message,
+                    code: normalized.code,
+                    ...(normalized.details ? { details: normalized.details } : {}),
+                  },
                   modelUsage: generatorModelUsage,
                 },
               },

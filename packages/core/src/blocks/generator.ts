@@ -1,4 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
+import { OutputValidationError } from "../errors/output-validation-error";
 import { jsonSchema } from "ai";
 import type {
   BlockConfig,
@@ -793,9 +794,11 @@ function compileToolsWithExecute(
         } else {
           item.status = "failed";
           item.output = undefined;
+          const errAny = result.error as { code?: string; details?: Record<string, unknown> };
           item.error = {
             message: result.error.message,
-            code: (result.error as any).code
+            ...(errAny.code ? { code: errAny.code } : {}),
+            ...(errAny.details ? { details: errAny.details } : {})
           };
         }
         // Emit `item.updated` to patch the in-progress placeholder, then
@@ -953,9 +956,14 @@ async function runWithRetry<TValue>(
   throw new Error("Tool retry loop exited unexpectedly");
 }
 
-function parseOutputWithSchema<TOutput>(schema: ZodTypeAny, candidate: unknown): { success: true; output: TOutput } | {
+function parseOutputWithSchema<TOutput>(
+  schema: ZodTypeAny,
+  candidate: unknown,
+  blockName: string,
+  phase: "final" | "stream" = "final"
+): { success: true; output: TOutput } | {
   success: false;
-  error: Error;
+  error: OutputValidationError;
 } {
   const parsed = schema.safeParse(candidate);
   if (parsed.success) {
@@ -966,10 +974,14 @@ function parseOutputWithSchema<TOutput>(schema: ZodTypeAny, candidate: unknown):
   const issuePath = issue?.path?.join(".") ?? "";
   const issueMessage = issue?.message ?? "schema validation failed";
   const suffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-  return {
-    success: false,
-    error: new Error(`Generator output validation failed${suffix}: ${issueMessage}`)
-  };
+  const rawOutput =
+    typeof candidate === "string" ? candidate : JSON.stringify(candidate, null, 2);
+  const error = new OutputValidationError(
+    `Generator "${blockName}" output validation failed${suffix}: ${issueMessage}`,
+    { rawOutput, issues: parsed.error.issues, phase },
+    parsed.error
+  );
+  return { success: false, error };
 }
 
 /** Cap dumped candidates so a runaway model output doesn't flood logs. */
@@ -1037,7 +1049,7 @@ async function applyRepairPolicy<TInput, TOutput>(
   let currentAttempt = 0;
 
   while (true) {
-    const parsed = parseOutputWithSchema<TOutput>(outputSchema, currentCandidate);
+    const parsed = parseOutputWithSchema<TOutput>(outputSchema, currentCandidate, blockName, "final");
     if (parsed.success) {
       return parsed.output;
     }
@@ -1424,13 +1436,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // Validate output through the schema
-  const parsed = outputSchema.safeParse(accumulated);
+  const parsed = parseOutputWithSchema<unknown>(outputSchema, accumulated, blockName, "stream");
   if (!parsed.success) {
-    const err = new Error(
-      `Generator "${blockName}" streaming output failed schema validation: ${parsed.error.issues[0]?.message ?? "unknown"}`
-    );
-    logUnparseableCandidate(blockName, accumulated, err, 'stream');
-    throw err;
+    logUnparseableCandidate(blockName, accumulated, parsed.error, 'stream');
+    throw parsed.error;
   }
 
   // Emit content.done and completed item (only when identity is declared).
@@ -1451,7 +1460,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
 
   // FIX-480 §3.2: when this generator's logical output IS the streamed
   // text, emit a `block_trace.output { kind: "ref", sourceItemId: <messageId> }`
-  // instead of inlining the same string. The `parsed.data === accumulated`
+  // instead of inlining the same string. The `parsed.output === accumulated`
   // check guards against post-validation transforms (e.g.
   // `z.string().transform(s => s.trim())`) where the returned value
   // diverges from what was streamed; in that case we fall back to inline.
@@ -1461,9 +1470,9 @@ async function executeStreamingGeneration<TInput, TOutput>(
     emit &&
     messageItem !== null &&
     isTextOutputSchema(outputSchema) &&
-    typeof parsed.data === "string" &&
-    parsed.data.length > 0 &&
-    parsed.data === accumulated
+    typeof parsed.output === "string" &&
+    parsed.output.length > 0 &&
+    parsed.output === accumulated
   ) {
     ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
   }
@@ -1474,7 +1483,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     providerMetadata: finalResult?.providerMetadata
   });
 
-  return parsed.data as TOutput;
+  return parsed.output as TOutput;
 }
 
 export function generator<

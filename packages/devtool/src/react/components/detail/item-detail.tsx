@@ -116,13 +116,29 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       )}
 
       {traceItem?.status === "failed" && traceItem.error && (
-        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
-          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
-          <p className="text-xs text-red-300 mt-0.5 font-mono">{traceItem.error.message}</p>
-          {traceItem.error.code && (
-            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{traceItem.error.code}</p>
-          )}
-        </div>
+        <ErrorPanel error={traceItem.error} />
+      )}
+
+      {/* Tool call — surfaces the originating tool_call's arguments on the
+          failed block's detail panel for tool-invoked blocks. */}
+      {traceItem?.toolCall && (
+        <CollapsibleSection title="Tool Call" defaultOpen>
+          <MetadataRow label="Call ID" value={traceItem.toolCall.callId} mono />
+          <MetadataRow label="Generator" value={traceItem.toolCall.generatorBlock} />
+          <div className="mt-1">
+            <span className="text-[10px] text-slate-600 uppercase">Arguments</span>
+            <JsonViewer data={safeParseJson(traceItem.toolCall.arguments)} className="mt-0.5" />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Input — the value the block was invoked with. For tool-invoked
+          blocks this is the same as `toolCall.arguments`; for normally-invoked
+          blocks it is whatever the upstream produced. */}
+      {traceItem?.input?.source?.kind === "inline" && traceItem.input.source.value !== undefined && (
+        <CollapsibleSection title="Input" defaultOpen={traceItem.status === "failed"}>
+          <JsonViewer data={traceItem.input.source.value} />
+        </CollapsibleSection>
       )}
 
       {/* Prompt — the #1 thing you want to see for generators */}
@@ -441,13 +457,7 @@ function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_trace"
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
       {item.status === "failed" && item.error && (
-        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
-          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
-          <p className="text-xs text-red-300 mt-0.5 font-mono">{item.error.message}</p>
-          {item.error.code && (
-            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{item.error.code}</p>
-          )}
-        </div>
+        <ErrorPanel error={item.error} />
       )}
       {item.toolCall && (
         <CollapsibleSection title="Tool Call" defaultOpen>
@@ -570,15 +580,7 @@ function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "tool_out
       <MetadataRow label="Tool" value={item.toolCall.name} mono />
       <MetadataRow label="Call ID" value={item.toolCall.callId} mono />
       <MetadataRow label="Generator" value={item.toolCall.generatorBlock} />
-      {isFailed && item.error && (
-        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
-          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
-          <p className="text-xs text-red-300 mt-0.5 font-mono">{item.error.message}</p>
-          {item.error.code && (
-            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{item.error.code}</p>
-          )}
-        </div>
-      )}
+      {isFailed && item.error && <ErrorPanel error={item.error} />}
       <CollapsibleSection title="Arguments" defaultOpen>
         <JsonViewer data={safeParseJson(item.toolCall.arguments)} />
       </CollapsibleSection>
@@ -671,6 +673,80 @@ function MetadataRow({ label, value, mono, children }: { label: string; value?: 
         <span className={`text-slate-300 text-right break-all ${mono ? "font-mono text-[11px]" : ""}`}>
           {value}
         </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shared render for `{ message, code?, details? }` shaped errors used by the
+ * block-trace, block-output, and tool-output detail panels. When `details` is
+ * present it renders a JSON section; when `details.rawOutput` / `details.issues`
+ * (the runtime-emitted shape from `OutputValidationError`) are present, they
+ * each render as dedicated sections so a generator-validation failure shows
+ * the raw model text and a typed Zod-issues list without traversing JSON.
+ */
+function ErrorPanel({
+  error,
+}: {
+  error: { message: string; code?: string; details?: Record<string, unknown> };
+}) {
+  const details = error.details;
+  const rawOutput = typeof details?.rawOutput === "string" ? (details.rawOutput as string) : undefined;
+  const issues = Array.isArray(details?.issues)
+    ? (details.issues as Array<{ path?: Array<string | number>; message?: string }>)
+    : undefined;
+  // Strip the well-known keys that already have dedicated sections above so
+  // the Details JSON catch-all doesn't duplicate the raw model output or the
+  // Zod issues. `phase` is contextual to validation failures and is shown via
+  // the issues list framing; omit it from the JSON too.
+  const remainingDetails =
+    details !== undefined
+      ? Object.fromEntries(
+          Object.entries(details).filter(
+            ([k]) =>
+              !(rawOutput !== undefined && k === "rawOutput") &&
+              !(issues !== undefined && k === "issues") &&
+              k !== "phase"
+          )
+        )
+      : undefined;
+  return (
+    <div className="space-y-2">
+      <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
+        <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
+        <p className="text-xs text-red-300 mt-0.5 font-mono whitespace-pre-wrap">{error.message}</p>
+        {error.code && (
+          <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{error.code}</p>
+        )}
+      </div>
+      {rawOutput !== undefined && (
+        <CollapsibleSection title="Raw output" defaultOpen={true}>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {rawOutput}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {issues !== undefined && issues.length > 0 && (
+        <CollapsibleSection title="Validation issues" defaultOpen={true}>
+          <ul className="space-y-0.5">
+            {issues.map((issue, idx) => {
+              const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+              return (
+                <li key={idx} className="text-[11px] font-mono text-slate-300">
+                  {path ? <span className="text-amber-400">{path}</span> : <span className="text-slate-500">(root)</span>}
+                  {": "}
+                  <span>{issue.message ?? "schema violation"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </CollapsibleSection>
+      )}
+      {remainingDetails !== undefined && Object.keys(remainingDetails).length > 0 && (
+        <CollapsibleSection title="Details" defaultOpen={true}>
+          <JsonViewer data={remainingDetails} />
+        </CollapsibleSection>
       )}
     </div>
   );
