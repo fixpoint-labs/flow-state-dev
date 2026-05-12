@@ -4,21 +4,30 @@ sidebar_position: 5
 
 # Schedule index
 
-The schedule index is an opt-in side table that lets a polling cron tick
-find due dynamic schedules in one query. Store adapters expose it
-through the `ScheduleIndex` interface; `defineScheduleCollection` keeps
-it in sync with the resource collection that holds your schedule
-records.
+A polling cron tick has to find every schedule that's due right now
+across every user, then fan out one POST per due schedule. Without an
+index, every tick scans every user's schedules. The schedule index is a
+flat side table that turns that lookup into a single indexed range
+query.
 
-If you only run static schedules (declared in flow source), you don't
-need this. If you run dynamic schedules and dispatch them from a single
-cron beat, you do.
+What you get: one row per active schedule, automatic write-side
+maintenance via `defineScheduleCollection`, and an atomic
+claim-and-advance primitive (`claimDue`) that's safe under multi-worker
+contention on Postgres and serialized on SQLite. The contract is
+at-most-once. If you only run static schedules declared in flow source,
+you don't need the index. If you run dynamic schedules and dispatch them
+from a single cron beat, you do.
 
-## Why the index exists
+## When to use it
 
-Without an index, "find every schedule due right now" is a scan of every
-user's schedule collection. A small deployment can get away with that.
-A real one can't.
+| Setup | Needs index? |
+|-------|--------------|
+| Static schedules only (declared in flow source) | No. Each schedule gets its own cron row. |
+| Dynamic schedules, dispatched from a polling tick | Yes. The tick uses `claimDue` to fan out. |
+| Dynamic schedules, custom resolver (no polling tick) | No, if your resolver already knows what's due. |
+| One managed-scheduler row per dynamic schedule (Cloud Scheduler, EventBridge) | No. The scheduler is the index. |
+
+## How it works
 
 The index trades a small amount of write-side work for a constant-time
 read. Each create/update/delete on the schedule collection mirrors a row
@@ -144,3 +153,10 @@ This is a deliberate tradeoff:
 
 If you need at-least-once, the framework's scheduled actions are not
 the right tool — use a queue with explicit acks.
+
+## See also
+
+- [Scheduled actions](./scheduled.md) — the dispatch contract and `defineFlow.schedules`.
+- [Scheduled actions on Vercel Cron](../../guides/scheduled-vercel-cron.md) — host-side wiring.
+- [Dynamic scheduled actions](../../guides/scheduled-dynamic.md) — when and why dynamic schedules.
+- [Deploying to Vercel](../../guides/deploying-to-vercel.md) and [Deploying to Railway](../../guides/deploying-to-railway.md) — broader deployment context.

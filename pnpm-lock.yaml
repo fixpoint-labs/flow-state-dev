@@ -130,6 +130,9 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../../packages/scheduled
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../../packages/server

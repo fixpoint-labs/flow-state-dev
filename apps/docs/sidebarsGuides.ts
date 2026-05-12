@@ -17,6 +17,12 @@ const sidebars: SidebarsConfig = {
         "deploying-to-vercel",
         "deploying-to-railway",
         "deploying-with-docker",
+      ],
+    },
+    {
+      type: "category",
+      label: "Scheduled actions",
+      items: [
         "scheduled-vercel-cron",
         "scheduled-cloud-scheduler",
         "scheduled-eventbridge",

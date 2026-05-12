@@ -14,16 +14,61 @@ import {
   createInMemoryStores,
   type StoreRegistry,
 } from "@flow-state-dev/server";
-import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
+import {
+  createPgPoolTx,
+  createPostgresScheduleIndex,
+  createPostgresStores,
+  type PoolConfig,
+  type QueryExecutor,
+} from "@flow-state-dev/store-postgres";
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+import {
+  createScheduledTransportAdapter,
+  type ScheduleIndex,
+  type ScheduleIndexRow,
+} from "@flow-state-dev/scheduled";
 import { Client as NeonClient } from "@neondatabase/serverless";
-import chatAgentFlow from "@/flows/chat-agent/flow";
-import richTextComponentFlow from "@/flows/rich-text-component/flow";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
 // don't line up. Cast once at the seam.
 const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
+
+// ---------------------------------------------------------------------------
+// Schedule index
+//
+// The weekly-digest flow imports `scheduleIndex` from this module and hands
+// it to `defineScheduleCollection`. The real backing implementation is
+// installed lazily by `createStores()` once a Postgres pool exists. Before
+// that runs, mutations against the index buffer themselves as no-ops, which
+// matches the "no index → no row mirrored" semantics
+// `defineScheduleCollection` supports. The mutable container avoids a
+// cyclic-import init-order problem.
+// ---------------------------------------------------------------------------
+
+let scheduleIndexImpl: ScheduleIndex | null = null;
+
+export const scheduleIndex: ScheduleIndex = {
+  async upsert(row: ScheduleIndexRow) {
+    if (scheduleIndexImpl) return scheduleIndexImpl.upsert(row);
+  },
+  async claimDue(now: number, limit?: number) {
+    if (!scheduleIndexImpl) return [];
+    return scheduleIndexImpl.claimDue(now, limit);
+  },
+  async remove(userId: string, key: string) {
+    if (scheduleIndexImpl) return scheduleIndexImpl.remove(userId, key);
+  },
+};
+
+// Flows are imported AFTER scheduleIndex is exported so the cyclic-import
+// binding from `flows/weekly-digest/flow.ts` resolves to the wrapper above.
+// eslint-disable-next-line import/first
+import chatAgentFlow from "@/flows/chat-agent/flow";
+// eslint-disable-next-line import/first
+import richTextComponentFlow from "@/flows/rich-text-component/flow";
+// eslint-disable-next-line import/first
+import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 // Pass explicit provider/gateway instances. The model resolver's dynamic
 // require() path doesn't work in bundled Next.js — static imports do.
@@ -78,6 +123,7 @@ const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => open
 const registry = createFlowRegistry();
 registry.register(chatAgentFlow);
 registry.register(richTextComponentFlow);
+registry.register(weeklyDigestFlow);
 
 /**
  * Resolve persistence stores based on environment:
@@ -96,18 +142,59 @@ registry.register(richTextComponentFlow);
  * roundtrips and the advisory-lock dance on every cold start. Off-Vercel
  * (local dev, self-hosted, Docker), keep auto-init so devs and other
  * deployments don't have to remember a separate migrate step.
+ *
+ * When Postgres is in use, this also constructs a `ScheduleIndex` against
+ * the same pool and installs it as the backing implementation behind the
+ * exported `scheduleIndex` wrapper. The weekly-digest flow depends on this
+ * for its `defineScheduleCollection({ index })` wiring.
  */
 async function createStores(): Promise<StoreRegistry> {
   const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
   if (dbUrl) {
     const onVercel = !!process.env.VERCEL;
     const isNeon = dbUrl.includes(".neon.tech");
-    return createPostgresStores({
+    // Dynamic import of `pg` — same path `createPostgresStores` takes
+    // internally when given a connection string. We build the pool here
+    // so the executor it backs can also drive `createPostgresScheduleIndex`.
+    // `pg` is reachable at runtime via the `@flow-state-dev/store-postgres`
+    // dependency; the kitchen-sink itself doesn't declare it, so the type
+    // import goes through `any`.
+    // @ts-ignore — pg is a transitive runtime dep, not a typed direct dep
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pgModule = (await import("pg")) as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pool: any = new pgModule.default.Pool({
       connectionString: dbUrl,
+      max: 10,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true,
+      ...(onVercel ? vercelPgPoolOptions : {}),
+      ...(onVercel && isNeon ? { Client: NeonClientForPg } : {}),
+    });
+    pool.on("error", () => {});
+
+    const executor: QueryExecutor = {
+      async query(text: string, values?: unknown[]) {
+        const result = await pool.query(text, values);
+        return {
+          rows: result.rows as Record<string, unknown>[],
+          rowCount: result.rowCount ?? 0,
+        };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
+      },
+    };
+
+    // Install the real ScheduleIndex impl behind the wrapper before any
+    // collection hook runs (collection hooks fire only on resource writes,
+    // which require a request — long after this resolves).
+    scheduleIndexImpl = createPostgresScheduleIndex(executor);
+
+    return createPostgresStores({
+      pool,
       skipSchemaInit: onVercel,
-      poolOptions: onVercel
-        ? { ...vercelPgPoolOptions, ...(isNeon ? { Client: NeonClientForPg } : {}) }
-        : undefined,
       // Vercel functions can't hold a usable `LISTEN flow_events` session: Neon's
       // pooled endpoint is pgbouncer in transaction mode (LISTEN registers on a
       // backend that's recycled at transaction end), and even on direct endpoints
@@ -138,6 +225,7 @@ export function getRouter(): Promise<FlowApiRouter> {
         modelResolver,
         speechResolver,
         transcriptionResolver,
+        adapters: [createScheduledTransportAdapter()],
         detectInterruptedOnStartup: false,
         // Keep the serverless function alive while runAction executes.
         // Without this, Vercel kills the function after the 202 response,
