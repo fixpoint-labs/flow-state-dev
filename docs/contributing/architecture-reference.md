@@ -23,6 +23,8 @@ Conflict rule: `preperation/architecture/*` wins.
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 - Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
   → [Inbound Transports](../architecture/inbound-transports.md)
+- Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook), `ScheduleConfig`, dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`
+  → [Scheduled Actions](../architecture/scheduled-actions.md)
 
 ## Sequencer Surface (21 methods)
 

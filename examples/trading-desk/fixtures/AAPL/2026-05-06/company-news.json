@@ -1,0 +1,9 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "items": [
+    { "date": "2026-05-05", "headline": "Services revenue beats; gross margin expands ~80bps QoQ", "source": "FT", "category": "earnings" },
+    { "date": "2026-05-03", "headline": "Vision Pro replacement cycle stalling per channel checks", "source": "Bloomberg", "category": "demand" },
+    { "date": "2026-05-01", "headline": "EU DMA second-round fine reportedly under deliberation", "source": "Reuters", "category": "regulation" }
+  ]
+}

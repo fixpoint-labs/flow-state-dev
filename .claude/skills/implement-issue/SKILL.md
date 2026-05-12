@@ -50,7 +50,7 @@ If all clear, move to Step 3.
 
 1. Ensure main is up to date: `git checkout main && git pull`
 2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
-3. Update the Linear issue state to "In Progress" using `save_issue`
+3. Update the Linear issue state to "In Development" using `save_issue`
 
 ### Step 4: Assess Complexity
 

@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
     "building-agents",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
+    "writing-ui-stories",
     {
       type: "category",
       label: "Deployment",
@@ -17,6 +18,10 @@ const sidebars: SidebarsConfig = {
         "deploying-to-vercel",
         "deploying-to-railway",
         "deploying-with-docker",
+        "scheduled-vercel-cron",
+        "scheduled-cloud-scheduler",
+        "scheduled-eventbridge",
+        "scheduled-dynamic",
       ],
     },
   ],

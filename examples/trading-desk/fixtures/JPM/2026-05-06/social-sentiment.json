@@ -1,0 +1,9 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "score7d": 0.12,
+  "positive": 0.49,
+  "negative": 0.31,
+  "neutral": 0.20,
+  "shortInterestPct": 0.9
+}

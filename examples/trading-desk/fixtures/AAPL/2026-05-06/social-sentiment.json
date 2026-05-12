@@ -1,0 +1,9 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "score7d": 0.04,
+  "positive": 0.42,
+  "negative": 0.36,
+  "neutral": 0.22,
+  "shortInterestPct": 0.6
+}

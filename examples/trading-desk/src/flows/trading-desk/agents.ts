@@ -57,13 +57,83 @@ export const PHASE_GROUPS: ReadonlyArray<{
   { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst"] },
 ];
 
-/** Resource storage keys for Phase 1 memos. The shortName is the suffix
- *  after the phase prefix (e.g. `memos/p1/fundamentals`). */
+/** Resource storage keys for Phase 1 memos.
+ *
+ * - `memoKey` is the full storage key (e.g. `memos/p1/fundamentals`) for
+ *   display, logging, and `useResourceCollection.get(...)`.
+ * - `collectionKey` is the bare suffix (e.g. `p1/fundamentals`) passed to
+ *   `collection.create(...)` / `collection.get(...)` — the framework
+ *   auto-prepends the `memos/` prefix from the collection's pattern. */
 export const PHASE_1_MEMO_KEYS = {
-  fundamentals: { agentName: "fundamentalsAnalyst", memoKey: "memos/p1/fundamentals" },
-  sentiment:    { agentName: "sentimentAnalyst",    memoKey: "memos/p1/sentiment" },
-  news:         { agentName: "newsAnalyst",         memoKey: "memos/p1/news" },
-  technical:    { agentName: "technicalAnalyst",    memoKey: "memos/p1/technical" },
-} as const satisfies Record<string, { agentName: AgentName; memoKey: string }>;
+  fundamentals: {
+    agentName: "fundamentalsAnalyst",
+    memoKey: "memos/p1/fundamentals",
+    collectionKey: "p1/fundamentals",
+  },
+  sentiment: {
+    agentName: "sentimentAnalyst",
+    memoKey: "memos/p1/sentiment",
+    collectionKey: "p1/sentiment",
+  },
+  news: {
+    agentName: "newsAnalyst",
+    memoKey: "memos/p1/news",
+    collectionKey: "p1/news",
+  },
+  technical: {
+    agentName: "technicalAnalyst",
+    memoKey: "memos/p1/technical",
+    collectionKey: "p1/technical",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
 
 export type Phase1MemoShortName = keyof typeof PHASE_1_MEMO_KEYS;
+
+/** Resource storage keys for Phase 2 memos (bull, bear, research manager).
+ *  Same shape as `PHASE_1_MEMO_KEYS`. */
+export const PHASE_2_MEMO_KEYS = {
+  bull: {
+    agentName: "bullResearcher",
+    memoKey: "memos/p2/bull",
+    collectionKey: "p2/bull",
+  },
+  bear: {
+    agentName: "bearResearcher",
+    memoKey: "memos/p2/bear",
+    collectionKey: "p2/bear",
+  },
+  researchManager: {
+    agentName: "researchManager",
+    memoKey: "memos/p2/research-manager",
+    collectionKey: "p2/research-manager",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase2MemoShortName = keyof typeof PHASE_2_MEMO_KEYS;
+
+/** Combined memo-key map across all shipped phases. The sidebar iterates
+ *  this single table; future phases append their own entries. */
+export const ALL_MEMO_KEYS = {
+  ...PHASE_1_MEMO_KEYS,
+  ...PHASE_2_MEMO_KEYS,
+} as const;
+
+export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;
+
+/** Reverse lookup: which short name owns this agent across any phase? */
+export function shortNameForAgent(
+  agent: AgentName,
+): AnyMemoShortName | undefined {
+  for (const [shortName, mapping] of Object.entries(ALL_MEMO_KEYS) as Array<
+    [AnyMemoShortName, (typeof ALL_MEMO_KEYS)[AnyMemoShortName]]
+  >) {
+    if (mapping.agentName === agent) return shortName;
+  }
+  return undefined;
+}

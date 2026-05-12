@@ -1,0 +1,10 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-03-29",
+  "revenue": 395.0,
+  "grossProfit": 175.5,
+  "operatingIncome": 120.0,
+  "netIncome": 100.5,
+  "yoyRevenueGrowth": 0.05,
+  "unit": "USD billions"
+}

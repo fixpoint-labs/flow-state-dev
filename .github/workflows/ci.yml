@@ -75,3 +75,25 @@ jobs:
           name: playwright-report
           path: apps/kitchen-sink/playwright-report
           retention-days: 14
+
+  storybook:
+    name: Storybook Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm --filter './packages/*' -r build
+
+      - name: Build Storybook
+        run: pnpm --filter @flow-state-dev/ui storybook:build

@@ -130,8 +130,9 @@ const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
   // cheapest tier.
   intents: {
     utility: [
+      "vercel/google/gemini-3.1-flash-lite",
       "vercel/anthropic/claude-haiku-4.5",
-      "vercel/openai/gpt-5.5-nano",
+      "vercel/openai/gpt-5.4-nano",
     ],
     chat: [
       "vercel/anthropic/claude-sonnet-4.6",

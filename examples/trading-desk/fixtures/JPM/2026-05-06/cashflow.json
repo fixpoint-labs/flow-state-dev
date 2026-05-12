@@ -1,0 +1,9 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-03-31",
+  "operating": 28.0,
+  "investing": -120.0,
+  "financing": 95.0,
+  "freeCashFlow": 24.0,
+  "unit": "USD billions"
+}

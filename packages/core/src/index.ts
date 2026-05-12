@@ -127,6 +127,17 @@ export type {
   ToolLifecycleEvent,
   ToolsConfig
 } from "./types/flow";
+
+export type {
+  ScheduleConfig,
+  ScheduleInputContext,
+  ScheduleInputFn,
+  ScheduleResolutionContext,
+  ScheduleResolutionStores,
+  SchedulesConfig
+} from "./types/schedules";
+
+export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedules";
 export type {
   TokenCounter,
 } from "./types/tokens";
@@ -180,7 +191,8 @@ export {
   selectModel,
   isModelSelection,
   applyCaching,
-  DEFAULT_CACHING_CONFIG
+  DEFAULT_CACHING_CONFIG,
+  makeSchemaStrict
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,

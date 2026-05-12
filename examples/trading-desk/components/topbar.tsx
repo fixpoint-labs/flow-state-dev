@@ -1,9 +1,10 @@
 /**
- * TopBar — 44px chrome with brand mark, ticker/date inputs, re-run button,
- * passive layout label, and theme toggle.
+ * TopBar — 44px chrome with brand mark, ticker/date inputs, cost-preset and
+ * data-source segmented toggles, re-run button, layout label, and theme
+ * toggle.
  *
- * Inputs are controlled by the parent so that submitting the form invokes
- * the `analyze` action with the current values. The theme toggle flips
+ * Inputs and toggles are controlled by the parent so submitting the form
+ * invokes the `analyze` action with the current values. Theme toggle flips
  * `data-theme` on the document root.
  */
 "use client";
@@ -11,23 +12,50 @@
 import { useCallback, type ReactElement } from "react";
 import { Sun, Moon, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
+
+export type CostPreset = "fast" | "full";
+export type DataSourceMode = "fixture" | "live";
 
 type TopBarProps = {
   ticker: string;
   date: string;
+  costPreset: CostPreset;
+  dataSource: DataSourceMode;
   onTickerChange: (value: string) => void;
   onDateChange: (value: string) => void;
+  onCostPresetChange: (value: CostPreset) => void;
+  onDataSourceChange: (value: DataSourceMode) => void;
   onRun: () => void;
   isRunning: boolean;
   theme: "light" | "dark";
   onThemeToggle: () => void;
 };
 
+const COST_PRESET_OPTIONS = [
+  { value: "fast" as const, label: "fast", title: "Cheap utility models" },
+  { value: "full" as const, label: "full", title: "Higher-tier chat models" },
+];
+
+const DATA_SOURCE_OPTIONS = [
+  { value: "fixture" as const, label: "fixture", title: "Hand-curated JSON" },
+  {
+    value: "live" as const,
+    label: "live",
+    title:
+      "Live data — Yahoo for prices/fundamentals (no key); FINNHUB_API_KEY required for news",
+  },
+];
+
 export function TopBar({
   ticker,
   date,
+  costPreset,
+  dataSource,
   onTickerChange,
   onDateChange,
+  onCostPresetChange,
+  onDataSourceChange,
   onRun,
   isRunning,
   theme,
@@ -64,7 +92,7 @@ export function TopBar({
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="ml-6 flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="ml-6 flex items-center gap-3">
         <label className="flex items-center gap-1.5">
           <span className="text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
             ticker
@@ -97,6 +125,20 @@ export function TopBar({
             autoComplete="off"
           />
         </label>
+        <Segmented
+          label="preset"
+          value={costPreset}
+          options={COST_PRESET_OPTIONS}
+          onChange={onCostPresetChange}
+          disabled={isRunning}
+        />
+        <Segmented
+          label="source"
+          value={dataSource}
+          options={DATA_SOURCE_OPTIONS}
+          onChange={onDataSourceChange}
+          disabled={isRunning}
+        />
         <button
           type="submit"
           disabled={isRunning}

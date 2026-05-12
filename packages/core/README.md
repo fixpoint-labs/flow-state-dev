@@ -287,6 +287,20 @@ The framework documents six canonical intent names — `utility`, `chat`, `plan`
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
 
+### Strict-mode schema helper
+
+`makeSchemaStrict(schema)` is exported from the package root. It returns a copy of a Zod schema with `optional` / `default` / `nullable` wrappers unwrapped so the JSON schema sent to OpenAI's structured-output strict mode has every property in `required`. The framework calls it internally before handing schemas to the AI SDK; the public export is for authors who want to assert their generator output schemas pass strict mode at test time. See BP-016 in `docs/contributing/best-practices.md`.
+
+```ts
+import { makeSchemaStrict } from "@flow-state-dev/core";
+
+const strict = makeSchemaStrict(myGeneratorOutputSchema);
+// strict.parse({...}) still works the same. The transform only matters
+// when the schema is serialized to JSON schema for the LLM provider.
+```
+
+Note: the helper does NOT transform `z.record()` or `z.union()` of differently-shaped variants — both still fail OpenAI strict and must be rewritten in the source schema. See BP-016 for the rules and the canonical patterns.
+
 ## Token and Cost Adapters
 
 Core exports:

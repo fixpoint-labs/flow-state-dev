@@ -24,10 +24,7 @@ const soulResource = defineResource({
   content: "## Core Values\n...",
   client: {
     content: { read: true },
-    data: (state) => ({
-      tone: state.tone,
-      valueCount: state.values.length,
-    }),
+    expose: ["tone", "values"],
   },
 });
 ```
@@ -35,7 +32,9 @@ const soulResource = defineResource({
 Without a `client` property, the resource is invisible to clients. Adding it opens two channels:
 
 - **`content`** controls access to the resource's content body (the "file" part)
-- **`data`** derives metadata from state, available immediately in the session snapshot
+- A projection field (`expose`, `exclude`, or `data`) controls what state reaches the client. Omit all three to send the full state.
+
+Without `expose`, `exclude`, or `data`, the full state is sent to the client.
 
 ### Content permissions
 
@@ -54,21 +53,75 @@ For collections, two additional permissions control mutations:
 | `update` | Client can modify item content via `PATCH` |
 | `delete` | Client can remove items via `DELETE` |
 
-### The data function
+## Choosing the projection shape
 
-`data` is a function that takes the resource's state and returns whatever you want clients to see. It runs server-side when the snapshot is built. Clients get the result, never the raw state.
+You have four ways to control what state reaches the client. Pick one — they're mutually exclusive.
+
+### expose
+
+A list of state field names to send. Type-checked against the state schema, so typos are caught at build time.
+
+```ts
+client: {
+  expose: ["title", "summary", "updatedAt"],
+}
+```
+
+### exclude
+
+A list of fields to hide. Every other field reaches the client.
+
+```ts
+client: {
+  exclude: ["internalNotes", "draftHistory"],
+}
+```
+
+### data (escape hatch)
+
+A function that takes the state and returns whatever shape you want. Reach for `data` only when you need computed values that aren't on the state schema — for verbatim passthrough, `expose` is type-safer.
 
 ```ts
 client: {
   data: (state) => ({
     title: state.title,
-    updatedAt: state.updatedAt,
-    // state.internalNotes is NOT exposed
+    wordCount: state.body.split(/\s+/).length,
   }),
 }
 ```
 
-Omit `data` if you only need content access and don't need metadata in the snapshot.
+### Identity (no projection)
+
+Omit `expose`, `exclude`, and `data`. The full state is sent to the client.
+
+```ts
+// Collection: identity ships per-item state when state.read is true
+client: {
+  state: { read: true },
+  // no projection — clientData carries the full state
+}
+
+// Single resource: a content-only client stays state-private
+client: {
+  content: { read: true },
+  // no projection declared → clientData is omitted from the snapshot
+}
+```
+
+For collections, the identity default replaces the prior `{ topic }`-only shape that `state.read: true` used to return without a `data` projection. For single resources there's no `state.read` gate — declaring a projection (`expose`, `exclude`, or `data`) is the opt-in. A `client` config without any of those keeps state private, matching pre-existing behavior.
+
+### Mutual exclusivity
+
+Setting more than one of `expose`, `exclude`, or `data` throws at definition time:
+
+```
+defineResource() for "memos": client config may set at most one of
+`expose`, `exclude`, or `data`. Got: expose, data.
+```
+
+Pick one. If you need both whitelisting and computed fields, use `data` and write the projection out by hand.
+
+Reach for `expose` first; use `exclude` when you have many fields and only need to hide a few; reserve `data` for computed fields that aren't on the state schema.
 
 ## Collection example
 
@@ -85,11 +138,7 @@ const artifactsCollection = defineResourceCollection({
   client: {
     content: { read: true, update: true },
     state: { read: true },
-    data: (state) => ({
-      title: state.title,
-      summary: state.summary,
-      updatedAt: state.updatedAt,
-    }),
+    expose: ["title", "summary", "updatedAt"],
   },
 });
 ```
@@ -98,7 +147,7 @@ The snapshot carries the collection's total item count and (when `prefetchWindow
 
 ## client.state
 
-Collections (only — single resources gate state via `data` directly) can opt into a separate state-read permission:
+Collections (only — single resources gate state via the projection fields directly) can opt into a separate state-read permission:
 
 ```ts
 client: {
@@ -149,7 +198,7 @@ For small resources that clients always need, `prefetch: true` inlines the conte
 ```ts
 client: {
   content: { read: true, prefetch: true },
-  data: (state) => ({ tone: state.tone }),
+  expose: ["tone"],
 }
 ```
 
@@ -252,7 +301,7 @@ async function openArtifact(key: string) {
 ```
 
 Each item in `items` has:
-- `clientData` — the output of your `data` function
+- `clientData` — the projected state (from `expose`, `exclude`, `data`, or the full state if none is set)
 - `fetchContent()` — lazy content loader for that specific item
 
 The `actions` object provides mutation methods based on your declared permissions:
@@ -302,8 +351,11 @@ Under the hood, these hooks and clients talk to these endpoints:
 | `POST` | `/sessions/:id/resources/:ref` | Create collection item |
 | `PATCH` | `/sessions/:id/resources/:ref/:topic/content` | Update item content |
 | `DELETE` | `/sessions/:id/resources/:ref/:topic` | Delete collection item |
+| `GET` | `/sessions/:id/resources/:ref/:topic` | Fetch collection item state |
 
 All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404.
+
+`:topic` is a multi-segment wildcard. Collections whose pattern allows nested keys (e.g. `memos/**` with topics like `p1/fundamentals`) work without special encoding — the client encodes slashes as `%2F` and the server decodes them back into the captured topic. The only restriction: a topic literally named `"content"` is shadowed by the `/:ref/content` route and isn't addressable via the state-get endpoint.
 
 ## Live updates
 

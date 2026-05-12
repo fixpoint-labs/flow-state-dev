@@ -32,6 +32,12 @@ type RequestGroup = {
   items: DevtoolItem[];
   /** Inbound transport that produced the request — undefined for legacy data. */
   source?: string;
+  /**
+   * Adapter-stamped provenance bag (e.g., scheduled-source carries
+   * `scheduleId` and `origin`). Forwarded to the request separator so
+   * transport-specific badges can surface without a custom hook.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 /** Item types that belong in a chat-like stream. */
@@ -130,6 +136,7 @@ export function StreamView({
               isActive={isActive}
               totalTokens={group.totalTokens}
               source={group.source}
+              metadata={group.metadata}
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}

@@ -16,6 +16,7 @@
     "@ai-sdk/openai": "^3.0.30",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "ai": "^6.0.97",
@@ -25,6 +26,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.5.0",
+    "yahoo-finance2": "^2.14.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {

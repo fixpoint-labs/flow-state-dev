@@ -174,6 +174,37 @@ Update policy:
 - Why:
   - Returning `input` pollutes the items log with redundant echoes of data already present in prior items. Items should contain meaningful outputs (LLM responses, structured results), not passthrough copies. This is a generalization of BP-012: even when a handler is not state-mutation-only, echoing input as output is never correct behavior.
 
+### BP-015: Prefer `expose` / `exclude` over hand-rolled `data` projections on resource client config
+
+- Status: Active
+- Date: 2026-05-11
+- Rule:
+  - For projecting a resource or collection's state to clients, prefer `expose: [...]` for a whitelist or `exclude: [...]` for a blacklist. Reserve `data: (state) => ({...})` for computed fields that aren't on the state schema.
+  - One of the three per resource — never combine. `defineResource` and `defineResourceCollection` throw at definition time when more than one is set.
+  - Omit all three when you want the full state — that's the identity default.
+- Why:
+  - Hand-rolled `data: (state) => ({ ... })` literals drift from the state schema as fields are added. `expose` is type-checked against `stateSchema` at build time and impossible to drift silently.
+  - The identity default removes a footgun where `state.read: true` without a `data` projection returned the empty-looking `{ topic }` shape (bit trading-desk twice during Phase 2 development).
+
+### BP-016: Generator outputSchemas must be OpenAI strict-compatible
+
+- Status: Active
+- Date: 2026-05-11
+- Rule:
+  - Generator `outputSchema` values must serialize to a JSON schema OpenAI's structured-output strict mode accepts.
+  - Concretely:
+    - **No `z.record()` on object roots or anywhere reachable from a generator output.** It serializes to `additionalProperties: true`, which strict mode rejects. Use a fixed-shape `z.object({...})` when the keys are known. When the keys are dynamic, use `z.array(z.object({ key: z.string(), value: z.string() }))` and convert to a `Record` at the writer seam.
+    - **No `z.optional()` or `z.default()` on generator outputs.** They remove the key from the `required` set. Use `z.nullable()` (key stays required, value can be `null`).
+    - **No `z.union([...])` of differently-shaped variants.** The variants produce conflicting `required` sets. Collapse to a single shape with nullable slots, or split into separate generators with their own schemas. Discriminated unions over differing shapes have the same problem.
+  - Two examples in this repo:
+    - Fixed-shape metrics: [`examples/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts`](../../examples/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts) (closed `z.object({ conviction, horizon, target, stop })`).
+    - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`examples/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts`](../../examples/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts).
+  - Authors can sanity-check a schema in a test: import `makeSchemaStrict` from `@flow-state-dev/core` and run the result through a walker that fails on the patterns above. The trading-desk example ships such a guard at [`examples/trading-desk/test/output-schemas-strict.spec.ts`](../../examples/trading-desk/test/output-schemas-strict.spec.ts) — copy it into any package that defines generator outputs.
+- Why:
+  - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. Those bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
+  - Catching the bug at test time (via the strict-mode walker) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
+  - Phase 1 of the trading-desk example hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
+
 ## Template For New Entries
 
 ```md
