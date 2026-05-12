@@ -82,6 +82,8 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
 
+The Resources panel reads from a privileged debug endpoint and shows the full server-side state. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
+
 ## Replay
 
 Re-stream a previous request to reproduce behavior. Select a completed request and choose replay full or replay from cursor. The DevTool reconnects to the SSE stream and replays the events.

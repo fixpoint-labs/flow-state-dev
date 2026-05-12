@@ -497,34 +497,24 @@ describe("createFlowApiRouter", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const stateResponse = await router.GET(
-      new Request("http://localhost/api/flows/sessions/sess_iso_state/state?include=internal_state"),
+      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
       { params: { path: ["sessions", "sess_iso_state", "state"] } }
     );
 
     expect(stateResponse.status).toBe(200);
     const body = (await stateResponse.json()) as {
       state?: unknown;
-      internalState?: {
-        user?: Record<string, unknown>;
-        org?: Record<string, unknown>;
-      };
+      internalState?: unknown;
       clientData: Record<string, Record<string, unknown>>;
     };
+    // FIX-579: /state is strictly client-shaped; the previous
+    // include=internal_state escape hatch was removed.
     expect(body.state).toBeUndefined();
-    expect(body.internalState?.user).toMatchObject({ nickname: "Ada" });
-    expect(body.internalState?.org).toMatchObject({ title: "Project Ada" });
+    expect(body.internalState).toBeUndefined();
     expect(body.clientData).toMatchObject({
       user: { userLabel: { nickname: "Ada" } },
       org: { orgLabel: { title: "Project Ada" } }
     });
-
-    const defaultStateResponse = await router.GET(
-      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
-      { params: { path: ["sessions", "sess_iso_state", "state"] } }
-    );
-    const defaultBody = (await defaultStateResponse.json()) as Record<string, unknown>;
-    expect(defaultBody.state).toBeUndefined();
-    expect(defaultBody.internalState).toBeUndefined();
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get("proj_iso_state")).toBeUndefined();
 

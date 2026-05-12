@@ -253,7 +253,7 @@ defineResourceCollection({
 });
 ```
 
-The snapshot then includes `prefetched: [{ topic, clientData }, ...]` for the first 20 items. Consumers render immediately without an extra round-trip; the convenience hook surfaces them as the initial paint.
+The snapshot then includes `prefetched: [{ topic, clientData }, ...]` for the first 20 items. Consumers render immediately without an extra round-trip; the convenience hook surfaces them as the initial paint. (The DevTool sees all items in a collection regardless of `prefetchWindow` — see [Debug vs client state](../devtool/debug-vs-client-state.md).)
 
 Ordering is by **lexicographic storage key**, not by recency. There's no per-item `updatedAt` on the storage layer today, so picking the "most recently updated" 20 items would require schema work that's deliberately out of scope for this version. Apps that need recency can encode timestamps into topic keys (e.g., `2026-05-06T12:00|spec.md`); a future revision may add a richer ordering model.
 

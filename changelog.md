@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### DevTool full resource visibility, independent of prefetch / client config (FIX-579)
+
+- New privileged debug read surface under `/api/flows/sessions/:id/debug/resources*` on `@flow-state-dev/server`. Returns the full server-side resource layer for a session — every storage key, raw state, content metadata, and a per-entry `clientView` showing what production clients would receive after `client.data` projection.
+- The surface is fail-closed: off by default, opt in via `debugEndpointsEnabled: true` on `createFlowApiRouter` or the `FSDEV_DEBUG_ENDPOINTS=1` env flag. Loopback-origin gate by default; widen with `debugAllowedOrigins`. `fsdev dev` enables it automatically.
+- Dual-registered resources (same `DefinedResource` exposed under multiple accessor names) collapse into one entry with both aliases listed, rather than two disconnected rows.
+- Collection counts are bounded — `debugCountLimit` (default 1000) caps enumeration on org / flow-scope collections; items beyond the cap report `itemCountTruncated: true`. Items endpoint paginates regardless of size.
+- Two adjacent fixes on existing client-facing collection routes: list response now returns both `topic` (bare) and `storageKey` (full) per item; single-item response emits a `hint` field when no `client.data` projection is configured, pointing developers at the debug endpoint.
+- **Breaking (internal surface):** the previous undocumented DevTool query params on `GET /api/flows/sessions/:id/state` (`include_internal_resources`, `include=internal_state`) have been removed. The state endpoint is now strictly client-shaped — the same shape a production React app sees. The DevTool reads from `/debug/resources*` instead. Callers using these params would have been internal tooling only; `internalState` and `internal: true` markers no longer appear on the response.
+
 ### Server: session-state schema defaults are pre-applied at session creation (FIX-561)
 
 - `handleCreateSession` now parses an empty `body.state` (or any caller override) through `flow.session.stateSchema` before persisting, so a brand-new session's `state` already contains every declared key with its initial value (`z.string().default("...")`, `z.record(...).default({})`, etc.). Previously `state` was initialized to `{}` and schema defaults only landed after the first `patchState` call.

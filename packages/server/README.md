@@ -320,6 +320,24 @@ defineFlow({
 
 Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces `session.isStuck` when the stream goes silent past `stuckThresholdMs` (default 30s) and exposes `session.dismissRequest()` to clear the request without a live connection. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience) for full details.
 
+## Debug endpoints
+
+The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state.
+
+The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  debugEndpointsEnabled: true,
+  debugAllowedOrigins: ["http://localhost:3001"],
+});
+```
+
+The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+
+See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
+
 ## State mutations: two-tier model
 
 Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) routes through one of two paths inside the runtime, picked by whether the scope has a `persist` callback:
