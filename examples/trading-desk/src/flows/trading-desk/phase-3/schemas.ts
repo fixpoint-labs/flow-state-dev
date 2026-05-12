@@ -31,8 +31,8 @@ export const tradeProposalOutputSchema = z.object({
   // `metrics` row, consumed by Phase 4 (risk) and Phase 5 (PM).
   direction: z.enum(["long", "short", "flat"]),
   sizePct: z.number().min(0).max(10),
-  stopPrice: z.number().min(0),
-  targetPrice: z.number().min(0),
+  stopPrice: z.number().positive(),
+  targetPrice: z.number().positive(),
   holdingPeriod: z.enum(["days", "weeks", "months", "quarters"]),
   invalidationCriteria: z.array(z.string()),
   dependsOn: z.array(z.string()),
