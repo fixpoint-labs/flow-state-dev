@@ -5,6 +5,7 @@ export {
   PHASE_1_MEMO_KEYS,
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
+  PHASE_4_MEMO_KEYS,
   ALL_MEMO_KEYS,
 } from "./flows/trading-desk/agents";
 export type {
@@ -14,6 +15,7 @@ export type {
   Phase1MemoShortName,
   Phase2MemoShortName,
   Phase3MemoShortName,
+  Phase4MemoShortName,
   AnyMemoShortName,
 } from "./flows/trading-desk/agents";
 export {

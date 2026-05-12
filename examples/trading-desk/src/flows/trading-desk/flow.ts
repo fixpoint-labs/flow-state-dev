@@ -16,6 +16,8 @@ import { phase1Pipeline } from "./blocks/analyst-phase";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
+import { phase4Pipeline } from "./phase-4";
+import { phase4Contributions } from "./phase-4/round-robin";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -62,7 +64,8 @@ const analyzePipeline = sequencer({
   .then(seedSession)
   .then(phase1Pipeline)
   .then(phase2Pipeline)
-  .then(phase3Pipeline);
+  .then(phase3Pipeline)
+  .then(phase4Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
@@ -94,6 +97,9 @@ const tradingDeskFlow = defineFlow({
     // Phase 2 transcript. Registered here so post-loop consolidation
     // generators can declare it on their own `resources:` slot.
     p2Contributions: phase2Contributions,
+    // Phase 4 round-robin transcript. Registered so the riskAssessment
+    // consolidation generator can read the persona contributions.
+    p4Contributions: phase4Contributions,
   },
 });
 
