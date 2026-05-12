@@ -188,18 +188,25 @@ function serverConfigError(field: string): Response {
  */
 function authorize(req: Request, secret: string): boolean {
   if (secret.length === 0) return false;
-  const header = req.headers.get("authorization") ?? req.headers.get("Authorization");
+  const header = req.headers.get("authorization");
   if (header === null) return false;
   const expected = `Bearer ${secret}`;
   return bearerEquals(header, expected);
 }
 
-/** Constant-time string compare; returns false on length mismatch. */
+/**
+ * Constant-time string compare. Always runs `timingSafeEqual` against a
+ * same-length buffer so a length mismatch does not return faster than a
+ * content mismatch — otherwise an attacker probing input lengths could
+ * recover the expected token length.
+ */
 function bearerEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false; // length is not secret
-  return timingSafeEqual(ab, bb);
+  const ref = Buffer.alloc(bb.length, 0);
+  ab.copy(ref, 0, 0, Math.min(ab.length, ref.length));
+  const match = timingSafeEqual(ref, bb);
+  return ab.length === bb.length && match;
 }
 
 /**
