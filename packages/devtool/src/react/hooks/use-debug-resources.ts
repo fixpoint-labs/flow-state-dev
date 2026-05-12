@@ -26,20 +26,21 @@ const DISABLED_REASONS = new Set([
 ]);
 
 /**
- * Returns `disabled = true` when the response body's `error` field matches one
- * of the documented debug-disabled reasons. Falls back to a generic 403 check
- * so misconfigured servers still surface a friendly notice rather than a raw
- * stack trace.
+ * True only when the response body's `error` field matches one of the
+ * documented debug-disabled reasons. Other 403s (session ownership, IP
+ * gateways, misconfigured proxies) surface as generic errors so the panel
+ * doesn't display a misleading "enable with FSDEV_DEBUG_ENDPOINTS=1" notice
+ * when the endpoint is already enabled.
  */
 function isDebugDisabledError(err: unknown): boolean {
   if (!(err instanceof ClientHttpError)) return false;
   if (err.status !== 403) return false;
   const body = err.body;
-  if (body !== null && typeof body === "object" && "error" in body) {
-    const reason = (body as { error?: unknown }).error;
-    if (typeof reason === "string" && DISABLED_REASONS.has(reason)) return true;
+  if (body === null || typeof body !== "object" || !("error" in body)) {
+    return false;
   }
-  return true;
+  const reason = (body as { error?: unknown }).error;
+  return typeof reason === "string" && DISABLED_REASONS.has(reason);
 }
 
 export function useDebugResources(

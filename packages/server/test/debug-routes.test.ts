@@ -495,11 +495,10 @@ describe("handleDebugListCollectionItems", () => {
       },
       ctx
     );
-    // Some Node runtimes successfully decode base64url for arbitrary inputs
-    // (returning garbage). When that happens the resume index simply lands at
-    // the end of the list, yielding an empty page. Only assert 400 when the
-    // decoder genuinely failed.
-    if (res.status !== 200) expect(res.status).toBe(400);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("bad_request");
+    expect(body.details).toBe("invalid_cursor");
   });
 
   it("400s on non-numeric limit", async () => {

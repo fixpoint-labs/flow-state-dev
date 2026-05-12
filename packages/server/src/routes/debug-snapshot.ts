@@ -483,19 +483,21 @@ function encodeCursor(storageKey: string): string {
   return Buffer.from(storageKey, "utf-8").toString("base64url");
 }
 
+// Strict base64url alphabet, no padding (per RFC 4648 §5).
+const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
+
 /**
  * Decode a pagination cursor. Returns `null` for an absent cursor (start of
  * list), a decoded string for a valid cursor, and `undefined` when the cursor
- * is malformed (handler returns 400).
+ * is malformed (handler returns 400). We validate the input charset up front
+ * because Node's `Buffer.from(_, "base64url")` is lenient — it silently
+ * ignores invalid characters rather than throwing, so try/catch is not enough
+ * to enforce a well-formed cursor.
  */
 function decodeCursor(raw: string | null): string | null | undefined {
   if (raw === null) return null;
-  try {
-    const decoded = Buffer.from(raw, "base64url").toString("utf-8");
-    return decoded;
-  } catch {
-    return undefined;
-  }
+  if (raw.length === 0 || !BASE64URL_RE.test(raw)) return undefined;
+  return Buffer.from(raw, "base64url").toString("utf-8");
 }
 
 /**
