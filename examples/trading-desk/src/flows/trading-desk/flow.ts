@@ -15,6 +15,7 @@ import { z } from "zod";
 import { phase1Pipeline } from "./blocks/analyst-phase";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
+import { phase3Pipeline } from "./phase-3";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -60,7 +61,8 @@ const analyzePipeline = sequencer({
 })
   .then(seedSession)
   .then(phase1Pipeline)
-  .then(phase2Pipeline);
+  .then(phase2Pipeline)
+  .then(phase3Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",

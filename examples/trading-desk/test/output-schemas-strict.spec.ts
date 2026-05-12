@@ -20,6 +20,7 @@ import {
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
 } from "../src/flows/trading-desk/phase-2/thesis-schemas";
+import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/schemas";
 
 type Issue = { path: string; reason: string };
 
@@ -111,6 +112,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 2 bullThesisOutputSchema", bullThesisOutputSchema],
   ["Phase 2 bearThesisOutputSchema", bearThesisOutputSchema],
   ["Phase 2 investmentThesisOutputSchema", investmentThesisOutputSchema],
+  ["Phase 3 tradeProposalOutputSchema", tradeProposalOutputSchema],
 ];
 
 describe("Generator output schemas are OpenAI strict-mode compatible", () => {

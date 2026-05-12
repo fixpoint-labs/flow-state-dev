@@ -19,7 +19,7 @@ export const sessionStateSchema = z.object({
   date: z.string().default("2026-05-06"),
   costPreset: z.enum(["fast", "full"]).default("fast"),
   dataSource: z.enum(["fixture", "live"]).default("fixture"),
-  activePhase: z.enum(["idle", "phase-1", "phase-2"]).default("idle"),
+  activePhase: z.enum(["idle", "phase-1", "phase-2", "phase-3"]).default("idle"),
   maxDebateRounds: z.number().int().min(1).max(2).default(1),
   memoStatus: z
     .record(z.string(), z.enum(["pending", "writing", "published", "error"]))

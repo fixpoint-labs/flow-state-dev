@@ -117,11 +117,27 @@ export const PHASE_2_MEMO_KEYS = {
 
 export type Phase2MemoShortName = keyof typeof PHASE_2_MEMO_KEYS;
 
+/** Resource storage keys for Phase 3 memos (trader). Same shape as the
+ *  Phase 1 / 2 maps. */
+export const PHASE_3_MEMO_KEYS = {
+  trader: {
+    agentName: "trader",
+    memoKey: "memos/p3/trader",
+    collectionKey: "p3/trader",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase3MemoShortName = keyof typeof PHASE_3_MEMO_KEYS;
+
 /** Combined memo-key map across all shipped phases. The sidebar iterates
  *  this single table; future phases append their own entries. */
 export const ALL_MEMO_KEYS = {
   ...PHASE_1_MEMO_KEYS,
   ...PHASE_2_MEMO_KEYS,
+  ...PHASE_3_MEMO_KEYS,
 } as const;
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;
