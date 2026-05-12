@@ -206,8 +206,7 @@ function CollectionBody({
   // after a streamed mutation or manual refresh.
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, entry.primaryName, filter, reloadTick]);
+  }, [refresh, reloadTick]);
 
   // Hide the filter input until the collection has enough items to make
   // filtering worthwhile. Threshold uses the unfiltered total so the input

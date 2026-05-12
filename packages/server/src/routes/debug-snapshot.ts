@@ -317,13 +317,16 @@ export async function buildDebugResourceTree(opts: {
       continue;
     }
 
-    // Single resource. Storage key = primary accessor name (the runtime
-    // writes single-resource state under the accessor name directly).
-    const rawState = persisted?.resources[primaryName];
+    // Single resource. The runtime writes state/content under the accessor
+    // name (not the config identity), so for dual-registered resources we
+    // probe each alias and return the first one populated.
+    const rawState = persisted ? findAliasValue(persisted.resources, group.aliases) : undefined;
     const state: JsonObject | null = isJsonObject(rawState)
       ? (rawState as JsonObject)
       : null;
-    const rawContent = persisted?.content[primaryName];
+    const rawContent = persisted
+      ? findAliasValue(persisted.content, group.aliases)
+      : undefined;
     const hasContent = typeof rawContent === "string";
     entries.push({
       definitionId,
@@ -556,22 +559,41 @@ export async function lookupDebugContent(opts: {
   );
   if (!persisted) return { ok: false, kind: "content_not_found" };
 
-  const storageKey =
-    topic === null
-      ? group.aliases[0]!
-      : joinPatternTopic(
-          (group.config as ResourceCollectionConfig).pattern,
-          topic
-        );
-  const body = persisted.content[storageKey];
-  if (typeof body !== "string") {
-    return { ok: false, kind: "content_not_found" };
+  // For collections the storage key is pattern-derived. For single resources
+  // each alias gets its own storage slot (the runtime writes by accessor
+  // name, not by config identity), so we probe every alias and return the
+  // first one with content.
+  if (topic !== null) {
+    const storageKey = joinPatternTopic(
+      (group.config as ResourceCollectionConfig).pattern,
+      topic
+    );
+    const body = persisted.content[storageKey];
+    if (typeof body !== "string") return { ok: false, kind: "content_not_found" };
+    return { ok: true, body, contentType: deriveContentType(group.config) };
   }
-  return {
-    ok: true,
-    body,
-    contentType: deriveContentType(group.config)
-  };
+  for (const alias of group.aliases) {
+    const body = persisted.content[alias];
+    if (typeof body === "string") {
+      return { ok: true, body, contentType: deriveContentType(group.config) };
+    }
+  }
+  return { ok: false, kind: "content_not_found" };
+}
+
+/**
+ * Probe `map` for each alias in order; return the first defined value. The
+ * runtime persists single-resource state under the accessor name, so
+ * dual-registered resources can have data at any of their aliases.
+ */
+function findAliasValue<T>(
+  map: Record<string, T>,
+  aliases: string[]
+): T | undefined {
+  for (const alias of aliases) {
+    if (map[alias] !== undefined) return map[alias];
+  }
+  return undefined;
 }
 
 /** Compose a full collection storage key from pattern prefix + bare topic. */

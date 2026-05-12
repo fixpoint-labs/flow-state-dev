@@ -386,7 +386,10 @@ export async function buildResourceSnapshot(options: {
         const prefetched: Array<Record<string, unknown>> = [];
         for (const key of window) {
           const state = isJsonObject(persisted[key]) ? persisted[key] as JsonObject : {};
-          const item: Record<string, unknown> = { topic: key };
+          const item: Record<string, unknown> = {
+            topic: extractBareTopic(pattern, key),
+            storageKey: key
+          };
           if (stateReadable) {
             item.clientData = await resolveClientProjection(collectionClient, state);
           }

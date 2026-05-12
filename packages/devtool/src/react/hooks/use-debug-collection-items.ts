@@ -42,6 +42,9 @@ export function useDebugCollectionItems(
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const cursorRef = useRef<string | null>(null);
+  // Mirrors items.length synchronously so the cap decision doesn't depend on
+  // React's deferred setState batching.
+  const accumulatedCountRef = useRef(0);
 
   // Fetch one page using the latest accumulated cursor. Append on success.
   const fetchPage = useCallback(
@@ -55,16 +58,16 @@ export function useDebugCollectionItems(
           limit: pageSize,
           topic: topicFilter && topicFilter.length > 0 ? topicFilter : undefined
         });
-        let capped = false;
+        const priorCount = cursor === null ? 0 : accumulatedCountRef.current;
+        const mergedCount = priorCount + result.items.length;
+        const capped = mergedCount >= MAX_ACCUMULATED_ITEMS;
+        const nextCount = capped ? MAX_ACCUMULATED_ITEMS : mergedCount;
+        accumulatedCountRef.current = nextCount;
+        cursorRef.current = capped ? null : result.nextCursor;
         setItems((prev) => {
           const merged = cursor === null ? result.items : [...prev, ...result.items];
-          if (merged.length >= MAX_ACCUMULATED_ITEMS) {
-            capped = true;
-            return merged.slice(0, MAX_ACCUMULATED_ITEMS);
-          }
-          return merged;
+          return capped ? merged.slice(0, MAX_ACCUMULATED_ITEMS) : merged;
         });
-        cursorRef.current = capped ? null : result.nextCursor;
         setHasMore(!capped && result.nextCursor !== null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch collection items");
@@ -81,6 +84,7 @@ export function useDebugCollectionItems(
 
   const refresh = useCallback(async () => {
     cursorRef.current = null;
+    accumulatedCountRef.current = 0;
     setItems([]);
     setHasMore(true);
     await fetchPage(null);
@@ -92,6 +96,7 @@ export function useDebugCollectionItems(
   // the row).
   useEffect(() => {
     cursorRef.current = null;
+    accumulatedCountRef.current = 0;
     setItems([]);
     setHasMore(true);
     setError(null);

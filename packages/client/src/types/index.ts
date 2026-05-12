@@ -190,7 +190,10 @@ export type ResourceSnapshotEntry = {
  * `client.content.prefetch: true` is also declared.
  */
 export type CollectionSnapshotPrefetchedItem = {
+  /** Bare topic — the identifying portion of the key after the pattern prefix. */
   topic: string;
+  /** Full storage key (e.g. `"memos/abc"`). Matches the standalone list endpoint shape. */
+  storageKey: string;
   clientData?: unknown;
   content?: string;
 };
