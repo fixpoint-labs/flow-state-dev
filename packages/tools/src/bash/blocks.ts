@@ -145,9 +145,25 @@ interface SandboxEntry {
   mounts: Mount[];
 }
 
+/**
+ * Registry value: either a resolved entry or a pending-promise wrapper. The
+ * pending wrapper closes a check-then-set race in `getOrCreate`: without it,
+ * two concurrent callers for the same key both see a miss, both spawn a
+ * sandbox, and the second `set` clobbers the first — leaking the original
+ * (unreachable via `releaseBashSandbox`). Harmless for cheap adapters,
+ * orphans whole containers under the MOAT adapter.
+ */
+type RegistryValue = SandboxEntry | { pending: Promise<SandboxEntry> };
+
 // Module-level registry keyed by scope+scopeId. Entries are lightweight and
-// cleaned up implicitly when the process ends.
-const registry = new Map<string, SandboxEntry>();
+// cleaned up implicitly when the process ends — or eagerly via
+// `releaseBashSandbox`, typically wired through the bash capability's
+// `cleanupBlock` into `defineFlow({ request: { onFinished } })`.
+const registry = new Map<string, RegistryValue>();
+
+function isPending(value: RegistryValue): value is { pending: Promise<SandboxEntry> } {
+  return (value as { pending?: Promise<SandboxEntry> }).pending !== undefined;
+}
 
 /** Identity fields available on the block execution context. */
 interface ScopeIdentity {
@@ -474,17 +490,33 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
     const { key: registryKey } = resolveScopeKey(scope, identity);
 
-    let entry = registry.get(registryKey);
-    if (!entry) {
-      const sandbox = await createScopedSandbox(provider, identity, destination);
-      const mounts = discoverMounts(ctx, collections, exclude);
-      entry = {
-        sandbox,
-        hydrated: false,
-        contentHashes: new Map(),
-        mounts,
-      };
-      registry.set(registryKey, entry);
+    const existing = registry.get(registryKey);
+    let entry: SandboxEntry;
+    if (existing) {
+      entry = isPending(existing) ? await existing.pending : existing;
+    } else {
+      // Install a pending placeholder *before* awaiting so concurrent callers
+      // for the same key share a single in-flight sandbox creation.
+      const pending = (async () => {
+        const sandbox = await createScopedSandbox(provider, identity, destination);
+        const mounts = discoverMounts(ctx, collections, exclude);
+        const created: SandboxEntry = {
+          sandbox,
+          hydrated: false,
+          contentHashes: new Map(),
+          mounts,
+        };
+        registry.set(registryKey, created);
+        return created;
+      })();
+      registry.set(registryKey, { pending });
+      try {
+        entry = await pending;
+      } catch (err) {
+        // Clear the placeholder so a subsequent call can retry.
+        registry.delete(registryKey);
+        throw err;
+      }
     }
 
     if (!entry.hydrated) {
@@ -550,4 +582,52 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   });
 
   return { bashCommand, bashReadFile, bashWriteFile };
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Release the bash sandbox associated with the given context, if any.
+ *
+ * Resolves the same registry key the matching `createBashBlocks` call uses,
+ * looks up the entry, calls `sandbox.stop?.()` (best-effort), and removes
+ * it from the registry. Errors are logged, never thrown — `onFinished`
+ * fires after the response is on its way back to the client and a throw
+ * here would only show up in server logs.
+ */
+export async function releaseBashSandbox(
+  provider: SandboxProvider,
+  ctx: any,
+): Promise<void> {
+  const identity: ScopeIdentity = {
+    sessionId: ctx.session.identity.id,
+    userId: ctx.session.identity.userId,
+    orgId: ctx.session.identity.orgId,
+  };
+  const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+  const { key: registryKey } = resolveScopeKey(scope, identity);
+
+  const value = registry.get(registryKey);
+  if (!value) return;
+
+  // If creation is still in flight, wait for it before stopping — otherwise
+  // the in-flight resolver would re-`set` the entry after we deleted it,
+  // resurrecting a sandbox we just released.
+  let entry: SandboxEntry;
+  try {
+    entry = isPending(value) ? await value.pending : value;
+  } catch {
+    registry.delete(registryKey);
+    return;
+  }
+
+  registry.delete(registryKey);
+
+  try {
+    await entry.sandbox.stop?.();
+  } catch (err) {
+    console.warn(`[bash] sandbox stop failed for ${registryKey}:`, (err as Error).message);
+  }
 }

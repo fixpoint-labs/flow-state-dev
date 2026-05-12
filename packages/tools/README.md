@@ -150,7 +150,35 @@ generator({
 | Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. |
 | Upstash | `"upstash"` | Placeholder — blocked on API stabilization (FIX-314). |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
+| MOAT | `"moat"` | Local container isolation with credential injection (requires the `moat` CLI v0.4.0+). |
 | Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
+
+#### MOAT
+
+Runs each command inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; outbound network calls flow through a credential-injecting proxy so the agent process never sees API tokens.
+
+```typescript
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  provider: {
+    type: "moat",
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+Wiring cleanup is **required** for the MOAT provider — without it, every flow request leaves a container behind. The capability returns a `cleanupBlock` for this:
+
+```typescript
+defineFlow({
+  // ...
+  request: { onFinished: bashCap.cleanupBlock },
+});
+```
+
+The cleanup block is returned for every provider so the capability shape stays stable; for non-MOAT providers it is effectively a no-op. See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
 
 ### Configuration
 

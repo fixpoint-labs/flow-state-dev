@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-12
+
+### Bash tool: MOAT sandbox adapter (FIX-584)
+
+- New `moat` provider for the bash tool, alongside `local`, `just-bash`, `vercel`, and `upstash`. Runs commands inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; the agent process inherits no environment variables and outbound network calls flow through MOAT's credential-injecting proxy.
+- `createBashCapability` now returns a `cleanupBlock` alongside the capability. Wire it into `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })` to release the sandbox at request end. Required for MOAT to avoid orphaning containers; safe (effectively a no-op) for the other providers, so it's returned unconditionally.
+- Closes a pre-existing concurrency race in the bash blocks' module-level sandbox registry: two concurrent requests for the same scope key now share a single in-flight sandbox creation instead of both creating one and leaking the loser. Harmless for the cheap adapters, container-orphaning under MOAT.
+- Provider-aware context guidance: agents using the MOAT provider now see a system-prompt line that names the allowlisted hosts and explains the workspace boundary, mirroring the existing `local` / `just-bash` / `vercel` lines.
+- Kitchen-sink wiring: `BASH_PROVIDER=moat` (with optional `MOAT_GRANTS` and `MOAT_ALLOW_HOSTS` env vars) now selects the MOAT provider for local development. The chat-agent flow wires `bashCap.cleanupBlock` into `request.onFinished` unconditionally so swapping providers via env vars cannot reintroduce a leak.
+- Documentation: `apps/docs/docs/tools/bash.md` and `packages/tools/README.md` describe the new provider, the cleanup wiring requirement, the credentials model, and the v1 limits (UTF-8 reads, 60s default exec timeout, no streaming, no auto-restart).
+
 ## 2026-05-11
 
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)

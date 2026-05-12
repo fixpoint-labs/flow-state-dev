@@ -209,6 +209,47 @@ export type SandboxProvider =
       /** Limits for recursion, loops, and command counts. */
       executionLimits?: ExecutionLimits;
     }
+  | {
+      type: "moat";
+      /**
+       * Host directory bind-mounted as the workspace. Defaults to the resolved cwd.
+       */
+      workspace?: string;
+      /**
+       * Bind-mount target inside the container. Defaults to `destination`
+       * (which itself defaults to `/workspace`). Pass-through ensures agent
+       * prompts that reference `/workspace/foo.ts` resolve correctly.
+       */
+      mountTarget?: string;
+      /** Stable run name. Default derived from the session/scope ID. */
+      runName?: string;
+      /**
+       * Provider names required in `moat grant list`. Adapter fails fast if
+       * any are missing.
+       */
+      grants?: string[];
+      /**
+       * Outbound host whitelist. Default-deny when empty. Translated to a
+       * repeated `--allow-host` argument and to `network.allow` in the
+       * generated `moat.yaml`.
+       */
+      allowHosts?: string[];
+      /** Container runtime. Default `"auto"` (MOAT picks). */
+      runtime?: "auto" | "docker" | "apple";
+      /** Pass `--no-sandbox` (disables gVisor under Docker). Default `false`. */
+      noSandbox?: boolean;
+      /**
+       * Pre-authored `moat.yaml` path. When set, the adapter does not
+       * generate a transient config. If the file lives outside the workspace,
+       * it is copied into the workspace root before `moat run` and removed
+       * on teardown.
+       */
+      configPath?: string;
+      /** Per-`moat exec` timeout in ms. Default 60_000. */
+      execTimeoutMs?: number;
+      /** MOAT binary name or absolute path. Default `"moat"`. */
+      bin?: string;
+    }
   | { type: "custom"; sandbox: Sandbox };
 
 /**

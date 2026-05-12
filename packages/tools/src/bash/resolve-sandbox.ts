@@ -70,6 +70,22 @@ export async function resolveSandbox(
       });
     }
 
+    case "moat": {
+      const { resolveMoatSandbox } = await import("./adapters/moat");
+      return resolveMoatSandbox({
+        workspace: provider.workspace ?? options.cwd,
+        mountTarget: provider.mountTarget ?? options.destination ?? "/workspace",
+        runName: provider.runName ?? options.existingId ?? `fsdev-${Date.now().toString(36)}`,
+        grants: provider.grants,
+        allowHosts: provider.allowHosts,
+        runtime: provider.runtime,
+        noSandbox: provider.noSandbox,
+        configPath: provider.configPath,
+        execTimeoutMs: provider.execTimeoutMs,
+        bin: provider.bin,
+      });
+    }
+
     case "custom":
       return { sandbox: provider.sandbox };
   }
