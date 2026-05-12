@@ -595,7 +595,7 @@ export async function resolveMoatSandbox(
         // Best-effort.
       }
     }
-    if (copiedConfigPath && !opts.configPath) {
+    if (copiedConfigPath) {
       try {
         await rm(copiedConfigPath, { force: true });
       } catch {
