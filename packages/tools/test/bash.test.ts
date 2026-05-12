@@ -736,6 +736,14 @@ describe("workspace guards", () => {
           assertCommandWithinWorkspace(WORKSPACE, 'grep "foo/bar" file.txt'),
         ).not.toThrow();
       });
+
+      it("allows single-quoted absolute-path literal (documented trade-off)", () => {
+        // The unquoted form is still rejected; quoting (single or double)
+        // bypasses path validation by design.
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat '/etc/passwd'"),
+        ).not.toThrow();
+      });
     });
 
     describe("heredocs", () => {

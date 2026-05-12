@@ -68,7 +68,7 @@ function isSafeSystemPath(absPath: string): boolean {
  * stripped command, so a downstream parse still sees the redirection shape.
  */
 function stripHeredocBodies(command: string): string {
-  const startPattern = /<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/g;
+  const startPattern = /<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/;
   let result = command;
   let match: RegExpExecArray | null;
   let searchFrom = 0;
@@ -91,7 +91,6 @@ function stripHeredocBodies(command: string): string {
       result.slice(0, absoluteAfterStart) +
       result.slice(absoluteAfterStart + termEndInRemaining);
     searchFrom = absoluteAfterStart;
-    startPattern.lastIndex = 0;
   }
   return result;
 }
