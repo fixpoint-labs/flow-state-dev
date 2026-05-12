@@ -17,10 +17,10 @@ import { sessionStateSchema } from "../state";
 export const setupPhase4Memos = handler({
   name: "setup-phase-4-memos",
   inputSchema: z.any(),
-  outputSchema: z.any(),
+  outputSchema: z.void(),
   sessionStateSchema,
   resources: memoResources,
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const ticker = ctx.session.state.ticker as string;
     const date = ctx.session.state.date as string;
     const nextStatus: Record<string, "pending"> = {};
@@ -79,6 +79,5 @@ export const setupPhase4Memos = handler({
         ...nextStatus,
       },
     });
-    return input;
   },
 });

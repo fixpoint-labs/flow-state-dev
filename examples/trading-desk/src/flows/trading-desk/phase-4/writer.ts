@@ -153,11 +153,12 @@ function commonCommitPatch<T extends { label: string; headline: string; rating: 
   };
 }
 
-/** Commit the aggressive persona's critique to `memos/p4/aggressive-risk`. */
+/** Commit the aggressive persona's critique to `memos/p4/aggressive-risk`.
+ *  Used as a `.tap()` — mutates resource + session state only (BP-012/014). */
 export const commitAggressiveRiskMemo = handler({
   name: "commit-memo-p4-aggressive",
   inputSchema: personaCritiqueOutputSchema,
-  outputSchema: personaCritiqueOutputSchema,
+  outputSchema: z.void(),
   sessionStateSchema,
   resources: memoResources,
   execute: async (critique: PersonaCritiqueOutput, ctx) => {
@@ -174,7 +175,6 @@ export const commitAggressiveRiskMemo = handler({
     if (memoStatus.aggressive !== "published") {
       await ctx.session.setStateRecord("memoStatus", "aggressive", "published");
     }
-    return critique;
   },
 });
 
@@ -182,7 +182,7 @@ export const commitAggressiveRiskMemo = handler({
 export const commitConservativeRiskMemo = handler({
   name: "commit-memo-p4-conservative",
   inputSchema: personaCritiqueOutputSchema,
-  outputSchema: personaCritiqueOutputSchema,
+  outputSchema: z.void(),
   sessionStateSchema,
   resources: memoResources,
   execute: async (critique: PersonaCritiqueOutput, ctx) => {
@@ -199,7 +199,6 @@ export const commitConservativeRiskMemo = handler({
     if (memoStatus.conservative !== "published") {
       await ctx.session.setStateRecord("memoStatus", "conservative", "published");
     }
-    return critique;
   },
 });
 
@@ -208,7 +207,7 @@ export const commitConservativeRiskMemo = handler({
 export const commitNeutralRiskMemo = handler({
   name: "commit-memo-p4-neutral",
   inputSchema: neutralCritiqueOutputSchema,
-  outputSchema: neutralCritiqueOutputSchema,
+  outputSchema: z.void(),
   sessionStateSchema,
   resources: memoResources,
   execute: async (critique: NeutralCritiqueOutput, ctx) => {
@@ -224,7 +223,6 @@ export const commitNeutralRiskMemo = handler({
     if (memoStatus.neutral !== "published") {
       await ctx.session.setStateRecord("memoStatus", "neutral", "published");
     }
-    return critique;
   },
 });
 
