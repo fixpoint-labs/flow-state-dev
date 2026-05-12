@@ -370,6 +370,37 @@ type OutputAudioContent = {
 };
 ```
 
+## Errors
+
+### `FlowError`
+
+A small `Error` subclass author code can throw to attach a machine-readable code and structured details that survive the trip to the trace.
+
+```ts
+import { FlowError } from "@flow-state-dev/core";
+
+throw new FlowError("Command rejected", {
+  code: "PATH_OUTSIDE_WORKSPACE",
+  details: { cwd: "/foo" }
+});
+```
+
+`new FlowError(message, options)` where `options` is `{ code?: string; retryable?: boolean; details?: Record<string, unknown>; cause?: unknown }`. `retryable` defaults to `false`. `FlowError.isInstance(value)` matches `FlowError` (and subclasses) by `instanceof` or by `name`-tag, which is the dual-realm-safe check.
+
+### `OutputValidationError`
+
+Runtime-emitted subclass of `FlowError`. Thrown by the generator runtime when the model's output fails the declared `outputSchema`. Carries typed `details`:
+
+```ts
+type OutputValidationDetails = {
+  rawOutput: string;       // raw text or JSON the model returned
+  issues: ZodIssue[];      // Zod issues from the failing parse
+  phase: "stream" | "final";
+};
+```
+
+`code` is `"output_validation_error"`. `retryable` is `false`. See [Error handling](/docs/advanced/error-handling) for usage patterns.
+
 ## Type Helpers
 
 ```ts

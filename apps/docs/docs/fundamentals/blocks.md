@@ -349,6 +349,8 @@ pipeline.rescue([
 ]);
 ```
 
+For authoring throwable errors with structured `details` that surface in the DevTool, see [Error handling](/docs/advanced/error-handling).
+
 #### Putting it all together
 
 These compose into sophisticated workflows that would be painful to build from scratch:
