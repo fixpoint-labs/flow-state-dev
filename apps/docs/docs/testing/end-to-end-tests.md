@@ -55,20 +55,28 @@ When `KITCHEN_SINK_URL` is set, Playwright skips its own dev server.
 
 ## How LLMs are mocked
 
-Tests don't hit a network or pay tokens. Setting `KITCHEN_SINK_TEST_MODE=1` swaps the model resolver in `apps/kitchen-sink/lib/server.ts` for `createMockModelResolver`, with a single shared script in `apps/kitchen-sink/lib/e2e-mock-script.ts`.
+Tests don't hit a network or pay tokens. Setting `KITCHEN_SINK_TEST_MODE=1` swaps the model resolver in `apps/kitchen-sink/lib/server.ts` for `createMockModelResolver`. The mocks live in `apps/kitchen-sink/lib/e2e-mock-script.ts`:
 
-Each scenario sends a message containing a unique sentinel substring (e.g. `[scenario:smoke]`). The script's `{ when, then }` predicate entries match that substring and return a scripted assistant turn. One predicate, one scenario — no per-test reset, no Playwright network interception.
+- **`assistantMock`** is a hand-rolled dispatcher over `SCENARIO_SCRIPTS` — each entry is `{ match: (json) => boolean, steps: MockGeneratorScriptStep[] }`. Each scenario sends a message with a unique sentinel substring (e.g. `[scenario:smoke]`); the matching entry's `steps` are walked in order across the generator's tool loop.
+- The other generators on the run path (`thinkingStyleClassifierMock`, `intentClassifierMock`, `autoTitleMock`) use the framework's `mockGenerator()` with `{ when, then }` predicate entries because they need a single fixed response per call.
 
 ```ts
-{ when: inputContains("[scenario:smoke]"), then: { text: "Smoke test response." } }
+// apps/kitchen-sink/lib/e2e-mock-script.ts
+const SCENARIO_SCRIPTS: ScenarioScript[] = [
+  {
+    match: (json) => json.includes("[scenario:smoke]"),
+    steps: [{ text: "Smoke test response." }],
+  },
+  // ...
+];
 ```
 
-For tool-call scenarios, place the tool-call entries above the terminal text entry for the same sentinel. The mock walks predicates in order and the multi-step tool loop consumes them one at a time.
+For tool-call scenarios, set both `text` and `toolCalls` on the same step so the mock returns a terminal result without entering its internal execute loop. The stream wrapper in `lib/server.ts` then emits the tool-call items + the assistant text together.
 
 ## Adding a scenario
 
 1. Pick a sentinel: `[scenario:my-thing]`.
-2. Add a predicate to `apps/kitchen-sink/lib/e2e-mock-script.ts`.
+2. Add an entry to `SCENARIO_SCRIPTS` in `apps/kitchen-sink/lib/e2e-mock-script.ts`.
 3. Add a `*.spec.ts` file under `apps/kitchen-sink/e2e/`.
 4. Keep the suite's total runtime under three minutes. If a single spec crosses 30s, that's a smell — either the scenario is too broad or it belongs in a lower tier.
 
