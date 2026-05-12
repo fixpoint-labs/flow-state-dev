@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-12
+
+### Block trace honors the originating block's `transient` flag (FIX-586)
+
+- Auto-emitted `block_trace` items now inherit `transient` from the originating block. Restores the FIX-478 contract that FIX-573's `block_output → block_trace` unification silently regressed by hardcoding `transient: false`.
+- Transient blocks (Task Board's `claim-task` / `check-board`, eventActors poll-loop wrappers) keep streaming their trace lifecycle live to active SSE consumers, but the rows no longer enter the persisted items log or replay on history reload. Multi-worker Task Board runs against long-running LLM calls no longer flood the request items list with thousands of bookkeeping rows.
+- Non-transient blocks (the default) are unchanged — their traces are still retained as the canonical record.
+- `apps/docs/docs/streaming/emitting-items.md` reflects the live-vs-persisted distinction; the `BlockTraceItem` JSDoc and the `_blockIdentity.transient` type field document the inheritance rule so it can't silently regress again.
+
 ## 2026-05-11
 
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)
