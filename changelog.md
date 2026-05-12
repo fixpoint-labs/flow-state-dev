@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-11
 
+### Scheduled actions: schedule index, auto-mirroring, and Vercel helpers (FIX-581)
+
+- New `ScheduleIndex` interface in `@flow-state-dev/scheduled` for store-backed schedule fan-out. Implementations track `(userId, key, cron, timezone, nextFireAt)` rows and expose `upsert`, `remove`, and `claimDue` (atomic claim-and-advance).
+- `@flow-state-dev/store-postgres` and `@flow-state-dev/store-sqlite` each ship a factory (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`) that plugs directly into the interface.
+- `defineScheduleCollection` in `@flow-state-dev/scheduled` wraps `defineResourceCollection` with the standard schedule state schema and mirrors every create, update, and delete into an attached index automatically. Rows with `enabled: false` are removed from the index, so disabling a schedule stops it firing without deleting the record.
+- `@flow-state-dev/vercel/schedules` ships `createGetToPostCronShim` and `createScheduleTickHandler`. Vercel hosts no longer need to hand-roll the GET-to-POST adapter or the polling tick; both helpers authenticate with constant-time bearer comparison and forward the same secret to the dispatch endpoint.
+- Vercel Cron and dynamic-schedules guides updated to recommend the helpers; hand-rolled patterns are preserved as "Advanced" subsections for custom auth, storage, or retry requirements.
+
 ### Server: session-state schema defaults are pre-applied at session creation (FIX-561)
 
 - `handleCreateSession` now parses an empty `body.state` (or any caller override) through `flow.session.stateSchema` before persisting, so a brand-new session's `state` already contains every declared key with its initial value (`z.string().default("...")`, `z.record(...).default({})`, etc.). Previously `state` was initialized to `{}` and schema defaults only landed after the first `patchState` call.

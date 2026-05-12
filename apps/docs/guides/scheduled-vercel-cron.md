@@ -160,7 +160,7 @@ The index is the read-model the cron beat scans. Define it once at
 boot — `createPostgresScheduleIndex(executor)` or
 `createSQLiteScheduleIndex(db)` from your store adapter — and feed it
 on the write side via
-[`defineScheduleCollection`](/docs/server/schedule-index#auto-mirroring-with-definedchedulecollection).
+[`defineScheduleCollection`](/docs/server/schedule-index#auto-mirroring).
 
 `claimDue` advances rows atomically before returning them. The
 contract is at-most-once: a dispatch that fails after the row has been

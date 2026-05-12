@@ -8,7 +8,7 @@
  * pinned connection. Both built-in pool-backed executors created by
  * `createPostgresStores` satisfy this; callers using a custom
  * `QueryExecutor` must implement `beginTx` themselves (e.g. via the
- * `createSingleConnectionTx` helper for PGlite-style backends).
+ * single-connection backends like PGlite).
  */
 
 import { CronExpressionParser } from "cron-parser";
@@ -18,17 +18,12 @@ import type { QueryExecutor } from "./types";
 /**
  * Build a `ScheduleIndex` backed by the `schedule_index` table.
  *
- * Throws at construction when the executor does not support
- * `beginTx` — `claimDue`'s row-locking semantics depend on it.
+ * The executor must implement `beginTx()` — `claimDue` uses
+ * `SELECT ... FOR UPDATE SKIP LOCKED` which requires a pinned
+ * connection. Pool-backed executors from `createPostgresStores`
+ * satisfy this; custom executors must implement it themselves.
  */
 export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIndex {
-  if (typeof executor.beginTx !== "function") {
-    throw new Error(
-      "createPostgresScheduleIndex: executor.beginTx is required. " +
-        "Use the executor from createPostgresStores, or implement beginTx on your custom QueryExecutor."
-    );
-  }
-
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       await executor.query(

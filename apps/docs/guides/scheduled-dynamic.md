@@ -286,11 +286,6 @@ that window. Tradeoff vs. the helper: more code to maintain, and
 multi-process safety is your problem to solve (leader election,
 row-level locks, etc.).
 
-## Schedule Index
-
-The interface, provided implementations, and conformance tests are
-documented in the [Schedule index reference](/docs/server/schedule-index).
-
 ### External scheduler API
 
 When a user or agent creates a schedule, the same code path also

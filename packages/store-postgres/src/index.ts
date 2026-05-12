@@ -16,7 +16,7 @@ import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/server";
-import { createPgPoolTx, createSingleConnectionTx } from "./tx";
+import { createPgPoolTx } from "./tx";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
 
@@ -226,5 +226,5 @@ export {
 
 export { initializeSchema } from "./schema";
 export { createPostgresScheduleIndex } from "./schedule-index";
-export { createPgPoolTx, createSingleConnectionTx } from "./tx";
+export { createPgPoolTx } from "./tx";
 export type { PostgresStoreOptions, PoolConfig, QueryExecutor, TxClient } from "./types";

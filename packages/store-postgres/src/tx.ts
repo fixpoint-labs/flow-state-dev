@@ -54,33 +54,3 @@ export async function createPgPoolTx(pool: Pool): Promise<TxClient> {
   };
 }
 
-/**
- * BEGIN/COMMIT/ROLLBACK via plain queries — used by PGlite and any
- * other single-connection executor where `query()` already runs on
- * the same connection.
- *
- * Single-process backends don't need locking guarantees beyond what
- * BEGIN/COMMIT gives, but the wrapper keeps the calling code uniform
- * with the pool path.
- */
-export async function createSingleConnectionTx(
-  query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number }>
-): Promise<TxClient> {
-  await query("BEGIN");
-  let settled = false;
-  return {
-    async query(text: string, values?: unknown[]) {
-      return query(text, values);
-    },
-    async commit() {
-      if (settled) return;
-      settled = true;
-      await query("COMMIT");
-    },
-    async rollback() {
-      if (settled) return;
-      settled = true;
-      await query("ROLLBACK");
-    }
-  };
-}

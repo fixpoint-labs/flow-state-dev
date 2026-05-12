@@ -1,33 +1,39 @@
 /**
  * Tests for `createPostgresScheduleIndex` against a PGlite-backed
- * executor. Verifies the contract through the shared conformance
- * suite, plus a Postgres-specific check that `beginTx` is required.
+ * executor. Verifies the contract through the shared conformance suite.
  */
-import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { createScheduleIndexConformanceTests } from "@flow-state-dev/scheduled/testing";
 import { createPostgresScheduleIndex } from "../src/schedule-index";
-import { createSingleConnectionTx } from "../src/tx";
 import { initializeSchema } from "../src/schema";
-import type { QueryExecutor } from "../src/types";
+import type { QueryExecutor, TxClient } from "../src/types";
 
 function pgliteExecutor(pg: PGlite): QueryExecutor {
+  async function query(text: string, values?: unknown[]) {
+    const result = await pg.query(text, values);
+    return {
+      rows: result.rows as Record<string, unknown>[],
+      rowCount: result.affectedRows ?? 0
+    };
+  }
   return {
-    async query(text: string, values?: unknown[]) {
-      const result = await pg.query(text, values);
+    query,
+    async beginTx(): Promise<TxClient> {
+      await query("BEGIN");
+      let settled = false;
       return {
-        rows: result.rows as Record<string, unknown>[],
-        rowCount: result.affectedRows ?? 0
+        query,
+        async commit() {
+          if (settled) return;
+          settled = true;
+          await query("COMMIT");
+        },
+        async rollback() {
+          if (settled) return;
+          settled = true;
+          await query("ROLLBACK");
+        }
       };
-    },
-    async beginTx() {
-      return createSingleConnectionTx(async (text, values) => {
-        const result = await pg.query(text, values);
-        return {
-          rows: result.rows as Record<string, unknown>[],
-          rowCount: result.affectedRows ?? 0
-        };
-      });
     }
   };
 }
@@ -49,15 +55,4 @@ createScheduleIndexConformanceTests("postgres (pglite)", {
     const pg = handles.get(idx as object);
     if (pg) await pg.close();
   }
-});
-
-describe("createPostgresScheduleIndex", () => {
-  it("throws when executor.beginTx is missing", () => {
-    const bareExecutor: QueryExecutor = {
-      async query() {
-        return { rows: [], rowCount: 0 };
-      }
-    };
-    expect(() => createPostgresScheduleIndex(bareExecutor)).toThrow(/beginTx/);
-  });
 });

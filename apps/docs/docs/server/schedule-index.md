@@ -63,8 +63,7 @@ const index = createPostgresScheduleIndex(executor);
 Uses `SELECT ... FOR UPDATE SKIP LOCKED` plus a batched UPDATE inside a
 single transaction. Requires the executor to implement `beginTx()` —
 the pool-backed executors created by `createPostgresStores` do; custom
-ones can wrap `createSingleConnectionTx` for single-connection backends
-like PGlite.
+executors (e.g. PGlite in tests) must implement it themselves.
 
 ### `createSQLiteScheduleIndex`
 
@@ -79,7 +78,7 @@ against writers. better-sqlite3 is synchronous; the interface is async
 so deployments can swap in a remote index later without changing call
 sites.
 
-## Auto-mirroring with `defineScheduleCollection`
+## Auto-mirroring
 
 `defineScheduleCollection` is the single auto-mirror path. It wraps
 `defineResourceCollection`, installs the schedule state schema, and on

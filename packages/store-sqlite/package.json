@@ -22,6 +22,9 @@
     "better-sqlite3": "^11.0.0",
     "cron-parser": "^5.0.0"
   },
+  "peerDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*"
+  },
   "devDependencies": {
     "@flow-state-dev/scheduled": "workspace:*",
     "@types/better-sqlite3": "^7.6.0",

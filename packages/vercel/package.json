@@ -28,6 +28,9 @@
   "dependencies": {
     "@flow-state-dev/server": "workspace:*"
   },
+  "peerDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*"
+  },
   "devDependencies": {
     "@flow-state-dev/scheduled": "workspace:*",
     "@types/node": "^22.0.0",

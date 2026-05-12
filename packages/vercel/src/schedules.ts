@@ -16,6 +16,7 @@
  * cron route stays tiny.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
 
 /** Options for `createGetToPostCronShim`. */
@@ -145,12 +146,7 @@ export function createScheduleTickHandler(
           err
         );
       }
-      try {
-        opts.onDispatch?.(row, status);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("[flow-state/vercel/schedules] onDispatch threw", err);
-      }
+      opts.onDispatch?.(row, status);
     });
 
     return new Response(null, { status: 200 });
@@ -195,17 +191,15 @@ function authorize(req: Request, secret: string): boolean {
   const header = req.headers.get("authorization") ?? req.headers.get("Authorization");
   if (header === null) return false;
   const expected = `Bearer ${secret}`;
-  return timingSafeEqual(header, expected);
+  return bearerEquals(header, expected);
 }
 
 /** Constant-time string compare; returns false on length mismatch. */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
+function bearerEquals(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false; // length is not secret
+  return timingSafeEqual(ab, bb);
 }
 
 /**
