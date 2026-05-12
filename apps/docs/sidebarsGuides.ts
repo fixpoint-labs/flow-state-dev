@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
     "building-agents",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
+    "writing-ui-stories",
     {
       type: "category",
       label: "Deployment",

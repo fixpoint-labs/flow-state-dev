@@ -49,10 +49,10 @@ import {
 import { useSessionItems } from "./session-items-context";
 import {
   DEFAULT_HIDDEN_STATUSES,
-  TaskEntry,
-  TaskStatus,
-  StatusGroup,
-  Task,
+  type TaskEntry,
+  type TaskStatus,
+  type StatusGroup,
+  type Task,
   extractTaskItemWindows,
   extractTaskPlanState,
   groupTasksByAssignee,

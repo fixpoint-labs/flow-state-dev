@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter './packages/*' -r build && pnpm --filter @flow-state-dev/ui storybook:build",
+  "outputDirectory": "storybook-static",
+  "installCommand": "echo 'install handled in buildCommand'",
+  "framework": null
+}
