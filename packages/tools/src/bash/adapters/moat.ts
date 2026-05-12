@@ -560,6 +560,11 @@ export async function resolveMoatSandbox(
     const inWorkspace = resolved.startsWith(path.resolve(workspace) + path.sep);
     if (!inWorkspace) {
       const target = path.join(workspace, "moat.yaml");
+      if (existsSync(target)) {
+        throw new MoatError(
+          `Refusing to overwrite existing ${target} with ${resolved}. Move your existing moat.yaml aside, or place \`configPath\` inside the workspace so it is used directly.`,
+        );
+      }
       await copyFile(resolved, target);
       copiedConfigPath = target;
     }
