@@ -16,8 +16,8 @@ import {
   MoatGrantsError,
   MoatRunStoppedError,
   MoatBinaryReadError,
-  type MoatSpawnFn,
-  type MoatSpawnResult,
+  type SpawnFn as MoatSpawnFn,
+  type SpawnResult as MoatSpawnResult,
 } from "../src/bash/adapters/moat";
 import { createBashBlocks, releaseBashSandbox } from "../src/bash/blocks";
 import { createBashCapability } from "../src/bash/capability";
