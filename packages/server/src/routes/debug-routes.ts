@@ -122,8 +122,14 @@ function isLoopbackOrigin(origin: string): boolean {
 function matchesAllowlist(origin: string, allowlist: string[]): boolean {
   for (const allowed of allowlist) {
     if (origin === allowed) return true;
-    if (allowed.endsWith("*") && origin.startsWith(allowed.slice(0, -1))) {
-      return true;
+    if (allowed.endsWith("*")) {
+      // Bound the wildcard so `https://a.example*` doesn't match
+      // `https://a.example.attacker.com`. Only exact match or a port
+      // variant (prefix + `:`) is allowed.
+      const prefix = allowed.slice(0, -1);
+      if (origin === prefix || origin.startsWith(prefix + ":")) {
+        return true;
+      }
     }
   }
   return false;
