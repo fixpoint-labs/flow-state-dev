@@ -15,6 +15,18 @@ import {
   intentClassifierMock,
   autoTitleMock,
 } from "./e2e-mock-script";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createFilesystemStores,
+  createInMemoryStores,
+  type StoreRegistry,
+} from "@flow-state-dev/server";
+import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+import { Client as NeonClient } from "@neondatabase/serverless";
+import chatAgentFlow from "@/flows/chat-agent/flow";
+import richTextComponentFlow from "@/flows/rich-text-component/flow";
 
 /**
  * The framework's generator block only emits tool-call items via the
@@ -77,18 +89,6 @@ function wrapResolverWithStream(base: ModelResolver): ModelResolver {
   wrapped.resolveId = base.resolveId;
   return wrapped;
 }
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-  createFilesystemStores,
-  createInMemoryStores,
-  type StoreRegistry,
-} from "@flow-state-dev/server";
-import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
-import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
-import { Client as NeonClient } from "@neondatabase/serverless";
-import chatAgentFlow from "@/flows/chat-agent/flow";
-import richTextComponentFlow from "@/flows/rich-text-component/flow";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types

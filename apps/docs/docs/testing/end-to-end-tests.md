@@ -27,8 +27,14 @@ If a scenario doesn't need a browser, it doesn't belong here.
 
 ## Running the suite locally
 
+`NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE` must be set at build time. Next.js inlines `NEXT_PUBLIC_*` env vars into the client bundle at `next build`, so setting it on `next start` has no effect.
+
 ```bash
 pnpm --filter @flow-state-dev/kitchen-sink exec playwright install chromium
+
+KITCHEN_SINK_TEST_MODE=1 NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE=1 \
+  pnpm --filter @flow-state-dev/kitchen-sink build
+
 pnpm --filter @flow-state-dev/kitchen-sink test:e2e
 ```
 

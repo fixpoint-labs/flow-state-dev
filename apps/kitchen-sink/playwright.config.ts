@@ -46,9 +46,12 @@ export default defineConfig({
         // instead of being silently swallowed by Playwright's default.
         stdout: "pipe",
         stderr: "pipe",
+        // NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE is intentionally NOT set here:
+        // Next.js inlines NEXT_PUBLIC_* vars at build time. Setting it on
+        // `next start` is a no-op. The build step bakes it in (CI does so
+        // explicitly; locally, callers must export it before `next build`).
         env: {
           KITCHEN_SINK_TEST_MODE: "1",
-          NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
           STORE_TYPE: "memory",
         },
       },
