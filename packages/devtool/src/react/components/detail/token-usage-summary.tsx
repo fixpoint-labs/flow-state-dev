@@ -32,8 +32,8 @@ export function TokenUsageSummary({ requestGroups }: TokenUsageSummaryProps) {
 
       <div className="space-y-1">
         <MetadataRow label="Total" value={formatTokenCount(summary.totalTokens)} highlight />
-        <MetadataRow label="Prompt" value={formatTokenCount(summary.promptTokens)} />
-        <MetadataRow label="Completion" value={formatTokenCount(summary.completionTokens)} />
+        <MetadataRow label="Input" value={formatTokenCount(summary.promptTokens)} />
+        <MetadataRow label="Output" value={formatTokenCount(summary.completionTokens)} />
         {summary.cacheReadTokens > 0 && (
           <MetadataRow label="Cache read" value={formatTokenCount(summary.cacheReadTokens)} />
         )}
@@ -78,8 +78,8 @@ function ModelBreakdown({ models }: { models: TokenSummary["byModel"] }) {
               <div className="text-[10px] font-mono text-slate-400 truncate">{m.model}</div>
               <div className="pl-2 space-y-0.5">
                 <MetadataRow label="Total" value={formatTokenCount(m.totalTokens)} />
-                <MetadataRow label="Prompt" value={formatTokenCount(m.promptTokens)} />
-                <MetadataRow label="Completion" value={formatTokenCount(m.completionTokens)} />
+                <MetadataRow label="Input" value={formatTokenCount(m.promptTokens)} />
+                <MetadataRow label="Output" value={formatTokenCount(m.completionTokens)} />
                 {m.cacheReadTokens > 0 && (
                   <MetadataRow label="Cache read" value={formatTokenCount(m.cacheReadTokens)} />
                 )}
