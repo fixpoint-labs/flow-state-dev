@@ -82,10 +82,49 @@ import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
 const index = createSQLiteScheduleIndex(db);
 ```
 
-Uses `db.transaction` (BEGIN IMMEDIATE) to serialize claim+advance
-against writers. better-sqlite3 is synchronous; the interface is async
-so deployments can swap in a remote index later without changing call
-sites.
+Uses `db.transaction(...).immediate` (BEGIN IMMEDIATE) to serialize
+claim+advance against writers. better-sqlite3 is synchronous; the
+interface is async so deployments can swap in a remote index later
+without changing call sites.
+
+## Schema setup
+
+`createPostgresStores` and `createSQLiteStores` create the
+`schedule_index` table automatically on construction. If you deploy
+with `skipSchemaInit: true` (the recommended path on serverless cold
+starts) you need to run the DDL out-of-band — without it, every call
+to `upsert`, `remove`, or `claimDue` throws `relation "schedule_index"
+does not exist`.
+
+Postgres:
+
+```sql
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      text NOT NULL,
+  key          text NOT NULL,
+  cron         text NOT NULL,
+  timezone     text,
+  next_fire_at bigint NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at
+  ON schedule_index (next_fire_at);
+```
+
+SQLite:
+
+```sql
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  cron         TEXT NOT NULL,
+  timezone     TEXT,
+  next_fire_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, key)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at
+  ON schedule_index (next_fire_at);
+```
 
 ## Auto-mirroring
 
