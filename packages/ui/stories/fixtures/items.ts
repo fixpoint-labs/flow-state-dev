@@ -12,9 +12,9 @@ import type {
   SourceItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
+import { nanoid } from "nanoid";
 
-let counter = 0;
-const nextId = (prefix: string) => `${prefix}-${++counter}`;
+const nextId = (prefix: string) => `${prefix}-${nanoid(8)}`;
 
 const baseProvenance = {
   blockName: "gen",
