@@ -9,6 +9,7 @@
  * file tracer follow the consumer's own static SDK import instead.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Sandbox, SandboxProvider } from "./types";
 import { createLocalFsSandbox } from "./adapters/local-fs";
 
@@ -75,7 +76,11 @@ export async function resolveSandbox(
       return resolveMoatSandbox({
         workspace: provider.workspace ?? options.cwd,
         mountTarget: provider.mountTarget ?? options.destination ?? "/workspace",
-        runName: provider.runName ?? options.existingId ?? `fsdev-${Date.now().toString(36)}`,
+        // `randomUUID` so two concurrent sessions never produce colliding run
+        // names. A timestamp-derived name (millisecond resolution) would
+        // silently reuse a sibling session's container via the reconnect path
+        // in `resolveMoatSandbox`, giving cross-session workspace access.
+        runName: provider.runName ?? options.existingId ?? `fsdev-${randomUUID()}`,
         grants: provider.grants,
         allowHosts: provider.allowHosts,
         runtime: provider.runtime,
