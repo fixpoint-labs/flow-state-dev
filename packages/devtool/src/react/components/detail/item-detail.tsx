@@ -696,6 +696,21 @@ function ErrorPanel({
   const issues = Array.isArray(details?.issues)
     ? (details.issues as Array<{ path?: Array<string | number>; message?: string }>)
     : undefined;
+  // Strip the well-known keys that already have dedicated sections above so
+  // the Details JSON catch-all doesn't duplicate the raw model output or the
+  // Zod issues. `phase` is contextual to validation failures and is shown via
+  // the issues list framing; omit it from the JSON too.
+  const remainingDetails =
+    details !== undefined
+      ? Object.fromEntries(
+          Object.entries(details).filter(
+            ([k]) =>
+              !(rawOutput !== undefined && k === "rawOutput") &&
+              !(issues !== undefined && k === "issues") &&
+              k !== "phase"
+          )
+        )
+      : undefined;
   return (
     <div className="space-y-2">
       <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
@@ -728,9 +743,9 @@ function ErrorPanel({
           </ul>
         </CollapsibleSection>
       )}
-      {details !== undefined && Object.keys(details).length > 0 && (
+      {remainingDetails !== undefined && Object.keys(remainingDetails).length > 0 && (
         <CollapsibleSection title="Details" defaultOpen={true}>
-          <JsonViewer data={details} />
+          <JsonViewer data={remainingDetails} />
         </CollapsibleSection>
       )}
     </div>

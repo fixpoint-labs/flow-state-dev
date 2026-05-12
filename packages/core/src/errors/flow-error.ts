@@ -57,9 +57,12 @@ export class FlowError extends Error {
   }
 
   /**
-   * Dual-realm-safe check: matches any `FlowError` (and subclasses) by
-   * `name`-tag or by `instanceof`. Use when an instance may have crossed a
-   * bundler boundary that produced a duplicate class identity.
+   * Matches `FlowError` and its subclasses by `instanceof`, plus direct
+   * `FlowError` instances (not subclasses) by `name`-tag. The `name`-tag
+   * fallback exists for the dual-realm case where a bundler boundary
+   * produced a duplicate `FlowError` identity; subclass realm-safety
+   * additionally requires the caller to test the subclass's own `name`
+   * (e.g. `err.name === "OutputValidationError"`).
    */
   static isInstance(err: unknown): err is FlowError {
     if (err instanceof FlowError) return true;
