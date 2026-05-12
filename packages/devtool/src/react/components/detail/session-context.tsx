@@ -98,7 +98,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         </CollapsibleSection>
       )}
 
-      <ResourcesPanel sessionId={sessionId} />
+      <ResourcesPanel sessionId={sessionId} refreshKey={refreshKey} />
     </div>
   );
 }

@@ -20,9 +20,14 @@ import { ResourceStateView } from "./resource-state-view";
 type ResourcesTreeProps = {
   sessionId: string;
   resources: DebugResourceEntry[];
+  /**
+   * Bumps when the parent panel re-fetches the resource tree. Expanded
+   * collection bodies key off this to refresh their item lists in step.
+   */
+  reloadTick?: number;
 };
 
-export function ResourcesTree({ sessionId, resources }: ResourcesTreeProps) {
+export function ResourcesTree({ sessionId, resources, reloadTick = 0 }: ResourcesTreeProps) {
   if (resources.length === 0) {
     return (
       <div className="px-2 py-3 text-[11px] italic text-slate-500">
@@ -33,7 +38,12 @@ export function ResourcesTree({ sessionId, resources }: ResourcesTreeProps) {
   return (
     <div className="space-y-1">
       {resources.map((entry) => (
-        <ResourceRow key={entry.definitionId} sessionId={sessionId} entry={entry} />
+        <ResourceRow
+          key={entry.definitionId}
+          sessionId={sessionId}
+          entry={entry}
+          reloadTick={reloadTick}
+        />
       ))}
     </div>
   );
@@ -41,10 +51,12 @@ export function ResourcesTree({ sessionId, resources }: ResourcesTreeProps) {
 
 function ResourceRow({
   sessionId,
-  entry
+  entry,
+  reloadTick
 }: {
   sessionId: string;
   entry: DebugResourceEntry;
+  reloadTick: number;
 }) {
   const [open, setOpen] = useState(false);
   const otherAliases = entry.aliases.filter((a) => a !== entry.primaryName);
@@ -92,7 +104,7 @@ function ResourceRow({
       {open && (
         <div className="border-t border-slate-800/60 px-2 py-2">
           {entry.isCollection ? (
-            <CollectionBody sessionId={sessionId} entry={entry} />
+            <CollectionBody sessionId={sessionId} entry={entry} reloadTick={reloadTick} />
           ) : (
             <SingleBody sessionId={sessionId} entry={entry} />
           )}
@@ -173,10 +185,12 @@ function SingleBody({
 
 function CollectionBody({
   sessionId,
-  entry
+  entry,
+  reloadTick
 }: {
   sessionId: string;
   entry: DebugResourceEntry;
+  reloadTick: number;
 }) {
   const [filter, setFilter] = useState("");
   const { items, isLoading, error, hasMore, loadMore, refresh } = useDebugCollectionItems(
@@ -185,27 +199,35 @@ function CollectionBody({
     { topicFilter: filter, pageSize: 50 }
   );
 
-  // Initial load when the collection is first expanded; also re-fires when
-  // the topic filter changes (the hook resets accumulation on change, we
-  // simply fire one fresh page here).
+  // Initial load when the collection is first expanded; re-fires when the
+  // topic filter changes (the hook resets accumulation on filter change so
+  // we just fire one fresh page) and when the parent bumps `reloadTick`
+  // after a streamed mutation or manual refresh.
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, entry.primaryName, filter]);
+  }, [sessionId, entry.primaryName, filter, reloadTick]);
+
+  // Hide the filter input until the collection has enough items to make
+  // filtering worthwhile. Threshold uses the unfiltered total so the input
+  // doesn't disappear mid-filter as results narrow.
+  const showFilter = (entry.itemCount ?? 0) > 10;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter topic…"
-          className="h-7 text-[11px]"
-        />
-        <span className="text-[10px] font-mono text-slate-600">
-          {entry.storagePrefix ?? ""}
-        </span>
-      </div>
+      {showFilter && (
+        <div className="flex items-center gap-2">
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter topic…"
+            className="h-7 text-[11px]"
+          />
+          <span className="text-[10px] font-mono text-slate-600">
+            {entry.storagePrefix ?? ""}
+          </span>
+        </div>
+      )}
       {error && (
         <div className="text-[11px] text-red-400">{error}</div>
       )}

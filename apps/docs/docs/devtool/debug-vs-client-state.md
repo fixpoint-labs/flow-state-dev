@@ -32,11 +32,12 @@ The endpoint is read-only. You can't mutate state through it.
 
 ## Seeing the projection in situ
 
-The Resources panel in the DevTool has a three-way toggle on each resource: **Raw**, **Client**, and **Diff**.
+The Resources panel renders each resource's state as JSON. When the projection a client receives matches the server state — the common case, because a resource with no `client.data` / `expose` / `exclude` passes through as-is — the panel shows a single JSON tree with no tabs.
 
-- **Raw**: the full server-side state, as the runtime sees it.
+When the projection diverges from the server state, the panel shows a two-tab toggle:
+
+- **Server**: the full server-side state, as the runtime sees it.
 - **Client**: what `client.data` (or `expose` / `exclude`) actually emits to a connected client. This is what your React hook will receive.
-- **Diff**: both views side by side. Fields that survive the projection get a check; fields that get dropped get a cross.
 
 A small example. Suppose your state has five fields: `title`, `body`, `internalNotes`, `draftHistory`, `updatedAt`. Your `client` config exposes only two:
 
@@ -55,7 +56,7 @@ defineResource({
 });
 ```
 
-The Diff view marks `title` and `updatedAt` with a check, and `body`, `internalNotes`, `draftHistory` with a cross. You can see at a glance which fields your production client will and won't receive.
+The two-tab toggle appears because the projection drops fields. Server shows all five fields; Client shows only `title` and `updatedAt`. Switching between them confirms what your production client will and won't receive.
 
 ## The "0/n items" trap
 
@@ -70,17 +71,17 @@ Two ways to fix it:
 1. **Declare client config so the items ship.** Add `client: { state: { read: true }, expose: [...] }` and either set `prefetchWindow: 50` for inline rendering or call `useResourceCollectionList` to page through them on demand.
 2. **Accept the gap by design.** If the collection is internal state (scratch space the flow uses but the UI shouldn't see), leave it alone. The DevTool will keep showing it; the client will keep ignoring it. That's the contract working as intended.
 
-The Diff view tells you which one you're in. If the Client column is empty but Raw is full, the projection is dropping everything. That's either a config gap (case 1) or a deliberate choice (case 2).
+The Server/Client toggle tells you which one you're in. If the Client tab is empty but Server is full, the projection is dropping everything. That's either a config gap (case 1) or a deliberate choice (case 2).
 
 ## When client.data is missing or throws
 
-`client.data` is a user-supplied function. It can fail in three ways, and the panel renders each one differently:
+`client.data` is a user-supplied function, and `client.state.read` is a collection-level gate. The panel handles each case:
 
-- **`no_client_data`**: the resource has no `client.data` defined. The Client view is empty, the panel notes it as "no client projection declared," and the Raw view is the only meaningful column. Add a `client` config if you want the resource to ship to clients.
-- **`state_read_false`**: for collections, `client.state.read` is false. State is gated off even though a projection exists. The Client view shows the gated placeholder; the panel notes the gate. Set `client.state.read: true` to lift it.
-- **`threw`**: `client.data` ran and threw an exception. The panel shows the error message in place of the Client view. Common cause: the projection assumes a field that doesn't exist yet on a freshly-created item. Fix the projection or initialize the state.
+- **No projection declared.** The resource has no `client.data` / `expose` / `exclude`. The runtime ships state as identity, so the panel renders a single JSON tree — no tabs, because Server and Client are the same.
+- **`client.state.read: false` on a collection.** State is gated off entirely. The panel renders the two-tab toggle, and the Client tab carries a notice that production clients cannot read this resource's state. Set `client.state.read: true` to lift the gate.
+- **`client.data` threw.** The projection ran and raised. The panel shows the error message in place of the Client tab. Common cause: the projection assumes a field that doesn't exist yet on a freshly-created item. Fix the projection or initialize the state.
 
-These reason states surface in the panel so you can distinguish "no projection configured" from "projection is broken" without reading the server logs.
+These states surface in the panel so you can tell "projection is intentionally absent" from "projection is broken" without reading the server logs.
 
 ## Aliases — when one resource has two names
 
