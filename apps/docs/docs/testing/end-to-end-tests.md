@@ -83,17 +83,21 @@ For tool-call scenarios, set both `text` and `toolCalls` on the same step so the
 A minimal scenario:
 
 ```ts
-import { test, expect, openKitchenSink } from "./fixtures";
+import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("my thing", async ({ page, userId }) => {
   await openKitchenSink(page, userId);
-  await page.getByTestId("message-input").fill("[scenario:my-thing] hi");
-  await page.getByTestId("message-submit").click();
+  await byTestId(page, "message-input").fill("[scenario:my-thing] hi");
+  await byTestId(page, "message-submit").click();
   await expect(
-    page.locator('[data-testid="message"][data-message-role="assistant"]').first(),
+    page
+      .locator('[data-testid="message"][data-message-role="assistant"]:visible')
+      .first(),
   ).toContainText("expected response");
 });
 ```
+
+Use the `byTestId(page, id)` helper from `fixtures.ts` instead of `page.getByTestId(id)` directly: kitchen-sink renders both a mobile and a desktop `ChatPanel` into the DOM at all times (Tailwind toggles visibility via CSS), so a raw test-id matches two elements and trips Playwright's strict-mode check. The helper appends `:visible` to pick the one actually rendered for the current viewport.
 
 The `userId` fixture mints a fresh `e2e-<uuid>` per test so parallel scenarios don't share session state.
 
