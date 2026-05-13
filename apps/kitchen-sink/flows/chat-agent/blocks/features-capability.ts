@@ -18,6 +18,7 @@
  * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
 import { defineCapability } from "@flow-state-dev/core";
+import { defaultPatternRegistry } from "@flow-state-dev/patterns";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -75,6 +76,10 @@ const skillsCap = createSkillsCapability({
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   agentType: "primary",
+  // Pattern skills opt in here. Default registry covers the six
+  // implemented Wave 1 patterns plus coordinator alias and the two
+  // forward-compat stubs. taskTools composes by default.
+  patternRegistry: defaultPatternRegistry,
 });
 
 /**

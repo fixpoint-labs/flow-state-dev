@@ -473,8 +473,9 @@ const chatAgentFlow = defineFlow({
           // registration). Project to the surface shape the top-bar UI
           // wants — name + source tier, drop the rest.
           const activeSkills =
-            (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
-              .activeSkills ?? [];
+            (ctx.state as {
+              activeSkills?: Array<{ name: string; source?: string; mode?: string }>;
+            }).activeSkills ?? [];
           return {
             currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
             thinkingStyle:
@@ -484,6 +485,7 @@ const chatAgentFlow = defineFlow({
             activeSkills: activeSkills.map((s) => ({
               name: s.name,
               source: s.source ?? "tool",
+              ...(s.mode !== undefined ? { mode: s.mode } : {}),
             })),
           };
         },
