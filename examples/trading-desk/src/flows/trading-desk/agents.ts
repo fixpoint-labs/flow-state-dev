@@ -38,6 +38,7 @@ export const AGENTS = {
   aggressiveRisk:      { role: "Aggressive Risk",      glyph: "A!", hue: 8, team: "risk" },
   conservativeRisk:    { role: "Conservative Risk",    glyph: "C.", hue: 218, team: "risk" },
   neutralRisk:         { role: "Neutral Risk",         glyph: "N°", hue: 178, team: "risk" },
+  riskAssessment:      { role: "Risk Assessment",     glyph: "R=", hue: 188, team: "risk" },
   // Phase 5 — portfolio manager
   portfolioManager:    { role: "Portfolio Manager",    glyph: "PM", hue: 298, team: "pm" },
 } as const satisfies Record<string, AgentMeta>;
@@ -51,7 +52,7 @@ export const PHASE_GROUPS: ReadonlyArray<{
   agents: ReadonlyArray<AgentName>;
 }> = [
   { id: "p5", label: "Phase 5 — Portfolio Manager", agents: ["portfolioManager"] },
-  { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk"] },
+  { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
   { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst"] },
@@ -132,12 +133,43 @@ export const PHASE_3_MEMO_KEYS = {
 
 export type Phase3MemoShortName = keyof typeof PHASE_3_MEMO_KEYS;
 
+/** Resource storage keys for Phase 4 memos: three persona critiques plus a
+ *  consolidated risk assessment. Same shape as the Phase 1/2/3 maps. */
+export const PHASE_4_MEMO_KEYS = {
+  aggressive: {
+    agentName: "aggressiveRisk",
+    memoKey: "memos/p4/aggressive-risk",
+    collectionKey: "p4/aggressive-risk",
+  },
+  conservative: {
+    agentName: "conservativeRisk",
+    memoKey: "memos/p4/conservative-risk",
+    collectionKey: "p4/conservative-risk",
+  },
+  neutral: {
+    agentName: "neutralRisk",
+    memoKey: "memos/p4/neutral-risk",
+    collectionKey: "p4/neutral-risk",
+  },
+  riskAssessment: {
+    agentName: "riskAssessment",
+    memoKey: "memos/p4/risk-assessment",
+    collectionKey: "p4/risk-assessment",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase4MemoShortName = keyof typeof PHASE_4_MEMO_KEYS;
+
 /** Combined memo-key map across all shipped phases. The sidebar iterates
  *  this single table; future phases append their own entries. */
 export const ALL_MEMO_KEYS = {
   ...PHASE_1_MEMO_KEYS,
   ...PHASE_2_MEMO_KEYS,
   ...PHASE_3_MEMO_KEYS,
+  ...PHASE_4_MEMO_KEYS,
 } as const;
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;

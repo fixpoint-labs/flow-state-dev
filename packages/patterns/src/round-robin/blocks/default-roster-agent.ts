@@ -53,6 +53,9 @@ export interface CreateRosterAgentOptions {
   tools?: ToolsSlot;
   instructions?: RosterAgentInstructions;
   agentType?: AgentType;
+  /** Accessor key used in the block's `resources:` map. Defaults to
+   *  `"contributions"`. See `createInitContributions` for rationale. */
+  accessorKey?: string;
 }
 
 /**
@@ -60,6 +63,7 @@ export interface CreateRosterAgentOptions {
  * from the resource into the prompt; emits `{ text }`.
  */
 export function createRosterAgent(opts: CreateRosterAgentOptions) {
+  const accessor = opts.accessorKey ?? "contributions";
   const roleLine = opts.role
     ? `You are ${opts.role} contributing to a round-robin coordination process.`
     : "You are an agent contributing to a round-robin coordination process.";
@@ -79,7 +83,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
   return generator({
     name: `${opts.name}-roster-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
-    resources: { contributions: opts.contributions },
+    resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     agentType: opts.agentType ?? "sub",
     agentName: opts.agentName,
@@ -107,7 +111,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
     },
     user: (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as RoundRobinState;
-      const contribState = ctx.resources.contributions
+      const contribState = (ctx.resources as any)[accessor]
         ?.state as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];
       const priorBlock =
