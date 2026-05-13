@@ -12,7 +12,7 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { phase1Pipeline } from "./blocks/analyst-phase";
+import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";

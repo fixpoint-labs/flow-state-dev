@@ -23,13 +23,14 @@ import {
   newsPrompt,
   sentimentPrompt,
   technicalPrompt,
-} from "../prompts";
+} from "./prompts";
 import {
   commitMemo,
   markError,
   markWriting,
 } from "../memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
+import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import {
   compute_indicators,
   get_balance_sheet,
@@ -37,11 +38,16 @@ import {
   get_fundamentals,
   get_income_statement,
   get_macro_indicators,
+  get_prediction_markets,
   get_price_history,
   get_reddit_mentions,
   get_social_sentiment,
   search_news,
 } from "./tools";
+
+// Single block instance shared by the news analyst — `fetch()` constructs a
+// handler block, instantiated once at module load.
+const fetchArticle = createFetchTool();
 
 type AnalystOptions = {
   shortName: Phase1MemoShortName;
@@ -57,7 +63,7 @@ type AnalystOptions = {
  * higher-quality tier. Both fall back to the resolver's default model.
  */
 function resolveAnalystModel(costPreset: "fast" | "full" | undefined): string {
-  return costPreset === "full" ? "intent/chat" : "intent/utility";
+  return `intent/${costPreset}`;
 }
 
 function makeUserPrompt(input: { ticker: string; date: string; agentName: string }): string {
@@ -135,7 +141,7 @@ export const newsAnalyst = defineAnalyst({
   shortName: "news",
   agentName: PHASE_1_MEMO_KEYS.news.agentName,
   systemPrompt: newsPrompt,
-  tools: [search_news, get_macro_indicators],
+  tools: [search_news, fetchArticle, get_macro_indicators],
   label: newsLabel,
 });
 
@@ -143,6 +149,6 @@ export const sentimentAnalyst = defineAnalyst({
   shortName: "sentiment",
   agentName: PHASE_1_MEMO_KEYS.sentiment.agentName,
   systemPrompt: sentimentPrompt,
-  tools: [get_social_sentiment, get_reddit_mentions],
+  tools: [get_social_sentiment, get_reddit_mentions, get_prediction_markets],
   label: sentimentLabel,
 });

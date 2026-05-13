@@ -10,7 +10,7 @@ import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 
 const DEFAULT_TICKER = "NVDA";
-const DEFAULT_DATE = "2026-05-06";
+const DEFAULT_DATE = new Intl.DateTimeFormat('en-CA').format(new Date());
 
 export default function Page(): ReactElement {
   return (

@@ -49,7 +49,7 @@ function readContributions(ctx: any): RoundRobinContributionEntry[] {
 }
 
 function modelFor(costPreset: "fast" | "full" | undefined): string {
-  return costPreset === "full" ? "intent/chat" : "intent/utility";
+  return `intent/${costPreset}`;
 }
 
 /**

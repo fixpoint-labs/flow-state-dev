@@ -129,8 +129,8 @@ function buildRows(items: OutputItem[]): ReactElement[] {
       const argsPreview = oneLine(argsStr) || "(no args)";
       const output = tool.output as Record<string, unknown> | undefined;
       const source =
-        output !== undefined && (output.source === "fixture" || output.source === "live")
-          ? (output.source as "fixture" | "live")
+        output !== undefined && typeof output.source === "string"
+          ? output.source
           : undefined;
       const bytes =
         output !== undefined ? JSON.stringify(output).length : undefined;
@@ -142,6 +142,7 @@ function buildRows(items: OutputItem[]): ReactElement[] {
           argsPreview={argsPreview}
           status={tool.status}
           source={source}
+          output={output}
           bytes={bytes}
           errorMessage={tool.error?.message}
         />,
