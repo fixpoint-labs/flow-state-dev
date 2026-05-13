@@ -1,9 +1,14 @@
 /**
- * Fixture loader. Reads `fixtures/{TICKER}/{YYYY-MM-DD}/{tool-name}.json` and
+ * Fixture loader. Reads `fixtures/{TICKER}/{SNAPSHOT}/{tool-name}.json` and
  * stamps `source: "fixture"`. Used only in fixture mode; live tools never
  * call this.
  *
- * Macro indicators are ticker-agnostic — they live under a `_macro` sentinel
+ * The requested `date` is ignored for path resolution — fixtures are a
+ * single pinned snapshot, not a date-indexed series. Each fixture JSON
+ * carries its own `asOf` field reflecting the data's actual date, which the
+ * caller sees in the returned payload.
+ *
+ * Macro indicators are ticker-agnostic and live under a `_macro` sentinel
  * ticker directory so the path layout stays uniform.
  */
 import path from "node:path";
@@ -21,6 +26,8 @@ import {
 // relative walk via the file location lands inside `.next/`.
 const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
 
+const FIXTURE_SNAPSHOT = "2026-05-06";
+
 export type LoadFixtureOptions = {
   /** Override the fixture root for tests. */
   rootDir?: string;
@@ -35,7 +42,7 @@ export async function loadFixture<T extends ToolName>(
   const filePath = path.join(
     options.rootDir ?? FIXTURE_ROOT,
     ticker,
-    args.date,
+    FIXTURE_SNAPSHOT,
     fixtureFileName(tool),
   );
   let raw: string;
@@ -43,7 +50,7 @@ export async function loadFixture<T extends ToolName>(
     raw = await readFile(filePath, "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new FixtureMissingError(tool, ticker, args.date);
+      throw new FixtureMissingError(tool, ticker, FIXTURE_SNAPSHOT);
     }
     throw err;
   }
