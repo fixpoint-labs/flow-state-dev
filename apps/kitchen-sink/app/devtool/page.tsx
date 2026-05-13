@@ -32,7 +32,7 @@ function DevToolPageInner() {
       : null;
   const userId = e2eUserId ?? "devuser";
   return (
-    <div data-testid="devtool-panel">
+    <div data-testid="devtool-panel" className="h-full">
       <DevToolPanel userId={userId} userIdControl="host" />
     </div>
   );
