@@ -26,6 +26,8 @@ import type {
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
 import type {
+  AgentRegistry,
+  DefinedCapability,
   InitialSkill,
   SkillState,
   ToolCatalog,
@@ -38,6 +40,8 @@ import {
   type SkillForkInput,
 } from "./fork-generator";
 import { inlineActivate } from "./inline-activate";
+import { createPatternRunRoute } from "./pattern-run";
+import type { PatternRegistry } from "./pattern-registry";
 import { substitute, toSkill, validateSkillName } from "./skill-md";
 import path from "node:path";
 
@@ -84,6 +88,18 @@ export interface RunSkillToolOptions {
   mountPath?: string;
   /** Optional override of the default model used by fork-mode subagents. */
   forkModelId?: string;
+  /**
+   * Optional pattern registry. When supplied, skills declaring `pattern:`
+   * frontmatter dispatch through the pattern route; when absent, those
+   * skills fail with a clear configuration error at activation.
+   */
+  patternRegistry?: PatternRegistry;
+  /** Optional block-ref registry for pattern workers. */
+  blockRegistry?: Record<string, BlockDefinition>;
+  /** Optional AgentRegistry for pattern workers using `agent-ref`. */
+  agentRegistry?: AgentRegistry;
+  /** Optional capability catalog forwarded to the Agents primitive. */
+  capabilityCatalog?: Record<string, DefinedCapability>;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +185,10 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     initialSkills,
     mountPath = ".fsdev/skills",
     forkModelId,
+    patternRegistry,
+    blockRegistry,
+    agentRegistry,
+    capabilityCatalog,
   } = opts;
 
   const forkGen = createSkillForkGenerator({
@@ -176,15 +196,34 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     defaultModelId: forkModelId,
   });
 
+  const patternRoute = patternRegistry
+    ? createPatternRunRoute({
+        catalog,
+        patternRegistry,
+        ...(blockRegistry ? { blockRegistry } : {}),
+        ...(agentRegistry ? { agentRegistry } : {}),
+        ...(capabilityCatalog ? { capabilityCatalog } : {}),
+        ...(forkModelId ? { defaultModelId: forkModelId } : {}),
+      })
+    : undefined;
+
+  const routes: BlockDefinition<typeof inputSchema, typeof outputSchema>[] = [
+    inlineActivate,
+    forkGen,
+  ] as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>[];
+  if (patternRoute) {
+    routes.push(
+      patternRoute as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>,
+    );
+  }
+
   return router({
     name: "runSkill",
     description:
       "Invoke a named skill. The list of available skills is provided in the system context — call this tool with one of those names to activate it.",
     inputSchema,
     outputSchema,
-    routes: [inlineActivate, forkGen] as unknown as Array<
-      BlockDefinition<typeof inputSchema, typeof outputSchema>
-    >,
+    routes,
     execute: async (input: RunSkillInput, ctx) => {
       validateSkillName(input.name);
 
@@ -221,6 +260,43 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
             input: raw.input,
           }),
         ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
+      }
+
+      if (mode === "pattern") {
+        if (!patternRoute) {
+          throw new Error(
+            `Skill "${input.name}" declares a pattern but no patternRegistry was supplied to createSkillsCapability`,
+          );
+        }
+        const binding = state.patternBinding;
+        if (!binding) {
+          throw new Error(
+            `Skill "${input.name}" has contextMode="pattern" but no patternBinding parsed — re-seed the skill`,
+          );
+        }
+        const skillName = input.name;
+        type AnyBlock = BlockDefinition<typeof inputSchema, typeof outputSchema>;
+        // The patternRoute's input shape differs from runSkill's; bypass
+        // the strict ConnectorFn typing via an `as unknown as AnyBlock` cast.
+        // The pattern-run router will validate the payload at execute.
+        return (patternRoute as unknown as {
+          connectInput: (
+            fn: (raw: RunSkillInput) => unknown,
+          ) => {
+            connectOutput: (fn: (result: unknown) => RunSkillOutput) => AnyBlock;
+          };
+        })
+          .connectInput((raw) => ({
+            skillName: raw.name,
+            binding,
+            input: raw.input,
+            skillCollection: collection,
+          }))
+          .connectOutput((result) => ({
+            skill: skillName,
+            mode: "pattern" as const,
+            result: result ?? null,
+          }));
       }
 
       // Fork branch: resolve the skill body + allowed tools now (closure

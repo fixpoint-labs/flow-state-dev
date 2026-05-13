@@ -85,6 +85,11 @@ export {
 } from "./worker-materializer";
 
 export {
+  createPatternRunRoute,
+  type PatternRunRouterOptions,
+} from "./pattern-run";
+
+export {
   getActivePatternCollection,
   getActivePatternMeta,
 } from "./active-pattern-collection";
