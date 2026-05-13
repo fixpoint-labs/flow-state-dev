@@ -29,12 +29,17 @@ export class FixtureMissingError extends Error {
 /**
  * Provenance tag stamped on every tool output. Distinct from the session-state
  * `dataSource` enum (`"fixture" | "live"`) — that picks the upstream *strategy*,
- * while this tag identifies the *concrete provider* that answered. `"live"` mode
- * resolves at runtime to `"finnhub"` (preferred, when key present) or `"yahoo"`
- * (fallback), and either may degrade to `"fixture"` per tool if both upstreams
- * fail or don't support the tool.
+ * while this tag identifies the *concrete provider* that answered.
+ *
+ *   - `"fixture"`     — only emitted in fixture mode.
+ *   - `"finnhub"`     — live mode, Finnhub answered.
+ *   - `"yahoo"`       — live mode, Yahoo answered (Finnhub absent or failed).
+ *   - `"unavailable"` — live mode, no provider could answer; payload is an
+ *                       empty/zeroed schema-valid skeleton. **Never falls
+ *                       back to fixture data in live mode** — serving stale
+ *                       fixture as if it were live is worse than no data.
  */
-const sourceTag = z.enum(["fixture", "yahoo", "finnhub"]);
+const sourceTag = z.enum(["fixture", "yahoo", "finnhub", "unavailable"]);
 export type SourceTag = z.infer<typeof sourceTag>;
 
 const periodInput = z.object({

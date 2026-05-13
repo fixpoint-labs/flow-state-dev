@@ -1,11 +1,10 @@
 /**
- * Unit tests for `MultiSourceDataSource` — covers the provider-chain fallback
- * behavior: provider-unsupported errors fall through, transient errors fall
- * through, the fixture floor always answers.
+ * Unit tests for `MultiSourceDataSource` — covers the provider-chain behavior:
+ * provider-unsupported errors fall through, transient errors fall through, and
+ * total failure produces an `"unavailable"` empty payload (never fixture data
+ * in live mode).
  */
 import { describe, expect, it, vi } from "vitest";
-import path from "node:path";
-import { FixtureDataSource } from "../src/flows/trading-desk/blocks/tools/fixture-data-source";
 import { MultiSourceDataSource } from "../src/flows/trading-desk/blocks/tools/multi-source-data-source";
 import { ProviderUnsupportedError } from "../src/flows/trading-desk/blocks/tools/yahoo-data-source";
 import type {
@@ -13,8 +12,6 @@ import type {
   ToolInput,
   ToolOutput,
 } from "../src/flows/trading-desk/blocks/tools/data-source";
-
-const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 
 function fundamentalsPayload(source: "fixture" | "yahoo" | "finnhub", ticker = "NVDA"): ToolOutput<"get_fundamentals"> {
   return {
@@ -79,7 +76,7 @@ describe("MultiSourceDataSource", () => {
     expect(result.source).toBe("yahoo");
   });
 
-  it("lands on the fixture floor when all live providers fail", async () => {
+  it("returns an empty `unavailable` payload when every live provider fails", async () => {
     const finnhub = stubProvider("finnhub", {
       get_fundamentals: vi.fn(async () => {
         throw new Error("rate limit");
@@ -90,27 +87,28 @@ describe("MultiSourceDataSource", () => {
         throw new Error("parse error");
       }),
     });
-    const fixture = new FixtureDataSource({ rootDir: FIXTURE_ROOT });
-    const chain = new MultiSourceDataSource([finnhub, yahoo, fixture]);
+    const chain = new MultiSourceDataSource([finnhub, yahoo]);
     const result = await chain.get_fundamentals({ ticker: "NVDA", date: "2026-05-06" });
-    expect(result.source).toBe("fixture");
+    expect(result.source).toBe("unavailable");
     expect(result.ticker).toBe("NVDA");
+    // All numeric fields are zero — analyst gets explicit "no data" signal.
+    expect(result.marketCap).toBe(0);
+    expect(result.forwardPE).toBe(0);
   });
 
-  it("aggregates error messages when every provider fails", async () => {
-    const bad1 = stubProvider("finnhub", {
-      get_fundamentals: vi.fn(async () => {
-        throw new Error("err-1");
+  it("returns an empty `unavailable` payload for array-shaped tools too", async () => {
+    const yahoo = stubProvider("yahoo", {
+      get_price_history: vi.fn(async () => {
+        throw new Error("upstream down");
       }),
     });
-    const bad2 = stubProvider("yahoo", {
-      get_fundamentals: vi.fn(async () => {
-        throw new Error("err-2");
-      }),
+    const chain = new MultiSourceDataSource([yahoo]);
+    const result = await chain.get_price_history({
+      ticker: "NVDA",
+      date: "2026-05-06",
+      range: "1mo",
     });
-    const chain = new MultiSourceDataSource([bad1, bad2]);
-    await expect(
-      chain.get_fundamentals({ ticker: "NVDA", date: "2026-05-06" }),
-    ).rejects.toThrow(/finnhub: err-1.*yahoo: err-2/);
+    expect(result.source).toBe("unavailable");
+    expect(result.bars).toEqual([]);
   });
 });

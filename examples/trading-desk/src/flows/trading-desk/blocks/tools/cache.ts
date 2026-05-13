@@ -70,7 +70,9 @@ export async function getOrFetch<T extends ToolName>(
   const inputAny = input as { ticker?: string; date: string };
   const promise = (async (): Promise<ToolOutput<T>> => {
     const payload = await fetcher();
-    const provider = (payload as { source: "fixture" | "yahoo" | "finnhub" }).source;
+    const provider = (payload as {
+      source: "fixture" | "yahoo" | "finnhub" | "unavailable";
+    }).source;
     // Re-check before create — another caller might have written this key
     // while we were awaiting the upstream call.
     if (ctx.resources.marketdata.getOptional(key) === undefined) {

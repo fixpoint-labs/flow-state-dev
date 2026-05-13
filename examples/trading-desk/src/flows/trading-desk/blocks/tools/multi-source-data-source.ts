@@ -1,14 +1,17 @@
 /**
- * `MultiSourceDataSource` — composes an ordered list of `DataSource`
+ * `MultiSourceDataSource` — composes an ordered list of live `DataSource`
  * implementations. For each tool call it tries providers in order, falling
- * through to the next on either `ProviderUnsupportedError` (provider doesn't
- * implement this tool on its tier) or on any thrown error (rate limit, network
- * failure, parse error from a deprecated upstream).
+ * through to the next on `ProviderUnsupportedError` (this provider doesn't
+ * implement this tool on its tier) or on any thrown error (rate limit,
+ * network failure, parse error from a flaky upstream).
  *
- * The standard "live" chain is Finnhub → Yahoo → Fixture. Fixture sits at the
- * end as the always-succeeds floor so analyst runs never bubble a tool failure
- * out of the data layer; the `source` tag on the returned payload tells callers
- * which provider actually answered.
+ * The live chain is Finnhub → Yahoo. **There is no fixture floor.** If every
+ * provider fails for a given tool, this returns an `emptyPayload` tagged
+ * `source: "unavailable"` — serving stale fixture data labeled as "live" is
+ * worse than no data because it silently corrupts the analyst's reasoning.
+ *
+ * Fixture mode bypasses this entirely (see `make-data-source.ts`); fixture
+ * data is only ever served when the caller explicitly opts into fixture mode.
  */
 import {
   type DataSource,
@@ -16,6 +19,7 @@ import {
   type ToolOutput,
   type ToolName,
 } from "./data-source";
+import { emptyPayload } from "./empty-payloads";
 
 type ToolCaller<T extends ToolName> = (
   source: DataSource,
@@ -49,9 +53,13 @@ export class MultiSourceDataSource implements DataSource {
         // Keep walking the chain.
       }
     }
-    throw new Error(
-      `All providers failed for ${tool}: ${errors.join("; ")}`,
-    );
+    // Every provider failed (or didn't support this tool). Emit an empty
+    // schema-valid payload tagged `unavailable` so the analyst gets honest
+    // signal — no stale fixture data masquerading as live.
+    if (errors.length > 0 && process.env.NODE_ENV !== "test") {
+      console.warn(`[trading-desk] ${tool} unavailable: ${errors.join("; ")}`);
+    }
+    return emptyPayload(tool, input);
   }
 
   get_balance_sheet(input: ToolInput<"get_balance_sheet">) {
