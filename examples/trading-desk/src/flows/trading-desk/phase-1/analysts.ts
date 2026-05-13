@@ -63,7 +63,7 @@ type AnalystOptions = {
  * higher-quality tier. Both fall back to the resolver's default model.
  */
 function resolveAnalystModel(costPreset: "fast" | "full" | undefined): string {
-  return costPreset === "full" ? "intent/chat" : "intent/utility";
+  return `intent/${costPreset}`;
 }
 
 function makeUserPrompt(input: { ticker: string; date: string; agentName: string }): string {

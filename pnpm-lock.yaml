@@ -345,9 +345,6 @@ importers:
       '@ai-sdk/gateway':
         specifier: ^3.0.51
         version: 3.0.53(zod@3.25.76)
-      '@ai-sdk/openai':
-        specifier: ^3.0.30
-        version: 3.0.30(zod@3.25.76)
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../../packages/client

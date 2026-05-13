@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import {
   createFlowApiRouter,
@@ -12,11 +12,11 @@ import tradingDeskFlow from "@/src/flows/trading-desk/flow";
 // map plus a concrete `defaultModel` is required — without them the resolver
 // throws on the first generator run.
 const modelResolver = createModelResolver({
-  providers: { openai },
-  defaultModel: "openai/gpt-5.5",
+  gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
   intents: {
-    utility: ["openai/gpt-5.4-mini"],
-    chat: ["openai/gpt-5.5"],
+    utility: ["vercel/google/gemini-3.1-flash-lite"],
+    fast: ["vercel/google/gemini-3.1-flash-lite"],
+    full: ["vercel/openai/gpt-5.5"],
   },
 });
 
