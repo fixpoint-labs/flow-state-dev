@@ -37,6 +37,7 @@ import {
   get_fundamentals,
   get_income_statement,
   get_macro_indicators,
+  get_prediction_markets,
   get_price_history,
   get_reddit_mentions,
   get_social_sentiment,
@@ -143,6 +144,6 @@ export const sentimentAnalyst = defineAnalyst({
   shortName: "sentiment",
   agentName: PHASE_1_MEMO_KEYS.sentiment.agentName,
   systemPrompt: sentimentPrompt,
-  tools: [get_social_sentiment, get_reddit_mentions],
+  tools: [get_social_sentiment, get_reddit_mentions, get_prediction_markets],
   label: sentimentLabel,
 });

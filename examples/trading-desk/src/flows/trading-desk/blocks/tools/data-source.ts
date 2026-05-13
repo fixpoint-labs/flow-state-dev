@@ -35,12 +35,21 @@ export class FixtureMissingError extends Error {
  *   - `"finnhub"`     — live mode, Finnhub answered.
  *   - `"yahoo"`       — live mode, Yahoo answered (Finnhub absent or failed).
  *   - `"fred"`        — live mode, FRED API answered (macro indicators).
+ *   - `"polymarket"`  — live mode, Polymarket Gamma API answered (prediction
+ *                       markets).
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. **Never falls
  *                       back to fixture data in live mode** — serving stale
  *                       fixture as if it were live is worse than no data.
  */
-const sourceTag = z.enum(["fixture", "yahoo", "finnhub", "fred", "unavailable"]);
+const sourceTag = z.enum([
+  "fixture",
+  "yahoo",
+  "finnhub",
+  "fred",
+  "polymarket",
+  "unavailable",
+]);
 export type SourceTag = z.infer<typeof sourceTag>;
 
 const periodInput = z.object({
@@ -159,6 +168,27 @@ export const socialSentimentSchema = z.object({
   shortInterestPct: z.number(),
 });
 
+const predictionMarket = z.object({
+  question: z.string(),
+  eventTitle: z.string().nullable(),
+  /** Yes-side probability (0..1). Derived from `outcomePrices[0]` when present,
+   *  else falls back to `lastTradePrice`. */
+  yesProbability: z.number(),
+  volumeUsd: z.number(),
+  liquidityUsd: z.number(),
+  /** ISO date when the market resolves. Imminent end-dates carry the strongest
+   *  signal — a 99% market that resolves tomorrow is near-certain. */
+  endDate: z.string(),
+  slug: z.string(),
+});
+
+export const predictionMarketsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  markets: z.array(predictionMarket),
+});
+
 const redditMention = z.object({
   subreddit: z.string(),
   title: z.string(),
@@ -185,6 +215,7 @@ export const toolInputSchemas = {
   get_macro_indicators: z.object({ date: z.string().min(1) }),
   get_social_sentiment: periodInput,
   get_reddit_mentions: periodInput,
+  get_prediction_markets: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -198,6 +229,7 @@ export const toolOutputSchemas = {
   get_macro_indicators: macroIndicatorsSchema,
   get_social_sentiment: socialSentimentSchema,
   get_reddit_mentions: redditMentionsSchema,
+  get_prediction_markets: predictionMarketsSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -217,6 +249,7 @@ export interface DataSource {
   get_macro_indicators(input: ToolInput<"get_macro_indicators">): Promise<ToolOutput<"get_macro_indicators">>;
   get_social_sentiment(input: ToolInput<"get_social_sentiment">): Promise<ToolOutput<"get_social_sentiment">>;
   get_reddit_mentions(input: ToolInput<"get_reddit_mentions">): Promise<ToolOutput<"get_reddit_mentions">>;
+  get_prediction_markets(input: ToolInput<"get_prediction_markets">): Promise<ToolOutput<"get_prediction_markets">>;
 }
 
 const TOOL_FILE_NAMES: Record<ToolName, string> = {
@@ -230,6 +263,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_macro_indicators: "macro-indicators.json",
   get_social_sentiment: "social-sentiment.json",
   get_reddit_mentions: "reddit-mentions.json",
+  get_prediction_markets: "prediction-markets.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

@@ -135,4 +135,9 @@ export class FredDataSource implements DataSource {
   ): Promise<ToolOutput<"get_reddit_mentions">> {
     throw new ProviderUnsupportedError("fred", "get_reddit_mentions");
   }
+  async get_prediction_markets(
+    _input: ToolInput<"get_prediction_markets">,
+  ): Promise<ToolOutput<"get_prediction_markets">> {
+    throw new ProviderUnsupportedError("fred", "get_prediction_markets");
+  }
 }

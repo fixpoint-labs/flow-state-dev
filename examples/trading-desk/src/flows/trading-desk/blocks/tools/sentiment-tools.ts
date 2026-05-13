@@ -38,3 +38,16 @@ export const get_reddit_mentions = handler({
       makeDataSource(pickMode(ctx)).get_reddit_mentions(input),
     ),
 });
+
+export const get_prediction_markets = handler({
+  name: "get_prediction_markets",
+  description:
+    "Top 10 active Polymarket prediction markets matching the ticker. Each market has a yes-side probability (0..1), liquidity, end date, and question text — real money is staked, so it's a high-signal alternative to social-media sentiment.",
+  inputSchema: toolInputSchemas.get_prediction_markets,
+  outputSchema: toolOutputSchemas.get_prediction_markets,
+  resources: marketDataResources,
+  execute: async (input, ctx) =>
+    getOrFetch(ctx, "get_prediction_markets", input, () =>
+      makeDataSource(pickMode(ctx)).get_prediction_markets(input),
+    ),
+});

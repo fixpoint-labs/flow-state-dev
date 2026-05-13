@@ -1,0 +1,96 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "markets": [
+    {
+      "question": "What will NVIDIA (NVDA) hit in May 2026?",
+      "eventTitle": "NVIDIA (NVDA) price in May 2026",
+      "yesProbability": 0.73,
+      "volumeUsd": 300000,
+      "liquidityUsd": 109000,
+      "endDate": "2026-06-01T03:59:59.999Z",
+      "slug": "what-price-will-nvda-hit-in-may-2026"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) finish week of May 11 above ___ ?",
+      "eventTitle": "NVDA weekly close — May 11",
+      "yesProbability": 1.0,
+      "volumeUsd": 17500,
+      "liquidityUsd": 100000,
+      "endDate": "2026-05-15T20:00:00.000Z",
+      "slug": "nvda-weekly-close-may-11"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) Up or Down on May 13?",
+      "eventTitle": "NVDA daily direction — May 13",
+      "yesProbability": 0.98,
+      "volumeUsd": 6900,
+      "liquidityUsd": 16400,
+      "endDate": "2026-05-13T20:00:00.000Z",
+      "slug": "nvda-up-or-down-may-13"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) close above ___ on May 14?",
+      "eventTitle": "NVDA daily close — May 14",
+      "yesProbability": 0.98,
+      "volumeUsd": 267,
+      "liquidityUsd": 34000,
+      "endDate": "2026-05-14T20:00:00.000Z",
+      "slug": "nvda-daily-close-may-14"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) beat quarterly earnings?",
+      "eventTitle": "NVDA Q1 earnings",
+      "yesProbability": 0.96,
+      "volumeUsd": 830,
+      "liquidityUsd": 1400,
+      "endDate": "2026-05-21T20:00:00.000Z",
+      "slug": "nvda-beat-quarterly-earnings"
+    },
+    {
+      "question": "NVIDIA Data Center Revenue above $60B in Q1?",
+      "eventTitle": "NVDA Data Center revenue — Q1",
+      "yesProbability": 0.99,
+      "volumeUsd": 6000,
+      "liquidityUsd": 6200,
+      "endDate": "2026-05-21T20:00:00.000Z",
+      "slug": "nvda-data-center-revenue-q1"
+    },
+    {
+      "question": "NVIDIA Q1 adjusted gross margin in 75-76% range?",
+      "eventTitle": "NVDA Q1 gross margin",
+      "yesProbability": 0.56,
+      "volumeUsd": 1500,
+      "liquidityUsd": 6000,
+      "endDate": "2026-05-21T20:00:00.000Z",
+      "slug": "nvda-q1-gross-margin"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) close above ___ on May 13?",
+      "eventTitle": "NVDA daily close — May 13",
+      "yesProbability": 0.99,
+      "volumeUsd": 17400,
+      "liquidityUsd": 55500,
+      "endDate": "2026-05-13T20:00:00.000Z",
+      "slug": "nvda-daily-close-may-13"
+    },
+    {
+      "question": "What will NVIDIA (NVDA) hit Week of May 11 2026?",
+      "eventTitle": "NVDA weekly high — May 11",
+      "yesProbability": 0.85,
+      "volumeUsd": 16300,
+      "liquidityUsd": 73400,
+      "endDate": "2026-05-15T20:00:00.000Z",
+      "slug": "nvda-weekly-high-may-11-2026"
+    },
+    {
+      "question": "Will NVIDIA (NVDA) Up or Down on May 14?",
+      "eventTitle": "NVDA daily direction — May 14",
+      "yesProbability": 0.51,
+      "volumeUsd": 0,
+      "liquidityUsd": 198,
+      "endDate": "2026-05-14T20:00:00.000Z",
+      "slug": "nvda-up-or-down-may-14"
+    }
+  ]
+}

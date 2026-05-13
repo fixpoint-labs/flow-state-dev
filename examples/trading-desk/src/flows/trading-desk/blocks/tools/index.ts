@@ -13,4 +13,8 @@ export {
 } from "./fundamentals-tools";
 export { get_price_history, compute_indicators } from "./prices-tools";
 export { search_news, get_macro_indicators } from "./news-tools";
-export { get_social_sentiment, get_reddit_mentions } from "./sentiment-tools";
+export {
+  get_social_sentiment,
+  get_reddit_mentions,
+  get_prediction_markets,
+} from "./sentiment-tools";

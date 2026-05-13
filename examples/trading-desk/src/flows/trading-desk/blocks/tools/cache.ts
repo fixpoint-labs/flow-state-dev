@@ -71,7 +71,13 @@ export async function getOrFetch<T extends ToolName>(
   const promise = (async (): Promise<ToolOutput<T>> => {
     const payload = await fetcher();
     const provider = (payload as {
-      source: "fixture" | "yahoo" | "finnhub" | "fred" | "unavailable";
+      source:
+        | "fixture"
+        | "yahoo"
+        | "finnhub"
+        | "fred"
+        | "polymarket"
+        | "unavailable";
     }).source;
     // Re-check before create — another caller might have written this key
     // while we were awaiting the upstream call.

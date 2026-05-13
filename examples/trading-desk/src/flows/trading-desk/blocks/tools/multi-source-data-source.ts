@@ -92,4 +92,7 @@ export class MultiSourceDataSource implements DataSource {
   get_reddit_mentions(input: ToolInput<"get_reddit_mentions">) {
     return this.#tryChain("get_reddit_mentions", input, (s, i) => s.get_reddit_mentions(i));
   }
+  get_prediction_markets(input: ToolInput<"get_prediction_markets">) {
+    return this.#tryChain("get_prediction_markets", input, (s, i) => s.get_prediction_markets(i));
+  }
 }

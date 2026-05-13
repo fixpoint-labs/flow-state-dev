@@ -237,6 +237,11 @@ export class YahooDataSource implements DataSource {
   ): Promise<ToolOutput<"get_reddit_mentions">> {
     throw new ProviderUnsupportedError("yahoo", "get_reddit_mentions");
   }
+  async get_prediction_markets(
+    _input: ToolInput<"get_prediction_markets">,
+  ): Promise<ToolOutput<"get_prediction_markets">> {
+    throw new ProviderUnsupportedError("yahoo", "get_prediction_markets");
+  }
 }
 
 /** Yahoo nests numeric values under `{ raw }` for some modules; unwrap both shapes. */

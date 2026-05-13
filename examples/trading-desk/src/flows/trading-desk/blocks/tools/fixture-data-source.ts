@@ -91,4 +91,7 @@ export class FixtureDataSource implements DataSource {
   async get_reddit_mentions(input: ToolInput<"get_reddit_mentions">) {
     return this.#load("get_reddit_mentions", input.ticker, input.date);
   }
+  async get_prediction_markets(input: ToolInput<"get_prediction_markets">) {
+    return this.#load("get_prediction_markets", input.ticker, input.date);
+  }
 }

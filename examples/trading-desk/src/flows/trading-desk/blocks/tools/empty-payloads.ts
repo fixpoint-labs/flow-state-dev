@@ -104,6 +104,12 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     mentions7d: 0,
     topThreads: [],
   }),
+  get_prediction_markets: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    markets: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
