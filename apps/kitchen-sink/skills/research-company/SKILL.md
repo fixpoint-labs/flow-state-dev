@@ -38,6 +38,18 @@ pattern-config:
 allowed-tools: [search, fetch, taskTools]
 ---
 
-When the user asks for company research, the active workers will run on a task board: the market analyst and financial analyst run in parallel, then the synthesizer produces the final brief. The user-facing result is the synthesizer's brief — the analyst outputs are intermediate context.
+This skill runs as a small team on a task board: the market analyst and financial analyst run in parallel, then a primary synthesizer waits on both to produce the final brief.
+
+**Dispatching the team.** This is a pattern skill — the team only runs when you invoke it through the `runSkill` tool. When this skill fits the user's question, call:
+
+```
+runSkill({ name: "research-company", input: "<company name or ticker>" })
+```
+
+The `input` is the target — extract it from the user's message. For "research ACME Corp", pass `"ACME Corp"`. For "what's Anthropic up to lately", pass `"Anthropic"`.
+
+The tool returns the synthesizer's final brief (takeaway, what they do, market position, financial picture, risks, sources). Surface that to the user as-is — don't restate it. The team has already done the work.
+
+Don't try to research the company yourself in the chat. If you're not sure this skill applies (e.g. the user wants only a one-line refresher), ask once before dispatching.
 
 You may add follow-up research questions mid-flow via `addTask` if a gap surfaces while the board runs (for example, when the user clarifies that they care about a specific product line or geography). Keep the team small — every added task delays the synthesizer.

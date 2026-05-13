@@ -75,7 +75,7 @@ export function createIntentSelector(
 
   const slashTier = createIntentSlashMatch({ collectionKey });
   const keywordTier = createIntentKeywordMatch({ collectionKey });
-  const apply = createApplyIntent();
+  const apply = createApplyIntent({ collectionKey });
 
   let pipeline = sequencer({
     name: options.name ?? "intent-selector",

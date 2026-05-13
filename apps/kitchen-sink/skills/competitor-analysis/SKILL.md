@@ -31,6 +31,16 @@ pattern-config:
 allowed-tools: [search, fetch, taskTools]
 ---
 
-When the user asks for a competitor analysis, this skill runs as a small team: the discoverer picks the right competitors and queues one analyzer per competitor, the analyzers run in parallel via the task board, and the synthesizer waits on every analyzer to produce the final matrix and read.
+This skill runs as a small team on a task board: a discoverer picks 3-5 competitors and queues one analyzer per competitor, the analyzers run in parallel, and a synthesizer waits on every analyzer to produce the final matrix and read.
 
-The user-facing result is the synthesizer's output — the discoverer and analyzer reports are intermediate context.
+**Dispatching the team.** This is a pattern skill — the team only runs when you invoke it through the `runSkill` tool. When this skill is the right fit for the user's question, call:
+
+```
+runSkill({ name: "competitor-analysis", input: "<the target product, company, or market>" })
+```
+
+The `input` is what the user wants analyzed — extract it from their message. For "who competes with Linear?", pass `"Linear"`. For "compare Notion against its rivals", pass `"Notion"`. If the user named multiple targets, pick the one they led with.
+
+The tool returns the synthesizer's final analysis (a takeaway, a comparison matrix grouped by tier, and the strategic implications). Surface that result to the user as-is — don't paraphrase the matrix or add your own commentary on top. The team has already done the work.
+
+Don't try to do competitor analysis yourself in the chat. If you're not sure this skill applies (e.g. the user's question is only tangentially competitive), ask once before dispatching.

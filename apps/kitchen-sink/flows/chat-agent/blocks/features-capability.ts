@@ -145,11 +145,13 @@ export const featuresCapability = defineCapability({
     // to primary agents by the capability's own `agentType` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
     //
-    // Skill activation is decided up-front by `intentSelectorBlock` above,
-    // so we drop the `runSkill` preset — its tool and catalog-listing
-    // context become dead weight on every turn. The active-skill body
-    // formatter (in the `context` preset) still injects matched skills.
-    skillsCap.presets({ runSkill: false }),
+    // The `runSkill` preset stays ON because pattern- and fork-mode skills
+    // need the tool to actually dispatch — the intent-selector matches
+    // them and writes their mode into activeSkills, but the dispatch
+    // itself runs through `runSkill`. Inline skills still pre-activate via
+    // the intent-selector + body-formatter path; the runSkill tool is a
+    // no-op for them.
+    skillsCap,
 
     // Static: artifacts — inventory context only. Bash is the write path,
     // so readArtifact/updateArtifact tools are disabled here.
