@@ -20,14 +20,23 @@ type YahooClient = {
   ) => Promise<Record<string, unknown | undefined>>;
 };
 
+// Two layers of caching:
+//   - `cachedClient` holds the fully-constructed instance for subsequent calls.
+//   - `clientPromise` holds the in-flight construction so concurrent first
+//     callers share one `await import()` + `new` cycle.
 let cachedClient: YahooClient | null = null;
+let clientPromise: Promise<YahooClient> | null = null;
 async function getYahoo(): Promise<YahooClient> {
   if (cachedClient !== null) return cachedClient;
-  const mod = (await import("yahoo-finance2")) as unknown as {
-    default: new () => YahooClient;
-  };
-  cachedClient = new mod.default();
-  return cachedClient;
+  if (clientPromise !== null) return clientPromise;
+  clientPromise = (async () => {
+    const mod = (await import("yahoo-finance2")) as unknown as {
+      default: new () => YahooClient;
+    };
+    cachedClient = new mod.default();
+    return cachedClient;
+  })();
+  return clientPromise;
 }
 
 /** Map canonical range strings to a calendar-day lookback window. */
