@@ -17,7 +17,7 @@ const modelResolver = createModelResolver({
   intents: {
     utility: ["vercel/google/gemini-3.1-flash-lite"],
     fast: ["vercel/google/gemini-3.1-flash-lite"],
-    full: ["vercel/openai/gpt-5.5"],
+    full: ["vercel/anthropic/claude-sonnet-4.6"],
   },
 });
 
