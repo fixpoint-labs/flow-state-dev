@@ -333,6 +333,13 @@ export interface BlockContext<
     blockPath?: string;
     /** 0-indexed retry attempt for this block's execution. */
     attempt?: number;
+    /**
+     * Mirror of the originating block's `transient` flag. Used by the
+     * runtime's auto-emission hooks (e.g. `onBlockTraceCapture`) to inherit
+     * the flag onto bookkeeping items so they stream live but skip
+     * persistence. Required for the FIX-478 contract; see FIX-586.
+     */
+    transient?: boolean;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */

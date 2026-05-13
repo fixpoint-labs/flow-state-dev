@@ -147,6 +147,11 @@ export type StructureShape =
  * - `output` is set on completion. Carries the BlockValue (inline / ref /
  *   structure) so pass-through composers don't duplicate content at every
  *   level.
+ * - `transient` inherits the originating block's `transient` flag (FIX-478,
+ *   restored by FIX-586). A `transient: true` block streams its trace
+ *   lifecycle live to active SSE consumers but the trace is not retained in
+ *   the persisted items log. Non-transient blocks (the default) keep the
+ *   canonical retained-trace behavior.
  */
 export type BlockTraceItem = OutputItemBase & {
   type: "block_trace";
