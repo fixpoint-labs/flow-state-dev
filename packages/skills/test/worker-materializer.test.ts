@@ -81,6 +81,27 @@ describe("materializeWorker — prompt-driven branches", () => {
       "primary",
     );
   });
+
+  it("routes 'taskTools' in spec.tools through capability composition", async () => {
+    const block = await materializeWorker(
+      "discoverer",
+      { prompt: "find competitors", tools: ["taskTools"] },
+      deps(),
+    );
+    const cfg = (block as { config?: { uses?: readonly { name?: string }[] } }).config;
+    expect(cfg?.uses).toBeDefined();
+    expect(cfg?.uses?.[0]?.name).toBe("taskTools");
+  });
+
+  it("omits the uses slot when taskTools is not requested", async () => {
+    const block = await materializeWorker(
+      "analyst",
+      { prompt: "analyze", tools: ["search"] },
+      deps({ catalog: { search: { config: { name: "search" } } as never } }),
+    );
+    const cfg = (block as { config?: { uses?: unknown } }).config;
+    expect(cfg?.uses).toBeUndefined();
+  });
 });
 
 describe("materializeWorker — block-ref branch", () => {

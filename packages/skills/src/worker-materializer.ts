@@ -23,6 +23,7 @@ import type { PatternRegistryDeps } from "./pattern-registry";
 import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
+import { taskTools as taskToolsCapability } from "./task-tools-capability";
 import type { WorkerSpec } from "@flow-state-dev/core";
 
 /** Input every materialized worker accepts — matches the substrate's TaskWorkerInput. */
@@ -97,7 +98,15 @@ export async function materializeWorker(
   // substituted body as system prompt.
   const baseBody = await resolvePromptBody(workerKey, spec, deps);
   const substituted = substitute(baseBody, { arguments: deps.input ?? "" });
-  const tools = resolveTools(workerKey, spec.tools, deps.catalog);
+
+  // `taskTools` in the tools array is shorthand for the capability —
+  // workers that list it get all eight addTask/.../listTasks tools
+  // installed via capability composition rather than a catalog lookup.
+  // Filter it out before catalog resolution so it doesn't warn.
+  const usesTaskTools = spec.tools?.includes("taskTools") ?? false;
+  const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
+  const tools = resolveTools(workerKey, catalogToolKeys, deps.catalog);
+
   const modelId = spec.model ?? deps.defaultModelId;
   if (!modelId) {
     throw new Error(
@@ -116,6 +125,7 @@ export async function materializeWorker(
     user: (input: WorkerInput) => buildUserMessage(input),
     tools,
     maxIterations: 12,
+    ...(usesTaskTools ? { uses: [taskToolsCapability] as const } : {}),
   }) as unknown as BlockDefinition;
 }
 

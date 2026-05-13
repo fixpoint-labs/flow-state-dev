@@ -98,6 +98,36 @@ Workers can call eight runtime tools to mutate the active board. Opt in by addin
 
 With no pattern active every tool returns `{ ok: false, error: "no_active_pattern" }` rather than throwing. Agents recover gracefully.
 
+### Dynamic task creation
+
+The most common use of `taskTools` is dynamic fan-out: a discoverer worker identifies N items from a search, enqueues one analyzer task per item, then enqueues a synthesizer task with `deps` covering every analyzer it just queued. The synthesizer doesn't start until every dependency completes — the dispatcher (`topological`) honors that.
+
+```yaml
+workers:
+  discoverer:
+    prompt-ref: ./reference/discover.md
+    tools: [search, taskTools]   # taskTools is shorthand for the eight-tool capability
+  analyzer:
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
+  synthesizer:
+    prompt-ref: ./reference/synthesize.md
+    agent-type: primary
+
+initial-tasks:
+  - id: discover
+    goal: Find competitors of $ARGUMENTS, then queue one analyzer per competitor plus a synthesizer that depends on them all.
+    assignee: discoverer
+```
+
+The discoverer's prompt instructs it to:
+
+1. Call `addTask({ goal: "...", assignee: "analyzer" })` once per item, collecting each returned `taskId`.
+2. Call `addTask({ goal: "...", assignee: "synthesizer", deps: [collectedIds] })` once with the deps array.
+3. Return a short summary.
+
+The user sees the synthesizer's output. Kitchen-sink's `competitor-analysis` skill is a working example.
+
 ## Wiring
 
 Pattern skills are off by default. Pass the registry when constructing the skills capability:
