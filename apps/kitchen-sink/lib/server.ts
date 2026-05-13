@@ -7,6 +7,14 @@ import {
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
+import { createMockModelResolver } from "@flow-state-dev/testing";
+import type { ModelResolver } from "@flow-state-dev/core/types";
+import {
+  assistantMock,
+  thinkingStyleClassifierMock,
+  intentClassifierMock,
+  autoTitleMock,
+} from "./e2e-mock-script";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -20,6 +28,68 @@ import { Client as NeonClient } from "@neondatabase/serverless";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 
+/**
+ * The framework's generator block only emits tool-call items via the
+ * streaming path (`model.stream`). `createMockModelResolver` returns a
+ * model that implements `generate()` only, so tool calls in mock results
+ * never become user-visible items. Wrap each resolved model with a
+ * minimal `stream()` that yields tool-call deltas + text deltas derived
+ * from the same `generate()` result, so kitchen-sink's tool-group UI
+ * gets exercised under E2E.
+ */
+function wrapResolverWithStream(base: ModelResolver): ModelResolver {
+  const wrapped = (((modelId: string, blockName?: string, options?: Parameters<ModelResolver>[2]) => {
+    const model = base(modelId, blockName, options);
+    return {
+      ...model,
+      async *stream(streamOptions: Parameters<NonNullable<typeof model.stream>>[0]) {
+        const result = await model.generate(streamOptions);
+        const toolByName = new Map(
+          (streamOptions.tools ?? []).map((t) => [t.name, t] as const),
+        );
+        for (const tc of result.toolCalls ?? []) {
+          // Invoke the registered tool's execute closure so the framework's
+          // wrapper emits a `tool_output` placeholder item — the kitchen-sink
+          // ToolGroup component groups consecutive `tool_output` items.
+          // Errors (e.g. real network calls without credentials) are
+          // intentionally swallowed: the placeholder fired before the run,
+          // which is enough to drive the UI grouping.
+          const tool = toolByName.get(tc.toolName);
+          if (tool?.execute !== undefined) {
+            try {
+              await tool.execute(tc.args, { toolCallId: tc.toolCallId });
+            } catch {
+              /* test-mode: ignore tool errors */
+            }
+          }
+          yield {
+            type: "tool_call_delta" as const,
+            toolCallDelta: {
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              argsDelta: JSON.stringify(tc.args ?? {}),
+            },
+          };
+          yield {
+            type: "tool_result" as const,
+            toolResult: {
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              result: { ok: true },
+            },
+          };
+        }
+        if (result.text !== undefined && result.text.length > 0) {
+          yield { type: "text_delta" as const, textDelta: result.text };
+        }
+        yield { type: "finish" as const, fullResult: result };
+      },
+    };
+  }) as unknown) as ModelResolver;
+  wrapped.resolveId = base.resolveId;
+  return wrapped;
+}
+
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
 // don't line up. Cast once at the seam.
@@ -31,7 +101,24 @@ const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 // leave the openai slot empty so availability-based resolution can route
 // openai/* model strings through the configured gateway.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-const modelResolver = createModelResolver({
+const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
+  ? wrapResolverWithStream(
+      createMockModelResolver({
+        // Mock every generator on the chat-agent run path. `policy: "allow"`
+        // catches any straggler we don't know about (memory capture, bias
+        // analyzers, etc.) by returning an empty no-op result — they're
+        // side-effect blocks whose silence doesn't break the user-visible
+        // response.
+        generators: {
+          "assistant-generator": assistantMock,
+          "thinking-style-classifier": thinkingStyleClassifierMock,
+          "intent-classifier": intentClassifierMock,
+          "auto-title": autoTitleMock,
+        },
+        policy: "allow",
+      }),
+    )
+  : createModelResolver({
   gateways: gatewayApiKey
     ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,

@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export default defineConfig({
+  test: {
+    // Playwright specs live under `e2e/` and are run by `pnpm test:e2e`.
+    // Vitest must not collect them.
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
+  },
   resolve: {
     alias: {
       "@flow-state-dev/tools/bash": resolve(root, "packages/tools/src/bash/index.ts"),

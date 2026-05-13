@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   FlowProvider,
   useFlow,
@@ -70,8 +71,29 @@ const CLIENT_DATA_OPTIONS = {
 };
 
 export default function Page() {
+  // useSearchParams() must be wrapped in Suspense in Next.js app router —
+  // it opts the route out of prerender. The wrapper keeps SSR happy without
+  // forcing the production landing page to be fully dynamic.
   return (
-    <FlowProvider flowKind="chat-agent" userId="devuser" baseUrl="" renderers={chatAgentRenderers}>
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
+  );
+}
+
+function PageInner() {
+  // Under E2E test mode only, allow tests to mint a per-test userId via
+  // ?e2eUserId=... so parallel scenarios don't share session state. The env
+  // var is `NEXT_PUBLIC_*` so the gate evaluates on the client; production
+  // builds without it always use the hardcoded "devuser".
+  const searchParams = useSearchParams();
+  const e2eUserId =
+    process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
+      ? searchParams.get("e2eUserId")
+      : null;
+  const userId = e2eUserId ?? "devuser";
+  return (
+    <FlowProvider flowKind="chat-agent" userId={userId} baseUrl="" renderers={chatAgentRenderers}>
       <KitchenSinkApp />
     </FlowProvider>
   );
@@ -553,7 +575,7 @@ function ChatPanel({
 }: ChatPanelProps) {
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <Conversation className="min-h-0 flex-1">
+      <Conversation className="min-h-0 flex-1" data-testid="conversation">
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}

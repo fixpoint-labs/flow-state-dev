@@ -11,7 +11,7 @@ import { Shimmer } from "./shimmer";
 export function StreamingIndicator({ message }: { message?: string }) {
   const label = message && message.length > 0 ? message : "Thinking...";
   return (
-    <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm">
+    <div data-testid="streaming-indicator" className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm">
       <BrainIcon className="size-4" />
       <Shimmer duration={1}>{label}</Shimmer>
     </div>

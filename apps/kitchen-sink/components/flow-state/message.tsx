@@ -40,6 +40,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 
 export const MessageShell = ({ className, from, ...props }: MessageProps) => (
   <div
+    data-testid="message"
     data-message-role={from}
     className={cn(
       "group flex w-full max-w-[95%] flex-col gap-2",
