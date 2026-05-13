@@ -42,14 +42,15 @@ Skills are not always-on. Something has to decide a skill applies before its bod
 
 Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
 
-## Two activation modes
+## Three activation modes
 
-A skill that has been matched runs in one of two modes, declared in its frontmatter:
+A skill that has been matched runs in one of three modes, declared in its frontmatter:
 
 - **Inline** (default). The substituted skill body is injected into the parent generator's system prompt on the next step. The conversation continues in the parent context with the parent's tools.
 - **Fork.** Activation spawns a sub-agent — a framework `generator` with `agentType: "sub"` — running the skill body with a resolved subset of catalog tools. The sub-agent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history.
+- **Pattern.** Activation materializes a task board (or any registered pattern) with named workers running in parallel. Use this when a skill is best handled by a small team rather than a single agent. See [Pattern skills](./pattern-skills) for the frontmatter shape and the worker catalog.
 
-Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist.
+Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist. Choose pattern when the work decomposes naturally into independent sub-tasks that can run concurrently.
 
 ## Wiring it up
 

@@ -1,5 +1,5 @@
 ---
-description: Multi-angle company research delivered by a small team of analysts. Use when the user asks "research <company>", "what's <company> up to", "deep dive on <company>", or wants several perspectives stitched into a single report. The skill activates a task board where market, financial, and synthesis workers run in parallel and a primary synthesizer writes the final brief.
+description: Multi-angle company research delivered by a small team of analysts. Use when the user asks to research a company, wants a deep dive on what a company is up to, or wants several perspectives stitched into a single report. The skill activates a task board where market, financial, and synthesis workers run in parallel and a primary synthesizer writes the final brief.
 keywords: [research, company, deep-dive, deep, dive, briefing, analyst, market]
 argument-hint: <company name or ticker>
 
