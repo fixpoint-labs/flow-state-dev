@@ -672,9 +672,15 @@ export async function resolveMoatSandbox(
         await new Promise((r) => setTimeout(r, interval));
       }
       if (!ready) {
-        // Best-effort stop, then surface the timeout.
+        // Best-effort stop + destroy so the half-started container doesn't
+        // linger on the host. Mirrors `createMoatAdapter.stop()`.
         try {
           await spawnFn(bin, ["stop", opts.runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
+        } catch {
+          // Ignore — we are already in an error path.
+        }
+        try {
+          await spawnFn(bin, ["destroy", opts.runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
         } catch {
           // Ignore — we are already in an error path.
         }
