@@ -83,8 +83,13 @@ type FlowError = Error & {
 | `ToolExecutionError` | Varies | Tool block execution failure |
 | `AmbiguousBlockNameError` | No | Block name resolution conflict |
 | `ConcurrentModificationError` | Yes | CAS contention exhausted |
+| `OutputValidationError` | No | Generator output failed `outputSchema` |
 
 Non-Error thrown values are automatically normalized to `FlowError`.
+
+`FlowError` lives in `@flow-state-dev/core` so author code in third-party packages can throw it without depending on `@flow-state-dev/server`. Server's typed subclasses extend the core base; `instanceof FlowError` checks across server code continue to work unchanged.
+
+At failure-phase trace emission, the runtime forwards `FlowError.details` into `block_trace.error.details` (and the parallel `tool_output.error.details`) verbatim. `OutputValidationError` populates `details` with `{ rawOutput, issues, phase }`; author-thrown details flow through unmodified.
 
 ## Retry Policy
 

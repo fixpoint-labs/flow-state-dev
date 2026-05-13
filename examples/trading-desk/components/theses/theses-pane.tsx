@@ -62,6 +62,10 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "bear",
   "researchManager",
   "trader",
+  "aggressive",
+  "conservative",
+  "neutral",
+  "riskAssessment",
 ];
 
 export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactElement {
@@ -136,8 +140,8 @@ function EmptySelection(): ReactElement {
     <div className="m-auto max-w-md text-center">
       <p className="text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
         Pick a phase entry on the left to see its memo. Phase 1 entries
-        become live once the analysts run; Phase 2–5 entries are
-        scaffolding until those phases ship.
+        become live once the analysts run; Phase 5 entries are
+        scaffolding until that phase ships.
       </p>
     </div>
   );

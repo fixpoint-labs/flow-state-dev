@@ -14,7 +14,7 @@ export type NormalizeErrorOptions = {
 };
 
 function inferCode(error: Error): string {
-  if (error instanceof FlowError) {
+  if (error instanceof FlowError && error.code !== undefined) {
     return error.code;
   }
 

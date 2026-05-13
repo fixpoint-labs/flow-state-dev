@@ -311,3 +311,12 @@ Core exports:
 
 Use a shared lookup table to keep token-ratio and pricing resolution consistent across counters and cost estimation.
 
+
+## Errors
+
+`FlowError` is a small `Error` subclass author code can throw to attach a machine-readable `code`, a `retryable` flag (default `false`), and an open `details` payload. The runtime preserves these end-to-end so the DevTool can render structured failure context without re-running the flow.
+
+`OutputValidationError` is the runtime-emitted subclass thrown by the generator runtime when the model's output fails `outputSchema`. It populates `details` with `rawOutput`, `issues`, and `phase` so a validation failure carries the raw model text and the Zod issues into the trace automatically.
+
+See [Error handling](https://flow-state.dev/docs/advanced/error-handling) for usage patterns.
+

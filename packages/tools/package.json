@@ -39,9 +39,10 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "ai": "^6.0.93",
     "@mozilla/readability": "^0.6.0",
+    "ai": "^6.0.93",
     "linkedom": "^0.18.12",
+    "shell-quote": "^1.8.3",
     "turndown": "^7.2.4",
     "zod": "^3.24.1"
   },
@@ -73,6 +74,7 @@
     "@ai-sdk/mcp": "^1.0.0",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/shell-quote": "^1.7.5",
     "@types/turndown": "^5.0.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

@@ -247,6 +247,8 @@ Handlers are checked in order. The first match runs. If the recovery block succe
 
 `rescue` is the only error-handling primitive in the DSL. There's no try/catch wrapping at the chain level. If you don't add `.rescue()`, errors bubble out and the sequencer fails — which is usually what you want.
 
+For throwing structured errors with machine-readable codes and `details` that surface in the DevTool, see [Error handling](/docs/advanced/error-handling).
+
 ## Putting it together
 
 Here's the pipeline using all six methods:

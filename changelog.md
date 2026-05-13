@@ -13,6 +13,21 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Kitchen-sink wiring: `BASH_PROVIDER=moat` (with optional `MOAT_GRANTS` and `MOAT_ALLOW_HOSTS` env vars) now selects the MOAT provider for local development. The chat-agent flow wires `bashCap.cleanupBlock` into `request.onFinished` unconditionally so swapping providers via env vars cannot reintroduce a leak.
 - Documentation: `apps/docs/docs/tools/bash.md` and `packages/tools/README.md` describe the new provider, the cleanup wiring requirement, the credentials model, and the v1 limits (UTF-8 reads, 60s default exec timeout, no streaming, no auto-restart).
 
+### Block trace honors the originating block's `transient` flag (FIX-586)
+
+- Auto-emitted `block_trace` items now inherit `transient` from the originating block. Restores the FIX-478 contract that FIX-573's `block_output → block_trace` unification silently regressed by hardcoding `transient: false`.
+- Transient blocks (Task Board's `claim-task` / `check-board`, eventActors poll-loop wrappers) keep streaming their trace lifecycle live to active SSE consumers, but the rows no longer enter the persisted items log or replay on history reload. Multi-worker Task Board runs against long-running LLM calls no longer flood the request items list with thousands of bookkeeping rows.
+- Non-transient blocks (the default) are unchanged — their traces are still retained as the canonical record.
+- `apps/docs/docs/streaming/emitting-items.md` reflects the live-vs-persisted distinction; the `BlockTraceItem` JSDoc and the `_blockIdentity.transient` type field document the inheritance rule so it can't silently regress again.
+
+### DevTool: surface enough context on block failures to debug without reproduction (FIX-582)
+
+- `block_trace.error` and `tool_output.error` gain an optional `details: Record<string, unknown>` field. The runtime auto-populates it for framework-internal cases that previously discarded context; author-thrown `FlowError.details` flows through verbatim.
+- Generator output-validation failures now throw `OutputValidationError` carrying `{ rawOutput, issues, phase }`. The raw model text and the Zod issues survive to the trace instead of collapsing to a single message string.
+- `FlowError` relocated to `@flow-state-dev/core` so handler authors in third-party packages can throw it without a server dependency. Server's typed subclasses still extend it; existing `instanceof FlowError` checks keep working unchanged.
+- DevTool's failed-block detail panel renders a dedicated "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a generic "Details" JSON panel for any other keys. Failed tool-invoked blocks gain Input and Tool call sections, closing the "Input: null" gap on the failure path.
+- New advanced docs page on error handling, cross-linked from the rescue and DevTool pages.
+
 ## 2026-05-11
 
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)

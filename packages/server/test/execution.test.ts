@@ -2320,7 +2320,7 @@ describe("execution runtime", () => {
 });
 
 describe("transient block output", () => {
-  it("transient block: block_trace is canonical retained (always persisted)", async () => {
+  it("transient block: block_trace inherits transient and is not persisted (FIX-586)", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-flow",
@@ -2350,16 +2350,16 @@ describe("transient block output", () => {
     expect(result.error).toBeUndefined();
     expect(result.output).toBe("processed:test");
 
-    // FIX-573 §3.8: block_trace is always retained, regardless of the
-    // originating block's `transient` flag.
+    // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
+    // inherits the originating block's `transient` flag, so traces from a
+    // transient block are filtered out of the persisted items log.
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
     const blockOutputItems = storedItems.filter((item) => item.type === "block_trace");
-    expect(blockOutputItems.length).toBeGreaterThanOrEqual(1);
-    expect(blockOutputItems.every((i) => i.transient !== true)).toBe(true);
+    expect(blockOutputItems.length).toBe(0);
   });
 
-  it("transient block: block_trace streams to client and is non-transient", async () => {
+  it("transient block: block_trace streams live but is marked transient (FIX-586)", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-stream-flow",
@@ -2387,11 +2387,11 @@ describe("transient block output", () => {
     });
 
     expect(result.error).toBeUndefined();
-    // FIX-573 §3.8: block_trace is the canonical retained record and is
-    // always non-transient regardless of the producing block's transient flag.
+    // FIX-586: trace still streams live (visible on result.items, which
+    // reflects the emitter's view) but inherits the block's transient flag.
     const blockOutputItems = result.items.filter((item) => item.type === "block_trace");
     expect(blockOutputItems.length).toBe(1);
-    expect(blockOutputItems[0]?.transient).not.toBe(true);
+    expect(blockOutputItems[0]?.transient).toBe(true);
   });
 
   it("non-transient blocks in the same flow are unaffected", async () => {
@@ -2517,12 +2517,17 @@ describe("transient block output", () => {
     );
     expect(storedMessages.length).toBe(1);
 
-    // FIX-573 §3.8: block_trace is canonical retained and is persisted.
+    // FIX-586: block_trace inherits the originating block's `transient`
+    // flag, so the trace for `transient-gen` is filtered from the persisted
+    // items log. The user-facing message above survives because emitMessage
+    // defaults to non-transient (FIX-478).
     const storedBlockOutputs = (requestRecord?.items ?? []).filter(
       (item) => item.type === "block_trace"
     );
-    expect(storedBlockOutputs.length).toBeGreaterThanOrEqual(1);
-    expect(storedBlockOutputs.every((i) => i.transient !== true)).toBe(true);
+    const transientGenTrace = storedBlockOutputs.find(
+      (i) => (i as { blockName: string }).blockName === "transient-gen"
+    );
+    expect(transientGenTrace).toBeUndefined();
   });
 
   describe("emit* default semantics (FIX-478)", () => {

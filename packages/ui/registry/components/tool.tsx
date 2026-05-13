@@ -311,6 +311,7 @@ export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupPr
   return (
     <Collapsible
       defaultOpen={defaultOpen}
+      data-testid="tool-group"
       className={cn("group not-prose mb-2 w-full rounded-md border bg-card", className)}
     >
       <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 p-3">

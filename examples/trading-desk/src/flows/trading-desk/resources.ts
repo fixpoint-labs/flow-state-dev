@@ -74,6 +74,82 @@ export const memoStateSchema = z.object({
     .default(null),
   invalidationCriteria: z.array(z.string()).nullable().default(null),
   dependsOn: z.array(z.string()).nullable().default(null),
+  // Phase 4 RiskCritique / RiskAssessment extension. Persona memos populate
+  // posture, raisedRisks, proposedAdjustments. The neutralRisk memo also
+  // populates dismissedRisks. The riskAssessment memo populates the
+  // criticalRisks / recommendedAdjustments / confidenceCalibration trio
+  // plus dismissedRisks. Other memos leave all of these `null`.
+  posture: z
+    .enum(["aggressive", "conservative", "neutral"])
+    .nullable()
+    .default(null),
+  raisedRisks: z
+    .array(
+      z.object({
+        description: z.string(),
+        severity: z.enum(["high", "medium", "low"]),
+      }),
+    )
+    .nullable()
+    .default(null),
+  proposedAdjustments: z
+    .object({
+      sizing: z.enum(["larger", "smaller", "unchanged"]).nullable(),
+      holdingPeriod: z.enum(["longer", "shorter", "unchanged"]).nullable(),
+      invalidation: z.enum(["tighter", "looser", "unchanged"]).nullable(),
+    })
+    .nullable()
+    .default(null),
+  dismissedRisks: z
+    .array(
+      z.object({
+        description: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .nullable()
+    .default(null),
+  criticalRisks: z
+    .array(
+      z.object({
+        description: z.string(),
+        raisedBy: z.enum(["aggressive", "conservative"]),
+        severity: z.enum(["high", "medium", "low"]),
+      }),
+    )
+    .nullable()
+    .default(null),
+  recommendedAdjustments: z
+    .object({
+      sizing: z
+        .object({
+          direction: z.enum(["larger", "smaller", "unchanged"]),
+          rationale: z.string(),
+          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+        })
+        .nullable(),
+      holdingPeriod: z
+        .object({
+          direction: z.enum(["longer", "shorter", "unchanged"]),
+          rationale: z.string(),
+          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+        })
+        .nullable(),
+      invalidation: z
+        .object({
+          direction: z.enum(["tighter", "looser", "unchanged"]),
+          rationale: z.string(),
+          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+        })
+        .nullable(),
+    })
+    .nullable()
+    .default(null),
+  confidenceCalibration: z
+    .enum(["overconfident", "calibrated", "underconfident"])
+    .nullable()
+    .default(null),
+  calibrationRationale: z.string().nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

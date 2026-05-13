@@ -8,6 +8,8 @@ Per-flow tests using `testFlow` are good for isolated assertions. They miss bugs
 
 This page describes the tier of testing one level above `testBlock` / `testRouter`: full `runAction` engine, real sequencer composition, real router branching, deterministic mocked generators. It exists to catch regressions that would otherwise need a running server and a real LLM to surface.
 
+For browser-level regressions that only show up against a live SSE stream and rendered React, see [End-to-end tests](end-to-end-tests).
+
 ## When to reach for which
 
 - **`testBlock` / `testRouter`** — a single block's logic. State changes, output shape, error paths. Most unit-test work belongs here.

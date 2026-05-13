@@ -188,7 +188,7 @@ The same idea shows up across the industry. Vercel AI SDK calls them "data parts
 
 ## Default transience and the block flag
 
-A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_trace` traces don't enter the persisted log. It does **not** affect items the block emits explicitly.
+A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_trace` traces stream live to active SSE consumers (DevTool, in-flight clients) but don't enter the persisted items log and don't replay on history reload. It does **not** affect items the block emits explicitly. This is the right knob for polling or actor-style substrate blocks (Task Board's `claim-task` / `check-board`, eventActors wrappers) that fire repeatedly and would otherwise flood the items log with bookkeeping rows.
 
 That separation is intentional. When you call `ctx.emitComponent()` or `ctx.emitMessage()` from inside any block — including a transient one — that's an explicit choice to surface user-facing content. The producing block being infrastructure says nothing about the content's status.
 

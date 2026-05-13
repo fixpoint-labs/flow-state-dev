@@ -2865,14 +2865,17 @@ export async function createExecutionContext<
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
             const itemIndex = emittedItemCount++;
-            // Spec §3.8: block_trace is the canonical retained record and is
-            // always non-transient, regardless of the originating block's
-            // transient flag.
+            // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
+            // items inherit the originating block's `transient` flag. Traces
+            // from `transient: true` blocks (e.g. Task Board's `claim-task` /
+            // `check-board` poll loops) stream live to active SSE consumers
+            // but are not retained in the persisted items log. Non-transient
+            // blocks (the default) keep the canonical retained-trace behavior.
             const item: BlockTraceItem = {
               id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "block_trace",
               status: payload.data.status ?? "in_progress",
-              transient: false,
+              transient: identity.transient === true ? true : undefined,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
@@ -3363,7 +3366,11 @@ export async function createExecutionContext<
                   output: { kind: "inline", value: undefined },
                   completedAt,
                   duration: completedAt - traceStartedAt,
-                  error: { message: normalized.message, code: normalized.code },
+                  error: {
+                    message: normalized.message,
+                    code: normalized.code,
+                    ...(normalized.details ? { details: normalized.details } : {}),
+                  },
                   modelUsage: generatorModelUsage,
                 },
               },
