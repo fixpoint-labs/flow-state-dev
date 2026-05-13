@@ -90,6 +90,11 @@ export {
 } from "./pattern-run";
 
 export {
+  createTaskToolsCapability,
+  taskTools,
+} from "./task-tools-capability";
+
+export {
   getActivePatternCollection,
   getActivePatternMeta,
 } from "./active-pattern-collection";
