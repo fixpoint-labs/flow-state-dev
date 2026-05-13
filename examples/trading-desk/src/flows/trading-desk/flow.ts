@@ -18,6 +18,7 @@ import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase4Contributions } from "./phase-4/round-robin";
+import { marketDataCollection } from "./blocks/tools/market-data-resource";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -94,6 +95,10 @@ const tradingDeskFlow = defineFlow({
 
   resources: {
     memos: memosCollection,
+    // Read-through cache for tool outputs. Dedupes overlapping requests
+    // across the four parallel Phase 1 analysts and lets later phases
+    // re-read already-fetched market data without another upstream call.
+    marketdata: marketDataCollection,
     // Phase 2 transcript. Registered here so post-loop consolidation
     // generators can declare it on their own `resources:` slot.
     p2Contributions: phase2Contributions,

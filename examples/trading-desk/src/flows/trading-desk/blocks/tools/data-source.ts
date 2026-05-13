@@ -2,10 +2,12 @@
  * `DataSource` interface and per-tool schemas.
  *
  * The interface is the seam between the analyst tool blocks and the actual
- * data: a hand-curated `FixtureDataSource` (Step 5) and a `LiveDataSource`
- * wrapping `yahoo-finance2` (Step 9). Each tool returns canonical-shape JSON
- * plus a `source: "fixture" | "live"` tag that bubbles through to the
- * transcript pill via the tool's output metadata.
+ * data: a hand-curated `FixtureDataSource`, a `YahooDataSource` wrapping
+ * `yahoo-finance2` v3, and a `FinnhubDataSource` hitting the Finnhub REST
+ * API. A `MultiSourceDataSource` chains them as Finnhub → Yahoo → Fixture
+ * (fixture is the always-succeeds floor). Each tool returns canonical-shape
+ * JSON plus a `source: "fixture" | "yahoo" | "finnhub"` tag identifying the
+ * concrete provider that answered.
  */
 import { z } from "zod";
 
@@ -24,7 +26,16 @@ export class FixtureMissingError extends Error {
   }
 }
 
-const sourceTag = z.enum(["fixture", "live"]);
+/**
+ * Provenance tag stamped on every tool output. Distinct from the session-state
+ * `dataSource` enum (`"fixture" | "live"`) — that picks the upstream *strategy*,
+ * while this tag identifies the *concrete provider* that answered. `"live"` mode
+ * resolves at runtime to `"finnhub"` (preferred, when key present) or `"yahoo"`
+ * (fallback), and either may degrade to `"fixture"` per tool if both upstreams
+ * fail or don't support the tool.
+ */
+const sourceTag = z.enum(["fixture", "yahoo", "finnhub"]);
+export type SourceTag = z.infer<typeof sourceTag>;
 
 const periodInput = z.object({
   ticker: z.string().min(1),
