@@ -177,6 +177,7 @@ export type {
   InitialSkill,
   IntentSource,
   MatchedSkill,
+  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -184,8 +185,12 @@ export type {
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
+  TaskInitYaml,
   ToolCatalog,
+  WorkerSpec,
 } from "./skill";
+
+export type { Agent, AgentOverrides, AgentRegistry } from "./agent";
 
 export type {
   JsonObject,

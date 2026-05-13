@@ -41,7 +41,7 @@ export const activeSkillStateSchema = z.object({
     .array(
       z.object({
         name: z.string(),
-        mode: z.enum(["inline", "fork"]),
+        mode: z.enum(["inline", "fork", "pattern"]),
         input: z.string().optional(),
         activatedAt: z.number(),
         source: intentSourceSchema.optional(),

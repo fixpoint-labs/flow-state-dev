@@ -61,7 +61,7 @@ const inputSchema = z.object({
 
 const outputSchema = z.object({
   skill: z.string(),
-  mode: z.enum(["inline", "fork"]),
+  mode: z.enum(["inline", "fork", "pattern"]),
   message: z.string().optional(),
   result: z.unknown().optional(),
 });
