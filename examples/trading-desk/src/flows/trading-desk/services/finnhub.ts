@@ -21,6 +21,20 @@ export function hasFinnhubKey(): boolean {
   return Boolean(process.env.FINNHUB_API_KEY?.trim());
 }
 
+/** Map canonical range strings to a calendar-day lookback. Mirrors the
+ *  Yahoo service so `compute_indicators` can request `"1y"` and actually
+ *  get enough bars for SMA200. */
+function rangeToLookbackDays(range: string | undefined): number {
+  switch (range) {
+    case "1mo": return 45;
+    case "3mo": return 100;
+    case "6mo": return 200;
+    case "1y": return 380;
+    case "2y": return 750;
+    default: return 45;
+  }
+}
+
 async function fetchJson<T>(
   path: string,
   params: Record<string, string | number>,
@@ -42,7 +56,7 @@ export async function fetchFinnhubCandles(
   input: ToolInput<"get_price_history">,
 ): Promise<ToolOutput<"get_price_history">> {
   const to = Math.floor(new Date(input.date).getTime() / 1000);
-  const from = to - 45 * 24 * 60 * 60;
+  const from = to - rangeToLookbackDays(input.range) * 24 * 60 * 60;
   type Candle = {
     s: "ok" | "no_data" | string;
     t?: number[];

@@ -13,10 +13,11 @@ import tradingDeskFlow from "@/src/flows/trading-desk/flow";
 // throws on the first generator run.
 const modelResolver = createModelResolver({
   gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
+  defaultModel: "vercel/google/gemini-3.1-flash-lite",
   intents: {
     utility: ["vercel/google/gemini-3.1-flash-lite"],
     fast: ["vercel/google/gemini-3.1-flash-lite"],
-    full: ["vercel/openai/gpt-5.5"],
+    full: ["vercel/anthropic/claude-sonnet-4.6"],
   },
 });
 

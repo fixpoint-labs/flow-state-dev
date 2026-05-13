@@ -59,8 +59,11 @@ export function TxTool({
     .filter(Boolean)
     .join(" · ");
 
+  // Row container is a `<span>` (not `<div>`) so it remains valid HTML5
+  // phrasing content when nested inside the expandable `<button>` below.
+  // Tailwind's `flex` class sets `display: flex` regardless of element.
   const row = (
-    <div className="flex items-center gap-2 px-4 py-1 text-[12px]">
+    <span className="flex items-center gap-2 px-4 py-1 text-[12px]">
       {expandable ? (
         open ? (
           <ChevronDown className="h-3 w-3 shrink-0 text-[color:var(--c-fg-faint)]" aria-hidden />
@@ -91,7 +94,7 @@ export function TxTool({
         </span>
       )}
       {source !== undefined && <SourcePill source={source} />}
-    </div>
+    </span>
   );
 
   if (!expandable) return row;

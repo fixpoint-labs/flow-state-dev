@@ -8,7 +8,12 @@
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
-import type { GeneratorTool } from "../blocks/generator";
+import type {
+  GeneratorTool,
+  ResolvableCachingConfig,
+  ResolvableModel,
+  ResolvableProviderOptions,
+} from "../blocks/generator";
 import type { BlockContext } from "../types/block";
 import type {
   CapabilityRef,
@@ -201,6 +206,14 @@ export type MergedCapabilitySurface = {
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
+  // Generator-only singletons. Last-wins among capabilities; block-level
+  // setting wins over capability (handled in the generator block factory).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: ResolvableModel<any, any> | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  providerOptions: ResolvableProviderOptions<any, any> | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  caching: ResolvableCachingConfig<any, any> | undefined;
 };
 
 export function createEmptyMergedSurface(): MergedCapabilitySurface {
@@ -214,6 +227,9 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     targetStateSchemas: undefined,
     contextEntries: [],
     toolEntries: [],
+    model: undefined,
+    providerOptions: undefined,
+    caching: undefined,
   };
 }
 
@@ -370,6 +386,36 @@ export function mergeSurfaceInto(
       );
     }
     acc.toolEntries.push(surface.tools);
+  }
+
+  // Generator singletons — generator only. Last-wins among capabilities;
+  // the generator block factory then prefers a block-level setting.
+  if (surface.model !== undefined) {
+    if (blockKind !== "generator") {
+      throw new Error(
+        `Capability "${capName}" preset "${presetName}" declares model, ` +
+        `but the consuming block is a ${blockKind}. model is only valid on generator blocks.`
+      );
+    }
+    acc.model = surface.model;
+  }
+  if (surface.providerOptions !== undefined) {
+    if (blockKind !== "generator") {
+      throw new Error(
+        `Capability "${capName}" preset "${presetName}" declares providerOptions, ` +
+        `but the consuming block is a ${blockKind}. providerOptions is only valid on generator blocks.`
+      );
+    }
+    acc.providerOptions = surface.providerOptions;
+  }
+  if (surface.caching !== undefined) {
+    if (blockKind !== "generator") {
+      throw new Error(
+        `Capability "${capName}" preset "${presetName}" declares caching, ` +
+        `but the consuming block is a ${blockKind}. caching is only valid on generator blocks.`
+      );
+    }
+    acc.caching = surface.caching;
   }
 }
 

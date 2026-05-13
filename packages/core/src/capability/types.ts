@@ -9,7 +9,13 @@
  */
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
-import type { ContextObject, GeneratorTool } from "../blocks/generator";
+import type {
+  ContextObject,
+  GeneratorTool,
+  ResolvableCachingConfig,
+  ResolvableModel,
+  ResolvableProviderOptions,
+} from "../blocks/generator";
 import type { AgentType } from "../items/types";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -74,6 +80,17 @@ export type PresetDef<TSessionState = any> = {
   tools?:
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
+
+  // Generator-only singletons. Block-kind validated at merge time — declaring
+  // any of these on a capability used by a handler/sequencer/router throws a
+  // clear error. Among capabilities, last-wins; among capability + block, the
+  // block's own setting wins.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model?: ResolvableModel<any, CapabilityPresetCtx<TSessionState>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  providerOptions?: ResolvableProviderOptions<any, CapabilityPresetCtx<TSessionState>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  caching?: ResolvableCachingConfig<any, CapabilityPresetCtx<TSessionState>>;
 };
 
 /**

@@ -636,3 +636,120 @@ describe("resolved capabilities stored on config", () => {
     expect(names.indexOf("inner-cap")).toBeLessThan(names.indexOf("outer-cap"));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Capability-provided generator singletons (model, providerOptions, caching)
+// ---------------------------------------------------------------------------
+
+describe("generator singletons via capability", () => {
+  it("capability provides model when the block omits it", () => {
+    const cap = defineCapability({
+      name: "model-cap",
+      presets: {
+        default: ["core"],
+        core: { model: "intent/utility" },
+      },
+    });
+
+    const gen = generator({
+      name: "test",
+      uses: [cap],
+      prompt: "test",
+    });
+
+    expect((gen.config as any).model).toBe("intent/utility");
+  });
+
+  it("block-level model wins over capability model", () => {
+    const cap = defineCapability({
+      name: "model-cap",
+      presets: {
+        default: ["core"],
+        core: { model: "intent/utility" },
+      },
+    });
+
+    const gen = generator({
+      name: "test",
+      uses: [cap],
+      model: "intent/chat",
+      prompt: "test",
+    });
+
+    expect((gen.config as any).model).toBe("intent/chat");
+  });
+
+  it("last-wins among capabilities (later preset overrides earlier)", () => {
+    const cap = defineCapability({
+      name: "model-cap",
+      presets: {
+        default: ["a", "b"],
+        a: { model: "intent/utility" },
+        b: { model: "intent/chat" },
+      },
+    });
+
+    const gen = generator({
+      name: "test",
+      uses: [cap],
+      prompt: "test",
+    });
+
+    expect((gen.config as any).model).toBe("intent/chat");
+  });
+
+  it("throws when neither the block nor any capability provides a model", () => {
+    expect(() =>
+      generator({
+        name: "test",
+        prompt: "test",
+      }),
+    ).toThrow(/requires a model/);
+  });
+
+  it("capability providerOptions and caching propagate when block omits them", () => {
+    const cap = defineCapability({
+      name: "opts-cap",
+      presets: {
+        default: ["core"],
+        core: {
+          model: "intent/utility",
+          providerOptions: { openai: { reasoningEffort: "medium" } },
+          caching: { enabled: true, breakpoints: "auto" },
+        },
+      },
+    });
+
+    const gen = generator({
+      name: "test",
+      uses: [cap],
+      prompt: "test",
+    });
+
+    expect((gen.config as any).providerOptions).toEqual({
+      openai: { reasoningEffort: "medium" },
+    });
+    expect((gen.config as any).caching).toEqual({
+      enabled: true,
+      breakpoints: "auto",
+    });
+  });
+
+  it("handler with capability that declares model throws a clear error", () => {
+    const cap = defineCapability({
+      name: "bad-cap",
+      presets: {
+        default: ["core"],
+        core: { model: "intent/utility" },
+      },
+    });
+
+    expect(() =>
+      handler({
+        name: "test",
+        uses: [cap],
+        execute: async () => ({}),
+      }),
+    ).toThrow(/declares model.*only valid on generator/);
+  });
+});

@@ -151,6 +151,31 @@ export function formatAnalystMemos(memos: {
   return blocks.join("\n\n");
 }
 
+/** Render contributions filtered to one stance, grouped by round. Returns
+ *  a sentinel string when no entries match (so context renderers don't emit
+ *  a blank tag). */
+export function formatStanceContributions(
+  entries: RoundRobinContributionEntry[],
+  agentName: string,
+): string {
+  const filtered = entries.filter((e) => e.agentName === agentName);
+  if (filtered.length === 0) return "(no contributions for this stance)";
+  const byRound = new Map<number, RoundRobinContributionEntry[]>();
+  for (const entry of filtered) {
+    const arr = byRound.get(entry.round) ?? [];
+    arr.push(entry);
+    byRound.set(entry.round, arr);
+  }
+  const lines: string[] = [];
+  for (const round of [...byRound.keys()].sort((a, b) => a - b)) {
+    lines.push(`Round ${round}:`);
+    for (const entry of byRound.get(round)!) {
+      lines.push(`- ${entry.text}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 /** Render a round-robin transcript grouped by round. Used for both the
  *  Phase 2 bull/bear debate and the Phase 4 risk-debate transcripts. */
 export function formatDebate(entries: RoundRobinContributionEntry[]): string {

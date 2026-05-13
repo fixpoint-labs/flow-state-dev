@@ -201,19 +201,14 @@ describe("session resources are persisted after analyze run", () => {
       expect(memo.body).toBeDefined();
     }
 
-    // Both `contributions` (block-level name) and `p2Contributions`
-    // (flow-level name) exist as separate slots because two declarations
-    // register the same DefinedResource under different names. The
-    // round-robin writes to `contributions`; the flow's `p2Contributions`
-    // slot is never written. Consolidators read from `contributions`.
-    expect(resources.contributions).toBeDefined();
-    const contributions = resources.contributions as { entries?: unknown[] };
-    expect(Array.isArray(contributions.entries)).toBe(true);
-    expect((contributions.entries ?? []).length).toBeGreaterThan(0);
-
+    // Round-robin is configured with `accessorKey: "p2Contributions"`, so
+    // writes land on the same accessor name that consolidators (via the
+    // tradingDesk capability presets) and the flow-level registration use.
+    // Resource state is keyed by accessor name, so a single shared accessor
+    // is the only way to share storage.
     expect(resources.p2Contributions).toBeDefined();
     const p2Contributions = resources.p2Contributions as { entries?: unknown[] };
     expect(Array.isArray(p2Contributions.entries)).toBe(true);
-    expect((p2Contributions.entries ?? []).length).toBe(0);
+    expect((p2Contributions.entries ?? []).length).toBeGreaterThan(0);
   });
 });

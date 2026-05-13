@@ -10,7 +10,12 @@ import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 
 const DEFAULT_TICKER = "NVDA";
-const DEFAULT_DATE = new Intl.DateTimeFormat('en-CA').format(new Date());
+
+/** Format today as YYYY-MM-DD. Evaluated per-render so the default stays
+ *  fresh across the lifetime of a long-running Next.js server. */
+function todayIsoDate(): string {
+  return new Intl.DateTimeFormat("en-CA").format(new Date());
+}
 
 export default function Page(): ReactElement {
   return (
@@ -25,7 +30,9 @@ function TradingDeskApp(): ReactElement {
   const session = useSession(flow.activeSessionId);
 
   const [ticker, setTicker] = useState(DEFAULT_TICKER);
-  const [date, setDate] = useState(DEFAULT_DATE);
+  // Lazy initializer so the date is captured at the first render of this
+  // mount, not at module load. Avoids stale "today" in long-running servers.
+  const [date, setDate] = useState(() => todayIsoDate());
   const [costPreset, setCostPreset] = useState<CostPreset>("fast");
   const [dataSource, setDataSource] = useState<DataSourceMode>("fixture");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
