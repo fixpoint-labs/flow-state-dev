@@ -1,13 +1,14 @@
 /**
  * `YahooDataSource` — live data via `yahoo-finance2` v3.
  *
- * Implements prices + fundamentals. `yahoo-finance2` is loaded dynamically so
- * `pnpm install` can complete in environments that prune optional deps; if the
- * provider is never picked, the import never resolves.
+ * Implements prices, fundamentals, and the three financial statements (balance
+ * sheet, income statement, cash flow). `yahoo-finance2` is loaded dynamically
+ * so `pnpm install` can complete in environments that prune optional deps;
+ * if the provider is never picked, the import never resolves.
  *
  * Unsupported tools throw `ProviderUnsupportedError` so `MultiSourceDataSource`
- * can fall through to the next provider (typically the fixture source) without
- * treating "not implemented" as a request-level error.
+ * can fall through to the next provider without treating "not implemented" as
+ * a request-level error.
  */
 import {
   type DataSource,
@@ -30,7 +31,7 @@ type YahooClient = {
   quoteSummary: (
     ticker: string,
     opts: { modules: string[] },
-  ) => Promise<Record<string, Record<string, unknown> | undefined>>;
+  ) => Promise<Record<string, unknown | undefined>>;
 };
 
 let cachedClient: YahooClient | null = null;
@@ -44,6 +45,29 @@ async function getYahoo(): Promise<YahooClient> {
   return cachedClient;
 }
 
+/**
+ * Map the canonical range strings used by `get_price_history` to a lookback
+ * window expressed in calendar days. Yahoo's `chart` endpoint accepts a
+ * `period1`/`period2` pair; we resolve `period1` by subtracting these days
+ * from the requested as-of date. Adds 10% slack to compensate for weekends.
+ */
+function rangeToLookbackDays(range: string | undefined): number {
+  switch (range) {
+    case "1mo":
+      return 45;
+    case "3mo":
+      return 100;
+    case "6mo":
+      return 200;
+    case "1y":
+      return 380;
+    case "2y":
+      return 750;
+    default:
+      return 45;
+  }
+}
+
 export class YahooDataSource implements DataSource {
   readonly mode = "live" as const;
   readonly provider = "yahoo" as const;
@@ -54,8 +78,7 @@ export class YahooDataSource implements DataSource {
     const yahoo = await getYahoo();
     const period2 = new Date(input.date);
     const period1 = new Date(period2);
-    // Pull ~45 calendar days so we end up with ~30 trading bars after weekends.
-    period1.setUTCDate(period1.getUTCDate() - 45);
+    period1.setUTCDate(period1.getUTCDate() - rangeToLookbackDays(input.range));
     const result = await yahoo.chart(input.ticker, {
       period1,
       period2,
@@ -85,9 +108,9 @@ export class YahooDataSource implements DataSource {
     input: ToolInput<"get_fundamentals">,
   ): Promise<ToolOutput<"get_fundamentals">> {
     const yahoo = await getYahoo();
-    const summary = await yahoo.quoteSummary(input.ticker, {
+    const summary = (await yahoo.quoteSummary(input.ticker, {
       modules: ["summaryDetail", "financialData", "defaultKeyStatistics"],
-    });
+    })) as Record<string, Record<string, unknown> | undefined>;
     const detail = summary.summaryDetail ?? {};
     const fin = summary.financialData ?? {};
     const stats = summary.defaultKeyStatistics ?? {};
@@ -104,23 +127,91 @@ export class YahooDataSource implements DataSource {
     };
   }
 
-  // The remaining tools are provider-unsupported. `MultiSourceDataSource`
-  // catches these and tries the next provider in the chain.
   async get_balance_sheet(
-    _input: ToolInput<"get_balance_sheet">,
+    input: ToolInput<"get_balance_sheet">,
   ): Promise<ToolOutput<"get_balance_sheet">> {
-    throw new ProviderUnsupportedError("yahoo", "get_balance_sheet");
+    const yahoo = await getYahoo();
+    const summary = (await yahoo.quoteSummary(input.ticker, {
+      modules: ["balanceSheetHistory"],
+    })) as { balanceSheetHistory?: { balanceSheetStatements?: Array<Record<string, unknown>> } };
+    const stmt = summary.balanceSheetHistory?.balanceSheetStatements?.[0] ?? {};
+    // Yahoo returns absolute dollars; schema is "USD billions".
+    const toB = (raw: unknown) => numberFrom(raw) / 1e9;
+    const totalAssets = toB(stmt.totalAssets);
+    const totalLiabilities = toB(stmt.totalLiab);
+    return {
+      source: "yahoo",
+      ticker: input.ticker,
+      asOf: asOfFromStatement(stmt) ?? input.date,
+      totalAssets,
+      totalLiabilities,
+      totalEquity: toB(stmt.totalStockholderEquity) || totalAssets - totalLiabilities,
+      cashAndEquivalents: toB(stmt.cash),
+      totalDebt:
+        toB(stmt.shortLongTermDebt) + toB(stmt.longTermDebt),
+      unit: "USD billions",
+    };
   }
+
   async get_income_statement(
-    _input: ToolInput<"get_income_statement">,
+    input: ToolInput<"get_income_statement">,
   ): Promise<ToolOutput<"get_income_statement">> {
-    throw new ProviderUnsupportedError("yahoo", "get_income_statement");
+    const yahoo = await getYahoo();
+    const summary = (await yahoo.quoteSummary(input.ticker, {
+      modules: ["incomeStatementHistory"],
+    })) as {
+      incomeStatementHistory?: { incomeStatementHistory?: Array<Record<string, unknown>> };
+    };
+    const history = summary.incomeStatementHistory?.incomeStatementHistory ?? [];
+    const latest = history[0] ?? {};
+    const prior = history[1] ?? {};
+    const toB = (raw: unknown) => numberFrom(raw) / 1e9;
+    const latestRev = numberFrom(latest.totalRevenue);
+    const priorRev = numberFrom(prior.totalRevenue);
+    const yoy = priorRev > 0 ? (latestRev - priorRev) / priorRev : 0;
+    return {
+      source: "yahoo",
+      ticker: input.ticker,
+      asOf: asOfFromStatement(latest) ?? input.date,
+      revenue: toB(latest.totalRevenue),
+      grossProfit: toB(latest.grossProfit),
+      operatingIncome: toB(latest.operatingIncome),
+      netIncome: toB(latest.netIncome),
+      yoyRevenueGrowth: yoy,
+      unit: "USD billions",
+    };
   }
+
   async get_cashflow(
-    _input: ToolInput<"get_cashflow">,
+    input: ToolInput<"get_cashflow">,
   ): Promise<ToolOutput<"get_cashflow">> {
-    throw new ProviderUnsupportedError("yahoo", "get_cashflow");
+    const yahoo = await getYahoo();
+    const summary = (await yahoo.quoteSummary(input.ticker, {
+      modules: ["cashflowStatementHistory"],
+    })) as {
+      cashflowStatementHistory?: { cashflowStatements?: Array<Record<string, unknown>> };
+    };
+    const stmt = summary.cashflowStatementHistory?.cashflowStatements?.[0] ?? {};
+    const toB = (raw: unknown) => numberFrom(raw) / 1e9;
+    const operating = toB(stmt.totalCashFromOperatingActivities);
+    // Yahoo reports capex as a negative number; FCF = operating + capex.
+    const capex = toB(stmt.capitalExpenditures);
+    return {
+      source: "yahoo",
+      ticker: input.ticker,
+      asOf: asOfFromStatement(stmt) ?? input.date,
+      operating,
+      investing: toB(stmt.totalCashflowsFromInvestingActivities),
+      financing: toB(stmt.totalCashFromFinancingActivities),
+      freeCashFlow: operating + capex,
+      unit: "USD billions",
+    };
   }
+
+  // Indicators are derived from price bars, not fetched. The compute_indicators
+  // handler resolves them locally in live mode; this provider doesn't implement
+  // them so a misrouted call falls through to "unavailable" instead of silently
+  // returning zeros from a phantom upstream.
   async compute_indicators(
     _input: ToolInput<"compute_indicators">,
   ): Promise<ToolOutput<"compute_indicators">> {
@@ -158,4 +249,16 @@ function numberFrom(raw: unknown): number {
   }
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** Statement period end-date — Yahoo emits a Date or a `{ raw: epochSeconds }` shape. */
+function asOfFromStatement(stmt: Record<string, unknown>): string | null {
+  const end = stmt.endDate;
+  if (end instanceof Date) return end.toISOString().slice(0, 10);
+  if (typeof end === "object" && end !== null && "raw" in end) {
+    const raw = (end as { raw?: unknown }).raw;
+    if (typeof raw === "number") return new Date(raw * 1000).toISOString().slice(0, 10);
+  }
+  if (typeof end === "string") return end.slice(0, 10);
+  return null;
 }
