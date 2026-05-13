@@ -34,12 +34,13 @@ export class FixtureMissingError extends Error {
  *   - `"fixture"`     — only emitted in fixture mode.
  *   - `"finnhub"`     — live mode, Finnhub answered.
  *   - `"yahoo"`       — live mode, Yahoo answered (Finnhub absent or failed).
+ *   - `"fred"`        — live mode, FRED API answered (macro indicators).
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. **Never falls
  *                       back to fixture data in live mode** — serving stale
  *                       fixture as if it were live is worse than no data.
  */
-const sourceTag = z.enum(["fixture", "yahoo", "finnhub", "unavailable"]);
+const sourceTag = z.enum(["fixture", "yahoo", "finnhub", "fred", "unavailable"]);
 export type SourceTag = z.infer<typeof sourceTag>;
 
 const periodInput = z.object({

@@ -27,7 +27,7 @@ export const marketDataStateSchema = z.object({
   tool: z.string(),
   ticker: z.string(),
   date: z.string(),
-  provider: z.enum(["fixture", "yahoo", "finnhub", "unavailable"]),
+  provider: z.enum(["fixture", "yahoo", "finnhub", "fred", "unavailable"]),
   fetchedAt: z.string(),
   payload: z.unknown(),
 });
