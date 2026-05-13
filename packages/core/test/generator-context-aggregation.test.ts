@@ -261,7 +261,7 @@ describe("aggregateContextEntries", () => {
         {},
         fakeCtx
       )
-    ).rejects.toThrow(/`role` key/);
+    ).rejects.toThrow(/`role` is "system" \(a valid AI-SDK role\) but the `content` field is missing/);
   });
 });
 

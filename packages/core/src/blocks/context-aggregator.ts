@@ -122,8 +122,10 @@ function isContextObject(value: unknown): value is Record<string, unknown> {
 function describeBadRole(value: unknown): string {
   if (typeof value === "function") return "a function";
   if (value === null) return "null";
+  if (value === undefined) return "undefined";
   if (Array.isArray(value)) return "an array";
   if (typeof value === "object") return "an object";
+  if (typeof value === "number" && Number.isNaN(value)) return "NaN";
   return `${typeof value} ${JSON.stringify(value)}`;
 }
 
@@ -196,10 +198,14 @@ async function ingestEntry<TInput, TCtx extends BlockContext>(
     // likely intent.
     if ("role" in entry) {
       const sourceSuffix = source ? ` on "${source}"` : "";
+      const roleIsValidLiteral =
+        typeof entry.role === "string" && AI_SDK_MESSAGE_ROLES.has(entry.role);
+      const diagnosis = roleIsValidLiteral
+        ? `\`role\` is "${entry.role as string}" (a valid AI-SDK role) but the \`content\` field is missing`
+        : `\`role\` key whose value is ${describeBadRole(entry.role)} — not a valid AI-SDK message role`;
       throw new Error(
-        `Generator context entry${sourceSuffix} has a \`role\` key whose ` +
-        `value is ${describeBadRole(entry.role)} — not a valid AI-SDK ` +
-        `message role. If you meant a tag named "role", rename it (role is ` +
+        `Generator context entry${sourceSuffix} has a ${diagnosis}. ` +
+        `If you meant a tag named "role", rename it (role is ` +
         `a reserved context tag name). If you meant a pre-built message, ` +
         `set \`role\` to one of "system" | "user" | "assistant" | "tool" ` +
         `and include a \`content\` field.`
