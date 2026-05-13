@@ -12,6 +12,7 @@
  */
 import { generator, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import {
   AGENTS,
   PHASE_1_MEMO_KEYS,
@@ -19,18 +20,18 @@ import {
   type Phase1MemoShortName,
 } from "../agents";
 import {
+  commitMemo,
+  markError,
+  markWriting,
+} from "../memo-writer";
+import { tradingDesk } from "../services/trading-desk-capability";
+import {
   fundamentalsPrompt,
   newsPrompt,
   sentimentPrompt,
   technicalPrompt,
 } from "./prompts";
-import {
-  commitMemo,
-  markError,
-  markWriting,
-} from "../memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
-import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import {
   compute_indicators,
   get_balance_sheet,
@@ -49,33 +50,18 @@ import {
 // handler block, instantiated once at module load.
 const fetchArticle = createFetchTool();
 
+const ANALYST_INSTRUCTION =
+  "Call your tools to gather the data, synthesize, and emit a single JSON " +
+  "object matching the Thesis schema. Return the JSON object only.";
+
 type AnalystOptions = {
   shortName: Phase1MemoShortName;
   agentName: AgentName;
   systemPrompt: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tools: BlockDefinition<any, any>[];
   label: string;
 };
-
-/**
- * Map the flow's `costPreset` to a model intent. `intent/utility` resolves to
- * the cheap end of the configured model resolver; `intent/chat` to the
- * higher-quality tier. Both fall back to the resolver's default model.
- */
-function resolveAnalystModel(costPreset: "fast" | "full" | undefined): string {
-  return `intent/${costPreset}`;
-}
-
-function makeUserPrompt(input: { ticker: string; date: string; agentName: string }): string {
-  return [
-    `Ticker: ${input.ticker}`,
-    `As-of date: ${input.date}`,
-    `Role: ${AGENTS[input.agentName as AgentName]?.role ?? input.agentName}`,
-    "",
-    "Call your tools to gather the data, synthesize, and emit a single JSON",
-    "object matching the Thesis schema. Return the JSON object only.",
-  ].join("\n");
-}
 
 export function defineAnalyst({
   shortName,
@@ -88,17 +74,12 @@ export function defineAnalyst({
     name: `${shortName}-analyst-generator`,
     agentType: "sub",
     agentName,
-    model: (_input, ctx) =>
-      resolveAnalystModel(
-        (ctx.session.state.costPreset as "fast" | "full" | undefined) ?? "fast",
-      ),
+    // `model`, `ticker`, and `date` come from the tradingDesk capability's
+    // core preset. Per-analyst role is added inline below.
+    uses: [tradingDesk],
     prompt: systemPrompt,
-    user: (_input, ctx) =>
-      makeUserPrompt({
-        ticker: ctx.session.state.ticker as string,
-        date: ctx.session.state.date as string,
-        agentName,
-      }),
+    context: { role: () => AGENTS[agentName]?.role ?? agentName },
+    user: ANALYST_INSTRUCTION,
     tools,
     outputSchema: thesisOutputSchema,
   });
