@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-13
+
+### Skills declare a pattern (FIX-450)
+
+- `SKILL.md` frontmatter can now declare `pattern: task-board` (or any registered key) plus a `workers:` map, an `initial-tasks:` list, and a `pattern-config:` block. Activating the skill materializes a TaskCollection, builds worker generators on the fly, runs the pattern, and streams progress through `<TaskPlan />`. No code per skill — the same registry handles every default pattern.
+- Workers carry exactly one of `prompt`, `prompt-ref`, `block-ref`, or `agent-ref`. The first two ship resolution; `block-ref` looks up an optional caller-supplied registry; `agent-ref` is the reserved slot for the forthcoming Agents primitive, throwing clear deferral errors at activation until that work lands.
+- `@flow-state-dev/patterns` exports `defaultPatternRegistry` with eight entries: task-board, plan-and-execute, supervisor, parallel-tasks, routed-specialists, the deprecated `coordinator` alias, and stubs for event-actors and approval-gate. Each adapter validates its kebab-case `pattern-config` via a strict Zod schema — unknown keys reject at parse rather than silently passing through.
+- New `taskTools` capability exposes `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` for runtime mutation of the active pattern's board. Composes by default when `patternRegistry` is wired; opt out with `taskTools: false`. With no pattern active each tool returns a structured `no_active_pattern` error instead of throwing.
+- Kitchen-sink ships a `research-company` pattern skill — market-analyst + financial-analyst fan out in parallel, a primary synthesizer waits on both via `deps`, and the `<ActiveSkills>` badge renders the active pattern with a distinct icon.
+- FIX-422 closes with this work.
+
 ## 2026-05-12
 
 ### Block trace honors the originating block's `transient` flag (FIX-586)
