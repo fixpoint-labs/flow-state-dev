@@ -69,18 +69,13 @@ function toTaskInits(binding: PatternBinding): TaskInit[] {
   });
 }
 
-/** Stable collection id for a skill activation. */
-function skillCollectionId(skillName: string): string {
-  return `skill_${skillName}`;
-}
-
 /** Box a non-task-board block as a MaterializedPattern. The collectionId
  *  matches the convention task-board uses so the active-skill metadata
  *  stays consistent across patterns. */
-function wrapAsResult(block: unknown, skillName: string): MaterializedPattern {
+function wrapAsResult(block: unknown, deps: PatternRegistryDeps): MaterializedPattern {
   return {
     block: block as BlockDefinition,
-    collectionId: skillCollectionId(skillName),
+    collectionId: deps.collectionId,
     backing: "request",
   };
 }
@@ -118,7 +113,6 @@ const taskBoardFactory: PatternFactory = {
   configSchema: taskBoardConfigSchema,
   async fromConfig(binding, deps) {
     const workers = await buildWorkerRegistry(binding, deps);
-    const collectionId = skillCollectionId(deps.skillName);
     const scope = binding.collection?.scope ?? "request";
     if (scope === "session") {
       throw new Error(
@@ -131,14 +125,18 @@ const taskBoardFactory: PatternFactory = {
       name: `skill_${deps.skillName}`,
       collection: {
         backing: "request",
-        collectionId,
-        stateKey: collectionId,
+        collectionId: deps.collectionId,
+        stateKey: deps.collectionId,
       },
       workers,
       initialTasks: toTaskInits(binding),
       ...cfg,
     });
-    return { block: handle.block as unknown as BlockDefinition, collectionId, backing: "request" };
+    return {
+      block: handle.block as unknown as BlockDefinition,
+      collectionId: deps.collectionId,
+      backing: "request",
+    };
   },
 };
 
@@ -164,7 +162,7 @@ const planAndExecuteFactory: PatternFactory = {
       stepExecutor,
       ...cfg,
     });
-    return wrapAsResult(block, deps.skillName);
+    return wrapAsResult(block, deps);
   },
 };
 
@@ -214,7 +212,7 @@ const supervisorFactory: PatternFactory = {
             ...(reviewerEntry ? { reviewer: reviewerEntry } : {}),
             ...cfg,
           });
-    return wrapAsResult(block, deps.skillName);
+    return wrapAsResult(block, deps);
   },
 };
 
@@ -237,7 +235,7 @@ const parallelTasksFactory: PatternFactory = {
       worker,
       ...cfg,
     });
-    return wrapAsResult(block, deps.skillName);
+    return wrapAsResult(block, deps);
   },
 };
 
@@ -272,7 +270,7 @@ const routedSpecialistsFactory: PatternFactory = {
       specialists,
       ...cfg,
     });
-    return wrapAsResult(block, deps.skillName);
+    return wrapAsResult(block, deps);
   },
 };
 

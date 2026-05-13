@@ -52,6 +52,12 @@ export interface PatternRegistryDeps {
   defaultModelId?: string;
   /** Activation input ($ARGUMENTS substitution context). */
   input?: string;
+  /**
+   * Unique collection id for this activation. Adapters use it as the
+   * board's `collectionId` so two activations of the same pattern skill
+   * within one request render side-by-side instead of colliding.
+   */
+  collectionId: string;
 }
 
 /**

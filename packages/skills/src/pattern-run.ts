@@ -95,7 +95,9 @@ export function createPatternRunRoute(
         );
       }
 
-      // Validate kebab-case patternConfig against the factory's schema.
+      // Validate kebab-case patternConfig against the factory's schema and
+      // use the parsed output (so any z.coerce / z.default contributions are
+      // applied) — adapters read the coerced shape via binding.patternConfig.
       const parsed = factory.configSchema.safeParse(binding.patternConfig ?? {});
       if (!parsed.success) {
         const issues = parsed.error.issues
@@ -105,7 +107,12 @@ export function createPatternRunRoute(
           `Pattern '${binding.pattern}' config rejected by schema: ${issues}`,
         );
       }
+      const validatedBinding: PatternBinding = {
+        ...binding,
+        patternConfig: parsed.data as Record<string, unknown>,
+      };
 
+      const collectionId = nextSkillCollectionId(ctx, input.skillName);
       const deps: PatternRegistryDeps = {
         catalog,
         ...(blockRegistry ? { blocks: blockRegistry } : {}),
@@ -115,13 +122,14 @@ export function createPatternRunRoute(
         skillCollection: input.skillCollection,
         ...(defaultModelId ? { defaultModelId } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
+        collectionId,
       };
 
-      const materialized = await factory.fromConfig(binding, deps, ctx);
+      const materialized = await factory.fromConfig(validatedBinding, deps, ctx);
 
       // Stamp the active-skill entry so taskTools and the badge can find
       // the live collection metadata.
-      await recordActivePatternEntry(ctx, input.skillName, input.input, binding, {
+      await recordActivePatternEntry(ctx, input.skillName, input.input, validatedBinding, {
         collectionId: materialized.collectionId,
         backing: materialized.backing,
         ...(materialized.resourceCollectionKey
@@ -132,6 +140,31 @@ export function createPatternRunRoute(
       return materialized.block as BlockDefinition<typeof patternRunInputSchema, typeof patternRunOutputSchema>;
     },
   });
+}
+
+/**
+ * Build a unique TaskCollection id for a single pattern-skill activation.
+ * Two activations of the same skill within one request must NOT collide;
+ * the substrate keys task state by collectionId on `ctx.request.state`.
+ *
+ * Format: `skill_<name>_<requestId>_<n>`. The per-request counter lives
+ * on the request context's atomicState so concurrent runs serialize the
+ * increment.
+ */
+function nextSkillCollectionId(ctx: BlockContext, skillName: string): string {
+  const request = (ctx as unknown as {
+    request?: { identity?: { id?: string }; state?: { _skillActivationN?: Record<string, number> } };
+  }).request;
+  const requestId = request?.identity?.id ?? "req";
+  const counters = (request?.state?._skillActivationN ?? {}) as Record<string, number>;
+  const n = (counters[skillName] ?? 0) + 1;
+  counters[skillName] = n;
+  // Best-effort write — the counter is advisory; if the host doesn't expose
+  // mutable state this just degrades to per-call uniqueness via Date.now().
+  if (request?.state) {
+    (request.state as { _skillActivationN?: Record<string, number> })._skillActivationN = counters;
+  }
+  return `skill_${skillName}_${requestId}_${n}`;
 }
 
 async function recordActivePatternEntry(

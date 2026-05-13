@@ -468,7 +468,9 @@ function parseInitialTasksField(
 }
 
 function assertAcyclic(tasks: TaskInitYaml[]): void {
-  // Kahn's algorithm; throws naming the first detected cycle vertex.
+  // Kahn's algorithm decides acyclicity; on failure, walk one of the
+  // surviving SCC nodes back to itself via DFS to surface a concrete
+  // cycle path (more debuggable than "involves a, b, c, ...").
   const indeg = new Map<string, number>();
   const adj = new Map<string, string[]>();
   for (const t of tasks) {
@@ -494,10 +496,42 @@ function assertAcyclic(tasks: TaskInitYaml[]): void {
   }
   if (visited !== tasks.length) {
     const remaining = [...indeg.entries()].filter(([, n]) => n > 0).map(([id]) => id);
+    const cycle = findCyclePath(adj, remaining) ?? remaining;
     throw new Error(
-      `SKILL.md \`initial-tasks\` deps form a cycle involving: ${remaining.join(", ")}`,
+      `SKILL.md \`initial-tasks\` deps form a cycle: ${cycle.join(" → ")}`,
     );
   }
+}
+
+/** DFS from each surviving node to find one closed cycle path. */
+function findCyclePath(
+  adj: Map<string, string[]>,
+  surviving: string[],
+): string[] | undefined {
+  const set = new Set(surviving);
+  for (const start of surviving) {
+    const stack: string[] = [start];
+    const onStack = new Set<string>([start]);
+    const visit = (node: string): string[] | undefined => {
+      for (const next of adj.get(node) ?? []) {
+        if (!set.has(next)) continue;
+        if (onStack.has(next)) {
+          const cycleStart = stack.indexOf(next);
+          return [...stack.slice(cycleStart), next];
+        }
+        stack.push(next);
+        onStack.add(next);
+        const result = visit(next);
+        if (result) return result;
+        stack.pop();
+        onStack.delete(next);
+      }
+      return undefined;
+    };
+    const result = visit(start);
+    if (result) return result;
+  }
+  return undefined;
 }
 
 function parsePatternConfigField(v: unknown): Record<string, unknown> | undefined {

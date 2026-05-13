@@ -28,8 +28,31 @@ import type { TaskCollectionRef } from "@flow-state-dev/tasks";
 const noActivePatternError = { ok: false as const, error: "no_active_pattern" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
 
+/** Shared output shape for the six tasked-by-id mutators. */
+const okOrError = z.union([
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+]);
+
 function getCollection(ctx: BlockContext): TaskCollectionRef | undefined {
   return getActivePatternCollection(ctx);
+}
+
+/**
+ * Run a mutator against the active pattern's TaskCollection for a known
+ * task id. Returns the no-pattern / not-found structured error when
+ * appropriate, otherwise `{ ok: true }` after the mutator resolves.
+ */
+async function withTask(
+  ctx: BlockContext,
+  taskId: string,
+  mutator: (collection: TaskCollectionRef) => Promise<void>,
+): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
+  const collection = getCollection(ctx);
+  if (!collection) return noActivePatternError;
+  if (!collection.get(taskId)) return taskNotFoundError(taskId);
+  await mutator(collection);
+  return { ok: true as const };
 }
 
 // ---------------------------------------------------------------------------
@@ -69,85 +92,45 @@ const assignTask = handler({
   name: "assignTask",
   description: "Reassign an existing task to a different worker.",
   inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    await collection.setAssignee(input.taskId, input.assignee);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee)),
 });
 
 const completeTask = handler({
   name: "completeTask",
   description: "Mark a task complete with its output.",
   inputSchema: z.object({ taskId: z.string(), output: z.unknown() }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    await collection.complete(input.taskId, input.output);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, (c) => c.complete(input.taskId, input.output)),
 });
 
 const failTask = handler({
   name: "failTask",
   description: "Mark a task failed with an error message.",
   inputSchema: z.object({ taskId: z.string(), error: z.string() }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    await collection.fail(input.taskId, input.error);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, (c) => c.fail(input.taskId, input.error)),
 });
 
 const blockTask = handler({
   name: "blockTask",
   description: "Block a task pending an external condition.",
   inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    await collection.block(input.taskId, input.reason);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, (c) => c.block(input.taskId, input.reason)),
 });
 
 const cancelTask = handler({
   name: "cancelTask",
   description: "Cancel a task (terminal). Use when the work is no longer needed.",
   inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    await collection.cancel(input.taskId, input.reason);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, (c) => c.cancel(input.taskId, input.reason)),
 });
 
 const updateTask = handler({
@@ -164,22 +147,16 @@ const updateTask = handler({
       removeLabel: z.string().optional(),
     }),
   }),
-  outputSchema: z.union([
-    z.object({ ok: z.literal(true) }),
-    z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-  ]),
-  execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
-    if (!collection) return noActivePatternError;
-    if (!collection.get(input.taskId)) return taskNotFoundError(input.taskId);
-    const { patch } = input;
-    if (patch.priority !== undefined) await collection.setPriority(input.taskId, patch.priority);
-    if (patch.assignee !== undefined) await collection.setAssignee(input.taskId, patch.assignee);
-    if (patch.metadata !== undefined) await collection.patchMetadata(input.taskId, patch.metadata);
-    if (patch.addLabel !== undefined) await collection.addLabel(input.taskId, patch.addLabel);
-    if (patch.removeLabel !== undefined) await collection.removeLabel(input.taskId, patch.removeLabel);
-    return { ok: true as const };
-  },
+  outputSchema: okOrError,
+  execute: (input, ctx) =>
+    withTask(ctx, input.taskId, async (c) => {
+      const { patch } = input;
+      if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
+      if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
+      if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
+      if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
+      if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
+    }),
 });
 
 const listTasks = handler({

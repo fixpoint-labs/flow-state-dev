@@ -42,6 +42,7 @@ import {
 import { inlineActivate } from "./inline-activate";
 import { createPatternRunRoute } from "./pattern-run";
 import type { PatternRegistry } from "./pattern-registry";
+import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute, toSkill, validateSkillName } from "./skill-md";
 import path from "node:path";
 
@@ -331,15 +332,3 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
   });
 }
 
-/** Strip a leading `---`-delimited frontmatter block from a SKILL.md body. */
-function stripFrontmatter(text: string): string {
-  if (!text.startsWith("---")) return text;
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return text;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      return lines.slice(i + 1).join("\n").replace(/^\r?\n/, "");
-    }
-  }
-  return text;
-}

@@ -31,6 +31,7 @@ function deps(skillName = "demo"): PatternRegistryDeps {
     skillName,
     skillCollection: stubCollection(),
     defaultModelId: "openai/gpt-4o-mini",
+    collectionId: `skill_${skillName}_r1_1`,
   };
 }
 
@@ -73,7 +74,7 @@ describe("defaultPatternRegistry — task-board adapter", () => {
       {} as never,
     );
     expect(block.block).toBeDefined();
-    expect(block.collectionId).toBe("skill_demo");
+    expect(block.collectionId).toBe("skill_demo_r1_1");
   });
 
   it("rejects session-scope collections (Wave 1 limitation)", async () => {
@@ -121,7 +122,7 @@ describe("defaultPatternRegistry — single-worker patterns", () => {
       {} as never,
     );
     expect(block.block).toBeDefined();
-    expect(block.collectionId).toBe("skill_demo");
+    expect(block.collectionId).toBe("skill_demo_r1_1");
   });
 });
 
@@ -149,7 +150,7 @@ describe("defaultPatternRegistry — supervisor adapter", () => {
       {} as never,
     );
     expect(block.block).toBeDefined();
-    expect(block.collectionId).toBe("skill_demo");
+    expect(block.collectionId).toBe("skill_demo_r1_1");
   });
 
   it("extracts a 'reviewer' worker into the reviewer slot", async () => {
@@ -167,7 +168,7 @@ describe("defaultPatternRegistry — supervisor adapter", () => {
       {} as never,
     );
     expect(block.block).toBeDefined();
-    expect(block.collectionId).toBe("skill_demo");
+    expect(block.collectionId).toBe("skill_demo_r1_1");
   });
 });
 
@@ -187,7 +188,7 @@ describe("defaultPatternRegistry — routed-specialists adapter", () => {
       {} as never,
     );
     expect(block.block).toBeDefined();
-    expect(block.collectionId).toBe("skill_demo");
+    expect(block.collectionId).toBe("skill_demo_r1_1");
   });
 });
 

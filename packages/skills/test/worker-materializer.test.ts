@@ -12,6 +12,7 @@ function deps(overrides: Partial<PatternRegistryDeps> = {}): PatternRegistryDeps
     skillName: "demo",
     skillCollection: collection,
     defaultModelId: "openai/gpt-4o-mini",
+    collectionId: "skill_demo_r1_1",
     ...overrides,
   };
 }

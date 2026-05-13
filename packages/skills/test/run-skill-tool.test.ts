@@ -287,7 +287,7 @@ function recordingFactory(opts: { key: string; impl?: () => void }): PatternFact
       });
       return {
         block: block as never,
-        collectionId: `skill_${deps.skillName}`,
+        collectionId: deps.collectionId,
         backing: "request",
       };
     },
@@ -322,10 +322,21 @@ describe("createRunSkillTool — pattern mode", () => {
     expect(dispatched).toBe(true);
     expect(result.mode).toBe("pattern");
     expect(result.skill).toBe("research");
-    const activeSkills = (ctx as { session: { state: { activeSkills?: Array<{ mode: string; pattern?: unknown }> } } })
-      .session.state.activeSkills;
+    const activeSkills = (ctx as {
+      session: {
+        state: {
+          activeSkills?: Array<{
+            mode: string;
+            pattern?: { patternKey: string; collectionId: string; backing: string };
+          }>;
+        };
+      };
+    }).session.state.activeSkills;
     expect(activeSkills?.[0]?.mode).toBe("pattern");
-    expect(activeSkills?.[0]?.pattern).toBeDefined();
+    expect(activeSkills?.[0]?.pattern?.patternKey).toBe("task-board");
+    // Unique-per-activation id: skill_<name>_<requestId>_<n>
+    expect(activeSkills?.[0]?.pattern?.collectionId).toMatch(/^skill_research_r1_1$/);
+    expect(activeSkills?.[0]?.pattern?.backing).toBe("request");
   });
 
   it("fails with a clear error when pattern mode is used but no registry was wired", async () => {

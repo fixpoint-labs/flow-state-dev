@@ -21,6 +21,7 @@ import { z } from "zod";
 import type { TaskWorkerInput } from "@flow-state-dev/tasks";
 import type { PatternRegistryDeps } from "./pattern-registry";
 import { skillFileKey } from "./collection";
+import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
 import type { WorkerSpec } from "@flow-state-dev/core";
 
@@ -125,19 +126,15 @@ async function resolvePromptBody(
   deps: PatternRegistryDeps,
 ): Promise<string> {
   if (spec.prompt !== undefined) return spec.prompt;
-  if (spec.promptRef === undefined) {
-    // Defensive — parser validates exactly one of the four resolution
-    // fields, so this branch should be unreachable for prompt-style
-    // workers. Surfaced as a precise error if it ever fires.
-    throw new Error(
-      `Worker '${workerKey}': internal error — neither prompt nor prompt-ref set`,
-    );
-  }
-  const key = skillFileKey(deps.skillName, spec.promptRef);
+  // Parser-enforced invariant: exactly one of the four resolution fields
+  // is set on every WorkerSpec, and the caller has already dispatched
+  // block-ref / agent-ref branches before reaching here.
+  const promptRef = spec.promptRef!;
+  const key = skillFileKey(deps.skillName, promptRef);
   const ref = deps.skillCollection.getOptional(key);
   if (!ref) {
     throw new Error(
-      `Worker '${workerKey}': prompt-ref '${spec.promptRef}' not found in skill folder (resolved key: ${key})`,
+      `Worker '${workerKey}': prompt-ref '${promptRef}' not found in skill folder (resolved key: ${key})`,
     );
   }
   const content = (await ref.readContent()) ?? "";
@@ -187,15 +184,3 @@ function buildUserMessage(input: WorkerInput): string {
   return parts.join("\n");
 }
 
-/** Strip a leading `---`-delimited frontmatter block. */
-function stripFrontmatter(text: string): string {
-  if (!text.startsWith("---")) return text;
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return text;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      return lines.slice(i + 1).join("\n").replace(/^\r?\n/, "");
-    }
-  }
-  return text;
-}
