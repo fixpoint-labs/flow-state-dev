@@ -221,6 +221,48 @@ describe("aggregateContextEntries", () => {
     expect(result.passThrough).toEqual([msg]);
     expect(result.tagged).toEqual({});
   });
+
+  it("passes through each AI-SDK role literal", async () => {
+    const msgs = [
+      { role: "system", content: "s" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+      { role: "tool", content: "t" },
+    ];
+    const result = await aggregateContextEntries(msgs, {}, fakeCtx);
+    expect(result.passThrough).toEqual(msgs);
+  });
+
+  it("throws a specific error when `role` is a function (FIX-592)", async () => {
+    await expect(
+      aggregateContextEntries(
+        [{ role: () => "Fundamentals Analyst", data: () => "x" }],
+        {},
+        fakeCtx,
+        "repro"
+      )
+    ).rejects.toThrow(/`role` key.*not a valid AI-SDK message role.*reserved context tag name.*"system" \| "user" \| "assistant" \| "tool"/s);
+  });
+
+  it("throws when `role` is a non-literal string (FIX-592)", async () => {
+    await expect(
+      aggregateContextEntries(
+        [{ role: "manager", content: "x" }],
+        {},
+        fakeCtx
+      )
+    ).rejects.toThrow(/`role` key/);
+  });
+
+  it("throws when `role` is a valid literal but `content` is missing (FIX-592)", async () => {
+    await expect(
+      aggregateContextEntries(
+        [{ role: "system", body: "x" }],
+        {},
+        fakeCtx
+      )
+    ).rejects.toThrow(/`role` key/);
+  });
 });
 
 describe("objectFormHasNestedFunction", () => {
