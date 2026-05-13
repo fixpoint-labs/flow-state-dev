@@ -55,6 +55,25 @@ export interface PatternRegistryDeps {
 }
 
 /**
+ * Result of materializing a pattern factory. Wrapped (rather than the
+ * bare block) so async resolution doesn't trip on `SequencerDefinition`'s
+ * `.then(...)` chain method — JS would otherwise treat the sequencer as
+ * a thenable and feed `resolve` into the sequencer's `.then` as a block.
+ */
+export interface MaterializedPattern {
+  block: BlockDefinition;
+  /**
+   * Stable id the runSkill router stamps onto the active-skill entry
+   * so `taskTools` and other surfaces can locate the live collection.
+   */
+  collectionId: string;
+  /** How the collection is stored. */
+  backing: "request" | "resource";
+  /** Resource registry key when `backing === "resource"`. */
+  resourceCollectionKey?: string;
+}
+
+/**
  * Factory describing one named pattern. Registered factories are
  * looked up by `key` and asked to materialize themselves from a
  * parsed `PatternBinding` plus deps.
@@ -74,7 +93,7 @@ export interface PatternFactory {
     binding: PatternBinding,
     deps: PatternRegistryDeps,
     ctx: BlockContext,
-  ): Promise<BlockDefinition>;
+  ): Promise<MaterializedPattern>;
 }
 
 /** Lookup surface consumed by the pattern dispatch route. */

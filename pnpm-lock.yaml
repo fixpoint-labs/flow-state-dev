@@ -595,6 +595,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@flow-state-dev/tasks':
         specifier: workspace:*
         version: link:../tasks

@@ -74,6 +74,7 @@ export {
 
 export {
   createPatternRegistry,
+  type MaterializedPattern,
   type PatternFactory,
   type PatternRegistry,
   type PatternRegistryDeps,
