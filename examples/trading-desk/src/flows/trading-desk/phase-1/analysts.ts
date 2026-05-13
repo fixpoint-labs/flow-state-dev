@@ -23,7 +23,7 @@ import {
   newsPrompt,
   sentimentPrompt,
   technicalPrompt,
-} from "../prompts";
+} from "./prompts";
 import {
   commitMemo,
   markError,

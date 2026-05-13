@@ -1,23 +1,22 @@
 /**
- * Unit tests for `PolymarketDataSource` — covers normalization, sort order,
- * filtering of closed/inactive markets, and the outcomePrices → probability
- * fallback chain.
+ * Unit tests for `fetchPolymarketTop` — covers normalization, sort order,
+ * filtering of closed/inactive markets, the outcomePrices → probability
+ * fallback chain, and topN capping.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PolymarketDataSource } from "../src/flows/trading-desk/blocks/tools/polymarket-data-source";
+import { fetchPolymarketTop } from "../src/flows/trading-desk/phase-1/tools/get_prediction_markets";
 
 function mockFetch(payload: unknown) {
-  const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+  return vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(JSON.stringify(payload), { status: 200 }),
   );
-  return spy;
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PolymarketDataSource", () => {
+describe("fetchPolymarketTop", () => {
   it("flattens markets across events and sorts by liquidity desc", async () => {
     mockFetch({
       events: [
@@ -53,8 +52,7 @@ describe("PolymarketDataSource", () => {
         },
       ],
     });
-    const ds = new PolymarketDataSource();
-    const out = await ds.get_prediction_markets({ ticker: "NVDA", date: "2026-05-06" });
+    const out = await fetchPolymarketTop({ ticker: "NVDA", date: "2026-05-06" });
     expect(out.source).toBe("polymarket");
     expect(out.markets.map((m) => m.slug)).toEqual(["q-high-liq", "q-low-liq"]);
     expect(out.markets[0]!.yesProbability).toBeCloseTo(0.6, 5);
@@ -74,8 +72,7 @@ describe("PolymarketDataSource", () => {
         },
       ],
     });
-    const ds = new PolymarketDataSource();
-    const out = await ds.get_prediction_markets({ ticker: "NVDA", date: "2026-05-06" });
+    const out = await fetchPolymarketTop({ ticker: "NVDA", date: "2026-05-06" });
     expect(out.markets.map((m) => m.slug)).toEqual(["k"]);
   });
 
@@ -90,8 +87,7 @@ describe("PolymarketDataSource", () => {
         },
       ],
     });
-    const ds = new PolymarketDataSource();
-    const out = await ds.get_prediction_markets({ ticker: "NVDA", date: "2026-05-06" });
+    const out = await fetchPolymarketTop({ ticker: "NVDA", date: "2026-05-06" });
     expect(out.markets[0]!.yesProbability).toBeCloseTo(0.42, 5);
   });
 
@@ -107,20 +103,17 @@ describe("PolymarketDataSource", () => {
       closed: false,
     }));
     mockFetch({ events: [{ title: "E", markets }] });
-    const ds = new PolymarketDataSource({ topN: 5 });
-    const out = await ds.get_prediction_markets({ ticker: "NVDA", date: "2026-05-06" });
+    const out = await fetchPolymarketTop({ ticker: "NVDA", date: "2026-05-06" }, 5);
     expect(out.markets).toHaveLength(5);
-    // Highest liquidity first.
-    expect(out.markets[0]!.slug).toBe("q24");
+    expect(out.markets[0]!.slug).toBe("q24"); // highest liquidity first
   });
 
-  it("throws on HTTP error so the chain falls through", async () => {
+  it("throws on HTTP error so the tool can return emptyPayload", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("rate limited", { status: 429 }),
     );
-    const ds = new PolymarketDataSource();
     await expect(
-      ds.get_prediction_markets({ ticker: "NVDA", date: "2026-05-06" }),
+      fetchPolymarketTop({ ticker: "NVDA", date: "2026-05-06" }),
     ).rejects.toThrow(/HTTP 429/);
   });
 });

@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import { thesisOutputSchema } from "../src/flows/trading-desk/blocks/thesis-schema";
+import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,

@@ -13,7 +13,7 @@ import {
   simpleMovingAverage,
   trendLabel,
   type Bar,
-} from "../src/flows/trading-desk/blocks/tools/indicators-math";
+} from "../src/flows/trading-desk/phase-1/tools/indicators-math";
 
 function bar(date: string, close: number, range = 1): Bar {
   return {

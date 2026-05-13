@@ -1,17 +1,12 @@
 /**
- * `DataSource` interface and per-tool schemas.
+ * Shared tool input/output schemas + the `ToolName` union.
  *
- * The interface is the seam between the analyst tool blocks and the actual
- * data: a hand-curated `FixtureDataSource`, a `YahooDataSource` wrapping
- * `yahoo-finance2` v3, and a `FinnhubDataSource` hitting the Finnhub REST
- * API. A `MultiSourceDataSource` chains them as Finnhub → Yahoo → Fixture
- * (fixture is the always-succeeds floor). Each tool returns canonical-shape
- * JSON plus a `source: "fixture" | "yahoo" | "finnhub"` tag identifying the
- * concrete provider that answered.
+ * Each Phase 1 tool has a fixed shape that all providers normalize to: a
+ * `source` provenance tag plus the canonical fields the analyst prompts
+ * expect. Splitting these out of the tool files keeps each tool file focused
+ * on dispatch logic (fixture vs. live, provider preference).
  */
 import { z } from "zod";
-
-export type DataSourceMode = "fixture" | "live";
 
 export class FixtureMissingError extends Error {
   readonly ticker: string;
@@ -27,20 +22,18 @@ export class FixtureMissingError extends Error {
 }
 
 /**
- * Provenance tag stamped on every tool output. Distinct from the session-state
- * `dataSource` enum (`"fixture" | "live"`) — that picks the upstream *strategy*,
- * while this tag identifies the *concrete provider* that answered.
+ * Provenance tag stamped on every tool output. The session-state `dataSource`
+ * enum picks the *strategy*; this tag identifies the *concrete provider*.
  *
  *   - `"fixture"`     — only emitted in fixture mode.
  *   - `"finnhub"`     — live mode, Finnhub answered.
- *   - `"yahoo"`       — live mode, Yahoo answered (Finnhub absent or failed).
- *   - `"fred"`        — live mode, FRED API answered (macro indicators).
- *   - `"polymarket"`  — live mode, Polymarket Gamma API answered (prediction
- *                       markets).
+ *   - `"yahoo"`       — live mode, Yahoo answered.
+ *   - `"fred"`        — live mode, FRED API answered.
+ *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
- *                       empty/zeroed schema-valid skeleton. **Never falls
- *                       back to fixture data in live mode** — serving stale
- *                       fixture as if it were live is worse than no data.
+ *                       empty/zeroed schema-valid skeleton. Never silently
+ *                       substitutes fixture data — false data is worse than
+ *                       no data for analyst reasoning.
  */
 const sourceTag = z.enum([
   "fixture",
@@ -168,6 +161,21 @@ export const socialSentimentSchema = z.object({
   shortInterestPct: z.number(),
 });
 
+const redditMention = z.object({
+  subreddit: z.string(),
+  title: z.string(),
+  score: z.number(),
+  url: z.string().optional(),
+});
+
+export const redditMentionsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  mentions7d: z.number(),
+  topThreads: z.array(redditMention),
+});
+
 const predictionMarket = z.object({
   question: z.string(),
   eventTitle: z.string().nullable(),
@@ -187,21 +195,6 @@ export const predictionMarketsSchema = z.object({
   ticker: z.string(),
   asOf: z.string(),
   markets: z.array(predictionMarket),
-});
-
-const redditMention = z.object({
-  subreddit: z.string(),
-  title: z.string(),
-  score: z.number(),
-  url: z.string().optional(),
-});
-
-export const redditMentionsSchema = z.object({
-  source: sourceTag,
-  ticker: z.string(),
-  asOf: z.string(),
-  mentions7d: z.number(),
-  topThreads: z.array(redditMention),
 });
 
 export const toolInputSchemas = {
@@ -237,21 +230,6 @@ export type ToolName = keyof typeof toolInputSchemas;
 export type ToolInput<T extends ToolName> = z.infer<(typeof toolInputSchemas)[T]>;
 export type ToolOutput<T extends ToolName> = z.infer<(typeof toolOutputSchemas)[T]>;
 
-export interface DataSource {
-  readonly mode: DataSourceMode;
-  get_balance_sheet(input: ToolInput<"get_balance_sheet">): Promise<ToolOutput<"get_balance_sheet">>;
-  get_income_statement(input: ToolInput<"get_income_statement">): Promise<ToolOutput<"get_income_statement">>;
-  get_cashflow(input: ToolInput<"get_cashflow">): Promise<ToolOutput<"get_cashflow">>;
-  get_fundamentals(input: ToolInput<"get_fundamentals">): Promise<ToolOutput<"get_fundamentals">>;
-  get_price_history(input: ToolInput<"get_price_history">): Promise<ToolOutput<"get_price_history">>;
-  compute_indicators(input: ToolInput<"compute_indicators">): Promise<ToolOutput<"compute_indicators">>;
-  search_news(input: ToolInput<"search_news">): Promise<ToolOutput<"search_news">>;
-  get_macro_indicators(input: ToolInput<"get_macro_indicators">): Promise<ToolOutput<"get_macro_indicators">>;
-  get_social_sentiment(input: ToolInput<"get_social_sentiment">): Promise<ToolOutput<"get_social_sentiment">>;
-  get_reddit_mentions(input: ToolInput<"get_reddit_mentions">): Promise<ToolOutput<"get_reddit_mentions">>;
-  get_prediction_markets(input: ToolInput<"get_prediction_markets">): Promise<ToolOutput<"get_prediction_markets">>;
-}
-
 const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_balance_sheet: "balance-sheet.json",
   get_income_statement: "income-statement.json",
@@ -268,4 +246,12 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
 
 export function fixtureFileName(tool: ToolName): string {
   return TOOL_FILE_NAMES[tool];
+}
+
+/** Mode picker — read by every tool's `execute` to branch between fixture
+ *  and live behavior. Default to `"fixture"` if state isn't set. */
+export function pickMode(ctx: {
+  session: { state: Record<string, unknown> };
+}): "fixture" | "live" {
+  return (ctx.session.state.dataSource as "fixture" | "live") ?? "fixture";
 }

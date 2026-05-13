@@ -1,13 +1,13 @@
 /**
- * Empty payloads for live-mode unavailability.
+ * Empty schema-valid payloads tagged `source: "unavailable"`.
  *
- * When live mode is selected but no provider can answer a given tool, we emit
- * a schema-valid skeleton tagged `source: "unavailable"` rather than falling
- * back to fixture. The analyst sees explicit zeros / empty arrays and the
- * transcript pill marks the tool result as unavailable, which is honest about
- * the run's actual coverage. Fixture-mode behavior is unchanged.
+ * Returned by tools in live mode when no provider can answer (either because
+ * none is wired or because every wired provider failed). The analyst sees
+ * explicit zeros / empty arrays and the transcript pill marks the result as
+ * unavailable — honest about coverage, no false fixture data masquerading as
+ * live data.
  */
-import type { ToolInput, ToolName, ToolOutput } from "./data-source";
+import type { ToolInput, ToolName, ToolOutput } from "./schemas";
 
 type EmptyBuilder<T extends ToolName> = (input: ToolInput<T>) => ToolOutput<T>;
 
