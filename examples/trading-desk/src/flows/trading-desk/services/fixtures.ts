@@ -8,7 +8,6 @@
  */
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import {
   FixtureMissingError,
   fixtureFileName,
@@ -16,9 +15,11 @@ import {
   type ToolOutput,
 } from "../phase-1/tools/schemas";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-// services/ is three levels deep relative to the example root.
-const FIXTURE_ROOT = path.resolve(HERE, "../../../../fixtures");
+// Anchor at `process.cwd()`, which Next.js dev / Next.js build / vitest all
+// set to the trading-desk package directory. `import.meta.url` is unreliable
+// here because Turbopack rewrites it to a virtual path during bundling, so a
+// relative walk via the file location lands inside `.next/`.
+const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
 
 export type LoadFixtureOptions = {
   /** Override the fixture root for tests. */
