@@ -54,8 +54,7 @@ export const tradingDesk = defineCapability({
 
     /** Required always-on slice: model selection + ticker/date context. */
     core: {
-      model: (_input, ctx) =>
-        ctx.session.state.costPreset === "full" ? "intent/chat" : "intent/utility",
+      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,        
       context: {
         ticker: (_input, ctx) => ctx.session.state.ticker,
         date: (_input, ctx) => ctx.session.state.date,
