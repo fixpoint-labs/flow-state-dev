@@ -33,6 +33,27 @@ export interface ActiveSkillEntry {
    * up-front router.
    */
   source?: IntentSource;
+  /**
+   * Set when `mode === "pattern"`. Carries enough info for the
+   * `taskTools` capability to reconstruct the live TaskCollection from
+   * any block context via `getOrCreateTaskCollection`.
+   */
+  pattern?: ActivePatternMeta;
+}
+
+/** Metadata describing the live pattern run a `pattern`-mode entry refers to. */
+export interface ActivePatternMeta {
+  /** Pattern key (e.g. `"task-board"`). */
+  patternKey: string;
+  /** TaskCollection id used at activation time. */
+  collectionId: string;
+  /** Backing kind so the helper can call getOrCreateTaskCollection correctly. */
+  backing: "request" | "resource";
+  /**
+   * Resource registry key for the backing collection when `backing === "resource"`.
+   * Undefined for the request backing.
+   */
+  resourceCollectionKey?: string;
 }
 
 /** Zod schema for the session-state fragment the capability declares. */
@@ -45,6 +66,14 @@ export const activeSkillStateSchema = z.object({
         input: z.string().optional(),
         activatedAt: z.number(),
         source: intentSourceSchema.optional(),
+        pattern: z
+          .object({
+            patternKey: z.string(),
+            collectionId: z.string(),
+            backing: z.enum(["request", "resource"]),
+            resourceCollectionKey: z.string().optional(),
+          })
+          .optional(),
       }),
     )
     .optional()

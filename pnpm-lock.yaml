@@ -683,6 +683,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/tasks':
+        specifier: workspace:*
+        version: link:../tasks
       zod:
         specifier: ^3.24.1
         version: 3.25.76

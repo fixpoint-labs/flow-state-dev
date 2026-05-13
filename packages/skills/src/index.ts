@@ -68,8 +68,25 @@ export {
   pushActiveSkill,
   readActiveSkills,
   unionAllowedTools,
+  type ActivePatternMeta,
   type ActiveSkillEntry,
 } from "./active-skill-state";
+
+export {
+  createPatternRegistry,
+  type PatternFactory,
+  type PatternRegistry,
+  type PatternRegistryDeps,
+} from "./pattern-registry";
+
+export {
+  materializeWorker,
+} from "./worker-materializer";
+
+export {
+  getActivePatternCollection,
+  getActivePatternMeta,
+} from "./active-pattern-collection";
 
 export {
   ensureSeeded,
