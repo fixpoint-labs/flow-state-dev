@@ -6,31 +6,36 @@
       "date": "2026-05-05",
       "headline": "Hyperscaler Q1 capex prints above consensus; AI infra orders accelerate",
       "source": "Bloomberg",
-      "category": "demand"
+      "category": "demand",
+      "summary": "The four largest cloud providers reported Q1 capex roughly 8% above consensus, with management commentary emphasizing AI infrastructure as the primary driver and forward orders extending into 2027."
     },
     {
       "date": "2026-05-04",
       "headline": "DOJ extends antitrust review of NVIDIA's networking-stack bundling",
       "source": "Reuters",
-      "category": "regulation"
+      "category": "regulation",
+      "summary": "DOJ requested additional information on how NVIDIA prices its InfiniBand and Spectrum-X networking products when sold alongside GPUs. Review extension adds an estimated three to six months; no formal complaint filed."
     },
     {
       "date": "2026-05-02",
       "headline": "Foundry partner reports 3nm yield improvement, ahead of plan",
       "source": "Nikkei",
-      "category": "supply"
+      "category": "supply",
+      "summary": "TSMC disclosed defect-density improvements on its N3P node that should support higher GPU output in H2. Supply analysts read it as easing the bottleneck on NVIDIA's data-center allocation."
     },
     {
       "date": "2026-04-30",
       "headline": "Insider selling: VP of Sales files for ~$8M secondary",
       "source": "SEC Form 4",
-      "category": "insider"
+      "category": "insider",
+      "summary": "Filing shows a planned 10b5-1 sale by an SVP-level executive. Aggregate size remains small relative to insider holdings and prior sales by other officers in the quarter."
     },
     {
       "date": "2026-04-28",
       "headline": "Sovereign AI deal with Saudi PIF for 100k GPUs disclosed",
       "source": "WSJ",
-      "category": "demand"
+      "category": "demand",
+      "summary": "Public Investment Fund will purchase approximately 100,000 H200-class GPUs over an 18-month delivery schedule for a state-backed AI cluster, with options to expand."
     }
   ]
 }

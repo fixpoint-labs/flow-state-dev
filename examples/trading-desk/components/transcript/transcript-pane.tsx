@@ -28,17 +28,7 @@ import {
   AGENTS,
   type AgentName,
 } from "@/src/flows/trading-desk/agents";
-import type { SourceTag } from "@/src/flows/trading-desk/phase-1/tools/schemas";
 import { cn } from "@/lib/utils";
-
-const VALID_SOURCES = new Set<string>([
-  "fixture",
-  "yahoo",
-  "finnhub",
-  "fred",
-  "polymarket",
-  "unavailable",
-]);
 
 type Props = {
   session: SessionView;
@@ -139,8 +129,8 @@ function buildRows(items: OutputItem[]): ReactElement[] {
       const argsPreview = oneLine(argsStr) || "(no args)";
       const output = tool.output as Record<string, unknown> | undefined;
       const source =
-        output !== undefined && typeof output.source === "string" && VALID_SOURCES.has(output.source)
-          ? (output.source as SourceTag)
+        output !== undefined && typeof output.source === "string"
+          ? output.source
           : undefined;
       const bytes =
         output !== undefined ? JSON.stringify(output).length : undefined;

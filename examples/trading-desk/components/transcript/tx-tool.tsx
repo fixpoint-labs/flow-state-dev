@@ -13,7 +13,6 @@ import { useState, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { AgentBadge } from "@/components/agent-badge";
 import type { AgentName } from "@/src/flows/trading-desk/agents";
-import type { SourceTag } from "@/src/flows/trading-desk/phase-1/tools/schemas";
 import { cn } from "@/lib/utils";
 
 export type TxToolProps = {
@@ -21,7 +20,12 @@ export type TxToolProps = {
   toolName: string;
   argsPreview: string;
   status: "in_progress" | "completed" | "incomplete" | "failed";
-  source?: SourceTag;
+  /** Provider tag from the tool's output (free-form string — trading-desk
+   *  tools emit `fixture | yahoo | finnhub | fred | polymarket | unavailable`,
+   *  the `fetch` tool from `@flow-state-dev/tools` emits `jina | firecrawl |
+   *  builtin`, etc). Display logic groups all non-fixture / non-unavailable
+   *  values under the "live" tone but always shows the literal name. */
+  source?: string;
   output?: unknown;
   durationMs?: number;
   bytes?: number;
@@ -121,11 +125,10 @@ export function TxTool({
  * Source tag pill. Three visual tones:
  *   - `fixture`     → uses `--c-fixture` (curated data, not live).
  *   - `unavailable` → muted gray (live mode but no provider answered).
- *   - everything else (yahoo/finnhub/fred/polymarket) → `--c-live`.
- *   The pill text always shows the exact provider name so the analyst can
- *   distinguish a Finnhub answer from a Yahoo fallback without color coding.
+ *   - everything else → `--c-live`. Pill text shows the literal provider
+ *     name so the analyst can distinguish providers without color coding.
  */
-function SourcePill({ source }: { source: SourceTag }): ReactElement {
+function SourcePill({ source }: { source: string }): ReactElement {
   const tone =
     source === "fixture" ? "fixture" : source === "unavailable" ? "unavailable" : "live";
   return (

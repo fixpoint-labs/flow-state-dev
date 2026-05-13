@@ -126,6 +126,7 @@ export async function fetchFinnhubCompanyNews(
     source: string;
     url?: string;
     category?: string;
+    summary?: string;
   };
   const data = await fetchJson<Item[]>("/company-news", {
     symbol: input.ticker,
@@ -138,6 +139,7 @@ export async function fetchFinnhubCompanyNews(
     source: n.source,
     url: n.url,
     category: n.category,
+    summary: n.summary ?? null,
   }));
   return {
     source: "finnhub",

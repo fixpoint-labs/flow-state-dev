@@ -13,12 +13,13 @@
     "test:watch": "vitest --root . --passWithNoTests"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.30",
+    "@ai-sdk/gateway": "^3.0.51",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "ai": "^6.0.97",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",

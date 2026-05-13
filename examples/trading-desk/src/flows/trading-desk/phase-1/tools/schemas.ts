@@ -131,6 +131,10 @@ const newsItem = z.object({
   source: z.string(),
   url: z.string().optional(),
   category: z.string().optional(),
+  /** 1-2 sentence editorial blurb. Finnhub returns this on /company-news;
+   *  null for sources that don't supply it (e.g. fixture data without
+   *  manual summary edits). */
+  summary: z.string().nullable(),
 });
 
 export const companyNewsSchema = z.object({

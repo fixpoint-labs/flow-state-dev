@@ -30,6 +30,7 @@ import {
   markWriting,
 } from "../memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
+import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import {
   compute_indicators,
   get_balance_sheet,
@@ -43,6 +44,10 @@ import {
   get_social_sentiment,
   search_news,
 } from "./tools";
+
+// Single block instance shared by the news analyst — `fetch()` constructs a
+// handler block, instantiated once at module load.
+const fetchArticle = createFetchTool();
 
 type AnalystOptions = {
   shortName: Phase1MemoShortName;
@@ -136,7 +141,7 @@ export const newsAnalyst = defineAnalyst({
   shortName: "news",
   agentName: PHASE_1_MEMO_KEYS.news.agentName,
   systemPrompt: newsPrompt,
-  tools: [search_news, get_macro_indicators],
+  tools: [search_news, fetchArticle, get_macro_indicators],
   label: newsLabel,
 });
 

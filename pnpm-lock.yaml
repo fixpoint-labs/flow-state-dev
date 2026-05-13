@@ -342,6 +342,9 @@ importers:
 
   examples/trading-desk:
     dependencies:
+      '@ai-sdk/gateway':
+        specifier: ^3.0.51
+        version: 3.0.53(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.30
         version: 3.0.30(zod@3.25.76)
@@ -360,6 +363,9 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@flow-state-dev/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       ai:
         specifier: ^6.0.97
         version: 6.0.97(zod@3.25.76)
