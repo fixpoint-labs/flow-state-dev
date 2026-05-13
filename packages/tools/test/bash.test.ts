@@ -672,6 +672,120 @@ describe("workspace guards", () => {
           assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd"),
         ).toThrow("/etc/passwd");
       });
+
+      it("names the offending token, not a bare slash", () => {
+        const err = (() => {
+          try {
+            assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd");
+            return "";
+          } catch (e) {
+            return (e as Error).message;
+          }
+        })();
+        expect(err).toContain('"/etc/passwd"');
+      });
+    });
+
+    describe("inline code with slashes", () => {
+      it("allows python3 -c with arithmetic division", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'python3 -c "x = 1 / 2; print(x)"'),
+        ).not.toThrow();
+      });
+
+      it("allows node -e with arithmetic division", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'node -e "let y = 1/2"'),
+        ).not.toThrow();
+      });
+
+      it("allows node -e with regex literals", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'node -e "/foo/.test(x)"'),
+        ).not.toThrow();
+      });
+
+      it("allows bash -c with inline pipeline", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'bash -c "echo a/b | tr / _"'),
+        ).not.toThrow();
+      });
+    });
+
+    describe("quoted strings and URLs", () => {
+      it("allows curl with quoted https URL", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'curl "https://api.example.com/foo"'),
+        ).not.toThrow();
+      });
+
+      it("allows wget with quoted https URL", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'wget "https://example.com/path/to/file"'),
+        ).not.toThrow();
+      });
+
+      it("allows echo of quoted slash-containing literal", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'echo "a/b/c"'),
+        ).not.toThrow();
+      });
+
+      it("allows grep with quoted pattern containing slash", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'grep "foo/bar" file.txt'),
+        ).not.toThrow();
+      });
+
+      it("allows single-quoted absolute-path literal (documented trade-off)", () => {
+        // The unquoted form is still rejected; quoting (single or double)
+        // bypasses path validation by design.
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat '/etc/passwd'"),
+        ).not.toThrow();
+      });
+    });
+
+    describe("heredocs", () => {
+      it("allows heredoc whose body contains slashes", () => {
+        const cmd =
+          "cd /tmp/workspace && python3 << 'EOF'\nx = 1 / 2\nprint(x)\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("allows heredoc whose body looks like an absolute path", () => {
+        const cmd = "cat << EOF\n/etc/passwd\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("allows tab-indented heredoc (<<-)", () => {
+        const cmd = "cat <<-EOF\n\t/etc/passwd\n\tEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("still rejects an absolute path outside a heredoc", () => {
+        const cmd = "cat /etc/passwd << 'EOF'\nbody\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).toThrow(
+          "Command rejected",
+        );
+      });
+    });
+
+    describe("malformed input fallback", () => {
+      it("still rejects /etc/passwd inside an unclosed quote", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'cat "/etc/passwd'),
+        ).toThrow("Command rejected");
+      });
+    });
+
+    describe("variable expansion safety", () => {
+      it("does not produce a stray slash token when expanding $VAR/x", () => {
+        // `cat $FOO/x` must not be misread as accessing `/x` after expansion.
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat $FOO/x"),
+        ).not.toThrow();
+      });
     });
   });
 
