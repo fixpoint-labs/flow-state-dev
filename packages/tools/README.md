@@ -157,6 +157,21 @@ generator({
 
 Runs each command inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; outbound network calls flow through a credential-injecting proxy so the agent process never sees API tokens.
 
+**Install MOAT (one-time, host operator):**
+
+The `moat` CLI is a separate binary — the framework spawns it but does not bundle or auto-install it. Install it from [majorcontext.com/moat](https://majorcontext.com/moat/) and verify the version is at least `0.4.0` (required for `moat exec`):
+
+```bash
+moat version --json
+```
+
+Prerequisites the host needs:
+
+- macOS 15+ on Apple Silicon (native containers) **or** any Linux host with Docker installed.
+- One `moat grant <provider>` per credential the agent should be able to reach (`moat grant github`, `moat grant openai`, etc.). The framework only declares which grant names a workspace requires — it never stores the credentials itself. See the [credentials concept page](https://majorcontext.com/moat/concepts/credentials).
+
+Use:
+
 ```typescript
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 

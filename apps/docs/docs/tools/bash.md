@@ -137,6 +137,25 @@ MOAT is a separate CLI ([majorcontext/moat](https://majorcontext.com/moat/)) tha
 
 Skip it if you only need an in-memory test sandbox (`just-bash` is lighter), if you want zero install footprint (`local` requires nothing), or if you are already deploying on serverless (Vercel/Upstash fit better).
 
+### Installing MOAT
+
+`@flow-state-dev/tools` does not bundle or auto-install the `moat` CLI. The host operator installs it once, then the framework spawns it like any other binary. Follow the [official install guide](https://majorcontext.com/moat/) for your platform.
+
+After installing, confirm the version is `0.4.0` or later (required for `moat exec`):
+
+```bash
+moat version --json
+```
+
+Grant the credentials the agent should be able to reach. The framework only declares which grant names a workspace needs — credentials live with MOAT, not in your code:
+
+```bash
+moat grant github
+moat grant openai
+```
+
+See the [MOAT credentials concept page](https://majorcontext.com/moat/concepts/credentials) for the full grant model.
+
 ### Configuration
 
 Minimal:
