@@ -14,6 +14,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { PHASE_4_MEMO_KEYS } from "../agents";
+import { phase2Contributions } from "../phase-2/round-robin";
 import { sessionStateSchema } from "../state";
 import { phase4Contributions } from "./round-robin";
 import { tradingDesk } from "../services/trading-desk-capability";
@@ -36,9 +37,15 @@ export const riskAssessmentGenerator = generator({
         ? ([tradingDesk.presets({ phase1Memos: true, phase2Debate: true })] as const)
         : ([] as const),
   ] as const,
-  // p4Contributions is declared inline because the dynamic full-preset
-  // entry can't contribute resources (only context/tools).
-  resources: { p4Contributions: phase4Contributions },
+  // p2Contributions + p4Contributions are declared inline because the
+  // dynamic full-preset entry can't contribute resources (only
+  // context/tools). p2Contributions is needed for the `phase2Debate`
+  // preset's read; without it, the read silently returns `[]` and the
+  // `<phase2Debate>` tag renders as `(empty)` on the `full` cost preset.
+  resources: {
+    p2Contributions: phase2Contributions,
+    p4Contributions: phase4Contributions,
+  },
   prompt: RISK_ASSESSMENT_PROMPT,
   user: "Now write the published RiskAssessment.",
   sessionStateSchema,

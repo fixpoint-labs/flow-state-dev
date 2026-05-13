@@ -20,6 +20,8 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { PHASE_4_MEMO_KEYS } from "../agents";
+import { phase2Contributions } from "../phase-2/round-robin";
+import { memosCollection } from "../resources";
 import { sessionStateSchema } from "../state";
 import {
   formatPersonaCritique,
@@ -55,9 +57,6 @@ const baseUses = [
   tradingDesk.presets({ tradeProposal: true, investmentThesis: true }),
   fullPresetExtras,
 ] as const;
-
-import { memosCollection } from "../resources";
-import { phase2Contributions } from "../phase-2/round-robin";
 
 const sharedResources = {
   memos: memosCollection,
