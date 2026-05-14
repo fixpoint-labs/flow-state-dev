@@ -8,7 +8,7 @@
  * helper handles only the item envelope.
  */
 import type { BlockContext, BlockDefinition } from "../../types/block";
-import type { AgentType } from "../../items/types";
+import type { AgentType, ModelIdentity } from "../../items/types";
 import { sanitizeToolName } from "../../utils/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
@@ -26,6 +26,13 @@ export type EmitToolOutputAttribution = {
   generatorBlock: string;
   agentType?: AgentType;
   agentName?: string;
+  /**
+   * Resolved identity of the generator model that invoked this tool. Stamped
+   * on the emitted `tool_output` item so consumers can attribute tool
+   * results back to the model that issued the call. Only set by the AI SDK
+   * tool-loop path; the `.asTool()` path leaves it absent.
+   */
+  model?: ModelIdentity;
 };
 
 /**
@@ -69,6 +76,7 @@ export async function emitToolOutputAround(
     ownedBy: parentIdentity?.ownedBy,
     ...(attribution.agentType !== undefined ? { agentType: attribution.agentType } : {}),
     ...(attribution.agentName !== undefined ? { agentName: attribution.agentName } : {}),
+    ...(attribution.model !== undefined ? { model: attribution.model } : {}),
     blockName,
     output: undefined,
     toolCall: {

@@ -564,6 +564,20 @@ function normalizeSteps(
   return steps.length === 0 ? undefined : steps;
 }
 
+/**
+ * Extract the provider-reported model id from an AI SDK result, when
+ * present. Surfaces as the preferred `actual` for `ModelIdentity`. Returns
+ * undefined when the provider didn't report a modelId.
+ */
+function extractProviderModelId(result: Record<string, unknown>): string | undefined {
+  const response = result.response;
+  if (response !== null && typeof response === "object") {
+    const id = (response as Record<string, unknown>).modelId;
+    if (typeof id === "string" && id.length > 0) return id;
+  }
+  return undefined;
+}
+
 function normalizeGenerateResult(
   result: Record<string, unknown>,
   toolNameMap?: ToolNameMap
@@ -713,13 +727,32 @@ function mapToProviderSearchTool(
 // ---------------------------------------------------------------------------
 
 /**
+ * Identity hints passed to `wrapAiSdkModel` so the AI SDK adapter can
+ * stamp a fully-formed `ModelIdentity` on every result/chunk. The framework
+ * knows the requested string and (when applicable) the gateway from parsing
+ * the model string before the wrap call; the adapter knows the
+ * provider-reported model id from the AI SDK response.
+ */
+export interface WrapAiSdkModelIdentityHints {
+  /** The framework's requested model string (e.g. `openai/gpt-5.5`). */
+  requested?: string;
+  /** Gateway name when the model was routed through a gateway. */
+  gateway?: string;
+}
+
+/**
  * Wraps an AI SDK language model instance into a framework GeneratorModel.
  * Use this when you already have a resolved model (e.g. `openai("gpt-5")`)
  * and want to pass it directly as a generator's `model` config.
+ *
+ * Identity hints (`requested`, `gateway`) thread through so that
+ * `ModelIdentity` surfaced on emitted items reflects what the caller asked
+ * for in addition to what the provider reported.
  */
 export function wrapAiSdkModel(
   languageModel: unknown,
-  modelId?: string
+  modelId?: string,
+  identityHints?: WrapAiSdkModelIdentityHints
 ): GeneratorModel {
   const resolvedId =
     modelId ??
@@ -727,14 +760,33 @@ export function wrapAiSdkModel(
       ? (languageModel as Record<string, unknown>).modelId as string
       : "unknown");
 
-  return createGeneratorModelFromAiSdk(resolvedId, languageModel, undefined);
+  return createGeneratorModelFromAiSdk(resolvedId, languageModel, undefined, undefined, identityHints);
+}
+
+/**
+ * Builds the `ModelIdentity` payload to stamp on an AI SDK result or chunk.
+ * `actual` prefers the provider-reported id; falls back to the framework
+ * requested string. `requested` is omitted when it equals `actual`.
+ */
+function buildResolvedIdentity(
+  providerReportedId: string | undefined,
+  hints: WrapAiSdkModelIdentityHints | undefined,
+  fallbackModelId: string
+): { actual: string; requested?: string; gateway?: string } {
+  const requested = hints?.requested ?? fallbackModelId;
+  const actual = providerReportedId ?? requested;
+  const identity: { actual: string; requested?: string; gateway?: string } = { actual };
+  if (requested !== actual) identity.requested = requested;
+  if (hints?.gateway !== undefined) identity.gateway = hints.gateway;
+  return identity;
 }
 
 function createGeneratorModelFromAiSdk(
   modelId: string,
   languageModel: unknown,
   providerWithTools: unknown | undefined,
-  resolveLanguageModel?: ResolveAiSdkLanguageModel
+  resolveLanguageModel?: ResolveAiSdkLanguageModel,
+  identityHints?: WrapAiSdkModelIdentityHints
 ): GeneratorModel {
   return {
     modelId,
@@ -745,7 +797,13 @@ function createGeneratorModelFromAiSdk(
         const result = (await generateText(
           request as any
         )) as unknown as Record<string, unknown>;
-        return normalizeGenerateResult(result, toolNameMap);
+        const normalized = normalizeGenerateResult(result, toolNameMap);
+        normalized.resolvedIdentity = buildResolvedIdentity(
+          extractProviderModelId(result),
+          identityHints,
+          modelId
+        );
+        return normalized;
       } catch (err: unknown) {
         // AI SDK throws NoObjectGeneratedError / NoOutputGeneratedError when
         // the model returns empty or unparseable output for structured generation.
@@ -770,6 +828,11 @@ function createGeneratorModelFromAiSdk(
 
     async *stream(options): AsyncGenerator<GeneratorModelStreamChunk> {
       const { request, toolNameMap } = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
+      // Baseline identity from framework hints. The provider-reported model
+      // id only lands on the final response, so chunks emitted before
+      // `finish` carry this baseline; the `finish` chunk refines to the
+      // provider id when present.
+      let resolvedIdentity = buildResolvedIdentity(undefined, identityHints, modelId);
 
       // onError: AI SDK v6 callback for streaming errors. Captures errors
       // inline rather than letting them surface as unhandled rejections.
@@ -798,19 +861,20 @@ function createGeneratorModelFromAiSdk(
       // names: "text-delta", "reasoning-delta", "tool-call", "source", etc.
       for await (const part of (result as any).fullStream) {
         const partRecord = part as Record<string, unknown>;
+        let chunk: GeneratorModelStreamChunk | undefined;
 
         if (partRecord.type === "text-delta") {
-          yield {
+          chunk = {
             type: "text_delta",
             textDelta: (partRecord.textDelta ?? partRecord.text) as string
           };
         } else if (partRecord.type === "reasoning" || partRecord.type === "reasoning-delta") {
-          yield {
+          chunk = {
             type: "reasoning_delta",
             reasoningDelta: (partRecord.textDelta ?? partRecord.delta ?? partRecord.text) as string
           };
         } else if (partRecord.type === "tool-input-start") {
-          yield {
+          chunk = {
             type: "tool_input_start",
             toolInput: {
               toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
@@ -821,7 +885,7 @@ function createGeneratorModelFromAiSdk(
           // AI SDK v6 fullStream emits tool-input-delta with incremental args.
           // Map to framework tool_call_delta so clients can show progress.
           const rawToolName = (partRecord.toolName as string | undefined) ?? "";
-          yield {
+          chunk = {
             type: "tool_call_delta",
             toolCallDelta: {
               toolCallId: partRecord.id as string,
@@ -830,7 +894,7 @@ function createGeneratorModelFromAiSdk(
             }
           };
         } else if (partRecord.type === "tool-call") {
-          yield {
+          chunk = {
             type: "tool_call_delta",
             toolCallDelta: {
               toolCallId: partRecord.toolCallId as string,
@@ -839,7 +903,7 @@ function createGeneratorModelFromAiSdk(
             }
           };
         } else if (partRecord.type === "tool-result") {
-          yield {
+          chunk = {
             type: "tool_result",
             toolResult: {
               toolCallId: partRecord.toolCallId as string,
@@ -851,7 +915,7 @@ function createGeneratorModelFromAiSdk(
           // Source references from provider-native tools (e.g., web search).
           const url = partRecord.url as string | undefined;
           if (typeof url === "string") {
-            yield {
+            chunk = {
               type: "source_url",
               source: {
                 type: "source",
@@ -873,6 +937,11 @@ function createGeneratorModelFromAiSdk(
         } else if (partRecord.type === "abort") {
           console.warn("[ai-sdk-stream] abort event:", partRecord.reason);
         }
+
+        if (chunk !== undefined) {
+          chunk.resolvedIdentity = resolvedIdentity;
+          yield chunk;
+        }
       }
 
       // Resolve the streamText result promise to get usage/finish metadata.
@@ -887,9 +956,20 @@ function createGeneratorModelFromAiSdk(
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`AI SDK stream failed: ${message}`);
       }
+      // Refine identity with the provider-reported model id, when present.
+      resolvedIdentity = buildResolvedIdentity(
+        extractProviderModelId(finalResult ?? {}),
+        identityHints,
+        modelId
+      );
+      const finishChunk = normalizeFinishChunk(finalResult, toolNameMap);
+      if (finishChunk.fullResult !== undefined) {
+        finishChunk.fullResult.resolvedIdentity = resolvedIdentity;
+      }
       yield {
         type: "finish",
-        ...normalizeFinishChunk(finalResult, toolNameMap)
+        ...finishChunk,
+        resolvedIdentity
       };
     },
 

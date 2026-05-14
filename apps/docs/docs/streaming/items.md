@@ -245,6 +245,74 @@ const researcher = generator({
 
 The default `<ItemsRenderer>` filters `agentType: "sub"` items from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
 
+## Observable model identity
+
+Every item produced by a generator carries a `model` field describing which concrete model produced it. This is distinct from "Generator identity" above (which answers *which agent* produced the item) — `model` answers *which model*. The two compose: an item can carry both `agentName: "executor"` and `model: { actual: "openai/gpt-5.5", requested: "intent/chat" }`.
+
+### Shape
+
+`ModelIdentity` is a small record:
+
+```ts
+type ModelIdentity = {
+  actual: string;       // always populated
+  requested?: string;   // present when meaningful
+  gateway?: string;     // present when a gateway routed the call
+};
+```
+
+- `actual` is the concrete model that executed. Prefers the provider-reported model id (e.g. `gpt-5.5-2025-04-12`) and falls back to the framework's winning candidate string when the provider doesn't report one.
+- `requested` is populated when the caller's input differs from `actual` — most commonly for intent strings (`intent/chat`), non-first fallback candidates, or when the provider substitutes a different version.
+- `gateway` is set when the call routed through a gateway (e.g. Vercel, OpenRouter).
+
+### On items
+
+Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`. Handler-emitted items (via `ctx.emitMessage`) do not carry `model` — the framework only stamps identity on generator-produced items.
+
+```jsonc
+// Example message item from an intent-routed generator
+{
+  "type": "message",
+  "role": "assistant",
+  "content": [{ "type": "output_text", "text": "Hi." }],
+  "model": {
+    "actual": "gpt-5.5-2025-04-12",
+    "requested": "intent/chat"
+  }
+}
+```
+
+### On `block_trace`
+
+`BlockTraceItem` for generator blocks carries `model` at the top level — a sibling of `generator` and `modelUsage`. The three coexist because they answer three different questions:
+
+- `generator.model` — the model the caller wrote in config (a string).
+- `modelUsage.model` — the request-string key for token accounting (a string).
+- `model` — the resolved identity of what actually ran (a `ModelIdentity` record).
+
+```jsonc
+// Example block_trace for a generator after an intent fallback
+{
+  "type": "block_trace",
+  "blockKind": "generator",
+  "generator": { "model": "intent/chat", "tools": [], "prompt": "…" },
+  "modelUsage": { "model": "intent/chat", "promptTokens": 100, "completionTokens": 80, "totalTokens": 180 },
+  "model": { "actual": "anthropic/sonnet", "requested": "intent/chat" }
+}
+```
+
+`model` is populated even when the generator emits no items (structured-only output, tool-only turns, empty completions), so audit and replay always have a durable record of the concrete model.
+
+### Sub-agents
+
+A sub-agent generator's emitted items carry the *sub-agent's* identity, not the parent's. Each generator scope has its own resolution; identities don't cross-contaminate.
+
+### Absent field
+
+`model` is optional at the type level. It's absent for handler-emitted items, items persisted before the field existed, and generators that errored before any AI SDK call returned. UI code should treat the field as `model?: ModelIdentity` — the `<ModelBadge>` helper in `@flow-state-dev/react` renders nothing when `model` is undefined.
+
+See [fundamentals/models.md](../fundamentals/models.md) for how intents and gateways are configured.
+
 ## React integration
 
 On the React side, streaming is automatic. The `useSession` hook connects to the SSE stream, processes events, and updates items reactively:
