@@ -34,17 +34,20 @@ export type EmitToolOutputAttribution = {
  * `item.done` after the inner call resolves (or fails). Returns the inner
  * call's output. Rethrows the original error after marking the item failed.
  *
- * `runInner` receives the item's id so the caller can stash it on the
- * scoped ctx as a `_blockOutputHint = { kind: "ref", sourceItemId }` —
- * keeps the inner block's own block_trace pointing at the tool_output as a
- * ref rather than producing a duplicate inline output.
+ * `runInner` receives the outer `ctx` (not a scoped derivative — callers
+ * that need a scope are responsible for deriving one themselves) and the
+ * emitted item's id, so the caller can stash it as a
+ * `_blockOutputHint = { kind: "ref", sourceItemId }` on whatever ctx the
+ * inner block will see. That keeps the inner block's own block_trace
+ * pointing at the tool_output as a ref rather than producing a duplicate
+ * inline output.
  */
 export async function emitToolOutputAround(
   block: BlockDefinition<any, any>,
   ctx: BlockContext,
   args: unknown,
   attribution: EmitToolOutputAttribution,
-  runInner: (scopedCtx: BlockContext, toolOutputId: string) => Promise<unknown>,
+  runInner: (outerCtx: BlockContext, toolOutputId: string) => Promise<unknown>,
 ): Promise<unknown> {
   const parentIdentity = ctx._blockIdentity;
   const blockName = block.name;

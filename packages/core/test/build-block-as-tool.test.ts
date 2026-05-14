@@ -240,6 +240,31 @@ describe("BlockDefinition.asTool", () => {
     expect(observedHint).toEqual({ kind: "ref", sourceItemId: observedItemId });
   });
 
+  it("restores _blockOutputHint to the tool_output ref after the inner block overwrites it", async () => {
+    // Simulate what a nested generator/sequencer does when it writes its own
+    // `_blockOutputHint`. The wrapper must re-stamp the tool_output ref so
+    // the outer executor reads the wrapper's intended ref, not the inner's.
+    const clobbering = handler({
+      name: "clobbering",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: (_input, ctx) => {
+        (ctx as any)._blockOutputHint = { kind: "ref", sourceItemId: "item_other" };
+        return { ok: true };
+      },
+    });
+
+    const wrapper = clobbering.asTool();
+    const { ctx, emitted } = ctxWithRecorder();
+    await runForTest(wrapper, { q: "x" }, ctx);
+
+    const itemId = toolOutputsOf(emitted)[0].id;
+    expect((ctx as any)._blockOutputHint).toEqual({
+      kind: "ref",
+      sourceItemId: itemId,
+    });
+  });
+
   it("fires the inner block's onCompleted hook exactly once (not on the wrapper)", async () => {
     let onCompletedCalls = 0;
     const inner = handler({

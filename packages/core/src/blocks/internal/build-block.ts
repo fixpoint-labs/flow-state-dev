@@ -285,15 +285,29 @@ export function buildBlock<
           ...(opts.agentType !== undefined ? { agentType: opts.agentType } : {}),
           ...(opts.agentName !== undefined ? { agentName: opts.agentName } : {}),
         };
+        const hintRef = { kind: "ref" as const };
         const output = (await emitToolOutputAround(
           definition,
           ctx,
           input,
           attribution,
-          (scopedCtx, toolOutputId) => {
-            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
-            return asRuntime(definition).run(input, scopedCtx);
+          async (outerCtx, toolOutputId) => {
+            // `emitToolOutputAround` passes the outer ctx (no scope boundary
+            // here, unlike the AI-SDK path which derives one via
+            // `_withExecutionScope`). The inner block — especially a
+            // generator/sequencer/router — may write its own
+            // `_blockOutputHint` to the same ctx while it runs. Re-stamp the
+            // tool_output ref after the inner returns so the outer executor
+            // reads the wrapper's intended ref, not the inner's last write.
+            const ctxAny = outerCtx as {
+              _blockOutputHint?: { kind: "ref"; sourceItemId: string };
+            };
+            ctxAny._blockOutputHint = { ...hintRef, sourceItemId: toolOutputId };
+            try {
+              return await asRuntime(definition).run(input, outerCtx);
+            } finally {
+              ctxAny._blockOutputHint = { ...hintRef, sourceItemId: toolOutputId };
+            }
           }
         )) as TOutput;
         return output;
