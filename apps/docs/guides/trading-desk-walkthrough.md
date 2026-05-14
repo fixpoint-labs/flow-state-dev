@@ -122,6 +122,41 @@ The `fast` preset completes well under a minute on one provider key. `full` take
 
 For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required for model resolution. Yahoo Finance is keyless. `FINNHUB_API_KEY` is optional for live news; without it the news analyst sees empty headlines and reasons accordingly.
 
+## Session lifecycle and persistence
+
+Sessions are ephemeral by default in flow-state-dev. The trading-desk example opts into persistence by passing `createFilesystemStores` to the API router:
+
+```ts
+// lib/server.ts
+const dataDir = process.env.FSDEV_DATA_DIR
+  ?? path.join(process.cwd(), ".fsdev", "data");
+
+export const router = createFlowApiRouter({
+  registry,
+  modelResolver,
+  stores: createFilesystemStores({ rootDir: dataDir }),
+});
+```
+
+That alone makes runs survive a restart. The second piece is identifying which session a run belongs to. Every run is named by the four user-visible inputs: ticker, date, cost preset, and data source. The page does a small lookup before dispatch:
+
+```ts
+// app/page.tsx
+const targetId = findSessionForTuple(flow.sessions, tuple)
+  ?? (await sessionClient.createSession({
+       flowKind: "trading-desk",
+       userId: "devuser",
+       title: titleForTuple(tuple),   // e.g., "NVDA · 2026-05-06 · fast · fixture"
+       metadata: tuple,
+     })).id;
+```
+
+Reuse on match, create on miss. Same tuple lands in the same session, so memo resources overwrite in place. The session state mirror (`memoStatus`, `runComplete`) resets to its initial values via `seedSession` at the start of each request, so a reused session reads as "fresh data" rather than stale phase progress.
+
+Changing any one input — ticker, date, preset, or source — produces a different tuple, no match, and a new session whose title and metadata both reflect the new combination.
+
+For the generalized pattern (resolve-or-create by metadata, with the current caveats around server-side filtering), see [Looking up sessions by metadata](/docs/persistence/overview#looking-up-sessions-by-metadata).
+
 ## Where to look next
 
 - Browse the source: `examples/trading-desk/` in the repo. Each phase is its own directory.

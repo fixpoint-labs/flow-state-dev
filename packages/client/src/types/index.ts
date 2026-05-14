@@ -126,6 +126,7 @@ export type SessionSummary = {
   title?: string;
   description?: string;
   tags?: string[];
+  metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
 };
@@ -135,7 +136,6 @@ export type SessionSummary = {
  */
 export type SessionDetail = SessionSummary & {
   orgId?: string;
-  metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
   version?: number;
   latestRequestId?: string;
