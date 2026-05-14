@@ -198,16 +198,15 @@ describe("session resources are persisted after analyze run", () => {
       expect(memo.body).toBeDefined();
     }
 
-    // `phase2Contributions` is registered under two accessors —
-    // `contributions` (round-robin block) and `p2Contributions` (flow). Both
-    // resolve to the same canonical storage key after FIX-591, so the
-    // session record holds exactly one entries array.
-    const sharedSlots = ["contributions", "p2Contributions"].filter(
-      (k) => k in resources
-    );
-    expect(sharedSlots).toHaveLength(1);
-    const contributions = resources[sharedSlots[0]!] as { entries?: unknown[] };
-    expect(Array.isArray(contributions.entries)).toBe(true);
-    expect((contributions.entries ?? []).length).toBeGreaterThan(0);
+    // Phase 2's round-robin uses `accessorKey: "p2Contributions"`, which
+    // matches the accessor names the consolidator and flow-level registration
+    // use — one shared name across writers and readers. FIX-591 additionally
+    // guarantees that even if a different accessor name appeared somewhere,
+    // it would resolve to the same canonical storage key for this ref.
+    expect(resources.p2Contributions).toBeDefined();
+    const p2Contributions = resources.p2Contributions as { entries?: unknown[] };
+    expect(Array.isArray(p2Contributions.entries)).toBe(true);
+    expect((p2Contributions.entries ?? []).length).toBeGreaterThan(0);
+    expect(resources.contributions).toBeUndefined();
   });
 });

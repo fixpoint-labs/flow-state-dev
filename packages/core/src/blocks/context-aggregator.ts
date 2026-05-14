@@ -77,17 +77,56 @@ export interface AggregatedContext {
   taggedOrder: string[];
 }
 
+/** Valid AI-SDK `ModelMessage` role literals. */
+const AI_SDK_MESSAGE_ROLES: ReadonlySet<string> = new Set([
+  "system",
+  "user",
+  "assistant",
+  "tool",
+]);
+
+/**
+ * True if `value` looks like a pre-built AI-SDK `ModelMessage`: a plain object
+ * whose `role` is one of the literal AI-SDK roles AND that carries a `content`
+ * field. The presence of a `role` key alone is not enough — that would silently
+ * misclassify any object-form context entry that happens to use `role` as a tag
+ * name (which is itself a reserved tag).
+ */
+function isPreBuiltModelMessage(value: Record<string, unknown>): boolean {
+  const role = value.role;
+  return (
+    typeof role === "string" &&
+    AI_SDK_MESSAGE_ROLES.has(role) &&
+    "content" in value
+  );
+}
+
 /**
  * True if `value` is a `ContextObject` (a plain object that should be walked
- * for tag keys), not a pre-built AI-SDK message or array.
+ * for tag keys), not a pre-built AI-SDK message or array. Pre-built messages
+ * are detected by `isPreBuiltModelMessage`; anything else — including objects
+ * with a `role` key that fails that check — is treated as object-form context.
  */
 function isContextObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !("role" in (value as Record<string, unknown>))
-  );
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return !isPreBuiltModelMessage(value as Record<string, unknown>);
+}
+
+/**
+ * Format an arbitrary value for inclusion in an error message. Functions and
+ * objects are summarized rather than fully serialized to keep the diagnostic
+ * focused on the *kind* of bad value, not its contents.
+ */
+function describeBadRole(value: unknown): string {
+  if (typeof value === "function") return "a function";
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "object") return "an object";
+  if (typeof value === "number" && Number.isNaN(value)) return "NaN";
+  return `${typeof value} ${JSON.stringify(value)}`;
 }
 
 /**
@@ -150,6 +189,28 @@ async function ingestEntry<TInput, TCtx extends BlockContext>(
   }
 
   if (isContextObject(entry)) {
+    // An object that reaches the context-walk path with a `role` key is
+    // ambiguous: it almost certainly meant to be a pre-built AI-SDK message
+    // but failed the `isPreBuiltModelMessage` check (role wasn't a literal
+    // AI-SDK role, or `content` was missing). Surface this directly rather
+    // than letting it fall through to `validateTagName("role")`, which would
+    // emit a generic "reserved tag" message that doesn't explain the user's
+    // likely intent.
+    if ("role" in entry) {
+      const sourceSuffix = source ? ` on "${source}"` : "";
+      const roleIsValidLiteral =
+        typeof entry.role === "string" && AI_SDK_MESSAGE_ROLES.has(entry.role);
+      const diagnosis = roleIsValidLiteral
+        ? `\`role\` is "${entry.role as string}" (a valid AI-SDK role) but the \`content\` field is missing`
+        : `\`role\` key whose value is ${describeBadRole(entry.role)} — not a valid AI-SDK message role`;
+      throw new Error(
+        `Generator context entry${sourceSuffix} has a ${diagnosis}. ` +
+        `If you meant a tag named "role", rename it (role is ` +
+        `a reserved context tag name). If you meant a pre-built message, ` +
+        `set \`role\` to one of "system" | "user" | "assistant" | "tool" ` +
+        `and include a \`content\` field.`
+      );
+    }
     await mergeObjectInto(
       entry,
       acc.tagged,

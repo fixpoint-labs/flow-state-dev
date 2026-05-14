@@ -125,7 +125,7 @@ type PromptSlotEntry<TInput, TCtx = BlockContext> =
 export type PromptSlot<TInput = unknown, TCtx = BlockContext> =
   | PromptSlotEntry<TInput, TCtx>
   | PromptSlotEntry<TInput, TCtx>[];
-type ResolvableModel<TInput, TCtx = BlockContext> =
+export type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
   | GeneratorModel
@@ -133,10 +133,10 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
       input: TInput,
       ctx: TCtx
     ) => MaybePromise<string | string[] | GeneratorModel | ModelSelection>);
-type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
+export type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
   | Record<string, unknown>
   | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
-type ResolvableCachingConfig<TInput, TCtx = BlockContext> =
+export type ResolvableCachingConfig<TInput, TCtx = BlockContext> =
   | CachingConfig
   | ((input: TInput, ctx: TCtx) => MaybePromise<CachingConfig | undefined>);
 
@@ -365,7 +365,12 @@ export interface GeneratorConfig<
    * generator are stamped with this name.
    */
   agentName?: string;
-  model: ResolvableModel<NoInfer<TInput>, TCtx>;
+  /**
+   * Model selection. Optional when a capability in `uses` contributes a
+   * model (see `PresetDef.model`); a block-level setting always wins over
+   * the capability's. Missing on both is a runtime error at construction.
+   */
+  model?: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
@@ -1541,6 +1546,24 @@ export function generator<
   const hasStaticTools = staticToolEntries.length > 0;
   const hasDynamic = dynamicUses.length > 0;
 
+  // -- Singletons (model, providerOptions, caching): block-level wins over
+  // capability; among capabilities, last-wins (handled in mergeSurfaceInto).
+  if (normalizedConfig.model === undefined && mergedSurface?.model !== undefined) {
+    (normalizedConfig as { model?: unknown }).model = mergedSurface.model;
+  }
+  if (normalizedConfig.model === undefined) {
+    throw new Error(
+      `Generator "${String(normalizedConfig.name)}" requires a model. ` +
+      `Set one on the block or via a capability that contributes \`model\`.`,
+    );
+  }
+  if (normalizedConfig.providerOptions === undefined && mergedSurface?.providerOptions !== undefined) {
+    (normalizedConfig as { providerOptions?: unknown }).providerOptions = mergedSurface.providerOptions;
+  }
+  if (normalizedConfig.caching === undefined && mergedSurface?.caching !== undefined) {
+    (normalizedConfig as { caching?: unknown }).caching = mergedSurface.caching;
+  }
+
   // -- Context: append static + dynamic entries to the user's context array
   if (hasStaticContext || hasDynamic) {
     const userContext = normalizedConfig.context;
@@ -1619,8 +1642,11 @@ export function generator<
     resolvedCapabilities,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
+      // model is guaranteed non-undefined at this point — the construction-
+      // time check above throws if neither the block nor any capability
+      // contributed a model.
       const { modelId, model } = await resolveModel(
-        normalizedConfig.model,
+        normalizedConfig.model as ResolvableModel<TInput, BlockContext>,
         input,
         ctx,
         blockName
