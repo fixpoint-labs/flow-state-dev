@@ -110,14 +110,22 @@ function TradingDeskApp(): ReactElement {
 
     let targetId = findSessionForTuple(flow.sessions, tuple);
     if (targetId === undefined) {
-      const created = await sessionClient.createSession({
-        flowKind: FLOW_KIND,
-        userId: USER_ID,
-        title: titleForTuple(tuple),
-        metadata: tuple,
-      });
-      targetId = created.id;
-      await flow.refreshSessions();
+      try {
+        const created = await sessionClient.createSession({
+          flowKind: FLOW_KIND,
+          userId: USER_ID,
+          title: titleForTuple(tuple),
+          metadata: tuple,
+        });
+        targetId = created.id;
+        await flow.refreshSessions();
+      } catch (err) {
+        // Network failure or 4xx/5xx from the server. The example has no
+        // toast surface; log and bail so the user can retry. UI stays idle
+        // because we never set `pendingDispatch`.
+        console.error("[trading-desk] failed to create session", err);
+        return;
+      }
     }
 
     if (flow.activeSessionId !== targetId) {
