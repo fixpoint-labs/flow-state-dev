@@ -274,3 +274,4 @@ Prefer this over re-emitting `item.added` + `item.done` for the same id when onl
 | Update a component as work progresses | Keyed components: same `key`, multiple `emitComponent()` calls |
 | Build a composite UI from multiple child blocks | Container component on the sequencer |
 | Append multiple independent items (log entries, cards) | `emitComponent()` without a key, one call per item |
+| Show a deterministic block call as a tool pill | Wrap the block with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool) in the sequencer step |

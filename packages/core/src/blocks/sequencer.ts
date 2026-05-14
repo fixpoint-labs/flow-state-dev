@@ -17,7 +17,7 @@ import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import type { DeclaredResources } from "../types/block";
-import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./internal/utils";
 import {
   blockPathBranch,
   blockPathIteration,
@@ -273,20 +273,6 @@ type GeneratorModelUsageMeta = {
   cacheCreationTokens?: number;
 };
 
-/** Duck-typed helper — reused from generator.ts to get item count from emitter. */
-function getSequencerEmitterItemCount(response: unknown): number {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "getItems" in response &&
-    typeof (response as { getItems?: unknown }).getItems === "function"
-  ) {
-    const items = (response as { getItems: () => unknown[] }).getItems();
-    return Array.isArray(items) ? items.length : 0;
-  }
-  return 0;
-}
-
 /**
  * Emits a state_snapshot item at sequencer step boundaries (FIX-401).
  *
@@ -372,7 +358,7 @@ async function emitStateSnapshot(
     status: "completed" as const,
     transient: true,
     requestId: ctx.request.identity.id,
-    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    itemIndex: getEmitterItemCount(ctx.response),
     provenance: {
       blockName: seqRef.name,
       blockInstanceId: seqRef.instanceId,

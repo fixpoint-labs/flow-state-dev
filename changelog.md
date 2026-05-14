@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-14
+
+### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
+
+- New method on every `BlockDefinition`. Wrapping a block with `.asTool(opts?)` causes it to emit a `tool_output` item with the same envelope and lifecycle the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged.
+- Closes the transcript-visibility gap for flows that fetch data deterministically (e.g. inside `.parallel({...})`) and reserve the LLM for synthesis. Tool inputs known up front no longer have to choose between transcript pills and keeping the LLM out of the tool loop.
+- `agentType` / `agentName` opts control grouping under the parent agent's card. Failures flip the emitted `tool_output` to `failed` with the error message visible and rethrow.
+- Internal: a shared `emitToolOutputAround` helper now drives the `tool_output` envelope for both the AI SDK tool-loop path and the new `.asTool()` path, so the two origins produce identical items. The previously-triplicated `getEmitterItemCount` duck-type helper lifts to a single shared util.
+- Trading-desk example: the app-local `callAsTool` prototype is deleted; analysts switch to `.asTool({...})`. No behavioral change to the rendered transcript.
+
 ## 2026-05-13
 
 ### Trading Desk example: Phase 5 — portfolio manager final decision (FIX-564)

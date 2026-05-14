@@ -529,7 +529,31 @@ export interface BlockDefinition<
   mapModelOutput(
     mapper: (output: TOutput, ctx: BlockContext) => string | Promise<string>
   ): BlockDefinition<TInputSchema, TOutputSchema>;
+
+  /**
+   * Wrap this block so that, when executed inside a sequencer step, it emits
+   * a `tool_output` item with the same envelope and lifecycle the AI SDK
+   * tool-loop wrapper produces inside generators. The wrapped block runs
+   * normally and returns its typed output unchanged.
+   *
+   * Use this when a tool has been moved out of an LLM-driven loop into a
+   * deterministic prefetch (e.g. inside a `.parallel({...})` step) and the
+   * transcript should keep showing it as a tool pill.
+   *
+   * Attribution (`agentType`, `agentName`) is supplied via opts; when omitted
+   * the fields are not stamped on the emitted item.
+   */
+  asTool(
+    opts?: AsToolOpts
+  ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
 }
+
+/** Options for {@link BlockDefinition.asTool}. */
+export type AsToolOpts = {
+  /** Stamped on the emitted `tool_output`; controls grouping under the parent agent's card. */
+  agentType?: AgentType;
+  agentName?: string;
+};
 
 /**
  * Internal substrate view of a block (FIX-503). Adds the `run` dispatch

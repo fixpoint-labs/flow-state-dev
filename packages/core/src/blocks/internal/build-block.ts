@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type {
+  AsToolOpts,
   BlockConfig,
   BlockContext,
   BlockDefinition,
@@ -8,10 +9,12 @@ import type {
   ConnectorFn,
   DeclaredResources
 } from "../../types/block";
+import { asRuntime } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { CapabilityRef } from "../../capability/types";
 import { toError } from "./utils";
+import { emitToolOutputAround } from "./emit-tool-output";
 
 /**
  * Extract resource declarations from a block config into a `DeclaredResources`
@@ -262,6 +265,58 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         modelOutputMapper: mapper,
+      });
+    },
+    asTool(opts: AsToolOpts = {}): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+      const wrappedName = `${runtimeConfig.name}__as_tool`;
+      // The wrapper's execute drives the `tool_output` envelope around an
+      // inner `asRuntime(block).run(input, ctx)` call. The inner block sees a
+      // `_blockOutputHint = { kind: "ref", sourceItemId }` so its
+      // `block_trace.output` becomes a ref to the tool_output (matches the
+      // AI-SDK tool-loop path; avoids devtool duplication).
+      const wrappedExecute: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput> = async (
+        input,
+        ctx
+      ) => {
+        const callId = `call_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const attribution = {
+          callId,
+          generatorBlock: ctx._blockIdentity?.blockName ?? definition.name,
+          ...(opts.agentType !== undefined ? { agentType: opts.agentType } : {}),
+          ...(opts.agentName !== undefined ? { agentName: opts.agentName } : {}),
+        };
+        const output = (await emitToolOutputAround(
+          definition,
+          ctx,
+          input,
+          attribution,
+          (scopedCtx, toolOutputId) => {
+            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+            return asRuntime(definition).run(input, scopedCtx);
+          }
+        )) as TOutput;
+        return output;
+      };
+
+      const wrappedConfig: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
+        ...runtimeConfig,
+        name: wrappedName,
+        // Strip lifecycle hooks — they fire on the inner block's own run.
+        // Strip resources/uses — declared on the inner block; the wrapper is
+        // a transparent envelope.
+        onCompleted: undefined,
+        onErrored: undefined,
+        connectInput: undefined,
+      };
+
+      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+        kind: "handler",
+        config: wrappedConfig,
+        execute: wrappedExecute,
+        declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
+        requiresOrg: definition.requiresOrg,
       });
     },
     connectOutput<TTo>(
