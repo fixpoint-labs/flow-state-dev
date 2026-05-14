@@ -13,6 +13,24 @@
  * `resources/internal.ts`.
  *
  * FIX-591: resource state is keyed by ref identity, not accessor name.
+ *
+ * ## Stability of the canonical key
+ *
+ * When `config.ref` is set, the canonical key is `ref` — stable across
+ * deploys, refactors, and declaration-order changes. **Set `ref`
+ * explicitly on `defineResource()` for any non-session-scoped resource
+ * you intend to dual-register**: persisted user/org data only survives
+ * declaration reshuffles if the storage key is anchored to a stable
+ * value rather than an accessor name.
+ *
+ * Without `ref`, the canonical key is the first accessor encountered in
+ * `Object.entries(configs)` order. For a single accessor this is the
+ * accessor name itself (stable). For dual-registered aliases the chosen
+ * key depends on how block-level resource declarations bubble up into
+ * `flow.resources` — reorganising actions, swapping sibling blocks, or
+ * moving a declaration from block-level to flow-level can shift it. For
+ * session-scoped resources this is harmless (session storage is
+ * transient); for user/org scope it can orphan data.
  */
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 

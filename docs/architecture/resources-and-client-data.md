@@ -28,6 +28,8 @@ defineFlow({
 
 The accessor key (`plan`) is purely a typed read handle for `ctx.resources.<name>`. Persistence is keyed by ref identity: two blocks that declare the **same** `DefinedResource` reference under different accessor names see the same storage slot. Two blocks that declare **different** `DefinedResource` references under the same accessor name still conflict at flow-build time.
 
+When a resource is declared **without** an explicit `ref`, the canonical storage key falls back to the first accessor encountered in declaration order. That's fine for single-accessor resources, but for dual-registered user/org-scoped resources it makes the storage key sensitive to declaration order. **Set `ref` explicitly on any non-session resource you plan to register under multiple accessor names** so persisted data survives reordering, refactors, or moves between block- and flow-level declarations.
+
 ### Resource Config
 
 ```ts
