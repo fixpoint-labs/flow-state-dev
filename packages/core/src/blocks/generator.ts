@@ -755,30 +755,40 @@ function compileToolsWithExecute(
         );
       };
 
-      try {
-        // No `toolCallId` → no stable envelope callId; run the tool directly
-        // with retry + observer hooks (matches prior behavior).
-        if (options?.toolCallId === undefined) {
-          return await withScope(callTool);
+      // Wrap with `onToolErrored` so the observer fires BEFORE the
+      // `tool_output` envelope settles to failed and emits `item.done`.
+      // Consumers that listen for `item.done` and expect the observer's
+      // side-effects (memo writes, additional emitted items) to already
+      // have run rely on this ordering. The outer envelope-emit path
+      // catches whatever this rethrows and only then emits item.done.
+      const callToolWithErrorObserver = async (scopedCtx: BlockContext): Promise<unknown> => {
+        try {
+          return await callTool(scopedCtx);
+        } catch (error) {
+          const err = toError(error);
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
+          throw err;
         }
-        const attribution = {
-          callId: options.toolCallId,
-          generatorBlock: generatorBlockName,
-          agentType,
-          agentName,
-        };
-        return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
-          withScope((scopedCtx) => {
-            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
-            return callTool(scopedCtx);
-          })
-        );
-      } catch (error) {
-        const err = toError(error);
-        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-        throw err;
+      };
+
+      // No `toolCallId` → no stable envelope callId; run the tool directly
+      // with retry + observer hooks (matches prior behavior).
+      if (options?.toolCallId === undefined) {
+        return await withScope(callToolWithErrorObserver);
       }
+      const attribution = {
+        callId: options.toolCallId,
+        generatorBlock: generatorBlockName,
+        agentType,
+        agentName,
+      };
+      return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+        withScope((scopedCtx) => {
+          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+          return callToolWithErrorObserver(scopedCtx);
+        })
+      );
     }
     };
   });

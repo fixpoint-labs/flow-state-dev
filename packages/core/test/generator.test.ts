@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
+  defineFlow,
   generator,
   handler,
   readResourceContentTool,
@@ -672,6 +673,71 @@ describe("generator builder", () => {
     // The alias must satisfy provider patterns; if this regex check fails,
     // OpenAI will reject the next turn's replay.
     expect((toolOutput.toolCall as any).alias).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("fires onToolErrored before emitting the tool_output's item.done on failure", async () => {
+    // Consumers that listen for item.done and expect onToolErrored to have
+    // run its side-effects (memo writes, additional emitted items) rely on
+    // this ordering — the observer must run first, item.done last.
+    const events: string[] = [];
+    const failingTool = handler({
+      name: "boom",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        throw new Error("kaboom");
+      },
+    });
+
+    const block = generator({
+      name: "ordering-gen",
+      model: "m",
+      prompt: "p",
+      tools: [failingTool],
+    });
+
+    const flow = defineFlow({
+      kind: "ordering",
+      actions: {
+        run: {
+          inputSchema: z.object({ q: z.string() }),
+          block,
+        },
+      },
+      tools: {
+        onToolErrored: () => {
+          events.push("onToolErrored");
+        },
+      },
+    });
+    const instance = flow();
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find((t: any) => t.name === "boom");
+          if (toolDef?.execute) {
+            try {
+              await toolDef.execute({ q: "x" }, { toolCallId: "call_err" });
+            } catch {
+              // expected — wrapper rethrows
+            }
+          }
+          return { text: "done" };
+        },
+      }),
+      response: {
+        emit: (event: any) => {
+          if (event.type === "item.done" && event.item?.type === "tool_output") {
+            events.push("item.done");
+          }
+        },
+      } as any,
+    });
+
+    await runForTest(instance.actions.run.block, { q: "x" }, ctx);
+    expect(events).toEqual(["onToolErrored", "item.done"]);
   });
 
   it("stamps the alias on a failed tool_output as well", async () => {
