@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-14
 
+### Trading Desk example: wider indicator set and insider transactions (FIX-596)
+
+- The technical analyst's indicator bundle expands from RSI/MACD/ATR/SMA50/200 to also include Bollinger Bands, VWMA(20), the Stochastic Oscillator (%K/%D), KDJ, and OBV. The hand-rolled `indicators-math.ts` is replaced with `trading-signals` (MIT) plus two small helpers for VWMA and KDJ.
+- New `get_insider_transactions` tool wired into the news analyst — 90-day window of Form 4 filings with filing date, insider name and title, transaction code, signed share count, price, and derivative flag. Finnhub-only; returns `unavailable` on failure or missing key, consistent with the other single-provider tools.
+- News analyst prompt updated to weigh insider transactions as ground-truth signal (cluster buying, executive selling streaks, derivative vs. open-market trades) and treat headlines as complementary context.
+- Curated `insider-transactions.json` fixtures added for NVDA, AAPL, and JPM at the `2026-05-06` snapshot. Existing `indicators.json` fixtures extended with the new indicator fields.
+- Lives entirely inside `examples/trading-desk/` — no framework changes.
+
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
 
 - New method on every `BlockDefinition`. Wrapping a block with `.asTool(opts?)` causes it to emit a `tool_output` item with the same envelope and lifecycle the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged.

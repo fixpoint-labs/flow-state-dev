@@ -3,11 +3,24 @@
  * tool handler when running in live mode — indicators aren't *fetched*, they're
  * derived from OHLC bars, so they belong outside the data-source layer.
  *
+ * Wraps the `trading-signals` library (MIT) for the standard set, plus a
+ * hand-rolled VWMA and a KDJ derived from the Stochastic Oscillator's K/D.
+ *
  * All routines accept the canonical `bars` shape from `get_price_history` and
  * return finite numbers. When the input series is too short to compute a given
- * indicator, the routine returns `0` (or the neutral baseline) rather than
+ * indicator the routine returns `0` (or the neutral baseline) rather than
  * throwing — analyst prompts already handle missing-signal cases.
  */
+import {
+  ATR,
+  BollingerBands,
+  EMA,
+  MACD,
+  OBV,
+  RSI,
+  SMA,
+  StochasticOscillator,
+} from "trading-signals";
 
 export type Bar = {
   date: string;
@@ -25,70 +38,62 @@ export type IndicatorOutput = {
   trend: "up" | "down" | "flat";
   sma50: number;
   sma200: number;
+  bollinger: { upper: number; middle: number; lower: number };
+  vwma20: number;
+  stoch: { k: number; d: number };
+  kdj: { k: number; d: number; j: number };
+  obv: number;
 };
+
+/**
+ * Coerces non-finite numbers (NaN, ±Infinity) to `0`. `trading-signals` returns
+ * finite numbers under normal use, but defensive coercion keeps the schema
+ * contract honest if a future upstream change ever leaks NaN through.
+ */
+function finite(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** Last value of a running indicator that consumes one input per bar. */
+function lastResult<I>(
+  indicator: { add: (input: I) => unknown; getResult: () => number | null },
+  inputs: readonly I[],
+): number {
+  let last: number | null = null;
+  for (const input of inputs) {
+    const out = indicator.add(input);
+    if (typeof out === "number") last = out;
+  }
+  return finite(last ?? 0);
+}
 
 export function simpleMovingAverage(values: ReadonlyArray<number>, period: number): number {
   if (values.length < period) return 0;
-  const slice = values.slice(values.length - period);
-  return slice.reduce((sum, v) => sum + v, 0) / period;
+  return finite(lastResult(new SMA(period), values));
 }
 
 /**
- * Exponential moving average. Seeded with the SMA of the first `period` values,
- * then iterated through the rest of the series. Returns 0 if the series is
- * shorter than `period`.
+ * Volume-weighted moving average over `period` bars. Hand-rolled because
+ * `trading-signals` ships VWAP (typical price × volume, cumulative) but not
+ * a fixed-window VWMA. Returns 0 if fewer than `period` bars or if the window
+ * has zero total volume.
  */
-function ema(values: ReadonlyArray<number>, period: number): number {
-  if (values.length < period) return 0;
-  const k = 2 / (period + 1);
-  let result = simpleMovingAverage(values.slice(0, period), period);
-  for (let i = period; i < values.length; i++) {
-    result = values[i]! * k + result * (1 - k);
+export function vwma(bars: ReadonlyArray<Bar>, period: number): number {
+  if (bars.length < period) return 0;
+  const window = bars.slice(bars.length - period);
+  let numerator = 0;
+  let denominator = 0;
+  for (const b of window) {
+    numerator += b.close * b.volume;
+    denominator += b.volume;
   }
-  return result;
+  return denominator === 0 ? 0 : finite(numerator / denominator);
 }
 
-/** Full EMA series — needed for MACD's signal line (EMA of MACD line). */
-function emaSeries(values: ReadonlyArray<number>, period: number): number[] {
-  if (values.length < period) return [];
-  const k = 2 / (period + 1);
-  const out: number[] = [];
-  const seed = simpleMovingAverage(values.slice(0, period), period);
-  out.push(seed);
-  for (let i = period; i < values.length; i++) {
-    const prev = out[out.length - 1]!;
-    out.push(values[i]! * k + prev * (1 - k));
-  }
-  return out;
-}
-
-/**
- * Wilder's RSI over 14 periods. The classic recursive smoothing — average
- * gain/loss seeded from the first 14 closes, then each subsequent bar
- * smoothed with weight 1/period. Returns 50 (neutral) on a flat market and
- * 0 when the series is too short.
- */
+/** Wilder's RSI over `period` (default 14). */
 export function rsi(closes: ReadonlyArray<number>, period = 14): number {
   if (closes.length <= period) return 0;
-  let gain = 0;
-  let loss = 0;
-  for (let i = 1; i <= period; i++) {
-    const diff = closes[i]! - closes[i - 1]!;
-    if (diff >= 0) gain += diff;
-    else loss -= diff;
-  }
-  let avgGain = gain / period;
-  let avgLoss = loss / period;
-  for (let i = period + 1; i < closes.length; i++) {
-    const diff = closes[i]! - closes[i - 1]!;
-    const g = diff > 0 ? diff : 0;
-    const l = diff < 0 ? -diff : 0;
-    avgGain = (avgGain * (period - 1) + g) / period;
-    avgLoss = (avgLoss * (period - 1) + l) / period;
-  }
-  if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return 100 - 100 / (1 + rs);
+  return finite(lastResult(new RSI(period), closes));
 }
 
 /**
@@ -101,39 +106,83 @@ export function macd(closes: ReadonlyArray<number>): {
   histogram: number;
 } {
   if (closes.length < 35) return { line: 0, signal: 0, histogram: 0 };
-  const ema12Series = emaSeries(closes, 12);
-  const ema26Series = emaSeries(closes, 26);
-  // Align series tails — EMA12 starts earlier so trim from the front.
-  const offset = ema12Series.length - ema26Series.length;
-  const macdSeries = ema26Series.map((v, i) => ema12Series[i + offset]! - v);
-  const line = macdSeries[macdSeries.length - 1] ?? 0;
-  const signal = ema(macdSeries, 9);
-  return { line, signal, histogram: line - signal };
+  const ind = new MACD(new EMA(12), new EMA(26), new EMA(9));
+  let last: { macd: number; signal: number; histogram: number } | null = null;
+  for (const c of closes) {
+    const out = ind.add(c);
+    if (out) last = out;
+  }
+  if (!last) return { line: 0, signal: 0, histogram: 0 };
+  return {
+    line: finite(last.macd),
+    signal: finite(last.signal),
+    histogram: finite(last.histogram),
+  };
+}
+
+/** Wilder's Average True Range over `period` (default 14). */
+export function atr(bars: ReadonlyArray<Bar>, period = 14): number {
+  if (bars.length <= period) return 0;
+  return finite(lastResult(new ATR(period), bars));
+}
+
+/** Bollinger Bands (period 20, 2 standard deviations) on closing prices. */
+export function bollinger(
+  closes: ReadonlyArray<number>,
+  period = 20,
+  deviation = 2,
+): { upper: number; middle: number; lower: number } {
+  if (closes.length < period) return { upper: 0, middle: 0, lower: 0 };
+  const ind = new BollingerBands(period, deviation);
+  let last: { upper: number; middle: number; lower: number } | null = null;
+  for (const c of closes) {
+    const out = ind.add(c);
+    if (out) last = out;
+  }
+  if (!last) return { upper: 0, middle: 0, lower: 0 };
+  return { upper: finite(last.upper), middle: finite(last.middle), lower: finite(last.lower) };
 }
 
 /**
- * Wilder's Average True Range over 14 periods. True range per bar is the
- * max of (high-low, |high-prevClose|, |low-prevClose|). ATR is the
- * Wilder-smoothed mean of those.
+ * Stochastic Oscillator with the conventional 14/3/3 parameters.
+ * `k` is %K (smoothed), `d` is %D (SMA of %K).
  */
-export function atr(bars: ReadonlyArray<Bar>, period = 14): number {
-  if (bars.length <= period) return 0;
-  const trueRanges: number[] = [];
-  for (let i = 1; i < bars.length; i++) {
-    const b = bars[i]!;
-    const prev = bars[i - 1]!;
-    const tr = Math.max(
-      b.high - b.low,
-      Math.abs(b.high - prev.close),
-      Math.abs(b.low - prev.close),
-    );
-    trueRanges.push(tr);
+export function stochastic(
+  bars: ReadonlyArray<Bar>,
+  n = 14,
+  m = 3,
+  p = 3,
+): { k: number; d: number } {
+  if (bars.length < n + m + p) return { k: 0, d: 0 };
+  const ind = new StochasticOscillator(n, m, p);
+  let last: { stochK: number; stochD: number } | null = null;
+  for (const b of bars) {
+    const out = ind.add(b);
+    if (out) last = out;
   }
-  let result = simpleMovingAverage(trueRanges.slice(0, period), period);
-  for (let i = period; i < trueRanges.length; i++) {
-    result = (result * (period - 1) + trueRanges[i]!) / period;
-  }
-  return result;
+  if (!last) return { k: 0, d: 0 };
+  return { k: finite(last.stochK), d: finite(last.stochD) };
+}
+
+/**
+ * KDJ derived from the Stochastic Oscillator: J = 3K - 2D. Common in Asian
+ * technical-analysis literature; surfaces divergence between %K and %D more
+ * aggressively than %K alone.
+ */
+export function kdj(bars: ReadonlyArray<Bar>): { k: number; d: number; j: number } {
+  const { k, d } = stochastic(bars);
+  if (k === 0 && d === 0) return { k: 0, d: 0, j: 0 };
+  return { k, d, j: finite(3 * k - 2 * d) };
+}
+
+/**
+ * On-Balance Volume — cumulative running sum that adds the bar's volume on
+ * up-closes and subtracts it on down-closes. Returns the latest accumulated
+ * value, or 0 if fewer than 2 bars are available.
+ */
+export function obv(bars: ReadonlyArray<Bar>): number {
+  if (bars.length < 2) return 0;
+  return finite(lastResult(new OBV(2), bars));
 }
 
 /**
@@ -160,5 +209,10 @@ export function computeIndicators(bars: ReadonlyArray<Bar>): IndicatorOutput {
     trend: trendLabel(lastClose, sma50, sma200),
     sma50,
     sma200,
+    bollinger: bollinger(closes),
+    vwma20: vwma(bars, 20),
+    stoch: stochastic(bars),
+    kdj: kdj(bars),
+    obv: obv(bars),
   };
 }
