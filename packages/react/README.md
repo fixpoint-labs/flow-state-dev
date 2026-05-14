@@ -154,7 +154,7 @@ function PlanRenderer({ item }: { item: ContainerItem }) {
 
 ### `useResourceCollection(session, ref)`
 
-Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance and invalidated on observed `resource_change` items for the affected ref.
+Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance and invalidated on observed `resource_change` notices for the affected ref. Invalidation is driven by the `SessionView.resourceChanges` side channel (see below), so it works regardless of whether the caller opted into transient items.
 
 ### `useResourceCollectionList(session, ref, { limit?, topicPrefix? })`
 
@@ -162,7 +162,11 @@ Convenience hook for paginated list views. Returns `items` (array of `Collection
 
 ### `useResourceCollectionItem(session, ref, topic)`
 
-Single-item lookup by topic. Returns `null` when not present.
+Single-item lookup by topic. Returns `null` when not present. Refetches automatically when the watched `ref` receives a `resource_change` notice — e.g., a memo flipping from `writing` to `published` updates in place without remounting.
+
+### `SessionView.resourceChanges`
+
+`ReadonlyArray<ResourceChangeNotice>` of mid-stream resource_change notices in arrival order. Each notice carries `{ resourcePath, changeType, seq }`. Surfaced independently of the items filter, so subscribers can react to in-flight resource mutations without setting `includeTransient: true` on `useSession`. Reset on session change.
 
 ### `useResourceManifest(session)`
 
