@@ -101,6 +101,39 @@ The store interface is pluggable. If you need Redis, an alternative SQL backend,
 
 The exact interface may evolve. Check the `@flow-state-dev/server` package source for the current contract.
 
+## Looking up sessions by metadata
+
+Some apps don't carry a session id around. The natural identity of a session is whatever combination of inputs the user just chose — a ticker and a date, a project id and a branch, a customer id and a quarter. For those apps, set `title` and `metadata` at create time and resolve sessions by filtering the list.
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+
+const sessions = createSessionClient({ baseUrl: "" });
+
+type RunKey = { ticker: string; date: string };
+
+async function resolveSession(flowKind: string, userId: string, key: RunKey) {
+  const list = await sessions.listSessions({ flowKind, userId });
+  const match = list.find(
+    (s) =>
+      s.metadata?.ticker === key.ticker && s.metadata?.date === key.date,
+  );
+  if (match) return match.id;
+
+  const created = await sessions.createSession({
+    flowKind,
+    userId,
+    title: `${key.ticker} · ${key.date}`,
+    metadata: key,
+  });
+  return created.id;
+}
+```
+
+Server-side `metadata` filtering on `GET /api/flows/sessions` is not yet available; the route returns the full list for `(flowKind, userId)` and the client filters in memory. That's fine for local development and small-tenant use. Apps that expect hundreds of sessions per user should treat this as a deliberate ceiling and revisit when a server-side filter lands.
+
+The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
+
 ## Choosing a store
 
 - **Developing locally?** Start with in-memory (default). Switch to file store when you want persistence across restarts.

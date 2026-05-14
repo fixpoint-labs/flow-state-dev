@@ -142,6 +142,33 @@ models with one provider key configured. Each analyst writes a structured
 `pending → writing → published` flicker comes from `useClientData` reading the
 session-state `memoStatus` mirror.
 
+## Persistence and sessions
+
+Analysis history survives server restarts. Each run is one session, and the
+four inputs at the top of the page name it: `(ticker, date, preset, source)`.
+
+- Re-running with the same four inputs reuses the existing session and
+  refreshes its data. Memo resources have deterministic keys, so they
+  overwrite in place; the session state mirror (`memoStatus`, `runComplete`)
+  resets via `seedSession` at the start of each request.
+- Changing any one of the four inputs starts a new session. Its title is
+  derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
+  runs stay identifiable for a future session-browser UI.
+
+Data lives under `<example-dir>/.fsdev/data/` (already covered by the root
+`.gitignore`'s `**/.fsdev/**` rule). To wipe history, delete the directory.
+To redirect storage — for an isolated test run, for example — set
+`FSDEV_DATA_DIR`:
+
+```bash
+FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/example-trading-desk dev
+```
+
+The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
+[`app/page.tsx`](app/page.tsx) (the resolve-or-create logic that runs on each
+**re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
+for the generalized pattern.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider
