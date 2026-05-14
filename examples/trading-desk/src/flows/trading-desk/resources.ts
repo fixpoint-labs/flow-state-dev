@@ -150,6 +150,37 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   calibrationRationale: z.string().nullable().default(null),
+  // Phase 5 PortfolioDecision extension. Only the portfolioManager memo
+  // (`memos/p5/portfolio-manager`) populates these; all other memos leave
+  // them `null`. `finalRating` is the design-mandated 5-tier scale, stored
+  // separately from `rating` (which carries free-form header chip text).
+  // `agreesWithTrader` is computed at commit time from `finalRating` direction
+  // vs `trader.direction` — it's a derived field, not part of the LLM output.
+  decisionSummary: z.string().nullable().default(null),
+  finalRating: z
+    .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
+    .nullable()
+    .default(null),
+  decisionConfidence: z.number().min(0).max(1).nullable().default(null),
+  acceptedAdjustments: z
+    .object({
+      sizing: z.object({ applied: z.boolean(), reasoning: z.string() }),
+      holdingPeriod: z.object({ applied: z.boolean(), reasoning: z.string() }),
+      invalidation: z.object({ applied: z.boolean(), reasoning: z.string() }),
+    })
+    .nullable()
+    .default(null),
+  keyDependencies: z.array(z.string()).nullable().default(null),
+  upstreamReferences: z
+    .object({
+      analystMemos: z.array(z.string()),
+      thesis: z.string(),
+      tradeProposal: z.string(),
+      riskAssessment: z.string(),
+    })
+    .nullable()
+    .default(null),
+  agreesWithTrader: z.boolean().nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

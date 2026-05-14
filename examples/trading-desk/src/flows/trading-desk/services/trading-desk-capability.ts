@@ -33,6 +33,7 @@ import {
   formatDebate,
   formatMemoBlock,
   formatPersonaCritique,
+  formatRiskAssessmentExtensions,
   formatStanceContributions,
   formatThesisExtensions,
   formatTradeProposalExtensions,
@@ -141,6 +142,26 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Phase 4 — consolidated risk-assessment memo (body + typed extension
+     *  fields). The `riskCritiques` preset bundles only the three persona
+     *  memos; the PM generator reads both the personas and the
+     *  consolidator output, so this preset is the cleanest path to the
+     *  latter. */
+    riskAssessment: {
+      resources: { memos: memosCollection },
+      context: {
+        riskAssessment: (_input, ctx) =>
+          formatMemoBlock(
+            "Risk assessment",
+            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+          ),
+        riskAssessmentFields: (_input, ctx) =>
+          formatRiskAssessmentExtensions(
+            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+          ),
+      },
+    },
+
     /** Phase 4 — three persona critiques (aggressive, conservative, neutral). */
     riskCritiques: {
       resources: { memos: memosCollection },
@@ -190,6 +211,7 @@ export {
   formatDebate,
   formatMemoBlock,
   formatPersonaCritique,
+  formatRiskAssessmentExtensions,
   formatStanceContributions,
   formatThesisExtensions,
   formatTradeProposalExtensions,
