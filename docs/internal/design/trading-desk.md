@@ -52,19 +52,21 @@ Every generator in the pipeline opts into one capability, defined in [`trading-d
 
 Opt-in presets bundle resources and context formatters for specific upstream artifacts: `investmentThesis`, `tradeProposal`, `riskAssessment`, `phase1Memos`, `bullThesis`, `bearThesis`, `bullContributions`, `bearContributions`, `phase2Debate`, `phase4Debate`, `riskCritiques`. Each opt-in preset declares the resources it reads, so the generator's `resources:` slot stays empty in most cases.
 
-Generators use a static `uses` entry for always-on presets plus a dynamic `(ctx) => ...` entry for heavier presets gated on `full`. The trader generator in [`phase-3/trader.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-3/trader.ts) and the portfolio manager in [`phase-5/portfolio-manager.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-5/portfolio-manager.ts) are the canonical templates:
+Cost-preset gating lives inside the preset, not at the call site. The `*Full` variants (`phase1MemosFull`, `phase2DebateFull`, `riskCritiquesFull`) declare the same resources as their always-on counterparts, but their context formatters render an empty string when `costPreset !== "full"`. Generators list everything they might want in one static call:
 
 ```ts
 uses: [
-  tradingDesk.presets({ investmentThesis: true }),
-  (ctx: { session: { state: { costPreset?: string } } }) =>
-    ctx.session.state.costPreset === "full"
-      ? ([tradingDesk.presets({ phase1Memos: true, phase2Debate: true })] as const)
-      : ([] as const),
-] as const,
+  tradingDesk.presets({
+    investmentThesis: true,
+    phase1MemosFull: true,
+    phase2DebateFull: true,
+  }),
+],
 ```
 
-One constraint matters: dynamic `uses` entries can contribute context and tools but not resources. Resources must be declared statically — either via the block's `resources:` slot or via a static preset entry. That's why the trader and PM both keep `resources: { p2Contributions: phase2Contributions }` even though the resource is only read by the dynamic `phase2Debate` preset.
+The trader in [`phase-3/trader.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-3/trader.ts) and the portfolio manager in [`phase-5/portfolio-manager.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-5/portfolio-manager.ts) are the canonical templates. Phase 2 generators use the always-on `phase1Memos` / `phase2Debate` because those memos load regardless of preset. The two flavors coexist because the same content has two gating policies — full-only in P3/4/5, always-on in P2.
+
+Resources flow through the static preset, so generators don't need to mirror them on their own `resources:` slot. The previous dynamic-`uses` pattern (where a `(ctx) => ...` lambda added presets at runtime and a separate `resources:` slot covered the resources those presets needed) is gone from this example.
 
 ## 6. Structured-output schemas at each convergence point
 

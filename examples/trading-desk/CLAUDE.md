@@ -82,23 +82,26 @@ See the capability's available presets in
 [`services/trading-desk-capability.ts`](src/flows/trading-desk/services/trading-desk-capability.ts).
 
 If you have **costPreset-conditional** content (heavier context only on
-`full`), use a dynamic `uses` entry:
+`full`), list the `*Full` variant of the preset alongside the always-on
+ones. The gating lives inside the preset — the context formatter renders
+an empty string when `costPreset !== "full"`, but the resource and the
+prompt tag still wire up statically. The call site stays flat:
 
 ```ts
 uses: [
-  tradingDesk.presets({ investmentThesis: true }),                       // always on
-  (ctx: { session: { state: { costPreset?: string } } }) =>
-    ctx.session.state.costPreset === "full"
-      ? ([tradingDesk.presets({ phase1Memos: true, phase2Debate: true })] as const)
-      : ([] as const),
-] as const,
+  tradingDesk.presets({
+    investmentThesis: true,    // always on
+    phase1MemosFull: true,     // empty render on `fast`, populated on `full`
+    phase2DebateFull: true,    // ditto
+  }),
+],
 ```
 
-Note the `as const` and the explicit `(ctx: ...) =>` type — both are needed
-because TypeScript widens otherwise. **Resources required by the dynamic
-entry must be declared on the block's `resources:` slot directly** —
-dynamic `uses` only contribute context and tools (see
-[capabilities.md](../../docs/architecture/capabilities.md#dynamic-uses-entries)).
+Available `*Full` variants today: `phase1MemosFull`, `phase2DebateFull`,
+`riskCritiquesFull`. Each one declares the same resources as its
+always-on counterpart, so generators don't need to mirror those on their
+own `resources:` slot. Add a new variant when you want a different
+preset to participate in the cost gate.
 
 ## Adding a new tool
 

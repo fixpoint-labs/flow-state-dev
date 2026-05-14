@@ -17,6 +17,14 @@
  *      opt in via `tradingDesk.presets({ phase1Memos: true, ... })`.
  *      Each bundle also declares the resources it reads, so consumers
  *      don't have to mirror that in their own `resources:` slot.
+ *
+ *   4. **Cost-preset gating lives in the preset, not the call site.**
+ *      `*Full` variants (e.g. `phase1MemosFull`, `phase2DebateFull`,
+ *      `riskCritiquesFull`) render an empty string when
+ *      `costPreset !== "full"`. Generators that want full-only context
+ *      list the `*Full` variant directly in `uses` rather than wrapping
+ *      a dynamic `uses` lambda around the always-on preset — the static
+ *      shape lets resources flow through and keeps the call site flat.
  */
 import { defineCapability } from "@flow-state-dev/core";
 import {
@@ -199,6 +207,78 @@ export const tradingDesk = defineCapability({
       context: {
         phase4Debate: (_input, ctx) =>
           formatDebate(readContributionsEntries(ctx, "p4Contributions")),
+      },
+    },
+
+    // ────────────────────────────────────────────────────────────────────
+    // Cost-preset-gated variants.
+    //
+    // Every generator declares these statically (no dynamic `uses` lambda).
+    // The context formatters render an empty string when `costPreset !==
+    // "full"`, so the heavier prompt blocks only ride along on the full
+    // preset. Resources are still declared up-front, so static resource
+    // merging always succeeds.
+    //
+    // Why these exist as separate presets rather than always-on flags on
+    // the base presets: the Phase 2 consolidators and research manager
+    // use `phase1Memos` / `phase2Debate` as ALWAYS-ON context, while
+    // Phase 3, 4, and 5 want them as FULL-ONLY context. Same content,
+    // two different gating policies — so two presets.
+    // ────────────────────────────────────────────────────────────────────
+
+    /** Phase 1 analyst memos, rendered only on the `full` cost preset.
+     *  Always-on equivalent is `phase1Memos`. */
+    phase1MemosFull: {
+      resources: { memos: memosCollection },
+      context: {
+        phase1Memos: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatAnalystMemos(ctx.resources.memos)
+            : "",
+      },
+    },
+
+    /** Phase 2 bull/bear debate transcript, rendered only on `full`.
+     *  Always-on equivalent is `phase2Debate`. */
+    phase2DebateFull: {
+      resources: { p2Contributions: phase2Contributions },
+      context: {
+        phase2Debate: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatDebate(readContributionsEntries(ctx, "p2Contributions"))
+            : "",
+      },
+    },
+
+    /** Three persona critiques, rendered only on `full`. Always-on
+     *  equivalent is `riskCritiques` — used by the Phase 4 consolidator
+     *  which needs the persona memos regardless of preset. The Phase 5
+     *  PM reads the consolidated risk assessment always, and the persona
+     *  memos only on full as extra audit context — hence this variant. */
+    riskCritiquesFull: {
+      resources: { memos: memosCollection },
+      context: {
+        aggressiveCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Aggressive Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+              )
+            : "",
+        conservativeCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Conservative Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+              )
+            : "",
+        neutralCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Neutral Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
+              )
+            : "",
       },
     },
   },
