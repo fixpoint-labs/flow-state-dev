@@ -15,7 +15,10 @@ import {
   type AgentName,
 } from "@/src/flows/trading-desk/agents";
 import { ThesisBody } from "./thesis-body";
-import type { ThesisSection } from "@/src/flows/trading-desk/resources";
+import type {
+  MemoState,
+  ThesisSection,
+} from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -27,7 +30,11 @@ function tierIndex(rating: Tier | null): number {
   return TIERS.indexOf(rating);
 }
 
-type AcceptedAdjustment = { applied: boolean; reasoning: string };
+// Derive the per-axis adjustment shape from the canonical `memoStateSchema`
+// so the renderer can't drift from the resource contract.
+type AcceptedAdjustment = NonNullable<
+  MemoState["acceptedAdjustments"]
+>["sizing"];
 
 export type PmHeroProps = {
   agent: AgentName;

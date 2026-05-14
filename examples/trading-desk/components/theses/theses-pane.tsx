@@ -42,6 +42,7 @@ import {
   type AnyMemoShortName,
 } from "@/src/flows/trading-desk/agents";
 import type {
+  MemoState,
   MemoStatus,
   ThesisSection,
 } from "@/src/flows/trading-desk/resources";
@@ -153,7 +154,11 @@ type MemoDocProps = {
   status: MemoStatus | "unavailable";
 };
 
-type AcceptedAdjustment = { applied: boolean; reasoning: string };
+// Derived from the canonical `memoStateSchema` so the client-data type
+// can't drift from the resource contract (FIX-564 reviewer feedback).
+type AcceptedAdjustment = NonNullable<
+  MemoState["acceptedAdjustments"]
+>["sizing"];
 
 type MemoClientData = {
   status: MemoStatus;
