@@ -7,7 +7,7 @@
   "trend": "up",
   "sma50": 213.2,
   "sma200": 198.6,
-  "bollinger": { "upper": 218.4, "middle": 213.2, "lower": 208.0 },
+  "bollinger": { "upper": 220.8, "middle": 215.6, "lower": 210.4 },
   "vwma20": 213.7,
   "stoch": { "k": 71.4, "d": 67.9 },
   "kdj": { "k": 71.4, "d": 67.9, "j": 78.4 },
