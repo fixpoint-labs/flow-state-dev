@@ -7,18 +7,15 @@
  * renders in the transcript automatically.
  *
  * Capability-driven context. The `tradingDesk` capability provides:
- *   - `investmentThesis` preset (always on) — InvestmentThesis + extension
- *     fields. Declares the `memos` resource.
- *   - `phase1Memos` and `phase2Debate` presets (added via dynamic `uses` on
- *     the `full` preset) — full context only when the cost budget warrants.
- *
- * The `p2Contributions` resource is declared on the generator directly so
- * the dynamic `phase2Debate` preset can read it. (Dynamic uses contribute
- * context only — resources must be declared statically.)
+ *   - `investmentThesis` (always on) — InvestmentThesis + extension fields.
+ *   - `phase1MemosFull` and `phase2DebateFull` — same content as the
+ *     always-on `phase1Memos` / `phase2Debate` presets, but the context
+ *     formatters render an empty string when `costPreset !== "full"`.
+ *     Listed statically so the resources they declare (memos collection,
+ *     `p2Contributions`) flow through without an extra `resources:` slot.
  */
 import { generator } from "@flow-state-dev/core";
 import { PHASE_3_MEMO_KEYS } from "../agents";
-import { phase2Contributions } from "../phase-2/round-robin";
 import { sessionStateSchema } from "../state";
 import { tradingDesk } from "../services/trading-desk-capability";
 import { tradeProposalOutputSchema } from "./schemas";
@@ -29,13 +26,12 @@ export const traderGenerator = generator({
   agentType: "primary",
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   uses: [
-    tradingDesk.presets({ investmentThesis: true }),
-    (ctx: { session: { state: { costPreset?: string } } }) =>
-      ctx.session.state.costPreset === "full"
-        ? ([tradingDesk.presets({ phase1Memos: true, phase2Debate: true })] as const)
-        : ([] as const),
-  ] as const,
-  resources: { p2Contributions: phase2Contributions },
+    tradingDesk.presets({
+      investmentThesis: true,
+      phase1MemosFull: true,
+      phase2DebateFull: true,
+    }),
+  ],
   prompt: TRADER_PROMPT,
   user: "Now write the published TradeProposal.",
   sessionStateSchema,

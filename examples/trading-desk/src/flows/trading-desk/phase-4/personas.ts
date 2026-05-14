@@ -11,8 +11,9 @@
  * Personas read prior persona memos via per-generator `context` entries
  * because the round-robin order matters — aggressive sees no priors,
  * conservative sees aggressive, neutral sees both. The shared
- * `tradeProposal` + `investmentThesis` presets from `tradingDesk` cover
- * the static surface; dynamic `uses` adds the full-preset extras.
+ * `tradeProposal` + `investmentThesis` presets cover the static surface;
+ * `phase1MemosFull` + `phase2DebateFull` are the cost-preset-gated
+ * variants that render empty when `costPreset !== "full"`.
  *
  * `agentType: "sub"` — per the design, P4 personas emit speak rows only
  * (no structured-output card in the transcript). The memo on the right
@@ -20,8 +21,6 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { PHASE_4_MEMO_KEYS } from "../agents";
-import { phase2Contributions } from "../phase-2/round-robin";
-import { memosCollection } from "../resources";
 import { sessionStateSchema } from "../state";
 import {
   formatPersonaCritique,
@@ -42,33 +41,20 @@ function memoState(ctx: any, collectionKey: string): unknown {
   return ctx.resources.memos?.getOptional(collectionKey)?.state;
 }
 
-/** Dynamic uses entry: enable phase1Memos + phase2Debate context only on the
- *  `full` cost preset. p2Contributions resource is declared on each
- *  generator's `resources:` slot below (dynamic uses contribute context
- *  only — resources must come from the static path). */
-const fullPresetExtras = (ctx: {
-  session: { state: { costPreset?: string } };
-}) =>
-  ctx.session.state.costPreset === "full"
-    ? ([tradingDesk.presets({ phase1Memos: true, phase2Debate: true })] as const)
-    : ([] as const);
-
 const baseUses = [
-  tradingDesk.presets({ tradeProposal: true, investmentThesis: true }),
-  fullPresetExtras,
+  tradingDesk.presets({
+    tradeProposal: true,
+    investmentThesis: true,
+    phase1MemosFull: true,
+    phase2DebateFull: true,
+  }),
 ] as const;
-
-const sharedResources = {
-  memos: memosCollection,
-  p2Contributions: phase2Contributions,
-} as const;
 
 export const aggressiveRiskGenerator = generator({
   name: "aggressive-risk-generator",
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.aggressive.agentName,
   uses: baseUses,
-  resources: sharedResources,
   prompt: AGGRESSIVE_PROMPT,
   user:
     "You are the first persona to speak in the round-robin. " +
@@ -82,7 +68,6 @@ export const conservativeRiskGenerator = generator({
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
   uses: baseUses,
-  resources: sharedResources,
   prompt: CONSERVATIVE_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>
@@ -101,7 +86,6 @@ export const neutralRiskGenerator = generator({
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
   uses: baseUses,
-  resources: sharedResources,
   prompt: NEUTRAL_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>
