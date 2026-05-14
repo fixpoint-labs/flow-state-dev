@@ -15,14 +15,11 @@
  *    That display is by design (FIX-427 prefetched-window contract), not a
  *    persistence bug. To make the bodies appear inline in the DevTool,
  *    set `prefetchWindow: 7` (or higher) on `memosCollection`.
- *  - The shared `phase2Contributions` DefinedResource is stored under TWO
- *    different keys because two names register it: `contributions` (declared
- *    at the round-robin block level) and `p2Contributions` (declared on
- *    the flow). The round-robin writes only to `contributions`; the
- *    flow-level `p2Contributions` slot is never written. Consolidator
- *    generators read from `contributions` (they declare the same block-level
- *    name) so the contribution data still flows correctly — but the
- *    duplicate slot is a framework wart worth knowing about.
+ *  - The shared `phase2Contributions` `DefinedResource` is persisted to a
+ *    single slot regardless of how many accessor names register it. Both
+ *    the round-robin's `contributions` accessor and the flow-level
+ *    `p2Contributions` accessor resolve to the same canonical storage key,
+ *    so there is one entries array — not two (FIX-591).
  */
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
@@ -120,7 +117,7 @@ function rmStructuredOutput() {
 }
 
 describe("session resources are persisted after analyze run", () => {
-  it("layout: 7 memo keys + contributions slot + p2Contributions slot", async () => {
+  it("layout: 7 memo keys + single shared contributions slot", async () => {
     const stores = createInMemoryStores();
     const sessionId = "layout-session";
 
@@ -201,14 +198,15 @@ describe("session resources are persisted after analyze run", () => {
       expect(memo.body).toBeDefined();
     }
 
-    // Round-robin is configured with `accessorKey: "p2Contributions"`, so
-    // writes land on the same accessor name that consolidators (via the
-    // tradingDesk capability presets) and the flow-level registration use.
-    // Resource state is keyed by accessor name, so a single shared accessor
-    // is the only way to share storage.
+    // Phase 2's round-robin uses `accessorKey: "p2Contributions"`, which
+    // matches the accessor names the consolidator and flow-level registration
+    // use — one shared name across writers and readers. FIX-591 additionally
+    // guarantees that even if a different accessor name appeared somewhere,
+    // it would resolve to the same canonical storage key for this ref.
     expect(resources.p2Contributions).toBeDefined();
     const p2Contributions = resources.p2Contributions as { entries?: unknown[] };
     expect(Array.isArray(p2Contributions.entries)).toBe(true);
     expect((p2Contributions.entries ?? []).length).toBeGreaterThan(0);
+    expect(resources.contributions).toBeUndefined();
   });
 });

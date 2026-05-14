@@ -76,6 +76,7 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey
 } from "../stores/scope-keys";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
 
@@ -203,14 +204,17 @@ function normalizeScopeResources(
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
   const normalized: Record<string, JsonObject> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — their instances are stored with path-based keys
     if (isCollectionConfig(config)) continue;
 
-    normalized[resourceName] = normalizeResourceState(
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+    normalized[storageKey] = normalizeResourceState(
       config,
-      seed?.[resourceName]
+      seed?.[storageKey]
     );
   }
 
@@ -232,30 +236,34 @@ function normalizeScopeResourceContent(
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — collection instances don't have definition-time content
     if (isCollectionConfig(config)) continue;
 
-    const existing = seed?.[resourceName];
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+
+    const existing = seed?.[storageKey];
     if (typeof existing === "string") {
-      normalized[resourceName] = existing;
+      normalized[storageKey] = existing;
       continue;
     }
 
     if (typeof config.content === "string") {
-      normalized[resourceName] = config.content;
+      normalized[storageKey] = config.content;
       continue;
     }
 
     if (typeof config.contentFile === "string") {
       try {
         // contentFile is resolved relative to process.cwd()
-        normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+        normalized[storageKey] = readFileSync(config.contentFile, "utf8");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Failed to load contentFile for resource "${resourceName}" (path: ${config.contentFile}): ${message}`
+          `Failed to load contentFile for resource "${accessor}" (path: ${config.contentFile}): ${message}`
         );
       }
     }
@@ -487,6 +495,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     };
   }
 
+  // Storage key for each accessor. Dual-registered aliases collapse to a
+  // single canonical key so their state lives in one slot (FIX-591).
+  const storageKeys = resourceStorageKeys(configs);
+
   for (const [resourceName, config] of Object.entries(configs)) {
     if (isCollectionConfig(config)) {
       // --- Create collection ref ---
@@ -645,15 +657,19 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       continue;
     }
 
-    // --- Static resource (unchanged) ---
+    // --- Static resource ---
+    // Storage key may differ from the accessor name when this ref is
+    // dual-registered under a different alias elsewhere in the flow.
+    const storageKey = storageKeys[resourceName] ?? resourceName;
+
     const readState = (): JsonObject =>
       cloneValue(
-        options.readResources()[resourceName] ??
+        options.readResources()[storageKey] ??
           normalizeResourceDefault(config)
       );
 
     handles[resourceName] = {
-      name: resourceName,
+      name: storageKey,
       scope: options.scope,
       config,
       get state() {
@@ -661,13 +677,13 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         await persistResourceState(
-          resourceName,
+          storageKey,
           config,
           updateObjectState(readState(), updates)
         );
       },
       async setState(nextState: JsonObject): Promise<void> {
-        await persistResourceState(resourceName, config, nextState);
+        await persistResourceState(storageKey, config, nextState);
       },
       async updateState(
         updater: (
@@ -675,14 +691,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
         const next = await updater(readState());
-        await persistResourceState(resourceName, config, next);
+        await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
-        const content = options.readResourceContent()[resourceName];
+        const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        const raw = options.readResourceContent()[resourceName];
+        const raw = options.readResourceContent()[storageKey];
         if (typeof raw !== "string") {
           return null;
         }
@@ -698,7 +714,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           throw new Error(`Resource "${resourceName}" content is read-only`);
         }
 
-        await persistResourceContent(resourceName, content);
+        await persistResourceContent(storageKey, content);
       }
     };
   }

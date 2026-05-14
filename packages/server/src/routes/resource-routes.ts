@@ -70,8 +70,8 @@ export async function handleGetResourceContent(
   const data = await getPersistedData(ctx, flow, route.sessionId, scope);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
-  const state = normalizeResourceState(config, data.resources[route.ref]);
-  const rawContent = data.content[route.ref];
+  const state = normalizeResourceState(config, data.resources[found.storageKey]);
+  const rawContent = data.content[found.storageKey];
   const content = await renderContent(config, rawContent, state);
 
   return jsonResponse(200, { ref: route.ref, content });
