@@ -193,7 +193,23 @@ defineFlow({
 });
 ```
 
-The cleanup block is returned for every provider so the capability shape stays stable; for non-MOAT providers it is effectively a no-op. See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
+The cleanup block is returned for every provider so the capability shape stays stable; for non-MOAT providers it is effectively a no-op.
+
+**Persistent containers for local dev.** MOAT cold-start takes a few seconds. For local development, set a stable `runName` and `persist: true` to reuse one container across requests — the cleanup block becomes a no-op, the next request reconnects via `moat list --json`, and operators reclaim resources with `moat stop <runName>` or `moat clean`:
+
+```typescript
+createBashCapability({
+  provider: {
+    type: "moat",
+    runName: "fsdev-dev",
+    persist: true,
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
 
 ### Configuration
 

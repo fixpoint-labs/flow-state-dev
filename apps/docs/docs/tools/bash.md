@@ -205,6 +205,31 @@ This is **required** for the MOAT provider. For `local`, `just-bash`, `vercel`, 
 
 If you call `createBashTool` directly outside a flow, the returned `sandbox.stop()` is the equivalent — call it yourself when you are done.
 
+### Persistent containers (local dev)
+
+Cold-starting a MOAT container takes a few seconds. Locally, that adds up. Set a stable `runName` and `persist: true` so one container survives across requests — the first call pays the cold-start cost; every subsequent call is a `moat exec` against the live container:
+
+```ts
+createBashCapability({
+  provider: {
+    type: "moat",
+    runName: "fsdev-dev",
+    persist: true,
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+How it behaves:
+
+- `bashCap.cleanupBlock` is still wired into `request.onFinished`, but becomes a no-op for the MOAT side — no `moat stop`, no `moat destroy`.
+- The next request finds the running container via `moat list --json` and reuses it.
+- The generated `moat.yaml` in the workspace carries an `# fsdev-managed` marker, so a later session knows the file is reusable instead of refusing it as user-authored.
+- The container outlives the framework process. Reclaim resources with `moat stop <runName>` or `moat clean`. Changing `grants` / `allowHosts` between runs does not retrofit the live container — stop it first if the policy must change.
+
+Skip `persist` in production. Each request should start clean there; the few-seconds cold start is the cost of isolation.
+
 ### Grants
 
 A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, an npm registry, etc.). The host operator runs `moat grant <provider>` once outside the framework; the framework does not store credentials, only declares which named grants the workspace needs. Missing grants surface a clear error before the run starts. See the [credentials concept page](https://majorcontext.com/moat/concepts/credentials) for how MOAT injects them on outbound requests.

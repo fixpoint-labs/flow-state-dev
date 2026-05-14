@@ -14,6 +14,7 @@
 import { Sandbox as VercelSandbox } from "@vercel/sandbox";
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
 import type { SandboxProvider } from "@flow-state-dev/tools/bash";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 /**
@@ -51,8 +52,18 @@ export function selectBashProvider(): SandboxProvider {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    // Default to a persistent, per-project container so the cold-start cost
+    // is paid once across local dev sessions. `MOAT_PERSIST=0` opts out;
+    // `MOAT_RUN_NAME` overrides the derived name. The runName is a hash of
+    // the project dir so two checkouts don't collide.
+    const persist = process.env.MOAT_PERSIST !== "0";
+    const runName =
+      process.env.MOAT_RUN_NAME ??
+      `fsdev-${createHash("sha256").update(process.cwd()).digest("hex").slice(0, 12)}`;
     return {
       type: "moat",
+      runName,
+      persist,
       grants: grants.length > 0 ? grants : undefined,
       allowHosts: allowHosts.length > 0 ? allowHosts : undefined,
     };

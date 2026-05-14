@@ -88,6 +88,7 @@ export async function resolveSandbox(
         configPath: provider.configPath,
         execTimeoutMs: provider.execTimeoutMs,
         bin: provider.bin,
+        persist: provider.persist,
       });
     }
 
