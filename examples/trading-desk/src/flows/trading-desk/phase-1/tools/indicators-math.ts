@@ -56,7 +56,7 @@ function finite(value: number): number {
 
 /** Last value of a running indicator that consumes one input per bar. */
 function lastResult<I>(
-  indicator: { add: (input: I) => unknown; getResult: () => number | null },
+  indicator: { add: (input: I) => unknown },
   inputs: readonly I[],
 ): number {
   let last: number | null = null;
@@ -171,7 +171,6 @@ export function stochastic(
  */
 export function kdj(bars: ReadonlyArray<Bar>): { k: number; d: number; j: number } {
   const { k, d } = stochastic(bars);
-  if (k === 0 && d === 0) return { k: 0, d: 0, j: 0 };
   return { k, d, j: finite(3 * k - 2 * d) };
 }
 
