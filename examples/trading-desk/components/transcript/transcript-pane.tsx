@@ -81,7 +81,7 @@ export function TranscriptPane({ session }: Props): ReactElement {
     <section
       className={cn(
         "flex flex-col overflow-hidden",
-        "border-r border-[color:var(--c-border)] bg-[color:var(--c-bg)]",
+        "border-l border-r border-[color:var(--c-border)] bg-[color:var(--c-bg)]",
       )}
       aria-label="Transcript"
     >

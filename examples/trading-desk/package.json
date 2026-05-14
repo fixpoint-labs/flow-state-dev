@@ -26,6 +26,7 @@
     "next": "^16.1.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "streamdown": "^2.3.0",
     "tailwind-merge": "^3.5.0",
     "yahoo-finance2": "^3.14.0",
     "zod": "^3.25.76"
