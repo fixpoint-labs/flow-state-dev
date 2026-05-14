@@ -299,17 +299,19 @@ export function buildBlock<
         return output;
       };
 
+      // The wrapper is a transparent handler around the inner block's run.
+      // Strip lifecycle hooks and connectInput so they fire only on the inner
+      // block (via `asRuntime(definition).run` inside `runInner`), not twice.
       const wrappedConfig: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
-        ...runtimeConfig,
         name: wrappedName,
-        // Strip lifecycle hooks — they fire on the inner block's own run.
-        // Strip resources/uses — declared on the inner block; the wrapper is
-        // a transparent envelope.
-        onCompleted: undefined,
-        onErrored: undefined,
-        connectInput: undefined,
+        description: runtimeConfig.description,
+        inputSchema: runtimeConfig.inputSchema,
+        outputSchema: runtimeConfig.outputSchema,
       };
 
+      // declaredResources / resolvedCapabilities are forwarded so the inner
+      // block's resource declarations still bubble up to the flow when the
+      // wrapper is the surface added to a sequencer chain.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind: "handler",
         config: wrappedConfig,

@@ -725,19 +725,12 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      // FIX-573 Path A: when this tool is invoked through a model loop, emit a
-      // `tool_output` placeholder BEFORE the called block runs, then patch it
-      // in place once the block returns. The called block's own block_trace
-      // captures `output` as a ref to this tool_output, so the two items stay
-      // decoupled but the called block doesn't duplicate the tool result.
-      const runTool = async (
-        scopedCtx: BlockContext,
-        toolOutputId: string,
-      ): Promise<unknown> => {
-        // Stash the tool_output id as the called block's output hint so its
-        // block_trace `output` becomes a ref to the tool_output (Path A).
-        (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-          ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+      // FIX-573 Path A: when invoked through the model loop with a
+      // `toolCallId`, emit a `tool_output` placeholder around the called
+      // block's run. The called block's own `block_trace.output` is set to a
+      // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
+      // result is stored once and surfaced in two places.
+      const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
         const output = await runWithRetry(
           () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
@@ -747,67 +740,40 @@ function compileToolsWithExecute(
         return output;
       };
 
-      const hasCallId = options?.toolCallId !== undefined;
-
-      // When the AI SDK does not supply a `toolCallId`, skip the
-      // `tool_output` envelope (we have no stable callId to stamp) but still
-      // run the inner block with retry + observer hooks.
-      const runWithoutEnvelope = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
-      };
-
-      const attribution = hasCallId
-        ? {
-            callId: options!.toolCallId!,
-            generatorBlock: generatorBlockName,
-            agentType,
-            agentName,
-          }
-        : undefined;
-
-      const invokeInScope = async (
-        runner: (scopedCtx: BlockContext, toolOutputId: string) => Promise<unknown>,
-      ): Promise<unknown> => {
-        if (ctx._withExecutionScope === undefined) {
-          return hasCallId
-            ? emitToolOutputAround(tool, ctx, args, attribution!, runner)
-            : runWithoutEnvelope(ctx);
-        }
-        // Derive a deterministic path. `toolCallId` (when present) is the
-        // stable disambiguator across resumes; otherwise fall back to "0".
+      // `_withExecutionScope` is the durable-runtime hook that disambiguates
+      // tool invocations across resumes by deriving a deterministic path.
+      // `toolCallId` is the stable disambiguator; "0" is fine when absent
+      // because that path also skips the envelope.
+      const withScope = (run: (scopedCtx: BlockContext) => Promise<unknown>): Promise<unknown> => {
+        if (ctx._withExecutionScope === undefined) return run(ctx);
         const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-        const toolPath = extendBlockPath(
-          parentPath,
-          blockPathTool(tool.name, options?.toolCallId ?? "0")
-        );
-        const toolInstanceId = buildBlockInstanceId(
-          ctx.request.identity.id,
-          toolPath,
-          0
-        );
-        const scopeParent = {
-          name: tool.name,
-          kind: tool.kind,
-          instanceId: toolInstanceId,
-          path: toolPath,
-          input: args,
-        };
-        if (!hasCallId) {
-          return ctx._withExecutionScope(scopeParent, (scopedCtx) => runWithoutEnvelope(scopedCtx));
-        }
-        return emitToolOutputAround(tool, ctx, args, attribution!, (_outerCtx, toolOutputId) =>
-          ctx._withExecutionScope!(scopeParent, (scopedCtx) => runner(scopedCtx, toolOutputId))
+        const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, options?.toolCallId ?? "0"));
+        const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
+        return ctx._withExecutionScope(
+          { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
+          run
         );
       };
 
       try {
-        return await invokeInScope(runTool);
+        // No `toolCallId` → no stable envelope callId; run the tool directly
+        // with retry + observer hooks (matches prior behavior).
+        if (options?.toolCallId === undefined) {
+          return await withScope(callTool);
+        }
+        const attribution = {
+          callId: options.toolCallId,
+          generatorBlock: generatorBlockName,
+          agentType,
+          agentName,
+        };
+        return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+          withScope((scopedCtx) => {
+            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+            return callTool(scopedCtx);
+          })
+        );
       } catch (error) {
         const err = toError(error);
         await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);

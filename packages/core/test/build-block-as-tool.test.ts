@@ -240,6 +240,28 @@ describe("BlockDefinition.asTool", () => {
     expect(observedHint).toEqual({ kind: "ref", sourceItemId: observedItemId });
   });
 
+  it("fires the inner block's onCompleted hook exactly once (not on the wrapper)", async () => {
+    let onCompletedCalls = 0;
+    const inner = handler({
+      name: "with-hook",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+      onCompleted: () => {
+        onCompletedCalls += 1;
+      },
+    });
+
+    const seq = sequencer({
+      name: "hook-seq",
+      inputSchema: z.object({ q: z.string() }),
+    }).then(inner.asTool());
+
+    const { ctx } = ctxWithRecorder();
+    await runForTest(seq, { q: "x" }, ctx);
+    expect(onCompletedCalls).toBe(1);
+  });
+
   it("exists on every block kind and emits one tool_output when invoked", async () => {
     const h = handler({
       name: "h",
