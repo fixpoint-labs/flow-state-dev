@@ -176,6 +176,35 @@ describe("ModelIdentity — createModelResolver (intent path)", () => {
   });
 });
 
+describe("ModelIdentity — actual is the concrete model, never the intent string", () => {
+  it("intent resolution with no provider-reported id reports the winning candidate as actual", async () => {
+    // wrapAiSdkModel receives identityHints.requested = "intent/utility" via
+    // resolveSingleModel, but the provider doesn't report a modelId. `actual`
+    // must fall back to the framework candidate string, not the intent.
+    const model = wrapAiSdkModel(
+      // Mock with an empty response.modelId so extractProviderModelId returns
+      // undefined (length 0 triggers the fallback branch).
+      new MockLanguageModelV3({
+        modelId: "",
+        doGenerate: async () => ({
+          content: [{ type: "text", text: "ok" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 3, text: 3, reasoning: undefined },
+          },
+          warnings: [],
+        }),
+      }),
+      "openai/gpt-5.4-mini",
+      { requested: "intent/utility" }
+    );
+    const result = await model.generate({ messages: [{ role: "user", content: "hi" }] });
+    expect(result.resolvedIdentity!.actual).toBe("openai/gpt-5.4-mini");
+    expect(result.resolvedIdentity!.requested).toBe("intent/utility");
+  });
+});
+
 describe("ModelIdentity — createModelResolver (direct + gateway)", () => {
   it("direct call: actual matches provider id, requested set when they differ", async () => {
     const resolver = createModelResolver({

@@ -59,7 +59,6 @@ export function ChatAgentMessage({ item }: { item: MessageItem }) {
               "border border-border/50 bg-muted/50 px-2 py-0.5",
               "text-[10px] font-medium leading-none text-muted-foreground",
             )}
-            style={{}}
           />
         </div>
       )}

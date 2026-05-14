@@ -765,16 +765,22 @@ export function wrapAiSdkModel(
 
 /**
  * Builds the `ModelIdentity` payload to stamp on an AI SDK result or chunk.
- * `actual` prefers the provider-reported id; falls back to the framework
- * requested string. `requested` is omitted when it equals `actual`.
+ *
+ * `actual` is the concrete model that ran: provider-reported id when present,
+ * otherwise the framework's winning candidate string (`fallbackModelId` — never
+ * the intent string, which would violate the `ModelIdentity` contract).
+ *
+ * `requested` is the caller's input — typically the framework requested
+ * string, or the intent string when intent resolution surfaced one. Omitted
+ * when equal to `actual` (the common direct-call case).
  */
 function buildResolvedIdentity(
   providerReportedId: string | undefined,
   hints: WrapAiSdkModelIdentityHints | undefined,
   fallbackModelId: string
 ): { actual: string; requested?: string; gateway?: string } {
+  const actual = providerReportedId ?? fallbackModelId;
   const requested = hints?.requested ?? fallbackModelId;
-  const actual = providerReportedId ?? requested;
   const identity: { actual: string; requested?: string; gateway?: string } = { actual };
   if (requested !== actual) identity.requested = requested;
   if (hints?.gateway !== undefined) identity.gateway = hints.gateway;

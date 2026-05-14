@@ -50,11 +50,22 @@ export function ModelBadge(props: ModelBadgeProps) {
   const { model, style, className } = props;
   if (model === undefined) return null;
 
+  // When a className is supplied the consumer is styling via CSS (Tailwind,
+  // CSS Modules, etc.); inline defaults would override className rules due to
+  // higher specificity. Skip them. Bare consumers without className still get
+  // the default pill so a one-line `<ModelBadge model={x} />` looks reasonable.
+  const effectiveStyle =
+    className === undefined
+      ? style === undefined
+        ? DEFAULT_STYLE
+        : { ...DEFAULT_STYLE, ...style }
+      : style;
+
   return createElement(
     "span",
     {
       className,
-      style: style === undefined ? DEFAULT_STYLE : { ...DEFAULT_STYLE, ...style },
+      style: effectiveStyle,
       title: buildTooltip(model),
     },
     model.actual,
