@@ -46,7 +46,8 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 
-import { toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, toError, withTimeout } from "./internal/utils";
+import { emitToolOutputAround } from "./internal/emit-tool-output";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -724,60 +725,12 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      // FIX-573 Path A: when this tool is invoked through a model loop, emit a
-      // `tool_output` placeholder BEFORE the called block runs, then patch it
-      // in place once the block returns. The called block's own block_trace
-      // captures `output` as a ref to this tool_output, so the two items stay
-      // decoupled but the called block doesn't duplicate the tool result.
-      const buildPlaceholderTool = (parentIdentity: typeof ctx._blockIdentity): {
-        item: any;
-        emit: () => Promise<void>;
-      } | undefined => {
-        if (options?.toolCallId === undefined) return undefined;
-        const item: any = {
-          id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "tool_output" as const,
-          status: "in_progress" as const,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance: {
-            blockName: parentIdentity?.blockName ?? tool.name,
-            blockInstanceId: parentIdentity?.blockInstanceId ?? tool.name,
-            parentBlockInstanceId: parentIdentity?.parentBlockInstanceId,
-            phase: parentIdentity?.phase ?? "main"
-          },
-          ts: Date.now(),
-          ownedBy: parentIdentity?.ownedBy,
-          ...(agentType !== undefined ? { agentType } : {}),
-          ...(agentName !== undefined ? { agentName } : {}),
-          blockName: tool.name,
-          output: undefined,
-          toolCall: {
-            callId: options.toolCallId,
-            name: tool.name,
-            alias: sanitizeToolName(tool.name),
-            arguments: typeof args === "string" ? args : JSON.stringify(args),
-            generatorBlock: generatorBlockName
-          }
-        };
-        return {
-          item,
-          emit: async () => {
-            await ctx.response.emit({ type: "item.added", item });
-          }
-        };
-      };
-
-      const runTool = async (
-        scopedCtx: BlockContext,
-        toolOutputId: string | undefined,
-      ): Promise<unknown> => {
-        // Stash the tool_output id as the called block's output hint so its
-        // block_trace `output` becomes a ref to the tool_output (Path A).
-        if (toolOutputId !== undefined) {
-          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
-        }
+      // FIX-573 Path A: when invoked through the model loop with a
+      // `toolCallId`, emit a `tool_output` placeholder around the called
+      // block's run. The called block's own `block_trace.output` is set to a
+      // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
+      // result is stored once and surfaced in two places.
+      const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
         const output = await runWithRetry(
           () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
@@ -787,85 +740,55 @@ function compileToolsWithExecute(
         return output;
       };
 
-      const finishToolOutput = async (
-        placeholder: { item: any } | undefined,
-        result: { kind: "ok"; output: unknown } | { kind: "err"; error: Error },
-      ): Promise<void> => {
-        if (placeholder === undefined) return;
-        const item = placeholder.item;
-        if (result.kind === "ok") {
-          item.status = "completed";
-          item.output = result.output;
-        } else {
-          item.status = "failed";
-          item.output = undefined;
-          const errAny = result.error as { code?: string; details?: Record<string, unknown> };
-          item.error = {
-            message: result.error.message,
-            ...(errAny.code ? { code: errAny.code } : {}),
-            ...(errAny.details ? { details: errAny.details } : {})
-          };
-        }
-        // Emit `item.updated` to patch the in-progress placeholder, then
-        // `item.done` so the row settles. Consumers reconcile by id.
-        const patch: Record<string, unknown> = result.kind === "ok"
-          ? { status: item.status, output: item.output }
-          : { status: item.status, output: undefined, error: item.error };
-        await ctx.response.emit({ type: "item.updated", id: item.id, patch });
-        await ctx.response.emit({ type: "item.done", item });
+      // `_withExecutionScope` is the durable-runtime hook that disambiguates
+      // tool invocations across resumes by deriving a deterministic path.
+      // `toolCallId` is the stable disambiguator; "0" is fine when absent
+      // because that path also skips the envelope.
+      const withScope = (run: (scopedCtx: BlockContext) => Promise<unknown>): Promise<unknown> => {
+        if (ctx._withExecutionScope === undefined) return run(ctx);
+        const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+        const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, options?.toolCallId ?? "0"));
+        const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
+        return ctx._withExecutionScope(
+          { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
+          run
+        );
       };
 
-      const placeholder = buildPlaceholderTool(ctx._blockIdentity);
-      if (placeholder !== undefined) {
-        await placeholder.emit();
-      }
-
-      if (ctx._withExecutionScope === undefined) {
+      // Wrap with `onToolErrored` so the observer fires BEFORE the
+      // `tool_output` envelope settles to failed and emits `item.done`.
+      // Consumers that listen for `item.done` and expect the observer's
+      // side-effects (memo writes, additional emitted items) to already
+      // have run rely on this ordering. The outer envelope-emit path
+      // catches whatever this rethrows and only then emits item.done.
+      const callToolWithErrorObserver = async (scopedCtx: BlockContext): Promise<unknown> => {
         try {
-          const output = await runTool(ctx, placeholder?.item.id);
-          await finishToolOutput(placeholder, { kind: "ok", output });
-          return output;
+          return await callTool(scopedCtx);
         } catch (error) {
           const err = toError(error);
-          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-          await finishToolOutput(placeholder, { kind: "err", error: err });
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
           throw err;
         }
-      }
+      };
 
-      // Derive a deterministic path for this tool invocation. The model's
-      // `toolCallId` is the stable disambiguator across resumes when present;
-      // fall back to the tool name alone otherwise.
-      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-      const toolPath = extendBlockPath(
-        parentPath,
-        blockPathTool(tool.name, options?.toolCallId ?? "0")
-      );
-      const toolInstanceId = buildBlockInstanceId(
-        ctx.request.identity.id,
-        toolPath,
-        0
-      );
-
-      try {
-        const output = await ctx._withExecutionScope(
-          {
-            name: tool.name,
-            kind: tool.kind,
-            instanceId: toolInstanceId,
-            path: toolPath,
-            input: args
-          },
-          (scopedCtx) => runTool(scopedCtx, placeholder?.item.id)
-        );
-        await finishToolOutput(placeholder, { kind: "ok", output });
-        return output;
-      } catch (error) {
-        const err = toError(error);
-        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-        await finishToolOutput(placeholder, { kind: "err", error: err });
-        throw err;
+      // No `toolCallId` → no stable envelope callId; run the tool directly
+      // with retry + observer hooks (matches prior behavior).
+      if (options?.toolCallId === undefined) {
+        return await withScope(callToolWithErrorObserver);
       }
+      const attribution = {
+        callId: options.toolCallId,
+        generatorBlock: generatorBlockName,
+        agentType,
+        agentName,
+      };
+      return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+        withScope((scopedCtx) => {
+          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+          return callToolWithErrorObserver(scopedCtx);
+        })
+      );
     }
     };
   });
@@ -1131,25 +1054,6 @@ function buildSourceItem(
     title: source.title,
     providerMetadata: source.providerMetadata
   };
-}
-
-/**
- * Duck-typed helper to get the current item count from the response emitter.
- * The core ResponseEmitterHandle only exposes `emit()`, but the server-side
- * ResponseEmitter also has `getItems()`. We use duck-typing so the generator
- * can assign a sequential itemIndex without importing server types.
- */
-function getEmitterItemCount(response: unknown): number {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "getItems" in response &&
-    typeof (response as { getItems?: unknown }).getItems === "function"
-  ) {
-    const items = (response as { getItems: () => unknown[] }).getItems();
-    return Array.isArray(items) ? items.length : 0;
-  }
-  return 0;
 }
 
 /**

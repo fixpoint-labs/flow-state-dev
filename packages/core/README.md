@@ -100,6 +100,12 @@ export default defineFlow({
 - `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
+**Block methods** (available on every `BlockDefinition`):
+- `.connectInput(mapper)` — adapt input shape at the call boundary
+- `.connectOutput(mapper)` — transform output shape at the call boundary
+- `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
+- `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
+
 **Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Flow:**

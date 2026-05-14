@@ -26,7 +26,6 @@ import {
   type AgentName,
 } from "../agents";
 import { commitMemo, markError, markWriting } from "../memo-writer";
-import { callAsTool } from "../services/prefetch";
 import { tradingDesk } from "../services/trading-desk-capability";
 import {
   fundamentalsPrompt,
@@ -73,13 +72,11 @@ const asDataBlock = (data: unknown): string =>
 
 const memoLabel = (name: AgentName) => `${AGENTS[name].role} memo`;
 
-// Bind `callAsTool` to a given analyst's agentName so each analyst's tool
-// pills attribute to that analyst's card. Drop-in replacement target for
-// when FIX-593 lands the framework helper of the same name.
+// Bind `.asTool()` to a given analyst's agentName so each analyst's tool
+// pills attribute to that analyst's card.
 const toolFor = (agentName: AgentName) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  <TIn, TOut>(block: any): any =>
-    callAsTool<TIn, TOut>(block, { agentType: "sub", agentName });
+  (block: any): any => block.asTool({ agentType: "sub", agentName });
 
 // ---------------------------------------------------------------------------
 // Fundamentals — four independent fetches, all keyed by { ticker, date }.

@@ -141,6 +141,8 @@ When a generator calls a tool, the runtime emits a `tool_output` placeholder via
 
 `tool_output` and the called block's `block_trace` are decoupled. The called block still gets its own `block_trace` row, but its `output` is a `ref` to the `tool_output` item. The tool result is therefore stored once, surfaced in two places, and the conversation history sees the rich `tool_output` form.
 
+`tool_output` items have two origins: the AI SDK tool-loop inside a generator, and any block wrapped with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool) when run from a sequencer step. The envelope and lifecycle are identical. `toolCall.generatorBlock` records which block initiated the call — the parent generator's name on the LLM path, the wrapping block's name on the deterministic path.
+
 ### Lifecycle
 
 Trace items follow a three-event lifecycle: `item.added` (in_progress, no output yet), zero or more `item.updated` patches (input connectors, generator bundle, model usage), and a terminal `item.done` (status set to `completed` or `failed`, output written, timing closed). Consumers reconcile by id. A late subscriber that joins after `item.done` sees only the final settled row in the snapshot — no synthetic replay of intermediate patches is needed.
