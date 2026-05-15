@@ -5,7 +5,8 @@
  * key, non-2xx, parse error) so the calling tool can fall through with a
  * single `try { ... } catch {}`.
  *
- * Tools using these helpers: get_fundamentals, get_price_history, search_news.
+ * Tools using these helpers: get_fundamentals, get_price_history, search_news,
+ * get_insider_transactions.
  */
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 
@@ -160,5 +161,64 @@ export async function fetchFinnhubCompanyNews(
     ticker: input.ticker,
     asOf: input.date,
     items,
+  };
+}
+
+const INSIDER_WINDOW_DAYS = 90;
+
+/** Subtracts `days` calendar days from a `YYYY-MM-DD` date string. */
+function isoDateDaysBefore(date: string, days: number): string {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Recent insider Form 4 filings for a ticker, normalized to the canonical
+ * `get_insider_transactions` shape. Window is fixed at 90 calendar days
+ * ending on `input.date`. Caps the response at 50 rows so a busy filer
+ * doesn't blow up downstream prompts. Throws on any failure (no key,
+ * non-2xx, parse error) so the tool handler can fall through to
+ * `emptyPayload`.
+ */
+export async function fetchFinnhubInsiderTransactions(
+  input: ToolInput<"get_insider_transactions">,
+): Promise<ToolOutput<"get_insider_transactions">> {
+  const to = input.date;
+  const from = isoDateDaysBefore(input.date, INSIDER_WINDOW_DAYS);
+  type Row = {
+    name?: string;
+    share?: number;
+    change?: number;
+    filingDate?: string;
+    transactionDate?: string;
+    transactionCode?: string;
+    transactionPrice?: number;
+    isDerivative?: boolean;
+    position?: string;
+  };
+  const data = await fetchJson<{ data?: Row[] }>("/stock/insider-transactions", {
+    symbol: input.ticker,
+    from,
+    to,
+  });
+  const transactions = (data.data ?? []).slice(0, 50).map((r) => ({
+    filingDate: r.filingDate ?? "",
+    transactionDate: r.transactionDate ?? r.filingDate ?? "",
+    insiderName: r.name ?? "",
+    insiderTitle: r.position ?? "",
+    transactionCode: r.transactionCode ?? "",
+    // Finnhub returns `change` as a signed delta (negative on sells); fall
+    // back to `share` if `change` is missing.
+    shares: typeof r.change === "number" ? r.change : (r.share ?? 0),
+    pricePerShare: r.transactionPrice ?? 0,
+    isDerivative: Boolean(r.isDerivative),
+  }));
+  return {
+    source: "finnhub",
+    ticker: input.ticker,
+    asOf: input.date,
+    transactions,
+    windowDays: INSIDER_WINDOW_DAYS,
   };
 }

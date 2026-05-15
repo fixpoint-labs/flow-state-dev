@@ -14,6 +14,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-14
 
+### Trading Desk example: wider indicator set and insider transactions (FIX-596)
+
+- The technical analyst's indicator bundle expands from RSI/MACD/ATR/SMA50/200 to also include Bollinger Bands, VWMA(20), the Stochastic Oscillator (%K/%D), KDJ, and OBV. The hand-rolled `indicators-math.ts` is replaced with `trading-signals` (MIT) plus two small helpers for VWMA and KDJ.
+- New `get_insider_transactions` tool wired into the news analyst — 90-day window of Form 4 filings with filing date, insider name and title, transaction code, signed share count, price, and derivative flag. Finnhub-only; returns `unavailable` on failure or missing key, consistent with the other single-provider tools.
+- News analyst prompt updated to weigh insider transactions as ground-truth signal (cluster buying, executive selling streaks, derivative vs. open-market trades) and treat headlines as complementary context.
+- Curated `insider-transactions.json` fixtures added for NVDA, AAPL, and JPM at the `2026-05-06` snapshot. Existing `indicators.json` fixtures extended with the new indicator fields.
+- Lives entirely inside `examples/trading-desk/` — no framework changes.
+
 ### Observable model identity on generator emissions and block_trace (FIX-518)
 
 - New `ModelIdentity` type exported from `@flow-state-dev/core`. Shape: `{ actual, requested?, gateway? }` — `actual` is always populated (provider-reported model id when present, otherwise the framework's winning candidate string); `requested` is set only when it differs from `actual`; `gateway` is set when the call routed through a gateway.
