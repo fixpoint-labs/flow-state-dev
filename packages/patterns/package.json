@@ -44,10 +44,6 @@
     "./debate": {
       "types": "./dist/debate/index.d.ts",
       "default": "./dist/debate/index.js"
-    },
-    "./memory": {
-      "types": "./dist/memory/index.d.ts",
-      "default": "./dist/memory/index.js"
     }
   },
   "license": "MIT",

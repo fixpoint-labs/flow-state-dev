@@ -4,13 +4,13 @@ import {
   episodeSchema,
   episodicMemoryStateSchema,
   createEpisodicMemoryResource,
-} from '../../src/memory/episodic-memory.js'
-import type { Episode, EpisodicMemoryState } from '../../src/memory/episodic-memory.js'
+} from '../src/episodic-memory.js'
+import type { Episode, EpisodicMemoryState } from '../src/episodic-memory.js'
 import {
   encode,
   recent,
   markConsolidated,
-} from '../../src/memory/episodic-memory-helpers.js'
+} from '../src/episodic-memory-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers

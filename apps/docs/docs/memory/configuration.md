@@ -7,7 +7,7 @@ sidebar_position: 2
 `system()` takes a single config object. Every tier is optional. The factory composes the requested tiers into a unified capture pipeline, recall helper, and context formatter.
 
 ```ts
-import { system } from "@flow-state-dev/patterns/memory";
+import { system } from "@flow-state-dev/memory";
 
 const mem = system({
   model: "openai/gpt-4o-mini",
@@ -97,7 +97,7 @@ Default-on presets: `digest`, `working`, `recall`. Off by default: `episodic`, `
 When you want a single tier without the unified system — for example, a pre-prompt step that only needs working memory — the per-tier capabilities ship standalone:
 
 ```ts
-import { workingMemoryCapability } from "@flow-state-dev/patterns/memory";
+import { workingMemoryCapability } from "@flow-state-dev/memory";
 
 generator({
   uses: [workingMemoryCapability],
@@ -111,7 +111,7 @@ The same applies for `episodicMemoryCapability`, `semanticMemoryCapability`, and
 For the "I just want a working memory buffer with no observer" case, skip the unified capture and use `workingMemoryCapture` directly. It's a parallel pipeline with its own observer schema and runs independently of the system's unified observer.
 
 ```ts
-import { workingMemoryCapture, workingMemoryResource } from "@flow-state-dev/patterns/memory";
+import { workingMemoryCapture, workingMemoryResource } from "@flow-state-dev/memory";
 
 const capture = workingMemoryCapture({ model: "openai/gpt-4o-mini" });
 ```

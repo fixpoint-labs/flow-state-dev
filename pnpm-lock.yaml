@@ -124,6 +124,9 @@ importers:
       '@flow-state-dev/devtool':
         specifier: workspace:*
         version: link:../../packages/devtool
+      '@flow-state-dev/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../../packages/patterns
@@ -593,6 +596,25 @@ importers:
         specifier: ^22.0.0
         version: 22.19.13
 
+  packages/memory:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
+
   packages/patterns:
     dependencies:
       '@flow-state-dev/core':
@@ -780,9 +802,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/patterns':
-        specifier: workspace:*
-        version: link:../patterns
       zod:
         specifier: ^3.24.1
         version: 3.25.76

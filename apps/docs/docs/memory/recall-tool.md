@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Recall tool
 
-`tf.memory/recall` is the agent-invocable side of the memory system. The model calls it when the auto-injected `<memory>` context isn't enough — when it needs to search for a past episode or semantic fact relevant to the current turn.
+`memory/recall` is the agent-invocable side of the memory system. The model calls it when the auto-injected `<memory>` context isn't enough — when it needs to search for a past episode or semantic fact relevant to the current turn.
 
 The tool installs as part of `mem.capability` by default. Turn it off with `mem.capability.presets({ recall: false })` if you want context-only memory.
 
@@ -13,7 +13,7 @@ The tool installs as part of `mem.capability` by default. Turn it off with `mem.
 The agent sees a tool with a `query` argument and an optional `limit`. The system runs the configured retrieval strategy (default: `llm-filter`) over candidate semantic facts and recent episodes, ranks them, and returns a capped list of items the model can read.
 
 ```ts
-import { system } from "@flow-state-dev/patterns/memory";
+import { system } from "@flow-state-dev/memory";
 
 const mem = system({
   model: "openai/gpt-4o-mini",
@@ -35,7 +35,7 @@ A retrieval strategy is a block factory that produces a handler-shaped block. Th
 
 ```ts
 import { handler } from "@flow-state-dev/core";
-import type { RetrievalStrategy } from "@flow-state-dev/patterns/memory";
+import type { RetrievalStrategy } from "@flow-state-dev/memory";
 
 const myStrategy: RetrievalStrategy = handler({
   name: "my-strategy",

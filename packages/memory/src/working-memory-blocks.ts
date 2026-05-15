@@ -250,7 +250,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * working memory capture to a pipeline:
  *
  * ```ts
- * import { workingMemoryCapture } from '@flow-state-dev/patterns/memory'
+ * import { workingMemoryCapture } from '@flow-state-dev/memory'
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
  *   .work((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))

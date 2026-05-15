@@ -5,8 +5,8 @@ import {
   workingMemoryEntrySchema,
   workingMemoryStateSchema,
   workingMemoryResource,
-} from '../../src/memory/working-memory.js'
-import type { WorkingMemoryEntry, WorkingMemoryState } from '../../src/memory/working-memory.js'
+} from '../src/working-memory.js'
+import type { WorkingMemoryEntry, WorkingMemoryState } from '../src/working-memory.js'
 import {
   computeDecay,
   computeSalience,
@@ -21,7 +21,7 @@ import {
   formatForObserveContext,
   workingMemoryContextFormatter,
   DEFAULT_WORKING_MEMORY_CONFIG,
-} from '../../src/memory/working-memory-helpers.js'
+} from '../src/working-memory-helpers.js'
 import {
   workingMemoryTick,
   workingMemorySnapshot,
@@ -29,7 +29,7 @@ import {
   workingMemoryObserve,
   workingMemoryCapture,
   workingMemoryRemember,
-} from '../../src/memory/working-memory-blocks.js'
+} from '../src/working-memory-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers

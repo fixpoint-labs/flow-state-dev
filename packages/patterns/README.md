@@ -211,47 +211,6 @@ Built on the Round Robin chassis; see that section for the loop substrate. Overr
 
 **Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`
 
-### Memory System
-
-Cross-turn memory for agents. Composes four optional tiers — working (session-scoped, decaying recent observations), episodic (user-scoped past sessions), semantic (consolidated facts), and digest (summarized rollups) — behind a single `system()` factory. Returns capabilities you wire into generators with `uses: [mem.capability]`, plus a recall tool the model can invoke and a context formatter that auto-injects a `<memory>` block per turn.
-
-```ts
-import { system } from "@flow-state-dev/patterns/memory";
-
-const mem = system({
-  model: "openai/gpt-4o-mini",
-  working: { capacity: 7 },
-  episodic: true,
-  semantic: true,
-});
-
-// In a flow:
-defineFlow({
-  sessionResources: mem.sessionResources,
-  userResources: mem.userResources,
-  actions: { /* ... */ },
-});
-
-// In a generator:
-generator({
-  uses: [mem.capability],
-  // ...
-});
-```
-
-| Tier | Scope | Best for |
-|------|-------|----------|
-| `working` | session | Recent turns, decaying salience |
-| `episodic` | user | Past sessions as discrete episodes |
-| `semantic` | user | Consolidated facts (LLM-extracted) |
-| `digest` | user | Summarized rollups across sessions |
-
-The system implements the read-side `MemoryProvider` contract — `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations (e.g. TF-flavored variants) plug in behind the same shape.
-
-**Where it came from:** Memory previously lived at `@thought-fabric/core/memory` and is now re-exported from there with a `@deprecated` tag for one minor version. To migrate, change `from '@thought-fabric/core/memory'` → `from '@flow-state-dev/patterns/memory'`.
-
-**Key exports:** `system`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
-
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.

@@ -4,8 +4,8 @@ import {
   semanticFactSchema,
   semanticMemoryStateSchema,
   createSemanticMemoryResource,
-} from '../../src/memory/semantic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../src/memory/semantic-memory.js'
+} from '../src/semantic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../src/semantic-memory.js'
 import {
   addFact,
   updateFact,
@@ -13,7 +13,7 @@ import {
   removeFact,
   allFacts,
   query,
-} from '../../src/memory/semantic-memory-helpers.js'
+} from '../src/semantic-memory-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers

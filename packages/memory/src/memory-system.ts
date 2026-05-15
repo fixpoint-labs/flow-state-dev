@@ -128,7 +128,7 @@ export const memorySystemResource = defineResource({
  *                No-op when no digest tier is configured.
  * - `working`  — inject working-memory entries under
  *                `<memory><working>…</working></memory>` (default on).
- * - `recall`   — install the agent-invocable `tf.memory/recall` tool that
+ * - `recall`   — install the agent-invocable `memory/recall` tool that
  *                searches semantic + episodic stores on demand (default on).
  * - `semantic` — inject the top-N semantic facts (by reinforcement count)
  *                under `<memory><semantic>…</semantic></memory>`
@@ -139,7 +139,7 @@ export const memorySystemResource = defineResource({
  *                No-op when no episodic tier is configured.
  *
  * Inclusion is independent of processing: the capture pipeline still runs
- * `tf.memory/digest/regenerate`, consolidation, prune, etc. for whichever
+ * `memory/digest/regenerate`, consolidation, prune, etc. for whichever
  * tiers are configured on `memorySystem({...})` — turning off a preset
  * just suppresses the section in that one generator's prompt.
  *
@@ -315,7 +315,7 @@ export interface MemorySystemConfig {
  * A ranked memory item from cross-store recall.
  *
  * Re-exported from `./provider.ts` so existing import paths
- * (`@flow-state-dev/patterns/memory`) keep resolving.
+ * (`@flow-state-dev/memory`) keep resolving.
  */
 export type RankedMemoryItem = ProviderRankedMemoryItem
 
@@ -438,7 +438,7 @@ export interface MemorySystem extends MemoryProvider {
    *   - `digest` (default-on)   — render the rolling digest in the prompt.
    *                               No-op when no digest tier is configured.
    *   - `working` (default-on)  — render current working-memory entries.
-   *   - `recall` (default-on)   — install the `tf.memory/recall` tool.
+   *   - `recall` (default-on)   — install the `memory/recall` tool.
    *   - `semantic` (default-off) — render top-N semantic facts.
    *   - `episodic` (default-off) — render most-recent episodes.
    *
@@ -735,7 +735,7 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  * context formatter.
  *
  * ```ts
- * import { system } from '@flow-state-dev/patterns/memory'
+ * import { system } from '@flow-state-dev/memory'
  *
  * const mem = system({
  *   model: 'gpt-5-mini',
@@ -973,13 +973,13 @@ export function system(config: MemorySystemConfig): MemorySystem {
         ? { context: { memory: createEpisodicEntry() } }
         : {},
       /**
-       * Install the `tf.memory/recall` tool so the model can search semantic
+       * Install the `memory/recall` tool so the model can search semantic
        * facts and past episodes on demand. Default-on. No-op when neither
        * episodic nor semantic is configured (recall has nothing to search).
        */
       recall: {
         context: { memory: { 
-          additional: "There are additional memories available then what are included within this context. Use the tf_memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available. Before saying you don’t know, check memory for any relevant context first."
+          additional: "There are additional memories available then what are included within this context. Use the memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available. Before saying you don’t know, check memory for any relevant context first."
         }},
         tools: () => [recallToolBlock],
       },

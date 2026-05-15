@@ -13,10 +13,6 @@
       "types": "./dist/attention/index.d.ts",
       "default": "./dist/attention/index.js"
     },
-    "./memory": {
-      "types": "./dist/memory/index.d.ts",
-      "default": "./dist/memory/index.js"
-    },
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "default": "./dist/identity/index.js"
@@ -42,8 +38,7 @@
   },
   "dependencies": {
     "zod": "^3.24.1",
-    "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/patterns": "workspace:*"
+    "@flow-state-dev/core": "workspace:*"
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*"

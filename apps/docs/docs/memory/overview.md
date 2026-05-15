@@ -4,9 +4,25 @@ sidebar_position: 1
 
 # Memory
 
-`@flow-state-dev/patterns/memory` — cross-turn memory for agents. One factory, four optional tiers, capabilities you wire into generators with one line.
+`@flow-state-dev/memory` — cross-turn memory for agents. One factory, four optional tiers, capabilities you wire into generators with one line.
 
 Most non-trivial agents need to remember something across turns: what the user just said, what they prefer in general, what happened last session. The memory system lets you compose those needs from four tiers, each independent, each opt-in.
+
+## Installation
+
+Memory is its own package — it's not bundled with `@flow-state-dev/core`. Install it alongside the framework:
+
+```bash
+pnpm add @flow-state-dev/memory
+# or
+npm install @flow-state-dev/memory
+```
+
+Then import the factory and capabilities directly from the package root:
+
+```ts
+import { system, workingMemoryCapability } from "@flow-state-dev/memory";
+```
 
 ## What memory is
 
@@ -25,7 +41,7 @@ Working is always present. Episodic, semantic, and digest are opt-in via config.
 
 ```ts
 import { defineFlow, generator } from "@flow-state-dev/core";
-import { system } from "@flow-state-dev/patterns/memory";
+import { system } from "@flow-state-dev/memory";
 
 const mem = system({
   model: "openai/gpt-4o-mini",
@@ -55,7 +71,7 @@ That's enough to give the agent a per-turn `<memory>` summary and a recall tool 
 `mem.capability` is what wires the system into a block. It contributes:
 
 - A context formatter that produces the `<memory>` section consumed by the generator each turn.
-- The `tf.memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.
+- The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.
 - Typed `ctx.cap.*` helpers so handlers can read and write memory without manually reaching into resources.
 
 If you only need a subset, [presets](./configuration#capability-presets) toggle each piece individually. If you only need working memory, you can skip `system()` entirely and use `workingMemoryCapability` directly — see [Configuration](./configuration#per-tier-capabilities).
@@ -64,7 +80,7 @@ See [Capabilities](../fundamentals/capabilities) for how `uses` wires resources,
 
 ## Where it lives
 
-Memory is shipped from `@flow-state-dev/patterns/memory`. It previously lived at `@thought-fabric/core/memory`; that path still works for one minor version via a `@deprecated` re-export. Update imports to the patterns path. See the migration note in the `@thought-fabric/core` README for callers on the old path.
+Memory ships from its own package, `@flow-state-dev/memory` — install it alongside `@flow-state-dev/core` when an agent needs cross-turn persistence. It previously lived at `@thought-fabric/core/memory`; that path no longer resolves. Update old imports to `@flow-state-dev/memory`.
 
 ## Further reading
 

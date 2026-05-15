@@ -24,7 +24,7 @@ import {
   utility,
 } from "@flow-state-dev/core";
 
-import { system as memorySystem } from "@flow-state-dev/patterns/memory";
+import { system as memorySystem } from "@flow-state-dev/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";

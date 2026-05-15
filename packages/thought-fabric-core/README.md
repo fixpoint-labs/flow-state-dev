@@ -1,8 +1,8 @@
 # @thought-fabric/core
 
-**Cognitive architecture primitives for AI agents. Attention, memory, identity, and more.**
+**Cognitive architecture primitives for AI agents. Attention, identity, and more.**
 
-`@thought-fabric/core` provides general-purpose cognitive domains that shape how AI agents perceive, remember, reason, and act. Each domain is a namespace you import by name.
+`@thought-fabric/core` provides general-purpose cognitive domains that shape how AI agents perceive, reason, and act. Each domain is a namespace you import by name.
 
 ## Status
 
@@ -11,121 +11,26 @@ This package is in Wave 1 foundation mode.
 | Domain | Namespace | Status |
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
-| Memory | `memory` | Working memory implemented |
 | Identity | `identity` | Constitution + Perspective (static + resource-backed + capability) |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
 | Metacognition | `metacognition` | Bias & sycophancy detection |
 | Learning | — | Wave 4+ |
 
+> **Memory has moved.** Cross-turn memory previously lived here as the `memory` domain. It now ships from `@flow-state-dev/memory`. Thought Fabric will host specialized cognitive memory variants on top of the same `MemoryProvider` contract when those land — until then it doesn't address memory at all.
+
 ## Usage
 
-### Capability-based (recommended)
-
-The memory system exposes `defineCapability()`-based surfaces. Declare `uses: [...]` on a block to auto-install resources and gain typed helpers via `ctx.cap.*`.
-
-```ts
-import { system as memorySystem, workingMemoryCapability } from '@thought-fabric/core/memory'
-import { handler, generator, sequencer } from '@flow-state-dev/core'
-
-// Full system — working + episodic + semantic + digest
-const mem = memorySystem({
-  model: 'intent/utility',
-  working: { capacity: 7 },
-  episodic: true,
-  semantic: true,
-  digest: true,   // narrative summary, regenerates with consolidation/prune
-})
-
-// Generator: auto-installs resources, context formatter, and typed helpers
-const chat = generator({
-  name: 'chat',
-  model: 'intent/utility',
-  uses: [mem.capability],
-  user: (input) => input,
-})
-
-// Handler: disable context preset (generator-only), use helpers via ctx.cap
-const myHandler = handler({
-  name: 'remember',
-  uses: [mem.capability.presets({ context: false })],
-  execute: async (input, ctx) => {
-    await ctx.cap.workingMemory.add({ content: 'User likes TypeScript', importance: 0.8 })
-    const items = ctx.cap.memory.recall()
-  },
-})
-
-// Pipeline with background capture
-const pipeline = sequencer({ name: 'chat', inputSchema })
-  .then(chat)
-  .work(mem.captureFromItems)
-```
-
-Individual tier capabilities can also be used standalone:
-
-```ts
-// Just working memory — no episodic or semantic
-const myBlock = handler({
-  name: 'wm-only',
-  uses: [workingMemoryCapability],
-  execute: async (input, ctx) => {
-    await ctx.cap.workingMemory.add({ content: 'fact', importance: 0.7 })
-    const entries = ctx.cap.workingMemory.items()
-  },
-})
-```
-
-### Imperative usage (low-level)
-
-```ts
-import {
-  workingMemoryCapture,
-  workingMemoryResources,
-  workingMemoryContextFormatter,
-} from '@thought-fabric/core/memory'
-import { sequencer, generator } from '@flow-state-dev/core'
-
-// One-line working memory capture
-const memoryCapture = workingMemoryCapture({ model: 'gpt-5-mini' })
-
-// Add to a pipeline — capture runs on the user's message in the background
-// while the rest of the pipeline continues
-const pipeline = sequencer({ name: 'chat', inputSchema: chatInput })
-  .work((input) => input.message, memoryCapture)
-  .then(chatGenerator)
-
-// Inject memory into a generator's context
-const chat = generator({
-  name: 'chat',
-  model: 'gpt-5',
-  inputSchema: z.string(),
-  sessionResources: workingMemoryResources,
-  context: [workingMemoryContextFormatter],
-  user: (input) => input,
-})
-
-// Attention (namespace import)
-import { attention } from '@thought-fabric/core'
-
-const salienceBlock = attention.scoreSalience({ name: 'task-salience' })
-const filterBlock = attention.filterRelevance({
-  name: 'reasoning-filter',
-  mode: 'hard',
-  threshold: 0.6,
-})
-```
-
-## Import Paths
-
-Each domain exposes a subpath: `@thought-fabric/core/memory`, `@thought-fabric/core/attention`, etc. The root export aggregates domains into namespace objects.
+Each domain exposes a subpath: `@thought-fabric/core/attention`, `@thought-fabric/core/identity`, `@thought-fabric/core/metacognition`. The root export aggregates them into namespace objects.
 
 ```ts
 // Subpath — direct named imports (tree-shakeable)
-import { workingMemoryCapture, addWorkingMemory } from '@thought-fabric/core/memory'
+import { scoreSalience, filterRelevance } from '@thought-fabric/core/attention'
+import { perspective } from '@thought-fabric/core/identity'
 
 // Root — namespace imports
-import { memory } from '@thought-fabric/core'
-memory.workingMemoryCapture(...)
+import { attention, identity, metacognition } from '@thought-fabric/core'
+attention.scoreSalience(...)
 ```
 
 Both paths use the same qualified names. No short aliases, no default namespace objects.
@@ -136,28 +41,14 @@ Word order encodes category:
 
 | Category | Pattern | Example |
 |----------|---------|---------|
-| Block factory | `workingMemory[Verb]` | `workingMemoryCapture`, `workingMemoryTick` |
-| Resource | `workingMemory[Noun]` | `workingMemoryResource`, `workingMemoryResources` |
-| Schema | `workingMemory[Noun]Schema` | `workingMemoryEntrySchema` |
-| Formatter | `workingMemory[Noun]Formatter` | `workingMemoryContextFormatter` |
-| Accessor | `workingMemory[Noun]` | `workingMemoryItems` |
-| Helper | `[verb]WorkingMemory` | `addWorkingMemory`, `advanceWorkingMemory` |
+| Block factory | `[domain][Verb]` | `perspectiveObserve`, `constitutionAuditor` |
+| Resource | `[domain][Noun]` | `perspectiveResource` |
+| Schema | `[domain][Noun]Schema` | `constitutionSchema` |
+| Formatter | `[domain]ContextFormatter` | `perspectiveContextFormatter` |
+| Helper | `[verb][Domain]` | `addPerspective`, `summarizePerspective` |
 | Pure math | no prefix | `computeDecay`, `computeSalience` |
 
-The inversion is the signal: `workingMemoryAdd` is a block (a thing you compose in a pipeline). `addWorkingMemory` is a helper (an action on a resource ref). The English reads naturally either way.
-
-## Memory
-
-Memory has moved to `@flow-state-dev/patterns/memory` to support FSD's "framework stands alone" positioning. The full surface (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) lives there now. TF re-exports it from `@thought-fabric/core/memory` for one minor version with a `@deprecated` tag, so existing imports keep working.
-
-```ts
-// Before:
-import { system } from '@thought-fabric/core/memory'
-// After:
-import { system } from '@flow-state-dev/patterns/memory'
-```
-
-TF will host specialized cognitive memory variants (e.g. dream-pattern sweeps, topic-curated profile memories, cross-domain enhancement) on top of the same `MemoryProvider` contract when those land. See the `Memory` section of the docs site (Ecosystem → Memory) for usage, configuration, and the recall tool.
+The inversion is the signal: a noun-first identifier is a block (composes in a pipeline); a verb-first identifier is a helper (acts on a resource ref).
 
 ## Attention Exports
 

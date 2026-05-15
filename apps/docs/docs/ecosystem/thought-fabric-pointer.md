@@ -10,7 +10,7 @@ It lives in its own package (`@thought-fabric/core`) and has its own documentati
 
 ## Memory has moved
 
-Memory used to live in Thought Fabric. It now lives in `@flow-state-dev/patterns/memory` — see [Ecosystem → Memory](../memory/overview). Thought Fabric continues to host attention and identity, and will host specialized cognitive memory variants (e.g. dream-pattern sweeps, topic-curated profile memories) on top of the shared `MemoryProvider` contract when those land. The old `@thought-fabric/core/memory` import path is re-exported from the new home for one minor version with a `@deprecated` tag.
+Memory used to live in Thought Fabric. It now lives in its own package, `@flow-state-dev/memory` — see [Ecosystem → Memory](../memory/overview). Thought Fabric continues to host attention and identity, and will host specialized cognitive memory variants (e.g. dream-pattern sweeps, topic-curated profile memories) on top of the shared `MemoryProvider` contract when those land. Until then, Thought Fabric doesn't address memory at all.
 
 ## Where to read more
 

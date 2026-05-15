@@ -4,11 +4,11 @@
  * its declared return type satisfies `MemoryProvider`.
  */
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { system } from '../../src/memory/index.js'
+import { system } from '../src/index.js'
 import type {
   MemoryProvider,
   MemorySystem,
-} from '../../src/memory/index.js'
+} from '../src/index.js'
 
 describe('memory/provider — MemoryProvider contract', () => {
   it('system() return type structurally satisfies MemoryProvider', () => {

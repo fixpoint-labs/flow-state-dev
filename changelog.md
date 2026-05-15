@@ -4,13 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-15
 
-### Memory system promoted from Thought Fabric to patterns (FIX-588)
+### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)
 
-- `memory.system()` and the full memory module (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) now ship from `@flow-state-dev/patterns/memory`. Apps that needed Thought Fabric only for memory can drop the `@thought-fabric/core` dependency.
-- `@thought-fabric/core/memory` continues to re-export the same surface for one minor version with a `@deprecated` JSDoc tag. Existing imports keep working; the deprecation is source-level only — no runtime warnings.
-- New minimum read-side contract `MemoryProvider` (with `MemoryRecallOptions`, `MemoryContextSections`, `RankedMemoryItem`) lives next to the implementation. The `MemorySystem` returned by `system()` declares it implements `MemoryProvider`, and exposes `formatContext` as an alias of `contextFormatter` so consumers depending on the contract can call it under the contract-shaped name. `contextFormatter` is preserved.
-- Kitchen-sink `chat-agent` and `rich-text-component` flows updated to import memory from the new path. Thought Fabric continues to host attention, identity, and metacognition.
-- New Ecosystem → Memory category in the docs site (overview, configuration, recall tool). Patterns README extended with a Memory System section; Thought Fabric README replaces its memory exports tables with a short pointer to the new home.
+- New `@flow-state-dev/memory` package. The full memory system (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) previously hosted in `@thought-fabric/core/memory` now ships from a dedicated package. Apps that needed Thought Fabric only for memory can drop the `@thought-fabric/core` dependency entirely.
+- Memory is a separate install — it is not bundled with `@flow-state-dev/core`. Add `@flow-state-dev/memory` to your dependencies alongside core when an agent needs cross-turn persistence.
+- `@thought-fabric/core/memory` is removed. The `memory` namespace no longer ships from Thought Fabric; the subpath export and re-export shim are deleted. Until Thought Fabric ships its own cognitive memory variants on top of the shared contract, it doesn't address memory at all.
+- New minimum read-side contract `MemoryProvider` (with `MemoryContextSections`, `RankedMemoryItem`) lives next to the implementation. The `MemorySystem` returned by `system()` declares it implements `MemoryProvider`, and exposes `formatContext` as an alias of `contextFormatter` so consumers depending on the contract can call it under the contract-shaped name. `contextFormatter` is preserved.
+- Block names no longer carry the `tf.` prefix. The recall tool is now `memory/recall` (sanitized for the agent as `memory_recall`); `tf.memory/observe`, `tf.memory/consolidate/*`, `tf.memory/prune/*`, `tf.memory/digest/*` all become `memory/...`.
+- Kitchen-sink `chat-agent` and `rich-text-component` flows updated to import from `@flow-state-dev/memory`. Thought Fabric continues to host attention, identity, and metacognition.
+- New Ecosystem → Memory category in the docs site (overview, configuration, recall tool), with explicit install instructions. The Thought Fabric README and sub-site lose their memory pages and gain a short pointer to the new home.
 - The full memory consumption contract (event-shaped writes, multi-provider composition, snapshot semantics) is intentionally deferred to a follow-up.
 
 ## 2026-05-14

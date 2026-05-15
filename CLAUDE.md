@@ -101,8 +101,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
+| `@flow-state-dev/memory` | Cross-turn memory system (working / episodic / semantic / digest tiers) |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
-| `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |
+| `@thought-fabric/core` | Cognitive architecture primitives (attention, identity) |
 | `apps/devtool` | DevTool source app (builds into `@flow-state-dev/devtool`) |
 | `apps/docs` | Documentation site (Docusaurus) |
 
@@ -204,9 +205,9 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 ## @thought-fabric/core Conventions
 
-- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/memory`). Named exports only (tree-shakeable). No default namespace objects.
-- **Naming — word order encodes category**: `workingMemory[Verb]` = block/item (prefix first). `[verb]WorkingMemory` = helper (verb first). The inversion signals the category without needing docs.
-- **Naming examples**: `workingMemoryCapture` (block), `workingMemoryResource` (resource), `workingMemoryContextFormatter` (formatter), `addWorkingMemory` (helper), `workingMemoryItems` (accessor)
+- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/attention`, `@thought-fabric/core/identity`). Named exports only (tree-shakeable). No default namespace objects.
+- **Naming — word order encodes category**: `perspective[Verb]` = block/item (prefix first). `[verb]Perspective` = helper (verb first). The inversion signals the category without needing docs.
+- **Naming examples**: `perspectiveObserve` (block), `perspectiveResource` (resource), `perspectiveContextFormatter` (formatter), `addPerspective` (helper)
 - **Context formatters**: Use `[domain]ContextFormatter` naming. Always assign to `context` as an array: `context: [workingMemoryContextFormatter]`
 - **Build dependency**: `@thought-fabric/core` depends on `@flow-state-dev/core` — build core first (`pnpm --filter @flow-state-dev/core build`)
 

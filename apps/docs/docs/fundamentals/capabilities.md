@@ -10,7 +10,7 @@ You install a capability by listing it in a block's `uses` array. The framework 
 
 ```ts
 import { generator, handler } from "@flow-state-dev/core";
-import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/patterns/memory";
+import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/memory";
 
 // For the full multi-tier system, use `system()` from the same module — see
 // Ecosystem → Memory for details.

@@ -12,7 +12,7 @@
  * and starts empty — that is fine: personalize reads cross-store via
  * `mem.recall` which falls back gracefully when working memory is empty.
  */
-import { system as memorySystem } from "@flow-state-dev/patterns/memory";
+import { system as memorySystem } from "@flow-state-dev/memory";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "../../lib/models";
 
 /**

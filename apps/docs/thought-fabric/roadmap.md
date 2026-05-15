@@ -12,13 +12,6 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 - `filterRelevance` — deterministic keyword-based relevance filtering (handler block)
 - `scoreSalience` — LLM-based multi-dimension salience scoring (generator block)
 
-### Memory
-- Working memory — bounded, salience-scored session resource with ACT-R power-law decay
-- `workingMemoryCapture` — bundled observe → remember → tick sequencer
-- Individual blocks: observe, remember, tick, snapshot, add
-- Helpers: add, evict, pin, unpin, refresh, advance, items, formatForContext
-- `workingMemoryContextFormatter` — ready-made context slot for generators
-
 ### Identity
 - `perspective()` — structured viewpoint model with config validation and frozen instances
 - `system()` — factory that bundles blocks, capability, resources, and capture pipeline
