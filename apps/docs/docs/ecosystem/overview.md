@@ -18,7 +18,9 @@ The split matters because it shapes what you should learn first. Core is a small
 
 **UI** is a component registry for rendering flow output in React. Common components, flow-aware components, and generative renderers.
 
-**Thought Fabric** is a separate cognitive architecture sub-site. Attention, memory, identity. It builds on Core but has its own conventions.
+**Memory** is the cross-turn memory system — working, episodic, semantic, and digest tiers behind a single `system()` factory. Lives at `@flow-state-dev/patterns/memory`.
+
+**Thought Fabric** is a separate cognitive architecture sub-site. Attention, identity. It builds on Core but has its own conventions.
 
 **Dev Experience** covers the CLI (`fsdev`) and the DevTool — a pre-built inspector you can mount into your own app or run standalone with `fsdev dev`.
 

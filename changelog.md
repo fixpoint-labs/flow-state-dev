@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-15
+
+### Memory system promoted from Thought Fabric to patterns (FIX-588)
+
+- `memory.system()` and the full memory module (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) now ship from `@flow-state-dev/patterns/memory`. Apps that needed Thought Fabric only for memory can drop the `@thought-fabric/core` dependency.
+- `@thought-fabric/core/memory` continues to re-export the same surface for one minor version with a `@deprecated` JSDoc tag. Existing imports keep working; the deprecation is source-level only — no runtime warnings.
+- New minimum read-side contract `MemoryProvider` (with `MemoryRecallOptions`, `MemoryContextSections`, `RankedMemoryItem`) lives next to the implementation. The `MemorySystem` returned by `system()` declares it implements `MemoryProvider`, and exposes `formatContext` as an alias of `contextFormatter` so consumers depending on the contract can call it under the contract-shaped name. `contextFormatter` is preserved.
+- Kitchen-sink `chat-agent` and `rich-text-component` flows updated to import memory from the new path. Thought Fabric continues to host attention, identity, and metacognition.
+- New Ecosystem → Memory category in the docs site (overview, configuration, recall tool). Patterns README extended with a Memory System section; Thought Fabric README replaces its memory exports tables with a short pointer to the new home.
+- The full memory consumption contract (event-shaped writes, multi-provider composition, snapshot semantics) is intentionally deferred to a follow-up.
+
 ## 2026-05-14
 
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)

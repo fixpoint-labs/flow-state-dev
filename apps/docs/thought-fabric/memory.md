@@ -4,6 +4,8 @@ sidebar_position: 3
 
 # Memory
 
+> **Memory has moved.** The memory module now lives at `@flow-state-dev/patterns/memory`. The `@thought-fabric/core/memory` import path on this page is re-exported from the new home for one minor version with a `@deprecated` tag, so existing code keeps working — but new code should import from the patterns path. See the framework docs at Ecosystem → Memory for the canonical reference.
+
 The memory domain (`@thought-fabric/core/memory`) gives agents structured recall across three tiers: **working memory** for the current conversation, **episodic memory** for significant experiences across sessions, and **semantic memory** for distilled, stable knowledge. Each tier has its own retention model. Together they form a pipeline where observations flow in, get classified, and settle into the right store based on how durable they are.
 
 ## Quick Start

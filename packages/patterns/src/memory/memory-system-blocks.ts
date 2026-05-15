@@ -20,7 +20,7 @@ import {
   allFacts,
 } from './semantic-memory-helpers.js'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system.js'
-import { findBestOverlap } from '../helpers.js'
+import { findBestOverlap } from './internal/helpers.js'
 import { createDigestMemoryResource } from './digest-memory.js'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
 

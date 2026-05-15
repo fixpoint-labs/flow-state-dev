@@ -165,6 +165,15 @@ const sidebars: SidebarsConfig = {
             "ui/generative",
           ],
         },
+        {
+          type: "category",
+          label: "Memory",
+          items: [
+            "memory/overview",
+            "memory/configuration",
+            "memory/recall-tool",
+          ],
+        },
         "ecosystem/thought-fabric-pointer",
         {
           type: "category",

@@ -2,7 +2,12 @@ import { defineResource, defineCapability } from '@flow-state-dev/core'
 import type { ResourceContext, CapabilityRef } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
-import { tokenOverlap } from '../helpers.js'
+import { tokenOverlap } from './internal/helpers.js'
+import type {
+  MemoryProvider,
+  RankedMemoryItem as ProviderRankedMemoryItem,
+  MemoryContextSections,
+} from './provider.js'
 import {
   workingMemoryResource,
   type WorkingMemoryState,
@@ -306,19 +311,16 @@ export interface MemorySystemConfig {
 // Return types
 // ---------------------------------------------------------------------------
 
-/** A ranked memory item from cross-store recall. */
-export type RankedMemoryItem = {
-  content: string
-  source: 'working' | 'episodic' | 'semantic'
-  relevance: number
-  category: string
-  id: string
-  /** Subject of the fact (semantic items only). */
-  subject?: string
-}
+/**
+ * A ranked memory item from cross-store recall.
+ *
+ * Re-exported from `./provider.ts` so existing import paths
+ * (`@flow-state-dev/patterns/memory`) keep resolving.
+ */
+export type RankedMemoryItem = ProviderRankedMemoryItem
 
 /** The full memory system returned by memory.system(). */
-export interface MemorySystem {
+export interface MemorySystem extends MemoryProvider {
   /** Unified capture pipeline: observe → reflect → tick (+ consolidation when semantic). Takes string input. */
   capture: ReturnType<typeof memorySystemCapture>
   /** Self-serving capture: reads last user message + truncated assistant response from session items. Use with `.work()` after the generator. */
@@ -345,15 +347,9 @@ export interface MemorySystem {
    * richer mixes (semantic facts, recent episodes, custom limits) call
    * `createMemoryContextFormatter(options)` directly.
    */
-  contextFormatter: (
-    input: unknown,
-    ctx: any
-  ) => {
-    digest?: string
-    working?: string
-    semantic?: string
-    episodic?: string
-  } | undefined
+  contextFormatter: (input: unknown, ctx: any) => MemoryContextSections | undefined
+  /** Alias of `contextFormatter` exposed under the `MemoryProvider` name. */
+  formatContext: (input: unknown, ctx: any) => MemoryContextSections | undefined
   /** Working memory module — resource and helpers. */
   working: {
     resource: typeof workingMemoryResource
@@ -739,9 +735,9 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  * context formatter.
  *
  * ```ts
- * import { memory } from '@thought-fabric/core'
+ * import { system } from '@flow-state-dev/patterns/memory'
  *
- * const mem = memory.system({
+ * const mem = system({
  *   model: 'gpt-5-mini',
  *   working: { capacity: 7 },
  *   episodic: true,
@@ -997,6 +993,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     captureFromItems,
     recall: recallFn,
     contextFormatter: contextFormatterFn,
+    formatContext: contextFormatterFn,
     working: {
       resource: workingMemoryResource,
       helpers: {

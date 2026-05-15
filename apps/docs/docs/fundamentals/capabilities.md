@@ -10,7 +10,10 @@ You install a capability by listing it in a block's `uses` array. The framework 
 
 ```ts
 import { generator, handler } from "@flow-state-dev/core";
-import { memoryCapability } from "@flow-state-dev/tools/memory";
+import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/patterns/memory";
+
+// For the full multi-tier system, use `system()` from the same module — see
+// Ecosystem → Memory for details.
 
 const assistant = generator({
   name: "assistant",
