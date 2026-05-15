@@ -249,6 +249,19 @@ export type SandboxProvider =
       execTimeoutMs?: number;
       /** MOAT binary name or absolute path. Default `"moat"`. */
       bin?: string;
+      /**
+       * When `true`, the container survives `sandbox.stop()` — `moat stop` /
+       * `moat destroy` are skipped and the generated `moat.yaml` + tempDir
+       * are retained. The next request with the same `runName` reconnects
+       * to the live container via `moat list --json`. Useful for local
+       * development: the cold-start cost is paid once, every subsequent
+       * request runs `moat exec` against the running container.
+       *
+       * Pair with a stable `runName` (otherwise each request generates a
+       * fresh UUID and never finds the existing run). Operators reclaim
+       * resources via `moat stop <runName>` or `moat clean`.
+       */
+      persist?: boolean;
     }
   | { type: "custom"; sandbox: Sandbox };
 

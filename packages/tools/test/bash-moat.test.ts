@@ -14,6 +14,7 @@ import {
   satisfiesMinVersion,
   resolveMoatSandbox,
   createMoatAdapter,
+  FSDEV_MANAGED_MARKER,
   MoatNotInstalledError,
   MoatVersionError,
   MoatGrantsError,
@@ -110,6 +111,11 @@ describe("moat builders", () => {
       "--",
       "/workspace/odd path/$x;rm.txt",
     ]);
+  });
+
+  it("generateMoatYaml: first line is the fsdev-managed marker", () => {
+    const yaml = generateMoatYaml({ name: "r1" });
+    expect(yaml.split("\n", 1)[0]).toBe(FSDEV_MANAGED_MARKER);
   });
 
   it("generateMoatYaml: default-deny network when no allowHosts", () => {
@@ -420,6 +426,24 @@ describe("createMoatAdapter", () => {
     expect(calls.length).toBe(2);
     expect(calls[0]!.args[0]).toBe("stop");
     expect(calls[1]!.args[0]).toBe("destroy");
+  });
+
+  it("persist: stop() skips moat stop/destroy so the container survives for reuse", async () => {
+    const { spawnFn, calls } = makeSpawnFn(() => ok());
+    const sb = createMoatAdapter({
+      runName: "r1",
+      bin: "moat",
+      execTimeoutMs: 1000,
+      spawnFn,
+      stopped: false,
+      persist: true,
+    });
+    await sb.stop?.();
+    // No `moat stop` / `moat destroy` invocations: the run lives on.
+    expect(calls.length).toBe(0);
+    // Subsequent commands still throw MoatRunStoppedError — the *local*
+    // handle is closed, but the underlying container is not.
+    await expect(sb.executeCommand("ls")).rejects.toBeInstanceOf(MoatRunStoppedError);
   });
 
   it("MoatRunStoppedError: subsequent operations after stop", async () => {

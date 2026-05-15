@@ -14,6 +14,7 @@
 import { Sandbox as VercelSandbox } from "@vercel/sandbox";
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
 import type { SandboxProvider } from "@flow-state-dev/tools/bash";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 /**
@@ -46,21 +47,11 @@ export function selectBashProvider(): SandboxProvider {
     return { type: "vercel", Sandbox: VercelSandbox };
   }
   if (process.env.BASH_PROVIDER === "moat") {
-    const grants = (process.env.MOAT_GRANTS ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const allowHosts = (process.env.MOAT_ALLOW_HOSTS ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const configPath = process.env.MOAT_CONFIG_PATH?.trim() || undefined;
     return {
       type: "moat",
-      grants: grants.length > 0 ? grants : undefined,
-      allowHosts: allowHosts.length > 0 ? allowHosts : undefined,
+      persist: true,
       runName: "kitchen-sink",
-      configPath,
+      configPath: "./moat.yaml",
     };
   }
   if (process.env.STORE_TYPE === "filesystem") {

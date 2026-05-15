@@ -194,12 +194,21 @@ function yamlQuote(value: string): string {
 }
 
 /**
+ * Marker on the first line of every adapter-generated `moat.yaml`. Lets us
+ * distinguish files we created (safe to reuse or delete) from user-authored
+ * configs that happen to share the path.
+ */
+export const FSDEV_MANAGED_MARKER = "# fsdev-managed: do not edit";
+
+/**
  * Generate a transient `moat.yaml` representing the requested grants and
  * outbound network policy. Default-deny when no hosts are listed. All
- * caller-supplied values are quoted to avoid YAML injection.
+ * caller-supplied values are quoted to avoid YAML injection. The file
+ * starts with `FSDEV_MANAGED_MARKER` so a later run can detect a stale
+ * file from a prior persistent session and reuse it instead of refusing.
  */
 export function generateMoatYaml(input: GenerateMoatYamlInput): string {
-  const lines: string[] = [`name: ${yamlQuote(input.name)}`];
+  const lines: string[] = [FSDEV_MANAGED_MARKER, `name: ${yamlQuote(input.name)}`];
   if (input.grants && input.grants.length > 0) {
     lines.push("grants:");
     for (const g of input.grants) lines.push(`  - ${yamlQuote(g)}`);
@@ -553,6 +562,8 @@ interface MoatRunHandle {
   tempDir?: string;
   /** Workspace-internal `moat.yaml` copied in from `configPath`, if any. */
   copiedConfigPath?: string;
+  /** When true, `stop()` skips MOAT teardown so the container survives for reuse. */
+  persist: boolean;
   stopped: boolean;
 }
 
@@ -632,6 +643,11 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
     async stop(): Promise<void> {
       if (handle.stopped) return;
       handle.stopped = true;
+      // Persistent runs: the whole point is that the container survives for
+      // reuse on the next request. Skip MOAT teardown and leave the workspace
+      // `moat.yaml` + tempDir in place so the reconnect path on the next
+      // resolve finds the live run and accepts the generated config.
+      if (handle.persist) return;
       try {
         await handle.spawnFn(handle.bin, ["stop", handle.runName], {
           timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
@@ -683,6 +699,12 @@ export interface ResolveMoatOptions {
   configPath?: string;
   execTimeoutMs?: number;
   bin?: string;
+  /**
+   * When true, the resolver tolerates an existing `<workspace>/moat.yaml`
+   * that carries the `FSDEV_MANAGED_MARKER` (reuse from a prior persistent
+   * session) and the produced sandbox skips MOAT teardown on `stop()`.
+   */
+  persist?: boolean;
   /** Visible for tests: override the spawn implementation. */
   spawnFn?: SpawnFn;
   /**
@@ -748,21 +770,52 @@ export async function resolveMoatSandbox(
   } else {
     const workspaceConfig = path.join(workspace, "moat.yaml");
     if (existsSync(workspaceConfig)) {
-      throw new MoatError(
-        `Refusing to overwrite existing ${workspaceConfig}. Pass it explicitly via \`provider.configPath\` (it will be left untouched), or remove it.`,
-      );
+      // Distinguish a leftover from a prior persistent session (safe to
+      // adopt) from a user-authored config (refuse, since teardown would
+      // delete it and overwrite is destructive). The marker on the first
+      // line of every adapter-generated yaml is the signal.
+      let isManaged = false;
+      try {
+        const head = readFileSync(workspaceConfig, "utf-8").split("\n", 1)[0] ?? "";
+        isManaged = head.trim() === FSDEV_MANAGED_MARKER;
+      } catch {
+        // Treat as unreadable → not managed.
+      }
+      if (!isManaged) {
+        throw new MoatError(
+          `Refusing to overwrite existing ${workspaceConfig}. Pass it explicitly via \`provider.configPath\` (it will be left untouched), or remove it.`,
+        );
+      }
+      if (!opts.persist) {
+        // Stale managed yaml from a prior session whose teardown didn't
+        // run (process crash, SIGKILL). Without `persist`, regenerate to
+        // pick up any config changes; we still own the file via the marker.
+        const yaml = generateMoatYaml({
+          name: opts.runName,
+          grants: opts.grants,
+          allowHosts: opts.allowHosts,
+        });
+        await writeFile(workspaceConfig, yaml, "utf-8");
+        tempDir = path.join(os.tmpdir(), "fsdev-moat", opts.runName);
+        await mkdir(tempDir, { recursive: true });
+        await writeFile(path.join(tempDir, "moat.yaml"), yaml, "utf-8");
+      }
+      // `persist` path leaves the existing file as-is — the running container
+      // (if reconnect succeeds below) was launched against it.
+      copiedConfigPath = workspaceConfig;
+    } else {
+      tempDir = path.join(os.tmpdir(), "fsdev-moat", opts.runName);
+      await mkdir(tempDir, { recursive: true });
+      const yaml = generateMoatYaml({
+        name: opts.runName,
+        grants: opts.grants,
+        allowHosts: opts.allowHosts,
+      });
+      await writeFile(path.join(tempDir, "moat.yaml"), yaml, "utf-8");
+      // Also drop into the workspace so MOAT picks it up.
+      await writeFile(workspaceConfig, yaml, "utf-8");
+      copiedConfigPath = workspaceConfig;
     }
-    tempDir = path.join(os.tmpdir(), "fsdev-moat", opts.runName);
-    await mkdir(tempDir, { recursive: true });
-    const yaml = generateMoatYaml({
-      name: opts.runName,
-      grants: opts.grants,
-      allowHosts: opts.allowHosts,
-    });
-    await writeFile(path.join(tempDir, "moat.yaml"), yaml, "utf-8");
-    // Also drop into the workspace so MOAT picks it up.
-    await writeFile(workspaceConfig, yaml, "utf-8");
-    copiedConfigPath = workspaceConfig;
   }
 
   // From here on, any failure must clean up the artifacts we just wrote;
@@ -864,7 +917,12 @@ export async function resolveMoatSandbox(
   } catch (err) {
     // Tear down anything we wrote so the next attempt starts clean. The
     // MoatRunHandle (and its `stop()`) was never constructed at this point.
-    await cleanupTransientArtifacts();
+    // Skip when persisting — the artifacts may be from a still-live run we
+    // failed to reconnect to (transient `moat list` failure), and removing
+    // them would orphan that container without the operator's input.
+    if (!opts.persist) {
+      await cleanupTransientArtifacts();
+    }
     throw err;
   }
 
@@ -878,6 +936,7 @@ export async function resolveMoatSandbox(
     tempDir,
     copiedConfigPath,
     stopped: false,
+    persist: opts.persist ?? false,
   };
 
   return { sandbox: createMoatAdapter(handle), sandboxId: opts.runName };
