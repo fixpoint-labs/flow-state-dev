@@ -1,5 +1,6 @@
 dependencies:
   - node@22
+  - python@3.12
   - pnpm
   - git
   - cli-essentials

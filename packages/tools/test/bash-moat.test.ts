@@ -14,6 +14,9 @@ import {
   resolveMountSource,
   stripMountsTargeting,
   probeMoatRun,
+  purgeOldRuns,
+  DEFAULT_MAX_CONTAINERS,
+  FSDEV_RUN_PREFIX,
   satisfiesMinVersion,
   resolveMoatSandbox,
   createMoatAdapter,
@@ -622,6 +625,91 @@ describe("probeMoatRun", () => {
 });
 
 // ---------------------------------------------------------------------------
+// purgeOldRuns — bounded MOAT-container pool
+// ---------------------------------------------------------------------------
+
+describe("purgeOldRuns", () => {
+  it("returns empty when fewer than `keep` framework-managed runs exist", async () => {
+    const runs = [
+      { Name: `${FSDEV_RUN_PREFIX}a`, State: "running", StartedAt: "2026-05-15T10:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}b`, State: "running", StartedAt: "2026-05-15T11:00:00Z" },
+    ];
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return ok(JSON.stringify(runs));
+      return ok();
+    });
+    const result = await purgeOldRuns({ runName: "current", keep: 5, spawnFn });
+    expect(result.destroyed).toEqual([]);
+    expect(calls.filter((c) => c.args[0] === "destroy")).toHaveLength(0);
+  });
+
+  it("destroys oldest excess runs above `keep`, never the current run", async () => {
+    // 6 fsdev runs sorted oldest→newest; keep=3 means destroy 3 oldest.
+    const runs = [
+      { Name: `${FSDEV_RUN_PREFIX}a`, State: "running", StartedAt: "2026-05-15T01:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}b`, State: "running", StartedAt: "2026-05-15T02:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}c`, State: "running", StartedAt: "2026-05-15T03:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}d`, State: "running", StartedAt: "2026-05-15T04:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}e`, State: "running", StartedAt: "2026-05-15T05:00:00Z" },
+      { Name: `${FSDEV_RUN_PREFIX}f`, State: "running", StartedAt: "2026-05-15T06:00:00Z" },
+    ];
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return ok(JSON.stringify(runs));
+      return ok();
+    });
+    const result = await purgeOldRuns({
+      runName: `${FSDEV_RUN_PREFIX}f`, // current = newest
+      keep: 3,
+      spawnFn,
+    });
+    // 5 candidates after excluding current; keep 3 → destroy 2 oldest.
+    expect(result.destroyed).toEqual([`${FSDEV_RUN_PREFIX}a`, `${FSDEV_RUN_PREFIX}b`]);
+    const destroys = calls.filter((c) => c.args[0] === "destroy").map((c) => c.args[1]);
+    expect(destroys).toEqual([`${FSDEV_RUN_PREFIX}a`, `${FSDEV_RUN_PREFIX}b`]);
+  });
+
+  it("never touches non-prefixed runs (user-named containers)", async () => {
+    const runs = Array.from({ length: 100 }, (_, i) => ({
+      Name: `user-named-${i}`,
+      State: "running",
+      StartedAt: `2026-05-15T${String(i).padStart(2, "0")}:00:00Z`,
+    }));
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return ok(JSON.stringify(runs));
+      return ok();
+    });
+    const result = await purgeOldRuns({ runName: "anything", keep: 5, spawnFn });
+    expect(result.destroyed).toEqual([]);
+    expect(calls.filter((c) => c.args[0] === "destroy")).toHaveLength(0);
+  });
+
+  it("uses `DEFAULT_MAX_CONTAINERS` when `keep` is unspecified", async () => {
+    // 52 fsdev runs total → with the default 50 keep, 2 oldest get purged.
+    const runs = Array.from({ length: 52 }, (_, i) => ({
+      Name: `${FSDEV_RUN_PREFIX}${i.toString().padStart(3, "0")}`,
+      State: "running",
+      StartedAt: `2026-05-${String(i % 28 + 1).padStart(2, "0")}T00:00:00Z`,
+    }));
+    expect(DEFAULT_MAX_CONTAINERS).toBe(50);
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return ok(JSON.stringify(runs));
+      return ok();
+    });
+    const result = await purgeOldRuns({ runName: "other", spawnFn });
+    expect(result.destroyed).toHaveLength(2);
+  });
+
+  it("returns empty on list failure (best-effort, never throws)", async () => {
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return fail(1, "moat list broken");
+      return ok();
+    });
+    const result = await purgeOldRuns({ runName: "x", keep: 5, spawnFn });
+    expect(result.destroyed).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Adapter host-fs translation
 // ---------------------------------------------------------------------------
 
@@ -686,6 +774,8 @@ describe("createMoatAdapter", () => {
       execTimeoutMs: 1000,
       spawnFn,
       stopped: false,
+      persist: false,
+      mountTarget: "/workspace",
     });
   }
 
@@ -792,6 +882,7 @@ describe("createMoatAdapter", () => {
       spawnFn,
       stopped: false,
       persist: true,
+      mountTarget: "/workspace",
     });
     await sb.stop?.();
     // No `moat stop` / `moat destroy` invocations: the run lives on.

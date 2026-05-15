@@ -695,6 +695,85 @@ export async function probeMoatRun(opts: {
   }
 }
 
+/** Framework-managed run names use this prefix; we only ever purge these. */
+export const FSDEV_RUN_PREFIX = "fsdev-";
+/** Default upper bound on framework-managed runs before purge kicks in. */
+export const DEFAULT_MAX_CONTAINERS = 50;
+
+/**
+ * Destroy stale framework-managed MOAT runs to keep the pool bounded.
+ * Lists every run with `FSDEV_RUN_PREFIX`, sorts oldest-first by
+ * `StartedAt`, and destroys (`stop` + `destroy`) however many exceed
+ * `keep`. Never touches the current run, non-prefixed runs, or runs
+ * the lister can't read. Best-effort: spawn failures are swallowed so
+ * the caller's main flow isn't disturbed (it's a background sidechain).
+ */
+export async function purgeOldRuns(opts: {
+  /** Current run name — excluded from purge to avoid racing the boot. */
+  runName: string;
+  bin?: string;
+  workspace?: string;
+  runtime?: "auto" | "docker" | "apple";
+  spawnFn?: SpawnFn;
+  /** Max framework-managed runs to keep. Default 50. */
+  keep?: number;
+}): Promise<{ destroyed: string[] }> {
+  const bin = opts.bin ?? "moat";
+  const spawnFn = opts.spawnFn ?? realSpawn;
+  const workspace = opts.workspace ?? process.cwd();
+  const env = buildSubprocessEnv(workspace, opts.runtime);
+  const keep = opts.keep ?? DEFAULT_MAX_CONTAINERS;
+
+  const res = await spawnFn(bin, ["list", "--json"], {
+    timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+    cwd: workspace,
+    env,
+  });
+  if (res.timedOut || res.exitCode !== 0) return { destroyed: [] };
+  let runs: unknown;
+  try {
+    runs = JSON.parse(res.stdout || "[]");
+  } catch {
+    return { destroyed: [] };
+  }
+  if (!Array.isArray(runs)) return { destroyed: [] };
+
+  const ours = (runs as Array<Record<string, unknown>>)
+    .map((r) => ({
+      name: String(r.Name ?? r.name ?? ""),
+      startedAt: String(r.StartedAt ?? r.startedAt ?? ""),
+    }))
+    .filter((r) => r.name.startsWith(FSDEV_RUN_PREFIX) && r.name !== opts.runName)
+    // Lexicographic ISO timestamp sort = chronological. Missing/zero
+    // timestamps sort first (treated as oldest), which is the safe
+    // default — we'd rather destroy an ambiguous-age run than a known
+    // recent one.
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+  if (ours.length <= keep) return { destroyed: [] };
+
+  const toDestroy = ours.slice(0, ours.length - keep);
+  const destroyed: string[] = [];
+  for (const r of toDestroy) {
+    try {
+      await spawnFn(bin, ["stop", r.name], {
+        timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+        cwd: workspace,
+        env,
+      });
+      await spawnFn(bin, ["destroy", r.name], {
+        timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+        cwd: workspace,
+        env,
+      });
+      destroyed.push(r.name);
+    } catch {
+      // Best-effort; a failed purge is not a request-blocking error.
+    }
+  }
+  return { destroyed };
+}
+
 // ---------------------------------------------------------------------------
 // Adapter (Sandbox impl)
 // ---------------------------------------------------------------------------

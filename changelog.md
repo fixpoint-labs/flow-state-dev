@@ -4,6 +4,11 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-15
 
+### Bash tool: background purge of stale MOAT containers
+
+- **New `purgeOldRuns` helper + `bash-purge-stale-containers` block.** Wired via `.workIf(isCold, ...)` into the cold-boot sequencer step, so the purge dispatches as fire-and-forget while `ensureSandbox` is booting the new container. Lists all runs, filters to framework-managed names (prefix `fsdev-`), excludes the current run, sorts oldest-first by `StartedAt`, and destroys whatever exceeds the limit (default 50).
+- Bounds the container pool that accumulates when `persist: true` keeps each session's container alive for its full lifetime. Without this, a developer running many sessions over a week would steadily accumulate `fsdev-*` containers; the purge tops up the pool back to 50 on each cold session start. Never touches user-named (non-prefixed) containers.
+
 ### Bash tool: MOAT containers persist across requests within a session
 
 - **`provider.persist` now defaults to `true`** for MOAT when the framework derives the workspace. Without it, `cleanupBlock` (wired into `request.onFinished`) destroyed the container at the end of every tool-call request, so each subsequent bash command cold-booted a fresh container (~10–30s). On the apple runtime that cold boot also races `readdir()` on the freshly-mounted host workspace — the first `ls /workspace` would return `Operation not permitted` because the host-fs contents hadn't propagated through the bind mount yet, and the model would invent explanations ("MOAT isolation prevents directory listing") instead of receiving real output.

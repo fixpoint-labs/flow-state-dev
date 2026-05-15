@@ -48,6 +48,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { quote as shellQuote } from "shell-quote";
+import { purgeOldRuns } from "./adapters/moat";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -731,6 +732,34 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       })
     : null;
 
+  // Background purge of stale framework-managed MOAT containers.
+  // Dispatched via `.workIf(isCold, ...)` so it runs in parallel with
+  // the cold-boot ensureSandbox step and never appears on warm paths.
+  // Bounded by `DEFAULT_MAX_CONTAINERS` (50); excess oldest-first.
+  const purgeStaleContainers = provider.type === "moat"
+    ? handler({
+        name: "bash-purge-stale-containers",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (input: unknown, ctx: any) => {
+          const runName =
+            provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
+          const { destroyed } = await purgeOldRuns({
+            runName,
+            bin: provider.bin,
+            workspace: provider.workspace,
+            runtime: provider.runtime,
+          });
+          if (destroyed.length > 0) {
+            console.error(
+              `[moat] purged ${destroyed.length} stale container(s): ${destroyed.join(", ")}`,
+            );
+          }
+          return input;
+        },
+      })
+    : null;
+
   // -------------------------------------------------------------------
   // Leaf handlers — the actual operations. Used directly for fast
   // providers (`local`, `just-bash`, `custom`) and wrapped under a
@@ -857,37 +886,46 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   }
 
   // Setup-needing providers: `tapIf(isCold, ...)` only emits the
-  // ensureSandbox node on the cold path.
-  const bashCommand = sequencer({
-    name: "bash",
-    description: bashCommandDescription,
-    inputSchema: bashCommandInputSchema,
-    outputSchema: bashCommandOutputSchema,
-  })
-    .tapIf(isCold, ensureSandbox!)
-    .then(bashCommandLeaf);
+  // ensureSandbox node on the cold path. The purge sidechain (MOAT
+  // only) runs in parallel via `.workIf(isCold, ...)` — fire-and-forget
+  // so it never blocks the leaf.
+  const withColdSetup = <T extends { workIf: any; tapIf: any }>(s: T): T => {
+    const stepA = purgeStaleContainers
+      ? s.workIf(isCold, purgeStaleContainers)
+      : s;
+    return stepA.tapIf(isCold, ensureSandbox!) as T;
+  };
 
-  const bashReadFile = sequencer({
-    name: "bash-read-file",
-    description: "Read the contents of a file from the workspace filesystem.",
-    inputSchema: bashReadFileInputSchema,
-    outputSchema: bashReadFileOutputSchema,
-  })
-    .tapIf(isCold, ensureSandbox!)
-    .then(bashReadFileLeaf);
+  const bashCommand = withColdSetup(
+    sequencer({
+      name: "bash",
+      description: bashCommandDescription,
+      inputSchema: bashCommandInputSchema,
+      outputSchema: bashCommandOutputSchema,
+    }),
+  ).then(bashCommandLeaf);
+
+  const bashReadFile = withColdSetup(
+    sequencer({
+      name: "bash-read-file",
+      description: "Read the contents of a file from the workspace filesystem.",
+      inputSchema: bashReadFileInputSchema,
+      outputSchema: bashReadFileOutputSchema,
+    }),
+  ).then(bashReadFileLeaf);
 
   // MOAT can write to host-fs directly; Vercel/Upstash need the
   // sandbox up first.
   const bashWriteFile = isHostMountProvider
     ? bashWriteFileHostFsLeaf
-    : sequencer({
-        name: "bash-write-file",
-        description: bashWriteFileDescription,
-        inputSchema: bashWriteFileInputSchema,
-        outputSchema: bashWriteFileOutputSchema,
-      })
-        .tapIf(isCold, ensureSandbox!)
-        .then(bashWriteFileSandboxLeaf);
+    : withColdSetup(
+        sequencer({
+          name: "bash-write-file",
+          description: bashWriteFileDescription,
+          inputSchema: bashWriteFileInputSchema,
+          outputSchema: bashWriteFileOutputSchema,
+        }),
+      ).then(bashWriteFileSandboxLeaf);
 
   return { bashCommand, bashReadFile, bashWriteFile };
 }
