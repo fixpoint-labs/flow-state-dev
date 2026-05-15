@@ -293,6 +293,10 @@ The framework documents six canonical intent names — `utility`, `chat`, `plan`
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
 
+### Observable model identity
+
+Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.
+
 ### Strict-mode schema helper
 
 `makeSchemaStrict(schema)` is exported from the package root. It returns a copy of a Zod schema with `optional` / `default` / `nullable` wrappers unwrapped so the JSON schema sent to OpenAI's structured-output strict mode has every property in `required`. The framework calls it internally before handing schemas to the AI SDK; the public export is for authors who want to assert their generator output schemas pass strict mode at test time. See BP-016 in `docs/contributing/best-practices.md`.

@@ -40,6 +40,7 @@ import {
   get_cashflow,
   get_fundamentals,
   get_income_statement,
+  get_insider_transactions,
   get_macro_indicators,
   get_prediction_markets,
   get_price_history,
@@ -183,6 +184,7 @@ const newsGenerator = generator({
   inputSchema: z.object({
     news: toolOutputSchemas.search_news,
     macro: toolOutputSchemas.get_macro_indicators,
+    insiderTransactions: toolOutputSchemas.get_insider_transactions,
   }),
   prompt: newsPrompt,
   context: {
@@ -210,6 +212,7 @@ export const newsAnalyst = sequencer({
     return {
       news: t(search_news),
       macro: t(get_macro_indicators),
+      insiderTransactions: t(get_insider_transactions),
     };
   })())
   .then(newsGenerator)

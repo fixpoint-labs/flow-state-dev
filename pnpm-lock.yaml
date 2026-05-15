@@ -387,6 +387,9 @@ importers:
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
+      trading-signals:
+        specifier: ^7.4.3
+        version: 7.4.3
       yahoo-finance2:
         specifier: ^3.14.0
         version: 3.14.0
@@ -9727,6 +9730,9 @@ packages:
   tr46@6.0.0:
     resolution: {integrity: sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==}
     engines: {node: '>=20'}
+
+  trading-signals@7.4.3:
+    resolution: {integrity: sha512-kOyzd85qhuhU7yGkB5z74MVP6j30xBCfZy5+bgBnvfxY1ZdvaQsdD+C5j+CoIRtCAgSOuxB7jmPpBrqO6h17sQ==}
 
   tree-dump@1.1.0:
     resolution: {integrity: sha512-rMuvhU4MCDbcbnleZTFezWsaZXRFemSqAM+7jPnzUl1fo9w3YEKOxAeui0fz3OI4EU4hf23iyA7uQRVko+UaBA==}
@@ -20918,6 +20924,8 @@ snapshots:
     dependencies:
       punycode: 2.3.1
     optional: true
+
+  trading-signals@7.4.3: {}
 
   tree-dump@1.1.0(tslib@2.8.1):
     dependencies:

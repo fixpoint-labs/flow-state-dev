@@ -2,6 +2,12 @@
  * Generic PostgreSQL record store abstraction.
  * All 4 record stores (session, request, user, org) use this base
  * with store-specific column mappings and filter builders.
+ *
+ * Implements FIX-405 delta verbs (`patchField` / `incField` / `pushToArray`)
+ * using JSONB native ops (`jsonb_set`, `||`) wrapped in CAS-predicated
+ * UPDATEs. Each verb mutates only the targeted path inside `data->state`
+ * while keeping the `version` and `updated_at` columns and their mirrored
+ * top-level entries in `data` in lockstep.
  */
 
 import type { ExpectedVersion, SetResult } from "@flow-state-dev/server";
@@ -23,6 +29,27 @@ export type PgRecordStore<TRecord, TListOptions> = {
     id: string,
     value: TRecord,
     expectedVersion: ExpectedVersion
+  ): Promise<SetResult<TRecord>>;
+  patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+  incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+  pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
   ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
@@ -73,6 +100,102 @@ export function createPgRecordStore<
       ok: false,
       conflict: { currentValue, currentVersion }
     };
+  }
+
+  function statePath(path: string[]): string[] {
+    if (path.length !== 1) {
+      throw new Error(
+        `pg delta verbs only support depth-1 paths in v1; received path of length ${path.length}`
+      );
+    }
+    return ["state", path[0]];
+  }
+
+  /**
+   * Common shape for all three delta UPDATEs. The new `data` JSONB is built
+   * by applying `valueExpr` at the targeted path, then merging the new
+   * `version` / `updatedAt` at the top level via `||` (shallow merge,
+   * RHS-wins) so the JSONB and column views stay in lockstep:
+   *
+   *   data = jsonb_set(data, $path, <value-expr>, true)
+   *          || jsonb_build_object('version', $newV, 'updatedAt', $now),
+   *   version = $newV, updated_at = $now
+   *
+   * For numeric `expectedVersion` the UPDATE is CAS-predicated and the
+   * caller pre-computes `newVersion = expectedVersion + 1`. For `"any"` we
+   * use `version + 1` and `RETURNING version` so the update is atomic
+   * against concurrent writers (no SELECT-then-UPDATE race).
+   *
+   * `valueExpr` is the SQL fragment that produces the new JSONB value for
+   * the targeted path. It may reference `$1` (the path text[]) and any
+   * additional operand parameters that follow.
+   */
+  async function runDeltaUpdate(
+    id: string,
+    pgPath: string[],
+    valueExpr: string,
+    operandParams: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>> {
+    // Param layout: $1 = path text[]; $2..$M = operand params; then
+    // updatedAt, id; and either (newVersion, expectedVersion) for CAS or
+    // nothing for "any" (the SQL computes version + 1 in-place).
+    const opOffset = 1 + operandParams.length;
+    const updatedAtParam = `$${opOffset + 1}`;
+    const idParam = `$${opOffset + 2}`;
+
+    if (expectedVersion === "any") {
+      // Single atomic UPDATE — no SELECT first, no race. Missing record
+      // returns rowCount=0, which we surface as a conflict so the CAS layer
+      // can fall back to `set` with a full record on retry.
+      const sql = `UPDATE ${tableName}
+        SET
+          data = jsonb_set(data, $1::text[], ${valueExpr}, true)
+                 || jsonb_build_object(
+                      'version', version + 1,
+                      'updatedAt', ${updatedAtParam}::bigint
+                    ),
+          version = version + 1,
+          updated_at = ${updatedAtParam}::bigint
+        WHERE id = ${idParam}
+        RETURNING version`;
+      const params = [pgPath, ...operandParams, updatedAt, id];
+      const result = await executor.query(sql, params);
+      if (result.rowCount > 0) {
+        const row = result.rows[0] as QueryResultRow;
+        return { ok: true, version: Number(row.version) };
+      }
+      return loadConflict(id);
+    }
+
+    const newVersion = expectedVersion + 1;
+    const newVersionParam = `$${opOffset + 3}`;
+    const expectedParam = `$${opOffset + 4}`;
+    const sql = `UPDATE ${tableName}
+      SET
+        data = jsonb_set(data, $1::text[], ${valueExpr}, true)
+               || jsonb_build_object(
+                    'version', ${newVersionParam}::int,
+                    'updatedAt', ${updatedAtParam}::bigint
+                  ),
+        version = ${newVersionParam}::int,
+        updated_at = ${updatedAtParam}::bigint
+      WHERE id = ${idParam} AND version = ${expectedParam}`;
+
+    const params = [
+      pgPath,
+      ...operandParams,
+      updatedAt,
+      id,
+      newVersion,
+      expectedVersion
+    ];
+    const result = await executor.query(sql, params);
+    if (result.rowCount > 0) {
+      return { ok: true, version: newVersion };
+    }
+    return loadConflict(id);
   }
 
   return {
@@ -134,6 +257,65 @@ export function createPgRecordStore<
       }
 
       return loadConflict(id);
+    },
+
+    async patchField(
+      id: string,
+      path: string[],
+      value: unknown,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      return runDeltaUpdate(
+        id,
+        statePath(path),
+        "$2::jsonb",
+        [JSON.stringify(value ?? null)],
+        expectedVersion,
+        updatedAt
+      );
+    },
+
+    async incField(
+      id: string,
+      path: string[],
+      delta: number,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      // Treat the existing value as 0 when it's missing OR when its JSONB
+      // type is anything other than 'number'. Mirrors the in-memory
+      // adapter's `typeof === "number"` baseline; without the typeof guard
+      // Postgres would happily cast JSON strings like "5" to numeric 5 and
+      // diverge from memory.
+      return runDeltaUpdate(
+        id,
+        statePath(path),
+        "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
+        [delta],
+        expectedVersion,
+        updatedAt
+      );
+    },
+
+    async pushToArray(
+      id: string,
+      path: string[],
+      values: unknown[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      // COALESCE treats a missing field as `[]`. If the existing value is a
+      // JSONB non-array (e.g. an object), Postgres raises a `||` operator
+      // error — caller should know they're pushing to an array slot.
+      return runDeltaUpdate(
+        id,
+        statePath(path),
+        "COALESCE(data #> $1::text[], '[]'::jsonb) || $2::jsonb",
+        [JSON.stringify(values)],
+        expectedVersion,
+        updatedAt
+      );
     },
 
     async delete(id: string): Promise<void> {
