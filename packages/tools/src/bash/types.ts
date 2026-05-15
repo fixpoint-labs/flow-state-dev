@@ -32,6 +32,16 @@ export interface Sandbox {
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   stop?(): Promise<void>;
+  /**
+   * Host directory that backs the sandbox's `/workspace`. Set by adapters
+   * whose container/runtime sees a bind-mounted host directory — today
+   * just MOAT. When present, the framework can do filesystem operations
+   * (hydrate, flush walk) directly via Node `fs` APIs instead of paying
+   * for an IPC round-trip per file. Path translation: a sandbox-side
+   * path under `<destination>` maps to `<hostMountSource>/<relative>` on
+   * the host.
+   */
+  hostMountSource?: string;
 }
 
 // ---------------------------------------------------------------------------

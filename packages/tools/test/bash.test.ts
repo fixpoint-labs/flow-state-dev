@@ -1041,6 +1041,50 @@ describe("createBashBlocks", () => {
     expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
   });
 
+  it("wraps bashCommand with `cd <destination> &&` so PWD is the workspace root", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    // The agent should be able to use relative paths (`artifacts/foo.md`)
+    // without knowing the workspace lives at `/workspace`. This test
+    // captures the actual command string sent to the sandbox and
+    // asserts the wrapper.
+    const captured: string[] = [];
+    const files = new Map<string, string>();
+    const sandbox: Sandbox = {
+      async executeCommand(command: string): Promise<CommandResult> {
+        captured.push(command);
+        if (command.includes("find ")) {
+          return {
+            stdout: Array.from(files.keys()).join("\n"),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      async readFile(p: string): Promise<string> {
+        return files.get(p) ?? "";
+      },
+      async writeFile(p: string, content: string): Promise<void> {
+        files.set(p, content);
+      },
+    };
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cd-wrap-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "echo hello > note.txt" }, ctx);
+
+    // The agent's command is wrapped with the cd; the flush walk
+    // (which runs after) is the only command without the wrap.
+    const agentCmd = captured.find((c) => c.includes("echo hello"));
+    expect(agentCmd).toBeDefined();
+    expect(agentCmd).toContain("cd /workspace && echo hello > note.txt");
+  });
+
   it("routes writes back to the owning collection by longest-prefix match", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 

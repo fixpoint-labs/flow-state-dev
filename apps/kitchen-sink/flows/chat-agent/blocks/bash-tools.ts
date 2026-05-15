@@ -50,7 +50,6 @@ export function selectBashProvider(): SandboxProvider {
     return {
       type: "moat",
       persist: true,
-      runName: "kitchen-sink",
       configPath: "./moat.yaml",
     };
   }

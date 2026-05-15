@@ -25,10 +25,21 @@ export interface ResolveSandboxResult {
  * @param options.destination — virtual workspace root (e.g. "/workspace")
  * @param options.cwd — explicit working directory (overrides provider.cwd for local)
  * @param options.existingId — reconnect to an existing sandbox (Vercel/Upstash)
+ * @param options.frameworkManaged — caller asserts the workspace path is
+ *        framework-derived (e.g. `.fsdev/workspaces/session/<sessionId>`)
+ *        and nothing in it is user-authored. Forwarded to the MOAT
+ *        resolver so it skips marker checks on the existing `moat.yaml`
+ *        (otherwise yamls written by pre-marker framework versions
+ *        look user-authored and block every subsequent boot).
  */
 export async function resolveSandbox(
   provider: SandboxProvider,
-  options: { destination?: string; cwd?: string; existingId?: string } = {},
+  options: {
+    destination?: string;
+    cwd?: string;
+    existingId?: string;
+    frameworkManaged?: boolean;
+  } = {},
 ): Promise<ResolveSandboxResult> {
   switch (provider.type) {
     case "local":
@@ -89,6 +100,7 @@ export async function resolveSandbox(
         execTimeoutMs: provider.execTimeoutMs,
         bin: provider.bin,
         persist: provider.persist,
+        frameworkManaged: options.frameworkManaged,
       });
     }
 

@@ -33,9 +33,10 @@
  * ```
  */
 
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import type {
+  BlockContext,
   ResourceCollectionRef,
   JsonObject,
 } from "@flow-state-dev/core/types";
@@ -44,6 +45,9 @@ import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
 import { hashContent } from "./hash";
 import path from "node:path";
+import fs from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { quote as shellQuote } from "shell-quote";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,7 +107,11 @@ const bashCommandOutputSchema = z.object({
 });
 
 const bashReadFileInputSchema = z.object({
-  path: z.string().describe("Path to the file, relative to workspace root"),
+  path: z
+    .string()
+    .describe(
+      "Path to the file, relative to workspace root (e.g. `artifacts/foo.md`). Don't prefix with `/workspace`.",
+    ),
 });
 
 const bashReadFileOutputSchema = z.object({
@@ -113,7 +121,9 @@ const bashReadFileOutputSchema = z.object({
 const bashWriteFileInputSchema = z.object({
   path: z
     .string()
-    .describe("Path where the file should be written, relative to workspace root"),
+    .describe(
+      "Path where the file should be written, relative to workspace root (e.g. `artifacts/foo.md`). Don't prefix with `/workspace`.",
+    ),
   content: z.string().describe("Content to write to the file"),
 });
 
@@ -174,6 +184,11 @@ interface ScopeIdentity {
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
 const TMP_DIR = "tmp";
+
+/** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
+function defaultMoatWorkspace(sessionId: string): string {
+  return path.join(process.cwd(), ".fsdev", "workspaces", "session", sessionId);
+}
 
 /**
  * Resolve the workspace scope ID and registry key from context identity.
@@ -289,7 +304,34 @@ async function createScopedSandbox(
     cwd = path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
   }
 
-  const { sandbox } = await resolveSandbox(provider, { destination, cwd });
+  // MOAT defaults: per-session runName + workspace + persist=true.
+  // Workspace mirrors `local`'s layout. Persist avoids per-tool-call
+  // cold boots (~10–30s) and the apple-runtime mount race that
+  // surfaces as `ls` EPERM. `frameworkManaged` lets the resolver
+  // overwrite our own yaml freely.
+  let frameworkManaged = false;
+  if (provider.type === "moat") {
+    const sessionId = identity.sessionId;
+    const overrides: Partial<typeof provider> = {};
+    if (!provider.runName) overrides.runName = `fsdev-${sessionId}`;
+    if (!provider.workspace) {
+      overrides.workspace = defaultMoatWorkspace(sessionId);
+      frameworkManaged = true;
+    }
+    if (provider.persist === undefined) overrides.persist = true;
+    if (Object.keys(overrides).length > 0) {
+      provider = { ...provider, ...overrides };
+    }
+    if (provider.workspace) {
+      await fs.mkdir(provider.workspace, { recursive: true });
+    }
+  }
+
+  const { sandbox } = await resolveSandbox(provider, {
+    destination,
+    cwd,
+    frameworkManaged,
+  });
   return sandbox;
 }
 
@@ -315,6 +357,27 @@ function findMount(relativePath: string, mounts: Mount[]): Mount | undefined {
 
 function isUnderTmp(relativePath: string): boolean {
   return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
+}
+
+/**
+ * Provider types whose sandbox is *not* immediately reachable on every
+ * call — they need an explicit "ensure the sandbox is up" step before
+ * the first command can run. `local` and `just-bash` are always
+ * reachable (host filesystem or in-process WASM); `moat`, `vercel`, and
+ * `upstash` need to spin up a container or instance.
+ *
+ * Drives the block-factory decision: setup-needing providers compose
+ * their blocks as `sequencer().tapIf(isCold, ensureSandbox).then(leaf)`
+ * so the user sees status updates during the cold path. Other providers
+ * return leaf handlers directly — no sequencer wrapper, no extra trace
+ * node, no per-call probe.
+ */
+function providerNeedsSetup(provider: SandboxProvider): boolean {
+  return (
+    provider.type === "moat" ||
+    provider.type === "vercel" ||
+    provider.type === "upstash"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -380,23 +443,34 @@ async function flush(
   destination: string,
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Promise<void> {
-  // Walk only mount prefixes (and `tmp/`) — never the whole `destination`.
-  // Under providers that bind-mount the host repo (MOAT, Vercel sandbox),
-  // `find /workspace` traverses the entire user repo (every TS file,
-  // every `.next/`, every per-package `dist/`) and can easily exceed
-  // `execTimeoutMs`. When it does, `find` exits non-zero, flush silently
-  // returns, and any just-written artifact disappears with no warning.
-  // Mount prefixes are the only paths flush can route into a collection
-  // anyway, so the broader walk produces no value to offset its cost.
-  // Hydrate guarantees these directories exist; see `hydrate`.
-  const walkPrefixes = [...entry.mounts.map((m) => `./${m.prefix}`), `./${TMP_DIR}`];
-  const result = await entry.sandbox.executeCommand(
-    `find ${walkPrefixes.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
-  );
+  // Discover the files currently present under each mount prefix. Two
+  // walk implementations: host-fs (fast, no IPC) for bind-mount providers
+  // that expose `hostMountSource`; `find` via `executeCommand` for the
+  // others (Vercel, Upstash) where the only way to see the sandbox fs
+  // is through the adapter's SDK.
+  const filePaths = entry.sandbox.hostMountSource
+    ? await walkMountsViaHostFs(entry, entry.sandbox.hostMountSource)
+    : await walkMountsViaExec(entry);
+  if (filePaths === null) return;
 
-  // If find fails, skip entirely — NEVER proceed to the deletion loop with
-  // an empty set, which would drop everything.
-  if (result.exitCode !== 0) return;
+  // Diagnostic: a successful flush that sees ZERO files when writable
+  // mounts are present often means the agent's writes landed at a
+  // path the walk didn't visit — either MOAT's bind-mount target
+  // mismatch, or the agent used absolute paths under a different
+  // prefix. Without this log, "my artifact didn't appear" is an
+  // invisible failure (no warn, no exception).
+  if (filePaths.length === 0 && entry.mounts.some((m) => m.writable)) {
+    const summary = entry.mounts
+      .filter((m) => m.writable)
+      .map((m) => m.prefix)
+      .join(", ");
+    const source = entry.sandbox.hostMountSource
+      ? ` (host walk under ${entry.sandbox.hostMountSource})`
+      : "";
+    console.warn(
+      `[bash] flush walk found 0 files under writable mounts (${summary})${source}. If the agent just wrote a file, check that it landed under one of these prefixes.`,
+    );
+  }
 
   // Track which sandbox-relative paths we saw, keyed by mount prefix for
   // the per-mount deletion pass below.
@@ -405,52 +479,36 @@ async function flush(
 
   const orphans: string[] = [];
 
-  if (result.stdout.trim()) {
-    const filePaths = result.stdout.trim().split("\n").filter(Boolean);
+  for (const relativePath of filePaths) {
+    if (!relativePath || relativePath === ".") continue;
+    if (isUnderTmp(relativePath)) continue;
 
-    for (const foundPath of filePaths) {
-      const relativePath = foundPath.startsWith("./")
-        ? foundPath.slice(2)
-        : foundPath;
-      if (!relativePath || relativePath === ".") continue;
-      if (isUnderTmp(relativePath)) continue;
+    const mount = findMount(relativePath, entry.mounts);
+    if (!mount) {
+      orphans.push(relativePath);
+      continue;
+    }
 
-      const mount = findMount(relativePath, entry.mounts);
-      if (!mount) {
-        orphans.push(relativePath);
-        continue;
+    const bareKey = stripMountPrefix(relativePath, mount.prefix);
+    // Skip framework-internal markers (e.g. the `.keep` seeded by
+    // hydrate to guarantee the directory exists for the walk).
+    if (bareKey === ".keep") continue;
+    seenByMountKey.get(mount.key)!.add(bareKey);
+
+    if (!mount.writable) continue;
+
+    try {
+      const fullPath = path.join(destination, relativePath);
+      const content = await entry.sandbox.readFile(fullPath);
+      const newHash = hashContent(content);
+      const oldHash = entry.contentHashes.get(relativePath);
+
+      if (newHash !== oldHash) {
+        await upsertCollectionEntry(mount, bareKey, content, createState(relativePath));
+        entry.contentHashes.set(relativePath, newHash);
       }
-
-      const bareKey = stripMountPrefix(relativePath, mount.prefix);
-      // Skip framework-internal markers (e.g. the `.keep` seeded by
-      // hydrate to guarantee the directory exists for `find`).
-      if (bareKey === ".keep") continue;
-      seenByMountKey.get(mount.key)!.add(bareKey);
-
-      if (!mount.writable) continue;
-
-      try {
-        const fullPath = path.join(destination, relativePath);
-        const content = await entry.sandbox.readFile(fullPath);
-        const newHash = hashContent(content);
-        const oldHash = entry.contentHashes.get(relativePath);
-
-        if (newHash !== oldHash) {
-          const existing = mount.collection.getOptional(bareKey);
-          if (existing) {
-            await existing.writeContent(content);
-          } else {
-            const ref = await mount.collection.create(
-              bareKey,
-              createState(relativePath),
-            );
-            await ref.writeContent(content);
-          }
-          entry.contentHashes.set(relativePath, newHash);
-        }
-      } catch {
-        // File removed between walk and read — skip.
-      }
+    } catch {
+      // File removed between walk and read — skip.
     }
   }
 
@@ -476,6 +534,107 @@ async function flush(
   }
 }
 
+/**
+ * Mount-prefix walk via `find` through the sandbox's exec channel.
+ * Returns `null` on failure — caller skips flush so a transient walk
+ * error never triggers the deletion pass with an empty seen-set.
+ */
+async function walkMountsViaExec(entry: SandboxEntry): Promise<string[] | null> {
+  const walkPrefixes = [...entry.mounts.map((m) => `./${m.prefix}`), `./${TMP_DIR}`];
+  const result = await entry.sandbox.executeCommand(
+    `find ${walkPrefixes.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
+  );
+  if (result.exitCode !== 0) return null;
+  if (!result.stdout.trim()) return [];
+  return result.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => (p.startsWith("./") ? p.slice(2) : p));
+}
+
+/**
+ * Mount-prefix walk via direct host fs. Faster than `find` through
+ * `executeCommand` because there's no IPC round-trip — same filesystem
+ * as the container sees through the bind mount. Reads every mount's
+ * prefix dir under the host source.
+ */
+async function walkMountsViaHostFs(
+  entry: SandboxEntry,
+  hostMountSource: string,
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const mount of entry.mounts) {
+    const root = path.join(hostMountSource, mount.prefix);
+    try {
+      const dirents = await fs.readdir(root, { recursive: true, withFileTypes: true });
+      for (const dirent of dirents) {
+        if (!dirent.isFile()) continue;
+        // `dirent.parentPath` is the absolute dir under `root`; build the
+        // sandbox-relative path back from the mount prefix + remainder.
+        const parent = (dirent as Dirent & { parentPath?: string }).parentPath
+          ?? path.join(root, "");
+        const rel = path.relative(root, path.join(parent, dirent.name));
+        out.push(path.posix.join(mount.prefix, rel.split(path.sep).join("/")));
+      }
+    } catch (err) {
+      // Mount dir missing — hydrate guarantees it, but treat as empty.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw err;
+    }
+  }
+  return out;
+}
+
+/**
+ * Inline single-file routing — used by `bashWriteFile` under bind-mount
+ * providers where the write went directly to the host filesystem and
+ * we already know which file changed. No walk, no deletion pass, no
+ * hash diff: route the one file to its owning mount and upsert.
+ *
+ * Drops the file silently if it's outside any mount prefix and not
+ * under `./tmp/`, matching `flush`'s orphan behavior (with a log).
+ */
+/**
+ * Upsert one collection entry: `getOrCreate` + `patchState` + `writeContent`,
+ * matching the framework's `upsertResource` utility. Anything else (e.g.
+ * `create` without `patchState`) doesn't reliably propagate content to
+ * client snapshots.
+ */
+async function upsertCollectionEntry(
+  mount: Mount,
+  bareKey: string,
+  content: string,
+  initial: Partial<JsonObject>,
+): Promise<void> {
+  const ref = await mount.collection.getOrCreate(bareKey, initial);
+  await ref.patchState(initial);
+  await ref.writeContent(content);
+}
+
+async function routeWrittenFile(
+  entry: SandboxEntry,
+  relativePath: string,
+  content: string,
+  createState: (relativePath: string) => Partial<JsonObject>,
+): Promise<void> {
+  if (isUnderTmp(relativePath)) return;
+  const mount = findMount(relativePath, entry.mounts);
+  if (!mount) {
+    console.warn(
+      `[bash] dropped orphan write at "${relativePath}" — not under any mounted collection or ./${TMP_DIR}/`,
+    );
+    return;
+  }
+  if (!mount.writable) return;
+  const bareKey = stripMountPrefix(relativePath, mount.prefix);
+  if (bareKey === ".keep" || bareKey.startsWith("_")) return;
+  const newHash = hashContent(content);
+  if (entry.contentHashes.get(relativePath) === newHash) return;
+  await upsertCollectionEntry(mount, bareKey, content, createState(relativePath));
+  entry.contentHashes.set(relativePath, newHash);
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -497,14 +656,6 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     destination = "/workspace",
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
-
-  function getIdentity(ctx: any): ScopeIdentity {
-    return {
-      sessionId: ctx.session.identity.id,
-      userId: ctx.session.identity.userId,
-      orgId: ctx.session.identity.orgId,
-    };
-  }
 
   async function getOrCreate(ctx: any): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
@@ -548,32 +699,80 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     return entry;
   }
 
-  const bashCommand = handler({
-    name: "bash",
-    description: [
-      "Execute a bash command in the workspace.",
-      "The workspace is a persistent filesystem scoped to this session.",
-      "Use ls or find to explore files.",
-      "Files created or modified under a mounted collection's directory are automatically saved;",
-      `files under ./${TMP_DIR}/ are scratch space and are never saved.`,
-    ].join(" "),
+  const needsSetup = providerNeedsSetup(provider);
+  const isHostMountProvider = provider.type === "moat";
+
+  // Cold-vs-warm predicate. Registry has no entry for this scope yet →
+  // the next call must boot/connect the sandbox. Cheap: just a Map.has.
+  const isCold = (_value: unknown, ctx: BlockContext): boolean => {
+    const identity = getIdentity(ctx as any);
+    const scope =
+      provider.type === "local" ? (provider.scope ?? "session") : "session";
+    return !registry.has(resolveScopeKey(scope, identity).key);
+  };
+
+  // Setup tap, gated by `tapIf(isCold, ...)` so it's invisible on
+  // warm paths. The status message covers the worst case (cold image
+  // build); reconnects complete fast enough that the user just sees a
+  // brief "Preparing…" before the leaf runs.
+  const ensureSandbox = needsSetup
+    ? handler({
+        name: "bash-ensure-sandbox",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        activeStatusMessage:
+          provider.type === "moat"
+            ? "Preparing bash sandbox (first run can take 30–60s while the image builds)…"
+            : "Preparing bash sandbox…",
+        execute: async (input: unknown, ctx: any) => {
+          await getOrCreate(ctx);
+          return input;
+        },
+      })
+    : null;
+
+  // -------------------------------------------------------------------
+  // Leaf handlers — the actual operations. Used directly for fast
+  // providers (`local`, `just-bash`, `custom`) and wrapped under a
+  // sequencer for setup-needing providers (MOAT, Vercel, Upstash).
+  // -------------------------------------------------------------------
+
+  const bashCommandDescription = [
+    "Execute a bash command. Your current directory is the workspace root —",
+    "use relative paths (`artifacts/foo.md`, `./tmp/scratch.txt`), not absolute",
+    "paths under any special prefix. The workspace is a persistent filesystem",
+    "scoped to this session. Files created or modified under a mounted",
+    "collection's directory are automatically saved;",
+    `files under ./${TMP_DIR}/ are scratch space and are never saved.`,
+  ].join(" ");
+
+  // Auto-prepend `cd <destination> &&` so PWD is always the workspace
+  // root and the agent can use relative paths without knowing about
+  // `/workspace`. Quoting via shell-quote handles paths with spaces.
+  const cdPrefix = `${shellQuote(["cd", destination])} && `;
+
+  const bashCommandLeaf = handler({
+    name: needsSetup ? "bash-exec" : "bash",
+    description: bashCommandDescription,
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
-
     execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
       const entry = await getOrCreate(ctx);
-      const result = await entry.sandbox.executeCommand(input.command);
+      const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
       await flush(entry, destination, createState);
       return result;
     },
   });
 
-  const bashReadFile = handler({
-    name: "bash-read-file",
-    description: "Read the contents of a file from the workspace filesystem.",
+  const bashReadFileLeaf = handler({
+    name: needsSetup ? "bash-read-file-exec" : "bash-read-file",
+    description: [
+      "Read the contents of a file in the workspace.",
+      "`path` is relative to the workspace root (e.g. `artifacts/foo.md`,",
+      "`./tmp/notes.txt`). Don't prefix with `/workspace`.",
+    ].join(" "),
     inputSchema: bashReadFileInputSchema,
     outputSchema: bashReadFileOutputSchema,
-
     execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
@@ -582,27 +781,137 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     },
   });
 
-  const bashWriteFile = handler({
+  const bashWriteFileDescription = [
+    "Write content to a file in the workspace.",
+    "`path` is relative to the workspace root (e.g. `artifacts/foo.md`,",
+    "`./tmp/notes.txt`). Don't prefix with `/workspace`.",
+    "Creates parent directories if needed.",
+    "Files under a mounted collection's directory are saved automatically;",
+    `files under ./${TMP_DIR}/ are scratch; files anywhere else are dropped.`,
+  ].join(" ");
+
+  // bashWriteFile fast-path for bind-mount providers: write directly
+  // to host fs and route into the collection, without cold-booting
+  // the container. The mount source must be resolvable from provider
+  // config alone (no SandboxEntry required) — currently MOAT only.
+  const bashWriteFileHostFsLeaf = handler({
     name: "bash-write-file",
-    description: [
-      "Write content to a file in the workspace.",
-      "Creates parent directories if needed.",
-      "Files under a mounted collection's directory are saved automatically;",
-      `files under ./${TMP_DIR}/ are scratch; files anywhere else are dropped.`,
-    ].join(" "),
+    description: bashWriteFileDescription,
     inputSchema: bashWriteFileInputSchema,
     outputSchema: bashWriteFileOutputSchema,
-
-    execute: async (input: z.infer<typeof bashWriteFileInputSchema>, ctx: any) => {
-      const entry = await getOrCreate(ctx);
-      const fullPath = path.join(destination, input.path);
-      await entry.sandbox.writeFile(fullPath, input.content);
-      await flush(entry, destination, createState);
+    execute: async (
+      input: z.infer<typeof bashWriteFileInputSchema>,
+      ctx: any,
+    ) => {
+      const hostMountSource = resolveHostMountSourceForWrite(provider, ctx)!;
+      const hostPath = path.join(hostMountSource, input.path);
+      await fs.mkdir(path.dirname(hostPath), { recursive: true });
+      await fs.writeFile(hostPath, input.content, "utf-8");
+      // Build a routing-only `SandboxEntry` from ctx if no live one
+      // exists. `routeWrittenFile` only reads `mounts`/`contentHashes`,
+      // so the `sandbox` field is never dereferenced.
+      const cached = registry.get(
+        resolveScopeKey("session", getIdentity(ctx)).key,
+      );
+      const liveEntry = cached && !isPending(cached) ? cached : null;
+      const mounts = liveEntry?.mounts ?? discoverMounts(ctx, collections, exclude);
+      if (mounts.length === 0) {
+        console.warn(
+          `[bash] bash-write-file at "${input.path}" found no mounted collections on ctx.resources — file written to host fs but NOT routed into any collection. Wire the bash capability alongside the artifact/skills capabilities on this generator.`,
+        );
+      }
+      const entry: SandboxEntry = liveEntry ?? {
+        sandbox: {} as Sandbox,
+        hydrated: false,
+        contentHashes: new Map(),
+        mounts,
+      };
+      await routeWrittenFile(entry, input.path, input.content, createState);
       return { success: true };
     },
   });
 
+  const bashWriteFileSandboxLeaf = handler({
+    name: needsSetup ? "bash-write-file-exec" : "bash-write-file",
+    description: bashWriteFileDescription,
+    inputSchema: bashWriteFileInputSchema,
+    outputSchema: bashWriteFileOutputSchema,
+    execute: async (
+      input: z.infer<typeof bashWriteFileInputSchema>,
+      ctx: any,
+    ) => {
+      const entry = await getOrCreate(ctx);
+      const fullPath = path.join(destination, input.path);
+      await entry.sandbox.writeFile(fullPath, input.content);
+      await routeWrittenFile(entry, input.path, input.content, createState);
+      return { success: true };
+    },
+  });
+
+  if (!needsSetup) {
+    return {
+      bashCommand: bashCommandLeaf,
+      bashReadFile: bashReadFileLeaf,
+      bashWriteFile: bashWriteFileSandboxLeaf,
+    };
+  }
+
+  // Setup-needing providers: `tapIf(isCold, ...)` only emits the
+  // ensureSandbox node on the cold path.
+  const bashCommand = sequencer({
+    name: "bash",
+    description: bashCommandDescription,
+    inputSchema: bashCommandInputSchema,
+    outputSchema: bashCommandOutputSchema,
+  })
+    .tapIf(isCold, ensureSandbox!)
+    .then(bashCommandLeaf);
+
+  const bashReadFile = sequencer({
+    name: "bash-read-file",
+    description: "Read the contents of a file from the workspace filesystem.",
+    inputSchema: bashReadFileInputSchema,
+    outputSchema: bashReadFileOutputSchema,
+  })
+    .tapIf(isCold, ensureSandbox!)
+    .then(bashReadFileLeaf);
+
+  // MOAT can write to host-fs directly; Vercel/Upstash need the
+  // sandbox up first.
+  const bashWriteFile = isHostMountProvider
+    ? bashWriteFileHostFsLeaf
+    : sequencer({
+        name: "bash-write-file",
+        description: bashWriteFileDescription,
+        inputSchema: bashWriteFileInputSchema,
+        outputSchema: bashWriteFileOutputSchema,
+      })
+        .tapIf(isCold, ensureSandbox!)
+        .then(bashWriteFileSandboxLeaf);
+
   return { bashCommand, bashReadFile, bashWriteFile };
+}
+
+/**
+ * Pre-sandbox host-mount source for MOAT's `bashWriteFile` host-fs
+ * leaf — same dir the resolver will land at once the container boots.
+ * Returns `undefined` for non-MOAT providers (caller goes through the
+ * sandbox instead).
+ */
+function resolveHostMountSourceForWrite(
+  provider: SandboxProvider,
+  ctx: any,
+): string | undefined {
+  if (provider.type !== "moat") return undefined;
+  return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx).sessionId);
+}
+
+function getIdentity(ctx: any): ScopeIdentity {
+  return {
+    sessionId: ctx.session.identity.id,
+    userId: ctx.session.identity.userId,
+    orgId: ctx.session.identity.orgId,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -622,11 +931,7 @@ export async function releaseBashSandbox(
   provider: SandboxProvider,
   ctx: any,
 ): Promise<void> {
-  const identity: ScopeIdentity = {
-    sessionId: ctx.session.identity.id,
-    userId: ctx.session.identity.userId,
-    orgId: ctx.session.identity.orgId,
-  };
+  const identity = getIdentity(ctx);
   const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
   const { key: registryKey } = resolveScopeKey(scope, identity);
 

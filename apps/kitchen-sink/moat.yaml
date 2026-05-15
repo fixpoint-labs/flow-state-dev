@@ -1,4 +1,3 @@
-name: kitchen-sink
 dependencies:
   - node@22
   - pnpm
@@ -8,8 +7,5 @@ runtime: apple
 grants:
   - github
   - anthropic
-mounts:
-  - ./.fsdev/moat:/workspace
 ports:
   web: 3000
-  playwright: 3010

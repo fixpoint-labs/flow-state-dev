@@ -11,6 +11,9 @@ import {
   buildExecArgs,
   buildWriteFileArgs,
   generateMoatYaml,
+  resolveMountSource,
+  stripMountsTargeting,
+  probeMoatRun,
   satisfiesMinVersion,
   resolveMoatSandbox,
   createMoatAdapter,
@@ -23,6 +26,7 @@ import {
   type SpawnFn as MoatSpawnFn,
   type SpawnResult as MoatSpawnResult,
 } from "../src/bash/adapters/moat";
+import { writeFile } from "node:fs/promises";
 import { createBashBlocks, releaseBashSandbox } from "../src/bash/blocks";
 import { createBashCapability } from "../src/bash/capability";
 import type { Sandbox, SandboxProvider } from "../src/bash/types";
@@ -44,8 +48,6 @@ describe("moat builders", () => {
       "run",
       "-n",
       "fsdev-x",
-      "-m",
-      "/tmp/ws:/workspace",
       "/tmp/ws",
       "--",
       "sleep",
@@ -70,8 +72,6 @@ describe("moat builders", () => {
       "fsdev-x",
       "--runtime",
       "docker",
-      "-m",
-      "/ws:/workspace",
       "-g",
       "github",
       "-g",
@@ -286,6 +286,139 @@ describe("resolveMoatSandbox preflight", () => {
     ).rejects.toBeInstanceOf(MoatGrantsError);
   });
 
+  it("overwrites an existing framework-managed moat.yaml when copying configPath in (marker check)", async () => {
+    // Reproduces the "second tool call in the same dev-server session"
+    // scenario: a previous call wrote `<workspace>/moat.yaml` with the
+    // managed marker, then the registry got cleared (HMR, retry,
+    // request-scoped lifecycle), and the next call hits the configPath
+    // copy path again. The yaml is ours — we should adopt it, not
+    // refuse and abort.
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "version") return ok(JSON.stringify({ version: "0.5.1" }));
+      if (args[0] === "grant") return ok(JSON.stringify([]));
+      if (args[0] === "list") {
+        return ok(JSON.stringify([{ Name: "r1", State: "running" }]));
+      }
+      return ok();
+    });
+    const tmpWorkspace = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-test-"));
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-src-"));
+    try {
+      // Pre-seed the workspace with a framework-managed yaml as if a
+      // prior boot in this session had already written it.
+      await writeFile(
+        path.join(tmpWorkspace, "moat.yaml"),
+        `${FSDEV_MANAGED_MARKER}\nname: "old-version"\n`,
+        "utf-8",
+      );
+      // Source yaml outside the workspace (typical kitchen-sink layout).
+      const sourcePath = path.join(sourceDir, "moat.yaml");
+      await writeFile(
+        sourcePath,
+        ["name: kitchen-sink", "runtime: apple", ""].join("\n"),
+        "utf-8",
+      );
+      await resolveMoatSandbox({
+        runName: "r1",
+        mountTarget: "/workspace",
+        workspace: tmpWorkspace,
+        configPath: sourcePath,
+        spawnFn,
+      });
+      // The workspace yaml has been refreshed with the source contents,
+      // still carrying the marker on the first line.
+      const finalYaml = await import("node:fs/promises").then((m) =>
+        m.readFile(path.join(tmpWorkspace, "moat.yaml"), "utf-8"),
+      );
+      expect(finalYaml.split("\n", 1)[0]).toBe(FSDEV_MANAGED_MARKER);
+      expect(finalYaml).toContain("name: kitchen-sink");
+      expect(finalYaml).not.toContain("old-version");
+    } finally {
+      await rm(tmpWorkspace, { recursive: true, force: true });
+      await rm(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("frameworkManaged=true bypasses the marker check (handles pre-marker leftover yamls)", async () => {
+    // Migration scenario: the workspace already contains a moat.yaml
+    // written by an older framework version that didn't yet prepend
+    // FSDEV_MANAGED_MARKER. The marker check would treat it as
+    // user-authored and refuse. `frameworkManaged: true` asserts the
+    // workspace is fully framework-derived (e.g. an auto-generated
+    // `.fsdev/workspaces/session/<sessionId>` dir) and the resolver
+    // overwrites freely.
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "version") return ok(JSON.stringify({ version: "0.5.1" }));
+      if (args[0] === "grant") return ok(JSON.stringify([]));
+      if (args[0] === "list") {
+        return ok(JSON.stringify([{ Name: "r1", State: "running" }]));
+      }
+      return ok();
+    });
+    const tmpWorkspace = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-test-"));
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-src-"));
+    try {
+      // Pre-marker stale yaml — no marker on the first line.
+      await writeFile(
+        path.join(tmpWorkspace, "moat.yaml"),
+        "name: pre-marker-leftover\n",
+        "utf-8",
+      );
+      const sourcePath = path.join(sourceDir, "moat.yaml");
+      await writeFile(sourcePath, "name: kitchen-sink\n", "utf-8");
+      await resolveMoatSandbox({
+        runName: "r1",
+        mountTarget: "/workspace",
+        workspace: tmpWorkspace,
+        configPath: sourcePath,
+        frameworkManaged: true,
+        spawnFn,
+      });
+      // Workspace yaml has been replaced; marker now present.
+      const finalYaml = await import("node:fs/promises").then((m) =>
+        m.readFile(path.join(tmpWorkspace, "moat.yaml"), "utf-8"),
+      );
+      expect(finalYaml.split("\n", 1)[0]).toBe(FSDEV_MANAGED_MARKER);
+      expect(finalYaml).toContain("name: kitchen-sink");
+      expect(finalYaml).not.toContain("pre-marker-leftover");
+    } finally {
+      await rm(tmpWorkspace, { recursive: true, force: true });
+      await rm(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to overwrite a non-managed yaml at the workspace (user-authored)", async () => {
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "version") return ok(JSON.stringify({ version: "0.5.1" }));
+      if (args[0] === "grant") return ok(JSON.stringify([]));
+      return ok();
+    });
+    const tmpWorkspace = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-test-"));
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-src-"));
+    try {
+      // Workspace has a yaml WITHOUT the marker → user-authored.
+      await writeFile(
+        path.join(tmpWorkspace, "moat.yaml"),
+        "name: handcrafted\n",
+        "utf-8",
+      );
+      const sourcePath = path.join(sourceDir, "moat.yaml");
+      await writeFile(sourcePath, "name: kitchen-sink\n", "utf-8");
+      await expect(
+        resolveMoatSandbox({
+          runName: "r1",
+          mountTarget: "/workspace",
+          workspace: tmpWorkspace,
+          configPath: sourcePath,
+          spawnFn,
+        }),
+      ).rejects.toThrow(/Refusing to overwrite/);
+    } finally {
+      await rm(tmpWorkspace, { recursive: true, force: true });
+      await rm(sourceDir, { recursive: true, force: true });
+    }
+  });
+
   it("reconnects to an existing run reported with PascalCase Name/State (MOAT 0.5.x)", async () => {
     // MOAT 0.5.x emits `Name`/`State` (Go default JSON marshaling).
     // The reconnect path requires the parser to read both casings,
@@ -322,6 +455,228 @@ describe("resolveMoatSandbox preflight", () => {
 // ---------------------------------------------------------------------------
 // Adapter Sandbox methods
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Mount-source resolution (parses workspace moat.yaml)
+// ---------------------------------------------------------------------------
+
+describe("resolveMountSource", () => {
+  it("returns workspace dir when no configPath supplied", () => {
+    expect(resolveMountSource("/ws", "/workspace", undefined)).toBe(
+      path.resolve("/ws"),
+    );
+  });
+
+  it("returns workspace dir when configPath doesn't exist", () => {
+    expect(
+      resolveMountSource("/ws", "/workspace", "/nonexistent-path/moat.yaml"),
+    ).toBe(path.resolve("/ws"));
+  });
+
+  it("returns the host source from yaml when a mounts entry targets mountTarget", async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "fsdev-mountsrc-"));
+    const yamlPath = path.join(tmp, "moat.yaml");
+    await writeFile(
+      yamlPath,
+      [
+        "name: kitchen-sink",
+        "runtime: apple",
+        "mounts:",
+        "  - ./.fsdev/moat:/workspace",
+        "  - /etc/data:/data:ro",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    try {
+      // Relative source resolves against the workspace dir.
+      expect(resolveMountSource(tmp, "/workspace", yamlPath)).toBe(
+        path.resolve(tmp, ".fsdev/moat"),
+      );
+      // Absolute source returned as-is.
+      expect(resolveMountSource(tmp, "/data", yamlPath)).toBe("/etc/data");
+      // Target not in yaml → fall back to workspace.
+      expect(resolveMountSource(tmp, "/missing", yamlPath)).toBe(
+        path.resolve(tmp),
+      );
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// probeMoatRun
+// ---------------------------------------------------------------------------
+
+describe("stripMountsTargeting", () => {
+  it("removes mount entries whose target equals the given mountTarget", () => {
+    const yaml = [
+      "name: kitchen-sink",
+      "runtime: apple",
+      "mounts:",
+      "  - ./.fsdev/moat:/workspace",
+      "  - /etc/data:/data:ro",
+      "ports:",
+      "  web: 3000",
+      "",
+    ].join("\n");
+    const stripped = stripMountsTargeting(yaml, "/workspace");
+    // The /workspace line is gone; the unrelated /data mount survives.
+    expect(stripped).not.toContain("./.fsdev/moat:/workspace");
+    expect(stripped).toContain("/etc/data:/data:ro");
+    expect(stripped).toContain("name: kitchen-sink");
+    expect(stripped).toContain("ports:");
+  });
+
+  it("returns the yaml unchanged when no mount targets mountTarget", () => {
+    const yaml = "name: r1\nmounts:\n  - /etc/data:/data:ro\n";
+    expect(stripMountsTargeting(yaml, "/workspace")).toBe(yaml);
+  });
+
+  it("leaves non-mount yaml lines (and unrelated `-` items) alone", () => {
+    const yaml = [
+      "grants:",
+      "  - github",
+      "  - anthropic",
+      "mounts:",
+      "  - ./host:/workspace",
+      "",
+    ].join("\n");
+    const stripped = stripMountsTargeting(yaml, "/workspace");
+    // grants list entries don't match `src:dst` shape — they survive.
+    expect(stripped).toContain("- github");
+    expect(stripped).toContain("- anthropic");
+    expect(stripped).not.toContain("./host:/workspace");
+  });
+
+  it("injects an explicit <hostMountSource>:<mountTarget> entry when provided", () => {
+    const yaml = [
+      "name: kitchen-sink",
+      "runtime: apple",
+      "mounts:",
+      "  - ./.fsdev/moat:/workspace",
+      "  - /etc/data:/data:ro",
+      "",
+    ].join("\n");
+    const out = stripMountsTargeting(yaml, "/workspace", "/abs/host/session");
+    // User's conflicting /workspace mount is gone.
+    expect(out).not.toContain("./.fsdev/moat:/workspace");
+    // Our explicit injection sits inside the existing mounts: block.
+    expect(out).toMatch(/mounts:\n\s*- \/abs\/host\/session:\/workspace/);
+    // Unrelated /data mount survived.
+    expect(out).toContain("/etc/data:/data:ro");
+  });
+
+  it("appends a fresh mounts: block when the yaml has none", () => {
+    const yaml = ["name: r1", "runtime: apple", ""].join("\n");
+    const out = stripMountsTargeting(yaml, "/workspace", "/abs/host/session");
+    expect(out).toMatch(/mounts:\n\s*- \/abs\/host\/session:\/workspace/);
+    expect(out).toContain("runtime: apple");
+  });
+});
+
+describe("probeMoatRun", () => {
+  it('returns "running" when a matching run is present and live', async () => {
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") {
+        return ok(JSON.stringify([{ Name: "kitchen-sink", State: "running" }]));
+      }
+      return ok();
+    });
+    expect(await probeMoatRun({ runName: "kitchen-sink", spawnFn })).toBe(
+      "running",
+    );
+  });
+
+  it('returns "absent" when the run is stopped', async () => {
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") {
+        return ok(JSON.stringify([{ Name: "kitchen-sink", State: "stopped" }]));
+      }
+      return ok();
+    });
+    expect(await probeMoatRun({ runName: "kitchen-sink", spawnFn })).toBe(
+      "absent",
+    );
+  });
+
+  it('returns "absent" when no matching run exists', async () => {
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "list") return ok("[]");
+      return ok();
+    });
+    expect(await probeMoatRun({ runName: "kitchen-sink", spawnFn })).toBe(
+      "absent",
+    );
+  });
+
+  it('returns "absent" on spawn failure (defensive)', async () => {
+    const spawnFn: MoatSpawnFn = async () => {
+      throw new Error("docker daemon not accessible");
+    };
+    expect(await probeMoatRun({ runName: "kitchen-sink", spawnFn })).toBe(
+      "absent",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adapter host-fs translation
+// ---------------------------------------------------------------------------
+
+describe("createMoatAdapter host-fs paths", () => {
+  it("readFile/writeFile go through host fs when mountSource is set", async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "fsdev-hostfs-"));
+    const { spawnFn, calls } = makeSpawnFn(() => ok());
+    const sandbox = createMoatAdapter({
+      runName: "r1",
+      bin: "moat",
+      execTimeoutMs: 1000,
+      spawnFn,
+      stopped: false,
+      persist: false,
+      mountSource: tmp,
+      mountTarget: "/workspace",
+    });
+
+    expect(sandbox.hostMountSource).toBe(tmp);
+
+    // Write through the sandbox: should land on host fs without any
+    // `moat exec` invocation.
+    await sandbox.writeFile("/workspace/artifacts/foo.md", "hello");
+    expect(calls.filter((c) => c.args[0] === "exec")).toHaveLength(0);
+
+    // Read back through the sandbox: same — host fs, no exec.
+    const content = await sandbox.readFile("/workspace/artifacts/foo.md");
+    expect(content).toBe("hello");
+    expect(calls.filter((c) => c.args[0] === "exec")).toHaveLength(0);
+
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it("falls back to moat exec for paths outside the bind mount", async () => {
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "exec" && args.includes("cat")) return ok("etc-data");
+      return ok();
+    });
+    const sandbox = createMoatAdapter({
+      runName: "r1",
+      bin: "moat",
+      execTimeoutMs: 1000,
+      spawnFn,
+      stopped: false,
+      persist: false,
+      mountSource: "/some/source",
+      mountTarget: "/workspace",
+    });
+
+    // `/etc/...` is not under `/workspace` — must go through moat exec.
+    const content = await sandbox.readFile("/etc/passwd");
+    expect(content).toBe("etc-data");
+    expect(calls.some((c) => c.args[0] === "exec")).toBe(true);
+  });
+});
 
 describe("createMoatAdapter", () => {
   function adapter(spawnFn: MoatSpawnFn) {
@@ -451,6 +806,42 @@ describe("createMoatAdapter", () => {
     const sb = adapter(spawnFn);
     await sb.stop?.();
     await expect(sb.executeCommand("ls")).rejects.toBeInstanceOf(MoatRunStoppedError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Block composition shape per provider
+// ---------------------------------------------------------------------------
+
+describe("createBashBlocks composition", () => {
+  it("returns leaf handlers for fast providers (no sequencer wrapper)", () => {
+    const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
+      provider: {
+        type: "custom",
+        sandbox: {
+          executeCommand: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+          readFile: async () => "",
+          writeFile: async () => {},
+        },
+      },
+    });
+    // No tap node, no extra trace entry — just the leaf doing the work.
+    expect((bashCommand as { kind: string }).kind).toBe("handler");
+    expect((bashReadFile as { kind: string }).kind).toBe("handler");
+    expect((bashWriteFile as { kind: string }).kind).toBe("handler");
+  });
+
+  it("wraps bashCommand and bashReadFile in sequencers for MOAT, but leaves bashWriteFile as a leaf handler", () => {
+    // MOAT's bashWriteFile goes direct-host-fs without needing the
+    // container, so it doesn't gate on ensureSandbox at all. The other
+    // two need either container exec or hydration, so they get the
+    // tapIf(isCold, ensureSandbox) → leaf composition.
+    const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
+      provider: { type: "moat", runName: "kitchen-sink" },
+    });
+    expect((bashCommand as { kind: string }).kind).toBe("sequencer");
+    expect((bashReadFile as { kind: string }).kind).toBe("sequencer");
+    expect((bashWriteFile as { kind: string }).kind).toBe("handler");
   });
 });
 

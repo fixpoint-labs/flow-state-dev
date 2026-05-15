@@ -2,6 +2,66 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-15
+
+### Bash tool: MOAT containers persist across requests within a session
+
+- **`provider.persist` now defaults to `true`** for MOAT when the framework derives the workspace. Without it, `cleanupBlock` (wired into `request.onFinished`) destroyed the container at the end of every tool-call request, so each subsequent bash command cold-booted a fresh container (~10–30s). On the apple runtime that cold boot also races `readdir()` on the freshly-mounted host workspace — the first `ls /workspace` would return `Operation not permitted` because the host-fs contents hadn't propagated through the bind mount yet, and the model would invent explanations ("MOAT isolation prevents directory listing") instead of receiving real output.
+- With persist, the request-end cleanup only removes the in-process registry entry — the MOAT run stays alive. Next request finds it via the `moat list` reuse path and reconnects in milliseconds. Container count is bounded by the session count (`runName` is `fsdev-<sessionId>`); cleanup is the operator's responsibility — `moat clean` periodically, or rm-rf the per-session workspace dirs.
+- Users who explicitly set `provider.persist` still get their choice honored; the new default only kicks in when the field is left undefined.
+
+### Bash tool: explicit `/workspace` mount declaration; kitchen-sink artifact lookup
+
+- **`stripMountsTargeting` now strips *and* injects.** Previously it removed user-declared `/workspace` entries from the yaml on copy-in and relied on MOAT's implicit `moat run <workspace>` auto-mount. On the apple runtime that auto-mount sometimes didn't materialize, leaving the container's `/workspace` absent and the agent's `cd /workspace && ls` failing — which the model dressed up as "MOAT isolation prevents directory listing." The strip now also injects an explicit `mounts: - <abs workspace path>:/workspace` entry into the copied yaml, so the bind mount is declared rather than implied. Eliminates a class of "the container can't see what's on disk" failures and removes the ambiguity that lets the model fabricate explanations.
+- **Kitchen-sink: artifact content now renders.** `page.tsx`'s artifact-content lookup compared `item.topic` (which the framework's list endpoint returns stripped of the collection prefix — `"hello.md"`) against a manually-constructed `storageKey` (`"artifacts/hello.md"`). The `find` never matched, `setArtifactContent(null)` ran, and the renderer drew "Empty artifact." Fixed to compare bare-topic to bare-topic.
+
+### Bash tool: artifact content now persists on first write
+
+- **`routeWrittenFile` and `flush()` now upsert via `getOrCreate` + `patchState` + `writeContent`** — the same pattern the framework's own `upsertResource` utility uses for known-good resource writes. The previous `create` + `writeContent` shape registered the ref but the client-side snapshot would sometimes render the artifact with empty content until a *second* write triggered a state-update event. Aligning the bash-block upsert sequence with the framework's canonical pattern fixes the "Empty artifact" symptom on first `bashWriteFile`/`bashCommand`-driven creation.
+
+### Bash tool: `/workspace` is no longer a concept the agent has to know about
+
+- **`bashCommand` runs with PWD = workspace root.** The block factory wraps the agent's command with `cd '<destination>' && <command>` so the shell's current directory is always the workspace root. The agent can now use relative paths (`wc -c artifacts/foo.md`, `ls -la artifacts/`) and never needs to know about magic prefixes like `/workspace`. Single-quoted with POSIX escape so destination paths with spaces are safe.
+- **Block + schema descriptions updated** to explicitly tell the model "paths are relative to the workspace root; don't prefix with `/workspace`." LLMs routinely forget non-mandatory prefix rules — the cd wrapper makes the absolute-prefix form *also* work (so the agent isn't punished for forgetting), but the wording nudges toward the simpler relative form.
+- **`bashWriteFile` host-fs leaf no longer reads the user's source `moat.yaml`** to derive the mount source. Reading the *unstripped* user yaml resolved against the per-session workspace dir produced a nested path the container couldn't see at `/workspace`, so the host-fs write landed somewhere the agent's subsequent `bash` commands couldn't find. The leaf now uses the workspace dir directly — matching what MOAT auto-mounts at `/workspace` — for trivially consistent read-after-write.
+
+### Bash tool: framework-derived workspaces bypass the marker check
+
+- **New `frameworkManaged` flag on `resolveMoatSandbox`** lets the caller assert the workspace path is framework-derived (i.e. `.fsdev/workspaces/session/<sessionId>` or similar auto-generated dir) and the resolver overwrites `<workspace>/moat.yaml` unconditionally. `createScopedSandbox` passes this through whenever it derives the workspace itself.
+- This unblocks the migration case where a yaml was written by a pre-marker version of the framework: previous code treated any non-marker yaml as user-authored and threw `Refusing to overwrite ...`, which blocked every second tool call in a dev-server session. The marker check remains the fallback signal for user-supplied workspaces.
+
+### Bash tool: framework-managed yaml is now safely re-overwritable; flush warns on zero-file walks
+
+- **`configPath` copy path now marker-tags and tolerates re-overwrite.** Previously, every framework-written `<workspace>/moat.yaml` was treated as potentially user-authored on subsequent boots, so the second tool call in a dev-server session (Next.js HMR, request-scoped lifecycles, registry-clearing retries) hit "Refusing to overwrite existing `<sessionDir>/moat.yaml`" and aborted. The copy now prepends `FSDEV_MANAGED_MARKER` to the stripped yaml, and on subsequent boots checks for the marker: present → safe to refresh from source, missing → user owns it, throw. Same pattern the no-`configPath` branch has used since FIX-584.
+- **`flush()` warns when its walk finds zero files under writable mounts.** Previously a successful-but-empty walk was indistinguishable from "the agent's write went somewhere the walk didn't visit" — silent failure mode for the "I see the file on disk but my artifact didn't appear" symptom. New warning names the prefixes searched and the host walk source so the cause is visible at the moment of failure.
+
+### Bash tool: align MOAT default workspace with `local` provider; fix cold-boot readiness timeout
+
+- **Default MOAT workspace path** is now `.fsdev/workspaces/session/<sessionId>` (mirroring the `local` provider) instead of `.fsdev/moat/<sessionId>`. One mental model and one place on disk for "this session's stuff" regardless of provider. The user's hand-authored `moat.yaml` is copied (with `/workspace`-targeted mounts stripped) into each session dir; artifacts and other mount contents live alongside it under `<sessionDir>/artifacts/`, etc.
+- **`buildSubprocessEnv` runs after the configPath copy.** Previously the env was built upfront, but on a cold per-session boot `<workspace>/moat.yaml` didn't exist yet — `MOAT_RUNTIME` stayed unset, `moat list` silently defaulted to docker (and failed on apple-runtime hosts), and the readiness loop burned the full timeout because the run never appeared in the list. Reordering means the yaml's `runtime:` field is honored from the first poll.
+
+### Bash tool: per-session MOAT defaults + fail-fast on early `moat run` exit
+
+- **Default `runName` is now session-stable** (`fsdev-${sessionId}`). Previous default was a per-call `randomUUID()`, which produced a new container every bash invocation. Sessions still get their own container — sharing one across sessions would race hydrate (session A's artifact contents overwriting session B's view) and is now opt-in (set `provider.runName` explicitly, with the responsibility of avoiding workspace collisions).
+- **Default `workspace` for MOAT is now per-session** (`<cwd>/.fsdev/moat/<sessionId>`). The dir is created lazily on first boot. MOAT auto-mounts it at `/workspace`, so each session has an isolated host filesystem the agent sees as `/workspace`. The user's hand-authored `moat.yaml` (typically at the kitchen-sink root) is copied into each per-session dir on demand.
+- **`stripMountsTargeting` strips `/workspace` mounts from copied user yamls.** MOAT 0.5.x's workspace positional already auto-mounts at `/workspace`; a duplicate yaml-declared entry triggers `target "/workspace" already mounted`. When the framework copies a user's hand-authored yaml into a per-session workspace dir, it now strips any entry targeting `mountTarget` so the two don't collide. Non-`/workspace` mounts in the yaml are preserved verbatim.
+- **`buildRunArgs` no longer emits `-m <workspace>:<mountTarget>`.** Same root cause: MOAT auto-mounts the workspace positional, and our explicit `-m` was a redundant duplicate that produced the same "already mounted" error. Removed entirely; per-target host overrides go through the yaml.
+- **`moat run` early-exit is detected within the readiness poll.** `startDetached` now returns a handle exposing the child's exit info. Between `moat list` polls the resolver checks whether the child has died; if so, it throws `MoatRunStartError` immediately with the captured stderr tail (last ~16KB). Previously a fatal launch error (mount conflict, runtime unavailable, etc.) silently exited the host process and the readiness loop blocked the full timeout (default 180s) before failing with a generic "did not reach running" message.
+- **Diagnostic warning when `bashWriteFile`'s host-fs leaf finds no mounted collections on `ctx.resources`.** The write still lands on disk, but the file won't be registered in any artifact collection — typically a capability-wiring mistake on the consuming generator. The warning names the path and points at the likely cause so the symptom isn't invisible.
+
+### Bash tool: host-fs sync for bind-mount providers + cold-boot status sequencer
+
+Two related refactors in `@flow-state-dev/tools/bash` aimed at MOAT but
+applicable to any future bind-mount provider:
+
+- **Direct host-fs IO under MOAT.** `createMoatAdapter`'s `readFile` and `writeFile` now resolve the container-side path against the bind-mount source and operate on the host filesystem directly when the path is under `mountTarget`. The host directory and the container's `/workspace` are the same filesystem viewed through two paths; going through `moat exec cat` / `moat exec <stdin>` was paying an IPC round-trip per file for no isolation gain. `executeCommand` still goes through `moat exec` — only opaque shell commands need the container runtime.
+- **Workspace `moat.yaml` mount-source discovery.** New `resolveMountSource` helper reads the workspace yaml's top-level `mounts:` list and finds whichever entry targets `mountTarget` (default `/workspace`). When the user remaps `/workspace` to a different host directory (e.g. `./.fsdev/moat:/workspace`), the adapter follows. Narrow scope on purpose — we parse only what's needed for path translation, not the full yaml.
+- **`flush()` walk via host fs.** When `sandbox.hostMountSource` is set, the per-flush walk uses `fs.readdir({recursive:true})` over each mount-prefix dir on the host instead of `find` via `executeCommand`. Same algorithm, one syscall layer instead of three. Walk-via-`find` retained as the fallback for Vercel/Upstash adapters.
+- **`bashWriteFile` skips ensureSandbox under bind-mount providers.** Writes to a host directory don't need the container to be running — the bind mount picks them up when MOAT eventually boots. The leaf does `fs.writeFile` + inline single-file routing into the owning collection (no `find` walk, no hash diff loop). For Vercel/Upstash where the sandbox instance *is* the storage, `bashWriteFile` keeps the ensureSandbox gate.
+- **Sequencer split with `tapIf(isCold, ensureSandbox)`.** `bashCommand` and `bashReadFile` under setup-needing providers (MOAT, Vercel, Upstash) are now sequencer-wrapped, with the boot/connect step gated by a runtime "registry is empty" predicate. Warm path: passthrough, no extra trace node. Cold path: status emissions visible in the chat UI ("Preparing bash sandbox…", then "Booting bash sandbox (first run takes 30–60s while the image builds)…" when `probeMoatRun` reports the container is absent). Fast providers (`local`, `just-bash`, `custom`) stay leaf handlers — no sequencer wrapper, no trace overhead.
+- New exports: `resolveMountSource`, `probeMoatRun` from `@flow-state-dev/tools/bash`.
+- New optional `Sandbox.hostMountSource` property — set by adapters that know which host directory backs `/workspace`, consulted by `flush()` to decide which walk strategy to use.
+
 ## 2026-05-14
 
 ### Bash tool: MOAT adapter compatibility with MOAT 0.5.x

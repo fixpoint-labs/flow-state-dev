@@ -23,7 +23,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Sandbox, CommandResult } from "../types";
@@ -120,15 +120,10 @@ export interface BuildRunArgsInput {
 }
 
 /**
- * Build the argv for `moat run`. The workspace path is followed by an
- * explicit `-- sleep infinity` keepalive command: MOAT 0.5.x removed the
- * `-d`/detach flag, so without an explicit long-lived command the run
- * either streams the agent's default to stdout in the foreground or
- * exits immediately when the workspace has no agent defined. We always
- * spawn `moat run` detached on the host (see `resolveMoatSandbox`) and
- * interact with the container via `moat exec`, so the foreground command
- * just needs to keep the container alive. Returns argv excluding the
- * binary itself.
+ * Build the argv for `moat run`. Workspace is the trailing positional;
+ * `-- sleep infinity` keeps the container alive (MOAT 0.5.x has no
+ * detach flag — we spawn detached host-side instead). Workspace
+ * bind-mounts at `mountTarget` are declared in the yaml, not via `-m`.
  */
 export function buildRunArgs(input: BuildRunArgsInput): string[] {
   const args: string[] = ["run", "-n", input.runName];
@@ -136,7 +131,6 @@ export function buildRunArgs(input: BuildRunArgsInput): string[] {
   if (runtime !== "auto") {
     args.push("--runtime", runtime);
   }
-  args.push("-m", `${input.workspace}:${input.mountTarget}`);
   for (const g of input.grants ?? []) {
     args.push("-g", g);
   }
@@ -316,6 +310,23 @@ const realSpawn: SpawnFn = (command, args, options) => {
 };
 
 /**
+ * Handle returned by `startDetached`. The readiness loop polls
+ * `getExitInfo()` each iteration; when the child has exited *before*
+ * the container shows up in `moat list`, the resolver can fail fast
+ * with the captured stderr instead of waiting out the readiness
+ * timeout. Captures the last ~16KB of stderr so users get a real
+ * cause-of-death message (e.g. `target "/workspace" already
+ * mounted`) and not a generic "did not reach running" timeout.
+ */
+interface DetachedChildHandle {
+  /**
+   * Returns `null` while the child is still alive, or an object with
+   * the exit code and the captured stderr tail once it has terminated.
+   */
+  getExitInfo(): { exitCode: number | null; stderr: string } | null;
+}
+
+/**
  * Spawn a long-running child process detached from the parent — used for
  * `moat run` under MOAT 0.5.x, which no longer offers a `-d` flag. The
  * child outlives the resolver call; readiness is observed separately via
@@ -329,6 +340,10 @@ const realSpawn: SpawnFn = (command, args, options) => {
  * `unref`, the streams keep flowing as long as the parent is alive,
  * which covers the entire readiness window.
  *
+ * The returned handle exposes early-exit info so callers can detect
+ * non-zero exits (e.g. mount conflicts) instantly rather than blocking
+ * on the readiness timeout.
+ *
  * Surfaces `ENOENT` to the caller for the `MoatNotInstalledError` path;
  * any other synchronous spawn error propagates so it becomes a
  * `MoatRunStartError`.
@@ -339,7 +354,7 @@ function startDetached(
   tag: string,
   cwd?: string,
   env?: NodeJS.ProcessEnv,
-): void {
+): DetachedChildHandle {
   const child = spawn(command, args, {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
@@ -347,12 +362,25 @@ function startDetached(
     env,
   });
   const prefix = `[moat:${tag}]`;
-  const forwardLines = (stream: NodeJS.ReadableStream | null): void => {
+  // Ring-buffered last ~16KB of stderr for early-exit diagnostics. The
+  // forwardLines logger still echoes everything live; this is the
+  // separate buffer the readiness loop reads on early exit.
+  const STDERR_CAP = 16 * 1024;
+  let stderrTail = "";
+  let exited: { exitCode: number | null; stderr: string } | null = null;
+
+  const forwardLines = (
+    stream: NodeJS.ReadableStream | null,
+    captureToTail: boolean,
+  ): void => {
     if (!stream) return;
     let buffer = "";
     stream.setEncoding("utf-8");
     stream.on("data", (chunk: string) => {
       buffer += chunk;
+      if (captureToTail) {
+        stderrTail = (stderrTail + chunk).slice(-STDERR_CAP);
+      }
       let idx: number;
       while ((idx = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, idx);
@@ -364,15 +392,23 @@ function startDetached(
       if (buffer.length > 0) console.error(`${prefix} ${buffer}`);
     });
   };
-  forwardLines(child.stdout);
-  forwardLines(child.stderr);
+  forwardLines(child.stdout, false);
+  forwardLines(child.stderr, true);
   child.on("error", (err) => {
     // After unref, an asynchronous spawn failure has nowhere to go —
-    // surface it via the same prefixed logger so the user sees *why*
-    // readiness will time out. Then swallow so the parent doesn't crash.
-    console.error(`${prefix} spawn error: ${(err as Error).message}`);
+    // surface it via the prefixed logger AND record it as an exit so
+    // the readiness loop can fail fast on it.
+    const msg = (err as Error).message;
+    console.error(`${prefix} spawn error: ${msg}`);
+    if (!exited) exited = { exitCode: null, stderr: msg };
+  });
+  child.on("exit", (code) => {
+    exited = { exitCode: code, stderr: stderrTail };
   });
   child.unref();
+  return {
+    getExitInfo: () => exited,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +582,120 @@ async function listRuns(
 }
 
 // ---------------------------------------------------------------------------
+// Mount-source resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the host path backing `mountTarget` in the container. Parses
+ * `<src>:<dst>[:ro]` entries from the yaml's `mounts:` list; falls
+ * back to the workspace dir if no override targets `mountTarget`.
+ */
+export function resolveMountSource(
+  workspace: string,
+  mountTarget: string,
+  configPath?: string,
+): string {
+  if (!configPath) return path.resolve(workspace);
+  let yaml: string;
+  try {
+    yaml = readFileSync(configPath, "utf-8");
+  } catch {
+    return path.resolve(workspace);
+  }
+  // Match list entries like:
+  //   mounts:
+  //     - ./.fsdev/moat:/workspace
+  //     - "/host/path:/data:ro"
+  // The `target === mountTarget` check below makes false positives
+  // impossible — no other yaml field uses `src:dst` shape.
+  const pattern = /^\s*-\s*["']?([^"'\s:]+):([^"'\s:]+)(?::ro)?["']?\s*$/gm;
+  for (const match of yaml.matchAll(pattern)) {
+    const source = match[1]!;
+    const target = match[2]!;
+    if (target === mountTarget) {
+      return path.isAbsolute(source) ? source : path.resolve(workspace, source);
+    }
+  }
+  return path.resolve(workspace);
+}
+
+/**
+ * Strip every existing `mounts:` entry targeting `mountTarget` and
+ * inject `<hostMountSource>:<mountTarget>` in its place (apple
+ * runtime's implicit workspace mount is unreliable; explicit wins).
+ * Non-matching mount entries and other yaml content pass through.
+ * `hostMountSource` should be absolute.
+ */
+export function stripMountsTargeting(
+  yaml: string,
+  mountTarget: string,
+  hostMountSource?: string,
+): string {
+  const lines: string[] = [];
+  // Same `src:dst[:ro]` shape `resolveMountSource` recognizes.
+  const linePattern = /^\s*-\s*["']?([^"'\s:]+):([^"'\s:]+)(?::ro)?["']?\s*$/;
+  let hadMountsKey = false;
+  for (const line of yaml.split("\n")) {
+    if (/^\s*mounts:\s*$/.test(line)) {
+      hadMountsKey = true;
+    }
+    const match = linePattern.exec(line);
+    if (match && match[2] === mountTarget) continue;
+    lines.push(line);
+  }
+  if (hostMountSource === undefined) return lines.join("\n");
+
+  const injection = `  - ${hostMountSource}:${mountTarget}`;
+  if (hadMountsKey) {
+    // Splice the new entry immediately after the existing `mounts:` line.
+    const out: string[] = [];
+    let inserted = false;
+    for (const line of lines) {
+      out.push(line);
+      if (!inserted && /^\s*mounts:\s*$/.test(line)) {
+        out.push(injection);
+        inserted = true;
+      }
+    }
+    return out.join("\n");
+  }
+  // No existing block — append one. Trim a trailing empty line first
+  // so the result doesn't gain a double-blank.
+  while (lines.length > 0 && lines[lines.length - 1]!.trim() === "") {
+    lines.pop();
+  }
+  return [...lines, "mounts:", injection, ""].join("\n");
+}
+
+/**
+ * Probe whether a named MOAT run is currently up. Used by
+ * `ensureSandbox` to pick a status message before `resolveMoatSandbox`
+ * blocks on a cold image build.
+ */
+export async function probeMoatRun(opts: {
+  runName: string;
+  bin?: string;
+  workspace?: string;
+  runtime?: "auto" | "docker" | "apple";
+  spawnFn?: SpawnFn;
+}): Promise<"running" | "absent"> {
+  const bin = opts.bin ?? "moat";
+  const spawnFn = opts.spawnFn ?? realSpawn;
+  const workspace = opts.workspace ?? process.cwd();
+  const env = buildSubprocessEnv(workspace, opts.runtime);
+  try {
+    const runs = await listRuns(spawnFn, bin, undefined, workspace, env);
+    return runs.some((r) => r.name === opts.runName && r.state === "running")
+      ? "running"
+      : "absent";
+  } catch {
+    // Treat any unexpected failure as absent so the caller's status
+    // emission stays informative even when probe is unreliable.
+    return "absent";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Adapter (Sandbox impl)
 // ---------------------------------------------------------------------------
 
@@ -565,6 +715,16 @@ interface MoatRunHandle {
   /** When true, `stop()` skips MOAT teardown so the container survives for reuse. */
   persist: boolean;
   stopped: boolean;
+  /**
+   * Host directory bind-mounted at `mountTarget` inside the container.
+   * When set, readFile/writeFile bypass `moat exec` and operate on the
+   * host filesystem directly (the bind mount makes the change visible
+   * inside the container instantly). Falls back to `moat exec` for paths
+   * outside the bind mount.
+   */
+  mountSource?: string;
+  /** Bind-mount target inside the container (default `/workspace`). */
+  mountTarget: string;
 }
 
 /**
@@ -576,7 +736,23 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
     if (handle.stopped) throw new MoatRunStoppedError(handle.runName);
   }
 
+  /**
+   * Translate a container-side path under `mountTarget` to its host
+   * counterpart, or null if the path is outside the bind mount.
+   */
+  function toHostPath(containerPath: string): string | null {
+    if (!handle.mountSource) return null;
+    const target = handle.mountTarget;
+    if (containerPath === target) return handle.mountSource;
+    const targetWithSlash = target.endsWith("/") ? target : target + "/";
+    if (!containerPath.startsWith(targetWithSlash)) return null;
+    const rel = containerPath.slice(targetWithSlash.length);
+    return path.join(handle.mountSource, rel);
+  }
+
   return {
+    hostMountSource: handle.mountSource,
+
     async executeCommand(command: string): Promise<CommandResult> {
       ensureLive();
       const args = buildExecArgs(handle.runName, command);
@@ -601,6 +777,24 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
 
     async readFile(filePath: string): Promise<string> {
       ensureLive();
+      const hostPath = toHostPath(filePath);
+      if (hostPath !== null) {
+        let bytes: Buffer;
+        try {
+          bytes = await readFile(hostPath);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            throw new FileNotFoundError(filePath);
+          }
+          throw new MoatError(`readFile(${filePath}) failed: ${(err as Error).message}`);
+        }
+        try {
+          return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        } catch {
+          throw new MoatBinaryReadError(filePath, bytes.length);
+        }
+      }
+      // Fallback: path is outside the bind mount. Go through `moat exec cat`.
       const args = ["exec", handle.runName, "--", "cat", filePath];
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
@@ -616,9 +810,6 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
         }
         throw new MoatError(`readFile(${filePath}) failed: ${res.stderr || res.stdout}`);
       }
-      // Validate that the raw bytes are real UTF-8. The default `stdout`
-      // string would silently replace bad sequences; decoding the raw
-      // buffer with `fatal: true` is the only way to detect binary content.
       try {
         return new TextDecoder("utf-8", { fatal: true }).decode(res.stdoutBytes);
       } catch {
@@ -628,6 +819,13 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
 
     async writeFile(filePath: string, content: string): Promise<void> {
       ensureLive();
+      const hostPath = toHostPath(filePath);
+      if (hostPath !== null) {
+        await mkdir(path.dirname(hostPath), { recursive: true });
+        await writeFile(hostPath, content, "utf-8");
+        return;
+      }
+      // Fallback: path is outside the bind mount. Go through `moat exec`.
       const args = buildWriteFileArgs(handle.runName, filePath);
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
@@ -705,6 +903,18 @@ export interface ResolveMoatOptions {
    * session) and the produced sandbox skips MOAT teardown on `stop()`.
    */
   persist?: boolean;
+  /**
+   * When true, the caller asserts the workspace path is framework-derived
+   * (e.g. an auto-generated `.fsdev/workspaces/session/<sessionId>` dir)
+   * and nothing inside it is user-authored. The resolver skips both
+   * marker checks and always overwrites the workspace `moat.yaml` from
+   * the source `configPath` (or the generated template).
+   *
+   * Without this, framework yamls written by a previous version (before
+   * the marker existed) look user-authored to the marker check and
+   * abort every subsequent boot with "Refusing to overwrite".
+   */
+  frameworkManaged?: boolean;
   /** Visible for tests: override the spawn implementation. */
   spawnFn?: SpawnFn;
   /**
@@ -740,8 +950,8 @@ export async function resolveMoatSandbox(
   const workspace = opts.workspace ?? process.cwd();
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
 
-  const subprocessEnv = buildSubprocessEnv(workspace, opts.runtime);
-
+  // Defer subprocess env until the workspace yaml exists — it sources
+  // `MOAT_RUNTIME` from there and we don't write the yaml until below.
   await verifyBinary(spawnFn, bin);
   await verifyGrants(spawnFn, bin, opts.grants ?? []);
 
@@ -759,27 +969,44 @@ export async function resolveMoatSandbox(
     const inWorkspace = resolved.startsWith(path.resolve(workspace) + path.sep);
     if (!inWorkspace) {
       const target = path.join(workspace, "moat.yaml");
-      if (existsSync(target)) {
-        throw new MoatError(
-          `Refusing to overwrite existing ${target} with ${resolved}. Move your existing moat.yaml aside, or place \`configPath\` inside the workspace so it is used directly.`,
-        );
+      // Refuse to clobber a user-authored yaml; `frameworkManaged` or
+      // the marker on line 1 signals the file is ours to rewrite.
+      if (existsSync(target) && !opts.frameworkManaged) {
+        let isManaged = false;
+        try {
+          const head = readFileSync(target, "utf-8").split("\n", 1)[0] ?? "";
+          isManaged = head.trim() === FSDEV_MANAGED_MARKER;
+        } catch {
+          // Treat unreadable as not-managed → throw below.
+        }
+        if (!isManaged) {
+          throw new MoatError(
+            `Refusing to overwrite existing ${target} with ${resolved}. Move your existing moat.yaml aside, or place \`configPath\` inside the workspace so it is used directly.`,
+          );
+        }
       }
-      await copyFile(resolved, target);
+      const sourceYaml = readFileSync(resolved, "utf-8");
+      const absWorkspace = path.resolve(workspace);
+      const cleanedYaml = stripMountsTargeting(
+        sourceYaml,
+        opts.mountTarget,
+        absWorkspace,
+      );
+      const stamped = `${FSDEV_MANAGED_MARKER}\n${cleanedYaml}`;
+      await writeFile(target, stamped, "utf-8");
       copiedConfigPath = target;
     }
   } else {
     const workspaceConfig = path.join(workspace, "moat.yaml");
     if (existsSync(workspaceConfig)) {
-      // Distinguish a leftover from a prior persistent session (safe to
-      // adopt) from a user-authored config (refuse, since teardown would
-      // delete it and overwrite is destructive). The marker on the first
-      // line of every adapter-generated yaml is the signal.
-      let isManaged = false;
-      try {
-        const head = readFileSync(workspaceConfig, "utf-8").split("\n", 1)[0] ?? "";
-        isManaged = head.trim() === FSDEV_MANAGED_MARKER;
-      } catch {
-        // Treat as unreadable → not managed.
+      let isManaged = opts.frameworkManaged ?? false;
+      if (!isManaged) {
+        try {
+          const head = readFileSync(workspaceConfig, "utf-8").split("\n", 1)[0] ?? "";
+          isManaged = head.trim() === FSDEV_MANAGED_MARKER;
+        } catch {
+          // Treat as unreadable → not managed.
+        }
       }
       if (!isManaged) {
         throw new MoatError(
@@ -818,6 +1045,8 @@ export async function resolveMoatSandbox(
     }
   }
 
+  const subprocessEnv = buildSubprocessEnv(workspace, opts.runtime);
+
   // From here on, any failure must clean up the artifacts we just wrote;
   // otherwise a readiness-timeout (or `moat run` non-zero exit) leaves the
   // generated `moat.yaml` and tempDir behind, since `MoatRunHandle` —
@@ -840,10 +1069,7 @@ export async function resolveMoatSandbox(
   }
 
   try {
-    // Reuse a live run with the same name if present. Spawn `moat list`
-    // (and the start below) from the workspace so MOAT picks up the
-    // workspace `moat.yaml`'s `runtime:` selector; otherwise it defaults
-    // to docker even when the workspace declares `runtime: apple`.
+    // Reuse a live run with the same name if present.
     const runs = await listRuns(spawnFn, bin, undefined, workspace, subprocessEnv);
     const existing = runs.find((r) => r.name === opts.runName && r.state === "running");
     if (!existing) {
@@ -856,21 +1082,15 @@ export async function resolveMoatSandbox(
         allowHosts: opts.allowHosts,
         noSandbox: opts.noSandbox,
       });
-      // MOAT 0.5.x removed the `-d`/detach flag — `moat run` now blocks in
-      // the foreground until the container exits. We spawn it detached on
-      // the host (stdio ignored, unref'd) and rely on the readiness loop
-      // below to confirm the container is up. `buildRunArgs` appends
-      // `-- sleep infinity` so the foreground command doesn't exit.
+      let childHandle: DetachedChildHandle;
       try {
-        startDetached(bin, args, opts.runName, workspace, subprocessEnv);
+        childHandle = startDetached(bin, args, opts.runName, workspace, subprocessEnv);
       } catch (err) {
         const e = err as NodeJS.ErrnoException;
         if (e.code === "ENOENT") throw new MoatNotInstalledError(bin);
         throw new MoatRunStartError((err as Error).message);
       }
-      // Poll for readiness. Each `listRuns` call gets the smaller of the
-      // remaining deadline budget or the standard control-plane cap, so a
-      // stalled `moat list` cannot push us past `readiness.timeoutMs`.
+      // Poll for readiness; fail fast if `moat run` exits early.
       const readyTimeoutMs = opts.readiness?.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
       const deadline = Date.now() + readyTimeoutMs;
       const interval = opts.readiness?.intervalMs ?? DEFAULT_READY_INTERVAL_MS;
@@ -887,6 +1107,13 @@ export async function resolveMoatSandbox(
         if (list.find((r) => r.name === opts.runName && r.state === "running")) {
           ready = true;
           break;
+        }
+        const exitInfo = childHandle.getExitInfo();
+        if (exitInfo !== null) {
+          throw new MoatRunStartError(
+            exitInfo.stderr.trim() ||
+              `moat run exited with code ${exitInfo.exitCode} before the container reached "running".`,
+          );
         }
         await new Promise((r) => setTimeout(r, interval));
       }
@@ -926,6 +1153,8 @@ export async function resolveMoatSandbox(
     throw err;
   }
 
+  const mountSource = resolveMountSource(workspace, opts.mountTarget, copiedConfigPath);
+
   const handle: MoatRunHandle = {
     runName: opts.runName,
     bin,
@@ -937,6 +1166,8 @@ export async function resolveMoatSandbox(
     copiedConfigPath,
     stopped: false,
     persist: opts.persist ?? false,
+    mountSource,
+    mountTarget: opts.mountTarget,
   };
 
   return { sandbox: createMoatAdapter(handle), sandboxId: opts.runName };
