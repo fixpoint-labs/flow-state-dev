@@ -4,10 +4,10 @@
  * These are general-purpose helpers used across TF domains (currently identity).
  *
  * Note: shortId / tokenize / tokenOverlap / findBestOverlap are duplicated in
- * packages/patterns/src/memory/internal/helpers.ts because the memory module
- * lifted to @flow-state-dev/patterns and cannot import from TF (TF depends on
- * patterns, not the other way around). If you change a function here, update
- * the duplicate.
+ * packages/memory/src/internal/helpers.ts because the memory module
+ * lifted to @flow-state-dev/memory and is no longer reachable from TF
+ * (TF doesn't depend on memory, and memory cannot import from TF without
+ * a circular dep). If you change a function here, update the duplicate.
  */
 
 /** Generate a short random alphanumeric ID. */
