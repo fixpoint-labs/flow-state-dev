@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-15
+
+### Delta store verbs: `patchField`, `incField`, `pushToArray` (FIX-405)
+
+- `Store` adapters can now implement three optional delta verbs that mutate one field at a time instead of rewriting the whole record. Single-field `patchState` calls map to `patchField`, `incState({ field: delta })` calls map to `incField`, and `pushState` calls map to `pushToArray`. Multi-field patches stay on `set` to preserve single-version semantics per logical mutation.
+- The in-memory adapter and `@flow-state-dev/store-postgres` ship the verbs in this change. SQLite and filesystem keep working unchanged — `createScopePersist` feature-detects per call and falls back to `set` when an adapter doesn't advertise the verb.
+- Postgres uses native JSONB operators (`jsonb_set`, `||`) wrapped in `UPDATE ... WHERE version = ?` so the row-level CAS contract from FIX-400 still holds for delta paths. A 100-op patchField benchmark against PGlite passes within 2× the cost of 100 `set` calls; on real Postgres the gap widens as the wire payload shrinks.
+- Hot-path cleanup on the CAS retry loop: `MemoryStateContainer.read()` no longer deep-clones on every read (callers must treat the read result as immutable, which all in-tree scope ops already do), and the `JSON.stringify` size-estimate that ran on every CAS attempt is gone. The `onStateSizeWarning` callback is removed from `ScopeStateOpsOptions`.
+- `docs/architecture/state-and-scopes.md` documents the routing decision tree and the container immutability contract.
+
 ## 2026-05-14
 
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)

@@ -81,16 +81,37 @@ await ctx.session.patchState({ count: newCount });
 
 On retry exhaustion, a `ConcurrentModificationError` is thrown.
 
-### CAS cloning guidance
+### Container contract
 
-- CAS containers use deep cloning to preserve immutable write semantics and avoid accidental shared mutation.
-- This trade-off is acceptable for typical Phase 1 scope state payloads (targeting small, kilobyte-scale objects).
-- The runtime emits warnings when scope state exceeds the default `10KB` threshold so integrators can spot large-state pressure early.
+- The per-request `MemoryStateContainer` returns its internal state reference from `read()` without copying — callers MUST treat the result as immutable.
+- All in-tree scope ops respect this by spreading into a fresh object (`{...state, foo: bar}`) before mutating.
+- This was previously a deep clone on every read; FIX-405 removed the clone from the CAS hot path. The size-estimate warning that surfaced 10KB+ payloads was also removed — it ran inside the CAS loop on every attempt.
 
 **Concurrency guidance:**
 - Avoid read-modify-write patterns inside `parallel`/`forEach` unless using atomic ops
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
+
+### Delta verb routing (FIX-405)
+
+The framework routes scope-state ops through the cheapest available write path on each adapter. Single-field patches map to native atomic ops (Postgres `jsonb_set`, future Upstash `HINCRBY`, future Mongo `$inc` / `$push`); multi-field patches fall back to a full-record `set`.
+
+| Scope op | Shape | Routes to |
+| -- | -- | -- |
+| `patchState({ foo: value })` | Single own-property, non-function value | `patchField` |
+| `patchState(key, updater)` | Keyed-updater form | `patchField` |
+| `patchState({ foo, bar })` | Multi-field | `set` |
+| `patchState({ foo: () => ... })` | Function value | `set` |
+| `setState(value)` | Full replacement | `set` |
+| `incState({ field: delta })` | Single numeric field | `incField` |
+| `incState({ a: 1, b: 1 })` | Multi-field | `set` |
+| `pushState(field, value)` | Always | `pushToArray` |
+| `setStateRecord(field, key, value)` | Depth-2 path | `set` (v1) |
+| `deleteStateRecord` / `atomicState` | Any | `set` |
+
+**Why multi-field patches stay on `set`:** decomposing `{ a: 1, b: 2 }` into N `patchField` calls would bump the version counter per field, multiply CAS-retry exposure under contention, and make intermediate states visible to concurrent readers. A single `set` preserves single-version semantics for one logical mutation. The cost (whole-record UPDATE) is identical to today's behavior — no regression.
+
+**Capability advertisement:** the delta verbs are optional on the `Store` interface in v1. `createScopePersist` feature-detects per call: an adapter without `patchField` (filesystem, SQLite as of v1) continues to receive `set` calls transparently. Adapters that advertise the verbs (`@flow-state-dev/server`'s in-memory adapter, `@flow-state-dev/store-postgres`) receive the delta routing. Future Upstash and Mongo adapters ship the verbs as required.
 
 **Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
 
