@@ -27,10 +27,13 @@ import path from "node:path";
  * MOAT is opt-in for local development — set `BASH_PROVIDER=moat` to run
  * commands inside a host-local container with outbound network restricted
  * to `MOAT_ALLOW_HOSTS` (comma-separated, default-deny when unset). The
- * grants the agent should use can be passed via `MOAT_GRANTS`. Any flow
- * that uses this provider must also wire `bashCap.cleanupBlock` into
- * `defineFlow({ request: { onFinished } })` to avoid leaking containers
- * — `chat-agent/flow.ts` does this unconditionally.
+ * grants the agent should use can be passed via `MOAT_GRANTS`. If a
+ * hand-authored `moat.yaml` should be used as-is (declaring deps, ports,
+ * etc.) point `MOAT_CONFIG_PATH` at it — the framework will leave that
+ * file untouched and skip generating one from the env vars above. Any
+ * flow that uses this provider must also wire `bashCap.cleanupBlock`
+ * into `defineFlow({ request: { onFinished } })` to avoid leaking
+ * containers — `chat-agent/flow.ts` does this unconditionally.
  *
  * The Vercel provider takes the SDK's `Sandbox` class via the provider
  * config. `@flow-state-dev/tools` doesn't take a peer dep on
@@ -51,10 +54,13 @@ export function selectBashProvider(): SandboxProvider {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    const configPath = process.env.MOAT_CONFIG_PATH?.trim() || undefined;
     return {
       type: "moat",
       grants: grants.length > 0 ? grants : undefined,
       allowHosts: allowHosts.length > 0 ? allowHosts : undefined,
+      runName: "kitchen-sink",
+      configPath,
     };
   }
   if (process.env.STORE_TYPE === "filesystem") {

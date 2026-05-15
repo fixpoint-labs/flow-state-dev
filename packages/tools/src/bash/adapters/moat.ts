@@ -22,7 +22,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -120,11 +120,18 @@ export interface BuildRunArgsInput {
 }
 
 /**
- * Build the argv for `moat run -d`. The workspace path is the trailing
- * positional. Returns argv excluding the binary itself.
+ * Build the argv for `moat run`. The workspace path is followed by an
+ * explicit `-- sleep infinity` keepalive command: MOAT 0.5.x removed the
+ * `-d`/detach flag, so without an explicit long-lived command the run
+ * either streams the agent's default to stdout in the foreground or
+ * exits immediately when the workspace has no agent defined. We always
+ * spawn `moat run` detached on the host (see `resolveMoatSandbox`) and
+ * interact with the container via `moat exec`, so the foreground command
+ * just needs to keep the container alive. Returns argv excluding the
+ * binary itself.
  */
 export function buildRunArgs(input: BuildRunArgsInput): string[] {
-  const args: string[] = ["run", "-n", input.runName, "-d"];
+  const args: string[] = ["run", "-n", input.runName];
   const runtime = input.runtime ?? "auto";
   if (runtime !== "auto") {
     args.push("--runtime", runtime);
@@ -137,7 +144,7 @@ export function buildRunArgs(input: BuildRunArgsInput): string[] {
     args.push("--allow-host", h);
   }
   if (input.noSandbox) args.push("--no-sandbox");
-  args.push(input.workspace);
+  args.push(input.workspace, "--", "sleep", "infinity");
   return args;
 }
 
@@ -226,14 +233,23 @@ export interface SpawnResult {
 export type SpawnFn = (
   command: string,
   args: string[],
-  options: { stdin?: string; timeoutMs?: number },
+  options: {
+    stdin?: string;
+    timeoutMs?: number;
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+  },
 ) => Promise<SpawnResult>;
 
 const realSpawn: SpawnFn = (command, args, options) => {
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+      child = spawn(command, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd: options.cwd,
+        env: options.env,
+      });
     } catch (err) {
       const e = err as NodeJS.ErrnoException;
       if (e.code === "ENOENT") {
@@ -290,6 +306,66 @@ const realSpawn: SpawnFn = (command, args, options) => {
   });
 };
 
+/**
+ * Spawn a long-running child process detached from the parent — used for
+ * `moat run` under MOAT 0.5.x, which no longer offers a `-d` flag. The
+ * child outlives the resolver call; readiness is observed separately via
+ * `moat list`.
+ *
+ * stdout/stderr are piped (not ignored) and forwarded to the parent's
+ * stderr line-by-line with a `[moat:<tag>]` prefix. Cold first-run image
+ * builds take 30–60+ seconds and previously surfaced no output at all
+ * during the wait; users couldn't tell whether progress was being made,
+ * the network was stuck, or the runtime was failing silently. After
+ * `unref`, the streams keep flowing as long as the parent is alive,
+ * which covers the entire readiness window.
+ *
+ * Surfaces `ENOENT` to the caller for the `MoatNotInstalledError` path;
+ * any other synchronous spawn error propagates so it becomes a
+ * `MoatRunStartError`.
+ */
+function startDetached(
+  command: string,
+  args: string[],
+  tag: string,
+  cwd?: string,
+  env?: NodeJS.ProcessEnv,
+): void {
+  const child = spawn(command, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+    cwd,
+    env,
+  });
+  const prefix = `[moat:${tag}]`;
+  const forwardLines = (stream: NodeJS.ReadableStream | null): void => {
+    if (!stream) return;
+    let buffer = "";
+    stream.setEncoding("utf-8");
+    stream.on("data", (chunk: string) => {
+      buffer += chunk;
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.length > 0) console.error(`${prefix} ${line}`);
+      }
+    });
+    stream.on("end", () => {
+      if (buffer.length > 0) console.error(`${prefix} ${buffer}`);
+    });
+  };
+  forwardLines(child.stdout);
+  forwardLines(child.stderr);
+  child.on("error", (err) => {
+    // After unref, an asynchronous spawn failure has nowhere to go —
+    // surface it via the same prefixed logger so the user sees *why*
+    // readiness will time out. Then swallow so the parent doesn't crash.
+    console.error(`${prefix} spawn error: ${(err as Error).message}`);
+  });
+  child.unref();
+}
+
 // ---------------------------------------------------------------------------
 // Preflight
 // ---------------------------------------------------------------------------
@@ -340,6 +416,10 @@ async function verifyBinary(spawnFn: SpawnFn, bin: string): Promise<{ version: s
     try {
       return JSON.parse(res.stdout) as { version?: string };
     } catch {
+      // MOAT <= 0.5.x advertises a global `--json` flag but `version` ignores it
+      // and prints a human-readable block whose first line is `moat <semver>`.
+      const m = res.stdout.match(/^\s*moat\s+v?(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/);
+      if (m) return { version: m[1] };
       throw new MoatError(`Could not parse \`${bin} version --json\` output: ${res.stdout}`);
     }
   })();
@@ -383,20 +463,73 @@ interface RunRecord {
 }
 
 /**
+ * Read the workspace `moat.yaml`'s top-level `runtime:` field, if any, so
+ * we can inject `MOAT_RUNTIME` into every MOAT subprocess. Unlike
+ * `moat run`, the `moat list` / `stop` / `destroy` commands don't read
+ * `moat.yaml` — they pick the runtime from `$MOAT_RUNTIME` or auto-detect
+ * (which falls back to docker on macOS hosts even when an `apple`
+ * container runtime is configured in the workspace). One-line regex
+ * rather than a YAML dep: we only care about the top-level scalar; if
+ * the user has done something exotic, fall through to the environment.
+ */
+function readWorkspaceRuntime(workspace: string): string | undefined {
+  try {
+    const yaml = readFileSync(path.join(workspace, "moat.yaml"), "utf-8");
+    const m = yaml.match(/^runtime:\s*["']?([\w-]+)["']?\s*$/m);
+    return m?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Compose the env handed to every MOAT subprocess. Inherits the parent's
+ * env (so `MOAT_PROFILE`, `MOAT_RUNTIME`, etc. set in `.env.local` keep
+ * working) and overlays an explicit `MOAT_RUNTIME` derived from the
+ * workspace `moat.yaml` or the caller's `runtime` option. Explicit caller
+ * config wins over both yaml and inherited env so a flow that asks for
+ * `runtime: "apple"` doesn't get silently downgraded to docker.
+ */
+function buildSubprocessEnv(
+  workspace: string,
+  runtime: "auto" | "docker" | "apple" | undefined,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const explicit = runtime && runtime !== "auto" ? runtime : undefined;
+  const fromYaml = readWorkspaceRuntime(workspace);
+  const resolved = explicit ?? fromYaml ?? env.MOAT_RUNTIME;
+  if (resolved) env.MOAT_RUNTIME = resolved;
+  return env;
+}
+
+/**
  * Bounded `moat list --json`. Treats timeouts the same as non-zero exits —
  * returns `[]` so the readiness loop's outer deadline check stays authoritative.
  */
-async function listRuns(spawnFn: SpawnFn, bin: string, timeoutMs?: number): Promise<RunRecord[]> {
+async function listRuns(
+  spawnFn: SpawnFn,
+  bin: string,
+  timeoutMs?: number,
+  cwd?: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<RunRecord[]> {
   const res = await spawnFn(bin, ["list", "--json"], {
     timeoutMs: timeoutMs ?? CONTROL_PLANE_TIMEOUT_MS,
+    cwd,
+    env,
   });
   if (res.timedOut || res.exitCode !== 0) return [];
   try {
     const parsed = JSON.parse(res.stdout || "[]");
     if (!Array.isArray(parsed)) return [];
+    // MOAT 0.5.x emits PascalCase keys (`Name`, `State`) from Go's default
+    // JSON marshaling; 0.4.x emitted lowercase. Read both so the adapter
+    // tolerates either schema. Without this the readiness loop polls a
+    // running container forever because `state === "running"` never
+    // matches the actual `""` we'd get from a missing key.
     return (parsed as Array<Record<string, unknown>>).map((r) => ({
-      name: String(r.name ?? ""),
-      state: String(r.state ?? ""),
+      name: String(r.Name ?? r.name ?? ""),
+      state: String(r.State ?? r.state ?? ""),
     }));
   } catch {
     return [];
@@ -412,6 +545,10 @@ interface MoatRunHandle {
   bin: string;
   execTimeoutMs: number;
   spawnFn: SpawnFn;
+  /** Host CWD for every MOAT subprocess (so `moat.yaml`'s `runtime:` is honored). */
+  workspace?: string;
+  /** Inherited env + `MOAT_RUNTIME` for commands that don't read `moat.yaml`. */
+  env?: NodeJS.ProcessEnv;
   /** Path to a transient temp directory holding generated `moat.yaml`, if any. */
   tempDir?: string;
   /** Workspace-internal `moat.yaml` copied in from `configPath`, if any. */
@@ -434,6 +571,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       const args = buildExecArgs(handle.runName, command);
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
+        cwd: handle.workspace,
+        env: handle.env,
       });
       if (res.timedOut) {
         return {
@@ -454,6 +593,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       const args = ["exec", handle.runName, "--", "cat", filePath];
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
+        cwd: handle.workspace,
+        env: handle.env,
       });
       if ((res.exitCode ?? 0) !== 0) {
         // Only stderr pattern reliably identifies a missing file — `cat` also
@@ -480,6 +621,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
         stdin: content,
+        cwd: handle.workspace,
+        env: handle.env,
       });
       if ((res.exitCode ?? 0) !== 0) {
         throw new MoatError(`writeFile(${filePath}) failed: ${res.stderr || res.stdout}`);
@@ -492,6 +635,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       try {
         await handle.spawnFn(handle.bin, ["stop", handle.runName], {
           timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+          cwd: handle.workspace,
+          env: handle.env,
         });
       } catch (err) {
         console.warn(`[moat] stop failed for ${handle.runName}:`, (err as Error).message);
@@ -499,6 +644,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       try {
         await handle.spawnFn(handle.bin, ["destroy", handle.runName], {
           timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+          cwd: handle.workspace,
+          env: handle.env,
         });
       } catch (err) {
         console.warn(`[moat] destroy failed for ${handle.runName}:`, (err as Error).message);
@@ -551,8 +698,13 @@ export interface ResolveMoatResult {
 }
 
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
-const DEFAULT_READY_TIMEOUT_MS = 10_000;
-const DEFAULT_READY_INTERVAL_MS = 200;
+// First-run image builds on the apple runtime do apt-get installs and can
+// take 30–60+ seconds; subsequent runs come up in seconds against the cached
+// image. The default has to cover the cold path or every user's first
+// kitchen-sink turn fails with `MoatRunTimeoutError`. Callers can override
+// via `readiness.timeoutMs` once the image is warm.
+const DEFAULT_READY_TIMEOUT_MS = 60_000;
+const DEFAULT_READY_INTERVAL_MS = 500;
 
 /**
  * Preflight + start (or reconnect) a MOAT run, returning a `Sandbox`
@@ -565,6 +717,8 @@ export async function resolveMoatSandbox(
   const spawnFn = opts.spawnFn ?? realSpawn;
   const workspace = opts.workspace ?? process.cwd();
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
+
+  const subprocessEnv = buildSubprocessEnv(workspace, opts.runtime);
 
   await verifyBinary(spawnFn, bin);
   await verifyGrants(spawnFn, bin, opts.grants ?? []);
@@ -633,8 +787,11 @@ export async function resolveMoatSandbox(
   }
 
   try {
-    // Reuse a live run with the same name if present.
-    const runs = await listRuns(spawnFn, bin);
+    // Reuse a live run with the same name if present. Spawn `moat list`
+    // (and the start below) from the workspace so MOAT picks up the
+    // workspace `moat.yaml`'s `runtime:` selector; otherwise it defaults
+    // to docker even when the workspace declares `runtime: apple`.
+    const runs = await listRuns(spawnFn, bin, undefined, workspace, subprocessEnv);
     const existing = runs.find((r) => r.name === opts.runName && r.state === "running");
     if (!existing) {
       const args = buildRunArgs({
@@ -646,14 +803,17 @@ export async function resolveMoatSandbox(
         allowHosts: opts.allowHosts,
         noSandbox: opts.noSandbox,
       });
-      // `moat run -d` returns immediately after the daemon hands back the
-      // container ID. Bound it so a hung start never wedges the resolver.
-      const res = await spawnFn(bin, args, { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
-      if (res.timedOut) {
-        throw new MoatRunStartError(`\`${bin} run\` timed out after ${CONTROL_PLANE_TIMEOUT_MS}ms.`);
-      }
-      if ((res.exitCode ?? 0) !== 0) {
-        throw new MoatRunStartError(res.stderr || res.stdout);
+      // MOAT 0.5.x removed the `-d`/detach flag — `moat run` now blocks in
+      // the foreground until the container exits. We spawn it detached on
+      // the host (stdio ignored, unref'd) and rely on the readiness loop
+      // below to confirm the container is up. `buildRunArgs` appends
+      // `-- sleep infinity` so the foreground command doesn't exit.
+      try {
+        startDetached(bin, args, opts.runName, workspace, subprocessEnv);
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException;
+        if (e.code === "ENOENT") throw new MoatNotInstalledError(bin);
+        throw new MoatRunStartError((err as Error).message);
       }
       // Poll for readiness. Each `listRuns` call gets the smaller of the
       // remaining deadline budget or the standard control-plane cap, so a
@@ -664,7 +824,13 @@ export async function resolveMoatSandbox(
       let ready = false;
       while (Date.now() < deadline) {
         const remaining = deadline - Date.now();
-        const list = await listRuns(spawnFn, bin, Math.min(remaining, CONTROL_PLANE_TIMEOUT_MS));
+        const list = await listRuns(
+          spawnFn,
+          bin,
+          Math.min(remaining, CONTROL_PLANE_TIMEOUT_MS),
+          workspace,
+          subprocessEnv,
+        );
         if (list.find((r) => r.name === opts.runName && r.state === "running")) {
           ready = true;
           break;
@@ -675,12 +841,20 @@ export async function resolveMoatSandbox(
         // Best-effort stop + destroy so the half-started container doesn't
         // linger on the host. Mirrors `createMoatAdapter.stop()`.
         try {
-          await spawnFn(bin, ["stop", opts.runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
+          await spawnFn(bin, ["stop", opts.runName], {
+            timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+            cwd: workspace,
+            env: subprocessEnv,
+          });
         } catch {
           // Ignore — we are already in an error path.
         }
         try {
-          await spawnFn(bin, ["destroy", opts.runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS });
+          await spawnFn(bin, ["destroy", opts.runName], {
+            timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+            cwd: workspace,
+            env: subprocessEnv,
+          });
         } catch {
           // Ignore — we are already in an error path.
         }
@@ -699,6 +873,8 @@ export async function resolveMoatSandbox(
     bin,
     execTimeoutMs,
     spawnFn,
+    workspace,
+    env: subprocessEnv,
     tempDir,
     copiedConfigPath,
     stopped: false,

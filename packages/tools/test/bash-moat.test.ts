@@ -3,6 +3,9 @@
  * pieces it depends on (registry concurrency fix + cleanupBlock).
  */
 import { describe, it, expect, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   buildRunArgs,
   buildExecArgs,
@@ -40,10 +43,12 @@ describe("moat builders", () => {
       "run",
       "-n",
       "fsdev-x",
-      "-d",
       "-m",
       "/tmp/ws:/workspace",
       "/tmp/ws",
+      "--",
+      "sleep",
+      "infinity",
     ]);
   });
 
@@ -62,7 +67,6 @@ describe("moat builders", () => {
       "run",
       "-n",
       "fsdev-x",
-      "-d",
       "--runtime",
       "docker",
       "-m",
@@ -77,6 +81,9 @@ describe("moat builders", () => {
       "api.openai.com",
       "--no-sandbox",
       "/ws",
+      "--",
+      "sleep",
+      "infinity",
     ]);
   });
 
@@ -232,6 +239,31 @@ describe("resolveMoatSandbox preflight", () => {
     ).rejects.toBeInstanceOf(MoatVersionError);
   });
 
+  it("accepts MOAT 0.5.x human-readable `version` output (ignores --json)", async () => {
+    // MOAT 0.5.x advertises a global --json flag but `version` ignores it and
+    // emits a human block. The adapter must fall back to scraping the first
+    // line; we prove the parse succeeded by letting the resolver advance to
+    // `verifyGrants` and reject with MoatGrantsError instead of MoatError.
+    const humanOutput =
+      "moat 0.5.1\n" +
+      "  commit: fc0596858df7275a341e3ca195860cd773c4e564\n" +
+      "  built:  2026-04-28T22:14:27Z\n" +
+      "  go:     go1.25.5\n";
+    const { spawnFn } = makeSpawnFn(({ args }) => {
+      if (args[0] === "version") return ok(humanOutput);
+      if (args[0] === "grant") return ok(JSON.stringify([]));
+      return ok();
+    });
+    await expect(
+      resolveMoatSandbox({
+        runName: "r1",
+        mountTarget: "/workspace",
+        grants: ["openai"],
+        spawnFn,
+      }),
+    ).rejects.toBeInstanceOf(MoatGrantsError);
+  });
+
   it("MoatGrantsError when a required grant is missing", async () => {
     const { spawnFn } = makeSpawnFn(({ args }) => {
       if (args[0] === "version") return ok(JSON.stringify({ version: "0.4.0" }));
@@ -246,6 +278,38 @@ describe("resolveMoatSandbox preflight", () => {
         spawnFn,
       }),
     ).rejects.toBeInstanceOf(MoatGrantsError);
+  });
+
+  it("reconnects to an existing run reported with PascalCase Name/State (MOAT 0.5.x)", async () => {
+    // MOAT 0.5.x emits `Name`/`State` (Go default JSON marshaling).
+    // The reconnect path requires the parser to read both casings,
+    // otherwise we always try to start a new run with the same name
+    // and the daemon rejects the second spawn.
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "version") return ok(JSON.stringify({ version: "0.5.1" }));
+      if (args[0] === "grant") return ok(JSON.stringify([]));
+      if (args[0] === "list") {
+        return ok(JSON.stringify([{ Name: "r1", State: "running" }]));
+      }
+      return ok();
+    });
+    // Workspace points at an empty tempdir so the resolver's "no
+    // hand-authored moat.yaml" branch generates a transient one — keeps
+    // this preflight test independent of whatever moat.yaml happens to
+    // exist in the test CWD.
+    const tmpWorkspace = await mkdtemp(path.join(os.tmpdir(), "fsdev-moat-test-"));
+    try {
+      await resolveMoatSandbox({
+        runName: "r1",
+        mountTarget: "/workspace",
+        workspace: tmpWorkspace,
+        spawnFn,
+      });
+      // No `moat run` invocation — we found the live run via list and reused it.
+      expect(calls.find((c) => c.args[0] === "run")).toBeUndefined();
+    } finally {
+      await rm(tmpWorkspace, { recursive: true, force: true });
+    }
   });
 });
 

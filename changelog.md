@@ -2,6 +2,23 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-14
+
+### Bash tool: MOAT adapter compatibility with MOAT 0.5.x
+
+- `moat version` text-output fallback: MOAT 0.5.x advertises a global `--json` flag but `moat version` ignores it and prints a human-readable block. The adapter's preflight now falls back to scraping the first line (`moat <semver>`) when `JSON.parse` fails. JSON path is still tried first for forward compatibility.
+- `moat run` no longer uses the (removed-in-0.5.x) `-d` detach flag. The framework now spawns `moat run` detached on the host (stdio ignored, unref'd) and appends `-- sleep infinity` as the foreground keepalive command so the container stays up long enough for `moat exec` to interact with it. Readiness is observed via the existing `moat list` polling loop. Backwards-compatible with 0.4.x.
+- Every MOAT subprocess (`list`, `run`, `exec`, `stop`, `destroy`) now runs with `cwd: workspace` so the workspace's `moat.yaml runtime:` selector is honored. Previously these inherited the Node process CWD and silently defaulted to `docker`, ignoring `runtime: apple` declarations and failing with "docker daemon not accessible" on hosts using Apple's container runtime.
+- Default readiness timeout bumped from 10s → 180s. Cold first-run image builds on the apple runtime do apt-get installs and can take 30–60+ seconds; the previous 10s ceiling guaranteed a `MoatRunTimeoutError` on any user's first turn. Subsequent runs against the cached image still come up in seconds.
+- `moat list --json` parser now reads both PascalCase (`Name`/`State`) and lowercase (`name`/`state`) keys. MOAT 0.5.x emits PascalCase from Go's default JSON marshaling; under the lowercase-only parser, the readiness loop polled a healthy container forever and the reconnect path never matched, both manifesting as `MoatRunTimeoutError`.
+- `MOAT_RUNTIME` env var is now derived from the workspace `moat.yaml`'s top-level `runtime:` field (or explicit caller config) and injected into every MOAT subprocess. Required because `moat list` / `stop` / `destroy` don't read `moat.yaml` — only `moat run` does — so an `apple`-only workspace would fail those commands with "docker daemon not accessible" even when `moat run` worked.
+- `startDetached` now pipes `moat run` stdout/stderr through the parent process with a `[moat:<runName>]` prefix instead of discarding it, so the 30–60s cold image build is visible in the dev server logs.
+
+### Bash tool: scope `flush()` walk to mount prefixes
+
+- `flush()` after every bash command/write previously ran `find . -type f` from the destination root (`/workspace`). Under providers that bind-mount the host repo — MOAT, Vercel sandbox — that traversed the entire user repo (every `.next/`, every per-package `dist/`, every source file), routinely exceeded the 60s `execTimeoutMs`, and silently aborted via `if (result.exitCode !== 0) return;` — which dropped any just-written artifact with no warning.
+- `find` is now scoped to each mount's prefix path (`./artifacts`, `./skills`, `./tmp`) plus the scratch directory. Mount prefixes are the only paths flush can route into a collection anyway, so the wider walk produced no value to offset its cost. Hydrate now seeds an empty `.keep` marker into each mount-prefix directory so `find` doesn't error on collections that start with zero refs. The flush deletion pass skips this marker explicitly.
+
 ## 2026-05-12
 
 ### Bash tool: MOAT sandbox adapter (FIX-584)

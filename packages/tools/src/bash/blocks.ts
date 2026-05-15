@@ -338,6 +338,14 @@ async function hydrate(entry: SandboxEntry, destination: string): Promise<void> 
   await entry.sandbox.writeFile(tmpMarker, "");
 
   for (const mount of entry.mounts) {
+    // Guarantee the mount-prefix directory exists even when the
+    // collection has no refs yet — `flush`'s `find` is scoped to these
+    // paths and would error on a missing one. The `.keep` marker is
+    // stripped from the walk because flush skips dotfiles via its
+    // existing mount-prefix matching (the marker has no bare key).
+    const markerPath = path.join(destination, mount.prefix, ".keep");
+    await entry.sandbox.writeFile(markerPath, "");
+
     const refs = mount.collection.list();
     for (const ref of refs) {
       const bareKey = stripMountPrefix(ref.name, mount.prefix);
@@ -372,8 +380,18 @@ async function flush(
   destination: string,
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Promise<void> {
+  // Walk only mount prefixes (and `tmp/`) — never the whole `destination`.
+  // Under providers that bind-mount the host repo (MOAT, Vercel sandbox),
+  // `find /workspace` traverses the entire user repo (every TS file,
+  // every `.next/`, every per-package `dist/`) and can easily exceed
+  // `execTimeoutMs`. When it does, `find` exits non-zero, flush silently
+  // returns, and any just-written artifact disappears with no warning.
+  // Mount prefixes are the only paths flush can route into a collection
+  // anyway, so the broader walk produces no value to offset its cost.
+  // Hydrate guarantees these directories exist; see `hydrate`.
+  const walkPrefixes = [...entry.mounts.map((m) => `./${m.prefix}`), `./${TMP_DIR}`];
   const result = await entry.sandbox.executeCommand(
-    `find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null`,
+    `find ${walkPrefixes.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
   );
 
   // If find fails, skip entirely — NEVER proceed to the deletion loop with
@@ -404,6 +422,9 @@ async function flush(
       }
 
       const bareKey = stripMountPrefix(relativePath, mount.prefix);
+      // Skip framework-internal markers (e.g. the `.keep` seeded by
+      // hydrate to guarantee the directory exists for `find`).
+      if (bareKey === ".keep") continue;
       seenByMountKey.get(mount.key)!.add(bareKey);
 
       if (!mount.writable) continue;
