@@ -3264,6 +3264,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3273,6 +3277,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3321,6 +3326,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3335,6 +3344,7 @@ export async function createExecutionContext<
                     ...(normalized.details ? { details: normalized.details } : {}),
                   },
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext

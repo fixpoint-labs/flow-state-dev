@@ -39,6 +39,8 @@ ctx.emitMessage("Background audit complete.", {
 
 Without identity options, the item is client- and history-visible — the ergonomic default for handlers that speak directly to the user. See [Generator identity](items#generator-identity) for the full model.
 
+Handler-emitted messages do not carry the `model` field. The framework only stamps `ModelIdentity` on items produced by a generator block — see [Observable model identity](items#observable-model-identity).
+
 ## Status messages
 
 `ctx.emitStatus()` sends a transient progress indicator. It appears briefly in the UI during execution but is never persisted and doesn't enter LLM history. Use it to tell the user what's happening during long operations.

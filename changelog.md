@@ -14,6 +14,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-14
 
+### Observable model identity on generator emissions and block_trace (FIX-518)
+
+- New `ModelIdentity` type exported from `@flow-state-dev/core`. Shape: `{ actual, requested?, gateway? }` — `actual` is always populated (provider-reported model id when present, otherwise the framework's winning candidate string); `requested` is set only when it differs from `actual`; `gateway` is set when the call routed through a gateway.
+- Every generator-emitted item — `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress` — now carries `model: ModelIdentity`. Handler-emitted items (via `ctx.emitMessage`) leave the field absent.
+- `BlockTraceItem` for generator blocks gains a top-level `model` field as a sibling of `generator.model` (the requested string) and `modelUsage.model` (the token-accounting key). Populated even when the generator emits no items, so structured-only and tool-only turns have a durable audit trail.
+- New `<ModelBadge model={item.model} />` in `@flow-state-dev/react`. Renders the `actual` model id as a pill with the requested/gateway in the tooltip; renders nothing when `model` is undefined. Kitchen-sink wires it next to the thinking-style badge on assistant messages.
+- Additive change. Items persisted before this release surface as `model: undefined`, which renderers and audit consumers treat as absent.
+
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
 
 - New method on every `BlockDefinition`. Wrapping a block with `.asTool(opts?)` causes it to emit a `tool_output` item with the same envelope and lifecycle the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged.
