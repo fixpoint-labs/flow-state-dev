@@ -20,7 +20,7 @@ import type {
   StateSnapshotItem
 } from "../items/types";
 import type { JsonObject } from "../schema/common";
-import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
+import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -58,6 +58,7 @@ export type BlockTraceCapturePayload = {
     output?: import("../items/types").BlockValueInternal<unknown>;
     generator?: BlockTraceItem["generator"];
     modelUsage?: BlockTraceItem["modelUsage"];
+    model?: BlockTraceItem["model"];
     startedAt?: number;
     completedAt?: number;
     duration?: number;
@@ -303,6 +304,8 @@ export interface BlockContext<
       model: string;
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
+      /** Resolved identity of the model that produced this result. */
+      identity?: ModelIdentity;
     }) => void;
     /**
      * Unified block-lifecycle capture hook. Fires four phases per block:

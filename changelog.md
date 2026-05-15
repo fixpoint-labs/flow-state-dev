@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-15
+
+### Delta store verbs: `patchField`, `incField`, `pushToArray` (FIX-405)
+
+- `Store` adapters can now implement three optional delta verbs that mutate one field at a time instead of rewriting the whole record. Single-field `patchState` calls map to `patchField`, `incState({ field: delta })` calls map to `incField`, and `pushState` calls map to `pushToArray`. Multi-field patches stay on `set` to preserve single-version semantics per logical mutation.
+- The in-memory adapter and `@flow-state-dev/store-postgres` ship the verbs in this change. SQLite and filesystem keep working unchanged — `createScopePersist` feature-detects per call and falls back to `set` when an adapter doesn't advertise the verb.
+- Postgres uses native JSONB operators (`jsonb_set`, `||`) wrapped in `UPDATE ... WHERE version = ?` so the row-level CAS contract from FIX-400 still holds for delta paths. A 100-op patchField benchmark against PGlite passes within 2× the cost of 100 `set` calls; on real Postgres the gap widens as the wire payload shrinks.
+- Hot-path cleanup on the CAS retry loop: `MemoryStateContainer.read()` no longer deep-clones on every read (callers must treat the read result as immutable, which all in-tree scope ops already do), and the `JSON.stringify` size-estimate that ran on every CAS attempt is gone. The `onStateSizeWarning` callback is removed from `ScopeStateOpsOptions`.
+- `docs/architecture/state-and-scopes.md` documents the routing decision tree and the container immutability contract.
+
 ## 2026-05-14
 
 ### Trading Desk example: wider indicator set and insider transactions (FIX-596)
@@ -11,6 +21,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - News analyst prompt updated to weigh insider transactions as ground-truth signal (cluster buying, executive selling streaks, derivative vs. open-market trades) and treat headlines as complementary context.
 - Curated `insider-transactions.json` fixtures added for NVDA, AAPL, and JPM at the `2026-05-06` snapshot. Existing `indicators.json` fixtures extended with the new indicator fields.
 - Lives entirely inside `examples/trading-desk/` — no framework changes.
+
+### Observable model identity on generator emissions and block_trace (FIX-518)
+
+- New `ModelIdentity` type exported from `@flow-state-dev/core`. Shape: `{ actual, requested?, gateway? }` — `actual` is always populated (provider-reported model id when present, otherwise the framework's winning candidate string); `requested` is set only when it differs from `actual`; `gateway` is set when the call routed through a gateway.
+- Every generator-emitted item — `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress` — now carries `model: ModelIdentity`. Handler-emitted items (via `ctx.emitMessage`) leave the field absent.
+- `BlockTraceItem` for generator blocks gains a top-level `model` field as a sibling of `generator.model` (the requested string) and `modelUsage.model` (the token-accounting key). Populated even when the generator emits no items, so structured-only and tool-only turns have a durable audit trail.
+- New `<ModelBadge model={item.model} />` in `@flow-state-dev/react`. Renders the `actual` model id as a pill with the requested/gateway in the tooltip; renders nothing when `model` is undefined. Kitchen-sink wires it next to the thinking-style badge on assistant messages.
+- Additive change. Items persisted before this release surface as `model: undefined`, which renderers and audit consumers treat as absent.
 
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
 
