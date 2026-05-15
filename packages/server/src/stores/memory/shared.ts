@@ -153,9 +153,18 @@ export function pushToArrayInMap<TRecord extends DeltaRecord>(
   if (conflictResult !== undefined) return conflictResult;
   assertDepthOne(path, "pushToArray");
 
+  const existing = (current as TRecord).state?.[path[0]];
+  if (existing !== undefined && !Array.isArray(existing)) {
+    // Match the Postgres adapter, which raises a `||` operator error on
+    // non-array JSONB. Silently overwriting would mask state-shape bugs in
+    // dev that surface only on a Postgres deploy.
+    throw new Error(
+      `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
+    );
+  }
+
   const next = clone(current as TRecord);
   const newVersion = (current as TRecord).version + 1;
-  const existing = (current as TRecord).state?.[path[0]];
   const baseline = Array.isArray(existing) ? existing : [];
   next.state = {
     ...((current as TRecord).state ?? {}),

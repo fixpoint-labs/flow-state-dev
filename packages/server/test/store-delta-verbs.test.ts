@@ -215,6 +215,17 @@ describe("Store delta verbs — in-memory adapter", () => {
       expect(stale.conflict.currentVersion).toBe(1);
       expect(stale.conflict.currentValue?.state).toEqual({ log: ["a"] });
     });
+
+    it("throws when the target field exists but is not an array", async () => {
+      // Matches Postgres' SQL `||` operator error on non-array JSONB so a
+      // state-shape bug surfaces in dev rather than silently overwriting.
+      const store = createInMemorySessionStore();
+      await seed(store, "s1", { bag: { k: 1 } });
+
+      await expect(
+        store.pushToArray!("s1", ["bag"], ["x"], 0, Date.now())
+      ).rejects.toThrow(/not an array/);
+    });
   });
 
   describe("isolation between fields", () => {

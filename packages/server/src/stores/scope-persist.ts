@@ -48,9 +48,11 @@ export function createScopePersist<
 ): CASPersist<TState> {
   return async (state, expectedVersion, hint) => {
     const id = ref.current.id;
-    // One Date.now() per persist call: shared between the adapter (so the DB
-    // row stores it) and the local ref update (so consumers reading
-    // ref.current.updatedAt see the same value the DB holds).
+    // One Date.now() shared between the delta-verb call (so the DB row
+    // stores it) and the local ref update (so consumers reading
+    // ref.current.updatedAt see the same value the DB holds). The `set`
+    // fallback path doesn't use this — `buildSetRecord` captures its own
+    // Date.now() inside the full record it constructs.
     const updatedAt = Date.now();
 
     const handleResult = (
