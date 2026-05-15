@@ -13,7 +13,7 @@ This walkthrough names the framework pieces the example uses, in roughly the ord
 
 ## The pipeline at a glance
 
-Phase 1 fans out four analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation.
+Phase 1 fans out four analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines, macro indicators, and 90 days of insider Form 4 transactions.
 
 Phase 2 runs a bounded bull-versus-bear loop. A research manager synthesizes the debate into an `InvestmentThesis` with explicit `unresolvedDisagreements`.
 
@@ -120,7 +120,7 @@ On a fresh run, you'll see the four analyst cards appear in `pending` right away
 
 The `fast` preset completes well under a minute on one provider key. `full` takes longer because the debate runs two rounds against larger models.
 
-For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required for model resolution. Yahoo Finance is keyless. `FINNHUB_API_KEY` is optional for live news; without it the news analyst sees empty headlines and reasons accordingly.
+For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required for model resolution. Yahoo Finance is keyless. `FINNHUB_API_KEY` is optional for live news and insider transactions; without it those tools return `unavailable` and the news analyst treats the missing data as missing signal, not bearish.
 
 ## Session lifecycle and persistence
 

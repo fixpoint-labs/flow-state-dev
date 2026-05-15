@@ -71,6 +71,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     trend: "flat",
     sma50: 0,
     sma200: 0,
+    bollinger: { upper: 0, middle: 0, lower: 0 },
+    vwma20: 0,
+    stoch: { k: 0, d: 0 },
+    kdj: { k: 0, d: 0, j: 0 },
+    obv: 0,
   }),
   search_news: (i) => ({
     source: "unavailable",
@@ -109,6 +114,13 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     ticker: i.ticker,
     asOf: i.date,
     markets: [],
+  }),
+  get_insider_transactions: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    transactions: [],
+    windowDays: 90,
   }),
 };
 

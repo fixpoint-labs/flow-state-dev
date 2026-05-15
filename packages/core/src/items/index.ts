@@ -25,6 +25,7 @@ export type {
   ItemStatus,
   ItemVisibility,
   MessageItem,
+  ModelIdentity,
   OutputItem,
   OutputItemBase,
   ReasoningItem,

@@ -1,4 +1,7 @@
 import type { Content } from "./content";
+import type { ModelIdentity } from "../types/model";
+
+export type { ModelIdentity };
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
@@ -159,6 +162,15 @@ export type BlockTraceItem = OutputItemBase & {
   blockKind: "generator" | "handler" | "sequencer" | "router";
   blockInstanceId: string;
   status: "in_progress" | "completed" | "failed" | "planned";
+  /**
+   * Resolved identity of the model that actually ran for generator blocks.
+   * Sibling of `generator.model` (the requested string) and
+   * `modelUsage.model` (the token-accounting key, also requested-string).
+   * Populated even when the generator emits no items, so audit/replay/billing
+   * have a durable record of the concrete model. Absent for non-generator
+   * blocks and for generators that errored before any AI SDK call returned.
+   */
+  model?: ModelIdentity;
   input?: {
     source: BlockValueInternal<unknown>;
     connected?: unknown;
@@ -206,6 +218,8 @@ export type ToolOutputItem = OutputItemBase & {
   type: "tool_output";
   blockName: string;
   output: unknown;
+  /** Resolved identity of the generator that invoked this tool. */
+  model?: ModelIdentity;
   toolCall: {
     callId: string;
     /**
@@ -249,6 +263,12 @@ export type MessageItem = OutputItemBase & {
   type: "message";
   role: "assistant" | "user" | "system" | "developer" | "tool";
   /**
+   * Resolved identity of the generator model that produced this message.
+   * Stamped only when emitted by a generator block; handler-emitted
+   * messages (via `ctx.emitMessage`) leave this field absent.
+   */
+  model?: ModelIdentity;
+  /**
    * Message content parts. `output_text` parts accumulate `text` in-place
    * during streaming: each `content.delta` event mutates the current
    * snapshot held inside the emitter, and consumers reading
@@ -263,6 +283,8 @@ export type MessageItem = OutputItemBase & {
 
 export type ReasoningItem = OutputItemBase & {
   type: "reasoning";
+  /** Resolved identity of the generator model that produced this reasoning. */
+  model?: ModelIdentity;
   /**
    * Reasoning summary parts. `reasoning_text` parts accumulate `text`
    * in-place during streaming via the same `content.delta` channel as
@@ -365,6 +387,8 @@ export type SourceItem = OutputItemBase & {
   url: string;
   title?: string;
   providerMetadata?: Record<string, Record<string, unknown>>;
+  /** Resolved identity of the generator model that produced this source. */
+  model?: ModelIdentity;
 };
 
 /**
