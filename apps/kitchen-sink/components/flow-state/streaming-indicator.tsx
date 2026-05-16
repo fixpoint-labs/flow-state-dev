@@ -1,6 +1,5 @@
 "use client";
 
-import { BrainIcon, Loader2Icon } from "lucide-react";
 import { Shimmer } from "./shimmer";
 
 /**
@@ -10,9 +9,13 @@ import { Shimmer } from "./shimmer";
  *
  * When `isFinishing` is true (the main response has completed and only
  * background `.work()` tasks are still settling on the open SSE stream),
- * renders a muted, spinning "Tidying up..." label instead. This keeps the
- * user informed that the assistant is wrapping up without misleadingly
+ * renders a muted "Tidying up..." label instead. This keeps the user
+ * informed that the assistant is wrapping up without misleadingly
  * suggesting it is still producing their answer.
+ *
+ * The leading affordance is a pulsing dot in both states — never the
+ * brain icon, which is reserved for the reasoning chrome and would
+ * visually duplicate it during reasoning-on chats.
  */
 export function StreamingIndicator({
   message,
@@ -28,7 +31,7 @@ export function StreamingIndicator({
         data-state="finishing"
         className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm opacity-60"
       >
-        <Loader2Icon className="size-4 animate-spin" />
+        <span className="inline-block size-2 rounded-full bg-current animate-pulse" />
         <span>Tidying up...</span>
       </div>
     );
@@ -36,7 +39,7 @@ export function StreamingIndicator({
   const label = message && message.length > 0 ? message : "Working...";
   return (
     <div data-testid="streaming-indicator" className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm">
-      <BrainIcon className="size-4" />
+      <span className="inline-block size-2 rounded-full bg-current animate-pulse" />
       <Shimmer duration={1}>{label}</Shimmer>
     </div>
   );
