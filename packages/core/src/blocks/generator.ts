@@ -752,7 +752,7 @@ function compileToolsWithExecute(
         } finally {
           statusGuard.active--;
           if (statusGuard.active === 0) {
-            scopedCtx.emit?.status?.(statusGuard.saved);
+            scopedCtx.emit.status(statusGuard.saved);
           }
         }
       };
