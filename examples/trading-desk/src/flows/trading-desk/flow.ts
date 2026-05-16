@@ -11,7 +11,13 @@
  * client's `useClientData` hook.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
+import {
+  EarlyStopError,
+  phase1QualityGate,
+  rescueEarlyStop,
+  validateTickerGuard,
+} from "./guards";
+import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
@@ -23,15 +29,7 @@ import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
-
-export const analyzeInputSchema = z.object({
-  ticker: z.string().min(1).default("NVDA"),
-  date: z.string().min(1).default("2026-05-06"),
-  costPreset: z.enum(["fast", "full"]).default("fast"),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
-});
-
-export type AnalyzeInput = z.infer<typeof analyzeInputSchema>;
+export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";
 
 /**
  * `seedSession` patches session state from action input and resets the
@@ -54,21 +52,39 @@ const seedSession = handler({
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       memoStatus: {} as Record<string, MemoStatus>,
       runComplete: false,
+      // Reset terminal stop state from any prior run on this session key
+      // so the navigator doesn't render a stale "stopped" banner.
+      stoppedReason: null,
+      stoppedMessage: null,
     });
     return input;
   },
 });
 
-const analyzePipeline = sequencer({
-  name: "trading-desk-analyze",
+// Inner pipeline: seed → pre-flight ticker guard → Phase 1 → post-Phase-1
+// data-quality gate → Phases 2–5. Both guards throw `EarlyStopError` on
+// trip; the outer `.rescue` matching on `EarlyStopError` catches them and
+// patches session state to a clean terminal "stopped" condition (FIX-605).
+// Any other error type bubbles past the rescue's `when:` filter.
+const analyzePipelineInner = sequencer({
+  name: "trading-desk-analyze-inner",
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
+  .then(validateTickerGuard)
   .then(phase1Pipeline)
+  .then(phase1QualityGate)
   .then(phase2Pipeline)
   .then(phase3Pipeline)
   .then(phase4Pipeline)
   .then(phase5Pipeline);
+
+const analyzePipeline = sequencer({
+  name: "trading-desk-analyze",
+  inputSchema: analyzeInputSchema,
+})
+  .then(analyzePipelineInner)
+  .rescue([{ when: [EarlyStopError], block: rescueEarlyStop }]);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
@@ -92,6 +108,8 @@ const tradingDeskFlow = defineFlow({
         "maxDebateRounds",
         "memoStatus",
         "runComplete",
+        "stoppedReason",
+        "stoppedMessage",
       ],
     },
   },

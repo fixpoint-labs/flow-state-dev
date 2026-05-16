@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-16
 
+### Trading-desk: unresolvable-ticker guardrails + shared grounding clause (FIX-605)
+
+- New `validateTickerGuard` runs after `seedSession` and before `phase1Pipeline`. Resolves the ticker against the current data source — fixture mode probes for the canonical fixture file, live mode tries Finnhub then Yahoo for a single fundamentals fetch — and throws `EarlyStopError("unresolvable-ticker", ...)` if neither path succeeds.
+- New `phase1QualityGate` runs after `phase1Pipeline`. If every Phase 1 memo is in `error` status (live mode where every provider returned empty payloads, fixture mode where every per-analyst `.rescue` fired), it throws `EarlyStopError("phase-1-no-data", ...)`. Phases 2–5 never see no-data input.
+- A top-level `.rescue([{ when: [EarlyStopError], block: rescueEarlyStop }])` on `analyzePipeline` catches both errors, patches new `stoppedReason` / `stoppedMessage` session-state fields, and flips `runComplete: true`. Any other error type bubbles past the `when:` filter unchanged.
+- The `tradingDesk.core` preset now injects a shared `<grounding>` clause into every generator's prompt — "operate strictly on data provided by upstream agents and tools; surface insufficient-data rather than fabricate." Expressed once, applied uniformly across all twelve agents, instead of the Phase-1-only `SHARED_PREAMBLE` line being the only source of grounding discipline.
+- Session state schema (`state.ts`) adds `stoppedReason` (`"unresolvable-ticker" | "phase-1-no-data" | null`) and `stoppedMessage` (`string | null`), both exposed via `client.expose` so the navigator can render a terminal stopped banner. `analyzeInputSchema` moves to a standalone `flow-schema.ts` to break the import cycle between `flow.ts` and `guards.ts`. New `services/ticker-resolver.ts` carries the cross-mode resolution helper. New `guards.spec.ts` covers both guards plus the rescue handler.
+
 ### Round Robin pattern reshape: optional referee, `terminateWhen`, synthesizer-as-terminal (FIX-597)
 
 - `roundRobin()` no longer requires a judge. The `judge` config is removed; a new optional `referee` slot runs after every round as a per-round argument-quality auditor (returns `{ critique }`) and does not control termination. Critiques accumulate in outer state as `refereeCritiques` and the default roster agents render prior critiques into their prompts on subsequent rounds.

@@ -51,6 +51,32 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CtxAny = { session: { state: SessionState }; resources: any };
 
+/**
+ * Shared no-fabrication rule injected into every generator's prompt via the
+ * `core` preset (FIX-605). Expressed once, applied uniformly across all
+ * twelve agents in the pipeline.
+ *
+ * The Phase 1 analyst `SHARED_PREAMBLE` historically carried the only
+ * anti-fabrication language ("from the data provided … not from prior
+ * knowledge"); phases 2–5 had nothing forbidding the model from filling
+ * gaps with its own training knowledge. On a well-known ticker this was
+ * masked because training knowledge happened to agree with the data; on
+ * a bogus ticker the model would invent a plausible company and proceed
+ * confidently. This clause closes that gap.
+ */
+const GROUNDING_CLAUSE = [
+  "<grounding>",
+  "Operate strictly on data provided by upstream agents, tools, and the",
+  "context blocks below. Do not substitute your own training knowledge",
+  "about the company, ticker, sector, or market for missing or empty",
+  "inputs. If upstream data is materially incomplete or empty (analyst",
+  "memos missing, transcripts empty, tool payloads marked `unavailable`",
+  "or all-zero), say so explicitly — surface \"insufficient data to",
+  "assess X\" rather than fabricating to fill the shape. Quoted figures,",
+  "named entities, dates, and events must trace to an upstream artifact.",
+  "</grounding>",
+].join("\n");
+
 function memoState(ctx: CtxAny, collectionKey: string): unknown {
   return ctx.resources.memos?.getOptional(collectionKey)?.state;
 }
@@ -61,13 +87,20 @@ export const tradingDesk = defineCapability({
   presets: {
     default: ["core"],
 
-    /** Required always-on slice: model selection + ticker/date context. */
+    /** Required always-on slice: model selection + ticker/date context +
+     *  shared grounding clause. The grounding clause is injected once here
+     *  so every generator in every phase is bound to upstream-provided data
+     *  only — no per-prompt drift, no phases 2–5 silently substituting the
+     *  model's training knowledge for missing or empty inputs (FIX-605). */
     core: {
-      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,        
-      context: {
-        ticker: (_input, ctx) => ctx.session.state.ticker,
-        date: (_input, ctx) => ctx.session.state.date,
-      },
+      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,
+      context: [
+        {
+          ticker: (_input, ctx) => ctx.session.state.ticker,
+          date: (_input, ctx) => ctx.session.state.date,
+        },
+        GROUNDING_CLAUSE,
+      ],
     },
 
     /** Phase 1 — all four analyst memos (fundamentals, sentiment, news, technical). */
