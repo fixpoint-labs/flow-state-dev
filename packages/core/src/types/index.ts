@@ -72,16 +72,34 @@ export type {
 
 export { validateScheduleConfig, validateSchedulesConfig } from "./schedules";
 
+export type { TTSConfig, VoiceConfig } from "./speech";
+
 export type {
-  SpeechModel,
-  SpeechResolver,
-  SpeechResult,
-  TranscriptionModel,
-  TranscriptionResolver,
-  TranscriptionResult,
-  TTSConfig,
-  VoiceConfig
-} from "./speech";
+  CompositeVoiceProviderConfig,
+  ListVoicesCapable,
+  SpeakCapable,
+  SpeakChunk,
+  SpeakOptions,
+  SpeakResult,
+  SpeakStreamCapable,
+  TranscribeCapable,
+  TranscribeOptions,
+  TranscribeResult,
+  VoiceAbilities,
+  VoiceInfo,
+  VoiceProvider
+} from "./voice-provider";
+
+export {
+  canListVoices,
+  canSpeak,
+  canSpeakStream,
+  canTranscribe,
+  createCompositeVoiceProvider
+} from "./voice-provider";
+
+export type { VoiceErrorArgs, VoiceErrorKind } from "./voice-error";
+export { VoiceError } from "./voice-error";
 export type {
   CachingBreakpointMode,
   CachingConfig,

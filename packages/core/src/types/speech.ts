@@ -1,47 +1,25 @@
 /**
- * Speech-to-text and text-to-speech model abstractions.
- * Follows the same provider-agnostic pattern as GeneratorModel.
+ * Flow-level voice configuration. The provider implementations themselves
+ * live in `voice-provider.ts`; this file only owns the config shape that
+ * flows attach via `defineFlow({ voice })`.
  */
 
-export type SpeechResult = {
-  audio: Uint8Array;
-  mediaType: string;
-};
+import type { VoiceProvider } from "./voice-provider";
 
-export interface SpeechModel {
-  modelId: string;
-  generate(options: {
-    text: string;
-    voice?: string;
-    speed?: number;
-    instructions?: string;
-    outputFormat?: "mp3" | "wav" | "pcm16";
-  }): Promise<SpeechResult>;
-}
-
-export type TranscriptionResult = {
-  text: string;
-  language?: string;
-};
-
-export interface TranscriptionModel {
-  modelId: string;
-  transcribe(options: {
-    audio: Uint8Array | Blob;
-    mediaType?: string;
-    language?: string;
-  }): Promise<TranscriptionResult>;
-}
-
-export type SpeechResolver = (modelId: string) => SpeechModel;
-export type TranscriptionResolver = (modelId: string) => TranscriptionModel;
-
+/** TTS configuration on `VoiceConfig`. */
 export type TTSConfig = {
-  model: string | SpeechModel;
+  /** Speak model id. Provider-specific; if omitted, the provider's default is used. */
+  model?: string;
   voice?: string;
   speed?: number;
 };
 
+/** Voice configuration on a flow. */
 export type VoiceConfig = {
   tts?: TTSConfig;
+  /**
+   * Provider that owns the flow's voice surfaces. Consumed server-side by the
+   * router and TTS pipeline (wired in FIX-528).
+   */
+  provider?: VoiceProvider;
 };
