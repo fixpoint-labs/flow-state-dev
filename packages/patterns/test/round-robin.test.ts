@@ -1,10 +1,10 @@
 /**
  * Round Robin pattern tests — handler-driven, deterministic. Validates
- * roster ordering, multi-round cycling, judge-driven termination,
- * maxRounds cap, prior-contribution context, factory validation, and
- * synthesizer integration.
+ * roster ordering, maxRounds cycling, runtime terminateWhen exit, optional
+ * referee accumulation, referee critiques flowing into subsequent rounds,
+ * factory validation, and synthesizer integration.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -14,31 +14,23 @@ import {
   type RoundRobinFinalShape,
 } from "../src/round-robin";
 
-/** Roster agent that records the size of priorContributions it sees. */
-function makeAgent(name: string, captured?: Array<{ name: string; priors: number }>) {
+/** Roster agent that emits `{ text }` carrying its name. */
+function makeAgent(name: string) {
   return handler({
     name: `agent-${name}`,
     inputSchema: z.any(),
     outputSchema: z.object({ text: z.string() }),
     execute: () => ({ text: `text-from-${name}` }),
-    // The default agent reads the contributions resource — but a custom
-    // override block is allowed to be input-only; we cover the resource
-    // wiring via integration with createRosterAgent in a separate test.
   });
 }
 
-/** Judge that follows a script of `done` flags. */
-function makeJudge(script: boolean[]) {
-  let i = 0;
+/** Referee that returns a fixed critique. */
+function makeReferee(critique = "ok") {
   return handler({
-    name: "judge-script",
+    name: "referee-fixed",
     inputSchema: z.any(),
-    outputSchema: z.object({ done: z.boolean(), summary: z.string() }),
-    execute: () => {
-      const done = i < script.length ? script[i] : true;
-      i++;
-      return { done, summary: `step-${i}` };
-    },
+    outputSchema: z.object({ critique: z.string() }),
+    execute: () => ({ critique }),
   });
 }
 
@@ -51,7 +43,7 @@ describe("round-robin", () => {
         { name: "bob", block: makeAgent("bob") },
         { name: "carol", block: makeAgent("carol") },
       ],
-      judge: makeJudge([true]),
+      maxRounds: 1,
       synthesizer: false,
     });
 
@@ -63,7 +55,7 @@ describe("round-robin", () => {
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
     expect(out.rounds).toBe(1);
-    expect(out.done).toBe(true);
+    expect(out.refereeCritiques).toEqual([]);
     expect(out.contributions.map((c) => c.agentName)).toEqual([
       "alice",
       "bob",
@@ -72,14 +64,14 @@ describe("round-robin", () => {
     expect(out.contributions.every((c) => c.round === 1)).toBe(true);
   });
 
-  it("cycles through multiple rounds until the judge says done", async () => {
+  it("cycles up to maxRounds when no terminateWhen is provided", async () => {
     const pattern = roundRobin({
-      name: "rr-multi",
+      name: "rr-cycle",
       roster: [
         { name: "a", block: makeAgent("a") },
         { name: "b", block: makeAgent("b") },
       ],
-      judge: makeJudge([false, false, true]),
+      maxRounds: 3,
       synthesizer: false,
     });
 
@@ -97,46 +89,176 @@ describe("round-robin", () => {
     ]);
   });
 
-  it("caps cycling at maxRounds when the judge never says done", async () => {
-    const neverDone = handler({
-      name: "judge-never",
-      inputSchema: z.any(),
-      outputSchema: z.object({ done: z.boolean(), summary: z.string() }),
-      execute: () => ({ done: false, summary: "keep going" }),
-    });
-
+  it("terminateWhen returning true exits the loop early", async () => {
     const pattern = roundRobin({
-      name: "rr-cap",
+      name: "rr-terminate",
       roster: [{ name: "solo", block: makeAgent("solo") }],
-      judge: neverDone,
-      maxRounds: 2,
+      maxRounds: 5,
+      // Exit after round 2 completes.
+      terminateWhen: (ctx) => {
+        const state = ctx.sequencer!.state as { round: number };
+        return state.round >= 2;
+      },
       synthesizer: false,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "loop" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "test" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
     expect(out.rounds).toBe(2);
-    expect(out.done).toBe(false);
     expect(out.contributions).toHaveLength(2);
   });
 
-  it("exits after one round when judge returns done immediately", async () => {
+  it("maxRounds caps when terminateWhen never returns true", async () => {
     const pattern = roundRobin({
-      name: "rr-immediate",
+      name: "rr-cap",
       roster: [{ name: "solo", block: makeAgent("solo") }],
-      judge: makeJudge([true]),
-      maxRounds: 5,
+      maxRounds: 2,
+      terminateWhen: () => false,
       synthesizer: false,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "x" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "loop" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
-    expect(out.rounds).toBe(1);
-    expect(out.done).toBe(true);
+    expect(out.rounds).toBe(2);
+    expect(out.contributions).toHaveLength(2);
+  });
+
+  it("omits the referee step when no referee is configured", async () => {
+    const refereeSpy = vi.fn();
+    const pattern = roundRobin({
+      name: "rr-no-referee",
+      roster: [{ name: "a", block: makeAgent("a") }],
+      maxRounds: 2,
+      synthesizer: false,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { goal: "test" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    const out = result.output as RoundRobinFinalShape;
+    expect(out.refereeCritiques).toEqual([]);
+    expect(refereeSpy).not.toHaveBeenCalled();
+  });
+
+  it("referee runs after every round and accumulates critiques in outer state", async () => {
+    const calls: number[] = [];
+    const referee = handler({
+      name: "referee-tracker",
+      inputSchema: z.any(),
+      outputSchema: z.object({ critique: z.string() }),
+      execute: (_input, ctx) => {
+        const state = ctx.sequencer!.state as { round: number };
+        calls.push(state.round);
+        return { critique: `critique-${state.round}` };
+      },
+    });
+
+    const pattern = roundRobin({
+      name: "rr-referee",
+      roster: [{ name: "a", block: makeAgent("a") }],
+      maxRounds: 3,
+      referee,
+      synthesizer: false,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { goal: "test" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    const out = result.output as RoundRobinFinalShape;
+    expect(out.rounds).toBe(3);
+    expect(calls).toEqual([1, 2, 3]);
+    expect(out.refereeCritiques).toEqual([
+      { round: 1, critique: "critique-1" },
+      { round: 2, critique: "critique-2" },
+      { round: 3, critique: "critique-3" },
+    ]);
+  });
+
+  it("default roster agent sees prior referee critiques on subsequent rounds", async () => {
+    // The default roster agent (built when no `block` is supplied) renders
+    // referee critiques into its user prompt. Verify the surface contract
+    // by exposing what the second-round agent would see: a roster agent
+    // that captures the outer state at execute time. The pattern's stash
+    // tap updates `state.refereeCritiques` before the next round's agents
+    // run, so by round 2 the captured snapshot must include round 1's
+    // critique.
+    const seenCritiques: Array<Array<{ round: number; critique: string }>> = [];
+    const observer = handler({
+      name: "observer-agent",
+      inputSchema: z.any(),
+      outputSchema: z.object({ text: z.string() }),
+      execute: (_input, ctx) => {
+        const state = ctx.sequencer!.state as {
+          refereeCritiques: Array<{ round: number; critique: string }>;
+        };
+        seenCritiques.push([...state.refereeCritiques]);
+        return { text: `round-${state.refereeCritiques.length}` };
+      },
+    });
+
+    const pattern = roundRobin({
+      name: "rr-referee-flow",
+      roster: [{ name: "obs", block: observer }],
+      maxRounds: 2,
+      referee: makeReferee("round-critique"),
+      synthesizer: false,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { goal: "test" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    expect(seenCritiques).toHaveLength(2);
+    expect(seenCritiques[0]).toEqual([]);
+    expect(seenCritiques[1]).toEqual([
+      { round: 1, critique: "round-critique" },
+    ]);
+  });
+
+  it("synthesizer receives the accumulated referee critiques", async () => {
+    const synth = handler({
+      name: "synth",
+      inputSchema: z.any(),
+      outputSchema: z.object({ count: z.number() }),
+      execute: (input) => {
+        const data = input as RoundRobinFinalShape;
+        return { count: data.refereeCritiques.length };
+      },
+    });
+
+    const pattern = roundRobin({
+      name: "rr-synth-referee",
+      roster: [{ name: "a", block: makeAgent("a") }],
+      maxRounds: 2,
+      referee: makeReferee(),
+      synthesizer: synth,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({ count: 2 });
   });
 
   it("fails the round when a roster agent throws", async () => {
@@ -155,37 +277,43 @@ describe("round-robin", () => {
         { name: "ok", block: makeAgent("ok") },
         { name: "bad", block: broken },
       ],
-      judge: makeJudge([true]),
+      maxRounds: 1,
       synthesizer: false,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "x" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).not.toBeNull();
   });
 
-  it("integrates with a custom synthesizer", async () => {
+  it("integrates with a custom synthesizer over the final shape", async () => {
     const synth = handler({
       name: "synth",
       inputSchema: z.any(),
       outputSchema: z.object({ verdict: z.string() }),
       execute: (input) => {
         const data = input as RoundRobinFinalShape;
-        return { verdict: `rounds=${data.rounds},done=${data.done}` };
+        return { verdict: `rounds=${data.rounds}` };
       },
     });
 
     const pattern = roundRobin({
       name: "rr-synth",
       roster: [{ name: "a", block: makeAgent("a") }],
-      judge: makeJudge([true]),
+      maxRounds: 1,
       synthesizer: synth,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "x" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).toBeNull();
-    expect(result.output).toEqual({ verdict: "rounds=1,done=true" });
+    expect(result.output).toEqual({ verdict: "rounds=1" });
   });
 
   it("coerces a bare-string roster output to { text }", async () => {
@@ -199,11 +327,14 @@ describe("round-robin", () => {
     const pattern = roundRobin({
       name: "rr-string",
       roster: [{ name: "s", block: stringer }],
-      judge: makeJudge([true]),
+      maxRounds: 1,
       synthesizer: false,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "x" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
@@ -256,62 +387,42 @@ describe("round-robin", () => {
     ).toThrow(/outputSchema/);
   });
 
-  it("uses an externally-provided contributions resource when supplied", async () => {
-    // Two roundRobin() instances sharing one contributions resource. With
-    // this option, both routes can sit behind a router() without the
-    // resource-merge throwing "Resource conflict: contributions".
+  it("supports an externally-provided contributions resource", async () => {
     const sharedContributions = createRoundRobinContributions();
-    const optionA = roundRobin({
-      name: "rr-shared-a",
+    const pattern = roundRobin({
+      name: "rr-shared",
       roster: [{ name: "a", block: makeAgent("a") }],
-      judge: makeJudge([true]),
+      maxRounds: 1,
       synthesizer: false,
       contributions: sharedContributions,
     });
-    const optionB = roundRobin({
-      name: "rr-shared-b",
-      roster: [{ name: "b", block: makeAgent("b") }],
-      judge: makeJudge([true]),
-      synthesizer: false,
-      contributions: sharedContributions,
-    });
-    // Both routes declare the same `contributions` reference; merging the
-    // pattern would have thrown if the references diverged.
-    const resultA = await testBlock(optionA, {
+
+    const result = await testBlock(pattern, {
       input: { goal: "x" },
       session: { resources: { contributions: { entries: [] } } },
     });
-    expect(resultA.error).toBeNull();
-    const finalA = resultA.output as RoundRobinFinalShape;
-    expect(finalA.contributions.map((e) => e.agentName)).toEqual(["a"]);
-
-    // Run optionB against a fresh seed — the shared resource isolates per
-    // request; the init tap inside the pattern clears entries each run.
-    const resultB = await testBlock(optionB, {
-      input: { goal: "y" },
-      session: { resources: { contributions: { entries: [] } } },
-    });
-    expect(resultB.error).toBeNull();
-    const finalB = resultB.output as RoundRobinFinalShape;
-    expect(finalB.contributions.map((e) => e.agentName)).toEqual(["b"]);
+    expect(result.error).toBeNull();
+    const out = result.output as RoundRobinFinalShape;
+    expect(out.contributions.map((e) => e.agentName)).toEqual(["a"]);
   });
 
-  it("emits one task-change per (round, agent) turn", async () => {
+  it("emits task-change items for each (round, agent) turn", async () => {
     const pattern = roundRobin({
       name: "rr-tasks",
       roster: [
         { name: "a", block: makeAgent("a") },
         { name: "b", block: makeAgent("b") },
       ],
-      judge: makeJudge([false, true]),
+      maxRounds: 2,
       synthesizer: false,
     });
 
-    const result = await testBlock(pattern, { input: { goal: "x" }, session: { resources: { contributions: { entries: [] } } } });
+    const result = await testBlock(pattern, {
+      input: { goal: "x" },
+      session: { resources: { contributions: { entries: [] } } },
+    });
 
     expect(result.error).toBeNull();
-    // Each turn adds one task — added → claimed → completed (3 events).
-    // Just sanity-check that we see task-change items at all.
     const taskChanges = result.items.filter(
       (item) => item.type === "component" && (item as any).component === "task-change",
     );

@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-16
+
+### Round Robin pattern reshape: optional referee, `terminateWhen`, synthesizer-as-terminal (FIX-597)
+
+- `roundRobin()` no longer requires a judge. The `judge` config is removed; a new optional `referee` slot runs after every round as a per-round argument-quality auditor (returns `{ critique }`) and does not control termination. Critiques accumulate in outer state as `refereeCritiques` and the default roster agents render prior critiques into their prompts on subsequent rounds.
+- New `terminateWhen?: (ctx) => boolean` config drives runtime early-exit; `maxRounds` stays as the hard cap. The synthesizer remains the standard terminal step (`synthesizer: false` opt-out unchanged).
+- `RoundRobinFinalShape` drops `done` and `summary`; adds `refereeCritiques: Array<{ round, critique }>`. The `lastJudgeSummary` field is removed from outer state. Schema/factory renames: `roundRobinJudgeOutputSchema` → `roundRobinRefereeOutputSchema`, `createJudge` → `createReferee` (re-exported as `createRoundRobinReferee`).
+- Trading-desk Phase 2 collapses from four pre-built `roundRobin()` instances plus a router to one instance with `terminateWhen` driving `maxDebateRounds` and `uses: [tradingDesk]` resolving the model from `costPreset`. Phase 4 drops `judge: stubJudge` and otherwise keeps its three custom roster sub-sequencers. The `stub-judge.ts` workaround and its test are deleted.
+- Docs reshape: `apps/docs/docs/patterns/round-robin.md` rewritten around referee + termination + synthesizer-as-terminal; trading-desk walkthrough Phase 2 and Phase 4 prose updated; package README, example CLAUDE.md, and internal design doc reflect the new shape. The remix-primitives docs surface and a future moderator pattern are explicitly deferred.
+
 ## 2026-05-15
 
 ### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)

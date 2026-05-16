@@ -2,8 +2,9 @@
  * `phase2Pipeline` — the Phase 2 sub-sequencer.
  *
  * Runs after Phase 1: pre-creates three p2 memos in `pending`, derives the
- * debate goal from session state, routes to one of four pre-built
- * `roundRobin()` instances by `(maxDebateRounds, costPreset)`, then writes
+ * debate goal from session state, runs the bull/bear `roundRobin()` (one
+ * instance with `terminateWhen` driving rounds from session state and
+ * `uses: [tradingDesk]` resolving the model from `costPreset`), then writes
  * bull, bear, and research-manager memos in sequence — each wrapped in its
  * own sub-sequencer with a per-step rescue. Mirrors Phase 1's
  * `defineAnalyst` idiom: if one generator throws, only that memo flips to
@@ -15,8 +16,8 @@
  * rescue surfaces the failing memo's identity directly and keeps the
  * pipeline producing whatever artifacts it still can.
  *
- * All four roundRobin instances share `phase2Contributions` (registered on
- * the flow's resources map). The three post-loop consolidation generators
+ * The round-robin shares `phase2Contributions` (registered on the flow's
+ * resources map) with the three post-loop consolidation generators, which
  * read the running transcript via `ctx.resources` rather than threading it
  * through the sub-sequencer's state.
  */
@@ -28,7 +29,7 @@ import {
 } from "./generators";
 import {
   deriveDebateGoal,
-  phase2RoundRobinRouter,
+  phase2RoundRobin,
 } from "./round-robin";
 import { setupPhase2Memos } from "./setup";
 import {
@@ -67,7 +68,7 @@ export const phase2Pipeline = sequencer({
 })
   .tap(setupPhase2Memos)
   .then(deriveDebateGoal)
-  .then(phase2RoundRobinRouter)
+  .then(phase2RoundRobin)
   .then(bullStep)
   .then(bearStep)
   .then(researchManagerStep);

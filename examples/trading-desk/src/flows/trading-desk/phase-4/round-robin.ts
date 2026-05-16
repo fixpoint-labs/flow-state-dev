@@ -9,8 +9,8 @@
  * so a single persona's failure flips only that memo to `error` and the
  * remaining personas still run.
  *
- * `maxRounds: 1`, `synthesizer: false`, `judge: stubJudge` — single pass.
- * The downstream `riskAssessmentGenerator` runs as its own step in
+ * `maxRounds: 1`, `synthesizer: false`, no referee — single pass. The
+ * downstream `riskAssessmentGenerator` runs as its own step in
  * `phase4Pipeline`, not as the pattern's synthesizer.
  *
  * `phase4Contributions` is created here and registered on the flow's
@@ -24,7 +24,6 @@ import {
 } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
 import { sessionStateSchema } from "../state";
-import { stubJudge } from "../phase-2/stub-judge";
 import { phase4Contributions } from "./contributions";
 import {
   aggressiveRiskGenerator,
@@ -116,12 +115,11 @@ export const phase4RoundRobin = roundRobin({
     { name: "neutralRisk", block: neutralStep },
   ],
   maxRounds: 1,
-  judge: stubJudge,
   synthesizer: false,
   contributions: phase4Contributions,
   collectionId: "p4-debate",
-  // Distinct accessor key so phase 2's round-robin (which uses the default
-  // `"contributions"`) and phase 4's round-robin can coexist in the same
+  // Distinct accessor key so phase 2's round-robin (which uses
+  // `"p2Contributions"`) and phase 4's round-robin can coexist in the same
   // sequencer chain without a build-time resource-merge conflict.
   accessorKey: "p4Contributions",
   instructions: ROUND_ROBIN_INSTRUCTIONS,
