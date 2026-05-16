@@ -705,6 +705,15 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
+  // Status-slot guard for the generator/tool relationship: snapshot the
+  // slot when the first tool in a (possibly parallel) round starts;
+  // restore it when the last one completes. Tools compete on the slot
+  // while they are running, so the latest emit wins as before. The
+  // restore avoids a finished tool's `activeStatusMessage` lingering as
+  // a stale "still running" indicator after the tool itself has
+  // returned. Refcount lives in this closure so it is shared across all
+  // compiled tools for one generator run.
+  const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
@@ -732,13 +741,29 @@ function compileToolsWithExecute(
       // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
       // result is stored once and surfaced in two places.
       const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
+        if (statusGuard.active === 0) {
+          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
+        }
+        statusGuard.active++;
+        try {
+          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          return output;
+        } finally {
+          statusGuard.active--;
+          if (statusGuard.active === 0) {
+            // Restore the slot to whatever the generator (or its parent
+            // chain) had set before the tool round began. If nothing was
+            // set, this clears to "" and the client falls back to
+            // "Working...". Dedupe in `emitStatus` makes restoring an
+            // unchanged value a no-op.
+            scopedCtx.emit?.status?.(statusGuard.saved);
+          }
+        }
       };
 
       // `_withExecutionScope` is the durable-runtime hook that disambiguates
