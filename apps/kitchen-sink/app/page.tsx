@@ -105,7 +105,7 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("ask");
-  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
