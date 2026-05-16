@@ -3,24 +3,24 @@ import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
 import {
   workingMemoryStateSchema,
-} from '../../src/memory/working-memory.js'
-import type { WorkingMemoryState } from '../../src/memory/working-memory.js'
+} from '../src/working-memory.js'
+import type { WorkingMemoryState } from '../src/working-memory.js'
 import {
   episodicMemoryStateSchema,
   createEpisodicMemoryResource as createEpisodicMemoryResourceFn,
-} from '../../src/memory/episodic-memory.js'
-import type { EpisodicMemoryState, Episode } from '../../src/memory/episodic-memory.js'
+} from '../src/episodic-memory.js'
+import type { EpisodicMemoryState, Episode } from '../src/episodic-memory.js'
 import {
   semanticMemoryStateSchema,
   createSemanticMemoryResource as createSemanticMemoryResourceFn,
-} from '../../src/memory/semantic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../src/memory/semantic-memory.js'
+} from '../src/semantic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../src/semantic-memory.js'
 import {
   memorySystemStateSchema,
   memorySystemResource,
   system,
-} from '../../src/memory/memory-system.js'
-import type { MemorySystemState } from '../../src/memory/memory-system.js'
+} from '../src/memory-system.js'
+import type { MemorySystemState } from '../src/memory-system.js'
 import {
   memorySystemObserve,
   memorySystemReflect,
@@ -33,8 +33,8 @@ import {
   pruneGenerate,
   prunePersist,
   memorySystemPrune,
-} from '../../src/memory/memory-system-blocks.js'
-import type { ConsolidationOutput, PruneOutput } from '../../src/memory/memory-system-blocks.js'
+} from '../src/memory-system-blocks.js'
+import type { ConsolidationOutput, PruneOutput } from '../src/memory-system-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -312,7 +312,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemObserve(baseConfig)
-        expect(block.name).toBe('tf.memory/observe')
+        expect(block.name).toBe('memory/observe')
       })
 
       it('accepts custom name prefix', () => {
@@ -351,7 +351,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemReflect(baseConfig)
-        expect(block.name).toBe('tf.memory/reflect')
+        expect(block.name).toBe('memory/reflect')
       })
 
       it('declares session resources', () => {
@@ -369,7 +369,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemTick(baseConfig)
-        expect(block.name).toBe('tf.memory/tick')
+        expect(block.name).toBe('memory/tick')
       })
 
       it('declares session resources', () => {
@@ -387,7 +387,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemCapture(baseConfig)
-        expect(block.name).toBe('tf.memory/capture')
+        expect(block.name).toBe('memory/capture')
       })
 
       it('accepts custom name', () => {
@@ -1049,7 +1049,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = consolidationGuard(semanticConfig)
-        expect(block.name).toBe('tf.memory/consolidate/guard')
+        expect(block.name).toBe('memory/consolidate/guard')
       })
     })
 
@@ -1061,7 +1061,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = consolidationPersist(semanticConfig)
-        expect(block.name).toBe('tf.memory/consolidate/persist')
+        expect(block.name).toBe('memory/consolidate/persist')
       })
     })
 
@@ -1073,7 +1073,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemConsolidate(semanticConfig)
-        expect(block.name).toBe('tf.memory/consolidate')
+        expect(block.name).toBe('memory/consolidate')
       })
     })
 
@@ -1802,7 +1802,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = pruneGuard(semanticConfig)
-        expect(block.name).toBe('tf.memory/prune/guard')
+        expect(block.name).toBe('memory/prune/guard')
       })
 
       it('declares semantic resource on user scope', () => {
@@ -1819,7 +1819,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = pruneGenerate(semanticConfig)
-        expect(block.name).toBe('tf.memory/prune/generate')
+        expect(block.name).toBe('memory/prune/generate')
       })
     })
 
@@ -1831,7 +1831,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = prunePersist(semanticConfig)
-        expect(block.name).toBe('tf.memory/prune/persist')
+        expect(block.name).toBe('memory/prune/persist')
       })
 
       it('declares semantic resource on user scope', () => {
@@ -1848,7 +1848,7 @@ describe('memory/memorySystem', () => {
 
       it('has correct default name', () => {
         const block = memorySystemPrune(semanticConfig)
-        expect(block.name).toBe('tf.memory/prune')
+        expect(block.name).toBe('memory/prune')
       })
     })
   })

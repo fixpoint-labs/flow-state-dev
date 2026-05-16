@@ -14,17 +14,17 @@ import type { ResourceHandle } from '@flow-state-dev/core'
 import {
   workingMemoryStateSchema,
   type WorkingMemoryState,
-} from '../../../src/memory/working-memory.js'
+} from '../../src/working-memory.js'
 import {
   episodicMemoryStateSchema,
   type EpisodicMemoryState,
   type Episode,
-} from '../../../src/memory/episodic-memory.js'
+} from '../../src/episodic-memory.js'
 import {
   semanticMemoryStateSchema,
   type SemanticMemoryState,
   type SemanticFact,
-} from '../../../src/memory/semantic-memory.js'
+} from '../../src/semantic-memory.js'
 import {
   createRecallTool,
   formatRecallSummary,
@@ -45,7 +45,7 @@ import {
   type PrepareEnvelope,
   type PrepareInput,
   type RetrievalStrategy,
-} from '../../../src/memory/tools/index.js'
+} from '../../src/tools/index.js'
 
 // ---------------------------------------------------------------------------
 // Mock resource handles
@@ -288,7 +288,7 @@ describe('tools/recall — tool surface', () => {
     const { strategy } = makeStubStrategy()
     const tool = createRecallTool({ strategy })
     expect(tool).toBeDefined()
-    expect(tool.name).toBe('tf.memory/recall')
+    expect(tool.name).toBe('memory/recall')
     expect(tool.kind).toBe('sequencer')
     const description = (tool as any).description ?? recallToolDescription
     expect(typeof description).toBe('string')

@@ -9,25 +9,25 @@ import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
 import {
   workingMemoryStateSchema,
-} from '../../src/memory/working-memory.js'
+} from '../src/working-memory.js'
 import type {
   WorkingMemoryState,
   WorkingMemoryEntry,
-} from '../../src/memory/working-memory.js'
+} from '../src/working-memory.js'
 import {
   digestMemoryStateSchema,
   type DigestMemoryState,
   type Digest,
-} from '../../src/memory/digest-memory.js'
+} from '../src/digest-memory.js'
 import {
   semanticMemoryStateSchema,
-} from '../../src/memory/semantic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../src/memory/semantic-memory.js'
+} from '../src/semantic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../src/semantic-memory.js'
 import {
   episodicMemoryStateSchema,
-} from '../../src/memory/episodic-memory.js'
-import type { EpisodicMemoryState, Episode } from '../../src/memory/episodic-memory.js'
-import { system } from '../../src/memory/memory-system.js'
+} from '../src/episodic-memory.js'
+import type { EpisodicMemoryState, Episode } from '../src/episodic-memory.js'
+import { system } from '../src/memory-system.js'
 
 // ---------------------------------------------------------------------------
 // Mock resource helpers
@@ -429,7 +429,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
 describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   it('with no options, defaults to { digest, working } — same as the legacy formatter', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const wmRef = createMockWmRef({
       entries: [makeEntry({ id: 'e1', content: 'Active focus', salience: 0.9 })],
     })
@@ -452,7 +452,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('opts into the semantic section with `semantic: true` and renders top-N facts', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const semRef = createMockSemRef({
       facts: [
         makeFact({ id: 'sf_1', content: 'Works at Stripe', category: 'profession' }),
@@ -480,7 +480,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('honours the `topN` knob on the semantic section', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const semRef = createMockSemRef({
       facts: [
         makeFact({ id: 'sf_1', content: 'fact one', reinforcementCount: 5 }),
@@ -507,7 +507,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('opts into the episodic section with `episodic: true` and renders most-recent episodes', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const epRef = createMockEpRef({
       episodes: [
         makeEpisode({ id: 'ep1', content: 'first event', occurredAtTurn: 1 }),
@@ -533,7 +533,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('honours the `limit` knob on the episodic section', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const epRef = createMockEpRef({
       episodes: [
         makeEpisode({ id: 'ep1', content: 'older event', occurredAtTurn: 1 }),
@@ -560,7 +560,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('returns undefined when every enabled section is empty', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const formatter = createMemoryContextFormatter({
       digest: true,
       working: true,
@@ -580,7 +580,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('skips a section gracefully when its resource is absent from the registry', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const wmRef = createMockWmRef({
       entries: [makeEntry({ id: 'e1', content: 'present' })],
     })
@@ -600,7 +600,7 @@ describe('memory/createMemoryContextFormatter (configurable factory)', () => {
   })
 
   it('combines all four sections when every option is enabled and populated', async () => {
-    const { createMemoryContextFormatter } = await import('../../src/memory/formatter.js')
+    const { createMemoryContextFormatter } = await import('../src/formatter.js')
     const wmRef = createMockWmRef({
       entries: [makeEntry({ id: 'e1', content: 'wm-entry' })],
     })

@@ -11,6 +11,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - `RequestGroupRenderer` and `RequestGroup` gain an optional `isFinishing` prop (defaults to `false`); host apps thread `useSession.isFinishing` through to drive the drain-state rendering. Downstream consumers that do not yet thread the signal continue to render as today.
 - Generator/tool status restore: a tool's status no longer lingers past its own execution. The generator snapshots the slot on the first tool entry of a (possibly parallel) round and restores it when the last tool exits, falling back to the generator's own `activeStatusMessage` (or empty → "Working...") afterward.
 
+### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)
+
+- New `@flow-state-dev/memory` package. The full memory system (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) previously hosted in `@thought-fabric/core/memory` now ships from a dedicated package. Apps that needed Thought Fabric only for memory can drop the `@thought-fabric/core` dependency entirely.
+- Memory is a separate install — it is not bundled with `@flow-state-dev/core`. Add `@flow-state-dev/memory` to your dependencies alongside core when an agent needs cross-turn persistence.
+- `@thought-fabric/core/memory` is removed. The `memory` namespace no longer ships from Thought Fabric; the subpath export and re-export shim are deleted. Until Thought Fabric ships its own cognitive memory variants on top of the shared contract, it doesn't address memory at all.
+- New minimum read-side contract `MemoryProvider` (with `MemoryContextSections`, `RankedMemoryItem`) lives next to the implementation. The `MemorySystem` returned by `system()` declares it implements `MemoryProvider`, and exposes `formatContext` as an alias of `contextFormatter` so consumers depending on the contract can call it under the contract-shaped name. `contextFormatter` is preserved.
+- Block names no longer carry the `tf.` prefix. The recall tool is now `memory/recall` (sanitized for the agent as `memory_recall`); `tf.memory/observe`, `tf.memory/consolidate/*`, `tf.memory/prune/*`, `tf.memory/digest/*` all become `memory/...`.
+- Kitchen-sink `chat-agent` and `rich-text-component` flows updated to import from `@flow-state-dev/memory`. Thought Fabric continues to host attention, identity, and metacognition.
+- New Ecosystem → Memory category in the docs site (overview, configuration, recall tool), with explicit install instructions. The Thought Fabric README and sub-site lose their memory pages and gain a short pointer to the new home.
+- The full memory consumption contract (event-shaped writes, multi-provider composition, snapshot semantics) is intentionally deferred to a follow-up.
+
 ### Bash tool: tolerate `./`-prefixed paths in `bashWriteFile`
 
 - `routeWrittenFile` strips a leading `./` before matching mount prefixes. The model regularly supplies `./artifacts/foo.md` even though the schema says workspace-relative; previously these landed on disk but were silently dropped from the collection sync. Now they route correctly.

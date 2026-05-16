@@ -1,6 +1,6 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { DecayStrategy, WorkingMemoryEntry, WorkingMemoryState } from './working-memory.js'
-import { shortId } from '../helpers.js'
+import { shortId } from './internal/helpers.js'
 
 /** Decay configuration for working memory salience computation. */
 export interface WorkingMemoryDecayConfig {

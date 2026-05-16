@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
-import { workingMemoryStateSchema } from '../../src/memory/working-memory.js'
-import type { WorkingMemoryState } from '../../src/memory/working-memory.js'
-import { episodicMemoryStateSchema } from '../../src/memory/episodic-memory.js'
-import type { EpisodicMemoryState } from '../../src/memory/episodic-memory.js'
-import { semanticMemoryStateSchema } from '../../src/memory/semantic-memory.js'
-import type { SemanticMemoryState } from '../../src/memory/semantic-memory.js'
+import { workingMemoryStateSchema } from '../src/working-memory.js'
+import type { WorkingMemoryState } from '../src/working-memory.js'
+import { episodicMemoryStateSchema } from '../src/episodic-memory.js'
+import type { EpisodicMemoryState } from '../src/episodic-memory.js'
+import { semanticMemoryStateSchema } from '../src/semantic-memory.js'
+import type { SemanticMemoryState } from '../src/semantic-memory.js'
 import {
   createWorkingMemoryCapability,
   workingMemoryCapability,
@@ -13,8 +13,8 @@ import {
   episodicMemoryCapability,
   createSemanticMemoryCapability,
   semanticMemoryCapability,
-} from '../../src/memory/capabilities.js'
-import { system } from '../../src/memory/memory-system.js'
+} from '../src/capabilities.js'
+import { system } from '../src/memory-system.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers — mock resource refs that simulate the runtime context
