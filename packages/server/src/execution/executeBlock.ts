@@ -214,6 +214,12 @@ export async function executeBlock(
       // Expose attempt counter on ctx so handlers (e.g. FIX-402 runOnce) can
       // read it without reaching into `_blockIdentity`.
       (options.ctx as { attempt?: number }).attempt = attempt;
+      // FIX-402: stable idempotency key for this logical block step. Derived
+      // from `(requestId, blockPath)` only — intentionally excludes attempt
+      // so retries of the same step observe the same key (the cross-attempt
+      // stability test in idempotency-runonce.test.ts depends on this).
+      (options.ctx as { idempotencyKey?: string }).idempotencyKey =
+        `${requestId}:${blockPath}`;
 
       logRuntimeEvent(
         logger,
@@ -309,6 +315,10 @@ export async function executeBlock(
             // Mirror the attempt counter onto the scoped context so
             // handler code reading `ctx.attempt` sees the current retry.
             (scopedCtx as { attempt?: number }).attempt = attempt;
+            // FIX-402: mirror the idempotency key onto the scoped context.
+            // Stable across retries (no attempt component).
+            (scopedCtx as { idempotencyKey?: string }).idempotencyKey =
+              `${requestId}:${blockPath}`;
             const childIdentity = (scopedCtx as { _blockIdentity?: { attempt?: number } })
               ._blockIdentity;
             if (childIdentity !== undefined) {

@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-16
+
+### Idempotency primitives on handler context (FIX-402)
+
+- `BlockContext` now exposes `idempotencyKey` and `runOnce(key, fn)`. The key is a stable string of the form `${requestId}:${blockPath}` — identical across retry attempts of the same logical step, so it can be passed directly to providers that accept an idempotency header (Stripe, Twilio, etc.).
+- `runOnce(key, fn)` memoizes the result of `fn` per `(requestId, userKey)`. The first invocation runs `fn` and persists the result through the `RequestStore`; subsequent calls within the same request — block retries, concurrent same-key races, or any re-entry — return the stored value without re-running the side effect. Concurrent calls with the same key share a single inflight promise so the wrapped work cannot fire twice in a race.
+- `RequestStore` gains `getRunOnceResult` / `setRunOnceResult`. Memory, filesystem, SQLite, and Postgres adapters all carry the table; SQLite and Postgres add a `request_runonce(request_id, key, value)` table to their schemas.
+- Scope is request-local on purpose. Crash-recovery dispatches that mint a new `requestId` start with an empty `runOnce` namespace — for cross-request de-dup, hand `ctx.idempotencyKey` to the external provider instead. The boundary is documented in the new `advanced/idempotency` docs page.
+
 ## 2026-05-14
 
 ### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)

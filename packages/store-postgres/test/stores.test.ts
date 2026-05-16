@@ -625,6 +625,42 @@ describe("PostgreSQL store adapter", () => {
     });
   });
 
+  // --- runOnce result store (FIX-402) ---
+
+  describe("runOnce result store", () => {
+    it("returns { found: false } before any write", async () => {
+      const s = await freshStores();
+      const got = await s.request.getRunOnceResult("req1", "stripe-charge");
+      expect(got).toEqual({ found: false });
+    });
+
+    it("set then get round-trips JSON-serializable values", async () => {
+      const s = await freshStores();
+      const value = { id: "ch_123", amount: 4200, livemode: false };
+      await s.request.setRunOnceResult("req1", "stripe-charge", value);
+      const got = await s.request.getRunOnceResult("req1", "stripe-charge");
+      expect(got).toEqual({ found: true, value });
+    });
+
+    it("upsert overwrites — later writes win on the same (requestId, key)", async () => {
+      const s = await freshStores();
+      await s.request.setRunOnceResult("req1", "k", 1);
+      await s.request.setRunOnceResult("req1", "k", 2);
+      const got = await s.request.getRunOnceResult("req1", "k");
+      expect(got.value).toBe(2);
+    });
+
+    it("keys are scoped per request", async () => {
+      const s = await freshStores();
+      await s.request.setRunOnceResult("req1", "k", "A");
+      await s.request.setRunOnceResult("req2", "k", "B");
+      const r1 = await s.request.getRunOnceResult("req1", "k");
+      const r2 = await s.request.getRunOnceResult("req2", "k");
+      expect(r1.value).toBe("A");
+      expect(r2.value).toBe("B");
+    });
+  });
+
   // --- Sequencer checkpoint store (FIX-401) ---
 
   describe("checkpoint store", () => {

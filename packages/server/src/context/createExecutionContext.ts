@@ -2953,6 +2953,40 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
+  // with the same key share a single fn() invocation. Sits in front of the
+  // RequestStore so the wrapped side effect cannot fire twice in a race
+  // (the store is the durable backstop across retries).
+  const runOnceInflight = new Map<string, Promise<unknown>>();
+  const runOnce = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (typeof key !== "string" || key.length === 0) {
+      return Promise.reject(
+        new Error("ctx.runOnce(key, fn): `key` must be a non-empty string")
+      );
+    }
+    // Claim the inflight slot synchronously before awaiting the store —
+    // otherwise concurrent calls with the same key all see an empty
+    // inflight map and each spawn their own fn() invocation.
+    const existing = runOnceInflight.get(key);
+    if (existing !== undefined) return existing as Promise<T>;
+
+    const requestId = requestRef.current.id;
+    const promise = (async (): Promise<T> => {
+      // Durable lookup first: a prior block-level retry within the same
+      // request may have persisted the result already.
+      const stored = await stores.request.getRunOnceResult(requestId, key);
+      if (stored.found) return stored.value as T;
+      const value = await fn();
+      await stores.request.setRunOnceResult(requestId, key, value);
+      return value;
+    })();
+    runOnceInflight.set(key, promise as Promise<unknown>);
+    promise.finally(() => {
+      runOnceInflight.delete(key);
+    });
+    return promise;
+  };
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -3139,6 +3173,12 @@ export async function createExecutionContext<
       emit: undefined as unknown as BlockContext["emit"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
+      // FIX-402: idempotency primitives. `idempotencyKey` is populated per
+      // block by executeBlock (it depends on the current blockPath, which is
+      // only known at execution time); `runOnce` closes over the request's
+      // store ref so it works across every scoped child context.
+      idempotencyKey: undefined,
+      runOnce,
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
