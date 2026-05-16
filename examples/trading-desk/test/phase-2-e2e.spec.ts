@@ -125,8 +125,7 @@ function rmStructuredOutput() {
 /**
  * Build the standard generator-mock map. The Phase 2 round-robin agents are
  * `sub`-typed roster generators created by `roundRobin({...})` with names
- * `${instanceName}-roster-${agentName}`. Cheap preset (`fast`,
- * `maxDebateRounds: 1`) selects the `1r-fast` instance.
+ * `${instanceName}-roster-${agentName}`.
  */
 function makeAnalystAndRosterMocks() {
   return {
@@ -149,12 +148,12 @@ function makeAnalystAndRosterMocks() {
     // Roster agents stream plain text now (no structured outputSchema) so
     // they emit `message` items visible in the transcript. Mock text matches
     // that shape; record-contribution coerces strings via `coerceText`.
-    "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bullResearcher",
+    "p2-research-debate-roster-bullResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bullResearcher",
       script: [{ text: "Bull round 1 contribution." }],
     }),
-    "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bearResearcher",
+    "p2-research-debate-roster-bearResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
     }),
   };
