@@ -19,7 +19,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-import { CronExpressionParser } from "cron-parser";
+import { parseNextFireAt } from "./parseNextFireAt";
 import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
 
 /**
@@ -122,26 +122,19 @@ function rowFromState(
   key: string,
   state: ScheduleCollectionState
 ): ScheduleIndexRow | null {
-  try {
-    const next = CronExpressionParser.parse(state.cron, {
-      tz: state.timezone
-    })
-      .next()
-      .toDate()
-      .getTime();
-    return {
-      userId,
-      key,
-      cron: state.cron,
-      timezone: state.timezone,
-      nextFireAt: next
-    };
-  } catch (err) {
+  const nextFireAt = parseNextFireAt(state.cron, state.timezone);
+  if (nextFireAt === null) {
     // eslint-disable-next-line no-console
     console.warn(
       `[flow-state/scheduled] defineScheduleCollection: failed to parse cron "${state.cron}" for ${userId}/${key} — index row not mirrored`,
-      err
     );
     return null;
   }
+  return {
+    userId,
+    key,
+    cron: state.cron,
+    timezone: state.timezone,
+    nextFireAt,
+  };
 }

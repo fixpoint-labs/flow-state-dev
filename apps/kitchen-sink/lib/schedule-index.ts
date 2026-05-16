@@ -7,15 +7,20 @@
  * `defineScheduleCollection`). Both sides import from here; neither
  * imports the other for this binding.
  *
- * The proxy is no-op until `setScheduleIndexImpl` is called from
- * `createStores()` once the pool exists. Before that, mutations match
- * `defineScheduleCollection`'s documented "no index → no row mirrored"
- * semantics.
+ * Starts as a no-op `ScheduleIndex` so callers can invoke methods
+ * before `createStores()` runs without null-checks. `setScheduleIndexImpl`
+ * swaps in the real implementation once the pool exists. The no-op
+ * default matches `defineScheduleCollection`'s documented "no index →
+ * no row mirrored" semantics.
  */
 
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
 
-let impl: ScheduleIndex | null = null;
+let impl: ScheduleIndex = {
+  async upsert() {},
+  async claimDue() { return []; },
+  async remove() {},
+};
 
 /** Install the backing implementation. Called once by `createStores()`. */
 export function setScheduleIndexImpl(next: ScheduleIndex): void {
@@ -24,18 +29,10 @@ export function setScheduleIndexImpl(next: ScheduleIndex): void {
 
 /**
  * Stable proxy whose methods delegate to the installed implementation.
- * Safe to import from anywhere at module-init time; calls before the
- * impl is installed are no-ops.
+ * Safe to import from anywhere at module-init time.
  */
 export const scheduleIndex: ScheduleIndex = {
-  async upsert(row: ScheduleIndexRow) {
-    if (impl) return impl.upsert(row);
-  },
-  async claimDue(now: number, limit?: number) {
-    if (!impl) return [];
-    return impl.claimDue(now, limit);
-  },
-  async remove(userId: string, key: string) {
-    if (impl) return impl.remove(userId, key);
-  },
+  upsert: (row: ScheduleIndexRow) => impl.upsert(row),
+  claimDue: (now: number, limit?: number) => impl.claimDue(now, limit),
+  remove: (userId: string, key: string) => impl.remove(userId, key),
 };

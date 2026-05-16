@@ -13,26 +13,23 @@
  * operator to find and fix the row.
  */
 
+/** One-shot bad-cron warn function returned by `createBadCronWarner`. */
+export type BadCronWarner = (userId: string, key: string, cron: string) => void;
+
 /**
  * Build a one-shot bad-cron warn function for a `ScheduleIndex` impl.
  * `prefix` is prepended to the log line so the source store is obvious
  * (e.g. `"[flow-state/store-postgres]"`).
  */
-export function createBadCronWarner(prefix: string): (
-  userId: string,
-  key: string,
-  cron: string,
-  err: unknown
-) => void {
+export function createBadCronWarner(prefix: string): BadCronWarner {
   const warned = new Set<string>();
-  return function warnBadCron(userId, key, cron, err) {
+  return function warnBadCron(userId, key, cron) {
     const k = `${userId}/${key}`;
     if (warned.has(k)) return;
     warned.add(k);
     // eslint-disable-next-line no-console
     console.warn(
       `${prefix} schedule_index row ${k} has unparseable cron "${cron}"; skipping advance`,
-      err
     );
   };
 }

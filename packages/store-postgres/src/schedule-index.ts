@@ -11,9 +11,9 @@
  * single-connection backends like PGlite).
  */
 
-import { CronExpressionParser } from "cron-parser";
 import {
   createBadCronWarner,
+  parseNextFireAt,
   type ScheduleIndex,
   type ScheduleIndexRow
 } from "@flow-state-dev/scheduled";
@@ -73,14 +73,9 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
           const timezone = (row.timezone as string | null) ?? undefined;
           const fired = Number(row.next_fire_at);
 
-          let next: number;
-          try {
-            next = CronExpressionParser.parse(cron, { tz: timezone })
-              .next()
-              .toDate()
-              .getTime();
-          } catch (err) {
-            warnBadCron(userId, key, cron, err);
+          const next = parseNextFireAt(cron, timezone);
+          if (next === null) {
+            warnBadCron(userId, key, cron);
             continue;
           }
 

@@ -14,9 +14,9 @@
  */
 
 import type Database from "better-sqlite3";
-import { CronExpressionParser } from "cron-parser";
 import {
   createBadCronWarner,
+  parseNextFireAt,
   type ScheduleIndex,
   type ScheduleIndexRow
 } from "@flow-state-dev/scheduled";
@@ -70,14 +70,9 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
     const claimed: ScheduleIndexRow[] = [];
     for (const row of rows) {
       const timezone = row.timezone ?? undefined;
-      let next: number;
-      try {
-        next = CronExpressionParser.parse(row.cron, { tz: timezone })
-          .next()
-          .toDate()
-          .getTime();
-      } catch (err) {
-        warnBadCron(row.user_id, row.key, row.cron, err);
+      const next = parseNextFireAt(row.cron, timezone);
+      if (next === null) {
+        warnBadCron(row.user_id, row.key, row.cron);
         continue;
       }
       claimed.push({

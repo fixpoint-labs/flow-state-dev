@@ -51,4 +51,6 @@ export {
   type ScheduleCollectionState
 } from "./defineScheduleCollection";
 
-export { createBadCronWarner } from "./createBadCronWarner";
+export { createBadCronWarner, type BadCronWarner } from "./createBadCronWarner";
+
+export { parseNextFireAt } from "./parseNextFireAt";

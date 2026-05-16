@@ -50,7 +50,7 @@ export function createGetToPostCronShim(
     if (!authorize(req, secret)) return unauthorized();
 
     const base = resolveBaseUrl(opts.baseUrl);
-    if (base === null) return serverConfigError("baseUrl");
+    if (base === null) return new Response("Server misconfigured: missing baseUrl", { status: 500 });
 
     const url = `${trimTrailingSlash(base)}/api/flows/${encodeURIComponent(opts.flowKind)}/schedules/${encodeURIComponent(opts.scheduleId)}/dispatch`;
     const res = await fetch(url, {
@@ -112,7 +112,7 @@ export function createScheduleTickHandler(
     if (!authorize(req, secret)) return unauthorized();
 
     const base = resolveBaseUrl(opts.baseUrl);
-    if (base === null) return serverConfigError("baseUrl");
+    if (base === null) return new Response("Server misconfigured: missing baseUrl", { status: 500 });
 
     let due: ScheduleIndexRow[];
     try {
@@ -175,10 +175,6 @@ function trimTrailingSlash(url: string): string {
 
 function unauthorized(): Response {
   return new Response("Unauthorized", { status: 401 });
-}
-
-function serverConfigError(field: string): Response {
-  return new Response(`Server misconfigured: missing ${field}`, { status: 500 });
 }
 
 /**
