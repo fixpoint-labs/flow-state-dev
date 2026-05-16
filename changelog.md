@@ -9,7 +9,7 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Default fallback verb changed from "Thinking..." to "Working..." so it no longer duplicates the reasoning chrome's header text.
 - The in-flight indicator now switches to a muted "Tidying up..." state while a request is in its background-task drain phase. After FIX-554 lifted `.work()` to a request-level pool the SSE stream stays open past the visible end of the main response; the indicator was previously suggesting the assistant was still producing the answer.
 - `RequestGroupRenderer` and `RequestGroup` gain an optional `isFinishing` prop (defaults to `false`); host apps thread `useSession.isFinishing` through to drive the drain-state rendering. Downstream consumers that do not yet thread the signal continue to render as today.
-- Generator/tool status restore: a tool's status no longer lingers past its own execution. The generator snapshots the slot on the first tool entry of a (possibly parallel) round and restores it when the last tool exits, falling back to the generator's own `activeStatusMessage` (or empty → "Working...") afterward.
+- Generator/tool status restore: a tool's status no longer lingers past its own execution. The generator snapshots the slot on the first tool entry of a (possibly parallel) round and restores it when the last tool exits, falling back to the generator's own `activeStatusMessage` (or empty → "Working...") afterward. The "Using <tool>…" hint now also routes through the same slot, so tools that don't emit their own status (e.g. `search`, `fetch`, `crawl`) get a clean restore instead of leaving "Using …" stuck on the indicator.
 
 ### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)
 

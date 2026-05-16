@@ -3339,10 +3339,12 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);
 
-    // Expected sequence: generator sets "Responding", tool overrides with
+    // Expected sequence: generator sets "Responding", the tool wrapper
+    // surfaces "Using weather-tool…", the tool's own emit overrides with
     // "Calling weather tool...", restore puts "Responding" back.
     expect(statusMessages).toEqual([
       "Responding",
+      "Using weather-tool…",
       "Calling weather tool...",
       "Responding"
     ]);
@@ -3432,5 +3434,73 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
       .slice(1, -1)
       .filter((m: string) => m === "Responding").length;
     expect(restoreCount).toBe(0);
+  });
+
+  it("clears the 'Using <tool>' status after a tool with no emit.status finishes", async () => {
+    // Regression: web tools like search/fetch/crawl don't call emit.status
+    // themselves. The framework surfaces "Using <tool>…" so the in-flight
+    // indicator reflects the current tool — and must clear it on completion
+    // so the indicator doesn't claim the tool is still running.
+    const stores = createInMemoryStores();
+
+    const silentTool = handler({
+      name: "search",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.string(),
+      execute: (input) => `results for ${input.q}`
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      activeStatusMessage: "Responding",
+      tools: [silentTool]
+    });
+
+    const flow = defineFlow({
+      kind: "silent-tool-status-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_silent_tool",
+      sessionId: "sess_silent_tool",
+      userId: "user_silent_tool",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          await options.tools[0].execute({ q: "weather" }, { toolCallId: "tc_1" });
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_silent_tool", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "search?" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // The "Using search…" surfaced by the wrapper must be cleared back to
+    // the generator's "Responding" once the tool returns — even though the
+    // tool itself never touched the slot.
+    expect(statusMessages).toEqual([
+      "Responding",
+      "Using search…",
+      "Responding"
+    ]);
   });
 });

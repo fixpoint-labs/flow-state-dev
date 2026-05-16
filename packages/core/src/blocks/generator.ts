@@ -741,6 +741,12 @@ function compileToolsWithExecute(
           statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
         }
         statusGuard.active++;
+        // Surface the tool's run in the status slot so the in-flight indicator
+        // reflects "what's happening now". Routing through emit.status (rather
+        // than emitting a raw status item) updates the slot, which is what
+        // makes the restore in `finally` actually publish a clearing item
+        // instead of being deduped against an unchanged slot.
+        scopedCtx.emit.status(`Using ${tool.name}…`);
         try {
           await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
           const output = await runWithRetry(
@@ -1253,26 +1259,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
           contentIndex: contentPartIndex,
           delta: chunk.textDelta
         });
-      }
-    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      if (emit) {
-        const toolName = chunk.toolInput.toolName;
-        const statusItem = {
-          id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "status" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          agentType,
-          agentName,
-          message: `Using ${toolName}…`,
-          detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
-        };
-        await ctx.response.emit({ type: "item.added", item: statusItem });
-        await ctx.response.emit({ type: "item.done", item: statusItem });
       }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
       if (emit) {
