@@ -157,9 +157,10 @@ CREATE INDEX IF NOT EXISTS idx_trace_request_roster_inserted_at ON trace_request
 `;
 
 // FIX-402: per-request runOnce result store. Identity is (request_id, key);
-// inserts replace any prior row for the same pair. Stored alongside the
-// request record so it is naturally pruned when the request itself is
-// deleted (via FK cascade).
+// inserts replace any prior row for the same pair. Same retention model as
+// `request_events` / `sequencer_checkpoints` — no FK to `requests`; rows
+// are pruned by the same request-lifecycle cleanup path the rest of the
+// per-request tables use.
 const REQUEST_RUNONCE_TABLE = `
 CREATE TABLE IF NOT EXISTS request_runonce (
   request_id TEXT NOT NULL,

@@ -2957,12 +2957,22 @@ export async function createExecutionContext<
   // with the same key share a single fn() invocation. Sits in front of the
   // RequestStore so the wrapped side effect cannot fire twice in a race
   // (the store is the durable backstop across retries).
+  // In-process memo of completed runOnce results. Populated synchronously
+  // the instant `fn()` resolves — before the store write — so a store
+  // failure cannot cause `fn()` to re-execute on a subsequent retry within
+  // the same request process. Store persistence is treated as best-effort
+  // bookkeeping for cross-process durability.
+  const runOnceMemo = new Map<string, unknown>();
   const runOnceInflight = new Map<string, Promise<unknown>>();
   const runOnce = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
     if (typeof key !== "string" || key.length === 0) {
       return Promise.reject(
         new Error("ctx.runOnce(key, fn): `key` must be a non-empty string")
       );
+    }
+    // Fast path: memo hit (a prior call in this process already completed).
+    if (runOnceMemo.has(key)) {
+      return Promise.resolve(runOnceMemo.get(key) as T);
     }
     // Claim the inflight slot synchronously before awaiting the store —
     // otherwise concurrent calls with the same key all see an empty
@@ -2972,12 +2982,30 @@ export async function createExecutionContext<
 
     const requestId = requestRef.current.id;
     const promise = (async (): Promise<T> => {
-      // Durable lookup first: a prior block-level retry within the same
-      // request may have persisted the result already.
+      // Durable lookup. Catches block-retry resumes that lost the
+      // in-process memo (none today; future-proofs for durable execution).
       const stored = await stores.request.getRunOnceResult(requestId, key);
-      if (stored.found) return stored.value as T;
+      if (stored.found) {
+        runOnceMemo.set(key, stored.value);
+        return stored.value as T;
+      }
       const value = await fn();
-      await stores.request.setRunOnceResult(requestId, key, value);
+      // Memoize BEFORE the store write so a store failure cannot cause
+      // re-execution on the next retry within this process.
+      runOnceMemo.set(key, value);
+      try {
+        await stores.request.setRunOnceResult(requestId, key, value);
+      } catch (err) {
+        // Persistence failure is non-fatal: the side effect already fired
+        // and the in-process memo carries de-dup for the rest of this
+        // request. Cross-process durability is degraded but we do not
+        // amplify a store outage into a double-charge by re-running fn().
+        console.warn(
+          `[flow-state] runOnce persistence failed for key "${key}" (request ${requestId}); ` +
+            `in-process dedup remains in effect`,
+          err
+        );
+      }
       return value;
     })();
     runOnceInflight.set(key, promise as Promise<unknown>);

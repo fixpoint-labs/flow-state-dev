@@ -271,6 +271,63 @@ describe("FIX-402: idempotency key + runOnce", () => {
     });
   });
 
+  it("store persistence failure does not cause fn to re-execute on retry", async () => {
+    // Greptile P1: if setRunOnceResult throws, the in-process memo must
+    // still prevent re-execution. Wrap the in-memory store and force
+    // setRunOnceResult to throw so we can prove fn() runs exactly once.
+    const stores = createInMemoryStores();
+    const realSet = stores.request.setRunOnceResult.bind(stores.request);
+    let failNext = true;
+    stores.request.setRunOnceResult = async (rid, key, value) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("simulated transient store failure");
+      }
+      return realSet(rid, key, value);
+    };
+
+    let sideEffectInvocations = 0;
+    let attemptCount = 0;
+    const flaky = handler({
+      name: "flaky-persist",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      retry: { maxAttempts: 5, baseDelayMs: 0, maxDelayMs: 0 },
+      execute: async (value, ctx) => {
+        attemptCount += 1;
+        const result = await ctx.runOnce!("once", async () => {
+          sideEffectInvocations += 1;
+          return sideEffectInvocations;
+        });
+        if (attemptCount < 3) throw new NetworkError(`retry-${attemptCount}`);
+        return result + value;
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "runonce-persist-fail",
+      actions: { run: { inputSchema: z.number(), block: flaky } }
+    })();
+
+    const requestId = "req_persist_fail";
+    const response = createResponseEmitter({ requestId, now: () => Date.now() });
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: 0,
+      userId: "user",
+      sessionId: "sess",
+      requestId,
+      stores,
+      responseEmitter: response
+    });
+
+    expect(result.error).toBeUndefined();
+    // fn must fire exactly once even though the first setRunOnceResult
+    // threw — the in-process memo absorbed the failure.
+    expect(sideEffectInvocations).toBe(1);
+  });
+
   it("concurrent same-key calls share a single inflight execution", async () => {
     const stores = createInMemoryStores();
     let invocations = 0;
