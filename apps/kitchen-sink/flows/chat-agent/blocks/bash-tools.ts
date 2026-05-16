@@ -14,7 +14,6 @@
 import { Sandbox as VercelSandbox } from "@vercel/sandbox";
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
 import type { SandboxProvider } from "@flow-state-dev/tools/bash";
-import { createHash } from "node:crypto";
 import path from "node:path";
 
 /**

@@ -1111,6 +1111,27 @@ describe("createBashBlocks", () => {
     expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
   });
 
+  it("normalizes leading `./` so model-supplied relative paths route correctly", async () => {
+    // The bashWriteFile schema describes paths as "relative to workspace
+    // root (e.g. artifacts/foo.md)" — the model still routinely supplies
+    // `./artifacts/foo.md`. Routing must strip the `./` before matching
+    // mount prefixes, otherwise the file lands on disk but is silently
+    // dropped from the collection sync.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("dotslash-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashWriteFile, { path: "./artifacts/relative.md", content: "hi" }, ctx);
+
+    expect(artifacts.count()).toBe(1);
+    expect(artifacts.getOptional("relative.md")).toBeDefined();
+  });
+
   it("honors writable: false — changes in the mount are not written back", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 

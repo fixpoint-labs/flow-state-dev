@@ -619,6 +619,12 @@ async function routeWrittenFile(
   content: string,
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Promise<void> {
+  // The model often supplies `./artifacts/foo.md` even though the
+  // schema says paths are workspace-relative. Strip the leading `./`
+  // so `findMount`/`isUnderTmp` (which match bare prefixes) work.
+  if (relativePath.startsWith("./")) {
+    relativePath = relativePath.slice(2);
+  }
   if (isUnderTmp(relativePath)) return;
   const mount = findMount(relativePath, entry.mounts);
   if (!mount) {

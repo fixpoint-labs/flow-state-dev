@@ -4,6 +4,10 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-15
 
+### Bash tool: tolerate `./`-prefixed paths in `bashWriteFile`
+
+- `routeWrittenFile` strips a leading `./` before matching mount prefixes. The model regularly supplies `./artifacts/foo.md` even though the schema says workspace-relative; previously these landed on disk but were silently dropped from the collection sync. Now they route correctly.
+
 ### Bash tool: background purge of stale MOAT containers
 
 - **New `purgeOldRuns` helper + `bash-purge-stale-containers` block.** Wired via `.workIf(isCold, ...)` into the cold-boot sequencer step, so the purge dispatches as fire-and-forget while `ensureSandbox` is booting the new container. Lists all runs, filters to framework-managed names (prefix `fsdev-`), excludes the current run, sorts oldest-first by `StartedAt`, and destroys whatever exceeds the limit (default 50).
