@@ -38,8 +38,8 @@ const DEFAULT_RETRYABLE: Record<VoiceErrorKind, boolean> = {
   unknown: false,
 };
 
-/** Constructor arguments for {@link VoiceError}. */
-export interface VoiceErrorArgs {
+/** Constructor options for {@link VoiceError}. Mirrors `FlowErrorOptions`'s shape. */
+export interface VoiceErrorOptions {
   /** Discriminator for downstream branching and retry classification. */
   kind: VoiceErrorKind;
   /** Provider name (`providerName` from the underlying `VoiceProvider`). */
@@ -67,15 +67,16 @@ export class VoiceError extends Error {
   readonly provider: string;
   readonly retryable: boolean;
   readonly status?: number;
-  override readonly cause?: unknown;
 
-  constructor(args: VoiceErrorArgs) {
-    super(args.message, args.cause !== undefined ? { cause: args.cause } : undefined);
+  constructor(options: VoiceErrorOptions) {
+    super(
+      options.message,
+      options.cause !== undefined ? { cause: options.cause } : undefined
+    );
     this.name = "VoiceError";
-    this.kind = args.kind;
-    this.provider = args.provider;
-    this.retryable = args.retryable ?? DEFAULT_RETRYABLE[args.kind];
-    this.status = args.status;
-    this.cause = args.cause;
+    this.kind = options.kind;
+    this.provider = options.provider;
+    this.retryable = options.retryable ?? DEFAULT_RETRYABLE[options.kind];
+    this.status = options.status;
   }
 }

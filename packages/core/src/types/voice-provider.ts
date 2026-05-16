@@ -247,7 +247,11 @@ export function createCompositeVoiceProvider(
     listVoices: listVoicesProvider?.abilities.listVoices === true,
   };
 
-  const id = `composite:${hashSlotIds({
+  // Id reflects the configured slots (not the resolved speakStream fallback)
+  // so two composites configured identically share an id, and a composite
+  // with an explicit `speakStream: sameProviderAsSpeak` is distinguishable
+  // from one that relies on the implicit fallback.
+  const id = `composite:${formatSlotIds({
     speak: speakProvider?.id,
     speakStream: config.speakStream?.id,
     transcribe: transcribeProvider?.id,
@@ -273,10 +277,12 @@ export function createCompositeVoiceProvider(
     provider.listVoices = () => listVoicesProvider!.listVoices!();
   }
 
-  // No-slot edge case: if every slot is empty, an explicit bad-cast call to
-  // any method should throw a typed error rather than a native `TypeError`.
-  // We attach throwing stubs for each ability; the abilities flags above
-  // remain `false`, so the guards never expose them under normal use.
+  // No-slot edge case. The spec is in slight tension here: "Methods are not
+  // present on the returned object" vs. "Direct call via a bad cast throws
+  // VoiceError." We choose the testable behavior — attach throwing stubs so
+  // a bad cast surfaces a typed error rather than a native `TypeError`. The
+  // `abilities` flags above stay `false`, so the runtime type guards never
+  // expose these stubs to well-behaved callers.
   const hasAnySlot =
     speakProvider !== undefined ||
     config.speakStream !== undefined ||
@@ -300,26 +306,20 @@ export function createCompositeVoiceProvider(
 }
 
 /**
- * FNV-1a 32-bit hash of the slot ids, returned as 8-char lowercase hex.
- * Deterministic across processes so composite providers built from the
- * same underlying providers share an `id` for telemetry/registry use.
+ * Formats the slot ids into a readable, deterministic suffix for the
+ * composite provider's `id`. Stable across processes; trivially debuggable
+ * in logs (unlike a hash).
  */
-function hashSlotIds(slots: {
+function formatSlotIds(slots: {
   speak?: string;
   speakStream?: string;
   transcribe?: string;
   listVoices?: string;
 }): string {
-  const payload = JSON.stringify([
-    ["speak", slots.speak ?? null],
-    ["speakStream", slots.speakStream ?? null],
-    ["transcribe", slots.transcribe ?? null],
-    ["listVoices", slots.listVoices ?? null],
-  ]);
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < payload.length; i++) {
-    hash ^= payload.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
+  return [
+    `speak=${slots.speak ?? "-"}`,
+    `stream=${slots.speakStream ?? "-"}`,
+    `tx=${slots.transcribe ?? "-"}`,
+    `voices=${slots.listVoices ?? "-"}`,
+  ].join("|");
 }

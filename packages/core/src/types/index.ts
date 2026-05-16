@@ -98,7 +98,7 @@ export {
   createCompositeVoiceProvider
 } from "./voice-provider";
 
-export type { VoiceErrorArgs, VoiceErrorKind } from "./voice-error";
+export type { VoiceErrorKind, VoiceErrorOptions } from "./voice-error";
 export { VoiceError } from "./voice-error";
 export type {
   CachingBreakpointMode,

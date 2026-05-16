@@ -186,7 +186,7 @@ export {
   createCompositeVoiceProvider
 } from "./types/voice-provider";
 
-export type { VoiceErrorArgs, VoiceErrorKind } from "./types/voice-error";
+export type { VoiceErrorKind, VoiceErrorOptions } from "./types/voice-error";
 export { VoiceError } from "./types/voice-error";
 
 export type { BindingCacheOptions, BindingProvider } from "./types/binding";

@@ -118,7 +118,7 @@ describe("createCompositeVoiceProvider", () => {
   it("with no slots, every ability is false and id+name are stable", () => {
     const c = createCompositeVoiceProvider({});
     expect(c.providerName).toBe("composite");
-    expect(c.id).toMatch(/^composite:[0-9a-f]+$/);
+    expect(c.id).toBe("composite:speak=-|stream=-|tx=-|voices=-");
     expect(c.abilities).toEqual({
       speak: false,
       speakStream: false,
