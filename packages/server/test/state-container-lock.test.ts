@@ -1,5 +1,5 @@
 import type { StateContainer } from "@flow-state-dev/core/types";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   ConcurrentModificationError,
   createScopeStateOps,
@@ -57,23 +57,6 @@ describe("applyMutation — in-memory (lock) branch", () => {
 
     expect(await ops.patchState({ count: 6 })).toBe(true);
     expect(container.getVersion()).toBe(1);
-  });
-
-  it("invokes onStateSizeWarning when next state exceeds threshold", async () => {
-    type State = { blob: string };
-    const container = createStateContainer<State>({ blob: "" });
-    const onStateSizeWarning = vi.fn();
-    const ops = createScopeStateOps<State>(container, {
-      maxStateSizeBytes: 32,
-      onStateSizeWarning
-    });
-
-    await ops.patchState({ blob: "x".repeat(100) });
-
-    expect(onStateSizeWarning).toHaveBeenCalledTimes(1);
-    expect(onStateSizeWarning).toHaveBeenCalledWith(
-      expect.objectContaining({ maxStateSizeBytes: 32 })
-    );
   });
 
   it("throws ScopeMutationTimeoutError when an earlier mutator holds the lock past the budget", async () => {

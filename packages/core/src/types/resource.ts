@@ -177,6 +177,13 @@ export type MessageLike = {
 };
 
 export interface ResourceRef<TState extends JsonObject = JsonObject> {
+  /**
+   * Canonical storage key for this resource — what state and content are
+   * persisted under. Equal to the accessor key for normal single resources,
+   * the path-derived key (e.g. `"memos/p1/foo"`) for collection instances,
+   * and the canonicalized key for dual-registered aliases (FIX-591). Not
+   * necessarily the accessor name used to look up the handle.
+   */
   name: string;
   scope: ScopeType;
   state: Readonly<TState>;

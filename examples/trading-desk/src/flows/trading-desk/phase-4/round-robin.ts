@@ -19,13 +19,13 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import {
-  createRoundRobinContributions,
   roundRobin,
   roundRobinInputSchema,
 } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
 import { sessionStateSchema } from "../state";
 import { stubJudge } from "../phase-2/stub-judge";
+import { phase4Contributions } from "./contributions";
 import {
   aggressiveRiskGenerator,
   conservativeRiskGenerator,
@@ -44,10 +44,8 @@ import type {
   PersonaCritiqueOutput,
 } from "./schemas";
 
-/** Shared contributions resource. Passed to the `roundRobin()` instance
- *  below AND registered on the flow's `resources` map (see `flow.ts`) so
- *  the consolidation generator can read entries via `ctx.resources`. */
-export const phase4Contributions = createRoundRobinContributions();
+// Re-export so existing imports of `./round-robin` keep working.
+export { phase4Contributions };
 
 /** Map a persona's structured critique to the `{ text }` shape the
  *  round-robin's `record-contribution` tap expects. Concatenates body

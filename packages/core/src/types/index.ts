@@ -95,6 +95,7 @@ export type {
   GeneratorModelUsage,
   GeneratorSearchConfig,
   GeneratorStepResult,
+  ModelIdentity,
   ModelResolver,
   PrepareStepFn,
   PrepareStepResult,

@@ -1,0 +1,67 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "windowDays": 90,
+  "transactions": [
+    {
+      "filingDate": "2026-04-30",
+      "transactionDate": "2026-04-28",
+      "insiderName": "Cook Timothy D",
+      "insiderTitle": "Chief Executive Officer",
+      "transactionCode": "S",
+      "shares": -223986,
+      "pricePerShare": 194.50,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-04-30",
+      "transactionDate": "2026-04-28",
+      "insiderName": "Cook Timothy D",
+      "insiderTitle": "Chief Executive Officer",
+      "transactionCode": "M",
+      "shares": 511000,
+      "pricePerShare": 0,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-04-04",
+      "transactionDate": "2026-04-02",
+      "insiderName": "O'Brien Deirdre",
+      "insiderTitle": "SVP, Retail + People",
+      "transactionCode": "S",
+      "shares": -19500,
+      "pricePerShare": 191.22,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-03-15",
+      "transactionDate": "2026-03-13",
+      "insiderName": "Maestri Luca",
+      "insiderTitle": "Senior Vice President, CFO",
+      "transactionCode": "S",
+      "shares": -52000,
+      "pricePerShare": 187.84,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-03-15",
+      "transactionDate": "2026-03-13",
+      "insiderName": "Maestri Luca",
+      "insiderTitle": "Senior Vice President, CFO",
+      "transactionCode": "M",
+      "shares": 75000,
+      "pricePerShare": 0,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-02-12",
+      "transactionDate": "2026-02-08",
+      "insiderName": "Adams Katherine L",
+      "insiderTitle": "Senior Vice President, GC",
+      "transactionCode": "S",
+      "shares": -30000,
+      "pricePerShare": 184.05,
+      "isDerivative": false
+    }
+  ]
+}

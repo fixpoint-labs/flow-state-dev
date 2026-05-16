@@ -1,15 +1,12 @@
 /**
- * `DataSource` interface and per-tool schemas.
+ * Shared tool input/output schemas + the `ToolName` union.
  *
- * The interface is the seam between the analyst tool blocks and the actual
- * data: a hand-curated `FixtureDataSource` (Step 5) and a `LiveDataSource`
- * wrapping `yahoo-finance2` (Step 9). Each tool returns canonical-shape JSON
- * plus a `source: "fixture" | "live"` tag that bubbles through to the
- * transcript pill via the tool's output metadata.
+ * Each Phase 1 tool has a fixed shape that all providers normalize to: a
+ * `source` provenance tag plus the canonical fields the analyst prompts
+ * expect. Splitting these out of the tool files keeps each tool file focused
+ * on dispatch logic (fixture vs. live, provider preference).
  */
 import { z } from "zod";
-
-export type DataSourceMode = "fixture" | "live";
 
 export class FixtureMissingError extends Error {
   readonly ticker: string;
@@ -24,7 +21,29 @@ export class FixtureMissingError extends Error {
   }
 }
 
-const sourceTag = z.enum(["fixture", "live"]);
+/**
+ * Provenance tag stamped on every tool output. The session-state `dataSource`
+ * enum picks the *strategy*; this tag identifies the *concrete provider*.
+ *
+ *   - `"fixture"`     — only emitted in fixture mode.
+ *   - `"finnhub"`     — live mode, Finnhub answered.
+ *   - `"yahoo"`       — live mode, Yahoo answered.
+ *   - `"fred"`        — live mode, FRED API answered.
+ *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
+ *   - `"unavailable"` — live mode, no provider could answer; payload is an
+ *                       empty/zeroed schema-valid skeleton. Never silently
+ *                       substitutes fixture data — false data is worse than
+ *                       no data for analyst reasoning.
+ */
+const sourceTag = z.enum([
+  "fixture",
+  "yahoo",
+  "finnhub",
+  "fred",
+  "polymarket",
+  "unavailable",
+]);
+export type SourceTag = z.infer<typeof sourceTag>;
 
 const periodInput = z.object({
   ticker: z.string().min(1),
@@ -104,6 +123,11 @@ export const indicatorsSchema = z.object({
   trend: z.enum(["up", "down", "flat"]),
   sma50: z.number(),
   sma200: z.number(),
+  bollinger: z.object({ upper: z.number(), middle: z.number(), lower: z.number() }),
+  vwma20: z.number(),
+  stoch: z.object({ k: z.number(), d: z.number() }),
+  kdj: z.object({ k: z.number(), d: z.number(), j: z.number() }),
+  obv: z.number(),
 });
 
 const newsItem = z.object({
@@ -112,6 +136,10 @@ const newsItem = z.object({
   source: z.string(),
   url: z.string().optional(),
   category: z.string().optional(),
+  /** 1-2 sentence editorial blurb. Finnhub returns this on /company-news;
+   *  null for sources that don't supply it (e.g. fixture data without
+   *  manual summary edits). */
+  summary: z.string().nullable(),
 });
 
 export const companyNewsSchema = z.object({
@@ -157,6 +185,55 @@ export const redditMentionsSchema = z.object({
   topThreads: z.array(redditMention),
 });
 
+const predictionMarket = z.object({
+  question: z.string(),
+  eventTitle: z.string().nullable(),
+  /** Yes-side probability (0..1). Derived from `outcomePrices[0]` when present,
+   *  else falls back to `lastTradePrice`. */
+  yesProbability: z.number(),
+  volumeUsd: z.number(),
+  liquidityUsd: z.number(),
+  /** ISO date when the market resolves. Imminent end-dates carry the strongest
+   *  signal — a 99% market that resolves tomorrow is near-certain. */
+  endDate: z.string(),
+  slug: z.string(),
+});
+
+export const predictionMarketsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  markets: z.array(predictionMarket),
+});
+
+const insiderTransactionItem = z.object({
+  /** Date the Form 4 hit EDGAR (YYYY-MM-DD). */
+  filingDate: z.string(),
+  /** Date of the transaction itself (YYYY-MM-DD). */
+  transactionDate: z.string(),
+  insiderName: z.string(),
+  /** Free-form title from the filing (e.g. "CEO", "Director", "10% Owner"). */
+  insiderTitle: z.string(),
+  /** SEC transaction code: P (open-market buy), S (open-market sell),
+   *  A (grant/award), M (option exercise), G (gift), F (tax withholding), etc. */
+  transactionCode: z.string(),
+  /** Signed share count: positive for acquisitions, negative for dispositions. */
+  shares: z.number(),
+  /** USD per share. 0 for non-cash transactions (gifts, awards, withholdings). */
+  pricePerShare: z.number(),
+  /** True for derivative-security transactions (options, RSUs). */
+  isDerivative: z.boolean(),
+});
+
+export const insiderTransactionsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  transactions: z.array(insiderTransactionItem),
+  /** Lookback window in days (e.g. 90). */
+  windowDays: z.number(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -168,6 +245,8 @@ export const toolInputSchemas = {
   get_macro_indicators: z.object({ date: z.string().min(1) }),
   get_social_sentiment: periodInput,
   get_reddit_mentions: periodInput,
+  get_prediction_markets: periodInput,
+  get_insider_transactions: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -181,26 +260,14 @@ export const toolOutputSchemas = {
   get_macro_indicators: macroIndicatorsSchema,
   get_social_sentiment: socialSentimentSchema,
   get_reddit_mentions: redditMentionsSchema,
+  get_prediction_markets: predictionMarketsSchema,
+  get_insider_transactions: insiderTransactionsSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
 
 export type ToolInput<T extends ToolName> = z.infer<(typeof toolInputSchemas)[T]>;
 export type ToolOutput<T extends ToolName> = z.infer<(typeof toolOutputSchemas)[T]>;
-
-export interface DataSource {
-  readonly mode: DataSourceMode;
-  get_balance_sheet(input: ToolInput<"get_balance_sheet">): Promise<ToolOutput<"get_balance_sheet">>;
-  get_income_statement(input: ToolInput<"get_income_statement">): Promise<ToolOutput<"get_income_statement">>;
-  get_cashflow(input: ToolInput<"get_cashflow">): Promise<ToolOutput<"get_cashflow">>;
-  get_fundamentals(input: ToolInput<"get_fundamentals">): Promise<ToolOutput<"get_fundamentals">>;
-  get_price_history(input: ToolInput<"get_price_history">): Promise<ToolOutput<"get_price_history">>;
-  compute_indicators(input: ToolInput<"compute_indicators">): Promise<ToolOutput<"compute_indicators">>;
-  search_news(input: ToolInput<"search_news">): Promise<ToolOutput<"search_news">>;
-  get_macro_indicators(input: ToolInput<"get_macro_indicators">): Promise<ToolOutput<"get_macro_indicators">>;
-  get_social_sentiment(input: ToolInput<"get_social_sentiment">): Promise<ToolOutput<"get_social_sentiment">>;
-  get_reddit_mentions(input: ToolInput<"get_reddit_mentions">): Promise<ToolOutput<"get_reddit_mentions">>;
-}
 
 const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_balance_sheet: "balance-sheet.json",
@@ -213,8 +280,18 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_macro_indicators: "macro-indicators.json",
   get_social_sentiment: "social-sentiment.json",
   get_reddit_mentions: "reddit-mentions.json",
+  get_prediction_markets: "prediction-markets.json",
+  get_insider_transactions: "insider-transactions.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {
   return TOOL_FILE_NAMES[tool];
+}
+
+/** Mode picker — read by every tool's `execute` to branch between fixture
+ *  and live behavior. Default to `"fixture"` if state isn't set. */
+export function pickMode(ctx: {
+  session: { state: Record<string, unknown> };
+}): "fixture" | "live" {
+  return (ctx.session.state.dataSource as "fixture" | "live") ?? "fixture";
 }

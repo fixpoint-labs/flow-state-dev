@@ -12,12 +12,13 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { phase1Pipeline } from "./blocks/analyst-phase";
+import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase4Contributions } from "./phase-4/round-robin";
+import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
 import { sessionStateSchema } from "./state";
 
@@ -52,6 +53,7 @@ const seedSession = handler({
       // input never sets this — the schema's `max(2)` enforces the ceiling.
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       memoStatus: {} as Record<string, MemoStatus>,
+      runComplete: false,
     });
     return input;
   },
@@ -65,7 +67,8 @@ const analyzePipeline = sequencer({
   .then(phase1Pipeline)
   .then(phase2Pipeline)
   .then(phase3Pipeline)
-  .then(phase4Pipeline);
+  .then(phase4Pipeline)
+  .then(phase5Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
@@ -88,6 +91,7 @@ const tradingDeskFlow = defineFlow({
         "activePhase",
         "maxDebateRounds",
         "memoStatus",
+        "runComplete",
       ],
     },
   },

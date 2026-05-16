@@ -20,7 +20,7 @@ import {
 import {
   thesisOutputSchema,
   type ThesisOutput,
-} from "./blocks/thesis-schema";
+} from "./phase-1/thesis-schema";
 import { memoResources } from "./resources";
 import { sessionStateSchema } from "./state";
 

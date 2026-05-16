@@ -100,6 +100,12 @@ export default defineFlow({
 - `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
+**Block methods** (available on every `BlockDefinition`):
+- `.connectInput(mapper)` — adapt input shape at the call boundary
+- `.connectOutput(mapper)` — transform output shape at the call boundary
+- `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
+- `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
+
 **Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Flow:**
@@ -286,6 +292,10 @@ const resolver = createModelResolver({
 The framework documents six canonical intent names — `utility`, `chat`, `plan`, `synthesize`, `code`, `reason` — but apps can add their own. `synthesize` doubles as the structured-JSON intent: point it at JSON-reliable models, not the cheapest tier.
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
+
+### Observable model identity
+
+Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.
 
 ### Strict-mode schema helper
 
