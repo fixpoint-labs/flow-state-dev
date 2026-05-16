@@ -143,7 +143,7 @@ The referee is a per-round auditor. After every roster round it reads the contri
 
 The referee never decides whether the loop should continue. Termination is controlled by `maxRounds` and `terminateWhen` — see below.
 
-Use a referee when the roster is anchored to assigned stances (bull vs bear, aggressive vs conservative) and there's a real risk of contributors exaggerating to defend their stance, dismissing strong opposing points, or introducing claims not supported by the data. The default referee prompt is built around those failure modes.
+Use a referee when the roster is anchored to assigned stances (bull vs bear, aggressive vs conservative) and there's a real risk of contributors exaggerating to defend their stance, dismissing strong opposing points, or introducing claims not supported by the data. The default referee prompt is built around those failure modes plus rehashing prior-round arguments — the impasse signal you see when both sides start restating without engaging each other. The referee never redirects the debate or proposes new questions; that boundary is what keeps the role narrow.
 
 A minimal custom referee:
 

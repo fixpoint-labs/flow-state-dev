@@ -66,9 +66,12 @@ export function createReferee(opts: CreateRefereeOptions) {
         "- dismissing strong opposing points without rebuttal",
         "- introducing claims not supported by the data provided",
         "- retreating to vague language to avoid concrete engagement",
+        "- rehashing prior-round arguments without engaging the strongest",
+        "  opposing points (impasse signal)",
         "Return a short, specific critique pointing at named contributors",
         "and quoted passages where possible. Do not declare a winner. Do",
-        "not decide whether more rounds are needed.",
+        "not decide whether more rounds are needed. Do not propose new",
+        "questions or redirect the debate — only audit what was said.",
         instructionsBlock,
       ]
         .filter(Boolean)
