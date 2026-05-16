@@ -154,16 +154,26 @@ import { z } from "zod";
 const strictReferee = generator({
   name: "strict-referee",
   outputSchema: z.object({ critique: z.string() }),
+  // Declare the contributions resource so `ctx.resources.contributions`
+  // is populated. Use the same accessor key the pattern is configured
+  // with (default `"contributions"`).
+  resources: { contributions: panelContributions },
   prompt: [
     "Audit the round for unsupported numeric claims and unhedged predictions.",
     "Return a short critique naming the contributor and quoting the passage.",
   ].join(" "),
-  user: (_input, ctx) => /* format the round's transcript */ "",
+  user: (_input, ctx) => {
+    const entries = ctx.resources.contributions.state.entries;
+    return entries
+      .map((e) => `[Round ${e.round}] ${e.agentName}: ${e.text}`)
+      .join("\n");
+  },
 });
 
 roundRobin({
   name: "panel",
   roster: [...],
+  contributions: panelContributions,
   maxRounds: 3,
   referee: strictReferee,
 });

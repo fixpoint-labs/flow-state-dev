@@ -4,7 +4,7 @@
  * referee accumulation, referee critiques flowing into subsequent rounds,
  * factory validation, and synthesizer integration.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -134,7 +134,6 @@ describe("round-robin", () => {
   });
 
   it("omits the referee step when no referee is configured", async () => {
-    const refereeSpy = vi.fn();
     const pattern = roundRobin({
       name: "rr-no-referee",
       roster: [{ name: "a", block: makeAgent("a") }],
@@ -150,7 +149,14 @@ describe("round-robin", () => {
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
     expect(out.refereeCritiques).toEqual([]);
-    expect(refereeSpy).not.toHaveBeenCalled();
+    // No block carrying the referee stash name should have run, since the
+    // referee step is conditionally inserted only when a referee is provided.
+    const stashItems = result.items.filter(
+      (item) =>
+        item.type === "block_trace" &&
+        (item as { blockName?: string }).blockName?.includes("stash-referee"),
+    );
+    expect(stashItems).toHaveLength(0);
   });
 
   it("referee runs after every round and accumulates critiques in outer state", async () => {
