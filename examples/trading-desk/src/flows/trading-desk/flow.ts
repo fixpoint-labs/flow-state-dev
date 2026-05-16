@@ -71,9 +71,9 @@ const analyzePipelineInner = sequencer({
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
-  .then(validateTickerGuard)
+  .tap(validateTickerGuard)
   .then(phase1Pipeline)
-  .then(phase1QualityGate)
+  .tap(phase1QualityGate)
   .then(phase2Pipeline)
   .then(phase3Pipeline)
   .then(phase4Pipeline)

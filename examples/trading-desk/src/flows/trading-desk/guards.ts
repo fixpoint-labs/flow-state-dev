@@ -54,12 +54,13 @@ const stoppedSentinelSchema = z.object({
 /**
  * Pre-flight ticker resolution. Throws `EarlyStopError` if the ticker can't
  * be resolved under the current data source — fixture missing on fixture
- * mode, all live providers throwing on live mode. Pass-through otherwise.
+ * mode, all live providers throwing on live mode. Used as `.tap()` per
+ * BP-014 since the happy path produces no new output.
  */
 export const validateTickerGuard = handler({
   name: "validate-ticker-guard",
   inputSchema: analyzeInputSchema,
-  outputSchema: analyzeInputSchema,
+  outputSchema: z.void(),
   sessionStateSchema,
   execute: async (input) => {
     const result = await resolveTicker({
@@ -73,7 +74,6 @@ export const validateTickerGuard = handler({
         result.reason ?? `Could not resolve ticker ${input.ticker}.`,
       );
     }
-    return input;
   },
 });
 
@@ -90,10 +90,10 @@ export const validateTickerGuard = handler({
 export const phase1QualityGate = handler({
   name: "phase-1-quality-gate",
   inputSchema: z.unknown(),
-  outputSchema: z.unknown(),
+  outputSchema: z.void(),
   sessionStateSchema,
   resources: memoResources,
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const shortNames = Object.keys(
       PHASE_1_MEMO_KEYS,
     ) as (keyof typeof PHASE_1_MEMO_KEYS)[];
@@ -110,29 +110,35 @@ export const phase1QualityGate = handler({
           "Halting before synthesis — no usable upstream data.",
       );
     }
-    return input;
   },
 });
 
 /**
- * Rescue handler for `EarlyStopError`. Patches session state to reflect
- * the terminal stopped condition and returns a sentinel object so the
- * outer sequencer ends cleanly. Other error types are re-thrown so the
- * runtime's normal error handling kicks in.
+ * Rescue handler for `EarlyStopError`. The sequencer rescue path passes the
+ * normalized `Error` directly as the block's input (see
+ * `executeBlock(handler.block, normalizedError, ...)` in core's
+ * `sequencer.ts`) — *not* wrapped in `{ error: ... }` — so the input schema
+ * is `z.unknown()` and the handler reads `input` as the error itself.
+ *
+ * Patches session state to reflect the terminal stopped condition and
+ * returns a sentinel object so the outer sequencer ends cleanly. Other
+ * error types are re-thrown so the runtime's normal error handling kicks
+ * in (the outer `.rescue` already filters on `when: [EarlyStopError]`, so
+ * this is defense-in-depth against a future caller using this block
+ * without that filter).
  */
 export const rescueEarlyStop = handler({
   name: "rescue-early-stop",
-  inputSchema: z.object({ error: z.unknown() }).passthrough(),
+  inputSchema: z.unknown(),
   outputSchema: stoppedSentinelSchema,
   sessionStateSchema,
   execute: async (input, ctx) => {
-    const error = (input as { error?: unknown }).error;
-    if (!(error instanceof EarlyStopError)) {
-      throw error instanceof Error ? error : new Error(String(error));
+    if (!(input instanceof EarlyStopError)) {
+      throw input instanceof Error ? input : new Error(String(input));
     }
     await ctx.session.patchState({
-      stoppedReason: error.reason,
-      stoppedMessage: error.userMessage,
+      stoppedReason: input.reason,
+      stoppedMessage: input.userMessage,
       runComplete: true,
     });
     return { stopped: true as const };
