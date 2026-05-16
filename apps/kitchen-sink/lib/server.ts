@@ -24,52 +24,18 @@ import {
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
 import {
   createScheduledTransportAdapter,
-  type ScheduleIndex,
-  type ScheduleIndexRow,
 } from "@flow-state-dev/scheduled";
 import { Client as NeonClient } from "@neondatabase/serverless";
 import { Pool } from "pg";
+import { setScheduleIndexImpl } from "@/lib/schedule-index";
+import chatAgentFlow from "@/flows/chat-agent/flow";
+import richTextComponentFlow from "@/flows/rich-text-component/flow";
+import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
 // don't line up. Cast once at the seam.
 const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
-
-// ---------------------------------------------------------------------------
-// Schedule index
-//
-// The weekly-digest flow imports `scheduleIndex` from this module and hands
-// it to `defineScheduleCollection`. The real backing implementation is
-// installed lazily by `createStores()` once a Postgres pool exists. Before
-// that runs, mutations against the index buffer themselves as no-ops, which
-// matches the "no index → no row mirrored" semantics
-// `defineScheduleCollection` supports. The mutable container avoids a
-// cyclic-import init-order problem.
-// ---------------------------------------------------------------------------
-
-let scheduleIndexImpl: ScheduleIndex | null = null;
-
-export const scheduleIndex: ScheduleIndex = {
-  async upsert(row: ScheduleIndexRow) {
-    if (scheduleIndexImpl) return scheduleIndexImpl.upsert(row);
-  },
-  async claimDue(now: number, limit?: number) {
-    if (!scheduleIndexImpl) return [];
-    return scheduleIndexImpl.claimDue(now, limit);
-  },
-  async remove(userId: string, key: string) {
-    if (scheduleIndexImpl) return scheduleIndexImpl.remove(userId, key);
-  },
-};
-
-// Flows are imported AFTER scheduleIndex is exported so the cyclic-import
-// binding from `flows/weekly-digest/flow.ts` resolves to the wrapper above.
-// eslint-disable-next-line import/first
-import chatAgentFlow from "@/flows/chat-agent/flow";
-// eslint-disable-next-line import/first
-import richTextComponentFlow from "@/flows/rich-text-component/flow";
-// eslint-disable-next-line import/first
-import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 // Pass explicit provider/gateway instances. The model resolver's dynamic
 // require() path doesn't work in bundled Next.js — static imports do.
@@ -181,10 +147,10 @@ async function createStores(): Promise<StoreRegistry> {
       },
     };
 
-    // Install the real ScheduleIndex impl behind the wrapper before any
-    // collection hook runs (collection hooks fire only on resource writes,
-    // which require a request — long after this resolves).
-    scheduleIndexImpl = createPostgresScheduleIndex(executor);
+    // Install the real ScheduleIndex impl behind the proxy in
+    // `lib/schedule-index.ts` before any collection hook runs (hooks fire
+    // only on resource writes, which require a request — long after this).
+    setScheduleIndexImpl(createPostgresScheduleIndex(executor));
 
     return createPostgresStores({
       pool,

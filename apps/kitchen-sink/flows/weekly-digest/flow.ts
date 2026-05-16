@@ -22,7 +22,7 @@ import {
 } from "@flow-state-dev/scheduled";
 import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
 import { z } from "zod";
-import { scheduleIndex } from "@/lib/server";
+import { scheduleIndex } from "@/lib/schedule-index";
 
 const schedulesCollection = defineScheduleCollection({
   pattern: "schedules/*",

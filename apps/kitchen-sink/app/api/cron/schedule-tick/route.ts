@@ -10,7 +10,8 @@
  * `claimDue` would no-op — so we force initialisation before delegating.
  */
 import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
-import { scheduleIndex, getRouter } from "@/lib/server";
+import { scheduleIndex } from "@/lib/schedule-index";
+import { getRouter } from "@/lib/server";
 
 const handler = createScheduleTickHandler({
   flowKind: "weekly-digest",
