@@ -135,7 +135,7 @@ export function buildResult(
  *   llm-filter strategy when prepare set `shouldFilter = false`.
  */
 export const defaultFormatBlock = handler({
-  name: 'tf.memory/recall.format',
+  name: 'memory/recall.format',
   execute: async (
     env: PrepareEnvelope & { selectedIds?: string[] },
   ): Promise<RecallToolResult> => {

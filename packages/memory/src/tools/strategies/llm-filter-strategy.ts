@@ -227,7 +227,7 @@ const prepareOutputSchema = z.object({
  */
 function buildPrepareBlock(includeExactPhrase: boolean) {
   return handler({
-    name: 'tf.memory/recall.prepare',
+    name: 'memory/recall.prepare',
     outputSchema: prepareOutputSchema,
     execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
       const { semantic, episodic, currentTurn } = readStores(ctx)
@@ -342,7 +342,7 @@ function extractCandidateMetadata(item: MemoryItem): Record<string, unknown> {
  */
 function buildFilterBlock(model: string) {
   return generator({
-    name: 'tf.memory/recall.llm-filter',
+    name: 'memory/recall.llm-filter',
     model,
     inputSchema: z.any(),
     outputSchema: filterOutputSchema,

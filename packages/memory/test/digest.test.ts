@@ -11,39 +11,39 @@ import { describe, it, expect } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
 import type { ResourceHandle } from '@flow-state-dev/core'
 
-import { workingMemoryStateSchema } from '../../src/memory/working-memory.js'
-import type { WorkingMemoryState } from '../../src/memory/working-memory.js'
+import { workingMemoryStateSchema } from '../src/working-memory.js'
+import type { WorkingMemoryState } from '../src/working-memory.js'
 import {
   episodicMemoryStateSchema,
-} from '../../src/memory/episodic-memory.js'
-import type { EpisodicMemoryState, Episode } from '../../src/memory/episodic-memory.js'
+} from '../src/episodic-memory.js'
+import type { EpisodicMemoryState, Episode } from '../src/episodic-memory.js'
 import {
   semanticMemoryStateSchema,
-} from '../../src/memory/semantic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../src/memory/semantic-memory.js'
-import { topFacts } from '../../src/memory/semantic-memory-helpers.js'
+} from '../src/semantic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../src/semantic-memory.js'
+import { topFacts } from '../src/semantic-memory-helpers.js'
 import {
   digestSchema,
   digestSourceSignatureSchema,
   digestMemoryStateSchema,
   createDigestMemoryResource,
-} from '../../src/memory/digest-memory.js'
-import type { Digest, DigestMemoryState } from '../../src/memory/digest-memory.js'
+} from '../src/digest-memory.js'
+import type { Digest, DigestMemoryState } from '../src/digest-memory.js'
 import {
   computeSourceSignature,
   isStale,
-} from '../../src/memory/digest-helpers.js'
+} from '../src/digest-helpers.js'
 import {
   digestRegenerateGuard,
   digestRegeneratePersist,
   buildDigestContext,
   rankEpisodesForDigest,
-} from '../../src/memory/digest-blocks.js'
+} from '../src/digest-blocks.js'
 import {
   memorySystemStateSchema,
   system,
-} from '../../src/memory/memory-system.js'
-import type { MemorySystemState } from '../../src/memory/memory-system.js'
+} from '../src/memory-system.js'
+import type { MemorySystemState } from '../src/memory-system.js'
 
 // ---------------------------------------------------------------------------
 // Mock resource refs

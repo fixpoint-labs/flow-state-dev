@@ -182,7 +182,7 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
   if (episodicResource) resources.episodicMemory = episodicResource
 
   return handler({
-    name: config.name ? `${config.name}/digest/guard` : 'tf.memory/digest/guard',
+    name: config.name ? `${config.name}/digest/guard` : 'memory/digest/guard',
     inputSchema: digestRegenerateInputSchema,
     outputSchema: digestGuardOutputSchema,
     resources,
@@ -269,7 +269,7 @@ export function digestRegenerateGenerate(config: DigestRegenerateConfig) {
   ].join('\n')
 
   return generator({
-    name: config.name ? `${config.name}/digest/generate` : 'tf.memory/digest/generate',
+    name: config.name ? `${config.name}/digest/generate` : 'memory/digest/generate',
     model: config.model,
     inputSchema: z.any(),
     outputSchema: digestOutputSchema,
@@ -306,7 +306,7 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
   if (episodicResource) resources.episodicMemory = episodicResource
 
   return handler({
-    name: config.name ? `${config.name}/digest/persist` : 'tf.memory/digest/persist',
+    name: config.name ? `${config.name}/digest/persist` : 'memory/digest/persist',
     inputSchema: digestOutputSchema,
     outputSchema: z.any(),
     resources,
@@ -358,7 +358,7 @@ export function digestRegenerate(config: DigestRegenerateConfig) {
   const persistBlock = digestRegeneratePersist(digestConfig)
 
   return sequencer({
-    name: config.name ? `${config.name}/digest/regenerate` : 'tf.memory/digest/regenerate',
+    name: config.name ? `${config.name}/digest/regenerate` : 'memory/digest/regenerate',
     inputSchema: digestRegenerateInputSchema,
   })
     .then(guardBlock)

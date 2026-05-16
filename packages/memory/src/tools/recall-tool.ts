@@ -67,7 +67,7 @@ export type CreateRecallToolOptions = {
  * nesting is safe.
  */
 const filterMergeBlock = handler({
-  name: 'tf.memory/recall.merge',
+  name: 'memory/recall.merge',
   execute: async (
     filterOut: { selectedIds: string[] },
     ctx,
@@ -83,7 +83,7 @@ const filterMergeBlock = handler({
 /**
  * Create the recall tool — a sequencer the agent calls as a tool.
  *
- * Returned block has the same `name` (`tf.memory/recall`) and `description`
+ * Returned block has the same `name` (`memory/recall`) and `description`
  * as before; only the `kind` shifts from `handler` to `sequencer`. Tools
  * accept any `BlockDefinition`, so generators install it the same way.
  */
@@ -110,7 +110,7 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
   // condition collapses to false, prepare's envelope passes straight to
   // format which surfaces the intrinsic ordering.
   const filterStep = strategy.filterBlock
-    ? sequencer({ name: 'tf.memory/recall.filter' })
+    ? sequencer({ name: 'memory/recall.filter' })
         .then(
           strategy.filterBlock.connectInput((env: PrepareEnvelope) => ({
             query: env.query,
@@ -130,7 +130,7 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
   // original `RecallToolInput` because `rescue` runs as a sibling step of
   // the failed block under the same outer recall sequencer.
   const errorRescueBlock = handler({
-    name: 'tf.memory/recall.rescue',
+    name: 'memory/recall.rescue',
     execute: async (error: Error, ctx): Promise<RecallToolResult> => {
       const input = ctx.parent!.input as RecallToolInput
       return {
@@ -145,7 +145,7 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
   // format block (success or error envelope); we don't re-declare it here —
   // the sequencer infers it from `formatBlock`.
   const recallSeq = sequencer({
-    name: 'tf.memory/recall',
+    name: 'memory/recall',
     description: recallToolDescription,
     inputSchema: recallToolInputSchema,
   })

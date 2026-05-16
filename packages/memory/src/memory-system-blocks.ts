@@ -20,7 +20,7 @@ import {
   allFacts,
 } from './semantic-memory-helpers.js'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system.js'
-import { findBestOverlap } from '../helpers.js'
+import { findBestOverlap } from './internal/helpers.js'
 import { createDigestMemoryResource } from './digest-memory.js'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
 
@@ -203,7 +203,7 @@ function buildEnvelopeRepair<TKeys extends string>(
       if (Array.isArray(parsed)) return { ...empty(), [primaryKey]: parsed }
       if (parsed && typeof parsed === 'object') return parsed
       console.warn(
-        `[tf.memory] consolidation/prune output unrecoverable; falling back to empty envelope (${candidate.length} chars)`,
+        `[memory] consolidation/prune output unrecoverable; falling back to empty envelope (${candidate.length} chars)`,
       )
       return empty()
     }
@@ -342,7 +342,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   if (episodicResource) resources.episodicMemory = episodicResource
 
   return generator({
-    name: config.name ? `${config.name}/observe` : 'tf.memory/observe',
+    name: config.name ? `${config.name}/observe` : 'memory/observe',
     model: config.model,
     inputSchema: z.any(),
     outputSchema: unifiedObservationsSchema,
@@ -501,7 +501,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           }
         }
       } catch (err) {
-        console.warn('[tf.memory] Failed to persist memory item:', (err as Error).message ?? err)
+        console.warn('[memory] Failed to persist memory item:', (err as Error).message ?? err)
       }
     }
 
@@ -524,7 +524,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
   if (semanticResource) resources.semanticMemory = semanticResource
 
   return handler({
-    name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
+    name: config.name ? `${config.name}/reflect` : 'memory/reflect',
     inputSchema: unifiedObservationsSchema,
     outputSchema: z.any(),
     resources,
@@ -549,7 +549,7 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
   }
 
   return handler({
-    name: config.name ? `${config.name}/tick` : 'tf.memory/tick',
+    name: config.name ? `${config.name}/tick` : 'memory/tick',
     inputSchema: z.any(),
     resources: {
       workingMemory: workingMemoryResource,
@@ -675,7 +675,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
   if (semanticResource) resources.semanticMemory = semanticResource
 
   return handler({
-    name: config.name ? `${config?.name ?? 'tf.memory'}/consolidate/guard` : 'tf.memory/consolidate/guard',
+    name: config.name ? `${config?.name ?? 'memory'}/consolidate/guard` : 'memory/consolidate/guard',
     inputSchema: z.any(),
     outputSchema: guardOutputSchema,
     resources,
@@ -784,7 +784,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
   }
 
   return generator({
-    name: config.name ? `${config.name}/consolidate/generate` : 'tf.memory/consolidate/generate',
+    name: config.name ? `${config.name}/consolidate/generate` : 'memory/consolidate/generate',
     model: config.consolidationModel ?? config.model,
     inputSchema: z.any(),
     outputSchema: consolidationOutputSchema,
@@ -885,7 +885,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
             if (fact.targetFactId) {
               const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
               if (result) reinforced++
-              else console.warn(`[tf.memory] Reinforce target not found: ${fact.targetFactId}`)
+              else console.warn(`[memory] Reinforce target not found: ${fact.targetFactId}`)
             }
             break
 
@@ -893,7 +893,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
             if (fact.targetFactId) {
               const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
               if (result) updated++
-              else console.warn(`[tf.memory] Update target not found: ${fact.targetFactId}`)
+              else console.warn(`[memory] Update target not found: ${fact.targetFactId}`)
             }
             break
 
@@ -905,7 +905,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
             break
         }
       } catch (err) {
-        console.warn('[tf.memory] Failed to process consolidation fact:', (err as Error).message ?? err)
+        console.warn('[memory] Failed to process consolidation fact:', (err as Error).message ?? err)
       }
     }
 
@@ -937,7 +937,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
   if (semanticResource) resources.semanticMemory = semanticResource
 
   return handler({
-    name: config.name ? `${config.name}/consolidate/persist` : 'tf.memory/consolidate/persist',
+    name: config.name ? `${config.name}/consolidate/persist` : 'memory/consolidate/persist',
     inputSchema: consolidationOutputSchema,
     outputSchema: z.any(),
     resources,
@@ -957,7 +957,7 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
 
   const generateAndPersist = withDigestRegenerate(
     sequencer({
-      name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'tf.memory/consolidate/generate-and-persist',
+      name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
       inputSchema: z.any(),
     })
       .then(generateBlock)
@@ -966,7 +966,7 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
   )
 
   return sequencer({
-    name: config.name ? `${config.name}/consolidate` : 'tf.memory/consolidate',
+    name: config.name ? `${config.name}/consolidate` : 'memory/consolidate',
     inputSchema: z.any(),
   })
     .then(guardBlock)
@@ -1029,7 +1029,7 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
   if (semanticResource) resources.semanticMemory = semanticResource
 
   return handler({
-    name: config.name ? `${config.name}/prune/guard` : 'tf.memory/prune/guard',
+    name: config.name ? `${config.name}/prune/guard` : 'memory/prune/guard',
     inputSchema: z.any(),
     outputSchema: pruneGuardOutputSchema,
     resources,
@@ -1095,7 +1095,7 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
   }
 
   return generator({
-    name: config.name ? `${config.name}/prune/generate` : 'tf.memory/prune/generate',
+    name: config.name ? `${config.name}/prune/generate` : 'memory/prune/generate',
     model: config.pruneModel ?? config.model,
     inputSchema: z.any(),
     outputSchema: pruneOutputSchema,
@@ -1141,7 +1141,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
         await removeFact(semRef, removal.factId)
         removed++
       } catch (err) {
-        console.warn('[tf.memory] Failed to remove fact during prune:', (err as Error).message ?? err)
+        console.warn('[memory] Failed to remove fact during prune:', (err as Error).message ?? err)
       }
     }
 
@@ -1165,7 +1165,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
         }
         merged++
       } catch (err) {
-        console.warn('[tf.memory] Failed to merge facts during prune:', (err as Error).message ?? err)
+        console.warn('[memory] Failed to merge facts during prune:', (err as Error).message ?? err)
       }
     }
 
@@ -1177,7 +1177,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
   if (semanticResource) resources.semanticMemory = semanticResource
 
   return handler({
-    name: config.name ? `${config.name}/prune/persist` : 'tf.memory/prune/persist',
+    name: config.name ? `${config.name}/prune/persist` : 'memory/prune/persist',
     inputSchema: pruneOutputSchema,
     outputSchema: z.any(),
     resources,
@@ -1204,7 +1204,7 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
 
   const generateAndPersist = withDigestRegenerate(
     sequencer({
-      name: config.name ? `${config.name}/prune/generate-and-persist` : 'tf.memory/prune/generate-and-persist',
+      name: config.name ? `${config.name}/prune/generate-and-persist` : 'memory/prune/generate-and-persist',
       inputSchema: z.any(),
     })
       .then(generateBlock)
@@ -1213,7 +1213,7 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
   )
 
   return sequencer({
-    name: config.name ? `${config.name}/prune` : 'tf.memory/prune',
+    name: config.name ? `${config.name}/prune` : 'memory/prune',
     inputSchema: z.any(),
   })
     .then(guardBlock)
@@ -1235,7 +1235,7 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const tickBlock = memorySystemTick(config)
 
   let pipeline: any = sequencer({
-    name: config.name ?? 'tf.memory/capture',
+    name: config.name ?? 'memory/capture',
     inputSchema: z.any(),
   })
     .then(observeBlock)

@@ -20,6 +20,8 @@ Primitives → Utility Blocks → Composable Patterns
 
 The line between utility blocks and composable patterns is clear: utility blocks are single blocks. Patterns are multi-block sequencer compositions.
 
+> **Memory is orthogonal.** Cross-turn memory is a capability you install on blocks regardless of which coordination pattern you choose. See [Ecosystem → Memory](../memory/overview).
+
 ## When to use each tier
 
 Use **primitives directly** when you're building something specific that doesn't fit a pre-built shape. A custom routing block, a handler with bespoke state logic, a generator with a carefully tuned system prompt.

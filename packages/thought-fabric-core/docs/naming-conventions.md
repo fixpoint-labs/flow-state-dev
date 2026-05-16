@@ -41,17 +41,17 @@ These are fundamentally different. The block is declarative (you compose it). Th
 
 ## Subpath Exports
 
-Each domain gets one subpath: `@thought-fabric/core/memory`, `@thought-fabric/core/attention`, etc.
+Each domain gets one subpath: `@thought-fabric/core/attention`, `@thought-fabric/core/identity`, etc.
 
 - Named exports only. No default namespace objects. This keeps imports tree-shakeable.
-- The root `@thought-fabric/core` re-exports all domains as namespace objects (`memory.*`, `attention.*`) for convenience.
+- The root `@thought-fabric/core` re-exports all domains as namespace objects (`attention.*`, `identity.*`) for convenience.
 - Both paths use the same qualified names. There is exactly one name for each export.
 
 ```ts
 // These resolve to the same symbol:
-import { workingMemoryCapture } from '@thought-fabric/core/memory'
-import { memory } from '@thought-fabric/core'
-memory.workingMemoryCapture  // same function
+import { filterRelevance } from '@thought-fabric/core/attention'
+import { attention } from '@thought-fabric/core'
+attention.filterRelevance  // same function
 ```
 
 ## Pre-keyed Resources
