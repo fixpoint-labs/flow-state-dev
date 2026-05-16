@@ -64,37 +64,38 @@ export interface DefineScheduleCollectionOptions {
 export function defineScheduleCollection(
   opts: DefineScheduleCollectionOptions
 ) {
+  const base = {
+    pattern: opts.pattern,
+    scope: "user" as const,
+    stateSchema: SCHEDULE_RESOURCE_SCHEMA
+  };
+
   const { index } = opts;
+  if (!index) return defineResourceCollection(base);
+
+  const bareKey = (storageKey: string) => stripPrefix(storageKey, opts.pattern);
 
   return defineResourceCollection({
-    pattern: opts.pattern,
-    scope: "user",
-    stateSchema: SCHEDULE_RESOURCE_SCHEMA,
-    onInstanceCreated: index
-      ? async (key, state, ctx) => {
-          const typed = state as ScheduleCollectionState;
-          if (typed.enabled === false) return;
-          const row = rowFromState(ctx.scopeId, stripPrefix(key, opts.pattern), typed);
-          if (row !== null) await index.upsert(row);
-        }
-      : undefined,
-    onInstanceUpdated: index
-      ? async (key, state, _prev, ctx) => {
-          const typed = state as ScheduleCollectionState;
-          const bareKey = stripPrefix(key, opts.pattern);
-          if (typed.enabled === false) {
-            await index.remove(ctx.scopeId, bareKey);
-            return;
-          }
-          const row = rowFromState(ctx.scopeId, bareKey, typed);
-          if (row !== null) await index.upsert(row);
-        }
-      : undefined,
-    onInstanceDeleted: index
-      ? async (key, ctx) => {
-          await index.remove(ctx.scopeId, stripPrefix(key, opts.pattern));
-        }
-      : undefined
+    ...base,
+    onInstanceCreated: async (key, state, ctx) => {
+      const typed = state as ScheduleCollectionState;
+      if (typed.enabled === false) return;
+      const row = rowFromState(ctx.scopeId, bareKey(key), typed);
+      if (row !== null) await index.upsert(row);
+    },
+    onInstanceUpdated: async (key, state, _prev, ctx) => {
+      const typed = state as ScheduleCollectionState;
+      const k = bareKey(key);
+      if (typed.enabled === false) {
+        await index.remove(ctx.scopeId, k);
+        return;
+      }
+      const row = rowFromState(ctx.scopeId, k, typed);
+      if (row !== null) await index.upsert(row);
+    },
+    onInstanceDeleted: async (key, ctx) => {
+      await index.remove(ctx.scopeId, bareKey(key));
+    }
   });
 }
 

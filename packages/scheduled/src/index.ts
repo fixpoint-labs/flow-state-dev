@@ -50,3 +50,5 @@ export {
   type DefineScheduleCollectionOptions,
   type ScheduleCollectionState
 } from "./defineScheduleCollection";
+
+export { createBadCronWarner } from "./createBadCronWarner";

@@ -12,7 +12,11 @@
  */
 
 import { CronExpressionParser } from "cron-parser";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import {
+  createBadCronWarner,
+  type ScheduleIndex,
+  type ScheduleIndexRow
+} from "@flow-state-dev/scheduled";
 import type { QueryExecutor } from "./types";
 
 /**
@@ -24,12 +28,7 @@ import type { QueryExecutor } from "./types";
  * satisfy this; custom executors must implement it themselves.
  */
 export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIndex {
-  // De-dupe bad-cron warnings within a process. The row stays at its
-  // current nextFireAt so it keeps reappearing in claimDue (the spec
-  // chose loud repeat over silent drop), but we only log the first
-  // time we encounter each key — otherwise a single bad row produces
-  // unbounded log volume.
-  const warned = new Set<string>();
+  const warnBadCron = createBadCronWarner("[flow-state/store-postgres]");
 
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
@@ -81,19 +80,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
               .toDate()
               .getTime();
           } catch (err) {
-            // Bad cron: skip — do NOT advance the row. Without an
-            // advance the row will reappear on every tick. Log once
-            // per (user_id, key) per process so operators surface it
-            // without unbounded log volume.
-            const warnKey = `${userId}/${key}`;
-            if (!warned.has(warnKey)) {
-              warned.add(warnKey);
-              // eslint-disable-next-line no-console
-              console.warn(
-                `[flow-state/store-postgres] schedule_index row ${warnKey} has unparseable cron "${cron}"; skipping advance`,
-                err
-              );
-            }
+            warnBadCron(userId, key, cron, err);
             continue;
           }
 

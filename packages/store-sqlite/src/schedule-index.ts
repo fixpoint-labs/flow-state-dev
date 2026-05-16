@@ -15,19 +15,18 @@
 
 import type Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import {
+  createBadCronWarner,
+  type ScheduleIndex,
+  type ScheduleIndexRow
+} from "@flow-state-dev/scheduled";
 
 /**
  * Build a `ScheduleIndex` backed by the `schedule_index` table in the
  * given better-sqlite3 database. Caller owns the `Database` lifecycle.
  */
 export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex {
-  // De-dupe bad-cron warnings within a process. The row stays at its
-  // current nextFireAt so it keeps reappearing in claimDue (the spec
-  // chose loud repeat over silent drop), but we only log the first
-  // time we encounter each key — otherwise a single bad row produces
-  // unbounded log volume.
-  const warned = new Set<string>();
+  const warnBadCron = createBadCronWarner("[flow-state/store-sqlite]");
   const upsertStmt = db.prepare(
     `INSERT INTO schedule_index (user_id, key, cron, timezone, next_fire_at)
      VALUES (@userId, @key, @cron, @timezone, @nextFireAt)
@@ -78,19 +77,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
           .toDate()
           .getTime();
       } catch (err) {
-        // Bad cron: skip — leaves the row at its current nextFireAt
-        // so it will reappear on every tick until fixed. Logged once
-        // per (user_id, key) per process so operators surface it
-        // without unbounded log volume.
-        const warnKey = `${row.user_id}/${row.key}`;
-        if (!warned.has(warnKey)) {
-          warned.add(warnKey);
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[flow-state/store-sqlite] schedule_index row ${warnKey} has unparseable cron "${row.cron}"; skipping advance`,
-            err
-          );
-        }
+        warnBadCron(row.user_id, row.key, row.cron, err);
         continue;
       }
       claimed.push({

@@ -13,16 +13,15 @@ import type {
   ScheduleConfig,
   ScheduleResolutionContext
 } from "@flow-state-dev/core/types";
+import type { ScheduleCollectionState } from "./defineScheduleCollection";
 
-export interface ScheduleResourceState {
-  cron: string;
-  action: string;
-  input?: unknown;
-  timezone?: string;
-  onOverlap?: "skip" | "allow";
-  description?: string;
-  enabled?: boolean;
-}
+/**
+ * Shape persisted under each schedule resource. The single source of
+ * truth is the zod schema in `defineScheduleCollection.ts`; this is
+ * its inferred type, re-exported under the historical name for hosts
+ * that wire the resolver without using `defineScheduleCollection`.
+ */
+export type ScheduleResourceState = ScheduleCollectionState;
 
 export interface ParsedScheduleId {
   userId: string;

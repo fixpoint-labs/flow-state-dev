@@ -56,10 +56,8 @@ const scheduleDigest = handler({
     if (!ctx.user) {
       throw new Error("scheduleDigest requires a user scope");
     }
-    // FIX-435: resources live on the flat `ctx.resources` registry; the
-    // collection's intrinsic `scope: "user"` routes storage under the
-    // current user. Cast through the registry's loose typing — the
-    // collection branding doesn't carry into `ctx.resources` lookups.
+    // Cast through `ctx.resources`'s loose typing — the collection
+    // branding doesn't carry into the flat registry lookup.
     const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
       cron: string;
       action: string;
