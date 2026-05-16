@@ -12,7 +12,6 @@
  */
 import { handler, router } from "@flow-state-dev/core";
 import {
-  createRoundRobinContributions,
   roundRobin,
   roundRobinContributionEntrySchema,
   roundRobinInputSchema,
@@ -20,16 +19,12 @@ import {
 import { z } from "zod";
 import { PHASE_2_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
+import { phase2Contributions } from "./contributions";
 import { BEAR_ROLE, BULL_ROLE, ROUND_ROBIN_INSTRUCTIONS } from "./prompts";
 import { stubJudge } from "./stub-judge";
 
-/**
- * Shared contributions resource. Passed to every `roundRobin()` instance
- * below AND registered on the flow's `resources` map (see `flow.ts`) so
- * downstream consolidation generators can declare it on their own
- * `resources:` slot and read entries via `ctx.resources`.
- */
-export const phase2Contributions = createRoundRobinContributions();
+// Re-export so existing imports of `./round-robin` keep working.
+export { phase2Contributions };
 
 const roster = [
   { name: PHASE_2_MEMO_KEYS.bull.agentName, role: BULL_ROLE },
@@ -50,6 +45,10 @@ function buildInstance(opts: {
     instructions: ROUND_ROBIN_INSTRUCTIONS,
     model: opts.model,
     contributions: phase2Contributions,
+    // Accessor name shared with downstream consumers (consolidators +
+    // tradingDesk capability presets). Resource state is keyed by
+    // accessor name, so writes and reads must align.
+    accessorKey: "p2Contributions",
     collectionId: `p2-debate-${opts.variant}`,
   });
 }

@@ -163,6 +163,21 @@ export const PHASE_4_MEMO_KEYS = {
 
 export type Phase4MemoShortName = keyof typeof PHASE_4_MEMO_KEYS;
 
+/** Resource storage key for the Phase 5 portfolio-manager memo. Same shape
+ *  as the Phase 1/2/3/4 maps. */
+export const PHASE_5_MEMO_KEYS = {
+  portfolioManager: {
+    agentName: "portfolioManager",
+    memoKey: "memos/p5/portfolio-manager",
+    collectionKey: "p5/portfolio-manager",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase5MemoShortName = keyof typeof PHASE_5_MEMO_KEYS;
+
 /** Combined memo-key map across all shipped phases. The sidebar iterates
  *  this single table; future phases append their own entries. */
 export const ALL_MEMO_KEYS = {
@@ -170,6 +185,7 @@ export const ALL_MEMO_KEYS = {
   ...PHASE_2_MEMO_KEYS,
   ...PHASE_3_MEMO_KEYS,
   ...PHASE_4_MEMO_KEYS,
+  ...PHASE_5_MEMO_KEYS,
 } as const;
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;

@@ -13,6 +13,7 @@ import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord } from "../stores/types";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject } from "../utils/json-helpers";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";
 
 export const JSON_HEADERS = {
@@ -217,6 +218,7 @@ export function createScopeResources(options: {
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
   const contentMap = options.persistedContent ?? {};
+  const storageKeys = resourceStorageKeys(options.configs);
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
@@ -267,16 +269,17 @@ export function createScopeResources(options: {
       continue;
     }
 
+    const storageKey = storageKeys[resourceName] ?? resourceName;
     const readState = (): JsonObject =>
       cloneValue(
         normalizeResourceState(
           maybeConfig,
-          options.persisted?.[resourceName]
+          options.persisted?.[storageKey]
         )
       );
 
     handles[resourceName] = {
-      name: resourceName,
+      name: storageKey,
       config: maybeConfig,
       get state() {
         return readState();
@@ -360,6 +363,7 @@ export async function buildResourceSnapshot(options: {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
   let hasAny = false;
+  const storageKeys = resourceStorageKeys(options.configs);
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
@@ -410,15 +414,16 @@ export async function buildResourceSnapshot(options: {
     const config = maybeConfig as ResourceConfig;
     if (config.client === undefined) continue;
 
-    const state = normalizeResourceState(config, options.persisted?.[resourceName]);
+    const storageKey = storageKeys[resourceName] ?? resourceName;
+    const state = normalizeResourceState(config, options.persisted?.[storageKey]);
     const prefetch = config.client?.content?.prefetch === true;
 
     const entry: Record<string, unknown> = {};
     if (hasClientProjection(config.client)) {
       entry.clientData = await resolveClientProjection(config.client, state);
     }
-    if (prefetch && contentMap[resourceName] !== undefined) {
-      entry.content = contentMap[resourceName];
+    if (prefetch && contentMap[storageKey] !== undefined) {
+      entry.content = contentMap[storageKey];
     }
     out[resourceName] = entry;
     hasAny = true;

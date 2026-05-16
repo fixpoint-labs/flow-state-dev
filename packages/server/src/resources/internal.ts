@@ -24,6 +24,7 @@ import {
   resolveUserStorageKey
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
+import { resourceStorageKeys } from "./storage-keys";
 
 /** Storage scope a resource lookup resolves to. */
 export type ResolvedResourceScope = "session" | "user" | "org";
@@ -60,6 +61,9 @@ export function isCollectionConfig(value: unknown): value is ResourceCollectionC
   );
 }
 
+// Re-export so older callers keep working.
+export { resourceStorageKeys } from "./storage-keys";
+
 /**
  * Look up a resource by accessor key on a flow. Returns the config and
  * its intrinsic scope, or `undefined` if the key is missing or points
@@ -73,6 +77,8 @@ export function findResourceConfig(
   | {
       config: ResourceConfig | ResourceCollectionConfig;
       scope: ResolvedResourceScope;
+      /** Canonical storage key — equals `ref` for non-aliased single resources. */
+      storageKey: string;
     }
   | undefined {
   const resources = flow.resources;
@@ -84,7 +90,11 @@ export function findResourceConfig(
   if (!isResourceConfig(config) && !isCollectionConfig(config)) return undefined;
   const scope = (config as { scope?: string }).scope;
   if (scope !== "session" && scope !== "user" && scope !== "org") return undefined;
-  return { config, scope };
+  // Resolve the persisted storage key for this accessor — aliases that share
+  // a `DefinedResource` reference collapse to a single slot (FIX-591).
+  const allKeys = resourceStorageKeys(resources as Record<string, unknown>);
+  const storageKey = allKeys[ref] ?? ref;
+  return { config, scope, storageKey };
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   type ResourceFlowLike,
   type ResourcePersistenceContext
 } from "../resources/internal";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -153,6 +154,8 @@ interface ResourceGroup {
   config: ResourceConfig | ResourceCollectionConfig;
   aliases: string[];
   scope: ResolvedResourceScope;
+  /** Canonical persisted storage key for this group (FIX-591). */
+  storageKey: string;
 }
 
 /**
@@ -170,6 +173,7 @@ function groupResources(flow: ResourceFlowLike): ResourceGroup[] {
   ) {
     return [];
   }
+  const storageKeys = resourceStorageKeys(resources as Record<string, unknown>);
   const groups = new Map<unknown, ResourceGroup>();
   const order: unknown[] = [];
   for (const [name, maybeConfig] of Object.entries(
@@ -185,7 +189,12 @@ function groupResources(flow: ResourceFlowLike): ResourceGroup[] {
     if (existing) {
       existing.aliases.push(name);
     } else {
-      const group: ResourceGroup = { config, aliases: [name], scope };
+      const group: ResourceGroup = {
+        config,
+        aliases: [name],
+        scope,
+        storageKey: storageKeys[name] ?? name
+      };
       groups.set(config, group);
       order.push(config);
     }
@@ -317,16 +326,13 @@ export async function buildDebugResourceTree(opts: {
       continue;
     }
 
-    // Single resource. The runtime writes state/content under the accessor
-    // name (not the config identity), so for dual-registered resources we
-    // probe each alias and return the first one populated.
-    const rawState = persisted ? findAliasValue(persisted.resources, group.aliases) : undefined;
+    // Single resource. Dual-registered aliases share one persisted slot at
+    // the group's canonical storage key (FIX-591).
+    const rawState = persisted ? persisted.resources[group.storageKey] : undefined;
     const state: JsonObject | null = isJsonObject(rawState)
       ? (rawState as JsonObject)
       : null;
-    const rawContent = persisted
-      ? findAliasValue(persisted.content, group.aliases)
-      : undefined;
+    const rawContent = persisted ? persisted.content[group.storageKey] : undefined;
     const hasContent = typeof rawContent === "string";
     entries.push({
       definitionId,
@@ -560,9 +566,8 @@ export async function lookupDebugContent(opts: {
   if (!persisted) return { ok: false, kind: "content_not_found" };
 
   // For collections the storage key is pattern-derived. For single resources
-  // each alias gets its own storage slot (the runtime writes by accessor
-  // name, not by config identity), so we probe every alias and return the
-  // first one with content.
+  // dual-registered aliases share one slot at the group's canonical storage
+  // key (FIX-591).
   if (topic !== null) {
     const storageKey = joinPatternTopic(
       (group.config as ResourceCollectionConfig).pattern,
@@ -572,28 +577,11 @@ export async function lookupDebugContent(opts: {
     if (typeof body !== "string") return { ok: false, kind: "content_not_found" };
     return { ok: true, body, contentType: deriveContentType(group.config) };
   }
-  for (const alias of group.aliases) {
-    const body = persisted.content[alias];
-    if (typeof body === "string") {
-      return { ok: true, body, contentType: deriveContentType(group.config) };
-    }
+  const body = persisted.content[group.storageKey];
+  if (typeof body === "string") {
+    return { ok: true, body, contentType: deriveContentType(group.config) };
   }
   return { ok: false, kind: "content_not_found" };
-}
-
-/**
- * Probe `map` for each alias in order; return the first defined value. The
- * runtime persists single-resource state under the accessor name, so
- * dual-registered resources can have data at any of their aliases.
- */
-function findAliasValue<T>(
-  map: Record<string, T>,
-  aliases: string[]
-): T | undefined {
-  for (const alias of aliases) {
-    if (map[alias] !== undefined) return map[alias];
-  }
-  return undefined;
 }
 
 /** Compose a full collection storage key from pattern prefix + bare topic. */

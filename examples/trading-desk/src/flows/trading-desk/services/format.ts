@@ -74,6 +74,54 @@ export function formatTradeProposalExtensions(memo: any): string {
   return lines.length > 0 ? lines.join("\n") : "(trade fields empty)";
 }
 
+/** Render the Phase 4 RiskAssessment memo's structured fields. */
+export function formatRiskAssessmentExtensions(memo: any): string {
+  if (memo === undefined || memo === null) {
+    return "(no risk assessment available)";
+  }
+  const lines: string[] = [];
+  if (Array.isArray(memo.criticalRisks) && memo.criticalRisks.length > 0) {
+    lines.push("Critical risks:");
+    for (const r of memo.criticalRisks as Array<{
+      description: string;
+      raisedBy: string;
+      severity: string;
+    }>) {
+      lines.push(`- [${r.severity}] (raised by ${r.raisedBy}) ${r.description}`);
+    }
+  }
+  if (Array.isArray(memo.dismissedRisks) && memo.dismissedRisks.length > 0) {
+    lines.push("Dismissed risks:");
+    for (const d of memo.dismissedRisks as Array<{
+      description: string;
+      reason: string;
+    }>) {
+      lines.push(`- ${d.description} — ${d.reason}`);
+    }
+  }
+  if (memo.recommendedAdjustments != null) {
+    const ra = memo.recommendedAdjustments as Record<
+      string,
+      { direction: string; rationale: string; attributedTo: string } | null
+    >;
+    lines.push("Recommended adjustments:");
+    for (const axis of ["sizing", "holdingPeriod", "invalidation"] as const) {
+      const entry = ra[axis];
+      if (entry == null) continue;
+      lines.push(
+        `- ${axis}: ${entry.direction} (attributed to ${entry.attributedTo}) — ${entry.rationale}`,
+      );
+    }
+  }
+  if (memo.confidenceCalibration != null) {
+    lines.push(`Confidence calibration: ${memo.confidenceCalibration}`);
+  }
+  if (memo.calibrationRationale != null && memo.calibrationRationale !== "") {
+    lines.push(`Calibration rationale: ${memo.calibrationRationale}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : "(risk-assessment fields empty)";
+}
+
 /** Render the InvestmentThesis extension fields. */
 export function formatThesisExtensions(memo: any): string {
   if (memo === undefined || memo === null) {
@@ -149,6 +197,31 @@ export function formatAnalystMemos(memos: {
     blocks.push(formatMemoBlock(`${role}`, ref?.state));
   }
   return blocks.join("\n\n");
+}
+
+/** Render contributions filtered to one stance, grouped by round. Returns
+ *  a sentinel string when no entries match (so context renderers don't emit
+ *  a blank tag). */
+export function formatStanceContributions(
+  entries: RoundRobinContributionEntry[],
+  agentName: string,
+): string {
+  const filtered = entries.filter((e) => e.agentName === agentName);
+  if (filtered.length === 0) return "(no contributions for this stance)";
+  const byRound = new Map<number, RoundRobinContributionEntry[]>();
+  for (const entry of filtered) {
+    const arr = byRound.get(entry.round) ?? [];
+    arr.push(entry);
+    byRound.set(entry.round, arr);
+  }
+  const lines: string[] = [];
+  for (const round of [...byRound.keys()].sort((a, b) => a - b)) {
+    lines.push(`Round ${round}:`);
+    for (const entry of byRound.get(round)!) {
+      lines.push(`- ${entry.text}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 /** Render a round-robin transcript grouped by round. Used for both the

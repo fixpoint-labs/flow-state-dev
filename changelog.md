@@ -83,6 +83,52 @@ applicable to any future bind-mount provider:
 
 - `flush()` after every bash command/write previously ran `find . -type f` from the destination root (`/workspace`). Under providers that bind-mount the host repo — MOAT, Vercel sandbox — that traversed the entire user repo (every `.next/`, every per-package `dist/`, every source file), routinely exceeded the 60s `execTimeoutMs`, and silently aborted via `if (result.exitCode !== 0) return;` — which dropped any just-written artifact with no warning.
 - `find` is now scoped to each mount's prefix path (`./artifacts`, `./skills`, `./tmp`) plus the scratch directory. Mount prefixes are the only paths flush can route into a collection anyway, so the wider walk produced no value to offset its cost. Hydrate now seeds an empty `.keep` marker into each mount-prefix directory so `find` doesn't error on collections that start with zero refs. The flush deletion pass skips this marker explicitly.
+### Delta store verbs: `patchField`, `incField`, `pushToArray` (FIX-405)
+
+- `Store` adapters can now implement three optional delta verbs that mutate one field at a time instead of rewriting the whole record. Single-field `patchState` calls map to `patchField`, `incState({ field: delta })` calls map to `incField`, and `pushState` calls map to `pushToArray`. Multi-field patches stay on `set` to preserve single-version semantics per logical mutation.
+- The in-memory adapter and `@flow-state-dev/store-postgres` ship the verbs in this change. SQLite and filesystem keep working unchanged — `createScopePersist` feature-detects per call and falls back to `set` when an adapter doesn't advertise the verb.
+- Postgres uses native JSONB operators (`jsonb_set`, `||`) wrapped in `UPDATE ... WHERE version = ?` so the row-level CAS contract from FIX-400 still holds for delta paths. A 100-op patchField benchmark against PGlite passes within 2× the cost of 100 `set` calls; on real Postgres the gap widens as the wire payload shrinks.
+- Hot-path cleanup on the CAS retry loop: `MemoryStateContainer.read()` no longer deep-clones on every read (callers must treat the read result as immutable, which all in-tree scope ops already do), and the `JSON.stringify` size-estimate that ran on every CAS attempt is gone. The `onStateSizeWarning` callback is removed from `ScopeStateOpsOptions`.
+- `docs/architecture/state-and-scopes.md` documents the routing decision tree and the container immutability contract.
+
+## 2026-05-14
+
+### Trading Desk example: wider indicator set and insider transactions (FIX-596)
+
+- The technical analyst's indicator bundle expands from RSI/MACD/ATR/SMA50/200 to also include Bollinger Bands, VWMA(20), the Stochastic Oscillator (%K/%D), KDJ, and OBV. The hand-rolled `indicators-math.ts` is replaced with `trading-signals` (MIT) plus two small helpers for VWMA and KDJ.
+- New `get_insider_transactions` tool wired into the news analyst — 90-day window of Form 4 filings with filing date, insider name and title, transaction code, signed share count, price, and derivative flag. Finnhub-only; returns `unavailable` on failure or missing key, consistent with the other single-provider tools.
+- News analyst prompt updated to weigh insider transactions as ground-truth signal (cluster buying, executive selling streaks, derivative vs. open-market trades) and treat headlines as complementary context.
+- Curated `insider-transactions.json` fixtures added for NVDA, AAPL, and JPM at the `2026-05-06` snapshot. Existing `indicators.json` fixtures extended with the new indicator fields.
+- Lives entirely inside `examples/trading-desk/` — no framework changes.
+
+### Observable model identity on generator emissions and block_trace (FIX-518)
+
+- New `ModelIdentity` type exported from `@flow-state-dev/core`. Shape: `{ actual, requested?, gateway? }` — `actual` is always populated (provider-reported model id when present, otherwise the framework's winning candidate string); `requested` is set only when it differs from `actual`; `gateway` is set when the call routed through a gateway.
+- Every generator-emitted item — `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress` — now carries `model: ModelIdentity`. Handler-emitted items (via `ctx.emitMessage`) leave the field absent.
+- `BlockTraceItem` for generator blocks gains a top-level `model` field as a sibling of `generator.model` (the requested string) and `modelUsage.model` (the token-accounting key). Populated even when the generator emits no items, so structured-only and tool-only turns have a durable audit trail.
+- New `<ModelBadge model={item.model} />` in `@flow-state-dev/react`. Renders the `actual` model id as a pill with the requested/gateway in the tooltip; renders nothing when `model` is undefined. Kitchen-sink wires it next to the thinking-style badge on assistant messages.
+- Additive change. Items persisted before this release surface as `model: undefined`, which renderers and audit consumers treat as absent.
+
+### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
+
+- New method on every `BlockDefinition`. Wrapping a block with `.asTool(opts?)` causes it to emit a `tool_output` item with the same envelope and lifecycle the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged.
+- Closes the transcript-visibility gap for flows that fetch data deterministically (e.g. inside `.parallel({...})`) and reserve the LLM for synthesis. Tool inputs known up front no longer have to choose between transcript pills and keeping the LLM out of the tool loop.
+- `agentType` / `agentName` opts control grouping under the parent agent's card. Failures flip the emitted `tool_output` to `failed` with the error message visible and rethrow.
+- Both `.asTool()` and the AI SDK tool-loop path now share a single envelope-emit path, so the two origins produce structurally identical `tool_output` items.
+- Trading-desk example: the app-local `callAsTool` prototype is deleted; analysts switch to `.asTool({...})`. No behavioral change to the rendered transcript.
+
+## 2026-05-13
+
+### Trading Desk example: Phase 5 — portfolio manager final decision (FIX-564)
+
+- The `analyze` action now runs end-to-end through five phases. A single `portfolioManager` generator reads the always-on upstream artifacts (Phase 2 investment thesis, Phase 3 trade proposal, Phase 4 risk assessment) and emits a typed `PortfolioDecision`. On the `full` preset it also reads the four analyst memos, the bull/bear debate transcript, and the three persona risk critiques.
+- The structured output carries seven extension fields on top of the standard memo body: a five-tier `finalRating` (`Sell | Underweight | Hold | Overweight | Buy`), a one-line `decisionSummary`, a self-reported `decisionConfidence`, a typed `acceptedAdjustments` map that forces explicit accept-or-override with reasoning for each of the three risk-team recommendations, `keyDependencies`, `upstreamReferences`, and a derived `agreesWithTrader` boolean.
+- The right-pane PM Hero is now wired — rating bar, design-mandated metrics row, accepted-adjustments panel, key dependencies, and a static citation list referencing each upstream memo's storage key. The PM Hero reads from the same `useResourceCollectionItem` hook every other memo uses; the marquee surface has no special-case data flow. The PM Hero's stale lowercase 5-tier vocabulary is updated to the design-mandated capitalized scale (`["Sell","Underweight","Hold","Overweight","Buy"]`).
+- `agreesWithTrader` and `upstreamReferences` are computed at commit time rather than emitted by the LLM — both are fully determined by other stored values, so asking the model to mirror them would only add hallucination surface. Direction mapping: Buy/Overweight → long, Hold → flat, Underweight/Sell → short, compared against `trader.direction`.
+- New `runComplete` session-state field, exposed to the client. Resets to `false` at `seedSession` and flips to `true` when the PM commit handler succeeds, so a PM failure leaves the run marked incomplete even though the flow itself completes. New `phase-5` enum value on `activePhase` drives the transcript phase divider.
+- New `riskAssessment` preset on the `tradingDesk` capability that bundles the consolidated `memos/p4/risk-assessment` memo (body + typed extension fields). The existing `riskCritiques` preset covers only the three persona memos; Phase 5 reads both. A new `formatRiskAssessmentExtensions` helper in `services/format.ts` renders the typed fields for prompt context.
+- Per-step rescue means a PM-generator failure isolates: only `memos/p5/portfolio-manager` flips to `error` while prior phases' memos still publish. End-to-end coverage in `examples/trading-desk/test/phase-5-e2e.spec.ts` exercises both the happy path (verifies all P5 extension fields populated, `upstreamReferences` resolves to canonical keys, `agreesWithTrader` derives correctly, `runComplete: true`) and the PM-fails path (`runComplete: false`, prior memos still published). Strict-mode regression in `output-schemas-strict.spec.ts` adds `portfolioDecisionOutputSchema` to the BP-016 walker.
+- README polish: full Phase 5 subsection, "Phase 5 — single generator, weight in the schema" design-decision section, a "What this example is not" section that names the boundaries (not a product, not a backtest, not a recommendation system, not a complete data layer), and pointers to the architecture deep-dive and the public guide. New in-repo architecture doc at `docs/internal/design/trading-desk.md` covers pipeline shape, identity registry, data flow, capability surface, BP-016 schemas at convergence points, cost-preset routing, per-step rescue, and the comparison to what would be painful without the framework. New public guide at `apps/docs/guides/trading-desk-walkthrough.md` walks readers through the example phase by phase.
 
 ## 2026-05-12
 

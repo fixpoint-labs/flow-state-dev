@@ -13,12 +13,13 @@
     "test:watch": "vitest --root . --passWithNoTests"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.30",
+    "@ai-sdk/gateway": "^3.0.51",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "ai": "^6.0.97",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
@@ -26,7 +27,8 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.5.0",
-    "yahoo-finance2": "^2.14.2",
+    "trading-signals": "^7.4.3",
+    "yahoo-finance2": "^3.14.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import { thesisOutputSchema } from "../src/flows/trading-desk/blocks/thesis-schema";
+import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
@@ -26,6 +26,7 @@ import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/schemas";
 
 type Issue = { path: string; reason: string };
 
@@ -121,6 +122,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
   ["Phase 4 neutralCritiqueOutputSchema", neutralCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
+  ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
 ];
 
 describe("Generator output schemas are OpenAI strict-mode compatible", () => {

@@ -38,6 +38,24 @@ export function withTimeout<TValue>(
   });
 }
 
+/**
+ * Returns the number of items already emitted on the given response object,
+ * by duck-typing the `getItems()` method. Used by block code in this package
+ * to assign sequential `itemIndex` values without importing server types.
+ */
+export function getEmitterItemCount(response: unknown): number {
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "getItems" in response &&
+    typeof (response as { getItems?: unknown }).getItems === "function"
+  ) {
+    const items = (response as { getItems: () => unknown[] }).getItems();
+    return Array.isArray(items) ? items.length : 0;
+  }
+  return 0;
+}
+
 export function isBlockDefinition(value: unknown): value is BlockDefinition<any, any> {
   if (typeof value !== "object" || value === null) {
     return false;

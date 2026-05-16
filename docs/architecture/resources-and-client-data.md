@@ -26,7 +26,9 @@ defineFlow({
 });
 ```
 
-The accessor key (`plan`) is independent of the resource's internal `ref`. Two resources at different scopes can share an internal `ref` as long as their accessor keys differ.
+The accessor key (`plan`) is purely a typed read handle for `ctx.resources.<name>`. Persistence is keyed by ref identity: two blocks that declare the **same** `DefinedResource` reference under different accessor names see the same storage slot. Two blocks that declare **different** `DefinedResource` references under the same accessor name still conflict at flow-build time.
+
+When a resource is declared **without** an explicit `ref`, the canonical storage key falls back to the first accessor encountered in declaration order. That's fine for single-accessor resources, but for dual-registered user/org-scoped resources it makes the storage key sensitive to declaration order. **Set `ref` explicitly on any non-session resource you plan to register under multiple accessor names** so persisted data survives reordering, refactors, or moves between block- and flow-level declarations.
 
 ### Resource Config
 
@@ -206,7 +208,7 @@ Two collision modes are checked at flow-build time:
 1. **Same accessor key, different references** — same as before. Use the same `defineResource()` reference everywhere or pick distinct accessor keys.
 2. **Different accessor keys, same effective storage key** — two definitions that resolve to the same `(scope, ref, flowIsolation, flowKind?)` tuple would silently share storage. Hard error.
 
-Identity-equal re-registration is always safe (diamond dependencies through capabilities).
+Identity-equal re-registration is always safe (diamond dependencies through capabilities). Different accessor names pointing at the **same** `DefinedResource` reference share storage by design — the persisted slot is keyed by ref identity, not accessor name.
 
 ## Client Data
 
