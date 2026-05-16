@@ -7,7 +7,14 @@ import type {
   SetResult,
   SubscribeToEventsOptions
 } from "../types";
-import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
+import {
+  applyOffsetLimit,
+  casWriteToMap,
+  cloneValue,
+  incFieldInMap,
+  patchFieldInMap,
+  pushToArrayInMap
+} from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
@@ -22,6 +29,7 @@ export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
   private readonly eventsByRequestId = new Map<string, RequestStreamEvent[]>();
   private readonly subscribersByRequestId = new Map<string, Set<Subscriber>>();
+  private readonly runOnceByRequestId = new Map<string, Map<string, unknown>>();
 
   async get(id: string): Promise<RequestRecord | undefined> {
     const record = this.records.get(id);
@@ -36,6 +44,36 @@ export class InMemoryRequestStore implements RequestStore {
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
     return casWriteToMap(this.records, id, value, expectedVersion);
+  }
+
+  async patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return patchFieldInMap(this.records, id, path, value, expectedVersion, updatedAt);
+  }
+
+  async incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return incFieldInMap(this.records, id, path, delta, expectedVersion, updatedAt);
+  }
+
+  async pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return pushToArrayInMap(this.records, id, path, values, expectedVersion, updatedAt);
   }
 
   async delete(id: string): Promise<void> {
@@ -147,6 +185,28 @@ export class InMemoryRequestStore implements RequestStore {
     }
     // Memory deliberately ignores `livenessTimeoutMs` — no cross-process
     // death scenario applies; the originating process is the only producer.
+  }
+
+  async getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }> {
+    const map = this.runOnceByRequestId.get(requestId);
+    if (map === undefined || !map.has(key)) return { found: false };
+    return { found: true, value: cloneValue(map.get(key)) };
+  }
+
+  async setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void> {
+    let map = this.runOnceByRequestId.get(requestId);
+    if (map === undefined) {
+      map = new Map();
+      this.runOnceByRequestId.set(requestId, map);
+    }
+    map.set(key, cloneValue(value));
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {

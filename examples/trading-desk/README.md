@@ -21,6 +21,13 @@ Phase 1 — analyst fan-out:
 - **Fixture / live data toggle** — fixtures ship for `NVDA / 2026-05-06`,
   `AAPL / 2026-05-06`, and `JPM / 2026-05-06`. Live prices and fundamentals
   via `yahoo-finance2` (no key required).
+- **Wider technical indicator set** — RSI, MACD, ATR, SMA50/200, trend label,
+  Bollinger Bands, VWMA(20), Stochastic Oscillator (%K/%D), KDJ, and OBV. The
+  math is delegated to the `trading-signals` library with two small
+  hand-rolled helpers (VWMA, KDJ).
+- **Insider transactions signal** — the news analyst reads 90 days of Form 4
+  filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
+  on failure, like other single-provider tools).
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -142,6 +149,33 @@ models with one provider key configured. Each analyst writes a structured
 `pending → writing → published` flicker comes from `useClientData` reading the
 session-state `memoStatus` mirror.
 
+## Persistence and sessions
+
+Analysis history survives server restarts. Each run is one session, and the
+four inputs at the top of the page name it: `(ticker, date, preset, source)`.
+
+- Re-running with the same four inputs reuses the existing session and
+  refreshes its data. Memo resources have deterministic keys, so they
+  overwrite in place; the session state mirror (`memoStatus`, `runComplete`)
+  resets via `seedSession` at the start of each request.
+- Changing any one of the four inputs starts a new session. Its title is
+  derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
+  runs stay identifiable for a future session-browser UI.
+
+Data lives under `<example-dir>/.fsdev/data/` (already covered by the root
+`.gitignore`'s `**/.fsdev/**` rule). To wipe history, delete the directory.
+To redirect storage — for an isolated test run, for example — set
+`FSDEV_DATA_DIR`:
+
+```bash
+FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/example-trading-desk dev
+```
+
+The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
+[`app/page.tsx`](app/page.tsx) (the resolve-or-create logic that runs on each
+**re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
+for the generalized pattern.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider
@@ -152,7 +186,9 @@ if you want to wire intents to specific gateway models.
 
 `yahoo-finance2` is keyless. The live source for news and sentiment is a
 fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on.
+sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
+`get_insider_transactions` — without it, the tool returns `unavailable` and
+the news analyst treats insider data as missing signal.
 
 ## Architecture in brief
 

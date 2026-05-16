@@ -165,6 +165,15 @@ const sidebars: SidebarsConfig = {
             "ui/generative",
           ],
         },
+        {
+          type: "category",
+          label: "Memory",
+          items: [
+            "memory/overview",
+            "memory/configuration",
+            "memory/recall-tool",
+          ],
+        },
         "ecosystem/thought-fabric-pointer",
         {
           type: "category",
@@ -188,6 +197,7 @@ const sidebars: SidebarsConfig = {
         "advanced/flow-isolation",
         "advanced/generator-context",
         "advanced/error-handling",
+        "advanced/idempotency",
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",

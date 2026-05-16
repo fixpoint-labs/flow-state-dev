@@ -316,12 +316,12 @@ function makeUpstreamMocks() {
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
     }),
-    "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bullResearcher",
+    "p2-research-debate-roster-bullResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bullResearcher",
       script: [{ text: "Bull round 1 contribution." }],
     }),
-    "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bearResearcher",
+    "p2-research-debate-roster-bearResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
     }),
     "consolidate-bull-memo": mockGenerator({

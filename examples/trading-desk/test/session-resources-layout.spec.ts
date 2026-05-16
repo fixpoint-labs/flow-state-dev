@@ -150,12 +150,12 @@ describe("session resources are persisted after analyze run", () => {
           name: "technical-analyst-generator",
           script: [analystThesis("Technical", "h4")],
         }),
-        "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-          name: "p2-research-debate-1r-fast-roster-bullResearcher",
+        "p2-research-debate-roster-bullResearcher": mockGenerator({
+          name: "p2-research-debate-roster-bullResearcher",
           script: [{ text: "Bull r1." }],
         }),
-        "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-          name: "p2-research-debate-1r-fast-roster-bearResearcher",
+        "p2-research-debate-roster-bearResearcher": mockGenerator({
+          name: "p2-research-debate-roster-bearResearcher",
           script: [{ text: "Bear r1." }],
         }),
         "consolidate-bull-memo": mockGenerator({

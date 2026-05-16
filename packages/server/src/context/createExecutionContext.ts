@@ -53,8 +53,8 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import type { CASPersist } from "../stores/cas";
-import type { SetResult, TraceStore } from "../stores/types";
+import { createScopePersist } from "../stores/scope-persist";
+import type { TraceStore } from "../stores/types";
 import type {
   OrgRecord,
   RequestRecord,
@@ -80,38 +80,6 @@ import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
 
-/**
- * Builds a CAS persist callback for a scope record. `buildNext` constructs
- * the record to write (stamped with version/updatedAt); `write` performs the
- * actual CAS store call. On success `ref.current` is advanced to the new
- * record; on conflict it's refreshed to the store's current record.
- */
-function createScopePersist<
-  TState,
-  TRecord extends { state: unknown; version: number }
->(
-  ref: { current: TRecord },
-  buildNext: (expectedVersion: number, state: Readonly<TState>) => TRecord,
-  write: (nextRecord: TRecord, expectedVersion: number) => Promise<SetResult<TRecord>>
-): CASPersist<TState> {
-  return async (state, expectedVersion) => {
-    const nextRecord = buildNext(expectedVersion, state);
-    const result = await write(nextRecord, expectedVersion);
-    if (result.ok) {
-      ref.current = nextRecord;
-      return { ok: true, version: result.version };
-    }
-    const current = result.conflict.currentValue;
-    if (current !== undefined) {
-      ref.current = current;
-    }
-    return {
-      ok: false,
-      currentState: current?.state as TState | undefined,
-      currentVersion: result.conflict.currentVersion
-    };
-  };
-}
 
 function normalizeLimit(
   valuesLength: number,
@@ -2315,13 +2283,6 @@ export async function createExecutionContext<
           orgRef.current.version
         );
 
-  const onStateSizeWarning = (detail: {
-    sizeBytes: number;
-    maxStateSizeBytes: number;
-  }): void => {
-    console.warn("[flow-state] Scope state exceeds recommended CAS size", detail);
-  };
-
   // Hoisted so scope-handle ops can close over these refs and emit
   // `state_change` items on mutation (FIX-576). `responseRef.current` is
   // assigned once `response` is constructed below; until then no scope op
@@ -2330,87 +2291,73 @@ export async function createExecutionContext<
   let emittedItemCount = 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
+      stores.request,
       (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.request.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const userOps = createScopeStateOps(userContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TUserState, UserRecord>(
       userRef,
+      stores.user,
       (expectedVersion, state) => ({
         ...userRef.current,
         state: state as TUserState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.user.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TSessionState, SessionRecord>(
       sessionRef,
+      stores.session,
       (expectedVersion, state) => ({
         ...sessionRef.current,
         state: state as TSessionState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.session.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
-  const orgOps =
-    orgRef.current === undefined || orgContainer === undefined
-      ? undefined
-      : createScopeStateOps(orgContainer, {
-          onStateSizeWarning,
-          persist: async (state, expectedVersion) => {
-            const current = orgRef.current;
-            if (current === undefined) {
-              // Org removed mid-execution; short-circuit so the retry loop exits.
-              return { ok: true, version: expectedVersion + 1 };
-            }
-            const nextRecord: OrgRecord = {
-              ...current,
-              state: state as TOrgState,
-              version: expectedVersion + 1,
-              updatedAt: Date.now()
-            };
-            const result = await stores.org.set(
-              nextRecord.id,
-              nextRecord,
-              expectedVersion
-            );
-            if (result.ok) {
-              orgRef.current = nextRecord;
-              return { ok: true, version: result.version };
-            }
-            const stored = result.conflict.currentValue;
-            if (stored !== undefined) {
-              orgRef.current = stored;
-            }
-            return {
-              ok: false,
-              currentState: stored?.state as TOrgState | undefined,
-              currentVersion: result.conflict.currentVersion
-            };
-          }
-        });
+  const orgOps = (():
+    | ReturnType<typeof createScopeStateOps<TOrgState>>
+    | undefined => {
+    if (orgRef.current === undefined || orgContainer === undefined) {
+      return undefined;
+    }
+    // Build the standard persist callback once, then wrap it with an
+    // "Org removed mid-execution" guard. The guard short-circuits before the
+    // inner callback touches `orgRef.current.id`, which would throw if the
+    // org went away mid-request.
+    const inner = createScopePersist<TOrgState, OrgRecord>(
+      orgRef as { current: OrgRecord },
+      stores.org,
+      (ev, st) => ({
+        ...(orgRef.current as OrgRecord),
+        state: st as TOrgState,
+        version: ev + 1,
+        updatedAt: Date.now()
+      })
+    );
+    return createScopeStateOps(orgContainer, {
+      persist: async (state, expectedVersion, hint) => {
+        if (orgRef.current === undefined) {
+          return { ok: true, version: expectedVersion + 1 };
+        }
+        return inner(state, expectedVersion, hint);
+      }
+    });
+  })();
 
   // Resource change emitter — pushes transient resource_change items via SSE
   // so clients can refresh clientData without waiting for request completion.
@@ -2953,6 +2900,68 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
+  // with the same key share a single fn() invocation. Sits in front of the
+  // RequestStore so the wrapped side effect cannot fire twice in a race
+  // (the store is the durable backstop across retries).
+  // In-process memo of completed runOnce results. Populated synchronously
+  // the instant `fn()` resolves — before the store write — so a store
+  // failure cannot cause `fn()` to re-execute on a subsequent retry within
+  // the same request process. Store persistence is treated as best-effort
+  // bookkeeping for cross-process durability.
+  const runOnceMemo = new Map<string, unknown>();
+  const runOnceInflight = new Map<string, Promise<unknown>>();
+  const runOnce = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (typeof key !== "string" || key.length === 0) {
+      return Promise.reject(
+        new Error("ctx.runOnce(key, fn): `key` must be a non-empty string")
+      );
+    }
+    // Fast path: memo hit (a prior call in this process already completed).
+    if (runOnceMemo.has(key)) {
+      return Promise.resolve(runOnceMemo.get(key) as T);
+    }
+    // Claim the inflight slot synchronously before awaiting the store —
+    // otherwise concurrent calls with the same key all see an empty
+    // inflight map and each spawn their own fn() invocation.
+    const existing = runOnceInflight.get(key);
+    if (existing !== undefined) return existing as Promise<T>;
+
+    const requestId = requestRef.current.id;
+    const promise = (async (): Promise<T> => {
+      // Durable lookup. Catches block-retry resumes that lost the
+      // in-process memo (none today; future-proofs for durable execution).
+      const stored = await stores.request.getRunOnceResult(requestId, key);
+      if (stored.found) {
+        runOnceMemo.set(key, stored.value);
+        return stored.value as T;
+      }
+      const value = await fn();
+      // Memoize BEFORE the store write so a store failure cannot cause
+      // re-execution on the next retry within this process.
+      runOnceMemo.set(key, value);
+      try {
+        await stores.request.setRunOnceResult(requestId, key, value);
+      } catch (err) {
+        // Persistence failure is non-fatal: the side effect already fired
+        // and the in-process memo carries de-dup for the rest of this
+        // request. Cross-process durability is degraded but we do not
+        // amplify a store outage into a double-charge by re-running fn().
+        console.warn(
+          `[flow-state] runOnce persistence failed for key "${key}" (request ${requestId}); ` +
+            `in-process dedup remains in effect`,
+          err
+        );
+      }
+      return value;
+    })();
+    runOnceInflight.set(key, promise as Promise<unknown>);
+    promise.finally(() => {
+      runOnceInflight.delete(key);
+    });
+    return promise;
+  };
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -3137,8 +3146,15 @@ export async function createExecutionContext<
       emitComponent: undefined as unknown as BlockContext["emitComponent"],
       emitStatus: undefined as unknown as BlockContext["emitStatus"],
       emit: undefined as unknown as BlockContext["emit"],
+      _peekStatus: undefined as unknown as BlockContext["_peekStatus"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
+      // FIX-402: idempotency primitives. `idempotencyKey` is populated per
+      // block by executeBlock (it depends on the current blockPath, which is
+      // only known at execution time); `runOnce` closes over the request's
+      // store ref so it works across every scoped child context.
+      idempotencyKey: undefined,
+      runOnce,
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
@@ -3317,6 +3333,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3326,6 +3346,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3374,6 +3395,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3388,6 +3413,7 @@ export async function createExecutionContext<
                     ...(normalized.details ? { details: normalized.details } : {}),
                   },
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3445,6 +3471,11 @@ export async function createExecutionContext<
       status: emitStatusImpl,
       trace: traceEmitters,
     };
+    // Read the request-scoped status slot. Internal — used by the generator's
+    // tool-call dispatch to snapshot/restore the slot around a parallel tool
+    // round so a tool's `activeStatusMessage` does not linger past the
+    // tool's lifetime.
+    context._peekStatus = (): string => statusSlot.message;
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

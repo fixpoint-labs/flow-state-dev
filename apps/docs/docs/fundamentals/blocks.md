@@ -140,6 +140,30 @@ const agent = generator({
 
 When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
+#### Showing a deterministic call as a tool: `.asTool()`
+
+Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis. The fetches no longer go through a generator's tool loop, so they no longer produce the tool pills the LLM-driven path produces. The transcript shows nothing for the work that just happened.
+
+`block.asTool(opts?)` closes that gap. It wraps a block so that, when executed inside a sequencer step, it emits the same `tool_output` item the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged. ("Tool pill" here means the UI element clients render for `tool_output` items.)
+
+```ts
+const dataBundle = sequencer({ name: "prefetch" })
+  .map(tickerDate)
+  .parallel({
+    balanceSheet: get_balance_sheet.asTool({ agentType: "sub", agentName: "fundamentals" }),
+    incomeStatement: get_income_statement.asTool({ agentType: "sub", agentName: "fundamentals" }),
+  })
+  .then(synthesizeFundamentals);
+```
+
+Each branch emits a `tool_output` with the same envelope shape as a generator-driven tool call. The `agentType` / `agentName` opts control grouping under the parent agent's card; both are optional. When omitted, the fields are not stamped on the emitted item.
+
+Failures behave the same way: if a wrapped block throws, the emitted `tool_output` flips to `status: "failed"` with the error message visible, and the error propagates to the sequencer's normal error path.
+
+`.asTool()` is available on every block kind (handler, generator, sequencer, router). It does not wrap the inner block with retry or timeout — compose those explicitly if needed.
+
+See also: [`tool_output` items](../streaming/items.md), [emitting items](../streaming/emitting-items.md), [composing with `.parallel`](../sequencers/composing-blocks.md).
+
 #### Web search
 
 Generators have first-class support for provider-native web search. Add `search: true` and the framework handles the rest — detecting your provider, creating the right search tool, and returning grounded results with source citations:

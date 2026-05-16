@@ -123,6 +123,11 @@ export const indicatorsSchema = z.object({
   trend: z.enum(["up", "down", "flat"]),
   sma50: z.number(),
   sma200: z.number(),
+  bollinger: z.object({ upper: z.number(), middle: z.number(), lower: z.number() }),
+  vwma20: z.number(),
+  stoch: z.object({ k: z.number(), d: z.number() }),
+  kdj: z.object({ k: z.number(), d: z.number(), j: z.number() }),
+  obv: z.number(),
 });
 
 const newsItem = z.object({
@@ -201,6 +206,34 @@ export const predictionMarketsSchema = z.object({
   markets: z.array(predictionMarket),
 });
 
+const insiderTransactionItem = z.object({
+  /** Date the Form 4 hit EDGAR (YYYY-MM-DD). */
+  filingDate: z.string(),
+  /** Date of the transaction itself (YYYY-MM-DD). */
+  transactionDate: z.string(),
+  insiderName: z.string(),
+  /** Free-form title from the filing (e.g. "CEO", "Director", "10% Owner"). */
+  insiderTitle: z.string(),
+  /** SEC transaction code: P (open-market buy), S (open-market sell),
+   *  A (grant/award), M (option exercise), G (gift), F (tax withholding), etc. */
+  transactionCode: z.string(),
+  /** Signed share count: positive for acquisitions, negative for dispositions. */
+  shares: z.number(),
+  /** USD per share. 0 for non-cash transactions (gifts, awards, withholdings). */
+  pricePerShare: z.number(),
+  /** True for derivative-security transactions (options, RSUs). */
+  isDerivative: z.boolean(),
+});
+
+export const insiderTransactionsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  transactions: z.array(insiderTransactionItem),
+  /** Lookback window in days (e.g. 90). */
+  windowDays: z.number(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -213,6 +246,7 @@ export const toolInputSchemas = {
   get_social_sentiment: periodInput,
   get_reddit_mentions: periodInput,
   get_prediction_markets: periodInput,
+  get_insider_transactions: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -227,6 +261,7 @@ export const toolOutputSchemas = {
   get_social_sentiment: socialSentimentSchema,
   get_reddit_mentions: redditMentionsSchema,
   get_prediction_markets: predictionMarketsSchema,
+  get_insider_transactions: insiderTransactionsSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -246,6 +281,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_social_sentiment: "social-sentiment.json",
   get_reddit_mentions: "reddit-mentions.json",
   get_prediction_markets: "prediction-markets.json",
+  get_insider_transactions: "insider-transactions.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

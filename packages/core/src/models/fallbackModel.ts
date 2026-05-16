@@ -23,6 +23,13 @@ interface FallbackModelConfig {
   models: FallbackModelEntry[];
   defaults?: ModelGroupDefaults;
   retryPolicy: Required<RetryPolicy>;
+  /**
+   * Fires when a candidate succeeds — once per `generate` call, and once
+   * per `stream` call (after the candidate's stream yielded a first chunk
+   * without throwing). Lets the caller record which concrete model won the
+   * fallback race so its identity can be surfaced to consumers.
+   */
+  onResolved?: (entry: FallbackModelEntry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,14 +118,17 @@ async function executeWithFallback<T>(
   models: FallbackModelEntry[],
   retryPolicy: Required<RetryPolicy>,
   groupName: string,
-  fn: (model: GeneratorModel, entry: FallbackModelEntry) => Promise<T>
+  fn: (model: GeneratorModel, entry: FallbackModelEntry) => Promise<T>,
+  onResolved?: (entry: FallbackModelEntry) => void
 ): Promise<T> {
   const errors: Array<{ modelId: string; error: Error }> = [];
 
   for (const entry of models) {
     for (let attempt = 1; attempt <= retryPolicy.maxAttemptsPerModel; attempt++) {
       try {
-        return await fn(entry.model, entry);
+        const result = await fn(entry.model, entry);
+        onResolved?.(entry);
+        return result;
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         errors.push({ modelId: entry.modelId, error: err });
@@ -161,7 +171,7 @@ async function executeWithFallback<T>(
  * then falls back to the next model in the list.
  */
 export function createFallbackModel(config: FallbackModelConfig): GeneratorModel {
-  const { models, defaults, retryPolicy, groupName } = config;
+  const { models, defaults, retryPolicy, groupName, onResolved } = config;
 
   if (models.length === 0) {
     throw new Error(
@@ -177,8 +187,13 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
     modelId: `fsd:${groupName}`,
 
     async generate(options): Promise<GeneratorModelResult> {
-      return executeWithFallback(models, retryPolicy, groupName, (model, entry) =>
-        model.generate(mergeDefaults(options, defaults, entry.providerName))
+      return executeWithFallback(
+        models,
+        retryPolicy,
+        groupName,
+        (model, entry) =>
+          model.generate(mergeDefaults(options, defaults, entry.providerName)),
+        onResolved
       );
     },
 
@@ -196,7 +211,14 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
 
             try {
               const merged = mergeDefaults(options, defaults, entry.providerName);
-              yield* entry.model.stream(merged);
+              let resolvedFired = false;
+              for await (const chunk of entry.model.stream(merged)) {
+                if (!resolvedFired) {
+                  resolvedFired = true;
+                  onResolved?.(entry);
+                }
+                yield chunk;
+              }
               return;
             } catch (error) {
               const err =

@@ -3272,3 +3272,235 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
     expect(statusMessages).toEqual(["step A running", "step B running"]);
   });
 });
+
+describe("generator/tool status-slot restore (FIX-600)", () => {
+  it("restores the slot to the generator's pre-tool value after a tool round", async () => {
+    const stores = createInMemoryStores();
+
+    const tool = handler({
+      name: "weather-tool",
+      inputSchema: z.object({ city: z.string() }),
+      outputSchema: z.string(),
+      activeStatusMessage: "Calling weather tool...",
+      execute: (input, toolCtx) => {
+        // The tool's own activeStatusMessage doesn't fire automatically
+        // when invoked through the generator's tool loop (it bypasses
+        // the dispatcher), so emit it imperatively to model the bug
+        // surface: a tool whose status is left in the slot after it
+        // completes.
+        toolCtx.emit.status("Calling weather tool...");
+        return `weather in ${input.city}`;
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      activeStatusMessage: "Responding",
+      tools: [tool]
+    });
+
+    const flow = defineFlow({
+      kind: "tool-status-restore-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_tool_status_restore",
+      sessionId: "sess_tool_status_restore",
+      userId: "user_tool_status_restore",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          if (Array.isArray(options.tools) && options.tools.length > 0) {
+            await options.tools[0].execute({ city: "Tokyo" }, { toolCallId: "tc_1" });
+          }
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_tool_status_restore", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "weather?" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // Expected sequence: generator sets "Responding", the tool wrapper
+    // surfaces "Using weather-tool…", the tool's own emit overrides with
+    // "Calling weather tool...", restore puts "Responding" back.
+    expect(statusMessages).toEqual([
+      "Responding",
+      "Using weather-tool…",
+      "Calling weather tool...",
+      "Responding"
+    ]);
+  });
+
+  it("restores only once after parallel tool calls complete", async () => {
+    const stores = createInMemoryStores();
+
+    const toolA = handler({
+      name: "tool-a",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        toolCtx.emit.status("Running A");
+        return "a";
+      }
+    });
+    const toolB = handler({
+      name: "tool-b",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        toolCtx.emit.status("Running B");
+        return "b";
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tools",
+      activeStatusMessage: "Responding",
+      tools: [toolA, toolB]
+    });
+
+    const flow = defineFlow({
+      kind: "parallel-tools-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_parallel_tools",
+      sessionId: "sess_parallel_tools",
+      userId: "user_parallel_tools",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          // Kick off both tool executes without awaiting individually;
+          // wait for both via Promise.all to model parallel dispatch.
+          await Promise.all([
+            options.tools[0].execute({}, { toolCallId: "tc_a" }),
+            options.tools[1].execute({}, { toolCallId: "tc_b" })
+          ]);
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_parallel_tools", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "go" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // The exact ordering of "Running A" vs "Running B" is not guaranteed
+    // (parallel competition), but the slot must (1) start at "Responding"
+    // and (2) end at "Responding" with exactly ONE restore (no
+    // intermediate "Responding" between the two tool emits — the
+    // refcount only restores when the last tool exits).
+    expect(statusMessages[0]).toBe("Responding");
+    expect(statusMessages[statusMessages.length - 1]).toBe("Responding");
+    // Exactly two restores would mean we restored after each tool;
+    // exactly one restore is the contract.
+    const restoreCount = statusMessages
+      .slice(1, -1)
+      .filter((m: string) => m === "Responding").length;
+    expect(restoreCount).toBe(0);
+  });
+
+  it("clears the 'Using <tool>' status after a tool with no emit.status finishes", async () => {
+    // Regression: web tools like search/fetch/crawl don't call emit.status
+    // themselves. The framework surfaces "Using <tool>…" so the in-flight
+    // indicator reflects the current tool — and must clear it on completion
+    // so the indicator doesn't claim the tool is still running.
+    const stores = createInMemoryStores();
+
+    const silentTool = handler({
+      name: "search",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.string(),
+      execute: (input) => `results for ${input.q}`
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      activeStatusMessage: "Responding",
+      tools: [silentTool]
+    });
+
+    const flow = defineFlow({
+      kind: "silent-tool-status-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_silent_tool",
+      sessionId: "sess_silent_tool",
+      userId: "user_silent_tool",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          await options.tools[0].execute({ q: "weather" }, { toolCallId: "tc_1" });
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_silent_tool", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "search?" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // The "Using search…" surfaced by the wrapper must be cleared back to
+    // the generator's "Responding" once the tool returns — even though the
+    // tool itself never touched the slot.
+    expect(statusMessages).toEqual([
+      "Responding",
+      "Using search…",
+      "Responding"
+    ]);
+  });
+});

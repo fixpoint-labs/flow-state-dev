@@ -83,7 +83,7 @@ const assistantFixture = mockGenerator({
 });
 
 const observeFixture = mockGenerator({
-  name: "tf.memory/observe",
+  name: "memory/observe",
   script: [
     { structuredOutput: { items: [] } }
   ]
@@ -100,7 +100,7 @@ describe("chat-agent flow", () => {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
     expect(routed.selectedRoute).toBe("assistant-generator");
@@ -156,7 +156,7 @@ describe("chat-agent flow", () => {
         state: { features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
     expect(routed.selectedRoute).toBe("assistant-generator");
@@ -172,7 +172,7 @@ describe("chat-agent flow", () => {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -196,7 +196,7 @@ describe("chat-agent flow", () => {
           thinkingEnabled: false,
         }
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -212,7 +212,7 @@ describe("chat-agent flow", () => {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture }
     });
 
     const blockOutputs = result.items.filter((item) => item.type === "block_trace");
@@ -237,7 +237,7 @@ describe("chat-agent flow", () => {
           memorySystem: emptyMemorySystem,
         }
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -266,7 +266,7 @@ describe("chat-agent flow", () => {
         state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
     expect(routed.selectedRoute).toBe("assistant-generator");
@@ -282,7 +282,7 @@ describe("chat-agent flow", () => {
         state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
     expect(routed.selectedRoute).toBe("assistant-generator");
@@ -298,7 +298,7 @@ describe("chat-agent flow", () => {
         state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();
@@ -314,7 +314,7 @@ describe("chat-agent flow", () => {
         state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+      generators: { "assistant-generator": assistantFixture, "memory/observe": observeFixture },
     });
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();

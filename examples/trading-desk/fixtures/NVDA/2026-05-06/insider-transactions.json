@@ -1,0 +1,77 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "windowDays": 90,
+  "transactions": [
+    {
+      "filingDate": "2026-04-28",
+      "transactionDate": "2026-04-24",
+      "insiderName": "Huang Jen-Hsun",
+      "insiderTitle": "President and CEO",
+      "transactionCode": "S",
+      "shares": -120000,
+      "pricePerShare": 128.45,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-04-25",
+      "transactionDate": "2026-04-23",
+      "insiderName": "Huang Jen-Hsun",
+      "insiderTitle": "President and CEO",
+      "transactionCode": "S",
+      "shares": -120000,
+      "pricePerShare": 127.92,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-04-15",
+      "transactionDate": "2026-04-11",
+      "insiderName": "Kress Colette M",
+      "insiderTitle": "EVP, Chief Financial Officer",
+      "transactionCode": "S",
+      "shares": -40000,
+      "pricePerShare": 124.18,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-04-15",
+      "transactionDate": "2026-04-11",
+      "insiderName": "Kress Colette M",
+      "insiderTitle": "EVP, Chief Financial Officer",
+      "transactionCode": "M",
+      "shares": 40000,
+      "pricePerShare": 1.42,
+      "isDerivative": true
+    },
+    {
+      "filingDate": "2026-03-21",
+      "transactionDate": "2026-03-19",
+      "insiderName": "Shoquist Debora",
+      "insiderTitle": "EVP, Operations",
+      "transactionCode": "S",
+      "shares": -25000,
+      "pricePerShare": 118.62,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-03-08",
+      "transactionDate": "2026-03-05",
+      "insiderName": "Dally William J",
+      "insiderTitle": "Chief Scientist",
+      "transactionCode": "S",
+      "shares": -15000,
+      "pricePerShare": 115.04,
+      "isDerivative": false
+    },
+    {
+      "filingDate": "2026-02-22",
+      "transactionDate": "2026-02-20",
+      "insiderName": "Coxe Tench",
+      "insiderTitle": "Director",
+      "transactionCode": "S",
+      "shares": -50000,
+      "pricePerShare": 108.31,
+      "isDerivative": false
+    }
+  ]
+}

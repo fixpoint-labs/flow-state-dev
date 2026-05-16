@@ -24,6 +24,7 @@
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",

@@ -120,7 +120,72 @@ export type SetResult<TRecord> =
       conflict: { currentValue: TRecord | undefined; currentVersion: number };
     };
 
-export interface SessionStore {
+/**
+ * Optional CAS-aware delta verbs adapters may implement to avoid full-record
+ * UPDATEs on single-field scope-state writes. All verbs target the record's
+ * `state` slice — `path` is a key sequence (`["count"]`, `["foo", "bar"]`)
+ * relative to `state`, not to the record root.
+ *
+ * Adapters MAY implement none, some, or all of these. The CAS persist
+ * callback feature-detects per call and falls back to `set` with the full
+ * record when a verb is absent (capability advertisement). Once FIX-85
+ * (Upstash) and FIX-83 (Mongo) ship, those adapters implement the verbs as
+ * required — the optional-in-v1 stance is a migration concession to existing
+ * SQLite and filesystem adapters.
+ *
+ * Concurrency contract is identical to `set`: the write applies only when
+ * the current stored version equals `expectedVersion` (or always when
+ * `"any"`). Returns the new version on success, or the current record/
+ * version on conflict.
+ *
+ * `updatedAt` is caller-supplied (matching `set`, where it travels inside
+ * the record). Adapters MUST write it as given so the caller's local cache
+ * of the record stays consistent with what's persisted.
+ */
+export interface DeltaStoreOps<TRecord> {
+  /**
+   * Replace the value at `path` inside the record's `state` slice. Equivalent
+   * to a shallow merge of `{ [path[0]]: value }` into `state` for depth-1
+   * paths. The remainder of the record (other state fields, metadata,
+   * top-level columns) is preserved unchanged.
+   */
+  patchField?(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+
+  /**
+   * Atomically add `delta` to the numeric value at `path` inside `state`.
+   * Treats a missing or non-numeric value as `0`. Other record fields are
+   * preserved unchanged.
+   */
+  incField?(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+
+  /**
+   * Append `values` (in order) to the array at `path` inside `state`. Treats
+   * a missing value as an empty array; throws via the adapter's normal error
+   * surface if the existing value is non-array. Other record fields are
+   * preserved unchanged.
+   */
+  pushToArray?(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+}
+
+export interface SessionStore extends DeltaStoreOps<SessionRecord> {
   get(id: string): Promise<SessionRecord | undefined>;
   /**
    * Write `value` when the stored record's version matches `expectedVersion`.
@@ -136,7 +201,7 @@ export interface SessionStore {
   list(options?: SessionListOptions): Promise<SessionRecord[]>;
 }
 
-export interface RequestStore {
+export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   get(id: string): Promise<RequestRecord | undefined>;
   /** See `SessionStore.set` for CAS semantics. */
   set(
@@ -197,6 +262,30 @@ export interface RequestStore {
     requestId: string,
     options: SubscribeToEventsOptions
   ): AsyncIterableIterator<RequestStreamEvent>;
+
+  /**
+   * Lookup the memoized result of a `ctx.runOnce(key, fn)` call (FIX-402).
+   * Returns `{ found: false }` when no record exists for this `(requestId,
+   * key)` pair. The stored value is opaque JSON — the caller is responsible
+   * for any type coercion. Implementations should treat misses as cheap
+   * and not allocate on miss.
+   */
+  getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }>;
+
+  /**
+   * Persist the result of a `ctx.runOnce(key, fn)` call (FIX-402). The
+   * value replaces any prior record for this `(requestId, key)` pair —
+   * callers serialize execution per key so a late writer overwriting an
+   * earlier success is benign (they computed the same fn).
+   */
+  setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void>;
 }
 
 /**
@@ -225,7 +314,7 @@ export interface SubscribeToEventsOptions {
   maxPendingEvents?: number;
 }
 
-export interface UserStore {
+export interface UserStore extends DeltaStoreOps<UserRecord> {
   get(id: string): Promise<UserRecord | undefined>;
   /** See `SessionStore.set` for CAS semantics. */
   set(
@@ -237,7 +326,7 @@ export interface UserStore {
   list(options?: UserListOptions): Promise<UserRecord[]>;
 }
 
-export interface OrgStore {
+export interface OrgStore extends DeltaStoreOps<OrgRecord> {
   get(id: string): Promise<OrgRecord | undefined>;
   /** See `SessionStore.set` for CAS semantics. */
   set(
