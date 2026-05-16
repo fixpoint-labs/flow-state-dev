@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-16
+
+### Voice (M1): `VoiceProvider` interface lands in `@flow-state-dev/core`
+
+- New `VoiceProvider` contract with per-ability flags (`abilities: VoiceAbilities`) covering `speak`, `speakStream`, `transcribe`, and `listVoices`. Narrowing interfaces (`SpeakCapable`, etc.) and runtime type guards (`canSpeak`, etc.) let callers branch on what a provider supports.
+- `VoiceError` ships as a discriminated taxonomy (`kind` is one of `auth`, `rate_limit`, `not_found`, `invalid_input`, `format_unsupported`, `provider_unavailable`, `network`, `aborted`, `unknown`) with sensible default `retryable` values per kind.
+- `createCompositeVoiceProvider` builds a synthetic provider that delegates each ability to a different underlying provider — useful for mixing, e.g., OpenAI for transcribe with ElevenLabs for speak.
+- `SpeakChunk` is a discriminated union (`kind: "audio"` in M1) so future variants can be added without breaking consumers.
+- `VoiceConfig.provider` is now a typed field on flow voice config; downstream consumption ships with the server router migration.
+- The old resolver helpers and types (`SpeechResolver`, `TranscriptionResolver`, `createAiSdkSpeechResolver`, `createAiSdkTranscriptionResolver`, and friends) are removed from core. Server-side and kitchen-sink migrations follow.
+
 ## 2026-05-15
 
 ### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)

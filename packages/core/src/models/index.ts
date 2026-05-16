@@ -7,12 +7,6 @@ export { createModelResolver } from "./createModelResolver";
 export type { CreateModelResolverOptions } from "./createModelResolver";
 export type { ResolveModelCallOptions } from "../types/model";
 
-export { createAiSdkSpeechResolver, wrapAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
-export type { ResolveAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
-
-export { createAiSdkTranscriptionResolver, wrapAiSdkTranscriptionModel } from "./createAiSdkTranscriptionResolver";
-export type { ResolveAiSdkTranscriptionModel } from "./createAiSdkTranscriptionResolver";
-
 // FSD Provider (model groups with fallback)
 export { createFSDProvider, defaultGroups } from "./createFSDProvider";
 export { createFallbackModel, isRetryableError } from "./fallbackModel";

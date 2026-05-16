@@ -160,16 +160,34 @@ export type {
   ProviderTool
 } from "./types/model";
 
+export type { TTSConfig, VoiceConfig } from "./types/speech";
+
 export type {
-  SpeechModel,
-  SpeechResolver,
-  SpeechResult,
-  TranscriptionModel,
-  TranscriptionResolver,
-  TranscriptionResult,
-  TTSConfig,
-  VoiceConfig
-} from "./types/speech";
+  CompositeVoiceProviderConfig,
+  ListVoicesCapable,
+  SpeakCapable,
+  SpeakChunk,
+  SpeakOptions,
+  SpeakResult,
+  SpeakStreamCapable,
+  TranscribeCapable,
+  TranscribeOptions,
+  TranscribeResult,
+  VoiceAbilities,
+  VoiceInfo,
+  VoiceProvider
+} from "./types/voice-provider";
+
+export {
+  canListVoices,
+  canSpeak,
+  canSpeakStream,
+  canTranscribe,
+  createCompositeVoiceProvider
+} from "./types/voice-provider";
+
+export type { VoiceErrorKind, VoiceErrorOptions } from "./types/voice-error";
+export { VoiceError } from "./types/voice-error";
 
 export type { BindingCacheOptions, BindingProvider } from "./types/binding";
 
@@ -178,10 +196,6 @@ export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
   createModelResolver,
-  createAiSdkSpeechResolver,
-  wrapAiSdkSpeechModel,
-  createAiSdkTranscriptionResolver,
-  wrapAiSdkTranscriptionModel,
   createFSDProvider,
   defaultGroups,
   createFallbackModel,
@@ -197,8 +211,6 @@ export {
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
-  ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel,
   CreateModelResolverOptions,
   FSDProviderConfig,
   FSDProvider,
