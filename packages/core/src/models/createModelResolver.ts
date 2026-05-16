@@ -89,6 +89,12 @@ const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
 };
 
+/** Env-var name that supplies the API key for each known gateway. */
+const GATEWAY_ENV_VARS: Record<string, string> = {
+  vercel: "AI_GATEWAY_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
 
@@ -362,7 +368,7 @@ export function createModelResolver(
       for (const [name, entry] of Object.entries(options.gateways)) {
         if (entry == null) continue;
         if (isGatewayConfig(entry)) {
-          const envVar = ({ vercel: "AI_GATEWAY_API_KEY", openrouter: "OPENROUTER_API_KEY" } as Record<string, string>)[entry.type];
+          const envVar = GATEWAY_ENV_VARS[entry.type];
           const apiKey = entry.apiKey ?? (envVar ? process.env[envVar] : undefined);
           if (apiKey) return { gatewayType: entry.type, apiKey };
         } else {
@@ -371,11 +377,7 @@ export function createModelResolver(
       }
     }
 
-    const envGatewayVars: Record<string, string> = {
-      vercel: "AI_GATEWAY_API_KEY",
-      openrouter: "OPENROUTER_API_KEY",
-    };
-    for (const [gwType, envVar] of Object.entries(envGatewayVars)) {
+    for (const [gwType, envVar] of Object.entries(GATEWAY_ENV_VARS)) {
       const key = process.env[envVar];
       if (key) return { gatewayType: gwType, apiKey: key };
     }
@@ -440,20 +442,16 @@ export function createModelResolver(
       }
 
       if (!gatewayCache.has(gwType)) {
-        const gwEnvVars: Record<string, string> = {
-          vercel: "AI_GATEWAY_API_KEY",
-          openrouter: "OPENROUTER_API_KEY",
-        };
         const gwEntry = options?.gateways?.[gwType];
         const apiKey =
           (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
-          process.env[gwEnvVars[gwType] ?? ""] ??
+          process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
           undefined;
 
         if (!apiKey) {
           throw new Error(
             `No API key found for gateway "${gwType}". ` +
-              `Set ${gwEnvVars[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+              `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
           );
         }
 
@@ -481,8 +479,12 @@ export function createModelResolver(
         try {
           directLanguageModel = resolver(modelId);
         } catch (err) {
+          // Factory threw. Don't poison directLoadFailed — that set is for
+          // package-load failures caught inside getProviderResolver; this
+          // failure is per-invocation. Preserving the original error lets
+          // the no-gateway branch below surface it instead of the generic
+          // "failed to load" message.
           directError = err;
-          directLoadFailed.add(providerName);
         }
       }
       if (resolver && directError === undefined) {
