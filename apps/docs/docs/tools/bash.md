@@ -103,6 +103,7 @@ Each provider implements the same `Sandbox` interface. Swapping providers change
 | just-bash | `{ type: "just-bash", python?: true, ... }` | Testing, lightweight analysis | No (in-memory) |
 | Vercel | `{ type: "vercel", Sandbox, sandboxId? }` | Production, cloud execution | Yes (remote) |
 | Upstash | `{ type: "upstash", client, boxId? }` | Remote sandbox | Yes (remote) |
+| MOAT | `{ type: "moat", grants, allowHosts, ... }` | Local container isolation with credential injection | Yes (host, bind-mounted) |
 | Custom | `{ type: "custom", sandbox: Sandbox }` | Anything else | You decide |
 
 `just-bash` takes a `python: true` toggle to expose `python3` in the sandbox, and a `network` config to gate external HTTP access.
@@ -119,6 +120,127 @@ createBashCapability({
 ```
 
 This keeps `@flow-state-dev/tools` free of a peer dep on the SDK and gives bundlers (webpack, Vercel's `nft` file tracer) a real static import to follow when building for deployment. See `apps/kitchen-sink/flows/chat-agent/blocks/bash-tools.ts` for the canonical environment-aware pattern.
+
+## MOAT (local container isolation)
+
+### What it is
+
+The MOAT provider runs commands in a container — an isolated Linux environment, similar to Docker — on the same machine as the agent. The host directory you point it at is bind-mounted into the container, so reads and writes go to a real filesystem you own. Outbound network calls flow through a credential-injecting proxy: the agent process never sees API keys, but requests to whitelisted hosts arrive with the right tokens attached.
+
+MOAT is a separate CLI ([majorcontext/moat](https://majorcontext.com/moat/)) that the host operator installs once. The framework spawns it; it does not bundle or auto-install it.
+
+### When to use it
+
+- You want OS-level isolation without sending the workspace off-host. Faster than the Vercel or Upstash sandboxes because there is no network round trip per command, but slower than `local` because container start adds a few seconds on the first call.
+- You do not want the agent process to inherit your shell environment. The `local` provider exposes every variable in `process.env` to whatever the agent runs; MOAT's container starts with a clean environment.
+- You are running on macOS 15+ on Apple Silicon (native containers) or any Linux host with Docker installed.
+
+Skip it if you only need an in-memory test sandbox (`just-bash` is lighter), if you want zero install footprint (`local` requires nothing), or if you are already deploying on serverless (Vercel/Upstash fit better).
+
+### Installing MOAT
+
+`@flow-state-dev/tools` does not bundle or auto-install the `moat` CLI. The host operator installs it once, then the framework spawns it like any other binary. Follow the [official install guide](https://majorcontext.com/moat/) for your platform.
+
+After installing, confirm the version is `0.4.0` or later (required for `moat exec`):
+
+```bash
+moat version --json
+```
+
+Grant the credentials the agent should be able to reach. The framework only declares which grant names a workspace needs — credentials live with MOAT, not in your code:
+
+```bash
+moat grant github
+moat grant openai
+```
+
+See the [MOAT credentials concept page](https://majorcontext.com/moat/concepts/credentials) for the full grant model.
+
+### Configuration
+
+Minimal:
+
+```ts
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  provider: {
+    type: "moat",
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+Expanded:
+
+```ts
+const bashCap = createBashCapability({
+  provider: {
+    type: "moat",
+    runtime: "docker",
+    runName: "fsdev-myflow",
+    grants: ["github", "openai"],
+    allowHosts: ["api.github.com", "api.openai.com"],
+    configPath: "./moat.yaml",
+    execTimeoutMs: 120_000,
+  },
+});
+```
+
+### Wiring cleanup
+
+MOAT containers persist between commands. Without a teardown step, every flow request leaks one. The capability returns a handler block that releases the sandbox at request end — wire it into the flow:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+
+defineFlow({
+  // ...
+  request: { onFinished: bashCap.cleanupBlock },
+});
+```
+
+This is **required** for the MOAT provider. For `local`, `just-bash`, `vercel`, and `upstash` it is optional — `cleanupBlock` is returned unconditionally so the capability shape stays stable across providers.
+
+If you call `createBashTool` directly outside a flow, the returned `sandbox.stop()` is the equivalent — call it yourself when you are done.
+
+### Persistent containers (local dev)
+
+Cold-starting a MOAT container takes a few seconds. Locally, that adds up. Set a stable `runName` and `persist: true` so one container survives across requests — the first call pays the cold-start cost; every subsequent call is a `moat exec` against the live container:
+
+```ts
+createBashCapability({
+  provider: {
+    type: "moat",
+    runName: "fsdev-dev",
+    persist: true,
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+How it behaves:
+
+- `bashCap.cleanupBlock` is still wired into `request.onFinished`, but becomes a no-op for the MOAT side — no `moat stop`, no `moat destroy`.
+- The next request finds the running container via `moat list --json` and reuses it.
+- The generated `moat.yaml` in the workspace carries an `# fsdev-managed` marker, so a later session knows the file is reusable instead of refusing it as user-authored.
+- The container outlives the framework process. Reclaim resources with `moat stop <runName>` or `moat clean`. Changing `grants` / `allowHosts` between runs does not retrofit the live container — stop it first if the policy must change.
+
+Skip `persist` in production. Each request should start clean there; the few-seconds cold start is the cost of isolation.
+
+### Grants
+
+A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, an npm registry, etc.). The host operator runs `moat grant <provider>` once outside the framework; the framework does not store credentials, only declares which named grants the workspace needs. Missing grants surface a clear error before the run starts. See the [credentials concept page](https://majorcontext.com/moat/concepts/credentials) for how MOAT injects them on outbound requests.
+
+### Limits
+
+- Default `moat exec` timeout is 60 seconds. Override with `execTimeoutMs`.
+- `readFile` only handles UTF-8 text. Binary files throw `MoatBinaryReadError`.
+- Output is buffered, not streamed. Long-running commands surface their full stdout/stderr at the end.
+- A crashed container is not auto-restarted. The next command surfaces the failure.
+- Process termination outside the cleanup path (SIGTERM, host crash) leaves the container running. Configure a MOAT-side TTL (`moat clean`) as a backstop.
 
 ## Sync lifecycle
 

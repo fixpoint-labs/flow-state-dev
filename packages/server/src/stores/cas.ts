@@ -4,10 +4,11 @@
  * Drives the classic load → mutate → persist cycle with exponential backoff
  * on conflict. The `persist` callback is the caller's bridge into the store
  * layer — it takes the proposed next state plus the `expectedVersion` the
- * container currently holds, performs a CAS-aware `Store.set`, and returns
- * either the new version or the store's current value/version on conflict.
- * On conflict the container is refreshed so the next retry's mutator sees
- * the real current state, not the stale in-request cache.
+ * container currently holds, performs a CAS-aware `Store.set` (or a delta
+ * verb when the hint allows), and returns either the new version or the
+ * store's current value/version on conflict. On conflict the container is
+ * refreshed so the next retry's mutator sees the real current state, not
+ * the stale in-request cache.
  */
 
 import type { CASOptions, StateContainer } from "@flow-state-dev/core/types";
@@ -33,6 +34,26 @@ export type CASMutator<TState> = (
 ) => TState | Promise<TState>;
 
 /**
+ * Describes the intent of a scope-state mutation so the persist callback can
+ * route to a native delta verb on the underlying store when one is available.
+ *
+ * The hint is computed at the scope-op call site (it captures user intent —
+ * "increment this counter by 1") and is invariant across CAS retries. The
+ * persist callback feature-detects whether the adapter implements the verb
+ * and falls back to `set` with the full record when it does not.
+ *
+ * `patchField` carries only the path; the value is read from `nextState`
+ * after the mutator runs, which makes the hint usable for both literal
+ * (`patchState({ foo: 5 })`) and computed (`patchState('foo', updater)`)
+ * shapes uniformly.
+ */
+export type CASMutationHint =
+  | { kind: "set" }
+  | { kind: "patchField"; path: [string] }
+  | { kind: "incField"; path: [string]; delta: number }
+  | { kind: "pushToArray"; path: [string]; values: unknown[] };
+
+/**
  * Outcome of the persist callback. On conflict the caller reports the current
  * stored state and version so the CAS loop can refresh the container cache
  * before the next retry.
@@ -47,7 +68,8 @@ export type CASPersistResult<TState> =
 
 export type CASPersist<TState> = (
   state: Readonly<TState>,
-  expectedVersion: number
+  expectedVersion: number,
+  hint: CASMutationHint
 ) => Promise<CASPersistResult<TState>>;
 
 export type RunWithCASOptions<TState> = {
@@ -55,22 +77,12 @@ export type RunWithCASOptions<TState> = {
   mutator: CASMutator<TState>;
   persist: CASPersist<TState>;
   options?: CASOptions;
-  maxStateSizeBytes?: number;
-  onStateSizeWarning?: (detail: {
-    sizeBytes: number;
-    maxStateSizeBytes: number;
-  }) => void;
+  /**
+   * Intent hint forwarded to `persist`. Defaults to `{ kind: "set" }` when
+   * omitted, preserving prior behavior for callers that haven't migrated.
+   */
+  hint?: CASMutationHint;
 };
-
-export const DEFAULT_MAX_STATE_SIZE_BYTES = 10 * 1024;
-
-export function estimateSizeBytes(value: unknown): number {
-  try {
-    return JSON.stringify(value)?.length ?? 0;
-  } catch {
-    return 0;
-  }
-}
 
 function wait(ms: number): Promise<void> {
   if (ms <= 0) {
@@ -93,28 +105,22 @@ export type RunWithCASResult<TState> = {
   committed: boolean;
 };
 
+const SET_HINT: CASMutationHint = { kind: "set" };
+
 export async function runWithCAS<TState>({
   container,
   mutator,
   persist,
   options,
-  maxStateSizeBytes,
-  onStateSizeWarning
+  hint
 }: RunWithCASOptions<TState>): Promise<RunWithCASResult<TState>> {
   const maxRetries = Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
   const baseDelayMs = Math.max(0, options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
-  const sizeThreshold = maxStateSizeBytes ?? DEFAULT_MAX_STATE_SIZE_BYTES;
+  const persistHint = hint ?? SET_HINT;
 
   let attempt = 0;
   while (attempt <= maxRetries) {
     const current = container.read();
-    const currentSizeBytes = estimateSizeBytes(current);
-    if (currentSizeBytes > sizeThreshold) {
-      onStateSizeWarning?.({
-        sizeBytes: currentSizeBytes,
-        maxStateSizeBytes: sizeThreshold
-      });
-    }
 
     const expectedVersion = container.getVersion();
     const nextState = await mutator(current);
@@ -129,7 +135,7 @@ export async function runWithCAS<TState>({
       return { state: current, committed: false };
     }
 
-    const result = await persist(nextState, expectedVersion);
+    const result = await persist(nextState, expectedVersion, persistHint);
 
     if (result.ok) {
       return { state: container.commit(nextState, result.version), committed: true };

@@ -179,7 +179,9 @@ When adding a new ticker to fixture coverage:
 
 1. Create `fixtures/<TICKER>/2026-05-06/`.
 2. Drop in one JSON per tool (see existing `fixtures/NVDA/2026-05-06/` for
-   the shape — names match `fixtureFileName(tool)`).
+   the shape — names match `fixtureFileName(tool)`). The Phase 1 file set
+   includes `insider-transactions.json` (90 days of Form 4 rows for the
+   news analyst).
 3. The framework needs no other registration.
 
 ## Live mode
@@ -189,7 +191,7 @@ providers, plus the `fetch` tool from `@flow-state-dev/tools` for article
 bodies. Required environment variables:
 
 ```
-FINNHUB_API_KEY=...      # finnhub.io — fundamentals, prices, news
+FINNHUB_API_KEY=...      # finnhub.io — fundamentals, prices, news, insider transactions
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
 ```
 

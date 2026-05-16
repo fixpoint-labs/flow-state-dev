@@ -346,10 +346,22 @@ export function createModelResolver(
    * Resolve a single direct or gateway model string (no intents). Throws on
    * unavailable providers / missing packages. Used by both top-level
    * resolution and intent candidate resolution.
+   *
+   * `identityOverrides` lets intent resolution flow its own `requested`
+   * (`intent/<name>`) down to the AI SDK wrapper so emitted items reflect
+   * the user-visible intent string, not the winning candidate's framework
+   * id. When omitted, the wrapper builds identity from `modelString` alone.
    */
-  function resolveSingleModel(modelString: string): GeneratorModel {
-    const cached = cache.get(modelString);
-    if (cached) return cached;
+  function resolveSingleModel(
+    modelString: string,
+    identityOverrides?: { requested?: string }
+  ): GeneratorModel {
+    // Cache only the no-override case; intent resolution constructs fresh
+    // wrappers per intent (cheap) so the override stays accurate.
+    if (identityOverrides === undefined) {
+      const cached = cache.get(modelString);
+      if (cached) return cached;
+    }
 
     const parsed = parseModelString(modelString);
 
@@ -394,7 +406,10 @@ export function createModelResolver(
         parsed.provider!,
         parsed.modelId!
       );
-      model = wrapAiSdkModel(languageModel, modelString);
+      model = wrapAiSdkModel(languageModel, modelString, {
+        requested: identityOverrides?.requested ?? modelString,
+        gateway: gwType,
+      });
     } else {
       // Direct: provider/model
       const providerName = parsed.provider!;
@@ -403,7 +418,9 @@ export function createModelResolver(
       const resolver = getProviderResolver(providerName);
       if (resolver) {
         const languageModel = resolver(modelId);
-        model = wrapAiSdkModel(languageModel, modelString);
+        model = wrapAiSdkModel(languageModel, modelString, {
+          requested: identityOverrides?.requested ?? modelString,
+        });
       } else {
         const info = availability.get(providerName);
         if (info?.source === "gateway" && info.gatewayType) {
@@ -416,7 +433,10 @@ export function createModelResolver(
               providerName,
               modelId
             );
-            model = wrapAiSdkModel(languageModel, modelString);
+            model = wrapAiSdkModel(languageModel, modelString, {
+              requested: identityOverrides?.requested ?? modelString,
+              gateway: info.gatewayType,
+            });
           } else {
             throw new Error(
               `No provider available for "${providerName}". ` +
@@ -432,14 +452,19 @@ export function createModelResolver(
       }
     }
 
-    cache.set(modelString, model);
+    if (identityOverrides === undefined) {
+      cache.set(modelString, model);
+    }
     return model;
   }
 
   /** Soft variant: returns null on resolution failure instead of throwing. */
-  function tryResolveSingleModel(modelString: string): GeneratorModel | null {
+  function tryResolveSingleModel(
+    modelString: string,
+    identityOverrides?: { requested?: string }
+  ): GeneratorModel | null {
     try {
-      return resolveSingleModel(modelString);
+      return resolveSingleModel(modelString, identityOverrides);
     } catch {
       return null;
     }
@@ -475,6 +500,7 @@ export function createModelResolver(
       return fallback;
     }
 
+    const intentRequested = `intent/${name}`;
     const tagged = candidates.map((s) => ({
       modelString: s,
       providerName: extractProviderName(s),
@@ -483,7 +509,12 @@ export function createModelResolver(
 
     const resolved: FallbackModelEntry[] = [];
     for (const entry of reordered) {
-      const model = tryResolveSingleModel(entry.modelString);
+      // Pass the intent string as the `requested` identity so emitted items
+      // report the user-visible intent name (e.g. `intent/chat`) rather than
+      // the winning candidate's framework id.
+      const model = tryResolveSingleModel(entry.modelString, {
+        requested: intentRequested,
+      });
       if (model) {
         resolved.push({
           modelId: entry.modelString,

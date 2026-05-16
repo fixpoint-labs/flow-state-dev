@@ -1,7 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
@@ -61,7 +61,7 @@ async function executeByKind(
   input: unknown,
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
-): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
+): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity }> {
   // Declarative activeStatusMessage → emitStatus. Fires before the block
   // actually runs so the in-flight indicator updates as soon as each block
   // enters execution. Nested sequencer/router children trigger their own
@@ -70,6 +70,7 @@ async function executeByKind(
   if (block.kind === "generator") {
     const seams = options.internalSeams;
     let modelUsage: GeneratorModelUsageMeta | undefined;
+    let modelIdentity: ModelIdentity | undefined;
     const runtimeHooks = {
       ...ctx._runtimeHooks,
       onGeneratorModelResult: (payload: {
@@ -82,7 +83,11 @@ async function executeByKind(
           cacheCreationInputTokens?: number;
         };
         providerMetadata?: Record<string, Record<string, unknown>>;
+        identity?: ModelIdentity;
       }) => {
+        if (payload.identity !== undefined) {
+          modelIdentity = payload.identity;
+        }
         if (payload.usage !== undefined) {
           const anthropic = payload.providerMetadata?.anthropic ?? {};
           // Prefer adapter-normalised cache fields; fall back to raw
@@ -127,7 +132,7 @@ async function executeByKind(
         (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = generatorHint;
       }
 
-      return { output, modelUsage };
+      return { output, modelUsage, modelIdentity };
     } catch (error) {
       await emitGeneratorLifecycleSeam(seams, "errored", options.metadata);
       throw error;
@@ -203,7 +208,7 @@ export async function executeBlock(
   let attempt = -1;
 
   try {
-    const run = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
+    const run = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity }> => {
       attempt += 1;
       const currentInstanceId = buildBlockInstanceId(requestId, blockPath, attempt);
       const attemptMetadata = {
@@ -343,12 +348,18 @@ export async function executeBlock(
             if (result.modelUsage !== undefined) {
               (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = result.modelUsage;
             }
+            // Stash resolved model identity similarly; consumed by the
+            // output-phase trace capture so BlockTraceItem.model surfaces
+            // even when the generator emits no items.
+            if (result.modelIdentity !== undefined) {
+              (scopedCtx as { _generatorModelIdentity?: ModelIdentity })._generatorModelIdentity = result.modelIdentity;
+            }
             return result.output;
           }
         );
       };
 
-      let scopedExecutionResult: { output: unknown; modelUsage?: GeneratorModelUsageMeta } | undefined;
+      let scopedExecutionResult: { output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity } | undefined;
 
       // Run middleware chain around block execution.
       // Middleware wraps the output only; modelUsage is captured internally.
@@ -363,7 +374,8 @@ export async function executeBlock(
         }
       ).then((output) => ({
         output,
-        modelUsage: scopedExecutionResult?.modelUsage
+        modelUsage: scopedExecutionResult?.modelUsage,
+        modelIdentity: scopedExecutionResult?.modelIdentity
       }));
 
       const interceptedOutput = applyBlockOutputSeam(seams, executionResult.output, attemptMetadata);
@@ -381,7 +393,8 @@ export async function executeBlock(
 
       return {
         output: interceptedOutput,
-        modelUsage: executionResult.modelUsage
+        modelUsage: executionResult.modelUsage,
+        modelIdentity: executionResult.modelIdentity
       };
     };
 

@@ -22,6 +22,7 @@ import type {
   GeneratorModelSource,
   GeneratorModelTool,
   GeneratorSearchConfig,
+  ModelIdentity,
   PrepareStepFn,
   ProviderTool
 } from "../types/model";
@@ -704,6 +705,11 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
+  // Snapshot the request-scoped status slot when the first tool in a
+  // (possibly parallel) round starts; restore when the last one exits.
+  // Without this, a finished tool's `activeStatusMessage` lingers as a
+  // stale "still running" indicator after the tool itself returns.
+  const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
@@ -731,13 +737,30 @@ function compileToolsWithExecute(
       // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
       // result is stored once and surfaced in two places.
       const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
+        if (statusGuard.active === 0) {
+          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
+        }
+        statusGuard.active++;
+        // Surface the tool's run in the status slot so the in-flight indicator
+        // reflects "what's happening now". Routing through emit.status (rather
+        // than emitting a raw status item) updates the slot, which is what
+        // makes the restore in `finally` actually publish a clearing item
+        // instead of being deduped against an unchanged slot.
+        scopedCtx.emit.status(`Using ${tool.name}…`);
+        try {
+          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          return output;
+        } finally {
+          statusGuard.active--;
+          if (statusGuard.active === 0) {
+            scopedCtx.emit.status(statusGuard.saved);
+          }
+        }
       };
 
       // `_withExecutionScope` is the durable-runtime hook that disambiguates
@@ -781,6 +804,11 @@ function compileToolsWithExecute(
         generatorBlock: generatorBlockName,
         agentType,
         agentName,
+        // Read the current generator identity off ctx so a multi-turn tool
+        // loop sees the identity that was active when the model invoked the
+        // tool. The generator block writes `_currentModelIdentity` on every
+        // chunk that carries a resolvedIdentity.
+        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
       };
       return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
         withScope((scopedCtx) => {
@@ -1035,7 +1063,8 @@ function buildSourceItem(
   ctx: BlockContext,
   provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
   agentType: AgentType | undefined,
-  agentName: string | undefined
+  agentName: string | undefined,
+  model: ModelIdentity | undefined
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -1052,7 +1081,8 @@ function buildSourceItem(
     sourceId: source.id,
     url: source.url,
     title: source.title,
-    providerMetadata: source.providerMetadata
+    providerMetadata: source.providerMetadata,
+    model
   };
 }
 
@@ -1097,6 +1127,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
   };
   const ownedBy = identity?.ownedBy;
   let reasoningAccumulated = "";
+  // Resolved model identity stamped on each emitted item and propagated to
+  // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
+  // first chunk that carries it; refined on the `finish` chunk. The pre-
+  // chunk seed lets a tool called on the very first AI SDK turn still stamp
+  // an identity on its `tool_output` item.
+  let resolvedIdentity: ModelIdentity | undefined = { actual: model.modelId };
+  (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
 
   // Reasoning and message items are emitted lazily so their order in the
   // item list matches the natural stream order (reasoning before text).
@@ -1121,6 +1158,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
     caching: resolvedCaching,
     prepareStep
   })) {
+    if (chunk.resolvedIdentity !== undefined) {
+      resolvedIdentity = chunk.resolvedIdentity;
+      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
+    }
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
       if (emit) {
         if (!reasoningStarted) {
@@ -1137,6 +1178,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1176,6 +1218,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1195,6 +1238,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1216,26 +1260,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
           delta: chunk.textDelta
         });
       }
-    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      if (emit) {
-        const toolName = chunk.toolInput.toolName;
-        const statusItem = {
-          id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "status" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          agentType,
-          agentName,
-          message: `Using ${toolName}…`,
-          detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
-        };
-        await ctx.response.emit({ type: "item.added", item: statusItem });
-        await ctx.response.emit({ type: "item.done", item: statusItem });
-      }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
       if (emit) {
         const delta = chunk.toolCallDelta;
@@ -1251,6 +1275,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ownedBy,
           agentType,
           agentName,
+          model: resolvedIdentity,
           toolCallId: delta.toolCallId,
           toolName: delta.toolName,
           argsDelta: delta.argsDelta
@@ -1273,6 +1298,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ownedBy,
           agentType,
           agentName,
+          model: resolvedIdentity,
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: tr.result
@@ -1282,12 +1308,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
       if (emit) {
-        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName);
+        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName, resolvedIdentity);
         await ctx.response.emit({ type: "item.added", item: sourceItem });
         await ctx.response.emit({ type: "item.done", item: sourceItem });
       }
     } else if (chunk.type === "finish") {
       finalResult = chunk.fullResult;
+      if (finalResult?.resolvedIdentity !== undefined) {
+        resolvedIdentity = finalResult.resolvedIdentity;
+      }
     }
   }
 
@@ -1313,6 +1342,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ownedBy,
         agentType,
         agentName,
+        model: resolvedIdentity,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1331,6 +1361,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ownedBy,
         agentType,
         agentName,
+        model: resolvedIdentity,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1362,6 +1393,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     const completedItem = {
       ...messageItem,
       status: "completed" as const,
+      model: resolvedIdentity,
       content: [{ type: "output_text" as const, text: accumulated }]
     };
     await ctx.response.emit({ type: "item.done", item: completedItem });
@@ -1389,7 +1421,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
     usage: finalResult?.usage,
-    providerMetadata: finalResult?.providerMetadata
+    providerMetadata: finalResult?.providerMetadata,
+    identity: resolvedIdentity
   });
 
   return parsed.output as TOutput;
@@ -1750,6 +1783,13 @@ export function generator<
         );
       }
 
+      // Prime `_currentModelIdentity` with the requested model id so tools
+      // called inside the AI SDK's multi-step loop (before the generate call
+      // returns and `resolvedIdentity` is known) still stamp an identity on
+      // their `tool_output` items. Refined to the resolved identity below.
+      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = {
+        actual: model.modelId,
+      };
       // Non-streaming: single call, model handles multi-step loop via maxSteps.
       const generation = await model.generate({
         messages,
@@ -1765,10 +1805,15 @@ export function generator<
       });
 
       const candidate = resolveGenerationCandidate(generation);
+      const nonStreamingIdentity = generation.resolvedIdentity;
+      if (nonStreamingIdentity !== undefined) {
+        (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = nonStreamingIdentity;
+      }
       ctx._runtimeHooks?.onGeneratorModelResult?.({
         model: model.modelId,
         usage: generation.usage,
-        providerMetadata: generation.providerMetadata
+        providerMetadata: generation.providerMetadata,
+        identity: nonStreamingIdentity
       });
 
       // Emit source items from provider-native tools (e.g., web search).
@@ -1782,7 +1827,7 @@ export function generator<
           phase: sourceIdentity?.phase ?? ("main" as const)
         };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName, nonStreamingIdentity);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1832,6 +1877,7 @@ export function generator<
           ownedBy: nsOwnedBy,
           agentType,
           agentName,
+          model: nonStreamingIdentity,
           content: [{ type: "output_text" as const, text: output }]
         };
         await ctx.response.emit({ type: "item.added", item: messageItem });

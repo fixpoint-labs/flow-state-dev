@@ -26,7 +26,7 @@ function Chat() {
         onClick={() => session.sendAction("chat", { message: "Hello" })}
         disabled={session.isStreaming}
       >
-        {session.isStreaming ? "Thinking..." : "Send"}
+        {session.isStreaming ? "Working..." : "Send"}
       </button>
     </div>
   );
@@ -106,7 +106,7 @@ Returns:
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags
-- `statusMessage` — Request-scoped status slot mirror. Latest `emitStatus` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Thinking..." fallback.
+- `statusMessage` — Request-scoped status slot mirror. Latest `emitStatus` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `abortRequest()` — Stop the in-flight request (signals the server to mark it `aborted`)
 - `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
@@ -203,6 +203,24 @@ function ChatBubble({ item }: { item: MessageItem }) {
 ```
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
+
+### `<ModelBadge>`
+
+Renders the `ModelIdentity` carried on any generator-emitted item or `block_trace` as a small pill. The `actual` model id is the visible label; the tooltip lists the requested string and gateway when present. Renders nothing when `model` is undefined, so it's safe to pass `item.model` directly from any item.
+
+```tsx
+import { ModelBadge } from "@flow-state-dev/react";
+import type { MessageItem } from "@flow-state-dev/core/items";
+
+function AssistantMessage({ item }: { item: MessageItem }) {
+  return (
+    <div>
+      <ModelBadge model={item.model} />
+      <div>{item.content[0]?.text}</div>
+    </div>
+  );
+}
+```
 
 ## Connection resilience
 

@@ -145,6 +145,9 @@ export function createPostgresRequestStore(
       return withSourceDefault(await base.get(id));
     },
     set: base.set,
+    patchField: base.patchField,
+    incField: base.incField,
+    pushToArray: base.pushToArray,
     delete: base.delete,
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       const records = await base.list(options);

@@ -194,14 +194,18 @@ function KitchenSinkApp() {
     [artifacts, selectedArtifactId]
   );
 
-  // Fetch content when a new artifact is selected
+  // Fetch content when a new artifact is selected. The framework's list
+  // endpoint returns `topic` already stripped of the collection prefix
+  // (`extractBareTopic` → "hello.md", not "artifacts/hello.md"), and
+  // `selectedArtifactId` is derived from that same stripped topic above
+  // — so we compare bare-to-bare and skip the storageKey construction
+  // that would never match.
   useEffect(() => {
     if (!selectedArtifactId) {
       setArtifactContent(null);
       return;
     }
-    const storageKey = `artifacts/${selectedArtifactId}`;
-    const item = artifactItems.find((i) => i.topic === storageKey);
+    const item = artifactItems.find((i) => i.topic === selectedArtifactId);
     if (!item) {
       setArtifactContent(null);
       return;
@@ -473,12 +477,14 @@ interface ChatPanelProps {
 const ConversationBody = memo(function ConversationBody({
   items,
   isStreaming,
+  isFinishing,
   statusMessage,
   isLoading,
   error,
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
+  isFinishing: boolean;
   statusMessage: string;
   isLoading: boolean;
   error: { message: string } | null;
@@ -494,7 +500,7 @@ const ConversationBody = memo(function ConversationBody({
               description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
             />
           )}
-          <RequestGroupRenderer items={items} isStreaming={isStreaming} statusMessage={statusMessage} />
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
           {error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{error.message}</span>
@@ -579,6 +585,7 @@ function ChatPanel({
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}
+          isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={session.isLoading}
           error={session.error}

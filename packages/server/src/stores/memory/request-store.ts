@@ -7,7 +7,14 @@ import type {
   SetResult,
   SubscribeToEventsOptions
 } from "../types";
-import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
+import {
+  applyOffsetLimit,
+  casWriteToMap,
+  cloneValue,
+  incFieldInMap,
+  patchFieldInMap,
+  pushToArrayInMap
+} from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
@@ -37,6 +44,36 @@ export class InMemoryRequestStore implements RequestStore {
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
     return casWriteToMap(this.records, id, value, expectedVersion);
+  }
+
+  async patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return patchFieldInMap(this.records, id, path, value, expectedVersion, updatedAt);
+  }
+
+  async incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return incFieldInMap(this.records, id, path, delta, expectedVersion, updatedAt);
+  }
+
+  async pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return pushToArrayInMap(this.records, id, path, values, expectedVersion, updatedAt);
   }
 
   async delete(id: string): Promise<void> {

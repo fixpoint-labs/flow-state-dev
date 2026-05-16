@@ -21,6 +21,13 @@ Phase 1 — analyst fan-out:
 - **Fixture / live data toggle** — fixtures ship for `NVDA / 2026-05-06`,
   `AAPL / 2026-05-06`, and `JPM / 2026-05-06`. Live prices and fundamentals
   via `yahoo-finance2` (no key required).
+- **Wider technical indicator set** — RSI, MACD, ATR, SMA50/200, trend label,
+  Bollinger Bands, VWMA(20), Stochastic Oscillator (%K/%D), KDJ, and OBV. The
+  math is delegated to the `trading-signals` library with two small
+  hand-rolled helpers (VWMA, KDJ).
+- **Insider transactions signal** — the news analyst reads 90 days of Form 4
+  filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
+  on failure, like other single-provider tools).
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -179,7 +186,9 @@ if you want to wire intents to specific gateway models.
 
 `yahoo-finance2` is keyless. The live source for news and sentiment is a
 fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on.
+sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
+`get_insider_transactions` — without it, the tool returns `unavailable` and
+the news analyst treats insider data as missing signal.
 
 ## Architecture in brief
 

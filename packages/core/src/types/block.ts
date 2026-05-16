@@ -20,7 +20,7 @@ import type {
   StateSnapshotItem
 } from "../items/types";
 import type { JsonObject } from "../schema/common";
-import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
+import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -58,6 +58,7 @@ export type BlockTraceCapturePayload = {
     output?: import("../items/types").BlockValueInternal<unknown>;
     generator?: BlockTraceItem["generator"];
     modelUsage?: BlockTraceItem["modelUsage"];
+    model?: BlockTraceItem["model"];
     startedAt?: number;
     completedAt?: number;
     duration?: number;
@@ -332,6 +333,8 @@ export interface BlockContext<
       model: string;
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
+      /** Resolved identity of the model that produced this result. */
+      identity?: ModelIdentity;
     }) => void;
     /**
      * Unified block-lifecycle capture hook. Fires four phases per block:
@@ -376,6 +379,14 @@ export interface BlockContext<
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>
   ): Promise<TValue>;
+
+  /**
+   * @internal Read the current value of the request-scoped status slot.
+   * Used by the generator's tool-call dispatch to snapshot/restore the slot
+   * around a tool round so a tool's `activeStatusMessage` does not linger
+   * past the tool's lifetime.
+   */
+  _peekStatus?(): string;
 
   /**
    * @internal Hint written by a sequencer/router's execute right before

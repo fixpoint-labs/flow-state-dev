@@ -61,6 +61,26 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Tests verify intent, not just behavior
+
+Tests must encode WHY behavior matters, not just WHAT it does.
+A test that can't fail when business logic changes is wrong.
+
+## 6. Surface conflicts, don't average them
+
+If two patterns contradict, pick one (more recent / more tested).
+Explain why. Flag the other for cleanup.
+Don't blend conflicting patterns.
+
+## 7. Read before you write
+
+Before adding code, read exports, immediate callers, shared utilities.
+If unsure why existing code is structured a certain way, ask.
+
+## 8. Match the codebase's conventions, even if you disagree
+
+Conformance > taste inside the codebase.
+If you think a convention is harmful, surface it. Don't fork it silently.
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
@@ -101,8 +121,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
+| `@flow-state-dev/memory` | Cross-turn memory system (working / episodic / semantic / digest tiers) |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
-| `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |
+| `@thought-fabric/core` | Cognitive architecture primitives (attention, identity) |
 | `apps/devtool` | DevTool source app (builds into `@flow-state-dev/devtool`) |
 | `apps/docs` | Documentation site (Docusaurus) |
 
@@ -195,6 +216,9 @@ When writing blog posts, landing copy, or any prose for `apps/docs`, use this vo
 - **Be direct about tradeoffs.** It's fine to say "this works for demos, not for production" or "we made a deliberate call here." Honest is better than polished.
 - **Conclusions earn their place.** Don't end every section with a triumphant one-liner. If a point lands, it lands. If it needs a closer, keep it short and specific.
 - **No internal issue or PR numbers.** Anything under `apps/docs/` is published documentation. Refer to features by what they are, not by their tracking ID. `FIX-421`, `PR #182`, Linear ticket links — none of these belong in user-facing prose. They go in commits, the repo-root `changelog.md`, and internal artifacts under `docs/internal/`.
+- **Warm, not cold.** Reference docs can stay dry, but overviews, guides, and intros should read like a teammate walking you through it. A short framing sentence, an honest "why you'd reach for this," small acknowledgments of the reader's likely context. Engineer-direct still means human.
+- **Sidebar labels never repeat the category name.** A `Memory` category should not contain a page literally labeled `Memory`. Use `sidebar_label: Overview` (or `Getting started`, etc.) in the page's frontmatter so the sidebar reads `Memory > Overview`, not `Memory > Memory`. Same rule for every category.
+- **Use `openai/gpt-5.4-mini` in code examples** when a small/fast model is appropriate. Don't use legacy names like `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`, etc. — they read as out of date.
 
 The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the reference example for this voice.
 
@@ -204,9 +228,9 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 ## @thought-fabric/core Conventions
 
-- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/memory`). Named exports only (tree-shakeable). No default namespace objects.
-- **Naming — word order encodes category**: `workingMemory[Verb]` = block/item (prefix first). `[verb]WorkingMemory` = helper (verb first). The inversion signals the category without needing docs.
-- **Naming examples**: `workingMemoryCapture` (block), `workingMemoryResource` (resource), `workingMemoryContextFormatter` (formatter), `addWorkingMemory` (helper), `workingMemoryItems` (accessor)
+- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/attention`, `@thought-fabric/core/identity`). Named exports only (tree-shakeable). No default namespace objects.
+- **Naming — word order encodes category**: `perspective[Verb]` = block/item (prefix first). `[verb]Perspective` = helper (verb first). The inversion signals the category without needing docs.
+- **Naming examples**: `perspectiveObserve` (block), `perspectiveResource` (resource), `perspectiveContextFormatter` (formatter), `addPerspective` (helper)
 - **Context formatters**: Use `[domain]ContextFormatter` naming. Always assign to `context` as an array: `context: [workingMemoryContextFormatter]`
 - **Build dependency**: `@thought-fabric/core` depends on `@flow-state-dev/core` — build core first (`pnpm --filter @flow-state-dev/core build`)
 

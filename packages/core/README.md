@@ -231,7 +231,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emitMessage()`, `ctx.emitComponent()`, or `ctx.emitStatus()` — or declare `activeStatusMessage` on the block config, which fires `emitStatus` automatically at block start. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
 
-**Request-scoped status slot.** `emitStatus` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Thinking..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
+**Request-scoped status slot.** `emitStatus` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
 **Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`orgResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 
@@ -292,6 +292,10 @@ const resolver = createModelResolver({
 The framework documents six canonical intent names — `utility`, `chat`, `plan`, `synthesize`, `code`, `reason` — but apps can add their own. `synthesize` doubles as the structured-JSON intent: point it at JSON-reliable models, not the cheapest tier.
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
+
+### Observable model identity
+
+Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.
 
 ### Strict-mode schema helper
 

@@ -132,7 +132,7 @@ function Chat() {
       >
         <input name="message" placeholder="Type a message..." />
         <button type="submit" disabled={session.isStreaming}>
-          {session.isStreaming ? "Thinking..." : "Send"}
+          {session.isStreaming ? "Working..." : "Send"}
         </button>
       </form>
     </div>

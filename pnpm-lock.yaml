@@ -124,6 +124,9 @@ importers:
       '@flow-state-dev/devtool':
         specifier: workspace:*
         version: link:../../packages/devtool
+      '@flow-state-dev/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../../packages/patterns
@@ -384,6 +387,9 @@ importers:
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
+      trading-signals:
+        specifier: ^7.4.3
+        version: 7.4.3
       yahoo-finance2:
         specifier: ^3.14.0
         version: 3.14.0
@@ -592,6 +598,25 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
+
+  packages/memory:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/patterns:
     dependencies:
@@ -9705,6 +9730,9 @@ packages:
   tr46@6.0.0:
     resolution: {integrity: sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==}
     engines: {node: '>=20'}
+
+  trading-signals@7.4.3:
+    resolution: {integrity: sha512-kOyzd85qhuhU7yGkB5z74MVP6j30xBCfZy5+bgBnvfxY1ZdvaQsdD+C5j+CoIRtCAgSOuxB7jmPpBrqO6h17sQ==}
 
   tree-dump@1.1.0:
     resolution: {integrity: sha512-rMuvhU4MCDbcbnleZTFezWsaZXRFemSqAM+7jPnzUl1fo9w3YEKOxAeui0fz3OI4EU4hf23iyA7uQRVko+UaBA==}
@@ -20896,6 +20924,8 @@ snapshots:
     dependencies:
       punycode: 2.3.1
     optional: true
+
+  trading-signals@7.4.3: {}
 
   tree-dump@1.1.0(tslib@2.8.1):
     dependencies:

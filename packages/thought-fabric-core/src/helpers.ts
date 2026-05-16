@@ -1,8 +1,13 @@
 /**
  * Shared utility functions for @thought-fabric/core.
  *
- * These are general-purpose helpers used across multiple domains
- * (memory, attention, identity, etc).
+ * These are general-purpose helpers used across TF domains (currently identity).
+ *
+ * Note: shortId / tokenize / tokenOverlap / findBestOverlap are duplicated in
+ * packages/memory/src/internal/helpers.ts because the memory module
+ * lifted to @flow-state-dev/memory and is no longer reachable from TF
+ * (TF doesn't depend on memory, and memory cannot import from TF without
+ * a circular dep). If you change a function here, update the duplicate.
  */
 
 /** Generate a short random alphanumeric ID. */
