@@ -62,7 +62,7 @@ The `weekly-digest` flow is the live reference for the docs in
 Vercel cron routes drive it (`vercel.json`):
 
 - `GET /api/cron/static/[scheduleId]` — Vercel Cron → POST shim for static schedules.
-- `GET /api/cron/schedule-tick` — minute polling tick that claims due rows from the `ScheduleIndex` and fans out dispatches.
+- `GET /api/cron/schedule-tick` — 15-minute polling tick that claims due rows from the `ScheduleIndex` and fans out dispatches.
 
 Env vars required at runtime: `CRON_SECRET` (shared bearer between cron
 routes and the dispatch endpoint) and `NEXT_PUBLIC_BASE_URL` (deployment
