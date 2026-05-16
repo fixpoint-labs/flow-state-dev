@@ -16,14 +16,14 @@ describe('memory/provider — MemoryProvider contract', () => {
   })
 
   it('system() return value exposes recall and formatContext as callable properties', () => {
-    const mem = system({ model: 'gpt-4o-mini', working: { capacity: 5 } })
+    const mem = system({ model: 'openai/gpt-5.4-mini', working: { capacity: 5 } })
     expect(typeof mem.recall).toBe('function')
     expect(typeof mem.formatContext).toBe('function')
     expect(typeof mem.contextFormatter).toBe('function')
   })
 
   it('formatContext aliases contextFormatter (same function reference)', () => {
-    const mem = system({ model: 'gpt-4o-mini', working: { capacity: 5 } })
+    const mem = system({ model: 'openai/gpt-5.4-mini', working: { capacity: 5 } })
     expect(mem.formatContext).toBe(mem.contextFormatter)
   })
 })

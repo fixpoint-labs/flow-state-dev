@@ -1,8 +1,8 @@
 # @flow-state-dev/memory
 
-Cross-turn memory for agents built on `@flow-state-dev/core`. One factory, four optional tiers (working, episodic, semantic, digest), capabilities you wire into generators with one line.
+Cross-turn memory for agents built on `@flow-state-dev/core`. One factory, four optional tiers (working, episodic, semantic, digest), and a capability you wire into a generator with one line.
 
-This package is its own ecosystem install — **it is not part of core**. Add it alongside `@flow-state-dev/core` when your agent needs to remember anything across turns.
+This package is its own install. **It is not part of core.** Add it alongside `@flow-state-dev/core` when your agent needs to remember anything across turns.
 
 ## Install
 
@@ -21,7 +21,7 @@ import { defineFlow, generator } from "@flow-state-dev/core";
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-4o-mini",
+  model: "openai/gpt-5.4-mini",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -41,7 +41,7 @@ export const myFlow = defineFlow({
 });
 ```
 
-`mem.capability` contributes a `<memory>` context block, the agent-invocable `memory/recall` tool, and typed `ctx.cap.*` helpers — wire it once and the generator has memory.
+`mem.capability` contributes a `<memory>` context block, the agent-invocable `memory/recall` tool, and typed `ctx.cap.*` helpers. Wire it once and the generator has memory.
 
 ## What's in the package
 
@@ -52,13 +52,13 @@ export const myFlow = defineFlow({
 | Semantic | user | Consolidated facts the agent has decided are worth keeping |
 | Digest | user | Summarized rollups across many sessions |
 
-The system implements the read-side `MemoryProvider` contract — `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
+The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
 **Key exports:** `system`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
 
 ## Where it came from
 
-Memory previously lived at `@thought-fabric/core/memory`. It now ships from this dedicated package so apps can install memory without taking on a Thought Fabric dependency. Thought Fabric will host specialized cognitive memory variants on top of the `MemoryProvider` contract when those land.
+Memory previously lived at `@thought-fabric/core/memory`. It now ships from this dedicated package so apps can install memory without pulling in a Thought Fabric dependency. Thought Fabric will host specialized cognitive memory variants on top of the `MemoryProvider` contract when those land.
 
 ## Running tests
 

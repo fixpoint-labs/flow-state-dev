@@ -1,16 +1,17 @@
 ---
 sidebar_position: 1
+sidebar_label: Overview
 ---
 
 # Memory
 
-`@flow-state-dev/memory` — cross-turn memory for agents. One factory, four optional tiers, capabilities you wire into generators with one line.
+`@flow-state-dev/memory` gives your agent something to hold onto between turns. One factory, four optional tiers, and a capability you wire into a generator with one line.
 
-Most non-trivial agents need to remember something across turns: what the user just said, what they prefer in general, what happened last session. The memory system lets you compose those needs from four tiers, each independent, each opt-in.
+If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. Most non-trivial agents need to remember something across turns. What the user just said. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers, each independent, each opt-in. Pick what you need, leave the rest.
 
 ## Installation
 
-Memory is its own package — it's not bundled with `@flow-state-dev/core`. Install it alongside the framework:
+Memory ships separately from `@flow-state-dev/core`, so you only pay for it when you want it. Install it alongside the framework:
 
 ```bash
 pnpm add @flow-state-dev/memory
@@ -26,7 +27,7 @@ import { system, workingMemoryCapability } from "@flow-state-dev/memory";
 
 ## What memory is
 
-Memory in FSD is a composed system, not a single store. Each tier has its own scope and lifecycle.
+Memory here is a composed system, not a single store. Each tier has its own scope and lifecycle, and you can mix them.
 
 | Tier | Scope | Best for |
 |------|-------|----------|
@@ -35,7 +36,7 @@ Memory in FSD is a composed system, not a single store. Each tier has its own sc
 | Semantic | user | Consolidated facts the agent has decided are worth keeping |
 | Digest | user | Summarized rollups across many sessions |
 
-Working is always present. Episodic, semantic, and digest are opt-in via config. Working-only is a real configuration — a chat that just needs to remember the last few turns can wire in working alone.
+Working is always present. Episodic, semantic, and digest are opt-in via config. Working-only is a real configuration. A chat that just needs to remember the last few turns can wire in working alone and stop there.
 
 ## Quickest start
 
@@ -44,7 +45,7 @@ import { defineFlow, generator } from "@flow-state-dev/core";
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-4o-mini",
+  model: "openai/gpt-5.4-mini",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -68,22 +69,22 @@ That's enough to give the agent a per-turn `<memory>` summary and a recall tool 
 
 ## How it integrates
 
-`mem.capability` is what wires the system into a block. It contributes:
+`mem.capability` is the piece that actually wires the system into a block. A capability is FSD's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Here, it contributes:
 
-- A context formatter that produces the `<memory>` section consumed by the generator each turn.
+- A context formatter that produces the `<memory>` section the generator reads each turn.
 - The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.
 - Typed `ctx.cap.*` helpers so handlers can read and write memory without manually reaching into resources.
 
-If you only need a subset, [presets](./configuration#capability-presets) toggle each piece individually. If you only need working memory, you can skip `system()` entirely and use `workingMemoryCapability` directly — see [Configuration](./configuration#per-tier-capabilities).
+If you only need a subset, [presets](./configuration#capability-presets) toggle each piece individually. If you only need working memory, you can skip `system()` entirely and use `workingMemoryCapability` directly. See [Configuration](./configuration#per-tier-capabilities).
 
-See [Capabilities](../fundamentals/capabilities) for how `uses` wires resources, context, and tools into a block.
+For the broader picture of how `uses` wires resources, context, and tools into a block, see [Capabilities](../fundamentals/capabilities).
 
 ## Where it lives
 
-Memory ships from its own package, `@flow-state-dev/memory` — install it alongside `@flow-state-dev/core` when an agent needs cross-turn persistence. It previously lived at `@thought-fabric/core/memory`; that path no longer resolves. Update old imports to `@flow-state-dev/memory`.
+Memory ships from its own package, `@flow-state-dev/memory`, so apps that don't need it don't carry it. Install it alongside `@flow-state-dev/core` when an agent needs cross-turn persistence. It previously lived at `@thought-fabric/core/memory`. That path no longer resolves, so update old imports to `@flow-state-dev/memory`.
 
 ## Further reading
 
 - [Configuration](./configuration) — every knob `system()` exposes and when to reach for them.
-- [Recall tool](./recall-tool) — the agent-invocable search surface, custom strategies.
+- [Recall tool](./recall-tool) — the agent-invocable search surface, plus custom strategies.
 - [Resources](../resources/overview) — how memory persistence is scoped.
