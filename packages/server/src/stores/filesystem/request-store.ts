@@ -34,6 +34,10 @@ function toEventsPath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
 }
 
+function toRunOncePath(rootDir: string, requestId: string): string {
+  return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
+}
+
 export class FilesystemRequestStore implements RequestStore {
   private readonly store: FilesystemRecordStore<
     RequestRecord,
@@ -56,6 +60,7 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly lastEventError = new Map<string, Error>();
 
   private readonly pollIntervalMs: number;
+  private readonly runOnceQueues = new Map<string, SerializedWriteQueue>();
 
   constructor(options: FilesystemRequestStoreOptions) {
     this.rootDir = options.rootDir;
@@ -241,6 +246,83 @@ export class FilesystemRequestStore implements RequestStore {
       options,
       this.pollIntervalMs
     );
+  }
+
+  async getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }> {
+    const filePath = toRunOncePath(this.rootDir, requestId);
+    let map: Record<string, unknown>;
+    try {
+      const raw = await readFile(filePath, "utf8");
+      map = JSON.parse(raw) as Record<string, unknown>;
+    } catch (error) {
+      const maybeError = error as NodeJS.ErrnoException;
+      if (maybeError.code === "ENOENT") return { found: false };
+      throw error;
+    }
+    if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
+    return { found: true, value: map[key] };
+  }
+
+  async setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void> {
+    // Serialize per-request file writes so concurrent runOnce calls don't
+    // clobber each other's partial maps. Drain to expose write errors to
+    // the caller.
+    const queue = this.getOrCreateRunOnceQueue(requestId);
+    let resolve: () => void;
+    let reject: (err: Error) => void;
+    const done = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    queue.enqueue(async () => {
+      try {
+        await ensureDirectory(this.rootDir);
+        const targetPath = toRunOncePath(this.rootDir, requestId);
+        let map: Record<string, unknown> = {};
+        try {
+          const raw = await readFile(targetPath, "utf8");
+          map = JSON.parse(raw) as Record<string, unknown>;
+        } catch (error) {
+          const maybeError = error as NodeJS.ErrnoException;
+          if (maybeError.code !== "ENOENT") throw error;
+        }
+        map[key] = value;
+        const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+          .toString(16)
+          .slice(2)}`;
+        await writeFile(tempPath, JSON.stringify(map), "utf8");
+        await rename(tempPath, targetPath);
+        resolve();
+      } catch (err) {
+        reject(err as Error);
+        throw err;
+      }
+    });
+    await done;
+  }
+
+  private getOrCreateRunOnceQueue(requestId: string): SerializedWriteQueue {
+    let queue = this.runOnceQueues.get(requestId);
+    if (queue === undefined) {
+      queue = createSerializedWriteQueue({
+        label: `request-runonce:${requestId}`,
+        onError: (err) => {
+          console.error(
+            `[flow-state] runOnce persistence failed for ${requestId}`,
+            err
+          );
+        }
+      });
+      this.runOnceQueues.set(requestId, queue);
+    }
+    return queue;
   }
 
   private getOrCreateEventWriteQueue(requestId: string): SerializedWriteQueue {

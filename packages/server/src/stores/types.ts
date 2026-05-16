@@ -262,6 +262,30 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     requestId: string,
     options: SubscribeToEventsOptions
   ): AsyncIterableIterator<RequestStreamEvent>;
+
+  /**
+   * Lookup the memoized result of a `ctx.runOnce(key, fn)` call (FIX-402).
+   * Returns `{ found: false }` when no record exists for this `(requestId,
+   * key)` pair. The stored value is opaque JSON — the caller is responsible
+   * for any type coercion. Implementations should treat misses as cheap
+   * and not allocate on miss.
+   */
+  getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }>;
+
+  /**
+   * Persist the result of a `ctx.runOnce(key, fn)` call (FIX-402). The
+   * value replaces any prior record for this `(requestId, key)` pair —
+   * callers serialize execution per key so a late writer overwriting an
+   * earlier success is benign (they computed the same fn).
+   */
+  setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void>;
 }
 
 /**
