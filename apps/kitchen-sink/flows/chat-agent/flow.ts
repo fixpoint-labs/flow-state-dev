@@ -40,6 +40,7 @@ import {
   thinkingStyleSessionStateSchema,
   featuresCapability,
   intentSelectorBlock,
+  bashCap,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
 import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";
@@ -494,6 +495,12 @@ const chatAgentFlow = defineFlow({
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
   resources: { ...(mem.userResources ?? {}) },
+
+  // Tear down the bash sandbox at request end. Required when the bash
+  // provider is MOAT (otherwise containers accumulate across requests);
+  // a no-op for `local` / `just-bash` / `vercel`. Wired unconditionally
+  // so swapping the provider via env vars doesn't reintroduce a leak.
+  request: { onFinished: bashCap.cleanupBlock },
 
   user: {
     stateSchema: userStateSchema,

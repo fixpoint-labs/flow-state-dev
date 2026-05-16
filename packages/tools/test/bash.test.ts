@@ -1041,6 +1041,50 @@ describe("createBashBlocks", () => {
     expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
   });
 
+  it("wraps bashCommand with `cd <destination> &&` so PWD is the workspace root", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    // The agent should be able to use relative paths (`artifacts/foo.md`)
+    // without knowing the workspace lives at `/workspace`. This test
+    // captures the actual command string sent to the sandbox and
+    // asserts the wrapper.
+    const captured: string[] = [];
+    const files = new Map<string, string>();
+    const sandbox: Sandbox = {
+      async executeCommand(command: string): Promise<CommandResult> {
+        captured.push(command);
+        if (command.includes("find ")) {
+          return {
+            stdout: Array.from(files.keys()).join("\n"),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      async readFile(p: string): Promise<string> {
+        return files.get(p) ?? "";
+      },
+      async writeFile(p: string, content: string): Promise<void> {
+        files.set(p, content);
+      },
+    };
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cd-wrap-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "echo hello > note.txt" }, ctx);
+
+    // The agent's command is wrapped with the cd; the flush walk
+    // (which runs after) is the only command without the wrap.
+    const agentCmd = captured.find((c) => c.includes("echo hello"));
+    expect(agentCmd).toBeDefined();
+    expect(agentCmd).toContain("cd /workspace && echo hello > note.txt");
+  });
+
   it("routes writes back to the owning collection by longest-prefix match", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
@@ -1065,6 +1109,27 @@ describe("createBashBlocks", () => {
     expect(skills.count()).toBe(1);
     expect(artifacts.getOptional("new-doc.md")?.state.path).toBe("new-doc.md");
     expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
+  });
+
+  it("normalizes leading `./` so model-supplied relative paths route correctly", async () => {
+    // The bashWriteFile schema describes paths as "relative to workspace
+    // root (e.g. artifacts/foo.md)" — the model still routinely supplies
+    // `./artifacts/foo.md`. Routing must strip the `./` before matching
+    // mount prefixes, otherwise the file lands on disk but is silently
+    // dropped from the collection sync.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("dotslash-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashWriteFile, { path: "./artifacts/relative.md", content: "hi" }, ctx);
+
+    expect(artifacts.count()).toBe(1);
+    expect(artifacts.getOptional("relative.md")).toBeDefined();
   });
 
   it("honors writable: false — changes in the mount are not written back", async () => {
