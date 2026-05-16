@@ -9,7 +9,6 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Default fallback verb changed from "Thinking..." to "Working..." so it no longer duplicates the reasoning chrome's header text.
 - The in-flight indicator now switches to a muted "Tidying up..." state while a request is in its background-task drain phase. After FIX-554 lifted `.work()` to a request-level pool the SSE stream stays open past the visible end of the main response; the indicator was previously suggesting the assistant was still producing the answer.
 - `RequestGroupRenderer` and `RequestGroup` gain an optional `isFinishing` prop (defaults to `false`); host apps thread `useSession.isFinishing` through to drive the drain-state rendering. Downstream consumers that do not yet thread the signal continue to render as today.
-- Background tasks that call `ctx.emitStatus("...")` after the main stream closes do not surface in the in-flight indicator while it is muted to "Tidying up..."; this is intentional for this scope.
 
 ### Bash tool: tolerate `./`-prefixed paths in `bashWriteFile`
 
