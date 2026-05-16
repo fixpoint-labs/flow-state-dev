@@ -176,7 +176,9 @@ generator({
 });
 ```
 
-There's no corresponding "on complete clear." The next block that sets a status overwrites the previous one; otherwise the last message lingers until the request ends. This matches the "treat status as a global value" intent and avoids flicker back to "Thinking..." between adjacent blocks.
+There's no corresponding "on complete clear." The next block that sets a status overwrites the previous one; otherwise the last message lingers until the request ends. This matches the "treat status as a global value" intent and avoids flicker back to "Working..." between adjacent blocks.
+
+**Generator/tool exception.** A generator's tool-call dispatch is the one place that does scope status to the inner block's lifetime. When the generator's AI-SDK loop invokes a tool, the slot is snapshotted on the first tool entry of a round and restored when the last tool exits. Tools compete on the slot while they run — the latest emit wins as elsewhere — but a finished tool's `activeStatusMessage` cannot linger past its own execution as a stale "still running" indicator. If the generator itself had set `activeStatusMessage`, that value is what gets restored; otherwise the slot clears and the indicator falls back to "Working...".
 
 Prefer `activeStatusMessage` when a block has one meaningful status for its whole execution. Reserve `ctx.emitStatus()` for blocks that genuinely need to update status mid-execution (e.g. per-file upload progress). Don't wrap multi-phase logic in a single handler with multiple `emitStatus` calls — that's a symptom of a handler that should be a sequencer of distinct blocks (BP-011).
 

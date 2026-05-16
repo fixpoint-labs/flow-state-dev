@@ -3084,6 +3084,7 @@ export async function createExecutionContext<
       emitComponent: undefined as unknown as BlockContext["emitComponent"],
       emitStatus: undefined as unknown as BlockContext["emitStatus"],
       emit: undefined as unknown as BlockContext["emit"],
+      _peekStatus: undefined as unknown as BlockContext["_peekStatus"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.
@@ -3402,6 +3403,11 @@ export async function createExecutionContext<
       status: emitStatusImpl,
       trace: traceEmitters,
     };
+    // Read the request-scoped status slot. Internal — used by the generator's
+    // tool-call dispatch to snapshot/restore the slot around a parallel tool
+    // round so a tool's `activeStatusMessage` does not linger past the
+    // tool's lifetime.
+    context._peekStatus = (): string => statusSlot.message;
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

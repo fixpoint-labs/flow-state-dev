@@ -352,6 +352,14 @@ export interface BlockContext<
   ): Promise<TValue>;
 
   /**
+   * @internal Read the current value of the request-scoped status slot.
+   * Used by the generator's tool-call dispatch to snapshot/restore the slot
+   * around a tool round so a tool's `activeStatusMessage` does not linger
+   * past the tool's lifetime.
+   */
+  _peekStatus?(): string;
+
+  /**
    * @internal Hint written by a sequencer/router's execute right before
    * returning to describe the BlockValue kind its `block_trace.output` should
    * carry (FIX-413). Emitters wrap the returned output as `inline` when no

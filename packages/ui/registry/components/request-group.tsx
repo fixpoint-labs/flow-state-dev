@@ -49,8 +49,16 @@ type RequestGroupRendererProps = {
   items: OutputItem[];
   isStreaming: boolean;
   /** Latest value from the request-scoped status slot. Falls back to
-   *  "Thinking..." in the indicator when empty. */
+   *  "Working..." in the indicator when empty. */
   statusMessage?: string;
+  /** When true, the request is in its background-task drain phase
+   *  (main response is complete; only `.work()` background tasks are
+   *  still settling on the open SSE stream). The indicator switches to
+   *  a muted "Tidying up..." state so the user is not misled into
+   *  thinking the assistant is still producing their answer. Sourced
+   *  from `useSession.isFinishing`. Defaults to `false` for callers
+   *  that do not yet thread the signal. */
+  isFinishing?: boolean;
 };
 
 /**
@@ -60,7 +68,7 @@ type RequestGroupRendererProps = {
  * in below. As the content grows past the viewport, the min-height
  * becomes irrelevant and scrolling works normally.
  */
-export function RequestGroupRenderer({ items, isStreaming, statusMessage }: RequestGroupRendererProps) {
+export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
 
   return groups.map((group, index) => {
@@ -73,6 +81,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
         isLast={isLast}
         isStreaming={isStreaming}
         statusMessage={statusMessage}
+        isFinishing={isFinishing}
       />
     );
   });
@@ -83,11 +92,14 @@ function RequestGroup({
   isLast,
   isStreaming,
   statusMessage,
+  isFinishing,
 }: {
   group: RequestGroup;
   isLast: boolean;
   isStreaming: boolean;
   statusMessage?: string;
+  /** See `RequestGroupRendererProps.isFinishing`. */
+  isFinishing?: boolean;
 }) {
   // Items inside a task-board window render under the task in
   // <TaskPlan /> — hide them from the chat-thread stream so we don't
@@ -106,7 +118,7 @@ function RequestGroup({
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} />
       <SourcesGroup items={group.items} />
-      {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
+      {isLast && isStreaming && <StreamingIndicator message={statusMessage} isFinishing={isFinishing} />}
     </div>
   );
 }

@@ -26,7 +26,7 @@ function Chat() {
         onClick={() => session.sendAction("chat", { message: "Hello" })}
         disabled={session.isStreaming}
       >
-        {session.isStreaming ? "Thinking..." : "Send"}
+        {session.isStreaming ? "Working..." : "Send"}
       </button>
     </div>
   );
@@ -106,7 +106,7 @@ Returns:
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags
-- `statusMessage` — Request-scoped status slot mirror. Latest `emitStatus` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Thinking..." fallback.
+- `statusMessage` — Request-scoped status slot mirror. Latest `emitStatus` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `abortRequest()` — Stop the in-flight request (signals the server to mark it `aborted`)
 - `resumeLatestRequest()` — Re-dispatch `latestRequest` and attach to the new stream. No-op when there's no latest request, or when its status is anything other than `interrupted` or `failed` (the only states the server will retry). Useful for rendering a "Resume" button when a previous request was interrupted by a server crash, HMR reload, or network drop:
