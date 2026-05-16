@@ -150,7 +150,66 @@ generator({
 | Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. |
 | Upstash | `"upstash"` | Placeholder — blocked on API stabilization (FIX-314). |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
+| MOAT | `"moat"` | Local container isolation with credential injection (requires the `moat` CLI v0.4.0+). |
 | Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
+
+#### MOAT
+
+Runs each command inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; outbound network calls flow through a credential-injecting proxy so the agent process never sees API tokens.
+
+**Install MOAT (one-time, host operator):**
+
+The `moat` CLI is a separate binary — the framework spawns it but does not bundle or auto-install it. Install it from [majorcontext.com/moat](https://majorcontext.com/moat/) and verify the version is at least `0.4.0` (required for `moat exec`):
+
+```bash
+moat version --json
+```
+
+Prerequisites the host needs:
+
+- macOS 15+ on Apple Silicon (native containers) **or** any Linux host with Docker installed.
+- One `moat grant <provider>` per credential the agent should be able to reach (`moat grant github`, `moat grant openai`, etc.). The framework only declares which grant names a workspace requires — it never stores the credentials itself. See the [credentials concept page](https://majorcontext.com/moat/concepts/credentials).
+
+Use:
+
+```typescript
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  provider: {
+    type: "moat",
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+Wiring cleanup is **required** for the MOAT provider — without it, every flow request leaves a container behind. The capability returns a `cleanupBlock` for this:
+
+```typescript
+defineFlow({
+  // ...
+  request: { onFinished: bashCap.cleanupBlock },
+});
+```
+
+The cleanup block is returned for every provider so the capability shape stays stable; for non-MOAT providers it is effectively a no-op.
+
+**Persistent containers for local dev.** MOAT cold-start takes a few seconds. For local development, set a stable `runName` and `persist: true` to reuse one container across requests — the cleanup block becomes a no-op, the next request reconnects via `moat list --json`, and operators reclaim resources with `moat stop <runName>` or `moat clean`:
+
+```typescript
+createBashCapability({
+  provider: {
+    type: "moat",
+    runName: "fsdev-dev",
+    persist: true,
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
 
 ### Configuration
 

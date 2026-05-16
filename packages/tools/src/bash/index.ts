@@ -21,7 +21,7 @@
  */
 
 export { createBashTool } from "./create-bash-tool";
-export { createBashBlocks } from "./blocks";
+export { createBashBlocks, releaseBashSandbox } from "./blocks";
 export { createBashCapability } from "./capability";
 export { FileSync } from "./file-sync";
 export { hashContent } from "./hash";

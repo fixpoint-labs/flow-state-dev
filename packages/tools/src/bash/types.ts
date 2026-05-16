@@ -32,6 +32,16 @@ export interface Sandbox {
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   stop?(): Promise<void>;
+  /**
+   * Host directory that backs the sandbox's `/workspace`. Set by adapters
+   * whose container/runtime sees a bind-mounted host directory — today
+   * just MOAT. When present, the framework can do filesystem operations
+   * (hydrate, flush walk) directly via Node `fs` APIs instead of paying
+   * for an IPC round-trip per file. Path translation: a sandbox-side
+   * path under `<destination>` maps to `<hostMountSource>/<relative>` on
+   * the host.
+   */
+  hostMountSource?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +218,60 @@ export type SandboxProvider =
       javascript?: boolean | { bootstrap?: string };
       /** Limits for recursion, loops, and command counts. */
       executionLimits?: ExecutionLimits;
+    }
+  | {
+      type: "moat";
+      /**
+       * Host directory bind-mounted as the workspace. Defaults to the resolved cwd.
+       */
+      workspace?: string;
+      /**
+       * Bind-mount target inside the container. Defaults to `destination`
+       * (which itself defaults to `/workspace`). Pass-through ensures agent
+       * prompts that reference `/workspace/foo.ts` resolve correctly.
+       */
+      mountTarget?: string;
+      /** Stable run name. Default derived from the session/scope ID. */
+      runName?: string;
+      /**
+       * Provider names required in `moat grant list`. Adapter fails fast if
+       * any are missing.
+       */
+      grants?: string[];
+      /**
+       * Outbound host whitelist. Default-deny when empty. Translated to a
+       * repeated `--allow-host` argument and to `network.allow` in the
+       * generated `moat.yaml`.
+       */
+      allowHosts?: string[];
+      /** Container runtime. Default `"auto"` (MOAT picks). */
+      runtime?: "auto" | "docker" | "apple";
+      /** Pass `--no-sandbox` (disables gVisor under Docker). Default `false`. */
+      noSandbox?: boolean;
+      /**
+       * Pre-authored `moat.yaml` path. When set, the adapter does not
+       * generate a transient config. If the file lives outside the workspace,
+       * it is copied into the workspace root before `moat run` and removed
+       * on teardown.
+       */
+      configPath?: string;
+      /** Per-`moat exec` timeout in ms. Default 60_000. */
+      execTimeoutMs?: number;
+      /** MOAT binary name or absolute path. Default `"moat"`. */
+      bin?: string;
+      /**
+       * When `true`, the container survives `sandbox.stop()` — `moat stop` /
+       * `moat destroy` are skipped and the generated `moat.yaml` + tempDir
+       * are retained. The next request with the same `runName` reconnects
+       * to the live container via `moat list --json`. Useful for local
+       * development: the cold-start cost is paid once, every subsequent
+       * request runs `moat exec` against the running container.
+       *
+       * Pair with a stable `runName` (otherwise each request generates a
+       * fresh UUID and never finds the existing run). Operators reclaim
+       * resources via `moat stop <runName>` or `moat clean`.
+       */
+      persist?: boolean;
     }
   | { type: "custom"; sandbox: Sandbox };
 
