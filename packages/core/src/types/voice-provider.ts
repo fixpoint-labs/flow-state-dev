@@ -80,7 +80,9 @@ export interface TranscribeOptions {
   language?: string;
   /** Override the provider's default transcribe model. */
   model?: string;
+  /** Abort signal forwarded to the underlying transport. */
   signal?: AbortSignal;
+  /** Escape hatch for provider-specific options not covered by this interface. */
   providerOptions?: Record<string, unknown>;
 }
 
@@ -104,9 +106,13 @@ export interface VoiceInfo {
   provider: string;
   /** BCP-47 language tag, if the catalog declares one. */
   language?: string;
+  /** Accent label, if the catalog declares one (e.g. `"british"`, `"southern"`). */
   accent?: string;
+  /** Gender label, if the catalog declares one (e.g. `"female"`, `"male"`, `"neutral"`). */
   gender?: string;
+  /** Age label, if the catalog declares one (e.g. `"young"`, `"middle-aged"`). */
   age?: string;
+  /** URL to a short audio preview, if the catalog provides one. */
   previewUrl?: string;
   /** Speak models the voice is known to work with, if the catalog declares it. */
   supportedModels?: string[];
@@ -223,7 +229,9 @@ export interface CompositeVoiceProviderConfig {
  *
  * Composite-only invariants:
  * - `providerName` is `"composite"`.
- * - `id` is `"composite:" + hash(slotIds)`, stable across processes.
+ * - `id` is `"composite:speak=<id>|stream=<id>|tx=<id>|voices=<id>"`, stable
+ *   across processes. Empty slots render as `-`; underlying-provider ids
+ *   are percent-escaped on `|` and `=` so the format stays unambiguous.
  * - Methods are present only when the corresponding ability is `true`, so
  *   the narrowing guards (`canSpeak` etc.) work transparently.
  * - With no slots set, every ability is `false`. A method call reached via
@@ -308,7 +316,8 @@ export function createCompositeVoiceProvider(
 /**
  * Formats the slot ids into a readable, deterministic suffix for the
  * composite provider's `id`. Stable across processes; trivially debuggable
- * in logs (unlike a hash).
+ * in logs (unlike a hash). Slot values are percent-escaped on `|` and `=`
+ * so provider ids containing the delimiters can't corrupt the format.
  */
 function formatSlotIds(slots: {
   speak?: string;
@@ -316,10 +325,12 @@ function formatSlotIds(slots: {
   transcribe?: string;
   listVoices?: string;
 }): string {
+  const escape = (s: string | undefined): string =>
+    (s ?? "-").replace(/[|=]/g, encodeURIComponent);
   return [
-    `speak=${slots.speak ?? "-"}`,
-    `stream=${slots.speakStream ?? "-"}`,
-    `tx=${slots.transcribe ?? "-"}`,
-    `voices=${slots.listVoices ?? "-"}`,
+    `speak=${escape(slots.speak)}`,
+    `stream=${escape(slots.speakStream)}`,
+    `tx=${escape(slots.transcribe)}`,
+    `voices=${escape(slots.listVoices)}`,
   ].join("|");
 }
