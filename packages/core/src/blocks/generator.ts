@@ -705,6 +705,11 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
+  // Snapshot the request-scoped status slot when the first tool in a
+  // (possibly parallel) round starts; restore when the last one exits.
+  // Without this, a finished tool's `activeStatusMessage` lingers as a
+  // stale "still running" indicator after the tool itself returns.
+  const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
@@ -732,13 +737,30 @@ function compileToolsWithExecute(
       // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
       // result is stored once and surfaced in two places.
       const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
+        if (statusGuard.active === 0) {
+          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
+        }
+        statusGuard.active++;
+        // Surface the tool's run in the status slot so the in-flight indicator
+        // reflects "what's happening now". Routing through emit.status (rather
+        // than emitting a raw status item) updates the slot, which is what
+        // makes the restore in `finally` actually publish a clearing item
+        // instead of being deduped against an unchanged slot.
+        scopedCtx.emit.status(`Using ${tool.name}…`);
+        try {
+          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          return output;
+        } finally {
+          statusGuard.active--;
+          if (statusGuard.active === 0) {
+            scopedCtx.emit.status(statusGuard.saved);
+          }
+        }
       };
 
       // `_withExecutionScope` is the durable-runtime hook that disambiguates
@@ -1237,26 +1259,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
           contentIndex: contentPartIndex,
           delta: chunk.textDelta
         });
-      }
-    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      if (emit) {
-        const toolName = chunk.toolInput.toolName;
-        const statusItem = {
-          id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "status" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          agentType,
-          agentName,
-          message: `Using ${toolName}…`,
-          detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
-        };
-        await ctx.response.emit({ type: "item.added", item: statusItem });
-        await ctx.response.emit({ type: "item.done", item: statusItem });
       }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
       if (emit) {

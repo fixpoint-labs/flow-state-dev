@@ -172,6 +172,22 @@ const SEQUENCER_CHECKPOINTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id)"
 ];
 
+// FIX-402: per-request runOnce result store. Identity is (request_id, key);
+// inserts upsert on the primary key. `value` is JSONB so adapters can
+// roundtrip arbitrary JSON-serializable results without ALTER TABLE.
+const REQUEST_RUNONCE_TABLE = `
+CREATE TABLE IF NOT EXISTS request_runonce (
+  request_id TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      JSONB NOT NULL,
+  PRIMARY KEY (request_id, key)
+);
+`;
+
+const REQUEST_RUNONCE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_request_runonce_request_id ON request_runonce(request_id)"
+];
+
 /**
  * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
@@ -244,6 +260,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       REQUEST_EVENTS_TABLE,
+      REQUEST_RUNONCE_TABLE,
       SEQUENCER_CHECKPOINTS_TABLE
     ],
     indexes: [
@@ -254,6 +271,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
+      ...REQUEST_RUNONCE_INDEXES,
       ...SEQUENCER_CHECKPOINTS_INDEXES
     ]
   };

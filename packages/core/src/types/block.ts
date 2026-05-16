@@ -294,6 +294,35 @@ export interface BlockContext<
    */
   attempt?: number;
 
+  /**
+   * Stable idempotency key for the currently-executing block. Derived from
+   * `${requestId}:${blockPath}` and intentionally excludes `attempt` so the
+   * value is identical across retries of the same logical step within a
+   * request. Suitable for passing directly to external APIs that accept an
+   * idempotency key (e.g. Stripe's `Idempotency-Key` header).
+   *
+   * Cross-request de-dup is out of scope: `retryRequest` creates a new
+   * request ID and therefore a new key. Use a user-controlled external key
+   * if cross-request idempotency is required.
+   */
+  idempotencyKey?: string;
+
+  /**
+   * Execute `fn` once per `(requestId, userKey)` and memoize the result on
+   * the request store. Subsequent calls — whether triggered by a block
+   * retry or a re-entry within the same request — return the persisted
+   * value without re-executing `fn`. The user-supplied `key` is the
+   * dedup unit, namespaced under the current request.
+   *
+   * Concurrent in-process calls with the same key share a single inflight
+   * promise so the wrapped side effect cannot fire twice in a race.
+   *
+   * Scope is per-request: a fresh `requestId` (including the one created by
+   * a `retryRequest` recovery dispatch) starts with an empty key space.
+   * Results must be JSON-serializable; non-serializable values throw.
+   */
+  runOnce?<T>(key: string, fn: () => Promise<T>): Promise<T>;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
@@ -350,6 +379,14 @@ export interface BlockContext<
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>
   ): Promise<TValue>;
+
+  /**
+   * @internal Read the current value of the request-scoped status slot.
+   * Used by the generator's tool-call dispatch to snapshot/restore the slot
+   * around a tool round so a tool's `activeStatusMessage` does not linger
+   * past the tool's lifetime.
+   */
+  _peekStatus?(): string;
 
   /**
    * @internal Hint written by a sequencer/router's execute right before

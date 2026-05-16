@@ -221,7 +221,7 @@ function ChatUI() {
           autoComplete="off"
         />
         <button type="submit" disabled={session.isStreaming}>
-          {session.isStreaming ? "Thinking..." : "Send"}
+          {session.isStreaming ? "Working..." : "Send"}
         </button>
       </form>
     </div>
