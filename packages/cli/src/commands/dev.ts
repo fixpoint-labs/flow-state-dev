@@ -132,6 +132,9 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     registry,
     stores,
     modelResolver,
+    // fsdev dev is local-only by definition; opt in to the privileged debug
+    // surface so the DevTool's Resources panel can read full server state.
+    debugEndpointsEnabled: true,
     onError: (error: Error, context: { method: string; path: string }) => {
       process.stderr.write(`[API error] ${context.method} ${context.path}: ${error.message}\n`);
     },

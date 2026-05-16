@@ -4,7 +4,6 @@ const sidebars: SidebarsConfig = {
   thoughtFabricSidebar: [
     "introduction",
     "attention",
-    "memory",
     "identity",
     "metacognition",
     "roadmap",

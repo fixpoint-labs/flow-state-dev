@@ -1,0 +1,12 @@
+dependencies:
+  - node@22
+  - python@3.12
+  - pnpm
+  - git
+  - cli-essentials
+runtime: apple
+grants:
+  - github
+  - anthropic
+ports:
+  web: 3000

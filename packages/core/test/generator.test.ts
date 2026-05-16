@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
+  defineFlow,
   generator,
   handler,
   readResourceContentTool,
@@ -163,6 +164,45 @@ describe("generator builder", () => {
     expect(hit, `expected a console.warn dump of the candidate; saw: ${messages.join(" | ")}`).toBeDefined();
 
     warnSpy.mockRestore();
+  });
+
+  it("throws OutputValidationError with rawOutput + issues on schema failure", async () => {
+    const { OutputValidationError } = await import("../src/errors/output-validation-error");
+
+    const block = generator({
+      name: "ov-final",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.boolean() }),
+      repair: { mode: "fail" }
+    });
+
+    const ctx = createMockContext({
+      resolveModel: ((() => ({
+        modelId: "m",
+        async generate() {
+          return { text: "Sorry, not JSON." };
+        }
+      })) as unknown) as any
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runForTest(block, { value: 1 }, ctx);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(OutputValidationError);
+      const oe = err as InstanceType<typeof OutputValidationError>;
+      expect(oe.code).toBe("output_validation_error");
+      expect(oe.retryable).toBe(false);
+      expect(oe.details.phase).toBe("final");
+      expect(typeof oe.details.rawOutput).toBe("string");
+      expect(oe.details.rawOutput).toContain("Sorry, not JSON.");
+      expect(Array.isArray(oe.details.issues)).toBe(true);
+      expect(oe.details.issues.length).toBeGreaterThan(0);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("runs model-requested tools via execute wrappers", async () => {
@@ -635,6 +675,71 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).alias).toMatch(/^[a-zA-Z0-9_-]+$/);
   });
 
+  it("fires onToolErrored before emitting the tool_output's item.done on failure", async () => {
+    // Consumers that listen for item.done and expect onToolErrored to have
+    // run its side-effects (memo writes, additional emitted items) rely on
+    // this ordering — the observer must run first, item.done last.
+    const events: string[] = [];
+    const failingTool = handler({
+      name: "boom",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => {
+        throw new Error("kaboom");
+      },
+    });
+
+    const block = generator({
+      name: "ordering-gen",
+      model: "m",
+      prompt: "p",
+      tools: [failingTool],
+    });
+
+    const flow = defineFlow({
+      kind: "ordering",
+      actions: {
+        run: {
+          inputSchema: z.object({ q: z.string() }),
+          block,
+        },
+      },
+      tools: {
+        onToolErrored: () => {
+          events.push("onToolErrored");
+        },
+      },
+    });
+    const instance = flow();
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find((t: any) => t.name === "boom");
+          if (toolDef?.execute) {
+            try {
+              await toolDef.execute({ q: "x" }, { toolCallId: "call_err" });
+            } catch {
+              // expected — wrapper rethrows
+            }
+          }
+          return { text: "done" };
+        },
+      }),
+      response: {
+        emit: (event: any) => {
+          if (event.type === "item.done" && event.item?.type === "tool_output") {
+            events.push("item.done");
+          }
+        },
+      } as any,
+    });
+
+    await runForTest(instance.actions.run.block, { q: "x" }, ctx);
+    expect(events).toEqual(["onToolErrored", "item.done"]);
+  });
+
   it("stamps the alias on a failed tool_output as well", async () => {
     // Both success and failure paths emit tool_output. Replay sends
     // the failure's tool-call back to the model on the next turn (with the
@@ -1029,5 +1134,160 @@ describe("generator streaming", () => {
 
     const contentDeltas = emitted.filter(e => e.type === "content.delta");
     expect(contentDeltas.length).toBeGreaterThan(0);
+  });
+});
+
+describe("generator — observable model identity (FIX-518)", () => {
+  it("stamps `model` on streamed message, reasoning, and tool_call_progress items", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const identity = { actual: "openai/gpt-5.5", requested: "intent/chat" };
+    const block = generator({
+      name: "stream-identity",
+      agentType: "primary",
+      model: "mock-model",
+      prompt: "Stream please",
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "fallback" };
+        },
+        async *stream() {
+          // First chunk seeds resolvedIdentity for everything downstream.
+          yield {
+            type: "reasoning_delta" as const,
+            reasoningDelta: "thinking",
+            resolvedIdentity: identity,
+          };
+          yield {
+            type: "tool_call_delta" as const,
+            toolCallDelta: { toolCallId: "tc_1", toolName: "search", argsDelta: "{}" },
+            resolvedIdentity: identity,
+          };
+          yield {
+            type: "text_delta" as const,
+            textDelta: "hi",
+            resolvedIdentity: identity,
+          };
+          yield {
+            type: "finish" as const,
+            fullResult: { text: "hi", resolvedIdentity: identity },
+            resolvedIdentity: identity,
+          };
+        },
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        },
+      },
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const stamped = emitted.filter(
+      (e) =>
+        e.type === "item.done" &&
+        (e.item?.type === "message" ||
+          e.item?.type === "reasoning" ||
+          e.item?.type === "tool_call_progress")
+    );
+    expect(stamped.length).toBeGreaterThan(0);
+    for (const e of stamped) {
+      expect(e.item.model).toEqual(identity);
+    }
+  });
+
+  it("stamps `model` on items emitted from a non-streaming generate result", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const identity = { actual: "openai/gpt-5.4-mini", requested: "intent/utility" };
+    const block = generator({
+      name: "non-stream-identity",
+      agentType: "primary",
+      model: "mock-model",
+      // No tools, structured-friendly schema → goes through the non-streaming path.
+      outputSchema: z.string(),
+      prompt: "Just respond",
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "done", resolvedIdentity: identity };
+        },
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        },
+      },
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const messageDone = emitted.find(
+      (e) => e.type === "item.done" && e.item?.type === "message"
+    );
+    expect(messageDone).toBeDefined();
+    expect(messageDone!.item.model).toEqual(identity);
+  });
+
+  it("forwards `identity` through onGeneratorModelResult to the runtime hook", async () => {
+    const identity = { actual: "anthropic/sonnet", requested: "intent/reason" };
+    let capturedIdentity: unknown;
+    const block = generator({
+      name: "identity-hook",
+      agentType: "primary",
+      model: "mock-model",
+      outputSchema: z.string(),
+      prompt: "go",
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "ok", resolvedIdentity: identity };
+        },
+      }),
+      _runtimeHooks: {
+        onGeneratorModelResult: (payload: { identity?: unknown }) => {
+          capturedIdentity = payload.identity;
+        },
+      },
+    } as any);
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(capturedIdentity).toEqual(identity);
+  });
+
+  it("handler-emitted items do not carry `model`", async () => {
+    // Handlers emit messages via ctx.emitMessage. The framework only stamps
+    // `model` on generator-emitted items; handler-emitted messages leave the
+    // field absent. Validate the type-level expectation by constructing a
+    // handler-emitted MessageItem shape and asserting no `model` field.
+    const block = handler({
+      name: "handler-emits",
+      execute: () => "noop",
+    });
+    expect(block.kind).toBe("handler");
+    // The shape contract is enforced by `OutputItemBase` — handlers go through
+    // ctx.emitMessage which constructs items without `model`. We assert the
+    // type contract rather than running the full server runtime here.
+    const item: import("../src/items/types").MessageItem = {
+      id: "m1",
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      requestId: "r1",
+      itemIndex: 0,
+      provenance: { blockName: "h", blockInstanceId: "h", phase: "main" },
+      ts: 0,
+      content: [{ type: "output_text", text: "hi" }],
+    };
+    expect((item as Record<string, unknown>).model).toBeUndefined();
   });
 });

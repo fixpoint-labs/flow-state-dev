@@ -37,26 +37,30 @@ export function createRecordContribution(opts: {
   contributions: DefinedResource;
   collectionId: string;
   warnedAgents: Set<string>;
+  /** Accessor key used in the block's `resources:` map. Defaults to
+   *  `"contributions"`. See `createInitContributions` for rationale. */
+  accessorKey?: string;
 }) {
+  const accessor = opts.accessorKey ?? "contributions";
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    resources: { contributions: opts.contributions },
+    resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
       const text = coerceText(input, opts.agentName, opts.warnedAgents);
       const state = ctx.sequencer!.state as RoundRobinState;
       const round = state.round;
 
-      const current = ctx.resources.contributions
-        .state as RoundRobinContributionsState;
-      await ctx.resources.contributions.setState({
+      const contribRef = (ctx.resources as any)[accessor];
+      const current = contribRef.state as RoundRobinContributionsState;
+      await contribRef.setState({
         entries: [
           ...(current.entries ?? []),
           { round, agentName: opts.agentName, text },
         ],
-      } as Parameters<typeof ctx.resources.contributions.setState>[0]);
+      });
 
       const collection = getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,

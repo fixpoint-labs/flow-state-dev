@@ -4,9 +4,11 @@ sidebar_position: 6
 
 # API Reference
 
-Cognitive architecture primitives built on flow-state-dev. Provides attention, memory, identity, and metacognition domains for agentic workflows.
+Cognitive architecture primitives built on flow-state-dev. Provides attention, identity, and metacognition domains for agentic workflows.
 
-**Import:** Use subpath exports. `@thought-fabric/core/attention`, `@thought-fabric/core/memory`, `@thought-fabric/core/identity`, `@thought-fabric/core/metacognition`.
+**Import:** Use subpath exports. `@thought-fabric/core/attention`, `@thought-fabric/core/identity`, `@thought-fabric/core/metacognition`.
+
+> **Memory has moved.** Cross-turn memory now ships from `@flow-state-dev/memory`. Thought Fabric will host specialized cognitive memory variants on top of that contract when they're ready.
 
 ---
 
@@ -42,105 +44,6 @@ const block = scoreSalience({
 ```
 
 Returns a `BlockDefinition` (generator). Output schema: `scores`, `composite`, `ranking`, `itemScores`.
-
----
-
-## memory
-
-Three-tier memory: working (session), episodic (cross-session), and semantic (stable knowledge).
-
-### Unified System
-
-| Function | Purpose |
-|----------|---------|
-| `system(config)` | Factory that wires all three tiers. Returns `capture`, `captureFromItems`, `consolidate`, `prune`, `recall`, `contextFormatter`, and per-tier helpers. |
-
-### Unified System Blocks
-
-| Function | Kind | Purpose |
-|----------|------|---------|
-| `memorySystemCapture(config)` | sequencer | Full pipeline: observe → reflect → tick (+ consolidation + prune) |
-| `memorySystemObserve(config)` | generator | LLM extraction with durability/category classification |
-| `memorySystemReflect(config)` | handler | Routes observations to working, episodic, and semantic stores |
-| `memorySystemTick(config)` | handler | Advances decay clock |
-| `memorySystemConsolidate(config)` | sequencer | Guard → generate → persist consolidation pipeline |
-| `memorySystemPrune(config)` | sequencer | Guard → generate → persist pruning pipeline |
-| `pruneGuard(config)` | handler | Checks fact count against threshold |
-| `pruneGenerate(config)` | generator | LLM identifies removals and merges |
-| `prunePersist(config)` | handler | Applies removals and merges to semantic store |
-
-### Working Memory Blocks
-
-| Function | Kind | Purpose |
-|----------|------|---------|
-| `workingMemoryCapture(config?)` | sequencer | Standalone: observe → remember → tick |
-| `workingMemoryObserve(config?)` | generator | LLM extraction. Output: observations array. |
-| `workingMemoryRemember(config?)` | handler | Persist observations into the resource. |
-| `workingMemoryTick(config?)` | handler | Advance decay clock, recompute salience. |
-| `workingMemorySnapshot()` | handler | Read current entries and turn counter. |
-| `workingMemoryAdd(config?)` | handler | Manual entry. No LLM extraction. |
-
-### Resources
-
-| Export | Scope | Purpose |
-|--------|-------|---------|
-| `workingMemoryResource` | session | Working memory resource definition |
-| `workingMemoryResources` | session | Pre-keyed `{ workingMemory: workingMemoryResource }` |
-| `memorySystemResource` | session | Tracking state (watermark, consolidation counters) |
-| `createEpisodicMemoryResource(scope)` | user/project | Episodic memory resource factory |
-| `createSemanticMemoryResource(scope)` | user/project | Semantic memory resource factory |
-
-### Context
-
-- `workingMemoryContextFormatter` — Context slot for generators (working memory only).
-- `system().contextFormatter` — Cross-store context formatter (all tiers).
-
-### Working Memory Helpers
-
-| Function | Purpose |
-|----------|---------|
-| `addWorkingMemory` | Add entry with auto-eviction at capacity |
-| `evictWorkingMemory` | Remove entry by ID |
-| `pinWorkingMemory` / `unpinWorkingMemory` | Toggle pinned status |
-| `refreshWorkingMemory` | Update lastAccessedAtTurn |
-| `advanceWorkingMemory` | Tick decay, recompute salience for all entries |
-| `workingMemoryItems` | Read entries sorted by salience |
-| `formatWorkingMemoryEntries` | Format entries for LLM context |
-
-### Episodic Memory Helpers
-
-| Function | Purpose |
-|----------|---------|
-| `encodeEpisode` | Write a new episode |
-| `recentEpisodes` | Get recent episodes |
-| `markEpisodesConsolidated` | Mark episodes as processed by consolidation |
-
-### Semantic Memory Helpers
-
-| Function | Purpose |
-|----------|---------|
-| `addSemanticFact` | Add a new fact (subject defaults to `'user'`) |
-| `updateSemanticFact` | Update existing fact content |
-| `reinforceSemanticFact` | Increase confidence via reinforcement |
-| `removeSemanticFact` | Remove a fact (invalidation) |
-| `semanticFacts(ref, subject?)` | All facts, optionally filtered by subject |
-| `querySemanticFacts(ref, q, limit?, subject?)` | Query facts by keyword overlap, optionally scoped to subject |
-| `semanticCategoryEnum` | Zod enum of valid semantic categories |
-
-### Config Defaults
-
-| Constant | Contents |
-|----------|----------|
-| `DEFAULT_WORKING_MEMORY_CONFIG` | `capacity`, `maxPinnedSlots`, `decay` |
-| `DEFAULT_EPISODIC_CONFIG` | `scope`, `significanceThreshold`, `maxEpisodes` |
-| `DEFAULT_CONSOLIDATION_CONFIG` | `episodicThreshold`, `onEviction`, `minInterval` |
-| `DEFAULT_PRUNE_CONFIG` | `pruneThreshold` |
-| `DEFAULT_OBSERVER_CONFIG` | `maxAssistantChars` |
-
-### Pure Math (no side effects)
-
-- `computeDecay(elapsed, strategy, rate)` — Decay factor. Strategies: `power-law`, `exponential`, `none`.
-- `computeSalience(entry, currentTurn, decay)` — `importance × decay(elapsed)`.
 
 ---
 
@@ -340,12 +243,9 @@ Presets: `static` (perspective framing), `accumulated` (observations + positions
 ## Usage
 
 ```ts
-import { system as memorySystem } from "@thought-fabric/core/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
-
-const mem = memorySystem({ model: "preset/fast", working: true, episodic: true, semantic: true });
 
 const sec = perspectiveSystem(
   perspective({
@@ -358,14 +258,13 @@ const sec = perspectiveSystem(
 );
 
 const chat = generator({
-  uses: [mem.capability, sec.capability],
+  uses: [sec.capability],
   // ...
 });
 
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
   .then(chat)
-  .work(mem.captureFromItems)
   .work((response) => ({ content: response }), sec.capture);
 ```
 
-See [Memory](/thought-fabric/memory) and [Identity](/thought-fabric/identity) for full guides.
+See [Identity](/thought-fabric/identity) for the full guide. For cross-turn memory, see the framework docs at Ecosystem → Memory.

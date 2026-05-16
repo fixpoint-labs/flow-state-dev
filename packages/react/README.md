@@ -204,6 +204,24 @@ function ChatBubble({ item }: { item: MessageItem }) {
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
+### `<ModelBadge>`
+
+Renders the `ModelIdentity` carried on any generator-emitted item or `block_trace` as a small pill. The `actual` model id is the visible label; the tooltip lists the requested string and gateway when present. Renders nothing when `model` is undefined, so it's safe to pass `item.model` directly from any item.
+
+```tsx
+import { ModelBadge } from "@flow-state-dev/react";
+import type { MessageItem } from "@flow-state-dev/core/items";
+
+function AssistantMessage({ item }: { item: MessageItem }) {
+  return (
+    <div>
+      <ModelBadge model={item.model} />
+      <div>{item.content[0]?.text}</div>
+    </div>
+  );
+}
+```
+
 ## Connection resilience
 
 When the SSE connection drops mid-flight (network blip, tab background, server restart), `useSession` flips `session.isStuck` to `true` and exposes `session.dismissRequest()` so the user can clear the request without reloading.

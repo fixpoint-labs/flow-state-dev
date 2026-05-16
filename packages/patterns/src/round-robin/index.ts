@@ -144,6 +144,17 @@ export interface RoundRobinConfig<
   synthesizerAgentType?: AgentType;
   /** Stable id for the audit `TaskCollection`. Defaults to `name`. */
   collectionId?: string;
+  /**
+   * Accessor key the pattern's internal blocks use to declare the
+   * contributions resource. Defaults to `"contributions"`.
+   *
+   * Override when two or more `roundRobin()` instances appear in the
+   * same sequencer chain: the framework's resource-merge rejects the
+   * same accessor key pointing at different `defineResource()`
+   * references, so each instance must pick a distinct key (e.g.
+   * `"p2Contributions"`, `"p4Contributions"`).
+   */
+  accessorKey?: string;
 }
 
 /**
@@ -193,6 +204,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   }
 
   const collectionId = config.collectionId ?? name;
+  const accessorKey = config.accessorKey ?? "contributions";
   const contributions = config.contributions ?? createRoundRobinContributions();
   const warnedAgents = new Set<string>();
 
@@ -200,6 +212,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     contributions,
     collectionId,
+    accessorKey,
   });
 
   const stampGoal = handler({
@@ -232,6 +245,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     createJudge({
       name,
       contributions,
+      accessorKey,
       ...(model !== undefined ? { model } : {}),
       ...(context !== undefined ? { context } : {}),
       ...(uses !== undefined ? { uses } : {}),
@@ -273,6 +287,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         agentName: entry.name,
         ...(entry.role !== undefined ? { role: entry.role } : {}),
         contributions,
+        accessorKey,
         ...(model !== undefined ? { model } : {}),
         ...(context !== undefined ? { context } : {}),
         ...(uses !== undefined ? { uses } : {}),
@@ -285,6 +300,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       contributions,
       collectionId,
       warnedAgents,
+      accessorKey,
     });
     pipeline = pipeline.then(agentBlock).tap(recordTap);
   }
@@ -298,7 +314,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     })
     .map((_value: unknown, ctx: any) => {
       const state = ctx.sequencer!.state as RoundRobinState;
-      const contribState = ctx.resources?.contributions
+      const contribState = ctx.resources?.[accessorKey]
         ?.state as RoundRobinContributionsState | undefined;
       const final: RoundRobinFinalShape = {
         rounds: state.round,

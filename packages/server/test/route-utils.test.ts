@@ -64,9 +64,9 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
     expect(out?.artifacts).toEqual({
       count: 10,
       prefetched: [
-        { topic: "artifacts/item-000" },
-        { topic: "artifacts/item-001" },
-        { topic: "artifacts/item-002" },
+        { topic: "item-000", storageKey: "artifacts/item-000" },
+        { topic: "item-001", storageKey: "artifacts/item-001" },
+        { topic: "item-002", storageKey: "artifacts/item-002" },
       ],
     });
   });
@@ -85,8 +85,8 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
     expect(out?.artifacts).toEqual({
       count: 5,
       prefetched: [
-        { topic: "artifacts/item-000", clientData: { title: "Item 0" } },
-        { topic: "artifacts/item-001", clientData: { title: "Item 1" } },
+        { topic: "item-000", storageKey: "artifacts/item-000", clientData: { title: "Item 0" } },
+        { topic: "item-001", storageKey: "artifacts/item-001", clientData: { title: "Item 1" } },
       ],
     });
   });
@@ -106,7 +106,7 @@ describe("buildResourceSnapshot — FIX-427 collection shape", () => {
     expect(entry.prefetched).toHaveLength(3);
   });
 
-  it("omits client-less collections when includeInternal is false", async () => {
+  it("omits client-less collections from the snapshot", async () => {
     const internal = defineResourceCollection({
       pattern: "secrets/*",
       scope: "session",

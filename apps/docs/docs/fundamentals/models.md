@@ -294,6 +294,28 @@ Cache write is ~1.25× the input rate; cache read is ~0.1×. One read refunds th
 
 For a fuller treatment — including the audit of call paths that existed before default-on, the minimum-prefix threshold, and manual-mode placement patterns — see [`docs/PROMPT_CACHING.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md).
 
+## Observable model identity
+
+When a generator runs, the resolved model identity flows out on every emitted item (`message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`) and on the generator's `block_trace`. The shape is the same in both places:
+
+```ts
+type ModelIdentity = {
+  actual: string;       // the concrete model that ran
+  requested?: string;   // present when different (intents, fallback, substitution)
+  gateway?: string;     // present when a gateway routed the call
+};
+```
+
+A chat UI can read this directly from any message item to render a per-message model badge:
+
+```tsx
+import { ModelBadge } from "@flow-state-dev/react";
+
+<ModelBadge model={item.model} />
+```
+
+Items emitted by handlers do not carry `model`. See [streaming/items.md](../streaming/items.md#observable-model-identity) for the full surface, including `block_trace.model` semantics.
+
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app

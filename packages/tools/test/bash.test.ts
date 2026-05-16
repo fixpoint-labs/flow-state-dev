@@ -672,6 +672,120 @@ describe("workspace guards", () => {
           assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd"),
         ).toThrow("/etc/passwd");
       });
+
+      it("names the offending token, not a bare slash", () => {
+        const err = (() => {
+          try {
+            assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd");
+            return "";
+          } catch (e) {
+            return (e as Error).message;
+          }
+        })();
+        expect(err).toContain('"/etc/passwd"');
+      });
+    });
+
+    describe("inline code with slashes", () => {
+      it("allows python3 -c with arithmetic division", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'python3 -c "x = 1 / 2; print(x)"'),
+        ).not.toThrow();
+      });
+
+      it("allows node -e with arithmetic division", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'node -e "let y = 1/2"'),
+        ).not.toThrow();
+      });
+
+      it("allows node -e with regex literals", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'node -e "/foo/.test(x)"'),
+        ).not.toThrow();
+      });
+
+      it("allows bash -c with inline pipeline", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'bash -c "echo a/b | tr / _"'),
+        ).not.toThrow();
+      });
+    });
+
+    describe("quoted strings and URLs", () => {
+      it("allows curl with quoted https URL", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'curl "https://api.example.com/foo"'),
+        ).not.toThrow();
+      });
+
+      it("allows wget with quoted https URL", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'wget "https://example.com/path/to/file"'),
+        ).not.toThrow();
+      });
+
+      it("allows echo of quoted slash-containing literal", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'echo "a/b/c"'),
+        ).not.toThrow();
+      });
+
+      it("allows grep with quoted pattern containing slash", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'grep "foo/bar" file.txt'),
+        ).not.toThrow();
+      });
+
+      it("allows single-quoted absolute-path literal (documented trade-off)", () => {
+        // The unquoted form is still rejected; quoting (single or double)
+        // bypasses path validation by design.
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat '/etc/passwd'"),
+        ).not.toThrow();
+      });
+    });
+
+    describe("heredocs", () => {
+      it("allows heredoc whose body contains slashes", () => {
+        const cmd =
+          "cd /tmp/workspace && python3 << 'EOF'\nx = 1 / 2\nprint(x)\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("allows heredoc whose body looks like an absolute path", () => {
+        const cmd = "cat << EOF\n/etc/passwd\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("allows tab-indented heredoc (<<-)", () => {
+        const cmd = "cat <<-EOF\n\t/etc/passwd\n\tEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).not.toThrow();
+      });
+
+      it("still rejects an absolute path outside a heredoc", () => {
+        const cmd = "cat /etc/passwd << 'EOF'\nbody\nEOF\n";
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, cmd)).toThrow(
+          "Command rejected",
+        );
+      });
+    });
+
+    describe("malformed input fallback", () => {
+      it("still rejects /etc/passwd inside an unclosed quote", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, 'cat "/etc/passwd'),
+        ).toThrow("Command rejected");
+      });
+    });
+
+    describe("variable expansion safety", () => {
+      it("does not produce a stray slash token when expanding $VAR/x", () => {
+        // `cat $FOO/x` must not be misread as accessing `/x` after expansion.
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat $FOO/x"),
+        ).not.toThrow();
+      });
     });
   });
 
@@ -927,6 +1041,50 @@ describe("createBashBlocks", () => {
     expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
   });
 
+  it("wraps bashCommand with `cd <destination> &&` so PWD is the workspace root", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    // The agent should be able to use relative paths (`artifacts/foo.md`)
+    // without knowing the workspace lives at `/workspace`. This test
+    // captures the actual command string sent to the sandbox and
+    // asserts the wrapper.
+    const captured: string[] = [];
+    const files = new Map<string, string>();
+    const sandbox: Sandbox = {
+      async executeCommand(command: string): Promise<CommandResult> {
+        captured.push(command);
+        if (command.includes("find ")) {
+          return {
+            stdout: Array.from(files.keys()).join("\n"),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      async readFile(p: string): Promise<string> {
+        return files.get(p) ?? "";
+      },
+      async writeFile(p: string, content: string): Promise<void> {
+        files.set(p, content);
+      },
+    };
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cd-wrap-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "echo hello > note.txt" }, ctx);
+
+    // The agent's command is wrapped with the cd; the flush walk
+    // (which runs after) is the only command without the wrap.
+    const agentCmd = captured.find((c) => c.includes("echo hello"));
+    expect(agentCmd).toBeDefined();
+    expect(agentCmd).toContain("cd /workspace && echo hello > note.txt");
+  });
+
   it("routes writes back to the owning collection by longest-prefix match", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
@@ -951,6 +1109,27 @@ describe("createBashBlocks", () => {
     expect(skills.count()).toBe(1);
     expect(artifacts.getOptional("new-doc.md")?.state.path).toBe("new-doc.md");
     expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
+  });
+
+  it("normalizes leading `./` so model-supplied relative paths route correctly", async () => {
+    // The bashWriteFile schema describes paths as "relative to workspace
+    // root (e.g. artifacts/foo.md)" — the model still routinely supplies
+    // `./artifacts/foo.md`. Routing must strip the `./` before matching
+    // mount prefixes, otherwise the file lands on disk but is silently
+    // dropped from the collection sync.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("dotslash-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashWriteFile, { path: "./artifacts/relative.md", content: "hi" }, ctx);
+
+    expect(artifacts.count()).toBe(1);
+    expect(artifacts.getOptional("relative.md")).toBeDefined();
   });
 
   it("honors writable: false — changes in the mount are not written back", async () => {

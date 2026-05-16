@@ -1,0 +1,67 @@
+---
+sidebar_position: 10
+---
+
+# Error handling
+
+Errors thrown inside a block propagate up through its parent sequencer, normalize into a `FlowError` on the wire, and surface in the DevTool's failed-block detail panel. Authors who throw structured errors get better debugging for free: the runtime preserves your `code` and `details` end-to-end, and the DevTool renders them without you wiring anything up.
+
+## Throwing structured errors
+
+`FlowError` is a small `Error` subclass exported from `@flow-state-dev/core`. It carries an optional machine-readable `code`, a `retryable` flag (default `false`), an open `details` payload, and an optional `cause`.
+
+```ts
+import { FlowError } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const bash = handler({
+  name: "bash",
+  inputSchema: z.object({ command: z.string(), cwd: z.string().optional() }),
+  outputSchema: z.object({ stdout: z.string(), exitCode: z.number() }),
+  execute: async ({ command, cwd }) => {
+    if (cwd && !cwd.startsWith(WORKSPACE_ROOT)) {
+      throw new FlowError(
+        `Command rejected: references path "${cwd}" outside the workspace root`,
+        {
+          code: "PATH_OUTSIDE_WORKSPACE",
+          details: { command, cwd, workspaceRoot: WORKSPACE_ROOT }
+        }
+      );
+    }
+    // ...
+  }
+});
+```
+
+The thrown `details` survive normalization and reach the trace verbatim. A developer inspecting the failed block sees the message, the code, and the full `details` payload — no re-run.
+
+## What the runtime adds for you
+
+When a generator's output fails `outputSchema` validation, the runtime throws `OutputValidationError` (also exported from `@flow-state-dev/core`) with structured details:
+
+- `rawOutput` — the text or JSON the model returned, exactly as it arrived.
+- `issues` — the Zod issues produced by the failing parse.
+- `phase` — `"stream"` if the failure was detected mid-stream, `"final"` if it was caught after the model finished.
+
+The DevTool renders these as dedicated sections: a "Raw output" pane with the model's text, a typed list of `path → message` rows for the Zod issues, and the underlying `details` JSON for completeness.
+
+`OutputValidationError` extends `FlowError`, so any `instanceof FlowError` check covers both cases.
+
+### Well-known `details` keys
+
+The runtime auto-populates these. Author-thrown keys are passed through verbatim alongside them:
+
+| Key         | Source                          | Type                  |
+| ----------- | ------------------------------- | --------------------- |
+| `rawOutput` | `OutputValidationError`         | `string`              |
+| `issues`    | `OutputValidationError`         | `ZodIssue[]`          |
+| `phase`     | `OutputValidationError`         | `"stream" \| "final"` |
+
+## Recovering with rescue
+
+To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
+
+## What you'll see in DevTool
+
+The failed-block detail panel surfaces the error message at the top, the `code` as a small mono-text badge, a dedicated "Raw output" section when the runtime captured one, a "Validation issues" list when Zod issues are present, and a "Details" JSON panel that always renders any other keys on `error.details`. For tool-invoked blocks that fail, the panel also shows the originating tool call's arguments — see [DevTool overview](/docs/devtool/overview).

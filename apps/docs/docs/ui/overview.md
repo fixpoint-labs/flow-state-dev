@@ -76,3 +76,5 @@ You can override individual entries (`{ ...chatAssistantRenderers, component: { 
 Common components are framework-agnostic. Flow-aware components are typed against Flow State items. Generative UI is the only runtime-imported surface — bundles travel as a unit so a generator's tool list and a `FlowProvider`'s renderer map share the same names and schemas.
 
 All components are fully customizable once installed. The registry distributes a starting point; the source in your repo is the contract.
+
+Contributors writing or modifying components should also read [Writing UI Stories](/guides/writing-ui-stories) — registry components have Storybook stories for visual review, hosted at [storybook.flow-state.dev](https://storybook.flow-state.dev) with per-PR preview URLs.

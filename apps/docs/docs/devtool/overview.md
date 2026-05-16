@@ -78,9 +78,15 @@ Blocks that are still running show their live status. A `block_trace` row appear
 
 For generator blocks, the panel also shows what the model actually saw on that turn: the resolved system prompt, the user-slot messages for this turn, and the conversation history that came in alongside them. Tools and the resolved model identifier appear in the same panel. This is observability data — gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in development) — so you can leave it on while iterating and switch it off in production.
 
+### Error details
+
+When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
+
 ## Session state
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
+
+The Resources panel reads from a privileged debug endpoint and shows the full server-side state. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
 
 ## Replay
 

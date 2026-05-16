@@ -5,9 +5,10 @@
  * progresses item.added → item.updated (input / generator phases) →
  * item.updated (output) → item.done. Status transitions in_progress →
  * completed | failed; final emission is always item.done. Generator-only
- * fields are undefined for non-generator blocks. The `transient: false`
- * canonical-retained guarantee (§3.8) is asserted at the lifecycle level,
- * not just for output.
+ * fields are undefined for non-generator blocks. Per the FIX-478 contract
+ * (restored by FIX-586), the auto-emitted block_trace inherits the
+ * originating block's `transient` flag — non-transient blocks produce
+ * retained traces, transient blocks produce live-only traces.
  *
  * Generator-specific cases that require provider mocks (resolved generator
  * bundle, multi-call last-write-wins, Path A tool_output coupling) live in
@@ -414,7 +415,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     }
   });
 
-  it("canonical retained: every block_trace is non-transient even when the block is transient", async () => {
+  it("transient block: block_trace inherits the originating block's transient flag (FIX-586)", async () => {
     const transientBlock = handler({
       name: "transient-h",
       transient: true,
@@ -432,6 +433,50 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     await runAction({
       flow,
       actionName: "run",
+      requestId: "req_lf8",
+      input: { x: 1 },
+      userId: "u",
+      sessionId: "s",
+      stores,
+      responseEmitter: response
+    });
+
+    // Traces still stream live (visible on the response emitter) so DevTool
+    // and other active SSE consumers continue to observe transient blocks.
+    const traces = getTraces(response.getItems());
+    expect(traces.length).toBeGreaterThanOrEqual(1);
+    for (const t of traces) {
+      expect(t.transient).toBe(true);
+    }
+
+    // Persisted request record filters transient items out — the items log
+    // does not retain block_trace rows from transient blocks.
+    const record = await stores.request.get("req_lf8");
+    expect(record).toBeDefined();
+    const persistedTraces = (record!.items ?? []).filter(
+      (i) => i.type === "block_trace"
+    );
+    expect(persistedTraces.length).toBe(0);
+  });
+
+  it("non-transient block: block_trace is retained in the persisted items log (regression guard)", async () => {
+    const normalBlock = handler({
+      name: "retained-h",
+      inputSchema: z.object({ x: z.number() }),
+      outputSchema: z.object({ y: z.number() }),
+      execute: ({ x }) => ({ y: x })
+    });
+    const flow = defineFlow({
+      kind: "retained-flow",
+      actions: { run: { inputSchema: z.object({ x: z.number() }), block: normalBlock } }
+    })();
+
+    const stores = createInMemoryStores();
+    const response = createResponseEmitter({ requestId: "req_lf9", now: () => Date.now() });
+    await runAction({
+      flow,
+      actionName: "run",
+      requestId: "req_lf9",
       input: { x: 1 },
       userId: "u",
       sessionId: "s",
@@ -444,5 +489,62 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     for (const t of traces) {
       expect(t.transient).not.toBe(true);
     }
+
+    const record = await stores.request.get("req_lf9");
+    expect(record).toBeDefined();
+    const persistedTraces = (record!.items ?? []).filter(
+      (i) => i.type === "block_trace"
+    );
+    expect(persistedTraces.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("transient sequencer wrapping non-transient children: only the outer trace is transient", async () => {
+    const innerA = handler({
+      name: "inner-a",
+      inputSchema: z.object({ x: z.number() }),
+      outputSchema: z.object({ x: z.number() }),
+      execute: (v) => v
+    });
+    const innerB = handler({
+      name: "inner-b",
+      inputSchema: z.object({ x: z.number() }),
+      outputSchema: z.object({ x: z.number() }),
+      execute: (v) => v
+    });
+    const wrapper = sequencer({
+      name: "wrap-seq",
+      inputSchema: z.object({ x: z.number() }),
+      transient: true
+    })
+      .then(innerA)
+      .then(innerB);
+    const flow = defineFlow({
+      kind: "wrap-flow",
+      actions: { run: { inputSchema: z.object({ x: z.number() }), block: wrapper } }
+    })();
+
+    const stores = createInMemoryStores();
+    const response = createResponseEmitter({ requestId: "req_lf10", now: () => Date.now() });
+    await runAction({
+      flow,
+      actionName: "run",
+      requestId: "req_lf10",
+      input: { x: 1 },
+      userId: "u",
+      sessionId: "s",
+      stores,
+      responseEmitter: response
+    });
+
+    const traces = getTraces(response.getItems());
+    const outer = traces.find((t) => t.blockName === "wrap-seq");
+    const a = traces.find((t) => t.blockName === "inner-a");
+    const b = traces.find((t) => t.blockName === "inner-b");
+    expect(outer).toBeDefined();
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    expect(outer!.transient).toBe(true);
+    expect(a!.transient).not.toBe(true);
+    expect(b!.transient).not.toBe(true);
   });
 });

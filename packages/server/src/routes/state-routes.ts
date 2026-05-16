@@ -50,12 +50,6 @@ export async function handleGetSessionState(
   }
 
   const url = new URL(request.url);
-  const latestRequest = (
-    await ctx.stores.request.list({
-      sessionId: session.id,
-      limit: 1
-    })
-  )[0];
   const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
   const org =
     session.orgId === undefined
@@ -69,16 +63,10 @@ export async function handleGetSessionState(
   const includeItems = getBooleanFlag(
     url.searchParams.get("include_items")
   );
-  const includeInternalResources = getBooleanFlag(
-    url.searchParams.get("include_internal_resources")
-  );
-  // FIX-505: opt-in escape hatch for raw scope state. Parallels FIX-506's
-  // `?include=trace`. When unset (the default), the response carries no
-  // raw state under any key — `clientData` is the only public projection.
-  const includeParam = url.searchParams.get("include");
-  const includeInternalState =
-    includeParam !== null &&
-    includeParam.split(",").map((s) => s.trim()).includes("internal_state");
+  // FIX-579: the previous undocumented DevTool escape hatches
+  // (`include_internal_resources`, `include=internal_state`) were removed in
+  // favor of the privileged `/debug/resources*` surface. `/state` is now
+  // strictly client-shaped — the same view a production React app sees.
   const offset = getPositiveInteger(url.searchParams.get("offset")) ?? 0;
   const limit =
     getPositiveInteger(url.searchParams.get("limit")) ?? DEFAULT_STATE_ITEMS_LIMIT;
@@ -184,28 +172,24 @@ export async function handleGetSessionState(
     resources: orgResources
   });
 
-  // Build resource snapshot: client-visible resources by default. When the
-  // caller passes include_internal_resources=true (the DevTool does), also
-  // include resources without a `client` config — they're flagged `internal`
-  // and surface their raw state under `clientData`.
+  // Resource snapshot — strictly client-shaped. Resources with no `client`
+  // config no longer surface here; use /debug/resources* (gated) for full
+  // server-side inspection.
   const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
       configs: sessionConfigs,
       persisted: session.resources as Record<string, unknown> | undefined,
       persistedContent: sessionContent,
-      includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: userConfigs,
       persisted: user?.resources as Record<string, unknown> | undefined,
       persistedContent: userContent,
-      includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: orgConfigs,
       persisted: org?.resources as Record<string, unknown> | undefined,
       persistedContent: orgContent,
-      includeInternal: includeInternalResources,
     }),
   ]);
 
@@ -214,21 +198,11 @@ export async function handleGetSessionState(
     userResourceSnapshot !== undefined ||
     orgResourceSnapshot !== undefined;
 
+  // FIX-579: dropped `internalState` field (was gated by `?include=internal_state`).
+  // The DevTool no longer relies on raw scope state from this endpoint.
   return jsonResponse(200, {
     sessionId: session.id,
     flowKind: session.flowKind,
-    // FIX-505: raw scope state is private by default. The DevTool (and other
-    // explicitly-trusted consumers) can opt in with `?include=internal_state`
-    // and read it under `internalState` — never under `state`, so any caller
-    // still reaching for `response.state.*` fails fast at the type level.
-    internalState: includeInternalState
-      ? {
-          request: latestRequest?.state,
-          session: session.state,
-          user: user?.state,
-          org: org?.state
-        }
-      : undefined,
     clientData: {
       session:
         Object.keys(sessionClientData).length > 0

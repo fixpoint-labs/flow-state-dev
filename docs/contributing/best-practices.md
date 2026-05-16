@@ -205,6 +205,57 @@ Update policy:
   - Catching the bug at test time (via the strict-mode walker) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
   - Phase 1 of the trading-desk example hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
 
+### BP-017: Use the generator `context` slot for typed, segmented prompts
+
+- Status: Active
+- Date: 2026-05-13
+- Rule:
+  - Build prompts via the generator's `context: { tagName: fn }` slot, not via a hand-built multi-section `user:` string.
+  - Each key becomes an XML tag the model can parse cleanly. Values resolve at render time with typed `ctx`, including session state and resources.
+  - Reserve `user:` for the short trailing instruction ("Now write the published Bull memo.") rather than concatenated section dumps.
+  - When the same key is contributed by multiple sources (the block's own `context` plus capabilities installed via `uses`), the framework aggregates them inside one tag — there's no name conflict.
+- Why:
+  - Hand-built user prompts duplicate boilerplate (`Ticker:`, `As-of date:`, role lines) across every generator. The trading-desk had ~8 generators all repeating the same 3-line preamble before BP-017 landed.
+  - The `context` slot is type-checked against the session state schema and the capability surface. Hand-built strings drift silently when state shape changes.
+  - Models handle XML-tagged context segmentation better than markdown headers buried in a long user message — empirically the same model produces tighter outputs when fields are tagged rather than concatenated. See [`examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts) for the canonical pattern.
+
+### BP-018: Shared prompt formatters live in `services/`
+
+- Status: Active
+- Date: 2026-05-13
+- Rule:
+  - When two or more blocks (across phases or within a phase) format the same shape of data into a prompt — memo blocks, transcript dumps, structured-field rollups — lift the formatter into a `services/format.ts` file (or equivalent service module) and import it from each consumer.
+  - Phase-specific formatters used by only one block stay in that block's file; the bar is "two or more consumers."
+- Why:
+  - Inline copies drift. The trading-desk had three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 before BP-018 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review.
+  - One canonical formatter per data shape means one place to fix rendering tweaks, one place to enforce field ordering, one place to test.
+
+### BP-019: Per-phase resources live in `phase-N/resources.ts`
+
+- Status: Active
+- Date: 2026-05-13
+- Rule:
+  - All `defineResource()` calls and resource-factory invocations (e.g., `createRoundRobinContributions()`) for a phase live in a single `phase-N/resources.ts` leaf module.
+  - That file imports only from `@flow-state-dev/core`, `@flow-state-dev/patterns`, `zod`, and other leaf utility files. **Never** imports from the phase's own logic files (generators, sequencers, round-robin instances, writers).
+  - Capabilities and cross-phase consumers import resource refs from `phase-N/resources.ts`, not from logic files that happen to re-export them.
+- Why:
+  - When a capability needs a resource ref defined in a phase's `round-robin.ts`, and that `round-robin.ts` also imports the phase's generators, and those generators import the capability — you get a cycle that breaks at first use with `Cannot read properties of undefined`. The trading-desk hit this exactly during the FIX-589 refactor.
+  - Resources are pure data — singleton refs with no runtime dependencies on the phase's logic. Putting them in a leaf module makes the import graph clean by construction.
+  - Naming the file `resources.ts` instead of inventing a name per resource keeps the convention obvious. Every phase has one; importers know where to look.
+
+### BP-020: Live mode never silently falls back to fixture data
+
+- Status: Active
+- Date: 2026-05-13
+- Rule:
+  - When a flow supports both `dataSource: "fixture"` and `dataSource: "live"` modes, the live path must never silently substitute fixture data when an upstream provider fails or doesn't implement a tool.
+  - On total failure, return an empty schema-valid payload tagged with a `source: "unavailable"` sentinel (or equivalent provenance signal). The caller — typically an analyst LLM — sees explicit zeros / empty arrays and should treat the field as missing signal, not as bearish/bullish.
+  - Surface the provenance in the UI (transcript pill, status indicator) so a human review can spot coverage gaps.
+- Why:
+  - Hand-curated fixture data is dated and ticker-specific. Serving it as if it were live silently corrupts the LLM's reasoning — the analyst thinks it just got NVDA's Q1 fundamentals and writes a memo around them, when in reality the live API failed and a year-old fixture filled in.
+  - "No data" is a recoverable signal the LLM can reason about ("I'm missing fundamentals for this ticker, so I'll lean on technicals and macro"). "Wrong data labeled as right data" is not recoverable.
+  - The trading-desk used a fixture floor in its first multi-provider implementation and the resulting analyst memos cited fixture numbers as if they were live for two days before anyone noticed. The empty-payload-with-sentinel pattern landed in FIX-589 to prevent recurrence.
+
 ## Template For New Entries
 
 ```md

@@ -1,4 +1,7 @@
 import type { Content } from "./content";
+import type { ModelIdentity } from "../types/model";
+
+export type { ModelIdentity };
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
@@ -147,6 +150,11 @@ export type StructureShape =
  * - `output` is set on completion. Carries the BlockValue (inline / ref /
  *   structure) so pass-through composers don't duplicate content at every
  *   level.
+ * - `transient` inherits the originating block's `transient` flag (FIX-478,
+ *   restored by FIX-586). A `transient: true` block streams its trace
+ *   lifecycle live to active SSE consumers but the trace is not retained in
+ *   the persisted items log. Non-transient blocks (the default) keep the
+ *   canonical retained-trace behavior.
  */
 export type BlockTraceItem = OutputItemBase & {
   type: "block_trace";
@@ -154,6 +162,15 @@ export type BlockTraceItem = OutputItemBase & {
   blockKind: "generator" | "handler" | "sequencer" | "router";
   blockInstanceId: string;
   status: "in_progress" | "completed" | "failed" | "planned";
+  /**
+   * Resolved identity of the model that actually ran for generator blocks.
+   * Sibling of `generator.model` (the requested string) and
+   * `modelUsage.model` (the token-accounting key, also requested-string).
+   * Populated even when the generator emits no items, so audit/replay/billing
+   * have a durable record of the concrete model. Absent for non-generator
+   * blocks and for generators that errored before any AI SDK call returned.
+   */
+  model?: ModelIdentity;
   input?: {
     source: BlockValueInternal<unknown>;
     connected?: unknown;
@@ -186,6 +203,13 @@ export type BlockTraceItem = OutputItemBase & {
   error?: {
     message: string;
     code?: string;
+    /**
+     * Open structured payload attached at failure time. Runtime auto-populates
+     * well-known keys (`rawOutput`, `issues`, `phase`) for generator
+     * output-validation failures; author-thrown `FlowError.details` flows
+     * through verbatim.
+     */
+    details?: Record<string, unknown>;
   };
 };
 
@@ -194,6 +218,8 @@ export type ToolOutputItem = OutputItemBase & {
   type: "tool_output";
   blockName: string;
   output: unknown;
+  /** Resolved identity of the generator that invoked this tool. */
+  model?: ModelIdentity;
   toolCall: {
     callId: string;
     /**
@@ -219,6 +245,11 @@ export type ToolOutputItem = OutputItemBase & {
   error?: {
     message: string;
     code?: string;
+    /**
+     * Open structured payload attached at failure time. Shape matches
+     * `BlockTraceItem.error.details` so the two items render identically.
+     */
+    details?: Record<string, unknown>;
   };
 };
 
@@ -231,6 +262,12 @@ export type RouterDecisionItem = OutputItemBase & {
 export type MessageItem = OutputItemBase & {
   type: "message";
   role: "assistant" | "user" | "system" | "developer" | "tool";
+  /**
+   * Resolved identity of the generator model that produced this message.
+   * Stamped only when emitted by a generator block; handler-emitted
+   * messages (via `ctx.emitMessage`) leave this field absent.
+   */
+  model?: ModelIdentity;
   /**
    * Message content parts. `output_text` parts accumulate `text` in-place
    * during streaming: each `content.delta` event mutates the current
@@ -246,6 +283,8 @@ export type MessageItem = OutputItemBase & {
 
 export type ReasoningItem = OutputItemBase & {
   type: "reasoning";
+  /** Resolved identity of the generator model that produced this reasoning. */
+  model?: ModelIdentity;
   /**
    * Reasoning summary parts. `reasoning_text` parts accumulate `text`
    * in-place during streaming via the same `content.delta` channel as
@@ -348,6 +387,8 @@ export type SourceItem = OutputItemBase & {
   url: string;
   title?: string;
   providerMetadata?: Record<string, Record<string, unknown>>;
+  /** Resolved identity of the generator model that produced this source. */
+  model?: ModelIdentity;
 };
 
 /**

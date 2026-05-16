@@ -4,6 +4,9 @@
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import type {
   ClientFetch,
+  DebugCollectionItemsResponse,
+  DebugResourcesResponse,
+  ListDebugCollectionItemsOptions,
   QueryValue,
   SessionDetail,
   SessionRequestSummary,
@@ -47,19 +50,6 @@ export type GetSessionStateOptions = {
   itemTypes?: string[];
   offset?: number;
   limit?: number;
-  /**
-   * Include resources without a `client` config in the snapshot. They appear
-   * with `internal: true` and the raw resource state under `clientData`.
-   * Intended for development tooling (the DevTool sets this); production
-   * clients should leave it unset.
-   */
-  includeInternal?: boolean;
-  /**
-   * Include the raw scope state (`request`, `session`, `user`, `org`) under
-   * `internalState` on the response. Off by default — scope state is
-   * private to the server. Intended for development tooling only.
-   */
-  includeInternalState?: boolean;
 };
 
 /**
@@ -104,6 +94,26 @@ export type SessionClient = {
     options: UpdateSessionMetadataOptions
   ) => Promise<SessionDetail>;
   deleteSession: (sessionId: string) => Promise<void>;
+  /**
+   * Privileged read-only methods for the DevTool's debug surface. The server
+   * must opt in via `debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`;
+   * calls otherwise reject with 403. Not part of the production client
+   * contract — never wire these from a real React app.
+   */
+  debug: {
+    listResources: (sessionId: string) => Promise<DebugResourcesResponse>;
+    listCollectionItems: (
+      sessionId: string,
+      ref: string,
+      options?: ListDebugCollectionItemsOptions
+    ) => Promise<DebugCollectionItemsResponse>;
+    fetchResourceContent: (sessionId: string, ref: string) => Promise<string>;
+    fetchCollectionItemContent: (
+      sessionId: string,
+      ref: string,
+      topic: string
+    ) => Promise<string>;
+  };
 };
 
 /**
@@ -177,9 +187,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
               ? undefined
               : stateOptions.itemTypes.join(","),
           offset: stateOptions?.offset,
-          limit: stateOptions?.limit,
-          include_internal_resources: stateOptions?.includeInternal,
-          include: stateOptions?.includeInternalState ? "internal_state" : undefined
+          limit: stateOptions?.limit
         })
       })
     });
@@ -239,6 +247,73 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     return payload.session;
   };
 
+  const debugListResources = async (
+    sessionId: string
+  ): Promise<DebugResourcesResponse> => {
+    return requestJson<DebugResourcesResponse>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources`
+      })
+    });
+  };
+
+  const debugListCollectionItems = async (
+    sessionId: string,
+    ref: string,
+    listOptions?: ListDebugCollectionItemsOptions
+  ): Promise<DebugCollectionItemsResponse> => {
+    return requestJson<DebugCollectionItemsResponse>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/items`,
+        query: asQuery({
+          limit: listOptions?.limit,
+          cursor: listOptions?.cursor ?? undefined,
+          topic: listOptions?.topic
+        })
+      })
+    });
+  };
+
+  const debugFetchResourceContent = async (
+    sessionId: string,
+    ref: string
+  ): Promise<string> => {
+    const url = buildFlowApiUrl({
+      baseUrl: options.baseUrl,
+      path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/content`
+    });
+    const res = await fetcher(url);
+    if (!res.ok) {
+      throw new Error(`debug.fetchResourceContent failed: ${res.status}`);
+    }
+    return res.text();
+  };
+
+  const debugFetchCollectionItemContent = async (
+    sessionId: string,
+    ref: string,
+    topic: string
+  ): Promise<string> => {
+    // Multi-segment topics are passed through as-is; the route handler is
+    // mounted as `:ref/*topic/content` and accepts slashes.
+    const url = buildFlowApiUrl({
+      baseUrl: options.baseUrl,
+      path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/${topic
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}/content`
+    });
+    const res = await fetcher(url);
+    if (!res.ok) {
+      throw new Error(`debug.fetchCollectionItemContent failed: ${res.status}`);
+    }
+    return res.text();
+  };
+
   const deleteSession = async (sessionId: string): Promise<void> => {
     await requestJson<undefined>({
       fetcher,
@@ -259,7 +334,13 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     getSessionState,
     createSession,
     updateSessionMetadata,
-    deleteSession
+    deleteSession,
+    debug: {
+      listResources: debugListResources,
+      listCollectionItems: debugListCollectionItems,
+      fetchResourceContent: debugFetchResourceContent,
+      fetchCollectionItemContent: debugFetchCollectionItemContent
+    }
   };
 }
 

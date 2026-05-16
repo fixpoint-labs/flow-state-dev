@@ -7,7 +7,7 @@
  * Embedded hosts (kitchen-sink, custom apps) typically pass
  * `userIdControl="host"` so the panel doesn't expose its own userId editor.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, RotateCcw, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
@@ -166,6 +166,22 @@ function PanelContent({ className }: { className?: string }) {
       setDispatchedRequestId(null);
     }
   }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
+
+  // Bump the state refresh key whenever a new state_change or resource_change
+  // streams in, so SessionContextPanel and its ResourcesPanel can re-fetch
+  // the server-side view in step with the runtime. Tracked by count so a
+  // batch of N new mutations triggers exactly one refresh cycle per render.
+  const lastStateMutationCountRef = useRef(0);
+  useEffect(() => {
+    let count = 0;
+    for (const item of streamItems) {
+      if (item.type === "state_change" || item.type === "resource_change") count++;
+    }
+    if (count !== lastStateMutationCountRef.current) {
+      lastStateMutationCountRef.current = count;
+      if (count > 0) setStateRefreshKey((k) => k + 1);
+    }
+  }, [streamItems]);
 
   // Live mode wants to subscribe to an external in-progress request. Drop any
   // partial liveItems for it so polled `req.items` show through cleanly if SSE

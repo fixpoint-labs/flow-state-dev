@@ -685,6 +685,5 @@ import {
 ## Further Reading
 
 - [API Reference](/thought-fabric/api) — Full export list
-- [Memory](/thought-fabric/memory) — Memory domain (similar resource + capability patterns)
 - [Metacognition](/thought-fabric/metacognition) — Bias detection (works well as a companion to perspective)
 - [Introduction](/thought-fabric/introduction) — Thought Fabric overview
