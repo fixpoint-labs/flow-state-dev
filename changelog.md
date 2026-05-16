@@ -2,14 +2,6 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
-## 2026-05-14
-
-### `useResourceCollection` invalidates on mid-stream resource changes
-
-- `SessionView` gains a dedicated `resourceChanges: ReadonlyArray<ResourceChangeNotice>` channel. Every `resource_change` SSE item appends a `{ resourcePath, changeType, seq }` notice to this list — independent of the caller's `useSession` items filter. `resource_change` items are transient, so the prior implementation that watched `session.items` for them silently missed every mid-stream mutation whenever the consumer didn't opt into `includeTransient: true` (the default).
-- `useResourceCollection` now watches `session.resourceChanges` instead of `session.items`, invalidating its page cache as soon as a notice whose path is under the watched `ref` arrives. `get`'s callback identity also flips on invalidation (matching `list`'s existing behavior), so single-item subscribers via `useResourceCollectionItem` actually refetch.
-- User-visible effect: when a viewer is parked on a single collection item that transitions while they watch it (e.g., the trading-desk memo flipping from `writing` to `published`), the pane now updates in place instead of requiring the user to click away and back.
-- Additive public API: the new `ResourceChangeNotice` type and `SessionView.resourceChanges` field. No removals.
 
 ## 2026-05-16
 
@@ -116,6 +108,13 @@ applicable to any future bind-mount provider:
 - New optional `Sandbox.hostMountSource` property — set by adapters that know which host directory backs `/workspace`, consulted by `flush()` to decide which walk strategy to use.
 
 ## 2026-05-14
+
+### `useResourceCollection` invalidates on mid-stream resource changes
+
+- `SessionView` gains a dedicated `resourceChanges: ReadonlyArray<ResourceChangeNotice>` channel. Every `resource_change` SSE item appends a `{ resourcePath, changeType, seq }` notice to this list — independent of the caller's `useSession` items filter. `resource_change` items are transient, so the prior implementation that watched `session.items` for them silently missed every mid-stream mutation whenever the consumer didn't opt into `includeTransient: true` (the default).
+- `useResourceCollection` now watches `session.resourceChanges` instead of `session.items`, invalidating its page cache as soon as a notice whose path is under the watched `ref` arrives. `get`'s callback identity also flips on invalidation (matching `list`'s existing behavior), so single-item subscribers via `useResourceCollectionItem` actually refetch.
+- User-visible effect: when a viewer is parked on a single collection item that transitions while they watch it (e.g., the trading-desk memo flipping from `writing` to `published`), the pane now updates in place instead of requiring the user to click away and back.
+- Additive public API: the new `ResourceChangeNotice` type and `SessionView.resourceChanges` field. No removals.
 
 ### Bash tool: MOAT adapter compatibility with MOAT 0.5.x
 
