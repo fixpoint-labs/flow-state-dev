@@ -705,14 +705,10 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
-  // Status-slot guard for the generator/tool relationship: snapshot the
-  // slot when the first tool in a (possibly parallel) round starts;
-  // restore it when the last one completes. Tools compete on the slot
-  // while they are running, so the latest emit wins as before. The
-  // restore avoids a finished tool's `activeStatusMessage` lingering as
-  // a stale "still running" indicator after the tool itself has
-  // returned. Refcount lives in this closure so it is shared across all
-  // compiled tools for one generator run.
+  // Snapshot the request-scoped status slot when the first tool in a
+  // (possibly parallel) round starts; restore when the last one exits.
+  // Without this, a finished tool's `activeStatusMessage` lingers as a
+  // stale "still running" indicator after the tool itself returns.
   const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
@@ -756,11 +752,6 @@ function compileToolsWithExecute(
         } finally {
           statusGuard.active--;
           if (statusGuard.active === 0) {
-            // Restore the slot to whatever the generator (or its parent
-            // chain) had set before the tool round began. If nothing was
-            // set, this clears to "" and the client falls back to
-            // "Working...". Dedupe in `emitStatus` makes restoring an
-            // unchanged value a no-op.
             scopedCtx.emit?.status?.(statusGuard.saved);
           }
         }
