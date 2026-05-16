@@ -157,6 +157,8 @@ invoke, parameter, system, user, assistant, role, message
 
 The list is checked against the canonical (kebab-case) form, so `tool_use` and `tool-use` both match.
 
+A note on `role`: the aggregator also accepts pre-built AI-SDK messages — objects whose `role` is one of `"system" | "user" | "assistant" | "tool"` and that carry a `content` field — and passes them through to the messages array unchanged. Any other object with a `role` key (for example, `{ role: () => "Analyst" }` or `{ role: "manager", content: "..." }`) is rejected with an explicit error that names the offending tag. If you want a tag literally named `role`, you can't — pick a different name (`agent-role`, `persona`, etc.).
+
 ### Escaping in string leaves
 
 `<`, `>`, and `&` in string leaf values are HTML-escaped (`&lt;`, `&gt;`, `&amp;`) so user data containing angle brackets isn't read by the model as a tag boundary. Nested-tag emission is unaffected — the renderer always knows which case it's in.

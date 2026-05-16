@@ -14,6 +14,7 @@ import { resolveClientProjection } from "@flow-state-dev/core/utils";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  extractBareTopic,
   jsonResponse,
   normalizeResourceState,
   parseJsonBody,
@@ -69,8 +70,8 @@ export async function handleGetResourceContent(
   const data = await getPersistedData(ctx, flow, route.sessionId, scope);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
-  const state = normalizeResourceState(config, data.resources[route.ref]);
-  const rawContent = data.content[route.ref];
+  const state = normalizeResourceState(config, data.resources[found.storageKey]);
+  const rawContent = data.content[found.storageKey];
   const content = await renderContent(config, rawContent, state);
 
   return jsonResponse(200, { ref: route.ref, content });
@@ -342,10 +343,13 @@ export async function handleListCollectionState(
   const total = matchedKeys.length;
 
   const pageKeys = matchedKeys.slice(offset, offset + limit);
-  const items: Array<{ topic: string; clientData?: unknown }> = [];
+  const items: Array<{ topic: string; storageKey: string; clientData?: unknown }> = [];
   for (const key of pageKeys) {
     const state = isJsonObject(persisted[key]) ? (persisted[key] as JsonObject) : {};
-    const item: { topic: string; clientData?: unknown } = { topic: key };
+    const item: { topic: string; storageKey: string; clientData?: unknown } = {
+      topic: extractBareTopic(config.pattern, key),
+      storageKey: key
+    };
     item.clientData = await applyClientData(config, state);
     items.push(item);
   }
@@ -419,9 +423,25 @@ export async function handleGetCollectionItemState(
   }
 
   const state = isJsonObject(value) ? (value as JsonObject) : {};
-  const out: { topic: string; clientData?: unknown } = { topic: storageKey };
-  out.clientData = await applyClientData(config, state);
-  return jsonResponse(200, out);
+  const clientData = await applyClientData(config, state);
+  const bareTopic = extractBareTopic(config.pattern, storageKey);
+  if (clientData === undefined) {
+    // No client.data projection (and no expose/exclude). The production
+    // surface intentionally returns metadata only, but app developers
+    // calling this endpoint directly get little signal. Add a hint
+    // pointing at the debug endpoint or the missing config (FIX-579 §3.6).
+    return jsonResponse(200, {
+      topic: bareTopic,
+      storageKey,
+      hint:
+        "no client.data configured; declare client.data or use /debug/resources for full state"
+    });
+  }
+  return jsonResponse(200, {
+    topic: bareTopic,
+    storageKey,
+    clientData
+  });
 }
 
 /**

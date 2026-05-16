@@ -113,3 +113,23 @@ export function resolveClientProjection<TState extends JsonObject>(
   if (client.exclude !== undefined) return omit(state, client.exclude as ReadonlyArray<string>);
   return state;
 }
+
+/**
+ * True when the client config declares an explicit projection
+ * (`data` / `expose` / `exclude`), as opposed to falling back to identity.
+ * Used by the debug snapshot and route snapshot builders to distinguish
+ * "developer-defined view" from "raw state passthrough".
+ */
+export function hasClientProjection(
+  client:
+    | ResourceClientConfig<JsonObject>
+    | CollectionClientConfig<JsonObject>
+    | undefined
+): boolean {
+  if (client === undefined) return false;
+  return (
+    typeof client.data === "function" ||
+    Array.isArray(client.expose) ||
+    Array.isArray(client.exclude)
+  );
+}

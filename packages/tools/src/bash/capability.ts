@@ -29,10 +29,10 @@
  * ```
  */
 
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SandboxProvider } from "./types";
-import { createBashBlocks, type BashCollectionSpec } from "./blocks";
+import { createBashBlocks, releaseBashSandbox, type BashCollectionSpec } from "./blocks";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,10 @@ function buildProviderLines(provider: SandboxProvider, destination: string): str
       return `You have a Vercel Sandbox bash workspace. ${boundary}`;
     case "upstash":
       return `You have an Upstash Box bash workspace. ${boundary}`;
+    case "moat": {
+      const hostList = (provider.allowHosts ?? []).join(", ") || "no hosts";
+      return `You have a MOAT-isolated bash workspace running in a container. Outbound network access is restricted to: ${hostList}. ${boundary}`;
+    }
     case "custom":
       return `You have a bash workspace. ${boundary}`;
   }
@@ -223,7 +227,7 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
 
   const resolvedDestination = destination ?? "/workspace";
 
-  return defineCapability({
+  const capability = defineCapability({
     name: "bash",
 
     presets: {
@@ -236,4 +240,20 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
       default: ["tools", "guidance"],
     },
   });
+
+  /**
+   * Tear down this capability's sandbox at request end. Required for the
+   * `moat` provider — without it, containers leak. No-op-ish for LocalFs and
+   * just-bash. Wire it via `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })`.
+   *
+   * Returned unconditionally so the capability shape is stable across providers.
+   */
+  const cleanupBlock = handler({
+    name: "bash-cleanup",
+    execute: async (_input: unknown, ctx: any) => {
+      await releaseBashSandbox(provider, ctx);
+    },
+  });
+
+  return Object.assign(capability, { cleanupBlock });
 }

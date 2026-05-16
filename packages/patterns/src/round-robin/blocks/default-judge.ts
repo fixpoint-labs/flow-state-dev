@@ -31,15 +31,19 @@ export interface CreateJudgeOptions {
   tools?: ToolsSlot;
   instructions?: JudgeInstructions;
   agentType?: AgentType;
+  /** Accessor key used in the block's `resources:` map. Defaults to
+   *  `"contributions"`. See `createInitContributions` for rationale. */
+  accessorKey?: string;
 }
 
 /** Build the default judge generator. */
 export function createJudge(opts: CreateJudgeOptions) {
+  const accessor = opts.accessorKey ?? "contributions";
   return generator({
     name: `${opts.name}-judge`,
     model: opts.model ?? "intent/synthesize",
     outputSchema: roundRobinJudgeOutputSchema,
-    resources: { contributions: opts.contributions },
+    resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     agentType: opts.agentType ?? "sub",
     ...(opts.context !== undefined ? { context: opts.context } : {}),
@@ -66,7 +70,7 @@ export function createJudge(opts: CreateJudgeOptions) {
     },
     user: (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as RoundRobinState;
-      const contribState = ctx.resources.contributions
+      const contribState = (ctx.resources as any)[accessor]
         ?.state as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];
       const transcript = entries

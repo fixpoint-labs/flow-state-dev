@@ -150,7 +150,66 @@ generator({
 | Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. |
 | Upstash | `"upstash"` | Placeholder — blocked on API stabilization (FIX-314). |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
+| MOAT | `"moat"` | Local container isolation with credential injection (requires the `moat` CLI v0.4.0+). |
 | Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
+
+#### MOAT
+
+Runs each command inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; outbound network calls flow through a credential-injecting proxy so the agent process never sees API tokens.
+
+**Install MOAT (one-time, host operator):**
+
+The `moat` CLI is a separate binary — the framework spawns it but does not bundle or auto-install it. Install it from [majorcontext.com/moat](https://majorcontext.com/moat/) and verify the version is at least `0.4.0` (required for `moat exec`):
+
+```bash
+moat version --json
+```
+
+Prerequisites the host needs:
+
+- macOS 15+ on Apple Silicon (native containers) **or** any Linux host with Docker installed.
+- One `moat grant <provider>` per credential the agent should be able to reach (`moat grant github`, `moat grant openai`, etc.). The framework only declares which grant names a workspace requires — it never stores the credentials itself. See the [credentials concept page](https://majorcontext.com/moat/concepts/credentials).
+
+Use:
+
+```typescript
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  provider: {
+    type: "moat",
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+Wiring cleanup is **required** for the MOAT provider — without it, every flow request leaves a container behind. The capability returns a `cleanupBlock` for this:
+
+```typescript
+defineFlow({
+  // ...
+  request: { onFinished: bashCap.cleanupBlock },
+});
+```
+
+The cleanup block is returned for every provider so the capability shape stays stable; for non-MOAT providers it is effectively a no-op.
+
+**Persistent containers for local dev.** MOAT cold-start takes a few seconds. For local development, set a stable `runName` and `persist: true` to reuse one container across requests — the cleanup block becomes a no-op, the next request reconnects via `moat list --json`, and operators reclaim resources with `moat stop <runName>` or `moat clean`:
+
+```typescript
+createBashCapability({
+  provider: {
+    type: "moat",
+    runName: "fsdev-dev",
+    persist: true,
+    grants: ["github"],
+    allowHosts: ["api.github.com"],
+  },
+});
+```
+
+See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
 
 ### Configuration
 
@@ -177,23 +236,26 @@ createBashTool({
 
 ### Workspace path restrictions (Local FS)
 
-The local adapter enforces that all filesystem operations stay within the workspace root. This is enabled by default (`strictPaths: true`) and protects against accidental workspace escapes by LLM agents.
+The local adapter validates commands and file paths against the workspace root before execution. This is enabled by default (`strictPaths: true`). It is a best-effort defense for cooperative agents, not a security boundary.
 
-Guarded operations:
-- **`executeCommand`** — rejects commands containing absolute paths outside the workspace, path traversals (`../`), home references (`~/`, `$HOME`), and command substitution (`$()`, backticks).
-- **`readFile` / `writeFile`** — resolves paths against the workspace root and rejects any result that falls outside it.
+**What the guard checks.** Before tokenizing, the raw command is screened for shell constructs whose presence is itself the violation: home references (`~/`), `$HOME`, command substitution (`$()`, backticks), process substitution (`<(...)`, `>(...)`), and path traversals (`../`). The command is then split into tokens (the same way bash splits words) and each path-shaped token is checked: tokens that resolve outside the workspace root and outside the safe-system allowlist (e.g. `/dev/null`) are rejected. `readFile` and `writeFile` resolve their argument against the workspace root and reject anything that escapes it.
+
+**What the guard does not check.** Content inside quoted strings, heredoc bodies, and similar opaque arguments is treated as data, not as candidate paths. `python3 -c "x = 1 / 2"` is allowed because the inner script is a quoted argument. `cat << EOF\n/etc/passwd\nEOF` is allowed because the body of a heredoc is data, not a filesystem reference. The trade-off is deliberate: scanning quoted content produced unacceptable false positives in inline-code use cases, and one consequence is that a literal absolute path inside either single or double quotes (`cat "/etc/passwd"`, `cat '/etc/passwd'`) is no longer rejected — the unquoted form (`cat /etc/passwd`) still is.
 
 ```typescript
 // Default: strictPaths is true
 provider: { type: "local", cwd: "./workspace" }
 
+// Allowed (inline code with arithmetic):
+//   python3 -c "x = 1 / 2"
+// Rejected (unquoted absolute path outside workspace):
+//   cat /etc/passwd
+
 // Opt out for power users (logs a warning):
 provider: { type: "local", cwd: "./workspace", strictPaths: false }
 ```
 
-When a command or path is rejected, the error message describes what was blocked and why, so the LLM agent can self-correct.
-
-This is a best-effort defense layer for cooperative agents. For true isolation, use the `just-bash` adapter (in-memory emulation) or plan for OS-level sandboxing in a future release.
+When a command is rejected, the error message names the specific offending token so the agent can self-correct. For true isolation, use the `just-bash` adapter (in-memory emulation) or wait for OS-level sandboxing in a future release.
 
 ### Direct adapter constructors
 

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { MessageItem } from "@flow-state-dev/core/items";
+import { ModelBadge } from "@flow-state-dev/react";
 import { Message } from "@/components/flow-state/message";
 import { useSessionItems } from "@/components/flow-state/session-items-context";
 import { getStyleOption, type ThinkingStyle } from "@/components/thinking-style-selector";
@@ -51,7 +52,14 @@ export function ChatAgentMessage({ item }: { item: MessageItem }) {
       {isAssistant && (
         <div className="flex items-center gap-1.5">
           {style && <StyleBadge style={style} />}
-          {/* <ModelBadge preset={modelPreset} /> */}
+          <ModelBadge
+            model={item.model}
+            className={cn(
+              "mb-2 inline-flex items-center gap-1 rounded-full",
+              "border border-border/50 bg-muted/50 px-2 py-0.5",
+              "text-[10px] font-medium leading-none text-muted-foreground",
+            )}
+          />
         </div>
       )}
       <Message item={item} />

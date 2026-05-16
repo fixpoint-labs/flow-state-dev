@@ -136,4 +136,9 @@ export {
   type AuditAnnotationProgressProps
 } from "./components/AuditAnnotationProgress";
 
+export {
+  ModelBadge,
+  type ModelBadgeProps
+} from "./components/ModelBadge";
+
 export const reactPackageMarker = "@flow-state-dev/react";

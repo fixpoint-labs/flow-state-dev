@@ -363,6 +363,16 @@ When a resource changes during streaming (e.g., a tool creates an artifact), the
 
 You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.
 
+## Debug and the DevTool
+
+During development, the DevTool's Resources panel reads from a privileged debug endpoint that ignores everything on this page. It shows you the full server-side state, including fields and items that `client.data` deliberately drops. That's the point of an inspector: the DevTool is talking to the runtime directly, not pretending to be a client.
+
+The panel renders each resource with a Raw / Client / Diff toggle. **Raw** is the unfiltered server state. **Client** runs the same `expose`, `exclude`, or `data` projection your production app would receive. **Diff** shows both side by side so you can see which fields survive and which get stripped.
+
+If your client-side React hook returns fewer fields than the DevTool's Raw view shows, the Client view tells you exactly which fields `client.data` is dropping. Same story for collections: if the panel lists items your hook doesn't, check whether `client.state.read` is enabled and whether `prefetchWindow` is set to a meaningful number.
+
+The endpoint is off by default in production. See [Debug vs client state](/docs/devtool/debug-vs-client-state) for the full mental model, the reason states the panel surfaces when `client.data` is missing or throws, and how to enable the endpoint locally.
+
 ## Where to go next
 
 - **[Resources Overview](/docs/resources/overview)** — Resource fundamentals, defineResource, content and state

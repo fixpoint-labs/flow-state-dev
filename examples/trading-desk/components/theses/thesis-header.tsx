@@ -74,13 +74,25 @@ export function ThesisHeader({
 }
 
 function ratingClass(rating: string): string {
-  switch (rating) {
-    case "constructive":
-      return "text-[color:var(--c-live)]";
-    case "cautious":
-      return "text-[color:var(--c-warn)]";
-    case "neutral":
-    default:
-      return "text-[color:var(--c-fg-muted)]";
+  const r = rating.toLowerCase();
+  if (
+    r === "constructive" ||
+    r === "buy" ||
+    r === "long" ||
+    r === "upsize" ||
+    r.includes("increase")
+  ) {
+    return "text-[color:var(--c-live)]";
   }
+  if (
+    r === "cautious" ||
+    r === "underweight" ||
+    r === "short" ||
+    r === "reject" ||
+    r.includes("reduce") ||
+    r.includes("smaller")
+  ) {
+    return "text-[color:var(--c-warn)]";
+  }
+  return "text-[color:var(--c-fg-muted)]";
 }

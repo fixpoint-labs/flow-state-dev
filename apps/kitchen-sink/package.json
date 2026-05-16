@@ -12,7 +12,10 @@
     "vercel-build": "cd ../.. && pnpm install && pnpm build:packages && cd apps/kitchen-sink && next build && tsx scripts/migrate.ts",
     "start": "next start",
     "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
-    "test:watch": "vitest --root ."
+    "test:watch": "vitest --root .",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.36",
@@ -21,12 +24,14 @@
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "@flow-state-dev/skills": "workspace:*",
     "@flow-state-dev/tasks": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/vercel": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
@@ -68,7 +73,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@flow-state-dev/testing": "workspace:*",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/pg": "^8.11.0",
     "@types/react": "^19.2.14",

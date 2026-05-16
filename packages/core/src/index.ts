@@ -152,6 +152,7 @@ export type {
   GeneratorModelToolCall,
   GeneratorModelUsage,
   GeneratorSearchConfig,
+  ModelIdentity,
   ModelResolver,
   ResolveModelCallOptions,
   PrepareStepFn,
@@ -226,3 +227,10 @@ export type {
   RequestWorkTaskMeta
 } from "./execution/request-work-pool";
 export { getRequestWorkPool } from "./execution/request-work-pool";
+
+export { FlowError, OutputValidationError } from "./errors";
+export type {
+  FlowErrorOptions,
+  FlowErrorScope,
+  OutputValidationDetails
+} from "./errors";

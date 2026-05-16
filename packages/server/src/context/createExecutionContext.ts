@@ -53,8 +53,8 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import type { CASPersist } from "../stores/cas";
-import type { SetResult, TraceStore } from "../stores/types";
+import { createScopePersist } from "../stores/scope-persist";
+import type { TraceStore } from "../stores/types";
 import type {
   OrgRecord,
   RequestRecord,
@@ -76,41 +76,10 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey
 } from "../stores/scope-keys";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
 
-/**
- * Builds a CAS persist callback for a scope record. `buildNext` constructs
- * the record to write (stamped with version/updatedAt); `write` performs the
- * actual CAS store call. On success `ref.current` is advanced to the new
- * record; on conflict it's refreshed to the store's current record.
- */
-function createScopePersist<
-  TState,
-  TRecord extends { state: unknown; version: number }
->(
-  ref: { current: TRecord },
-  buildNext: (expectedVersion: number, state: Readonly<TState>) => TRecord,
-  write: (nextRecord: TRecord, expectedVersion: number) => Promise<SetResult<TRecord>>
-): CASPersist<TState> {
-  return async (state, expectedVersion) => {
-    const nextRecord = buildNext(expectedVersion, state);
-    const result = await write(nextRecord, expectedVersion);
-    if (result.ok) {
-      ref.current = nextRecord;
-      return { ok: true, version: result.version };
-    }
-    const current = result.conflict.currentValue;
-    if (current !== undefined) {
-      ref.current = current;
-    }
-    return {
-      ok: false,
-      currentState: current?.state as TState | undefined,
-      currentVersion: result.conflict.currentVersion
-    };
-  };
-}
 
 function normalizeLimit(
   valuesLength: number,
@@ -203,14 +172,17 @@ function normalizeScopeResources(
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
   const normalized: Record<string, JsonObject> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — their instances are stored with path-based keys
     if (isCollectionConfig(config)) continue;
 
-    normalized[resourceName] = normalizeResourceState(
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+    normalized[storageKey] = normalizeResourceState(
       config,
-      seed?.[resourceName]
+      seed?.[storageKey]
     );
   }
 
@@ -232,30 +204,34 @@ function normalizeScopeResourceContent(
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — collection instances don't have definition-time content
     if (isCollectionConfig(config)) continue;
 
-    const existing = seed?.[resourceName];
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+
+    const existing = seed?.[storageKey];
     if (typeof existing === "string") {
-      normalized[resourceName] = existing;
+      normalized[storageKey] = existing;
       continue;
     }
 
     if (typeof config.content === "string") {
-      normalized[resourceName] = config.content;
+      normalized[storageKey] = config.content;
       continue;
     }
 
     if (typeof config.contentFile === "string") {
       try {
         // contentFile is resolved relative to process.cwd()
-        normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+        normalized[storageKey] = readFileSync(config.contentFile, "utf8");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Failed to load contentFile for resource "${resourceName}" (path: ${config.contentFile}): ${message}`
+          `Failed to load contentFile for resource "${accessor}" (path: ${config.contentFile}): ${message}`
         );
       }
     }
@@ -494,6 +470,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     };
   }
 
+  // Storage key for each accessor. Dual-registered aliases collapse to a
+  // single canonical key so their state lives in one slot (FIX-591).
+  const storageKeys = resourceStorageKeys(configs);
+
   for (const [resourceName, config] of Object.entries(configs)) {
     if (isCollectionConfig(config)) {
       // --- Create collection ref ---
@@ -653,15 +633,19 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       continue;
     }
 
-    // --- Static resource (unchanged) ---
+    // --- Static resource ---
+    // Storage key may differ from the accessor name when this ref is
+    // dual-registered under a different alias elsewhere in the flow.
+    const storageKey = storageKeys[resourceName] ?? resourceName;
+
     const readState = (): JsonObject =>
       cloneValue(
-        options.readResources()[resourceName] ??
+        options.readResources()[storageKey] ??
           normalizeResourceDefault(config)
       );
 
     handles[resourceName] = {
-      name: resourceName,
+      name: storageKey,
       scope: options.scope,
       config,
       get state() {
@@ -669,13 +653,13 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         await persistResourceState(
-          resourceName,
+          storageKey,
           config,
           updateObjectState(readState(), updates)
         );
       },
       async setState(nextState: JsonObject): Promise<void> {
-        await persistResourceState(resourceName, config, nextState);
+        await persistResourceState(storageKey, config, nextState);
       },
       async updateState(
         updater: (
@@ -683,14 +667,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
         const next = await updater(readState());
-        await persistResourceState(resourceName, config, next);
+        await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
-        const content = options.readResourceContent()[resourceName];
+        const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        const raw = options.readResourceContent()[resourceName];
+        const raw = options.readResourceContent()[storageKey];
         if (typeof raw !== "string") {
           return null;
         }
@@ -706,7 +690,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           throw new Error(`Resource "${resourceName}" content is read-only`);
         }
 
-        await persistResourceContent(resourceName, content);
+        await persistResourceContent(storageKey, content);
       }
     };
   }
@@ -2307,13 +2291,6 @@ export async function createExecutionContext<
           orgRef.current.version
         );
 
-  const onStateSizeWarning = (detail: {
-    sizeBytes: number;
-    maxStateSizeBytes: number;
-  }): void => {
-    console.warn("[flow-state] Scope state exceeds recommended CAS size", detail);
-  };
-
   // Hoisted so scope-handle ops can close over these refs and emit
   // `state_change` items on mutation (FIX-576). `responseRef.current` is
   // assigned once `response` is constructed below; until then no scope op
@@ -2322,87 +2299,73 @@ export async function createExecutionContext<
   let emittedItemCount = 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
+      stores.request,
       (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.request.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const userOps = createScopeStateOps(userContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TUserState, UserRecord>(
       userRef,
+      stores.user,
       (expectedVersion, state) => ({
         ...userRef.current,
         state: state as TUserState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.user.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TSessionState, SessionRecord>(
       sessionRef,
+      stores.session,
       (expectedVersion, state) => ({
         ...sessionRef.current,
         state: state as TSessionState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.session.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
-  const orgOps =
-    orgRef.current === undefined || orgContainer === undefined
-      ? undefined
-      : createScopeStateOps(orgContainer, {
-          onStateSizeWarning,
-          persist: async (state, expectedVersion) => {
-            const current = orgRef.current;
-            if (current === undefined) {
-              // Org removed mid-execution; short-circuit so the retry loop exits.
-              return { ok: true, version: expectedVersion + 1 };
-            }
-            const nextRecord: OrgRecord = {
-              ...current,
-              state: state as TOrgState,
-              version: expectedVersion + 1,
-              updatedAt: Date.now()
-            };
-            const result = await stores.org.set(
-              nextRecord.id,
-              nextRecord,
-              expectedVersion
-            );
-            if (result.ok) {
-              orgRef.current = nextRecord;
-              return { ok: true, version: result.version };
-            }
-            const stored = result.conflict.currentValue;
-            if (stored !== undefined) {
-              orgRef.current = stored;
-            }
-            return {
-              ok: false,
-              currentState: stored?.state as TOrgState | undefined,
-              currentVersion: result.conflict.currentVersion
-            };
-          }
-        });
+  const orgOps = (():
+    | ReturnType<typeof createScopeStateOps<TOrgState>>
+    | undefined => {
+    if (orgRef.current === undefined || orgContainer === undefined) {
+      return undefined;
+    }
+    // Build the standard persist callback once, then wrap it with an
+    // "Org removed mid-execution" guard. The guard short-circuits before the
+    // inner callback touches `orgRef.current.id`, which would throw if the
+    // org went away mid-request.
+    const inner = createScopePersist<TOrgState, OrgRecord>(
+      orgRef as { current: OrgRecord },
+      stores.org,
+      (ev, st) => ({
+        ...(orgRef.current as OrgRecord),
+        state: st as TOrgState,
+        version: ev + 1,
+        updatedAt: Date.now()
+      })
+    );
+    return createScopeStateOps(orgContainer, {
+      persist: async (state, expectedVersion, hint) => {
+        if (orgRef.current === undefined) {
+          return { ok: true, version: expectedVersion + 1 };
+        }
+        return inner(state, expectedVersion, hint);
+      }
+    });
+  })();
 
   // Resource change emitter — pushes transient resource_change items via SSE
   // so clients can refresh clientData without waiting for request completion.
@@ -2876,14 +2839,17 @@ export async function createExecutionContext<
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
             const itemIndex = emittedItemCount++;
-            // Spec §3.8: block_trace is the canonical retained record and is
-            // always non-transient, regardless of the originating block's
-            // transient flag.
+            // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
+            // items inherit the originating block's `transient` flag. Traces
+            // from `transient: true` blocks (e.g. Task Board's `claim-task` /
+            // `check-board` poll loops) stream live to active SSE consumers
+            // but are not retained in the persisted items log. Non-transient
+            // blocks (the default) keep the canonical retained-trace behavior.
             const item: BlockTraceItem = {
               id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "block_trace",
               status: payload.data.status ?? "in_progress",
-              transient: false,
+              transient: identity.transient === true ? true : undefined,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
@@ -3309,6 +3275,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3318,6 +3288,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3366,6 +3337,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3374,8 +3349,13 @@ export async function createExecutionContext<
                   output: { kind: "inline", value: undefined },
                   completedAt,
                   duration: completedAt - traceStartedAt,
-                  error: { message: normalized.message, code: normalized.code },
+                  error: {
+                    message: normalized.message,
+                    code: normalized.code,
+                    ...(normalized.details ? { details: normalized.details } : {}),
+                  },
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext

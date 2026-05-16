@@ -170,6 +170,24 @@ const editorial = roundRobin({
 
 Override any roster entry by passing a `block`; override the judge or the synthesizer by passing custom blocks. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
 
+When two or more `roundRobin()` instances appear in the same sequencer chain, set `accessorKey` to a distinct string on each — the pattern's internal blocks declare the contributions resource under that key, and the framework's resource-merge rejects the same key pointing at different `defineResource()` references. Default is `"contributions"`.
+
+```typescript
+const debate = roundRobin({
+  name: "p2-debate",
+  roster: bullBearRoster,
+  contributions: phase2Contributions,
+  // accessorKey defaults to "contributions"
+});
+
+const risk = roundRobin({
+  name: "p4-risk",
+  roster: riskRoster,
+  contributions: phase4Contributions,
+  accessorKey: "p4Contributions", // distinct so debate + risk can coexist
+});
+```
+
 **Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`
 
 ### Debate

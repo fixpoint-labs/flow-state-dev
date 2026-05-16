@@ -1,48 +1,20 @@
 /**
- * Canonical runtime error model for execution, validation, and transportable failure metadata.
+ * Server-side error taxonomy. The base `FlowError` lives in
+ * `@flow-state-dev/core` so author code in third-party packages can throw it
+ * without a server dependency. This file re-exports the core base and defines
+ * the server's typed subclasses (`ValidationError`, `NetworkError`, ...).
  */
-export type FlowErrorScope = "request" | "work" | "resource" | "block";
+import { FlowError } from "@flow-state-dev/core";
+import type { FlowErrorOptions, FlowErrorScope } from "@flow-state-dev/core";
 
-export type FlowErrorOptions = {
-  code: string;
-  retryable: boolean;
-  blockName?: string;
-  blockInstanceId?: string;
-  scope?: FlowErrorScope;
-  cause?: unknown;
-  details?: Record<string, unknown>;
-};
-
-/**
- * Base error shape used across server runtime boundaries.
- */
-export class FlowError extends Error {
-  readonly code: string;
-  readonly retryable: boolean;
-  readonly blockName?: string;
-  readonly blockInstanceId?: string;
-  readonly scope?: FlowErrorScope;
-  override readonly cause?: unknown;
-  readonly details?: Record<string, unknown>;
-
-  constructor(message: string, options: FlowErrorOptions) {
-    super(message);
-    this.name = "FlowError";
-    this.code = options.code;
-    this.retryable = options.retryable;
-    this.blockName = options.blockName;
-    this.blockInstanceId = options.blockInstanceId;
-    this.scope = options.scope;
-    this.cause = options.cause;
-    this.details = options.details;
-  }
-}
+export { FlowError };
+export type { FlowErrorOptions, FlowErrorScope };
 
 type SubclassOptions = Omit<FlowErrorOptions, "code" | "retryable">;
 
 function withDefaults(
   options: SubclassOptions | undefined,
-  defaults: Pick<FlowErrorOptions, "code" | "retryable">
+  defaults: Pick<Required<FlowErrorOptions>, "code" | "retryable">
 ): FlowErrorOptions {
   return {
     code: defaults.code,

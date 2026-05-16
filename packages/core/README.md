@@ -100,6 +100,12 @@ export default defineFlow({
 - `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
+**Block methods** (available on every `BlockDefinition`):
+- `.connectInput(mapper)` — adapt input shape at the call boundary
+- `.connectOutput(mapper)` — transform output shape at the call boundary
+- `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
+- `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
+
 **Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Flow:**
@@ -287,6 +293,10 @@ The framework documents six canonical intent names — `utility`, `chat`, `plan`
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
 
+### Observable model identity
+
+Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.
+
 ### Strict-mode schema helper
 
 `makeSchemaStrict(schema)` is exported from the package root. It returns a copy of a Zod schema with `optional` / `default` / `nullable` wrappers unwrapped so the JSON schema sent to OpenAI's structured-output strict mode has every property in `required`. The framework calls it internally before handing schemas to the AI SDK; the public export is for authors who want to assert their generator output schemas pass strict mode at test time. See BP-016 in `docs/contributing/best-practices.md`.
@@ -310,4 +320,13 @@ Core exports:
 - `modelPricingEstimator(lookup?)`
 
 Use a shared lookup table to keep token-ratio and pricing resolution consistent across counters and cost estimation.
+
+
+## Errors
+
+`FlowError` is a small `Error` subclass author code can throw to attach a machine-readable `code`, a `retryable` flag (default `false`), and an open `details` payload. The runtime preserves these end-to-end so the DevTool can render structured failure context without re-running the flow.
+
+`OutputValidationError` is the runtime-emitted subclass thrown by the generator runtime when the model's output fails `outputSchema`. It populates `details` with `rawOutput`, `issues`, and `phase` so a validation failure carries the raw model text and the Zod issues into the trace automatically.
+
+See [Error handling](https://flow-state.dev/docs/advanced/error-handling) for usage patterns.
 

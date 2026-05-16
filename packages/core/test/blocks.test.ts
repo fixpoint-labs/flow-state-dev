@@ -43,6 +43,8 @@ describe("transient block config", () => {
     const block = generator({
       name: "t-generator",
       transient: true,
+      model: "openai/gpt-4o",
+      prompt: "test",
       execute: async () => "ok"
     });
     expect(block.kind).toBe("generator");

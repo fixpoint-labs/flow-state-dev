@@ -110,6 +110,46 @@ export type CreateFlowApiRouterOptions = {
    * false positives. Default: 60000 (60 seconds).
    */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Enable the privileged read-only debug endpoint surface under
+   * `/api/flows/sessions/:id/debug/resources*`. Fail-closed: default
+   * `false`. Explicit `true` always wins over the env flag. When
+   * `undefined`, falls back to `process.env.FSDEV_DEBUG_ENDPOINTS === "1"`.
+   *
+   * The DevTool consumes this surface; `fsdev dev` opts in automatically.
+   * Production deployments must opt in deliberately.
+   */
+  debugEndpointsEnabled?: boolean;
+
+  /**
+   * Additional origins permitted to reach debug endpoints. Loopback
+   * (`http://localhost*`, `http://127.0.0.1*`, `http://[::1]*`) is allowed
+   * by default. Matching is by origin prefix.
+   */
+  debugAllowedOrigins?: string[];
+
+  /**
+   * Permit requests with no `Origin` header (e.g. curl, server-side fetches)
+   * to reach debug endpoints when the gate is enabled. Default `true` —
+   * curl-friendly for local debugging.
+   *
+   * Security note: the origin gate is light defense-in-depth, not strong
+   * auth. When the env flag is enabled on a non-localhost-bound server,
+   * any headerless client can reach the surface regardless of physical
+   * location. The deploying team owns the binding (the spec assumes
+   * `fsdev dev` semantics: localhost-only). Set this to `false` to require
+   * a browser-enforced `Origin` header that matches the allowlist.
+   */
+  debugAllowAnonymousLocal?: boolean;
+
+  /**
+   * Cap on the number of keys enumerated when computing collection counts
+   * for the debug tree. Counts beyond this are reported as `truncated: true`.
+   * Default 1000 — bounds cost on org/flow-scope collections without
+   * starving the tree response.
+   */
+  debugCountLimit?: number;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {

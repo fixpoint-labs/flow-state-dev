@@ -42,6 +42,17 @@ pipeline.parallel(
 
 **When to reach for this**: you have a known set of independent steps and you want each result accessible by name (`output.analysis`).
 
+If each branch is a deterministic tool fetch and you want the transcript to show a tool pill for each, wrap the branch block with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool):
+
+```ts
+pipeline.parallel({
+  balanceSheet: get_balance_sheet.asTool({ agentName: "fundamentals" }),
+  incomeStatement: get_income_statement.asTool({ agentName: "fundamentals" }),
+});
+```
+
+Each branch still returns its typed output to the next step. The added cost is one `tool_output` item per branch.
+
 ### `thenAll([block, ...], options?)`
 
 Run a list of blocks concurrently. Results come back as an array, in the same order as the input.
