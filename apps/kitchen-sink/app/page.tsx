@@ -194,14 +194,18 @@ function KitchenSinkApp() {
     [artifacts, selectedArtifactId]
   );
 
-  // Fetch content when a new artifact is selected
+  // Fetch content when a new artifact is selected. The framework's list
+  // endpoint returns `topic` already stripped of the collection prefix
+  // (`extractBareTopic` → "hello.md", not "artifacts/hello.md"), and
+  // `selectedArtifactId` is derived from that same stripped topic above
+  // — so we compare bare-to-bare and skip the storageKey construction
+  // that would never match.
   useEffect(() => {
     if (!selectedArtifactId) {
       setArtifactContent(null);
       return;
     }
-    const storageKey = `artifacts/${selectedArtifactId}`;
-    const item = artifactItems.find((i) => i.topic === storageKey);
+    const item = artifactItems.find((i) => i.topic === selectedArtifactId);
     if (!item) {
       setArtifactContent(null);
       return;
