@@ -12,5 +12,7 @@
   "marketCapUsd": 3400000000000,
   "employees": 164000,
   "ipoDate": "1980-12-12",
-  "website": "https://www.apple.com"
+  "website": "https://www.apple.com",
+  "websiteMetaDescription": null,
+  "searchSnippets": null
 }

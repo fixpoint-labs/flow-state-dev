@@ -129,6 +129,49 @@ describe("get_company_profile", () => {
     expect(result.output.marketCapUsd).toBeNull();
   });
 
+  it("enriches with website meta-description when the homepage exposes one", async () => {
+    process.env.FINNHUB_API_KEY = "test-key";
+    // First fetch (Finnhub) returns the structured profile; second fetch
+    // (the homepage) returns HTML with a meta description tag.
+    let call = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify({
+            name: "Test Co",
+            country: "US",
+            currency: "USD",
+            exchange: "NASDAQ",
+            finnhubIndustry: "Software",
+            ipo: "2010-01-01",
+            marketCapitalization: 1000,
+            employeeTotal: 500,
+            weburl: "https://example.com",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        '<html><head><meta name="description" content="Test Co builds widgets and gadgets.">' +
+          '<meta property="og:description" content="Test Co builds widgets and gadgets for the global market."></head><body></body></html>',
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    });
+    const result = await testBlock(get_company_profile, {
+      input: { ticker: "TEST", date: "2026-05-06" },
+      flow: fixtureFlow,
+      session: sessionFor("live"),
+    });
+    expect(result.error).toBeNull();
+    expect(result.output.source).toBe("finnhub");
+    expect(result.output.name).toBe("Test Co");
+    // Picked the longer of the two meta tags (og:description).
+    expect(result.output.websiteMetaDescription).toBe(
+      "Test Co builds widgets and gadgets for the global market.",
+    );
+  });
+
   it("empty payload parses against the schema", () => {
     const payload = emptyPayload("get_company_profile", {
       ticker: "ZZZZ",

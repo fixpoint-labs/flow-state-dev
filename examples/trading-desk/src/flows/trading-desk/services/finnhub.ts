@@ -173,6 +173,8 @@ export async function fetchFinnhubCompanyProfile(
     employees: num(data.employeeTotal),
     ipoDate: str(data.ipo),
     website: str(data.weburl),
+    websiteMetaDescription: null,
+    searchSnippets: null,
   };
 }
 

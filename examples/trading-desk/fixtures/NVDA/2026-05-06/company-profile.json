@@ -12,5 +12,7 @@
   "marketCapUsd": 3200000000000,
   "employees": 29600,
   "ipoDate": "1999-01-22",
-  "website": "https://www.nvidia.com"
+  "website": "https://www.nvidia.com",
+  "websiteMetaDescription": null,
+  "searchSnippets": null
 }

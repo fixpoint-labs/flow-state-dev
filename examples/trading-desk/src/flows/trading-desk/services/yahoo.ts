@@ -228,6 +228,8 @@ export async function fetchYahooCompanyProfile(
     employees: employees > 0 ? employees : null,
     ipoDate: null,
     website: stringFrom(profile.website),
+    websiteMetaDescription: null,
+    searchSnippets: null,
   };
 }
 

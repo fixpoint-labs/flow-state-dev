@@ -137,6 +137,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     employees: null,
     ipoDate: null,
     website: null,
+    websiteMetaDescription: null,
+    searchSnippets: null,
   }),
 };
 

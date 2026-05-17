@@ -240,6 +240,11 @@ export const insiderTransactionsSchema = z.object({
  * round-trip cleanly (Finnhub provides no `sector` or `businessDescription`;
  * Yahoo provides no `exchange` or `ipoDate`). The Company Profile analyst
  * is a *renderer* of these fields, not a synthesizer.
+ *
+ * `websiteMetaDescription` and `searchSnippets` are web-enrichment backstops
+ * for the description gap when both structured providers leave it null
+ * (common with less-covered tickers). The analyst is prompted to cite which
+ * source each claim traced to.
  */
 export const companyProfileSchema = z.object({
   source: sourceTag,
@@ -257,6 +262,21 @@ export const companyProfileSchema = z.object({
   employees: z.number().nullable(),
   ipoDate: z.string().nullable(),
   website: z.string().nullable(),
+  /** Concatenated `<meta name="description">` + `og:description` from the
+   *  company's own homepage, when reachable. The company's self-description. */
+  websiteMetaDescription: z.string().nullable(),
+  /** Top web-search snippets for the company name (provider-agnostic via
+   *  `@flow-state-dev/tools/search`'s auto-detection). Independent
+   *  perspective on what the business is. */
+  searchSnippets: z
+    .array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        snippet: z.string(),
+      }),
+    )
+    .nullable(),
 });
 
 export const toolInputSchemas = {

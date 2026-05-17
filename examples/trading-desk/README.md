@@ -20,8 +20,13 @@ Phase 1 — analyst fan-out:
   structured business identity (sector, industry, business description,
   scale) from public providers and writes it as a memo, so downstream
   phases reason from a data-derived baseline rather than the model's
-  training priors. Returns an explicit `unavailable` memo when the
-  ticker cannot be resolved.
+  training priors. Live mode merges Finnhub and Yahoo so each fills in
+  what the other doesn't carry; when the description is still thin, two
+  web-enrichment backstops kick in — a homepage `<meta name="description">`
+  fetch and a web search via `@flow-state-dev/tools/search`'s
+  auto-detected provider (Tavily / Exa / Perplexity / Serper / Brave).
+  Each backstop fails soft to `null`. Returns an explicit `unavailable`
+  memo when the ticker cannot be resolved.
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
