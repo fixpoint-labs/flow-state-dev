@@ -12,6 +12,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - New explicit `{ limit: { turns: N } }` form is preferred in new code that wants to be unambiguous about the unit. Bare `{ limit: N }` continues to compile and now behaves more generously than before — no migration step.
 - Live items from the in-flight request are still always included regardless of limit. This preserves the "try again" retry-after-mid-turn-failure scenario the bug was originally reported against.
 
+### Trading-desk: Company Profile analyst grounds the desk in what the business actually is (FIX-606)
+
+- New fifth Phase 1 analyst (`companyProfileAnalyst`) runs in parallel with the existing four and publishes a memo describing the underlying business: name, sector, industry, country/exchange/currency, business description, and rough scale (market cap, employees, IPO date). Downstream phases pick it up automatically via the `tradingDesk` capability's `phase1Memos` formatter.
+- Renderer, not synthesizer. The analyst is given structured fields from a deterministic provider fetch and constrained at the prompt level to render them — every body claim must trace to a field in `<data>`, with a "quote one figure verbatim" requirement as a structural defense against fabrication. The shared `<grounding>` clause from FIX-605 reinforces the boundary.
+- Provider chain reuses what's already wired: Finnhub `/stock/profile2` preferred (no new key, already called by `get_fundamentals`), Yahoo `quoteSummary` (assetProfile + summaryDetail) fallback for sector and business description. When both providers fail, the analyst emits a memo whose body explicitly states identity could not be resolved rather than inventing the company.
+- Fixture coverage for the three pinned tickers (NVDA, AAPL, JPM) at the `2026-05-06` snapshot.
+- README, walkthrough, and internal design doc updated to reflect the five-analyst fan-out and the grounding analyst's role.
+
+
 ## 2026-05-16
 
 ### Sequencer DSL: `.throwIf(condition, error)` guard primitive

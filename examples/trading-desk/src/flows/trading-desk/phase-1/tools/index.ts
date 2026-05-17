@@ -14,5 +14,6 @@ export { get_social_sentiment } from "./get_social_sentiment";
 export { get_reddit_mentions } from "./get_reddit_mentions";
 export { get_prediction_markets } from "./get_prediction_markets";
 export { get_insider_transactions } from "./get_insider_transactions";
+export { get_company_profile } from "./get_company_profile";
 
 export * from "./schemas";

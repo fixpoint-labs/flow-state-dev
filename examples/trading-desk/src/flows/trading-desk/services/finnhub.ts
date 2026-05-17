@@ -128,6 +128,56 @@ export async function fetchFinnhubFundamentals(
   };
 }
 
+/**
+ * Business-identity profile from Finnhub `/stock/profile2`. Returns the
+ * canonical company-profile shape. Finnhub does not provide a sector field
+ * or a long business description, so those map to `null` — the Yahoo
+ * fallback supplies them when configured. Throws on any failure so the
+ * tool handler can fall through to Yahoo.
+ */
+export async function fetchFinnhubCompanyProfile(
+  input: ToolInput<"get_company_profile">,
+): Promise<ToolOutput<"get_company_profile">> {
+  type Profile = {
+    name?: string;
+    country?: string;
+    currency?: string;
+    exchange?: string;
+    finnhubIndustry?: string;
+    ipo?: string;
+    marketCapitalization?: number;
+    employeeTotal?: number;
+    weburl?: string;
+  };
+  const data = await fetchJson<Profile>("/stock/profile2", { symbol: input.ticker });
+  if (!data.name) {
+    throw new Error(`Finnhub /stock/profile2 returned no profile for ${input.ticker}`);
+  }
+  const str = (v: string | undefined): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+  const num = (v: number | undefined): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const marketCapMillions = num(data.marketCapitalization);
+  return {
+    source: "finnhub",
+    ticker: input.ticker,
+    asOf: input.date,
+    name: data.name,
+    sector: null,
+    industry: str(data.finnhubIndustry),
+    country: str(data.country),
+    exchange: str(data.exchange),
+    currency: str(data.currency),
+    businessDescription: null,
+    marketCapUsd: marketCapMillions !== null ? marketCapMillions * 1_000_000 : null,
+    employees: num(data.employeeTotal),
+    ipoDate: str(data.ipo),
+    website: str(data.weburl),
+    websiteMetaDescription: null,
+    searchSnippets: null,
+  };
+}
+
 export async function fetchFinnhubCompanyNews(
   input: ToolInput<"search_news">,
 ): Promise<ToolOutput<"search_news">> {
