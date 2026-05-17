@@ -10,11 +10,23 @@ import type { UsesEntry } from "../capability/types";
 
 /**
  * Shorthand for a `BlockContext` whose `sequencer.state` slot is typed from
- * a sequencer-level `stateSchema`. All other ctx generics are widened — only
- * sequencer state is the surface the DSL guarantees back to user callbacks.
+ * a sequencer-level `stateSchema`. Other generics fall back to the same
+ * defaults `BlockContext` itself uses (`Record<string, unknown>` for state
+ * slots, `unknown` for parent input, etc.) so non-sequencer accesses still
+ * surface typos as type errors instead of silently passing under `any`.
  */
 export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
-  BlockContext<any, any, any, any, any, InferStateFromSchema<TStateSchema>, any, any, any>;
+  BlockContext<
+    Record<string, unknown>,
+    Record<string, unknown>,
+    Record<string, unknown>,
+    Record<string, unknown>,
+    Record<string, import("../types/resource").AnyResourceRef>,
+    InferStateFromSchema<TStateSchema>,
+    unknown,
+    undefined,
+    {}
+  >;
 
 export type ParallelStep<TCurrent> =
   | BlockDefinition<any, any>

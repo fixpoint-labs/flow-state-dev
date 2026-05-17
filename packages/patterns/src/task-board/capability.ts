@@ -40,7 +40,7 @@ import {
   type TaskCollectionRef,
 } from "@flow-state-dev/tasks";
 
-import { taskBoardStateSchema, type TaskBoardState } from "./schemas";
+import { taskBoardStateSchema } from "./schemas";
 
 /**
  * Sequencer-spec options. The capability constructs the collection
@@ -205,14 +205,14 @@ export function createTaskBoardCapability(
   // state.
   //
   // `taskBoardStateSchema` is passed directly (no `: ZodTypeAny` widening).
-  // `targetStatesType` pins the inferred type for consumers so they see
-  // `TaskBoardState` rather than the loose z.record inferred shape, without
-  // triggering the "type instantiation is excessively deep" guard.
+  // The block-factory schema-level merge path handles the per-target
+  // `StateRef<TaskBoardState> | undefined` shape from the schema map
+  // without tripping TypeScript's depth guard, so no escape hatch is
+  // needed at the capability level.
   const { stateKey } = options;
 
   return defineCapability({
     name: capabilityName,
-    targetStatesType: undefined as unknown as TaskBoardState,
     targetStateSchemas: {
       [boardName]: taskBoardStateSchema,
     },
