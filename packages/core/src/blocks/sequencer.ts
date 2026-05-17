@@ -2000,6 +2000,25 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
+    throwIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+      error: Error | ((value: TOutput, ctx: BlockContext) => Error | Promise<Error>)
+    ): SequencerDefinition<TInput, TOutput> {
+      return extend<TOutput>(
+        {
+          name: "throwIf",
+          run: async (value, ctx) => {
+            const shouldThrow = await condition(value as TOutput, ctx);
+            if (shouldThrow) {
+              throw typeof error === "function" ? await error(value as TOutput, ctx) : error;
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
+      );
+    },
+
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
       const connectOp: SequencerOperation = {
         name: `${config.name}/connect-input`,

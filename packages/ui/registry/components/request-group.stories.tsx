@@ -48,3 +48,21 @@ export const Streaming: Story = {
     );
   },
 };
+
+export const Finishing: Story = {
+  render: () => {
+    const items = toolUseConversation();
+    return (
+      <div style={{ width: 720 }}>
+        <SessionItemsProvider value={items}>
+          <RequestGroupRenderer
+            items={items}
+            isStreaming
+            isFinishing
+            statusMessage="Calling get_weather…"
+          />
+        </SessionItemsProvider>
+      </div>
+    );
+  },
+};

@@ -2,7 +2,54 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+
+## 2026-05-17
+
+### Trading-desk: Company Profile analyst grounds the desk in what the business actually is (FIX-606)
+
+- New fifth Phase 1 analyst (`companyProfileAnalyst`) runs in parallel with the existing four and publishes a memo describing the underlying business: name, sector, industry, country/exchange/currency, business description, and rough scale (market cap, employees, IPO date). Downstream phases pick it up automatically via the `tradingDesk` capability's `phase1Memos` formatter.
+- Renderer, not synthesizer. The analyst is given structured fields from a deterministic provider fetch and constrained at the prompt level to render them — every body claim must trace to a field in `<data>`, with a "quote one figure verbatim" requirement as a structural defense against fabrication. The shared `<grounding>` clause from FIX-605 reinforces the boundary.
+- Provider chain reuses what's already wired: Finnhub `/stock/profile2` preferred (no new key, already called by `get_fundamentals`), Yahoo `quoteSummary` (assetProfile + summaryDetail) fallback for sector and business description. When both providers fail, the analyst emits a memo whose body explicitly states identity could not be resolved rather than inventing the company.
+- Fixture coverage for the three pinned tickers (NVDA, AAPL, JPM) at the `2026-05-06` snapshot.
+- README, walkthrough, and internal design doc updated to reflect the five-analyst fan-out and the grounding analyst's role.
+
+
+## 2026-05-16
+
+### Sequencer DSL: `.throwIf(condition, error)` guard primitive
+
+- New `.throwIf((value, ctx) => boolean, Error | (value, ctx) => Error)` on the sequencer DSL. Throws the supplied error (or factory-produced error) when the predicate is true; otherwise passes through unchanged. Pairs with `.rescue([{ when: [TypedError], block: handler }])` for typed early-stop patterns. Both predicate and error factory may be async.
+
+### Trading-desk: unresolvable-ticker guardrails + shared grounding clause (FIX-605)
+
+- Pre-flight ticker resolution runs after `seedSession` and before `phase1Pipeline`. A `.tap` probes the active data source (fixture-file existence / live fundamentals fetch) and patches `stoppedReason: "unresolvable-ticker"` when the ticker can't be resolved; the following `.exitIf` bails before any model spend.
+- Post-Phase-1 data-quality `.tap` reads memo statuses and patches `stoppedReason: "phase-1-no-data"` when every analyst memo is in `error`; the following `.exitIf` halts the run before phases 2–5 synthesize on no upstream data.
+- The `tradingDesk.core` preset now injects a shared `<grounding>` clause into every generator's prompt — "operate strictly on data provided by upstream agents and tools; surface insufficient-data rather than fabricate." Expressed once, applied uniformly across all twelve agents, instead of the Phase-1-only `SHARED_PREAMBLE` line being the only source of grounding discipline.
+- Session state gains `stoppedReason` and `stoppedMessage` fields, both surfaced to the client so the navigator can render a terminal stopped banner rather than an in-progress indicator.
+
+### Round Robin pattern reshape: optional referee, `terminateWhen`, synthesizer-as-terminal (FIX-597)
+
+- `roundRobin()` no longer requires a judge. The `judge` config is removed; a new optional `referee` slot runs after every round as a per-round argument-quality auditor (returns `{ critique }`) and does not control termination. Critiques accumulate in outer state as `refereeCritiques` and the default roster agents render prior critiques into their prompts on subsequent rounds.
+- New `terminateWhen?: (ctx) => boolean` config drives runtime early-exit; `maxRounds` stays as the hard cap. The synthesizer remains the standard terminal step (`synthesizer: false` opt-out unchanged).
+- `RoundRobinFinalShape` drops `done` and `summary`; adds `refereeCritiques: Array<{ round, critique }>`. The `lastJudgeSummary` field is removed from outer state. Schema/factory renames: `roundRobinJudgeOutputSchema` → `roundRobinRefereeOutputSchema`, `createJudge` → `createReferee` (re-exported as `createRoundRobinReferee`).
+- Trading-desk Phase 2 collapses from four pre-built `roundRobin()` instances plus a router to one instance with `terminateWhen` driving `maxDebateRounds` and `uses: [tradingDesk]` resolving the model from `costPreset`. Phase 4 drops `judge: stubJudge` and otherwise keeps its three custom roster sub-sequencers. The `stub-judge.ts` workaround and its test are deleted.
+- Docs reshape: `apps/docs/docs/patterns/round-robin.md` rewritten around referee + termination + synthesizer-as-terminal; trading-desk walkthrough Phase 2 and Phase 4 prose updated; package README, example CLAUDE.md, and internal design doc reflect the new shape. The remix-primitives docs surface and a future moderator pattern are explicitly deferred.
+
+### Idempotency primitives on handler context (FIX-402)
+
+- `BlockContext` now exposes `idempotencyKey` and `runOnce(key, fn)`. The key is a stable string of the form `${requestId}:${blockPath}` — identical across retry attempts of the same logical step, so it can be passed directly to providers that accept an idempotency header (Stripe, Twilio, etc.).
+- `runOnce(key, fn)` memoizes the result of `fn` per `(requestId, userKey)`. The first invocation runs `fn` and persists the result through the `RequestStore`; subsequent calls within the same request — block retries, concurrent same-key races, or any re-entry — return the stored value without re-running the side effect. Concurrent calls with the same key share a single inflight promise so the wrapped work cannot fire twice in a race.
+- `RequestStore` gains `getRunOnceResult` / `setRunOnceResult`. Memory, filesystem, SQLite, and Postgres adapters all carry the table; SQLite and Postgres add a `request_runonce(request_id, key, value)` table to their schemas.
+- Scope is request-local on purpose. Crash-recovery dispatches that mint a new `requestId` start with an empty `runOnce` namespace — for cross-request de-dup, hand `ctx.idempotencyKey` to the external provider instead. The boundary is documented in the new `advanced/idempotency` docs page.
+
 ## 2026-05-15
+
+### Kitchen-sink in-flight status indicator (FIX-600)
+
+- Default fallback verb changed from "Thinking..." to "Working..." so it no longer duplicates the reasoning chrome's header text.
+- The in-flight indicator now switches to a muted "Tidying up..." state while a request is in its background-task drain phase. After FIX-554 lifted `.work()` to a request-level pool the SSE stream stays open past the visible end of the main response; the indicator was previously suggesting the assistant was still producing the answer.
+- `RequestGroupRenderer` and `RequestGroup` gain an optional `isFinishing` prop (defaults to `false`); host apps thread `useSession.isFinishing` through to drive the drain-state rendering. Downstream consumers that do not yet thread the signal continue to render as today.
+- Generator/tool status restore: a tool's status no longer lingers past its own execution. The generator snapshots the slot on the first tool entry of a (possibly parallel) round and restores it when the last tool exits, falling back to the generator's own `activeStatusMessage` (or empty → "Working...") afterward. The "Using <tool>…" hint now also routes through the same slot, so tools that don't emit their own status (e.g. `search`, `fetch`, `crawl`) get a clean restore instead of leaving "Using …" stuck on the indicator.
 
 ### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)
 
@@ -83,6 +130,13 @@ applicable to any future bind-mount provider:
 - New optional `Sandbox.hostMountSource` property — set by adapters that know which host directory backs `/workspace`, consulted by `flush()` to decide which walk strategy to use.
 
 ## 2026-05-14
+
+### `useResourceCollection` invalidates on mid-stream resource changes
+
+- `SessionView` gains a dedicated `resourceChanges: ReadonlyArray<ResourceChangeNotice>` channel. Every `resource_change` SSE item appends a `{ resourcePath, changeType, seq }` notice to this list — independent of the caller's `useSession` items filter. `resource_change` items are transient, so the prior implementation that watched `session.items` for them silently missed every mid-stream mutation whenever the consumer didn't opt into `includeTransient: true` (the default).
+- `useResourceCollection` now watches `session.resourceChanges` instead of `session.items`, invalidating its page cache as soon as a notice whose path is under the watched `ref` arrives. `get`'s callback identity also flips on invalidation (matching `list`'s existing behavior), so single-item subscribers via `useResourceCollectionItem` actually refetch.
+- User-visible effect: when a viewer is parked on a single collection item that transitions while they watch it (e.g., the trading-desk memo flipping from `writing` to `published`), the pane now updates in place instead of requiring the user to click away and back.
+- Additive public API: the new `ResourceChangeNotice` type and `SessionView.resourceChanges` field. No removals.
 
 ### Bash tool: MOAT adapter compatibility with MOAT 0.5.x
 

@@ -1223,11 +1223,12 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
  * When semantic is configured, adds consolidation and prune as .work() steps.
- * When digest is configured, adds a top-level digest-regenerate work step
- * so the rolling summary refreshes on every turn whose source signature
- * changed (new episodes, new facts, removed facts) — independent of whether
- * consolidation or prune actually triggered. The digest block's own
- * staleness guard makes the call a cheap no-op when nothing has drifted.
+ * Digest regeneration is appended to the consolidation and prune chains
+ * (see `withDigestRegenerate`) rather than scheduled per-turn, matching
+ * FIX-408's "consolidation completion + sourceSignature delta" trigger. A
+ * per-turn run was structurally redundant — the digest's own staleness
+ * guard already no-ops when sources haven't drifted — and widened the
+ * failure surface of a background-only chain into the user-visible turn.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const observeBlock = memorySystemObserve(config)
@@ -1246,17 +1247,6 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
     const consolidateBlock = memorySystemConsolidate(config)
     const pruneBlock = memorySystemPrune(config)
     pipeline = pipeline.work(consolidateBlock).work(pruneBlock)
-  }
-
-  if (config.digest) {
-    // Connector returns `{}` so the captured pipeline value (reflect's
-    // output) is reshaped to match `digestRegenerateInputSchema`. `force` is
-    // omitted so the block's own staleness guard decides whether to
-    // regenerate based on source-signature drift.
-    pipeline = pipeline.work(
-      () => ({}),
-      digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }),
-    )
   }
 
   return pipeline

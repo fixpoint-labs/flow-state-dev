@@ -105,7 +105,7 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("ask");
-  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -477,12 +477,14 @@ interface ChatPanelProps {
 const ConversationBody = memo(function ConversationBody({
   items,
   isStreaming,
+  isFinishing,
   statusMessage,
   isLoading,
   error,
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
+  isFinishing: boolean;
   statusMessage: string;
   isLoading: boolean;
   error: { message: string } | null;
@@ -498,7 +500,7 @@ const ConversationBody = memo(function ConversationBody({
               description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
             />
           )}
-          <RequestGroupRenderer items={items} isStreaming={isStreaming} statusMessage={statusMessage} />
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
           {error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{error.message}</span>
@@ -583,6 +585,7 @@ function ChatPanel({
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}
+          isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={session.isLoading}
           error={session.error}

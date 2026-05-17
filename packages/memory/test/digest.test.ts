@@ -506,7 +506,7 @@ describe('memory/digest', () => {
         }),
         response: { emit: async () => {} },
       } as any
-      const out = await runForTest(block, { content: 'NEW DIGEST' } as any, ctx) as any
+      const out = await runForTest(block, 'NEW DIGEST' as any, ctx) as any
 
       expect(out.persisted).toBe(true)
       expect(digestRef.state.digest?.content).toBe('NEW DIGEST')
@@ -532,7 +532,7 @@ describe('memory/digest', () => {
         }),
         response: { emit: async () => {} },
       } as any
-      const out = await runForTest(block, { content: '' } as any, ctx) as any
+      const out = await runForTest(block, '' as any, ctx) as any
       expect(out.persisted).toBe(false)
       expect(digestRef.state.totalGenerated).toBe(0)
     })

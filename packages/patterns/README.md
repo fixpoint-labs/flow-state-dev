@@ -152,7 +152,7 @@ Workers are first-class block compositions, not callbacks. The pattern composes 
 
 ### Round Robin
 
-Fixed-roster, deterministic-order turn-taking. Every agent in the roster contributes once per round, in declared order. After each round a judge inspects the transcript and returns `{ done, summary }`; the loop exits on done or when `maxRounds` is hit.
+Fixed-roster, deterministic-order turn-taking. Every agent in the roster contributes once per round, in declared order. The loop exits when `maxRounds` is reached or when the optional `terminateWhen(ctx)` predicate returns true. A synthesizer composes the transcript as the terminal step by default; pass `synthesizer: false` to return the raw shape.
 
 ```typescript
 import { roundRobin } from "@flow-state-dev/patterns/round-robin";
@@ -168,7 +168,9 @@ const editorial = roundRobin({
 });
 ```
 
-Override any roster entry by passing a `block`; override the judge or the synthesizer by passing custom blocks. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
+An optional `referee` runs after every round and audits the round's contributions for argument-quality issues (exaggeration, dismissed counter-arguments, unsupported claims). It returns `{ critique }`, accumulates in outer state as `refereeCritiques`, and the default roster agents render prior critiques into their prompts on subsequent rounds. The referee does **not** control termination.
+
+Override any roster entry by passing a `block`. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
 
 When two or more `roundRobin()` instances appear in the same sequencer chain, set `accessorKey` to a distinct string on each — the pattern's internal blocks declare the contributions resource under that key, and the framework's resource-merge rejects the same key pointing at different `defineResource()` references. Default is `"contributions"`.
 
@@ -188,7 +190,9 @@ const risk = roundRobin({
 });
 ```
 
-**Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`
+The final shape (before any synthesizer) is `{ rounds, contributions, refereeCritiques }`.
+
+**Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinReferee`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinRefereeOutputSchema`, `roundRobinRefereeCritiqueSchema`
 
 ### Debate
 

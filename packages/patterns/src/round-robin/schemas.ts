@@ -1,5 +1,5 @@
 /**
- * Round Robin schemas — input, contribution entry, judge output, and the
+ * Round Robin schemas — input, contribution entry, referee output, and the
  * session-scoped writable resource that holds the running transcript.
  *
  * The contributions resource is the canonical store for what each roster
@@ -25,21 +25,28 @@ export type RoundRobinContributionEntry = z.infer<
   typeof roundRobinContributionEntrySchema
 >;
 
-/** Verdict the judge must return at the end of each round. */
-export const roundRobinJudgeOutputSchema = z.object({
-  done: z.boolean(),
-  summary: z.string().default(""),
+/** Output the optional per-round referee returns. */
+export const roundRobinRefereeOutputSchema = z.object({
+  critique: z.string(),
 });
-export type RoundRobinJudgeOutput = z.infer<
-  typeof roundRobinJudgeOutputSchema
+export type RoundRobinRefereeOutput = z.infer<
+  typeof roundRobinRefereeOutputSchema
+>;
+
+/** A referee critique stashed in outer state, tagged with the round it ran in. */
+export const roundRobinRefereeCritiqueSchema = z.object({
+  round: z.number().int().min(1),
+  critique: z.string(),
+});
+export type RoundRobinRefereeCritique = z.infer<
+  typeof roundRobinRefereeCritiqueSchema
 >;
 
 /** Outer sequencer state. */
 export const roundRobinStateSchema = z.object({
   goal: z.string().default(""),
   round: z.number().default(0),
-  done: z.boolean().default(false),
-  lastJudgeSummary: z.string().optional(),
+  refereeCritiques: z.array(roundRobinRefereeCritiqueSchema).default([]),
 });
 export type RoundRobinState = z.infer<typeof roundRobinStateSchema>;
 
@@ -68,7 +75,6 @@ export function createRoundRobinContributions() {
 /** Final shape produced by the loop, before optional synthesizer. */
 export interface RoundRobinFinalShape {
   rounds: number;
-  done: boolean;
-  summary: string;
   contributions: RoundRobinContributionEntry[];
+  refereeCritiques: RoundRobinRefereeCritique[];
 }

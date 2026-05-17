@@ -50,11 +50,16 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
       const transcript = data.contributions
         .map((e) => `[Round ${e.round}] ${e.agentName}: ${e.text}`)
         .join("\n");
+      const critiques = data.refereeCritiques
+        .map((c) => `[Round ${c.round}] ${c.critique}`)
+        .join("\n");
+      const refereeBlock = critiques
+        ? `Referee critiques:\n${critiques}`
+        : "";
       return [
         `Rounds executed: ${data.rounds}`,
-        `Judge verdict: ${data.done ? "done" : "max-rounds"}`,
-        data.summary ? `Judge summary: ${data.summary}` : "",
         `Transcript:\n${transcript}`,
+        refereeBlock,
       ]
         .filter(Boolean)
         .join("\n\n");

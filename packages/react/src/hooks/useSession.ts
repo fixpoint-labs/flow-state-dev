@@ -20,6 +20,7 @@ import type {
   MessageItem,
   OutputItem,
   ReasoningItem,
+  ResourceChangeItem,
   SessionMetadataChangedEvent,
   StateChangeItem
 } from "@flow-state-dev/core/items";
@@ -80,6 +81,17 @@ export type UseSessionHookOptions = {
 };
 
 /**
+ * Mid-stream resource_change notice. Mirrors the fields a downstream hook
+ * (e.g., `useResourceCollection`) needs to decide whether a change touches
+ * its ref — without leaking the full transient SSE item shape.
+ */
+export type ResourceChangeNotice = {
+  readonly resourcePath: string;
+  readonly changeType: "created" | "updated" | "deleted";
+  readonly seq: number;
+};
+
+/**
  * Reactive session view returned by useSession.
  */
 export type SessionView = {
@@ -122,6 +134,14 @@ export type SessionView = {
    */
   readonly latestRequest: SessionRequestSummary | null;
   readonly items: OutputItem[];
+  /**
+   * Mid-stream resource_change notices, in arrival order. Independent of the
+   * `items` filter — these are surfaced even when transients are filtered out
+   * of `items`, so subscribers (e.g., `useResourceCollection`) can react to
+   * in-flight resource mutations without setting `includeTransient: true` on
+   * the caller's `useSession` call.
+   */
+  readonly resourceChanges: ReadonlyArray<ResourceChangeNotice>;
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
@@ -383,6 +403,14 @@ export function useSession(
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [latestRequest, setLatestRequest] = useState<SessionRequestSummary | null>(null);
   const [items, setItems] = useState<OutputItem[]>([]);
+  // Mid-stream resource_change notices. These items are transient on the SSE
+  // stream and are therefore filtered out of `items` by default — so a hook
+  // like `useResourceCollection` cannot observe them through the items log.
+  // Track them in a small, per-request-scoped array so subscribers can react
+  // to mid-stream resource mutations (e.g., a memo flipping from `writing` to
+  // `published`) without forcing the consumer to set `includeTransient: true`.
+  const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
+  const resourceChangeSeqRef = useRef(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -764,6 +792,14 @@ export function useSession(
           // completion. The onRequestStatus handler checks this flag.
           if (event.item.type === "resource_change") {
             resourceChangedDuringStreamRef.current = true;
+            const rc = event.item as ResourceChangeItem;
+            resourceChangeSeqRef.current++;
+            const notice: ResourceChangeNotice = {
+              resourcePath: rc.resourcePath,
+              changeType: rc.changeType,
+              seq: resourceChangeSeqRef.current
+            };
+            setResourceChanges((prev) => [...prev, notice]);
           }
 
           // FIX-576: reduce session/user/org-scope state_change items into the
@@ -993,6 +1029,7 @@ export function useSession(
   useEffect(() => {
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
+      resourceChangeSeqRef.current = 0;
       itemsByIdRef.current = new Map();
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();
@@ -1003,6 +1040,7 @@ export function useSession(
       setSnapshot(null);
       setLatestRequest(null);
       setItems([]);
+      setResourceChanges([]);
       setError(null);
       return;
     }
@@ -1439,6 +1477,7 @@ export function useSession(
     snapshot,
     latestRequest,
     items,
+    resourceChanges,
     getOwnedItems,
     getItemsByAgent,
     getItemsByAgentType,

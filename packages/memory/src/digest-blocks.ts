@@ -86,10 +86,13 @@ const digestGuardOutputSchema = z.object({
 
 type DigestGuardOutput = z.infer<typeof digestGuardOutputSchema>
 
-/** Generator output schema — text only. */
-export const digestOutputSchema = z.object({
-  content: z.string(),
-})
+/**
+ * Generator output schema — bare text per FIX-408's design ("the digest is
+ * text, not a structured object"). Using `z.string()` opts the generator into
+ * core's streaming text path, so a response that hits `maxTokens` produces a
+ * shorter-but-valid string rather than an unparseable truncated JSON object.
+ */
+export const digestOutputSchema = z.string()
 
 // ---------------------------------------------------------------------------
 // Helpers exposed for testing
@@ -315,7 +318,8 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
       const semRef = ctx.resources.semanticMemory
       const epRef = ctx.resources.episodicMemory
       const wmRef = ctx.resources.workingMemory
-      if (!digestRef || !input.content || input.content.trim().length === 0) {
+      const content = typeof input === 'string' ? input : ''
+      if (!digestRef || content.trim().length === 0) {
         return { persisted: false }
       }
 
@@ -325,7 +329,7 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
       const currentTurn = wmRef?.state?.currentTurn ?? 0
 
       const next: Digest = {
-        content: input.content,
+        content,
         generatedAt: new Date().toISOString(),
         generatedAtTurn: currentTurn,
         sourceSignature: signature,

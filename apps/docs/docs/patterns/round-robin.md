@@ -4,7 +4,7 @@ sidebar_position: 9
 
 # Round Robin
 
-`roundRobin` coordinates a fixed roster of agents that take turns in a deterministic order. After every full round a judge inspects the transcript and decides whether another round will help; the loop exits the moment the judge says it's done, or when the round cap is reached.
+`roundRobin` coordinates a fixed roster of agents that take turns in a deterministic order. After every round, an optional *referee* can audit the round's contributions for argument quality and emit a critique that subsequent rounds incorporate. The loop exits when `maxRounds` is reached or your optional `terminateWhen` predicate returns true. A built-in synthesizer composes the transcript into a final deliverable; pass `synthesizer: false` to skip and return the raw shape.
 
 Use it when the work calls for a known set of perspectives, in a known order, on a shared problem. Editorial review with a writer, a fact-checker, and a copy editor. A committee evaluating a decision. A risk panel critiquing a trade proposal.
 
@@ -20,16 +20,13 @@ input { goal }
   → roster[0] → record    (agent contributes; transcript appends)
   → ...
   → roster[N-1] → record
-  → judge                 (returns { done, summary })
-  → stashJudgeVerdict     (verdict → outer state)
-  → loopBack(when: !done, maxIterations: maxRounds - 1)
-  → buildOutput           ({ rounds, done, summary, contributions })
-  → synthesizer           (optional)
+  → referee → stashRefereeCritique          (optional; runs when referee is provided)
+  → loopBack(when: round < maxRounds && !terminateWhen(ctx))
+  → buildOutput           ({ rounds, contributions, refereeCritiques })
+  → synthesizer           (default; opt out with synthesizer: false)
 ```
 
 Every roster agent runs every round. Every agent sees the full prior transcript — entries from earlier rounds and earlier turns of the same round. Order within a round matches roster declaration order; the same agent never speaks twice in one round.
-
-The loop terminator is the judge, not the roster. The judge returns `{ done, summary }`. When `done` is `true`, the loop exits; the summary lands on the outer state. `maxRounds` (default 5) is a hard cap — if the judge never signals done, the loop exits anyway with `done: false`.
 
 The transcript is a session-scoped writable resource owned by the pattern. Each turn appends one entry: `{ round, agentName, text }`. A `TaskCollection` mirrors the same data as audit records, one per `(round, agent)` turn, which gives DevTool a structured timeline.
 
@@ -52,23 +49,25 @@ const editorial = roundRobin({
 //   .then(editorial)  // input: { goal: "Review draft X" }
 ```
 
-The default roster agent is an LLM generator that reads the contributions resource and renders prior turns into its prompt. The default judge is another generator that decides when the panel has converged. The default synthesizer composes the final deliverable from the transcript.
+The default roster agent is an LLM generator that reads the contributions resource and renders prior turns into its prompt. The default synthesizer composes the final deliverable from the transcript.
 
 ## The contributions transcript
 
-A session resource holds the running transcript while the loop executes. Each roster turn appends an entry; the default agent and default judge read the same resource to render prior turns into their prompts.
+A session resource holds the running transcript while the loop executes. Each roster turn appends an entry; the default roster agent reads the same resource to render prior turns into its prompt.
 
 When the loop ends, the pattern produces a `RoundRobinFinalShape`:
 
 ```ts
 {
   rounds: number;                       // rounds actually executed
-  done: boolean;                        // last judge verdict
-  summary: string;                      // last judge summary
   contributions: Array<{
     round: number;
     agentName: string;
     text: string;
+  }>;
+  refereeCritiques: Array<{             // empty when no referee is configured
+    round: number;
+    critique: string;
   }>;
 }
 ```
@@ -77,12 +76,7 @@ If `synthesizer: false`, this shape is the pattern's output. Otherwise the synth
 
 ## Sharing the contributions resource
 
-By default `roundRobin()` allocates its own internal transcript resource per call. That's fine for a single-instance use, but two patterns push you to share one across instances:
-
-- A `router()` that picks among multiple `roundRobin()` instances at runtime. The router merges declared resources across every route; two routes each holding their own `contributions` reference reject with `Resource conflict: "contributions" is declared with different defineResource() references`.
-- A post-loop block that needs to read the running transcript without threading it through `RoundRobinFinalShape.contributions`.
-
-Pass `contributions` to opt into a shared instance. Register the same resource on the flow's `resources` map so external consumer blocks can declare it on their own `resources:` slot.
+By default `roundRobin()` allocates its own internal transcript resource per call. That's fine for a single-instance use; pass `contributions` to opt into an external instance when a post-loop block needs to read the transcript without threading it through `RoundRobinFinalShape.contributions`. Register the same resource on the flow's `resources` map so external consumer blocks can declare it on their own `resources:` slot.
 
 ```ts
 import {
@@ -92,28 +86,12 @@ import {
 
 const debateContributions = createRoundRobinContributions();
 
-const cheap = roundRobin({
-  name: "debate-cheap",
-  roster,
-  maxRounds: 1,
-  contributions: debateContributions,
-  // ...
-});
-
-const full = roundRobin({
-  name: "debate-full",
+const panel = roundRobin({
+  name: "research-panel",
   roster,
   maxRounds: 2,
   contributions: debateContributions,
   // ...
-});
-
-const debateRouter = router({
-  name: "debate-router",
-  inputSchema: roundRobinInputSchema,
-  routes: [cheap, full],
-  execute: (_input, ctx) =>
-    ctx.session.state.budget === "high" ? full : cheap,
 });
 
 // In your flow definition:
@@ -139,7 +117,7 @@ Most consumers only need the `name` and `role` fields. The default agent will pr
 
 The default agent streams plain text as it generates — no `outputSchema` is set, so the framework's streaming gate fires and `message` items are emitted live. The roster entry's `name` is stamped on the underlying generator as `agentName`, so each emitted item carries identity — chat-style transcripts that scope to a known set of agents render the debate in real time without any extra wiring. The recorder (`record-contribution`) coerces strings via `coerceText`, so the contributions resource ends up with the same `{ round, agentName, text }` entries regardless.
 
-If you need a roster agent to emit structured output instead — e.g. a "vote" roster where each agent emits `{ choice: "A" }` — supply your own `block` via the roster entry (see below). Setting `outputSchema` directly on the default agent isn't a configuration option; it's a different shape of agent and belongs in an override.
+If you need a roster agent to emit structured output instead — e.g. a "vote" roster where each agent emits `{ choice: "A" }` — supply your own `block` via the roster entry. Setting `outputSchema` directly on the default agent isn't a configuration option; it's a different shape of agent and belongs in an override.
 
 For full control, supply a `block`:
 
@@ -159,28 +137,75 @@ An override block can return either a string or `{ text: string }`. Anything els
 
 Pattern-level `instructions`, `uses`, and `context` are forwarded to default blocks only. An override block owns its own configuration.
 
-## Customizing the judge
+## The optional referee
+
+The referee is a per-round auditor. After every roster round it reads the contributions and emits a single `{ critique: string }`. The pattern stashes that critique in outer state as `refereeCritiques: Array<{ round, critique }>` and the default roster agents render prior critiques into their user prompts on subsequent rounds, so debaters can respond to the feedback.
+
+The referee never decides whether the loop should continue. Termination is controlled by `maxRounds` and `terminateWhen` — see below.
+
+Use a referee when the roster is anchored to assigned stances (bull vs bear, aggressive vs conservative) and there's a real risk of contributors exaggerating to defend their stance, dismissing strong opposing points, or introducing claims not supported by the data. The default referee prompt is built around those failure modes plus rehashing prior-round arguments — the impasse signal you see when both sides start restating without engaging each other. The referee never redirects the debate or proposes new questions; that boundary is what keeps the role narrow.
+
+A minimal custom referee:
 
 ```ts
-const strictJudge = generator({
-  name: "strict-judge",
-  outputSchema: z.object({ done: z.boolean(), summary: z.string() }),
-  prompt: "Only return done=true when every agent has converged on the same recommendation.",
-  // ...
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const strictReferee = generator({
+  name: "strict-referee",
+  outputSchema: z.object({ critique: z.string() }),
+  // Declare the contributions resource so `ctx.resources.contributions`
+  // is populated. Use the same accessor key the pattern is configured
+  // with (default `"contributions"`).
+  resources: { contributions: panelContributions },
+  prompt: [
+    "Audit the round for unsupported numeric claims and unhedged predictions.",
+    "Return a short critique naming the contributor and quoting the passage.",
+  ].join(" "),
+  user: (_input, ctx) => {
+    const entries = ctx.resources.contributions.state.entries;
+    return entries
+      .map((e) => `[Round ${e.round}] ${e.agentName}: ${e.text}`)
+      .join("\n");
+  },
 });
 
 roundRobin({
-  name: "strict-panel",
+  name: "panel",
   roster: [...],
-  judge: strictJudge,
+  contributions: panelContributions,
+  maxRounds: 3,
+  referee: strictReferee,
 });
 ```
 
-The judge must return `{ done, summary }`. The pattern always runs the judge after every round — there is no judge-less mode. If you want fixed-rounds-only behavior, use a stub judge that always returns `{ done: false }` and rely on `maxRounds`.
+When `referee` is omitted, the entire referee step disappears from the pipeline. There is no default referee.
+
+## Termination
+
+Two knobs:
+
+- **`maxRounds`** is the hard cap on cycling (default 5). Once the round counter reaches it, the loop exits regardless of anything else.
+- **`terminateWhen?: (ctx) => boolean`** is an optional runtime predicate evaluated after each round. Returning `true` exits the loop early. The predicate reads from `ctx.sequencer.state` (round counter, accumulated referee critiques) and `ctx.session.state` (consumer-driven termination conditions).
+
+```ts
+roundRobin({
+  name: "panel",
+  roster: [...],
+  maxRounds: 5,
+  terminateWhen: (ctx) => {
+    const session = ctx.session?.state as { maxDebateRounds?: number };
+    const state = ctx.sequencer!.state as { round: number };
+    return state.round >= (session?.maxDebateRounds ?? 1);
+  },
+});
+```
+
+`terminateWhen` should be a pure, total function. A throwing predicate surfaces as a loop runtime error.
 
 ## Synthesizer
 
-The default synthesizer is a generator that composes the transcript into a unified deliverable. Pass `synthesizer: false` to skip the step and return the raw `RoundRobinFinalShape`. Pass your own block to take full control. Setting `outputSchema` while `synthesizer: false` is an error — there's nothing to apply the schema to.
+The default synthesizer is a generator that composes the transcript into a unified deliverable, reading both the contributions and any referee critiques. Pass `synthesizer: false` to skip the step and return the raw `RoundRobinFinalShape`. Pass your own block to take full control. Setting `outputSchema` while `synthesizer: false` is an error — there's nothing to apply the schema to.
 
 ## Config reference
 
@@ -189,18 +214,19 @@ The default synthesizer is a generator that composes the transcript into a unifi
 | `name` | `string` | (required) | Pattern instance name. Used as the audit collection id by default. |
 | `roster` | `RosterEntry[]` | (required) | Ordered list of agents. Names must be unique; at least one required. |
 | `maxRounds` | `number` | `5` | Hard cap on round cycling. |
+| `terminateWhen` | `(ctx) => boolean` | — | Runtime early-exit predicate. |
 | `contributions` | `DefinedResource` | auto-created | Optional shared transcript resource. See [Sharing the contributions resource](#sharing-the-contributions-resource). |
-| `judge` | `BlockDefinition` | default LLM judge | Returns `{ done, summary }` after every round. |
-| `synthesizer` | `BlockDefinition \| false` | default LLM synthesizer | Final transformation step. `false` returns the raw shape. |
+| `referee` | `BlockDefinition` | — | Optional per-round quality auditor. Returns `{ critique }`. Does not control termination. |
+| `synthesizer` | `BlockDefinition \| false` | default LLM synthesizer | Terminal step. `false` returns the raw shape. |
 | `outputSchema` | `ZodTypeAny` | — | Applied to the synthesizer's output. |
 | `instructions` | `string \| (input, ctx) => string` | — | Injected into default blocks only. |
-| `model` | `string` | `"preset/fast"` | Default model for built-in generators. |
+| `model` | `string` | `"intent/chat"` | Default model for built-in generators. |
 | `uses` | `UsesSlot` | — | Capabilities forwarded to default blocks. |
 | `tools` | `ToolsSlot` | — | Tools forwarded to default blocks. |
 | `context` | `GeneratorSlot` | — | Generator context slot forwarded to default blocks. |
-| `judgeAgentType` | `AgentType` | `"sub"` | Agent type for the default judge. |
 | `synthesizerAgentType` | `AgentType` | `"primary"` | Agent type for the default synthesizer. |
 | `collectionId` | `string` | `name` | Stable id for the per-run `TaskCollection`. |
+| `accessorKey` | `string` | `"contributions"` | Resource accessor key. Set distinct values when multiple round-robins coexist. |
 
 `RosterEntry`:
 
@@ -215,15 +241,15 @@ The default synthesizer is a generator that composes the transcript into a unifi
 - `roundRobin(config)` — pattern factory.
 - `createRoundRobinContributions()` — factory for the canonical session resource.
 - `createRosterAgent(opts)` — default roster-agent generator.
-- `createRoundRobinJudge(opts)` — default judge generator. (Re-exported as `createJudge` from the subpath.)
-- `createRoundRobinSynthesize(opts)` — default synthesizer generator.
-- `createRoundRobinInitContributions(opts)` — init-tap factory.
-- `createRoundRobinRecordContribution(opts)` — record-tap factory.
-- `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema` — schemas.
+- `createReferee(opts)` — default referee generator. (Re-exported as `createRoundRobinReferee` from the package root.)
+- `createSynthesize(opts)` — default synthesizer generator. (Re-exported as `createRoundRobinSynthesize`.)
+- `createInitContributions(opts)` — init-tap factory. (Re-exported as `createRoundRobinInitContributions`.)
+- `createRecordContribution(opts)` — record-tap factory. (Re-exported as `createRoundRobinRecordContribution`.)
+- `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinRefereeOutputSchema`, `roundRobinRefereeCritiqueSchema` — schemas.
 
 ## See also
 
-- [Debate](./debate) — same chassis, but the judge runs once at the end with a verdict instead of per-round as a terminator. Use it when you want adversarial argumentation across assigned positions rather than collaborative turn-taking.
+- [Debate](./debate) — uses a single judge at the end to render a verdict over the transcript. Round Robin's referee is per-round, optional, and audits argument quality rather than picking a winner. Reach for Debate when the desired output is "who won and why"; reach for Round Robin with an optional referee when the desired output is a synthesized deliverable shaped by panel feedback.
 - [Routed Specialists](./routed-specialists) — for when the next speaker depends on context.
 - [Supervisor](./supervisor) — for per-task review with retry, not full-roster turn-taking.
 - [Patterns overview](./overview).

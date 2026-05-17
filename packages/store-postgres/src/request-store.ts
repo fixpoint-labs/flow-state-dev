@@ -268,6 +268,34 @@ export function createPostgresRequestStore(
       }
       // PGlite / raw `QueryExecutor`: poll on the same shape as SQLite.
       return pollEvents(readEvents, requestId, options, pollIntervalMs);
+    },
+
+    async getRunOnceResult(
+      requestId: string,
+      key: string
+    ): Promise<{ found: boolean; value?: unknown }> {
+      const result = await executor.query(
+        "SELECT value FROM request_runonce WHERE request_id = $1 AND key = $2",
+        [requestId, key]
+      );
+      const row = result.rows[0] as { value: unknown } | undefined;
+      if (row === undefined) return { found: false };
+      // node-pg and PGlite both auto-parse JSONB columns to JS values, so no
+      // JSON.parse is needed here. (The events table stores TEXT and DOES
+      // need parsing — different shape on purpose.)
+      return { found: true, value: row.value };
+    },
+
+    async setRunOnceResult(
+      requestId: string,
+      key: string,
+      value: unknown
+    ): Promise<void> {
+      await executor.query(
+        "INSERT INTO request_runonce (request_id, key, value) VALUES ($1, $2, $3::jsonb) " +
+          "ON CONFLICT (request_id, key) DO UPDATE SET value = EXCLUDED.value",
+        [requestId, key, JSON.stringify(value)]
+      );
     }
   };
 }

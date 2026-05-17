@@ -37,7 +37,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `sources` | Citation and source display with collapsible list |
 | `suggestion` | Horizontal scrollable suggestion pills |
 | `shimmer` | Animated text shimmer for streaming/loading states |
-| `streaming-indicator` | Thinking indicator shown before assistant content arrives |
+| `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
 | `session-items-context` | React context for passing session items to nested components |
 | `plan` | Task list display for plan snapshots from planning patterns |

@@ -37,7 +37,7 @@ input { question }
 
 Every debater speaks every round, in declared order. Each debater's prompt includes all prior arguments — entries from earlier rounds and entries from earlier-speaking debaters in the current round. Order within a round matches the declared `debaters` array.
 
-The judge is the verdict-producer, not the loop terminator. It runs once, after the loop has exhausted its rounds. This is the structural difference from [Round Robin](./round-robin), where the judge decides round-to-round whether to keep going.
+The judge is the verdict-producer, not the loop terminator. It runs once, after the loop has exhausted its rounds. This is the structural difference from [Round Robin](./round-robin), which has no verdict-style judge — termination there is driven by `maxRounds` and an optional `terminateWhen` predicate, and an optional per-round referee audits argument quality without picking a winner.
 
 The transcript lives in a session-scoped writable resource owned by the pattern. Each turn appends one entry: `{ round, agentName, stance, text }`. A `TaskCollection` mirrors the same data for DevTool, one task per `(round, debater)` turn.
 
@@ -197,6 +197,6 @@ Debate is sharper than a single-pass generator when the question has tradeoffs. 
 
 ## See also
 
-- [Round Robin](./round-robin) — chassis Debate is built on. Use Round Robin when the judge should run every round and decide whether to keep going, instead of running once at the end with a verdict.
+- [Round Robin](./round-robin) — chassis Debate is built on. Round Robin uses an optional per-round referee for argument-quality auditing rather than a verdict-style judge, and termination is driven by `maxRounds` plus an optional `terminateWhen` predicate. Reach for it when the desired output is a synthesized deliverable shaped by panel feedback, not a winner.
 - [Routed Specialists](./routed-specialists) — for when the next speaker depends on context.
 - [Patterns overview](./overview).

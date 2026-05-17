@@ -6,6 +6,7 @@
  * that more text is on the way.
  */
 import type { ReactElement } from "react";
+import { Streamdown } from "streamdown";
 import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
@@ -35,8 +36,21 @@ export function TxSpeak({ agent, text, isStreaming, round }: TxSpeakProps): Reac
           </span>
         )}
       </div>
-      <p className="whitespace-pre-wrap pl-6 text-[12.5px] leading-relaxed text-[color:var(--c-fg)]">
-        {text}
+      <div
+        className={cn(
+          "pl-6 text-[12.5px] leading-relaxed text-[color:var(--c-fg)]",
+          // Streamdown emits standard prose elements; tighten spacing so the
+          // chat row stays compact instead of inheriting browser defaults.
+          "[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
+          "[&_ul]:my-1 [&_ol]:my-1 [&_ul]:ml-4 [&_ol]:ml-4 [&_ul]:list-disc [&_ol]:list-decimal",
+          "[&_li]:my-0.5",
+          "[&_h1]:text-[13.5px] [&_h2]:text-[13px] [&_h3]:text-[12.5px] [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
+          "[&_code]:rounded [&_code]:bg-[color:var(--c-surface)] [&_code]:px-1 [&_code]:py-[1px] [&_code]:text-[11.5px]",
+          "[&_pre]:my-1 [&_pre]:rounded [&_pre]:bg-[color:var(--c-surface)] [&_pre]:p-2 [&_pre]:text-[11.5px]",
+          "[&_a]:text-[color:var(--c-accent)] [&_a]:underline",
+        )}
+      >
+        <Streamdown>{text}</Streamdown>
         {isStreaming && (
           <span
             aria-hidden
@@ -46,7 +60,7 @@ export function TxSpeak({ agent, text, isStreaming, round }: TxSpeakProps): Reac
             )}
           />
         )}
-      </p>
+      </div>
     </div>
   );
 }

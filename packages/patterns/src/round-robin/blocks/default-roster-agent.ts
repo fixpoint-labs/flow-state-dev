@@ -42,6 +42,17 @@ function formatPrior(entries: { round: number; agentName: string; text: string }
   return lines.join("\n");
 }
 
+function formatRefereeCritiques(
+  critiques: { round: number; critique: string }[],
+) {
+  if (critiques.length === 0) return "";
+  return critiques
+    .slice()
+    .sort((a, b) => a.round - b.round)
+    .map((c) => `[Round ${c.round}] ${c.critique}`)
+    .join("\n");
+}
+
 export interface CreateRosterAgentOptions {
   name: string;
   agentName: string;
@@ -118,10 +129,16 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
         entries.length > 0
           ? `\nPrior contributions:\n${formatPrior(entries)}\n`
           : "";
+      const critiques = state.refereeCritiques ?? [];
+      const refereeBlock =
+        critiques.length > 0
+          ? `\nReferee critiques so far:\n${formatRefereeCritiques(critiques)}\n`
+          : "";
       return [
         `Goal: ${state.goal ?? ""}`,
         `Round: ${state.round}`,
         priorBlock,
+        refereeBlock,
       ]
         .filter(Boolean)
         .join("\n");

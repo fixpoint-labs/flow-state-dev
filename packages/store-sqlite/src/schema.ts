@@ -156,6 +156,21 @@ CREATE TABLE IF NOT EXISTS trace_request_roster (
 CREATE INDEX IF NOT EXISTS idx_trace_request_roster_inserted_at ON trace_request_roster(inserted_at);
 `;
 
+// FIX-402: per-request runOnce result store. Identity is (request_id, key);
+// inserts replace any prior row for the same pair. Same retention model as
+// `request_events` / `sequencer_checkpoints` — no FK to `requests`; rows
+// are pruned by the same request-lifecycle cleanup path the rest of the
+// per-request tables use.
+const REQUEST_RUNONCE_TABLE = `
+CREATE TABLE IF NOT EXISTS request_runonce (
+  request_id TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  PRIMARY KEY (request_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_request_runonce_request_id ON request_runonce(request_id);
+`;
+
 const TRACE_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS trace_events (
   request_id      TEXT NOT NULL,
@@ -269,6 +284,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(ORGS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
+  db.exec(REQUEST_RUNONCE_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
   db.exec(TRACE_REQUEST_ROSTER_TABLE);
   db.exec(TRACE_EVENTS_TABLE);
