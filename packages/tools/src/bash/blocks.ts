@@ -179,7 +179,7 @@ function isPending(value: RegistryValue): value is { pending: Promise<SandboxEnt
 /** Identity fields available on the block execution context. */
 interface ScopeIdentity {
   sessionId: string;
-  userId: string;
+  userId?: string;
   orgId?: string;
 }
 
@@ -199,8 +199,10 @@ function defaultMoatWorkspace(sessionId: string): string {
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   switch (scope) {
-    case "user":
-      return { key: `user:${identity.userId}`, scopeId: identity.userId };
+    case "user": {
+      const id = identity.userId ?? identity.sessionId;
+      return { key: `user:${id}`, scopeId: id };
+    }
     case "org": {
       const id = identity.orgId ?? identity.sessionId;
       return { key: `org:${id}`, scopeId: id };
@@ -231,7 +233,7 @@ function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObj
  * Sort descending by prefix length.
  */
 function discoverMounts(
-  ctx: any,
+  ctx: BlockContext,
   explicit: BashCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
@@ -664,7 +666,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 
-  async function getOrCreate(ctx: any): Promise<SandboxEntry> {
+  async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
     const { key: registryKey } = resolveScopeKey(scope, identity);
@@ -731,7 +733,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           provider.type === "moat"
             ? "Preparing bash sandbox (first run can take 30–60s while the image builds)…"
             : "Preparing bash sandbox…",
-        execute: async (input: unknown, ctx: any) => {
+        execute: async (input: unknown, ctx) => {
           await getOrCreate(ctx);
           return input;
         },
@@ -747,7 +749,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
         outputSchema: z.any(),
-        execute: async (input: unknown, ctx: any) => {
+        execute: async (input: unknown, ctx) => {
           const runName =
             provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
           const { destroyed } = await purgeOldRuns({
@@ -791,7 +793,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     description: bashCommandDescription,
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
-    execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
+    execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx) => {
       const entry = await getOrCreate(ctx);
       const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
       await flush(entry, destination, createState);
@@ -808,7 +810,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     ].join(" "),
     inputSchema: bashReadFileInputSchema,
     outputSchema: bashReadFileOutputSchema,
-    execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
+    execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx) => {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       const content = await entry.sandbox.readFile(fullPath);
@@ -836,7 +838,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     outputSchema: bashWriteFileOutputSchema,
     execute: async (
       input: z.infer<typeof bashWriteFileInputSchema>,
-      ctx: any,
+      ctx,
     ) => {
       const hostMountSource = resolveHostMountSourceForWrite(provider, ctx)!;
       const hostPath = path.join(hostMountSource, input.path);
@@ -873,7 +875,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     outputSchema: bashWriteFileOutputSchema,
     execute: async (
       input: z.infer<typeof bashWriteFileInputSchema>,
-      ctx: any,
+      ctx,
     ) => {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
@@ -944,13 +946,13 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
  */
 function resolveHostMountSourceForWrite(
   provider: SandboxProvider,
-  ctx: any,
+  ctx: BlockContext,
 ): string | undefined {
   if (provider.type !== "moat") return undefined;
   return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx).sessionId);
 }
 
-function getIdentity(ctx: any): ScopeIdentity {
+function getIdentity(ctx: BlockContext): ScopeIdentity {
   return {
     sessionId: ctx.session.identity.id,
     userId: ctx.session.identity.userId,
@@ -973,7 +975,7 @@ function getIdentity(ctx: any): ScopeIdentity {
  */
 export async function releaseBashSandbox(
   provider: SandboxProvider,
-  ctx: any,
+  ctx: BlockContext,
 ): Promise<void> {
   const identity = getIdentity(ctx);
   const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
