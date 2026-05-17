@@ -186,6 +186,51 @@ export async function fetchYahooCashflow(
   };
 }
 
+/**
+ * Business-identity profile from Yahoo `quoteSummary` with the
+ * `assetProfile` and `summaryDetail` modules. Yahoo is the preferred
+ * source for `sector` and `businessDescription` (Finnhub provides
+ * neither). Throws on any failure so the tool handler can fall through
+ * to `emptyPayload`.
+ */
+export async function fetchYahooCompanyProfile(
+  input: ToolInput<"get_company_profile">,
+): Promise<ToolOutput<"get_company_profile">> {
+  const yahoo = await getYahoo();
+  const summary = (await yahoo.quoteSummary(input.ticker, {
+    modules: ["assetProfile", "summaryDetail"],
+  })) as Record<string, Record<string, unknown> | undefined>;
+  const profile = summary.assetProfile ?? {};
+  const detail = summary.summaryDetail ?? {};
+  const name = stringFrom(profile.longName) ?? stringFrom(profile.shortName);
+  if (name === null) {
+    throw new Error(`Yahoo quoteSummary returned no profile for ${input.ticker}`);
+  }
+  const marketCap = numberFrom(detail.marketCap);
+  const employees = numberFrom(profile.fullTimeEmployees);
+  return {
+    source: "yahoo",
+    ticker: input.ticker,
+    asOf: input.date,
+    name,
+    sector: stringFrom(profile.sector),
+    industry: stringFrom(profile.industry),
+    country: stringFrom(profile.country),
+    exchange: null,
+    currency: stringFrom(detail.currency),
+    businessDescription: stringFrom(profile.longBusinessSummary),
+    marketCapUsd: marketCap > 0 ? marketCap : null,
+    employees: employees > 0 ? employees : null,
+    ipoDate: null,
+    website: stringFrom(profile.website),
+  };
+}
+
+function stringFrom(raw: unknown): string | null {
+  if (typeof raw === "string") return raw.length > 0 ? raw : null;
+  return null;
+}
+
 /** Yahoo nests numeric values under `{ raw }` for some modules; unwrap both shapes. */
 function numberFrom(raw: unknown): number {
   if (raw == null) return 0;

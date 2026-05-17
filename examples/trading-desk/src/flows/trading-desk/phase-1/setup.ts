@@ -49,14 +49,14 @@ export const setupPhase1Memos = handler({
         await existing.patchState(initial);
       }
     }
+    // Derive the memo-status seed from PHASE_1_MEMO_KEYS so adding a new
+    // Phase 1 analyst doesn't require touching this file.
+    const memoStatusSeed = Object.fromEntries(
+      Object.keys(PHASE_1_MEMO_KEYS).map((shortName) => [shortName, "pending" as const]),
+    );
     await ctx.session.patchState({
       activePhase: "phase-1",
-      memoStatus: {
-        fundamentals: "pending",
-        sentiment: "pending",
-        news: "pending",
-        technical: "pending",
-      },
+      memoStatus: memoStatusSeed,
     });
     return input;
   },

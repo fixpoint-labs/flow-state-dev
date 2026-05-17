@@ -1,0 +1,16 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "name": "Apple Inc.",
+  "sector": "Technology",
+  "industry": "Consumer Electronics",
+  "country": "United States",
+  "exchange": "NASDAQ NMS - GLOBAL MARKET",
+  "currency": "USD",
+  "businessDescription": "Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories worldwide. The company offers iPhone, Mac, iPad, and Wearables, Home and Accessories including AirPods, Apple TV, Apple Watch, and Beats products. It also provides AppleCare support, cloud services, and an array of services including the App Store, Apple Music, Apple TV+, Apple Arcade, Apple Card, Apple Pay, and iCloud.",
+  "marketCapUsd": 3400000000000,
+  "employees": 164000,
+  "ipoDate": "1980-12-12",
+  "website": "https://www.apple.com"
+}

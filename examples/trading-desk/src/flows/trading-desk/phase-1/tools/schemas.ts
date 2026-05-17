@@ -234,6 +234,31 @@ export const insiderTransactionsSchema = z.object({
   windowDays: z.number(),
 });
 
+/**
+ * Business-identity profile: who the company is, what it does, how big it
+ * is. Factual fields are nullable so partial-coverage provider responses
+ * round-trip cleanly (Finnhub provides no `sector` or `businessDescription`;
+ * Yahoo provides no `exchange` or `ipoDate`). The Company Profile analyst
+ * is a *renderer* of these fields, not a synthesizer.
+ */
+export const companyProfileSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** Empty string only in the `"unavailable"` empty payload. */
+  name: z.string(),
+  sector: z.string().nullable(),
+  industry: z.string().nullable(),
+  country: z.string().nullable(),
+  exchange: z.string().nullable(),
+  currency: z.string().nullable(),
+  businessDescription: z.string().nullable(),
+  marketCapUsd: z.number().nullable(),
+  employees: z.number().nullable(),
+  ipoDate: z.string().nullable(),
+  website: z.string().nullable(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -247,6 +272,7 @@ export const toolInputSchemas = {
   get_reddit_mentions: periodInput,
   get_prediction_markets: periodInput,
   get_insider_transactions: periodInput,
+  get_company_profile: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -262,6 +288,7 @@ export const toolOutputSchemas = {
   get_reddit_mentions: redditMentionsSchema,
   get_prediction_markets: predictionMarketsSchema,
   get_insider_transactions: insiderTransactionsSchema,
+  get_company_profile: companyProfileSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -282,6 +309,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_reddit_mentions: "reddit-mentions.json",
   get_prediction_markets: "prediction-markets.json",
   get_insider_transactions: "insider-transactions.json",
+  get_company_profile: "company-profile.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

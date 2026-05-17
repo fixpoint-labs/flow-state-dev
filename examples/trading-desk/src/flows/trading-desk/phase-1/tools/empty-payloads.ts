@@ -122,6 +122,22 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     transactions: [],
     windowDays: 90,
   }),
+  get_company_profile: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    name: "",
+    sector: null,
+    industry: null,
+    country: null,
+    exchange: null,
+    currency: null,
+    businessDescription: null,
+    marketCapUsd: null,
+    employees: null,
+    ipoDate: null,
+    website: null,
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {

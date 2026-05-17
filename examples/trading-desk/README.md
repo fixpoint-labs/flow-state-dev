@@ -6,15 +6,22 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, twelve agents,
+manager hand down a five-tier final decision. Five phases, thirteen agents,
 one structured artifact at every convergence point.
 
 ## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — four sub-agents (Fundamentals, Sentiment,
-  News, Technical) running in parallel, each with a distinct identity.
+- **Parallel analyst fan-out** — five sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile) running in parallel, each with a
+  distinct identity.
+- **Company Profile grounding** — a renderer-style analyst that fetches
+  structured business identity (sector, industry, business description,
+  scale) from public providers and writes it as a memo, so downstream
+  phases reason from a data-derived baseline rather than the model's
+  training priors. Returns an explicit `unavailable` memo when the
+  ticker cannot be resolved.
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
@@ -57,7 +64,7 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the four analyst
+  and its extension fields only; the full preset adds the five analyst
   memos and the full bull/bear debate transcript.
 
 Phase 4 — risk debate:
@@ -82,7 +89,7 @@ Phase 4 — risk debate:
   remaining personas still run.
 - **Cost-preset gates prompt depth** — the cheap preset reads the trade
   proposal, the investment thesis, and prior persona memos; the full
-  preset adds the four analyst memos and the full bull/bear debate
+  preset adds the five analyst memos and the full bull/bear debate
   transcript.
 
 Phase 5 — portfolio manager:
@@ -90,7 +97,7 @@ Phase 5 — portfolio manager:
 - **Final converging step** — a single `portfolioManager` generator reads
   the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
   trade proposal, Phase 4 risk assessment) and writes a typed
-  `PortfolioDecision`. On the `full` preset it also reads the four
+  `PortfolioDecision`. On the `full` preset it also reads the five
   analyst memos, the full bull/bear debate transcript, and the three
   persona risk critiques.
 - **Five-tier rating** — `finalRating` is one of `Sell`, `Underweight`,
@@ -196,12 +203,13 @@ the news analyst treats insider data as missing signal.
 analyze
   └─ seedSession                  (patch session state from input)
   └─ phase-1-analysts             (sub-sequencer, container item)
-        ├─ setupPhase1Memos       (.tap — pre-create 4 memos in `pending`)
+        ├─ setupPhase1Memos       (.tap — pre-create 5 memos in `pending`)
         └─ parallel
              ├─ fundamentalsAnalyst
              ├─ sentimentAnalyst
              ├─ newsAnalyst
-             └─ technicalAnalyst
+             ├─ technicalAnalyst
+             └─ companyProfileAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.then — { goal } from session state)

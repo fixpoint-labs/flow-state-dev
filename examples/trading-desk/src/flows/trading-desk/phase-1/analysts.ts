@@ -28,6 +28,7 @@ import {
 import { commitMemo, markError, markWriting } from "../memo-writer";
 import { tradingDesk } from "../services/trading-desk-capability";
 import {
+  companyProfilePrompt,
   fundamentalsPrompt,
   newsPrompt,
   sentimentPrompt,
@@ -38,6 +39,7 @@ import {
   compute_indicators,
   get_balance_sheet,
   get_cashflow,
+  get_company_profile,
   get_fundamentals,
   get_income_statement,
   get_insider_transactions,
@@ -261,3 +263,45 @@ export const sentimentAnalyst = sequencer({
   .then(sentimentGenerator)
   .tap(commitMemo("sentiment"))
   .rescue([{ block: markError("sentiment") }]);
+
+// ---------------------------------------------------------------------------
+// Company Profile — single deterministic fetch; the LLM is a *renderer* of
+// the structured identity fields, not a synthesizer. The prompt's "every
+// claim must trace to a field in <data>" rule plus the shared
+// `GROUNDING_CLAUSE` from `tradingDesk` are the no-fabrication defenses.
+// ---------------------------------------------------------------------------
+
+const companyProfileGenerator = generator({
+  name: "company-profile-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.companyProfile.agentName,
+  uses: [tradingDesk],
+  inputSchema: z.object({
+    companyProfile: toolOutputSchemas.get_company_profile,
+  }),
+  prompt: companyProfilePrompt,
+  context: {
+    data: (input) => asDataBlock(input),
+  },
+  user: ANALYST_INSTRUCTION,
+  outputSchema: thesisOutputSchema,
+});
+
+export const companyProfileAnalyst = sequencer({
+  name: "analyst-company-profile",
+  container: {
+    component: "analyst-card",
+    label: memoLabel(PHASE_1_MEMO_KEYS.companyProfile.agentName),
+  },
+})
+  .tap(markWriting("companyProfile"))
+  .map(tickerDate)
+  .parallel((() => {
+    const t = toolFor(PHASE_1_MEMO_KEYS.companyProfile.agentName);
+    return {
+      companyProfile: t(get_company_profile),
+    };
+  })())
+  .then(companyProfileGenerator)
+  .tap(commitMemo("companyProfile"))
+  .rescue([{ block: markError("companyProfile") }]);

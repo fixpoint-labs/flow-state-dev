@@ -1,0 +1,16 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "name": "JPMorgan Chase & Co.",
+  "sector": "Financial Services",
+  "industry": "Banks - Diversified",
+  "country": "United States",
+  "exchange": "New York Stock Exchange",
+  "currency": "USD",
+  "businessDescription": "JPMorgan Chase & Co. operates as a financial services company worldwide. It operates through four segments: Consumer & Community Banking, Corporate & Investment Bank, Commercial Banking, and Asset & Wealth Management. The company offers deposit and investment products, lending, cash management, payment services, and credit and debit cards to consumers and small businesses; mortgage origination and servicing; investment banking, market-making, prime brokerage, treasury services; and asset and wealth management services.",
+  "marketCapUsd": 620000000000,
+  "employees": 309926,
+  "ipoDate": "1969-03-05",
+  "website": "https://www.jpmorganchase.com"
+}
