@@ -1,11 +1,16 @@
 /**
- * tx-tool — single-line transcript row for a tool invocation.
+ * tx-tool — transcript row for a tool invocation. Click to expand the row
+ * into a pretty-printed JSON dump of the tool output for debugging.
  *
- * Shows: medium agent badge + tool name + truncated args + meta (latency,
- * size, FIXTURE/LIVE pill). Errors render the same row but in `--c-warn`
- * with the error message replacing the args summary.
+ * Compact row shows: agent badge + tool name + truncated args + meta
+ * (latency, size, provider pill). Errors render in `--c-warn` with the
+ * error message replacing the args summary; failed rows aren't expandable.
+ * In-progress rows (no output yet) aren't expandable either.
  */
-import type { ReactElement } from "react";
+"use client";
+
+import { useState, type ReactElement } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { AgentBadge } from "@/components/agent-badge";
 import type { AgentName } from "@/src/flows/trading-desk/agents";
 import { cn } from "@/lib/utils";
@@ -15,7 +20,13 @@ export type TxToolProps = {
   toolName: string;
   argsPreview: string;
   status: "in_progress" | "completed" | "incomplete" | "failed";
-  source?: "fixture" | "live";
+  /** Provider tag from the tool's output (free-form string — trading-desk
+   *  tools emit `fixture | yahoo | finnhub | fred | polymarket | unavailable`,
+   *  the `fetch` tool from `@flow-state-dev/tools` emits `jina | firecrawl |
+   *  builtin`, etc). Display logic groups all non-fixture / non-unavailable
+   *  values under the "live" tone but always shows the literal name. */
+  source?: string;
+  output?: unknown;
   durationMs?: number;
   bytes?: number;
   errorMessage?: string;
@@ -33,11 +44,14 @@ export function TxTool({
   argsPreview,
   status,
   source,
+  output,
   durationMs,
   bytes,
   errorMessage,
 }: TxToolProps): ReactElement {
+  const [open, setOpen] = useState(false);
   const isError = status === "failed";
+  const expandable = !isError && output !== undefined;
   const meta = [
     durationMs !== undefined ? `${durationMs}ms` : null,
     bytes !== undefined ? formatBytes(bytes) : null,
@@ -45,8 +59,20 @@ export function TxTool({
     .filter(Boolean)
     .join(" · ");
 
-  return (
-    <div className="flex items-center gap-2 px-4 py-1 text-[12px]">
+  // Row container is a `<span>` (not `<div>`) so it remains valid HTML5
+  // phrasing content when nested inside the expandable `<button>` below.
+  // Tailwind's `flex` class sets `display: flex` regardless of element.
+  const row = (
+    <span className="flex items-center gap-2 px-4 py-1 text-[12px]">
+      {expandable ? (
+        open ? (
+          <ChevronDown className="h-3 w-3 shrink-0 text-[color:var(--c-fg-faint)]" aria-hidden />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0 text-[color:var(--c-fg-faint)]" aria-hidden />
+        )
+      ) : (
+        <span className="inline-block h-3 w-3 shrink-0" aria-hidden />
+      )}
       {agent !== undefined ? (
         <AgentBadge agent={agent} treatment="medium" />
       ) : (
@@ -68,22 +94,57 @@ export function TxTool({
         </span>
       )}
       {source !== undefined && <SourcePill source={source} />}
+    </span>
+  );
+
+  if (!expandable) return row;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="block w-full text-left hover:bg-white/[0.02]"
+        aria-expanded={open}
+      >
+        {row}
+      </button>
+      {open && (
+        <pre
+          className={cn(
+            "mx-4 mt-0.5 mb-1 max-h-[360px] overflow-auto rounded border px-3 py-2",
+            "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
+            "font-mono text-[11px] leading-snug text-[color:var(--c-fg-muted)]",
+          )}
+        >
+          {JSON.stringify(output, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }
 
-function SourcePill({ source }: { source: "fixture" | "live" }): ReactElement {
-  const label = source.toUpperCase();
+/**
+ * Source tag pill. Three visual tones:
+ *   - `fixture`     → uses `--c-fixture` (curated data, not live).
+ *   - `unavailable` → muted gray (live mode but no provider answered).
+ *   - everything else → `--c-live`. Pill text shows the literal provider
+ *     name so the analyst can distinguish providers without color coding.
+ */
+function SourcePill({ source }: { source: string }): ReactElement {
+  const tone =
+    source === "fixture" ? "fixture" : source === "unavailable" ? "unavailable" : "live";
   return (
     <span
       className={cn(
         "rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-wider",
-        source === "fixture"
-          ? "bg-[color:var(--c-fixture)]/15 text-[color:var(--c-fixture)]"
-          : "bg-[color:var(--c-live)]/15 text-[color:var(--c-live)]",
+        tone === "fixture" && "bg-[color:var(--c-fixture)]/15 text-[color:var(--c-fixture)]",
+        tone === "live" && "bg-[color:var(--c-live)]/15 text-[color:var(--c-live)]",
+        tone === "unavailable" &&
+          "bg-[color:var(--c-fg-faint)]/15 text-[color:var(--c-fg-faint)]",
       )}
     >
-      {label}
+      {source.toUpperCase()}
     </span>
   );
 }

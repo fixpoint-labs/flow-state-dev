@@ -22,11 +22,23 @@ import {
   createInMemoryStores,
   type StoreRegistry,
 } from "@flow-state-dev/server";
-import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
+import {
+  createPgPoolTx,
+  createPostgresScheduleIndex,
+  createPostgresStores,
+  type PoolConfig,
+  type QueryExecutor,
+} from "@flow-state-dev/store-postgres";
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+import {
+  createScheduledTransportAdapter,
+} from "@flow-state-dev/scheduled";
 import { Client as NeonClient } from "@neondatabase/serverless";
+import { Pool } from "pg";
+import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
+import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 /**
  * The framework's generator block only emits tool-call items via the
@@ -166,6 +178,7 @@ const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => open
 const registry = createFlowRegistry();
 registry.register(chatAgentFlow);
 registry.register(richTextComponentFlow);
+registry.register(weeklyDigestFlow);
 
 /**
  * Resolve persistence stores based on environment:
@@ -184,18 +197,52 @@ registry.register(richTextComponentFlow);
  * roundtrips and the advisory-lock dance on every cold start. Off-Vercel
  * (local dev, self-hosted, Docker), keep auto-init so devs and other
  * deployments don't have to remember a separate migrate step.
+ *
+ * When Postgres is in use, this also constructs a `ScheduleIndex` against
+ * the same pool and installs it as the backing implementation behind the
+ * exported `scheduleIndex` wrapper. The weekly-digest flow depends on this
+ * for its `defineScheduleCollection({ index })` wiring.
  */
 async function createStores(): Promise<StoreRegistry> {
   const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
   if (dbUrl) {
     const onVercel = !!process.env.VERCEL;
     const isNeon = dbUrl.includes(".neon.tech");
-    return createPostgresStores({
+    // Build the pool here (rather than letting `createPostgresStores`
+    // build it from `connectionString`) so the same executor backs both
+    // the stores and `createPostgresScheduleIndex`.
+    const pool = new Pool({
       connectionString: dbUrl,
+      max: 10,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true,
+      ...(onVercel ? vercelPgPoolOptions : {}),
+      ...(onVercel && isNeon ? { Client: NeonClientForPg } : {}),
+    });
+    pool.on("error", () => {});
+
+    const executor: QueryExecutor = {
+      async query(text: string, values?: unknown[]) {
+        const result = await pool.query(text, values);
+        return {
+          rows: result.rows as Record<string, unknown>[],
+          rowCount: result.rowCount ?? 0,
+        };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
+      },
+    };
+
+    // Install the real ScheduleIndex impl behind the proxy in
+    // `lib/schedule-index.ts` before any collection hook runs (hooks fire
+    // only on resource writes, which require a request — long after this).
+    setScheduleIndexImpl(createPostgresScheduleIndex(executor));
+
+    return createPostgresStores({
+      pool,
       skipSchemaInit: onVercel,
-      poolOptions: onVercel
-        ? { ...vercelPgPoolOptions, ...(isNeon ? { Client: NeonClientForPg } : {}) }
-        : undefined,
       // Vercel functions can't hold a usable `LISTEN flow_events` session: Neon's
       // pooled endpoint is pgbouncer in transaction mode (LISTEN registers on a
       // backend that's recycled at transaction end), and even on direct endpoints
@@ -226,6 +273,7 @@ export function getRouter(): Promise<FlowApiRouter> {
         modelResolver,
         speechResolver,
         transcriptionResolver,
+        adapters: [createScheduledTransportAdapter()],
         detectInterruptedOnStartup: false,
         // Keep the serverless function alive while runAction executes.
         // Without this, Vercel kills the function after the 202 response,

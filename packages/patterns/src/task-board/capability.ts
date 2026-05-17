@@ -35,7 +35,6 @@
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
-import type { ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskCollectionRef,
@@ -205,19 +204,17 @@ export function createTaskBoardCapability(
   // loudly here makes the misuse case obvious instead of corrupting
   // state.
   //
-  // `taskBoardStateSchema` is cast to a wider `ZodTypeAny` because
-  // without the cast TS recursively unifies the schema's shape against
-  // `defineCapability`'s `targetStateSchemas` generic and trips the
-  // "type instantiation is excessively deep" guard for nested z.record
-  // chains — the framework consumes the schema as `ZodTypeAny` at
-  // runtime, so the wider type loses no information.
-  const stateSchema: ZodTypeAny = taskBoardStateSchema;
+  // `taskBoardStateSchema` is passed directly (no `: ZodTypeAny` widening).
+  // The block-factory schema-level merge path handles the per-target
+  // `StateRef<TaskBoardState> | undefined` shape from the schema map
+  // without tripping TypeScript's depth guard, so no escape hatch is
+  // needed at the capability level.
   const { stateKey } = options;
 
   return defineCapability({
     name: capabilityName,
     targetStateSchemas: {
-      [boardName]: stateSchema,
+      [boardName]: taskBoardStateSchema,
     },
     fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
       tasks: () => {

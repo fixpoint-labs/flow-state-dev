@@ -10,7 +10,10 @@ You install a capability by listing it in a block's `uses` array. The framework 
 
 ```ts
 import { generator, handler } from "@flow-state-dev/core";
-import { memoryCapability } from "@flow-state-dev/tools/memory";
+import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/memory";
+
+// For the full multi-tier system, use `system()` from the same module — see
+// Ecosystem → Memory for details.
 
 const assistant = generator({
   name: "assistant",
@@ -118,6 +121,60 @@ A capability can contribute any of:
 | Tools | Merged into the generator's tool list |
 
 Capabilities are validated at factory time, so most install mistakes show up before your code runs.
+
+## Type inference from capability declarations
+
+When a block lists a capability in `uses`, the framework reflects the capability's declared schemas into the block's `ctx` types at factory time. You don't need to re-declare what the capability already claims.
+
+The four axes where this flows:
+
+| Capability field | Where it appears in `ctx` |
+|---|---|
+| `sessionStateSchema` | `ctx.session.state` |
+| `sessionResourceSchemas` / `sessionResources` | `ctx.session.resources.*` |
+| `targetStateSchemas` | `ctx.targets.*` |
+| `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
+
+If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision.
+
+Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
+
+```ts
+import { defineCapability, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const marketCapability = defineCapability({
+  name: "market",
+  sessionStateSchema: z.object({
+    ticker: z.string(),
+    lastPrice: z.number().nullable(),
+  }),
+  fns: (ctx) => ({
+    currentTicker: () => ctx.session.state.ticker,
+  }),
+});
+
+const priceLogger = handler({
+  name: "price-logger",
+  uses: [marketCapability],
+  execute: async (_input, ctx) => {
+    // ctx.session.state.ticker is typed as string — no re-declaration needed
+    // ctx.session.state.lastPrice is typed as number | null
+    const ticker = ctx.session.state.ticker;
+    await ctx.session.patchState({ lastPrice: 42.5 });
+  },
+});
+```
+
+The `ticker` and `lastPrice` fields are typed because `marketCapability` declared them. No `sessionStateSchema` on the handler is necessary.
+
+### Limits
+
+**Direct only.** If a capability itself `uses` another capability, the inner capability's schema contributions do not flow up to the block that `uses` the outer one. Each capability exposes only what it directly declares. If you need the inner schemas visible to consumers, re-declare them on the outer capability.
+
+**Dynamic `uses` entries are runtime-only.** When `uses` contains a function — `(ctx) => [...]` — the returned capabilities contribute context and tools at runtime but nothing to types. Only static `CapabilityRef` entries are reflected.
+
+**The `sessionStateType` escape hatch.** When a capability's `sessionStateSchema` produces a type that is too loose or causes TS2589 (type instantiation too deep), `defineCapability` accepts a `sessionStateType` field as a type-only override. The equivalent escape hatches exist for resources, target states, and sequencer state: `resourcesType`, `targetStatesType`, `sequencerStateType`. These are compile-time only — they carry no runtime value.
 
 ## When to reach for one
 

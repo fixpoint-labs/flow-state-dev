@@ -17,7 +17,6 @@ import type { DefinedResource } from "@flow-state-dev/core/types";
 import {
   roundRobinStateSchema,
   type RoundRobinContributionsState,
-  type RoundRobinState,
 } from "../schemas";
 
 export type RosterAgentInstructions =
@@ -42,6 +41,17 @@ function formatPrior(entries: { round: number; agentName: string; text: string }
   return lines.join("\n");
 }
 
+function formatRefereeCritiques(
+  critiques: { round: number; critique: string }[],
+) {
+  if (critiques.length === 0) return "";
+  return critiques
+    .slice()
+    .sort((a, b) => a.round - b.round)
+    .map((c) => `[Round ${c.round}] ${c.critique}`)
+    .join("\n");
+}
+
 export interface CreateRosterAgentOptions {
   name: string;
   agentName: string;
@@ -53,6 +63,9 @@ export interface CreateRosterAgentOptions {
   tools?: ToolsSlot;
   instructions?: RosterAgentInstructions;
   agentType?: AgentType;
+  /** Accessor key used in the block's `resources:` map. Defaults to
+   *  `"contributions"`. See `createInitContributions` for rationale. */
+  accessorKey?: string;
 }
 
 /**
@@ -60,6 +73,7 @@ export interface CreateRosterAgentOptions {
  * from the resource into the prompt; emits `{ text }`.
  */
 export function createRosterAgent(opts: CreateRosterAgentOptions) {
+  const accessor = opts.accessorKey ?? "contributions";
   const roleLine = opts.role
     ? `You are ${opts.role} contributing to a round-robin coordination process.`
     : "You are an agent contributing to a round-robin coordination process.";
@@ -79,7 +93,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
   return generator({
     name: `${opts.name}-roster-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
-    resources: { contributions: opts.contributions },
+    resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     agentType: opts.agentType ?? "sub",
     agentName: opts.agentName,
@@ -106,18 +120,25 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as RoundRobinState;
-      const contribState = ctx.resources.contributions
+      const state = ctx.sequencer!.state;
+      // TODO: computed-key resource accessor — see round-robin follow-up
+      const contribState = (ctx.resources as any)[accessor]
         ?.state as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];
       const priorBlock =
         entries.length > 0
           ? `\nPrior contributions:\n${formatPrior(entries)}\n`
           : "";
+      const critiques = state.refereeCritiques ?? [];
+      const refereeBlock =
+        critiques.length > 0
+          ? `\nReferee critiques so far:\n${formatRefereeCritiques(critiques)}\n`
+          : "";
       return [
         `Goal: ${state.goal ?? ""}`,
         `Round: ${state.round}`,
         priorBlock,
+        refereeBlock,
       ]
         .filter(Boolean)
         .join("\n");

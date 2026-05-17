@@ -42,6 +42,7 @@ import {
   type AnyMemoShortName,
 } from "@/src/flows/trading-desk/agents";
 import type {
+  MemoState,
   MemoStatus,
   ThesisSection,
 } from "@/src/flows/trading-desk/resources";
@@ -58,10 +59,16 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "sentiment",
   "news",
   "technical",
+  "companyProfile",
   "bull",
   "bear",
   "researchManager",
   "trader",
+  "aggressive",
+  "conservative",
+  "neutral",
+  "riskAssessment",
+  "portfolioManager",
 ];
 
 export function ThesesPane({ session, memoStatus }: ThesesPaneProps): ReactElement {
@@ -135,9 +142,8 @@ function EmptySelection(): ReactElement {
   return (
     <div className="m-auto max-w-md text-center">
       <p className="text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
-        Pick a phase entry on the left to see its memo. Phase 1 entries
-        become live once the analysts run; Phase 2–5 entries are
-        scaffolding until those phases ship.
+        Pick a phase entry on the left to see its memo. Each entry
+        becomes live once its agent runs.
       </p>
     </div>
   );
@@ -149,6 +155,12 @@ type MemoDocProps = {
   status: MemoStatus | "unavailable";
 };
 
+// Derived from the canonical `memoStateSchema` so the client-data type
+// can't drift from the resource contract (FIX-564 reviewer feedback).
+type AcceptedAdjustment = NonNullable<
+  MemoState["acceptedAdjustments"]
+>["sizing"];
+
 type MemoClientData = {
   status: MemoStatus;
   label: string | null;
@@ -157,6 +169,33 @@ type MemoClientData = {
   body: ThesisSection[] | null;
   metrics: Record<string, string> | null;
   errorMessage: string | null;
+  // Phase 5 extension fields — only populated on `memos/p5/portfolio-manager`.
+  decisionSummary: string | null;
+  finalRating:
+    | "Sell"
+    | "Underweight"
+    | "Hold"
+    | "Overweight"
+    | "Buy"
+    | null;
+  decisionConfidence: number | null;
+  acceptedAdjustments:
+    | {
+        sizing: AcceptedAdjustment;
+        holdingPeriod: AcceptedAdjustment;
+        invalidation: AcceptedAdjustment;
+      }
+    | null;
+  keyDependencies: string[] | null;
+  upstreamReferences:
+    | {
+        analystMemos: string[];
+        thesis: string;
+        tradeProposal: string;
+        riskAssessment: string;
+      }
+    | null;
+  agreesWithTrader: boolean | null;
 };
 
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
@@ -178,11 +217,7 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
     return (item.clientData ?? null) as MemoClientData | null;
   }, [item, collectionKey]);
 
-  if (status === "unavailable") {
-    return <PendingDoc agent={agent} />;
-  }
-
-  if (status === "pending") {
+  if (status === "unavailable" || status === "pending") {
     return <PendingDoc agent={agent} />;
   }
 
@@ -220,6 +255,14 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
         headline={data?.headline ?? null}
         rating={data?.rating ?? null}
         body={data?.body ?? null}
+        metrics={data?.metrics ?? null}
+        decisionSummary={data?.decisionSummary ?? null}
+        finalRating={data?.finalRating ?? null}
+        decisionConfidence={data?.decisionConfidence ?? null}
+        acceptedAdjustments={data?.acceptedAdjustments ?? null}
+        keyDependencies={data?.keyDependencies ?? null}
+        upstreamReferences={data?.upstreamReferences ?? null}
+        agreesWithTrader={data?.agreesWithTrader ?? null}
       />
     );
   }
@@ -264,9 +307,7 @@ function PendingDoc({ agent }: { agent: AgentName }): ReactElement {
         </div>
       </div>
       <p className="text-[12px] leading-relaxed text-[color:var(--c-fg-muted)]">
-        This memo will populate once the upstream phases land. Phases 1–3
-        ship the analyst, debate, and trader memos. Phase 4–5 entries are
-        scaffolding.
+        This memo will populate once the upstream phases finish their work.
       </p>
     </div>
   );

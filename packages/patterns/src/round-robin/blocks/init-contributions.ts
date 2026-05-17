@@ -17,16 +17,23 @@ export function createInitContributions(opts: {
   name: string;
   contributions: DefinedResource;
   collectionId: string;
+  /** Accessor key used in the block's `resources:` map. Defaults to
+   *  `"contributions"`. Set to a unique key when multiple `roundRobin()`
+   *  instances coexist in the same sequencer chain to avoid the
+   *  build-time accessor-key conflict. */
+  accessorKey?: string;
 }) {
+  const accessor = opts.accessorKey ?? "contributions";
   return handler({
     name: `${opts.name}-init`,
     inputSchema: roundRobinInputSchema,
     outputSchema: z.any(),
-    resources: { contributions: opts.contributions },
+    resources: { [accessor]: opts.contributions },
     execute: async (input, ctx) => {
-      await ctx.resources.contributions.setState({
+      // TODO: computed-key resource accessor — see round-robin follow-up
+      await (ctx.resources as any)[accessor].setState({
         entries: [],
-      } as Parameters<typeof ctx.resources.contributions.setState>[0]);
+      });
       // Materialize the collection so its `tasks` slot exists in
       // sequencer state from turn one.
       getOrCreateTaskCollection({

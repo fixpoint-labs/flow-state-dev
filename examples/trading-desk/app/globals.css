@@ -78,3 +78,33 @@ button {
 .td-caret {
   animation: td-caret 1s steps(1, end) infinite;
 }
+
+/* Themed scrollbars. CSS vars follow the data-theme toggle, so the
+   scrollbar tracks light/dark with everything else. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  /* 2px transparent border + padding-box clip gives the thumb visual breathing
+     room without overlapping content next to the scroll edge. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-fg-faint);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

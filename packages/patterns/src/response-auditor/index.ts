@@ -11,7 +11,6 @@
  * results appear after the response completes as a "second pass" annotation.
  */
 import { sequencer, handler } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   AnalyzerResultSchema,
@@ -172,7 +171,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   // individual failures are caught at the framework level rather than
   // via manual try/catch. Failed analyzers produce null, filtered out
   // after the forEach.
-  function createSafeAnalyzer(analyzer: BlockDefinition<any, any>) {
+  function createSafeAnalyzer(analyzer: typeof analyzers[number]) {
     return sequencer({
       name: `safe-${analyzer.name}`,
       inputSchema: auditorInputSchema,

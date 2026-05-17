@@ -157,6 +157,7 @@ export type {
   GeneratorModelToolCall,
   GeneratorModelUsage,
   GeneratorSearchConfig,
+  ModelIdentity,
   ModelResolver,
   ResolveModelCallOptions,
   PrepareStepFn,

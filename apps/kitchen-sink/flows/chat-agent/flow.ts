@@ -24,7 +24,7 @@ import {
   utility,
 } from "@flow-state-dev/core";
 
-import { system as memorySystem } from "@thought-fabric/core/memory";
+import { system as memorySystem } from "@flow-state-dev/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -40,6 +40,7 @@ import {
   thinkingStyleSessionStateSchema,
   featuresCapability,
   intentSelectorBlock,
+  bashCap,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
 import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";
@@ -71,9 +72,9 @@ const mem = memorySystem({
   semantic: true,
   // Enables the rolling-summary digest tier. Without this the unified
   // memory formatter has nothing to render in the system prompt's
-  // <memory> section once working memory drifts past capacity. The capture
-  // pipeline also runs `digestRegenerate` after each turn so the digest
-  // stays fresh as new facts and episodes accumulate.
+  // <memory> section once working memory drifts past capacity. The digest
+  // refreshes after consolidation/prune actually mutate the semantic store
+  // (see `withDigestRegenerate`), not on every turn.
   digest: true,
 });
 
@@ -496,6 +497,12 @@ const chatAgentFlow = defineFlow({
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
   resources: { ...(mem.userResources ?? {}) },
+
+  // Tear down the bash sandbox at request end. Required when the bash
+  // provider is MOAT (otherwise containers accumulate across requests);
+  // a no-op for `local` / `just-bash` / `vercel`. Wired unconditionally
+  // so swapping the provider via env vars doesn't reintroduce a leak.
+  request: { onFinished: bashCap.cleanupBlock },
 
   user: {
     stateSchema: userStateSchema,

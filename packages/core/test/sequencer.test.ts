@@ -1150,6 +1150,79 @@ describe("sequencer builder", () => {
     });
   });
 
+  describe("throwIf", () => {
+    class GuardError extends Error {
+      constructor(message: string) {
+        super(message);
+        this.name = "GuardError";
+      }
+    }
+
+    it("throws the supplied static error when condition is true", async () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "throw-static", inputSchema: z.number() })
+        .then(addOne)
+        .throwIf((value) => value > 0, new GuardError("positive"))
+        .then(addOne);
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 0, ctx)).rejects.toThrow("positive");
+    });
+
+    it("invokes the error factory with value + ctx and throws its result", async () => {
+      const seq = sequencer({ name: "throw-factory", inputSchema: z.number() })
+        .throwIf(
+          (value) => value === 42,
+          (value, ctx) =>
+            new GuardError(`bad value ${value} on ${ctx.request.identity.id}`),
+        );
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 42, ctx)).rejects.toThrow(
+        /^bad value 42 on /,
+      );
+    });
+
+    it("passes through unchanged when condition is false", async () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "throw-pass", inputSchema: z.number() })
+        .then(addOne)
+        .throwIf((value) => value > 100, new GuardError("never"))
+        .then(addOne);
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 0, ctx)).resolves.toBe(2);
+    });
+
+    it("supports async conditions and async error factories", async () => {
+      const seq = sequencer({ name: "throw-async", inputSchema: z.number() })
+        .throwIf(
+          async (value) => value === 7,
+          async (value) => new GuardError(`async ${value}`),
+        );
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 7, ctx)).rejects.toThrow("async 7");
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
+    });
+
+    it("is caught by .rescue with matching `when:` filter", async () => {
+      const fallback = handler({
+        name: "fallback",
+        inputSchema: z.unknown(),
+        outputSchema: z.number(),
+        execute: async () => -1,
+      });
+
+      const seq = sequencer({ name: "throw-rescue", inputSchema: z.number() })
+        .throwIf((value) => value > 0, new GuardError("tripped"))
+        .rescue([{ when: [GuardError], block: fallback }]);
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(-1);
+    });
+  });
+
   describe("workIf", () => {
     it("dispatches sidechain when condition function returns true", async () => {
       let workExecuted = false;

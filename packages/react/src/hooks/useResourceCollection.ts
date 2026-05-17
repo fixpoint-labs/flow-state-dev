@@ -20,7 +20,6 @@ import {
   type CollectionSnapshotPrefetchedItem,
   type ResourceClient
 } from "@flow-state-dev/client";
-import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionView } from "./useSession";
 import { useFlowContext } from "../context/FlowContext";
 
@@ -92,14 +91,11 @@ function cacheKey(options: CollectionListOptions | undefined): string {
 }
 
 /**
- * Returns `true` if a resource_change item likely affects items in `ref`.
+ * Returns `true` if a resource_change path likely affects items in `ref`.
  * Conservative: any path starting with `ref/` or exactly `ref` triggers
  * invalidation. False positives are tolerable; missed invalidations are not.
  */
-function affectsCollection(item: OutputItem, ref: string): boolean {
-  if (item.type !== "resource_change") return false;
-  const path = (item as { resourcePath?: string }).resourcePath;
-  if (typeof path !== "string") return false;
+function pathAffectsCollection(path: string, ref: string): boolean {
   return path === ref || path.startsWith(`${ref}/`);
 }
 
@@ -174,23 +170,25 @@ export function useResourceCollection(
     setGeneration(generationRef.current);
   }, []);
 
-  // Watch the session items stream for resource_change events touching this
-  // collection. The current pattern in useSession batches a snapshot refresh
-  // at request completion; here we invalidate per-ref immediately so an
-  // active list page reflects creates/updates/deletes without waiting for
-  // the next snapshot.
-  const lastSeenItemsLenRef = useRef(0);
+  // Watch the session's resource_change notice channel for events touching
+  // this collection. `session.items` filters out transients by default, so
+  // a hook earlier in the file's history that watched `session.items` for
+  // `resource_change` rows missed every mid-stream mutation when the caller
+  // did not opt into transients. `session.resourceChanges` is the dedicated
+  // side channel: surfaced regardless of the items filter, so every active
+  // ref subscriber gets a chance to invalidate the moment the change lands.
+  const lastSeenResourceChangeIdxRef = useRef(0);
   useEffect(() => {
-    const items = session.items;
-    const start = lastSeenItemsLenRef.current;
-    lastSeenItemsLenRef.current = items.length;
-    for (let i = start; i < items.length; i++) {
-      if (affectsCollection(items[i]!, ref)) {
+    const changes = session.resourceChanges;
+    const start = lastSeenResourceChangeIdxRef.current;
+    lastSeenResourceChangeIdxRef.current = changes.length;
+    for (let i = start; i < changes.length; i++) {
+      if (pathAffectsCollection(changes[i]!.resourcePath, ref)) {
         invalidate();
         break;
       }
     }
-  }, [session.items, ref, invalidate]);
+  }, [session.resourceChanges, ref, invalidate]);
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),
@@ -250,7 +248,11 @@ export function useResourceCollection(
       if (!sessionId) return null;
       return client.getCollectionItemState(sessionId, ref, topic);
     },
-    [client, ref, session.sessionId]
+    // `generation` is in deps so the callback identity flips on invalidation;
+    // `useResourceCollectionItem` watches `get` and refetches the active topic
+    // when a resource_change bumps the generation (e.g., a memo transitioning
+    // from `writing` → `published` while the user is viewing it).
+    [client, ref, session.sessionId, generation]
   );
 
   const query = useCallback(

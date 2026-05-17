@@ -4,21 +4,42 @@
 
 A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
-debate unfold and a research manager synthesize an investment thesis. Phases
-3–5 stack on top.
+debate unfold, a research manager synthesize an investment thesis, a trader
+propose a sized trade, three risk officers critique it, and a portfolio
+manager hand down a five-tier final decision. Five phases, thirteen agents,
+one structured artifact at every convergence point.
 
-## What's included (Phases 1 + 2 + 3)
+## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — four sub-agents (Fundamentals, Sentiment,
-  News, Technical) running in parallel, each with a distinct identity.
+- **Parallel analyst fan-out** — five sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile) running in parallel, each with a
+  distinct identity.
+- **Company Profile grounding** — a renderer-style analyst that fetches
+  structured business identity (sector, industry, business description,
+  scale) from public providers and writes it as a memo, so downstream
+  phases reason from a data-derived baseline rather than the model's
+  training priors. Live mode merges Finnhub and Yahoo so each fills in
+  what the other doesn't carry; when the description is still thin, two
+  web-enrichment backstops kick in — a homepage `<meta name="description">`
+  fetch and a web search via `@flow-state-dev/tools/search`'s
+  auto-detected provider (Tavily / Exa / Perplexity / Serper / Brave).
+  Each backstop fails soft to `null`. Returns an explicit `unavailable`
+  memo when the ticker cannot be resolved.
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
 - **Fixture / live data toggle** — fixtures ship for `NVDA / 2026-05-06`,
   `AAPL / 2026-05-06`, and `JPM / 2026-05-06`. Live prices and fundamentals
   via `yahoo-finance2` (no key required).
+- **Wider technical indicator set** — RSI, MACD, ATR, SMA50/200, trend label,
+  Bollinger Bands, VWMA(20), Stochastic Oscillator (%K/%D), KDJ, and OBV. The
+  math is delegated to the `trading-signals` library with two small
+  hand-rolled helpers (VWMA, KDJ).
+- **Insider transactions signal** — the news analyst reads 90 days of Form 4
+  filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
+  on failure, like other single-provider tools).
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -40,6 +61,9 @@ Phase 2 — research debate:
 
 Phase 3 — trader synthesis:
 
+- **Approach preamble** — a fast-model (`intent/utility`) free-text step
+  streams a one-sentence plan to the transcript before the structured
+  trader runs. Display-only; not fed into the trader.
 - **Single-shot structured synthesis** — one trader generator, no loop.
   Reads the Phase 2 `InvestmentThesis` and writes a typed `TradeProposal`.
 - **Typed extension fields** — `direction`, `sizePct`, `stopPrice`,
@@ -48,13 +72,80 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the four analyst
+  and its extension fields only; the full preset adds the five analyst
   memos and the full bull/bear debate transcript.
 
-## What's not yet shipped
+Phase 4 — risk debate:
 
-- Phase 4 — Risk debate (aggressive / conservative / neutral)
-- Phase 5 — Portfolio manager final decision, full README, architecture doc
+- **Per-agent approach preambles** — each of the three personas and the
+  consolidator stream a short fast-model (`intent/utility`) preamble
+  before their structured generator runs. Personas are `sub` agents and
+  don't emit struct cards, so the preambles are their only
+  transcript-visible output; the structured critique still lands in the
+  memos pane.
+- **Three risk personas in fixed round-robin order** — `aggressiveRisk`
+  (push for outsized sizing), `conservativeRisk` (push for tighter risk),
+  `neutralRisk` (filter signal from noise). The pattern is Round Robin
+  with structured roster overrides — three custom generators replace the
+  default `{ text }` agents so each persona's contribution and its typed
+  critique fields come from a single LLM call.
+- **Four p4 memos** — three persona critiques plus a consolidated
+  `riskAssessment`. The persona memos are the audit trail; the
+  `riskAssessment` is the artifact Phase 5 reads.
+- **Neutral filters, doesn't argue** — the neutral persona reads the
+  aggressive and conservative memos in order and populates
+  `dismissedRisks` with the load-bearing call on what does not warrant
+  action. A consolidator then re-filters and attributes recommendations
+  back to specific personas.
+- **Per-persona rescue keeps the loop running** — each roster slot wraps
+  its generator in a small sub-sequencer with its own `.rescue`, so a
+  single persona's failure flips only that memo to `error` and the
+  remaining personas still run.
+- **Cost-preset gates prompt depth** — the cheap preset reads the trade
+  proposal, the investment thesis, and prior persona memos; the full
+  preset adds the five analyst memos and the full bull/bear debate
+  transcript.
+
+Phase 5 — portfolio manager:
+
+- **Approach preamble** — same shape as Phase 3: a fast-model preview of
+  how the PM intends to weigh the trade proposal against the risk
+  assessment, streamed before the structured decision lands.
+- **Final converging step** — a single `portfolioManager` generator reads
+  the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
+  trade proposal, Phase 4 risk assessment) and writes a typed
+  `PortfolioDecision`. On the `full` preset it also reads the five
+  analyst memos, the full bull/bear debate transcript, and the three
+  persona risk critiques.
+- **Five-tier rating** — `finalRating` is one of `Sell`, `Underweight`,
+  `Hold`, `Overweight`, `Buy`. The vocabulary mirrors the design
+  reference and the TradingAgents v0.2.2+ scale; a `decisionSummary`
+  field carries the one-line subhead, and `decisionConfidence` (0.0–1.0)
+  is the PM's self-reported uncertainty.
+- **Explicit accept-or-override** — for each of the three risk-team
+  recommended adjustments (sizing, holding period, invalidation), the
+  PM marks `applied: true | false` with a one-sentence reason. Rubber-
+  stamping is fine if the risk team is right; overriding is fine if the
+  PM can name what they missed. The structured field is the dissent
+  surface.
+- **PM Hero, same plumbing as every other memo** — the right-pane PM
+  Hero renders the rating bar, the design-mandated metrics row (rating
+  / ticker / window / size / stop / target), the accepted-adjustments
+  panel, the key dependencies list, and a static list of upstream
+  references. It dispatches off the same `useResourceCollectionItem`
+  hook every other memo uses. No special-case data flow for the marquee
+  surface.
+- **Derived, not LLM-emitted** — `agreesWithTrader` is computed at
+  commit time by comparing `finalRating`'s implied direction
+  (Buy/Overweight → long, Hold → flat, Underweight/Sell → short)
+  against the trader memo's `direction` field. `upstreamReferences`
+  is built from the canonical memo-key maps. Asking the LLM to mirror
+  values it has no reason to know would add hallucination surface
+  for no gain.
+- **`session.runComplete` flips on success** — the flag resets to
+  `false` at `seedSession` and becomes `true` only after the PM memo
+  publishes, so the status bar (and any future affordance) can render
+  a terminal "complete" state without inferring it from item counts.
 
 ## Run it
 
@@ -82,6 +173,33 @@ models with one provider key configured. Each analyst writes a structured
 `pending → writing → published` flicker comes from `useClientData` reading the
 session-state `memoStatus` mirror.
 
+## Persistence and sessions
+
+Analysis history survives server restarts. Each run is one session, and the
+four inputs at the top of the page name it: `(ticker, date, preset, source)`.
+
+- Re-running with the same four inputs reuses the existing session and
+  refreshes its data. Memo resources have deterministic keys, so they
+  overwrite in place; the session state mirror (`memoStatus`, `runComplete`)
+  resets via `seedSession` at the start of each request.
+- Changing any one of the four inputs starts a new session. Its title is
+  derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
+  runs stay identifiable for a future session-browser UI.
+
+Data lives under `<example-dir>/.fsdev/data/` (already covered by the root
+`.gitignore`'s `**/.fsdev/**` rule). To wipe history, delete the directory.
+To redirect storage — for an isolated test run, for example — set
+`FSDEV_DATA_DIR`:
+
+```bash
+FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/example-trading-desk dev
+```
+
+The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
+[`app/page.tsx`](app/page.tsx) (the resolve-or-create logic that runs on each
+**re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
+for the generalized pattern.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider
@@ -92,7 +210,9 @@ if you want to wire intents to specific gateway models.
 
 `yahoo-finance2` is keyless. The live source for news and sentiment is a
 fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on.
+sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
+`get_insider_transactions` — without it, the tool returns `unavailable` and
+the news analyst treats insider data as missing signal.
 
 ## Architecture in brief
 
@@ -100,12 +220,13 @@ sentiment lands in a follow-on.
 analyze
   └─ seedSession                  (patch session state from input)
   └─ phase-1-analysts             (sub-sequencer, container item)
-        ├─ setupPhase1Memos       (.tap — pre-create 4 memos in `pending`)
+        ├─ setupPhase1Memos       (.tap — pre-create 5 memos in `pending`)
         └─ parallel
              ├─ fundamentalsAnalyst
              ├─ sentimentAnalyst
              ├─ newsAnalyst
-             └─ technicalAnalyst
+             ├─ technicalAnalyst
+             └─ companyProfileAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.then — { goal } from session state)
@@ -119,15 +240,47 @@ analyze
         ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
         └─ traderStep
              ├─ markWritingP3
+             ├─ traderApproachGenerator (sub, streams message item)
              ├─ traderGenerator   (.then — write `TradeProposal`)
              ├─ commitTraderMemo  (.tap)
              └─ markErrorP3       (.rescue)
+  └─ phase-4-risk-debate          (sub-sequencer, container item)
+        ├─ setupPhase4Memos       (.tap — pre-create 4 p4 memos in `pending`)
+        ├─ deriveRiskGoal         (.then — { goal } from session state)
+        ├─ phase4RoundRobin       (.then — single round, stub judge,
+        │                            three roster slots overridden with
+        │                            structured-output persona generators)
+        │     ├─ aggressiveStep   (markWriting + approach preamble +
+        │     │                     generator + commit + toContributionShape,
+        │     │                     rescue → markError)
+        │     ├─ conservativeStep (symmetric)
+        │     └─ neutralStep      (symmetric, neutral schema)
+        └─ riskAssessmentStep     (.then — approach preamble + consolidator,
+                                     write `RiskAssessment`; rescue → markError)
+  └─ phase-5-portfolio-manager    (sub-sequencer, container item)
+        ├─ setupPhase5Memos       (.tap — pre-create p5/portfolio-manager
+        │                            in `pending`)
+        └─ portfolioManagerStep
+             ├─ markWritingP5
+             ├─ portfolioManagerApproachGenerator (sub, streams message item)
+             ├─ portfolioManagerGenerator (.then — write `PortfolioDecision`)
+             ├─ commitPortfolioManagerMemo (.tap — also flips
+             │                                `session.runComplete = true`)
+             └─ markErrorP5           (.rescue)
 ```
 
-All four `roundRobin()` instances share one `phase2Contributions`
-resource (registered on the flow). The consolidation generators
-declare it on their `resources:` slot and read entries via
-`ctx.resources.contributions.state.entries`.
+All six Phase 3–5 approach preamble generators are built via the
+`createApproachGenerator` factory in
+[`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
+The factory locks the shared policy (`agentType: "sub"`,
+`model: "intent/utility"`, the user-instruction template) and exposes
+only the per-agent knobs.
+
+The four Phase 2 `roundRobin()` instances share one
+`phase2Contributions` resource (registered on the flow). Phase 4 follows
+the same pattern with its own `phase4Contributions` resource. The
+consolidation generators declare these on their `resources:` slot and
+read entries via `ctx.resources`.
 
 Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
 with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
@@ -143,9 +296,23 @@ with a 3-line stub that always returns `done: false` and leans on
 fixed-length loops. Debate's judge is the pattern's identity, so using
 Debate without a real judge would be reaching for the wrong primitive.
 
-Phase 4's risk debate uses `debate()` because it has a real risk judge.
-The cross-phase split reflects the actual structural difference, not a
-shortcoming of either pattern.
+Phase 4's risk debate uses `roundRobin()` for a different reason: there
+is no judge at all. The three risk personas (aggressive, conservative,
+neutral) are not adversaries — they are different postures contributing
+to a multi-angled critique. The neutral persona's job is to filter, not
+to win, and a downstream consolidation generator synthesizes the three
+persona memos into a single `RiskAssessment` that Phase 5 reads. Debate's
+anonymized-shuffled-transcript-then-judge identity does not match: Phase
+4 wants attributed contributions and a synthesizer, not a verdict.
+
+Phase 4 differs from Phase 2 in two ways. First, all three roster slots
+are overridden with custom structured-output generators rather than the
+pattern's default `{ text }` agents — each persona's contribution and
+its typed critique fields come from one LLM call. Second, the
+synthesizer slot is left empty (`synthesizer: false`) and the
+`riskAssessmentGenerator` runs as a separate downstream step, so the
+consolidated artifact is its own memo rather than the pattern's return
+value.
 
 ### Per-preset routing
 
@@ -155,6 +322,58 @@ picks among four pre-built instances at runtime — one per
 `(maxRounds, costPreset)` combination. The four routes share one
 `contributions` resource (via the pattern's `contributions` config
 field), which is what lets the router's resource-merge succeed.
+
+### Phase 5 — single generator, weight in the schema
+
+The portfolio manager is one generator with no roster, no debate, no
+consolidator. The orchestration is intentionally trivial; the weight is
+in the typed output shape. `PortfolioDecision` carries seven structured
+extension fields (`finalRating`, `decisionSummary`, `decisionConfidence`,
+`acceptedAdjustments`, `keyDependencies`, `upstreamReferences`,
+`agreesWithTrader`) on top of the standard memo body, and the
+`acceptedAdjustments` shape forces the PM to mark `applied: true | false`
+with reasoning for each of the three risk-team recommendations
+(sizing / holdingPeriod / invalidation). Putting the dissent surface
+in the schema means it can't get lost in prose.
+
+`agreesWithTrader` and `upstreamReferences` are derived at commit time
+rather than emitted by the LLM. `agreesWithTrader` is a boolean
+comparison between `finalRating`'s implied direction and the trader
+memo's `direction` field; `upstreamReferences` is a static lookup
+into the canonical memo-key maps. Both are fully determined by other
+stored values, so asking the LLM for them would only add hallucination
+surface.
+
+The PM Hero renderer reads from the same `useResourceCollectionItem`
+hook every other memo uses. The marquee surface has no special-case
+data flow.
+
+## What this example is not
+
+- **Not a trading product.** It does not execute. It does not size against
+  a real portfolio. It does not track P&L. `sizePct` is a suggested
+  percentage of NAV in the 0.5–2.5 range for a normal-conviction trade;
+  the trader's prompt is explicit that the trader does not have portfolio
+  context.
+- **Not a backtest.** There is no historical evaluation, no calibration
+  against outcomes, no measure of decision quality. The Portfolio
+  Manager's `decisionConfidence` is self-reported uncertainty, not a
+  prediction of accuracy.
+- **Not a recommendation system.** The five-tier rating is informative
+  scale, not actionable signal. Two distinct ticker × date inputs may
+  produce indistinguishable ratings even when the underlying setups
+  differ; that's a property of any LLM-driven analytic that lacks
+  ground truth.
+- **Not a complete data layer.** Fixture mode ships hand-curated JSON
+  snapshots at `2026-05-06` for NVDA / AAPL / JPM. Live mode wires
+  Yahoo Finance for prices and fundamentals (keyless). News and
+  sentiment in live mode fall back to fixtures with a noted follow-on.
+  Don't extrapolate from a fixture run to a real-data run.
+
+## Further reading
+
+- [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
+- [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the example phase by phase.
 
 ## Disclaimer
 

@@ -1,7 +1,7 @@
 /**
  * Canonical agent identity table for the Trading Desk example.
  *
- * Mirrors the Claude Design handoff (2026-05-06) verbatim. All twelve agents
+ * Mirrors the Claude Design handoff (2026-05-06) verbatim. All thirteen agents
  * across phases P1–P5 ship in this table from Phase 1 — the sidebar phase
  * groups for P2–P5 render in `pending` styling and become live as later
  * phases land.
@@ -28,6 +28,7 @@ export const AGENTS = {
   sentimentAnalyst:    { role: "Sentiment Analyst",    glyph: "Sn", hue: 48, team: "analyst" },
   newsAnalyst:         { role: "News Analyst",         glyph: "Nw", hue: 78, team: "analyst" },
   technicalAnalyst:    { role: "Technical Analyst",    glyph: "Tc", hue: 138, team: "analyst" },
+  companyProfileAnalyst: { role: "Company Profile Analyst", glyph: "Cp", hue: 200, team: "analyst" },
   // Phase 2 — research debate
   bullResearcher:      { role: "Bull Researcher",      glyph: "B+", hue: 158, team: "research" },
   bearResearcher:      { role: "Bear Researcher",      glyph: "B-", hue: 18, team: "research" },
@@ -38,6 +39,7 @@ export const AGENTS = {
   aggressiveRisk:      { role: "Aggressive Risk",      glyph: "A!", hue: 8, team: "risk" },
   conservativeRisk:    { role: "Conservative Risk",    glyph: "C.", hue: 218, team: "risk" },
   neutralRisk:         { role: "Neutral Risk",         glyph: "N°", hue: 178, team: "risk" },
+  riskAssessment:      { role: "Risk Assessment",     glyph: "R=", hue: 188, team: "risk" },
   // Phase 5 — portfolio manager
   portfolioManager:    { role: "Portfolio Manager",    glyph: "PM", hue: 298, team: "pm" },
 } as const satisfies Record<string, AgentMeta>;
@@ -51,10 +53,10 @@ export const PHASE_GROUPS: ReadonlyArray<{
   agents: ReadonlyArray<AgentName>;
 }> = [
   { id: "p5", label: "Phase 5 — Portfolio Manager", agents: ["portfolioManager"] },
-  { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk"] },
+  { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
-  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst"] },
+  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst"] },
 ];
 
 /** Resource storage keys for Phase 1 memos.
@@ -84,6 +86,11 @@ export const PHASE_1_MEMO_KEYS = {
     agentName: "technicalAnalyst",
     memoKey: "memos/p1/technical",
     collectionKey: "p1/technical",
+  },
+  companyProfile: {
+    agentName: "companyProfileAnalyst",
+    memoKey: "memos/p1/company-profile",
+    collectionKey: "p1/company-profile",
   },
 } as const satisfies Record<
   string,
@@ -132,12 +139,59 @@ export const PHASE_3_MEMO_KEYS = {
 
 export type Phase3MemoShortName = keyof typeof PHASE_3_MEMO_KEYS;
 
+/** Resource storage keys for Phase 4 memos: three persona critiques plus a
+ *  consolidated risk assessment. Same shape as the Phase 1/2/3 maps. */
+export const PHASE_4_MEMO_KEYS = {
+  aggressive: {
+    agentName: "aggressiveRisk",
+    memoKey: "memos/p4/aggressive-risk",
+    collectionKey: "p4/aggressive-risk",
+  },
+  conservative: {
+    agentName: "conservativeRisk",
+    memoKey: "memos/p4/conservative-risk",
+    collectionKey: "p4/conservative-risk",
+  },
+  neutral: {
+    agentName: "neutralRisk",
+    memoKey: "memos/p4/neutral-risk",
+    collectionKey: "p4/neutral-risk",
+  },
+  riskAssessment: {
+    agentName: "riskAssessment",
+    memoKey: "memos/p4/risk-assessment",
+    collectionKey: "p4/risk-assessment",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase4MemoShortName = keyof typeof PHASE_4_MEMO_KEYS;
+
+/** Resource storage key for the Phase 5 portfolio-manager memo. Same shape
+ *  as the Phase 1/2/3/4 maps. */
+export const PHASE_5_MEMO_KEYS = {
+  portfolioManager: {
+    agentName: "portfolioManager",
+    memoKey: "memos/p5/portfolio-manager",
+    collectionKey: "p5/portfolio-manager",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase5MemoShortName = keyof typeof PHASE_5_MEMO_KEYS;
+
 /** Combined memo-key map across all shipped phases. The sidebar iterates
  *  this single table; future phases append their own entries. */
 export const ALL_MEMO_KEYS = {
   ...PHASE_1_MEMO_KEYS,
   ...PHASE_2_MEMO_KEYS,
   ...PHASE_3_MEMO_KEYS,
+  ...PHASE_4_MEMO_KEYS,
+  ...PHASE_5_MEMO_KEYS,
 } as const;
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;

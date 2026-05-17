@@ -7,6 +7,7 @@ const sidebars: SidebarsConfig = {
     "nextjs-setup",
     "development-tips",
     "building-agents",
+    "trading-desk-walkthrough",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
     "writing-ui-stories",
@@ -18,6 +19,12 @@ const sidebars: SidebarsConfig = {
         "deploying-to-vercel",
         "deploying-to-railway",
         "deploying-with-docker",
+      ],
+    },
+    {
+      type: "category",
+      label: "Scheduled actions",
+      items: [
         "scheduled-vercel-cron",
         "scheduled-cloud-scheduler",
         "scheduled-eventbridge",

@@ -187,6 +187,12 @@ export function createSQLiteRequestStore(
   const insertEventStmt = db.prepare(
     "INSERT OR REPLACE INTO request_events (request_id, sequence_number, event_data) VALUES (?, ?, ?)"
   );
+  const selectRunOnceStmt = db.prepare(
+    "SELECT value FROM request_runonce WHERE request_id = ? AND key = ?"
+  );
+  const insertRunOnceStmt = db.prepare(
+    "INSERT OR REPLACE INTO request_runonce (request_id, key, value) VALUES (?, ?, ?)"
+  );
   const selectAllEventsStmt = db.prepare(
     "SELECT event_data FROM request_events WHERE request_id = ? ORDER BY sequence_number ASC"
   );
@@ -293,6 +299,25 @@ export function createSQLiteRequestStore(
       options: SubscribeToEventsOptions
     ): AsyncIterableIterator<RequestStreamEvent> {
       return pollEvents(readEvents, requestId, options, pollIntervalMs);
+    },
+
+    async getRunOnceResult(
+      requestId: string,
+      key: string
+    ): Promise<{ found: boolean; value?: unknown }> {
+      const row = selectRunOnceStmt.get(requestId, key) as
+        | { value: string }
+        | undefined;
+      if (row === undefined) return { found: false };
+      return { found: true, value: JSON.parse(row.value) as unknown };
+    },
+
+    async setRunOnceResult(
+      requestId: string,
+      key: string,
+      value: unknown
+    ): Promise<void> {
+      insertRunOnceStmt.run(requestId, key, JSON.stringify(value));
     }
   };
 }

@@ -45,6 +45,7 @@ const PHASE_1_ANALYST_AGENTS = new Set<string>([
   "sentimentAnalyst",
   "newsAnalyst",
   "technicalAnalyst",
+  "companyProfileAnalyst",
 ]);
 
 export function TranscriptPane({ session }: Props): ReactElement {
@@ -81,7 +82,7 @@ export function TranscriptPane({ session }: Props): ReactElement {
     <section
       className={cn(
         "flex flex-col overflow-hidden",
-        "border-r border-[color:var(--c-border)] bg-[color:var(--c-bg)]",
+        "border-l border-r border-[color:var(--c-border)] bg-[color:var(--c-bg)]",
       )}
       aria-label="Transcript"
     >
@@ -129,8 +130,8 @@ function buildRows(items: OutputItem[]): ReactElement[] {
       const argsPreview = oneLine(argsStr) || "(no args)";
       const output = tool.output as Record<string, unknown> | undefined;
       const source =
-        output !== undefined && (output.source === "fixture" || output.source === "live")
-          ? (output.source as "fixture" | "live")
+        output !== undefined && typeof output.source === "string"
+          ? output.source
           : undefined;
       const bytes =
         output !== undefined ? JSON.stringify(output).length : undefined;
@@ -142,6 +143,7 @@ function buildRows(items: OutputItem[]): ReactElement[] {
           argsPreview={argsPreview}
           status={tool.status}
           source={source}
+          output={output}
           bytes={bytes}
           errorMessage={tool.error?.message}
         />,

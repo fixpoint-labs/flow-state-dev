@@ -18,7 +18,6 @@ import type { DefinedResource } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   debateStateSchema,
-  type DebateState,
   type DebateTranscriptState,
 } from "../schemas";
 
@@ -97,7 +96,7 @@ export function createDebater(opts: CreateDebaterOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as DebateState;
+      const state = ctx.sequencer!.state;
       const transcriptState = ctx.resources.transcript
         ?.state as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];

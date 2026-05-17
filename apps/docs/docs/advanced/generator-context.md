@@ -157,6 +157,8 @@ invoke, parameter, system, user, assistant, role, message
 
 The list is checked against the canonical (kebab-case) form, so `tool_use` and `tool-use` both match.
 
+A note on `role`: the aggregator also accepts pre-built AI-SDK messages — objects whose `role` is one of `"system" | "user" | "assistant" | "tool"` and that carry a `content` field — and passes them through to the messages array unchanged. Any other object with a `role` key (for example, `{ role: () => "Analyst" }` or `{ role: "manager", content: "..." }`) is rejected with an explicit error that names the offending tag. If you want a tag literally named `role`, you can't — pick a different name (`agent-role`, `persona`, etc.).
+
 ### Escaping in string leaves
 
 `<`, `>`, and `&` in string leaf values are HTML-escaped (`&lt;`, `&gt;`, `&amp;`) so user data containing angle brackets isn't read by the model as a tag boundary. Nested-tag emission is unaffected — the renderer always knows which case it's in.
@@ -184,3 +186,51 @@ import { xmlTag, renderTaggedContext, validateTagName, RESERVED_TAG_NAMES } from
 ```
 
 They're stable, pure functions — useful if you ever want to compose XML strings outside a generator slot.
+
+## Conversation history windowing
+
+When `history` is enabled on a generator, the framework assembles the LLM-ready history from the session's prior requests. The window is measured in **conversational turns**, not raw protocol messages. A turn is one user request and the assistant response that followed it — including any tool calls the assistant made along the way. Asking for "the last 8" gives you the last 8 turns, not the last 8 wire messages.
+
+This matters because a single tool-heavy turn can produce many protocol messages. Each tool call expands into an assistant `tool-call` message plus a `tool` result message. If a budget counted raw messages, four tool calls in one turn could quietly evict the prior user message from the window. Counting by turn keeps the conversation intact and lets tool traffic ride along inside the turn it belongs to.
+
+### When history is enabled
+
+```ts
+import { generator } from "@flow-state-dev/core";
+
+generator({
+  prompt: "You are a chat assistant.",
+  model: "openai/gpt-5.4-mini",
+  history: { limit: 8 },
+});
+```
+
+Omitting `history` skips history assembly entirely. `history: true` includes every prior conversational item in the session, unbounded.
+
+### Numeric limit
+
+`{ limit: 8 }` keeps the last 8 turns. Tool calls inside those turns ride along full-fidelity, so the model sees what tools ran and with what arguments. Items from the in-flight request — anything produced this turn so far — are always included, regardless of the limit. That guarantee is what makes "try again" after a mid-turn failure work: the retried turn can still see the user's last message and any partially completed tool state.
+
+The bare `number` form has different meanings across views: in `items.history()` it counts turns, in `items.all()` and `items.client()` it counts items. Use the explicit `{ turns: N }` form when you want to be unambiguous in new code:
+
+```ts
+history: { limit: { turns: 8 } }
+```
+
+### Token-aware limit
+
+`{ limit: { tokens: 20_000 } }` packs whole turns from the end of the conversation until the next one would not fit. Turns are never split across the budget boundary. If the most recent prior turn alone exceeds the budget, it is included anyway — an empty window is worse than a single oversized turn.
+
+```ts
+history: { limit: { tokens: 20_000 } }
+```
+
+### When to use which
+
+Numeric turn limits are cheap and predictable: pick one when the conversation shape is uniform and you have a rough sense of how many turns of context the model needs. Token limits are the right choice when individual turns vary a lot in size (long retrieved documents, large tool outputs) and you care more about the model's context budget than the turn count.
+
+### Edge cases
+
+A turn whose items are entirely sub-agent output, or any other items that don't contribute to LLM history, still counts against `{ turns: N }` but contributes no messages. This keeps the windowing logic at the request level. If sub-agent-heavy turns become common in your flow, prefer a token budget.
+
+Tool-aware compaction (rewriting older tool calls into shorter summaries) and goal-aware pruning (dropping turns that aren't relevant to the current goal) are deliberately not part of this default. They belong to higher-level patterns that layer on top of this windowing primitive.

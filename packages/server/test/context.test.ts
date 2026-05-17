@@ -109,7 +109,11 @@ describe("createExecutionContext", () => {
     expect(ctx.user.identity.id).toBe("user_no_session");
   });
 
-  it("applies token-based llm history limit using the active model", async () => {
+  it("applies token-based llm history limit using the active model (turn-aligned)", async () => {
+    // Turn-aligned token packing: a whole request's messages fit or don't.
+    // Both messages from the single prior request fit the 64-token budget,
+    // so both are returned. (Under the old per-message budgeting this would
+    // have returned only one — see FIX-608.)
     const block = handler<{ value: string }, { ok: boolean }>({
       name: "ctx-handler",
       execute: async (_input, ctx) => {
@@ -131,7 +135,10 @@ describe("createExecutionContext", () => {
           return text.length;
         },
         async countMessages(messages) {
-          return JSON.stringify(messages[0]?.content ?? "").length;
+          return messages.reduce(
+            (sum, m) => sum + JSON.stringify(m.content ?? "").length,
+            0
+          );
         }
       }
     })();
@@ -181,8 +188,8 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    const messages = await ctx.session.items.history({ limit: { tokens: 28 } });
-    expect(messages).toHaveLength(1);
+    const messages = await ctx.session.items.history({ limit: { tokens: 64 } });
+    expect(messages).toHaveLength(2);
   });
 
   it("supports resource definition-time content with rendering", async () => {
@@ -406,4 +413,319 @@ describe("createExecutionContext", () => {
     }
   });
 
+});
+
+// =============================================================================
+// FIX-608: turn-aware history windowing
+// =============================================================================
+
+describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
+  type TurnSpec = {
+    requestId: string;
+    startedAtMs: number;
+    userText?: string;
+    assistantText?: string;
+    /**
+     * Number of synthetic tool calls in this turn. Each one produces a
+     * `tool_output` item which `itemToLLMMessages` expands to one
+     * assistant tool-call message + one tool tool-result message.
+     */
+    toolCalls?: number;
+    /** Override agent identity for the assistant message (defaults to "primary"). */
+    assistantAgentType?: "primary" | "sub" | "trace";
+  };
+
+  function makeTurn(spec: TurnSpec): any {
+    const items: any[] = [];
+    let itemIndex = 0;
+    const baseTs = spec.startedAtMs * 1000;
+
+    if (spec.userText !== undefined) {
+      items.push({
+        id: `${spec.requestId}_user`,
+        type: "message",
+        status: "completed",
+        requestId: spec.requestId,
+        itemIndex: itemIndex++,
+        ts: baseTs + itemIndex,
+        role: "user",
+        agentType: "primary",
+        content: [{ type: "output_text", text: spec.userText }],
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+      });
+    }
+
+    for (let k = 0; k < (spec.toolCalls ?? 0); k++) {
+      items.push({
+        id: `${spec.requestId}_tool_${k}`,
+        type: "tool_output",
+        status: "completed",
+        requestId: spec.requestId,
+        itemIndex: itemIndex++,
+        ts: baseTs + itemIndex,
+        agentType: "primary",
+        toolCall: {
+          callId: `call_${spec.requestId}_${k}`,
+          name: `t_${k}`,
+          alias: `t_${k}`,
+          arguments: "{}"
+        },
+        output: "ok",
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+      });
+    }
+
+    if (spec.assistantText !== undefined) {
+      items.push({
+        id: `${spec.requestId}_assistant`,
+        type: "message",
+        status: "completed",
+        requestId: spec.requestId,
+        itemIndex: itemIndex++,
+        ts: baseTs + itemIndex,
+        role: "assistant",
+        agentType: spec.assistantAgentType ?? "primary",
+        content: [{ type: "output_text", text: spec.assistantText }],
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+      });
+    }
+
+    return {
+      id: spec.requestId,
+      flowKind: "fix608-flow",
+      actionName: "run",
+      sessionId: "sess",
+      userId: "user_1",
+      source: "http",
+      status: "completed",
+      startedAtMs: spec.startedAtMs,
+      updatedAt: spec.startedAtMs,
+      items
+    };
+  }
+
+  async function makeCtx(
+    turns: TurnSpec[],
+    opts?: { tokenCounter?: any }
+  ) {
+    const block = handler<{ value: string }, { ok: boolean }>({
+      name: "ctx-handler",
+      execute: async (_input, ctx) => {
+        ctx.resolveModel("openai/gpt-4o-mini", "ctx-handler");
+        return { ok: true };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "fix608-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block
+        }
+      },
+      tokenCounter: opts?.tokenCounter ?? {
+        async count(text: string) {
+          return text.length;
+        },
+        async countMessages(messages: any[]) {
+          // Crude: 1 token per character of stringified content per message.
+          return messages.reduce(
+            (sum, m) => sum + JSON.stringify(m.content ?? "").length,
+            0
+          );
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    for (const t of turns) {
+      const rec = makeTurn(t);
+      await stores.request.set(rec.id, rec as any, "any");
+    }
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_current",
+      sessionId: "sess",
+      userId: "user_1",
+      stores
+    });
+    return ctx;
+  }
+
+  // Helper: pull text from a message-shaped LLMMessage
+  function textOf(m: any): string {
+    return typeof m.content === "string" ? m.content : "";
+  }
+
+  it("bare limit counts turns, not LLM messages — preserves prior user message after a tool-heavy turn (headline FIX-608 regression)", async () => {
+    // Turn 1: short user/assistant. Turn 2: short user/assistant. Turn 3:
+    // user + 4 tool calls + assistant. Under the OLD semantics a `limit: 8`
+    // expanded to 8 raw messages and the 4 tool_outputs (= 8 protocol
+    // messages) consumed the whole window, evicting the turn-2 user.
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" },
+      { requestId: "r3", startedAtMs: 300, userText: "u3", toolCalls: 4, assistantText: "a3" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: 8 });
+    const texts = messages.map(textOf);
+
+    // Turn 2's user message must still be present.
+    expect(texts).toContain("u2");
+    expect(texts).toContain("a2");
+    expect(texts).toContain("u3");
+    expect(texts).toContain("a3");
+  });
+
+  it("explicit { turns: 2 } drops the oldest turn", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" },
+      { requestId: "r3", startedAtMs: 300, userText: "u3", assistantText: "a3" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { turns: 2 } });
+    const texts = messages.map(textOf);
+
+    expect(texts).not.toContain("u1");
+    expect(texts).not.toContain("a1");
+    expect(texts).toEqual(["u2", "a2", "u3", "a3"]);
+  });
+
+  it("bare limit: N is equivalent to { turns: N }", async () => {
+    const turns: TurnSpec[] = [
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" },
+      { requestId: "r3", startedAtMs: 300, userText: "u3", toolCalls: 2, assistantText: "a3" }
+    ];
+
+    const ctxA = await makeCtx(turns);
+    const a = await ctxA.session.items.history({ limit: 8 });
+
+    const ctxB = await makeCtx(turns);
+    const b = await ctxB.session.items.history({ limit: { turns: 8 } });
+
+    expect(a).toEqual(b);
+  });
+
+  it("limit: { turns: 0 } returns no prior turns — guards Array.prototype.slice(-0)", async () => {
+    // The critical guard: slice(-0) returns the whole array, not [].
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { turns: 0 } });
+    expect(messages).toEqual([]);
+  });
+
+  it("bare limit: 0 returns no prior turns (same guard)", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: 0 });
+    expect(messages).toEqual([]);
+  });
+
+  it("limit greater than available turns returns all turns (no off-by-one)", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" },
+      { requestId: "r3", startedAtMs: 300, userText: "u3", assistantText: "a3" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { turns: 8 } });
+    expect(messages.map(textOf)).toEqual(["u1", "a1", "u2", "a2", "u3", "a3"]);
+  });
+
+  it("token-based limit packs whole turns from the end and never splits a turn", async () => {
+    // Each user/assistant text chosen so that JSON.stringify-based counter
+    // makes turn token costs deterministic:
+    //   "u1"=4, "a1"=4 → turn1 ≈ 8
+    //   "u2"=4, "a2"=4 → turn2 ≈ 8
+    //   "u3"=4, "a3"=4 → turn3 ≈ 8
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" },
+      { requestId: "r3", startedAtMs: 300, userText: "u3", assistantText: "a3" }
+    ]);
+
+    // Budget of 20 fits 2 whole turns (16 chars), not 3 (24 chars). Third
+    // turn from end (= turn 1) must not split.
+    const messages = await ctx.session.items.history({ limit: { tokens: 20 } });
+    expect(messages.map(textOf)).toEqual(["u2", "a2", "u3", "a3"]);
+  });
+
+  it("token-based limit always includes the most recent turn even if it alone exceeds the budget", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "supersized user message that on its own overflows the budget", assistantText: "supersized assistant reply that on its own overflows the budget too" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { tokens: 5 } });
+    // Latest turn alone is included; older turn is dropped.
+    expect(messages).toHaveLength(2);
+    expect(textOf(messages[0])).toContain("supersized user");
+    expect(textOf(messages[1])).toContain("supersized assistant");
+  });
+
+  it("token-based limit: tokens: 0 still includes the latest turn (most-recent-turn exception)", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { tokens: 0 } });
+    expect(messages.map(textOf)).toEqual(["u2", "a2"]);
+  });
+
+  it("sub-agent items in a retained turn are filtered out by resolveItemVisibility", async () => {
+    // The assistant message in turn 1 is sub-agent — history: false.
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1", assistantAgentType: "sub" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { turns: 8 } });
+    const texts = messages.map(textOf);
+    // user messages remain (FIX-389 user-message visibility), but the
+    // sub-agent assistant message is dropped.
+    expect(texts).not.toContain("a1");
+    expect(texts).toContain("u1");
+    expect(texts).toContain("u2");
+    expect(texts).toContain("a2");
+  });
+
+  it("undefined limit returns all prior turns", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1" },
+      { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" }
+    ]);
+
+    const messages = await ctx.session.items.history();
+    expect(messages.map(textOf)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
+  it("tool-call/result messages inside a retained turn are preserved full-fidelity", async () => {
+    const ctx = await makeCtx([
+      { requestId: "r1", startedAtMs: 100, userText: "u1", toolCalls: 2, assistantText: "a1" }
+    ]);
+
+    const messages = await ctx.session.items.history({ limit: { turns: 1 } });
+
+    // Expect: user, [assistant tool-call, tool tool-result] x 2, assistant
+    expect(messages).toHaveLength(1 + 2 * 2 + 1);
+    expect((messages[0] as any).role).toBe("user");
+    expect((messages[1] as any).role).toBe("assistant");
+    expect((messages[2] as any).role).toBe("tool");
+    expect((messages[3] as any).role).toBe("assistant");
+    expect((messages[4] as any).role).toBe("tool");
+    expect((messages[5] as any).role).toBe("assistant");
+    expect(textOf(messages[5])).toBe("a1");
+  });
 });

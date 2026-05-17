@@ -23,7 +23,6 @@
  * see the `evaluatorVerdictSchema` in `../schemas.ts`.
  */
 import { handler, generator, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/tasks";
 import {
@@ -116,7 +115,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
     outputSchema: iterationOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous = (ctx.sequencer!.state.iteration as number | undefined) ?? 0;
+      const previous = ctx.sequencer!.state.iteration ?? 0;
       const iteration = previous + 1;
       await ctx.sequencer!.patchState({ iteration });
 
@@ -147,7 +146,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
 export function createLLMEvaluator(options: {
   name: string;
   model?: string;
-}): BlockDefinition<any, any> {
+}) {
   const { name, model } = options;
   const collectionId = name;
 
@@ -189,7 +188,7 @@ export function createLLMEvaluator(options: {
         2,
       );
     },
-  }) as BlockDefinition<any, any>;
+  });
 }
 
 export interface CreateEvaluateProgressOptions {
@@ -227,9 +226,9 @@ export interface CreateEvaluateProgressOptions {
  */
 export function createEvaluateProgress(
   options: CreateEvaluateProgressOptions,
-): BlockDefinition<any, any> {
+) {
   if (!options.enableReplanning) {
-    return createTaskEvaluator(options) as BlockDefinition<any, any>;
+    return createTaskEvaluator(options);
   }
 
   const llmEvaluator = createLLMEvaluator(options);
@@ -244,8 +243,7 @@ export function createEvaluateProgress(
     outputSchema: evaluatorPreflightSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous =
-        (ctx.sequencer!.state.iteration as number | undefined) ?? 0;
+      const previous = ctx.sequencer!.state.iteration ?? 0;
       const iteration = previous + 1;
       await ctx.sequencer!.patchState({ iteration });
 
@@ -307,5 +305,5 @@ export function createEvaluateProgress(
       }
       return r as z.infer<typeof evaluatorOutputSchema>;
     })
-    .tap(emitReplanningMeta) as BlockDefinition<any, any>;
+    .tap(emitReplanningMeta);
 }

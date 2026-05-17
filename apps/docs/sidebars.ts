@@ -71,7 +71,14 @@ const sidebars: SidebarsConfig = {
             "server/setup",
             "server/authentication",
             "server/mcp",
-            "server/scheduled",
+            {
+              type: "category",
+              label: "Scheduled actions",
+              items: [
+                "server/scheduled",
+                "server/schedule-index",
+              ],
+            },
             "server/connection-resilience",
             "persistence/overview",
           ],
@@ -166,6 +173,15 @@ const sidebars: SidebarsConfig = {
             "ui/generative",
           ],
         },
+        {
+          type: "category",
+          label: "Memory",
+          items: [
+            "memory/overview",
+            "memory/configuration",
+            "memory/recall-tool",
+          ],
+        },
         "ecosystem/thought-fabric-pointer",
         {
           type: "category",
@@ -189,6 +205,7 @@ const sidebars: SidebarsConfig = {
         "advanced/flow-isolation",
         "advanced/generator-context",
         "advanced/error-handling",
+        "advanced/idempotency",
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",

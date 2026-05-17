@@ -11,7 +11,7 @@ import type {
   RetryPolicy
 } from "../types/block";
 import { asRuntime } from "../types/block";
-import type { ItemQuery } from "../types/scope";
+import type { ItemQuery, MessageLimit } from "../types/scope";
 import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
@@ -22,6 +22,7 @@ import type {
   GeneratorModelSource,
   GeneratorModelTool,
   GeneratorSearchConfig,
+  ModelIdentity,
   PrepareStepFn,
   ProviderTool
 } from "../types/model";
@@ -29,7 +30,17 @@ import type { ModelSelection } from "../models/selectModel";
 import { isModelSelection } from "../models/selectModel";
 import type { ProviderPreference } from "../models/types";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
+import type {
+  CapabilityRef,
+  InferCapabilities,
+  InferCapabilityResources,
+  InferCapabilitySequencerState,
+  InferCapabilitySessionState,
+  MergeTargetSchemas,
+  Prettify,
+  UsesEntry,
+} from "../capability/types";
+
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { sanitizeToolName } from "../utils/tool-name";
@@ -46,7 +57,8 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 
-import { toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, toError, withTimeout } from "./internal/utils";
+import { emitToolOutputAround } from "./internal/emit-tool-output";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -125,7 +137,7 @@ type PromptSlotEntry<TInput, TCtx = BlockContext> =
 export type PromptSlot<TInput = unknown, TCtx = BlockContext> =
   | PromptSlotEntry<TInput, TCtx>
   | PromptSlotEntry<TInput, TCtx>[];
-type ResolvableModel<TInput, TCtx = BlockContext> =
+export type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
   | GeneratorModel
@@ -133,10 +145,10 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
       input: TInput,
       ctx: TCtx
     ) => MaybePromise<string | string[] | GeneratorModel | ModelSelection>);
-type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
+export type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
   | Record<string, unknown>
   | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
-type ResolvableCachingConfig<TInput, TCtx = BlockContext> =
+export type ResolvableCachingConfig<TInput, TCtx = BlockContext> =
   | CachingConfig
   | ((input: TInput, ctx: TCtx) => MaybePromise<CachingConfig | undefined>);
 
@@ -214,7 +226,7 @@ export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
   missing?: "error" | "empty";
-  limit?: number | { tokens: number };
+  limit?: MessageLimit;
   as?: string;
 };
 
@@ -308,22 +320,26 @@ export interface GeneratorConfig<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  // Derive-once: evaluate z.infer exactly once per provided schema
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference — declared above the derived state/resource
+  // params so their defaults can intersect capability contributions.
+  TUses extends readonly UsesEntry[] = readonly [],
+  // Derive-once: evaluate z.infer exactly once per provided schema, then
+  // intersect with capability-declared shapes (block-own on the LEFT of `&`
+  // so its property declaration wins on a valid-object collision).
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
-  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
-  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  // Capability type inference
-  TUses extends readonly UsesEntry[] = readonly [],
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
@@ -365,7 +381,12 @@ export interface GeneratorConfig<
    * generator are stamped with this name.
    */
   agentName?: string;
-  model: ResolvableModel<NoInfer<TInput>, TCtx>;
+  /**
+   * Model selection. Optional when a capability in `uses` contributes a
+   * model (see `PresetDef.model`); a block-level setting always wins over
+   * the capability's. Missing on both is a runtime error at construction.
+   */
+  model?: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
@@ -698,6 +719,11 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
+  // Snapshot the request-scoped status slot when the first tool in a
+  // (possibly parallel) round starts; restore when the last one exits.
+  // Without this, a finished tool's `activeStatusMessage` lingers as a
+  // stale "still running" indicator after the tool itself returns.
+  const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
@@ -719,148 +745,92 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      // FIX-573 Path A: when this tool is invoked through a model loop, emit a
-      // `tool_output` placeholder BEFORE the called block runs, then patch it
-      // in place once the block returns. The called block's own block_trace
-      // captures `output` as a ref to this tool_output, so the two items stay
-      // decoupled but the called block doesn't duplicate the tool result.
-      const buildPlaceholderTool = (parentIdentity: typeof ctx._blockIdentity): {
-        item: any;
-        emit: () => Promise<void>;
-      } | undefined => {
-        if (options?.toolCallId === undefined) return undefined;
-        const item: any = {
-          id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "tool_output" as const,
-          status: "in_progress" as const,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance: {
-            blockName: parentIdentity?.blockName ?? tool.name,
-            blockInstanceId: parentIdentity?.blockInstanceId ?? tool.name,
-            parentBlockInstanceId: parentIdentity?.parentBlockInstanceId,
-            phase: parentIdentity?.phase ?? "main"
-          },
-          ts: Date.now(),
-          ownedBy: parentIdentity?.ownedBy,
-          ...(agentType !== undefined ? { agentType } : {}),
-          ...(agentName !== undefined ? { agentName } : {}),
-          blockName: tool.name,
-          output: undefined,
-          toolCall: {
-            callId: options.toolCallId,
-            name: tool.name,
-            alias: sanitizeToolName(tool.name),
-            arguments: typeof args === "string" ? args : JSON.stringify(args),
-            generatorBlock: generatorBlockName
-          }
-        };
-        return {
-          item,
-          emit: async () => {
-            await ctx.response.emit({ type: "item.added", item });
-          }
-        };
-      };
-
-      const runTool = async (
-        scopedCtx: BlockContext,
-        toolOutputId: string | undefined,
-      ): Promise<unknown> => {
-        // Stash the tool_output id as the called block's output hint so its
-        // block_trace `output` becomes a ref to the tool_output (Path A).
-        if (toolOutputId !== undefined) {
-          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+      // FIX-573 Path A: when invoked through the model loop with a
+      // `toolCallId`, emit a `tool_output` placeholder around the called
+      // block's run. The called block's own `block_trace.output` is set to a
+      // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
+      // result is stored once and surfaced in two places.
+      const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
+        if (statusGuard.active === 0) {
+          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
         }
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
-      };
-
-      const finishToolOutput = async (
-        placeholder: { item: any } | undefined,
-        result: { kind: "ok"; output: unknown } | { kind: "err"; error: Error },
-      ): Promise<void> => {
-        if (placeholder === undefined) return;
-        const item = placeholder.item;
-        if (result.kind === "ok") {
-          item.status = "completed";
-          item.output = result.output;
-        } else {
-          item.status = "failed";
-          item.output = undefined;
-          const errAny = result.error as { code?: string; details?: Record<string, unknown> };
-          item.error = {
-            message: result.error.message,
-            ...(errAny.code ? { code: errAny.code } : {}),
-            ...(errAny.details ? { details: errAny.details } : {})
-          };
-        }
-        // Emit `item.updated` to patch the in-progress placeholder, then
-        // `item.done` so the row settles. Consumers reconcile by id.
-        const patch: Record<string, unknown> = result.kind === "ok"
-          ? { status: item.status, output: item.output }
-          : { status: item.status, output: undefined, error: item.error };
-        await ctx.response.emit({ type: "item.updated", id: item.id, patch });
-        await ctx.response.emit({ type: "item.done", item });
-      };
-
-      const placeholder = buildPlaceholderTool(ctx._blockIdentity);
-      if (placeholder !== undefined) {
-        await placeholder.emit();
-      }
-
-      if (ctx._withExecutionScope === undefined) {
+        statusGuard.active++;
+        // Surface the tool's run in the status slot so the in-flight indicator
+        // reflects "what's happening now". Routing through emit.status (rather
+        // than emitting a raw status item) updates the slot, which is what
+        // makes the restore in `finally` actually publish a clearing item
+        // instead of being deduped against an unchanged slot.
+        scopedCtx.emit.status(`Using ${tool.name}…`);
         try {
-          const output = await runTool(ctx, placeholder?.item.id);
-          await finishToolOutput(placeholder, { kind: "ok", output });
+          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
           return output;
+        } finally {
+          statusGuard.active--;
+          if (statusGuard.active === 0) {
+            scopedCtx.emit.status(statusGuard.saved);
+          }
+        }
+      };
+
+      // `_withExecutionScope` is the durable-runtime hook that disambiguates
+      // tool invocations across resumes by deriving a deterministic path.
+      // `toolCallId` is the stable disambiguator; "0" is fine when absent
+      // because that path also skips the envelope.
+      const withScope = (run: (scopedCtx: BlockContext) => Promise<unknown>): Promise<unknown> => {
+        if (ctx._withExecutionScope === undefined) return run(ctx);
+        const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+        const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, options?.toolCallId ?? "0"));
+        const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
+        return ctx._withExecutionScope(
+          { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
+          run
+        );
+      };
+
+      // Wrap with `onToolErrored` so the observer fires BEFORE the
+      // `tool_output` envelope settles to failed and emits `item.done`.
+      // Consumers that listen for `item.done` and expect the observer's
+      // side-effects (memo writes, additional emitted items) to already
+      // have run rely on this ordering. The outer envelope-emit path
+      // catches whatever this rethrows and only then emits item.done.
+      const callToolWithErrorObserver = async (scopedCtx: BlockContext): Promise<unknown> => {
+        try {
+          return await callTool(scopedCtx);
         } catch (error) {
           const err = toError(error);
-          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-          await finishToolOutput(placeholder, { kind: "err", error: err });
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
           throw err;
         }
-      }
+      };
 
-      // Derive a deterministic path for this tool invocation. The model's
-      // `toolCallId` is the stable disambiguator across resumes when present;
-      // fall back to the tool name alone otherwise.
-      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-      const toolPath = extendBlockPath(
-        parentPath,
-        blockPathTool(tool.name, options?.toolCallId ?? "0")
-      );
-      const toolInstanceId = buildBlockInstanceId(
-        ctx.request.identity.id,
-        toolPath,
-        0
-      );
-
-      try {
-        const output = await ctx._withExecutionScope(
-          {
-            name: tool.name,
-            kind: tool.kind,
-            instanceId: toolInstanceId,
-            path: toolPath,
-            input: args
-          },
-          (scopedCtx) => runTool(scopedCtx, placeholder?.item.id)
-        );
-        await finishToolOutput(placeholder, { kind: "ok", output });
-        return output;
-      } catch (error) {
-        const err = toError(error);
-        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-        await finishToolOutput(placeholder, { kind: "err", error: err });
-        throw err;
+      // No `toolCallId` → no stable envelope callId; run the tool directly
+      // with retry + observer hooks (matches prior behavior).
+      if (options?.toolCallId === undefined) {
+        return await withScope(callToolWithErrorObserver);
       }
+      const attribution = {
+        callId: options.toolCallId,
+        generatorBlock: generatorBlockName,
+        agentType,
+        agentName,
+        // Read the current generator identity off ctx so a multi-turn tool
+        // loop sees the identity that was active when the model invoked the
+        // tool. The generator block writes `_currentModelIdentity` on every
+        // chunk that carries a resolvedIdentity.
+        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+      };
+      return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+        withScope((scopedCtx) => {
+          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+          return callToolWithErrorObserver(scopedCtx);
+        })
+      );
     }
     };
   });
@@ -1107,7 +1077,8 @@ function buildSourceItem(
   ctx: BlockContext,
   provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
   agentType: AgentType | undefined,
-  agentName: string | undefined
+  agentName: string | undefined,
+  model: ModelIdentity | undefined
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -1124,27 +1095,9 @@ function buildSourceItem(
     sourceId: source.id,
     url: source.url,
     title: source.title,
-    providerMetadata: source.providerMetadata
+    providerMetadata: source.providerMetadata,
+    model
   };
-}
-
-/**
- * Duck-typed helper to get the current item count from the response emitter.
- * The core ResponseEmitterHandle only exposes `emit()`, but the server-side
- * ResponseEmitter also has `getItems()`. We use duck-typing so the generator
- * can assign a sequential itemIndex without importing server types.
- */
-function getEmitterItemCount(response: unknown): number {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "getItems" in response &&
-    typeof (response as { getItems?: unknown }).getItems === "function"
-  ) {
-    const items = (response as { getItems: () => unknown[] }).getItems();
-    return Array.isArray(items) ? items.length : 0;
-  }
-  return 0;
 }
 
 /**
@@ -1188,6 +1141,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
   };
   const ownedBy = identity?.ownedBy;
   let reasoningAccumulated = "";
+  // Resolved model identity stamped on each emitted item and propagated to
+  // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
+  // first chunk that carries it; refined on the `finish` chunk. The pre-
+  // chunk seed lets a tool called on the very first AI SDK turn still stamp
+  // an identity on its `tool_output` item.
+  let resolvedIdentity: ModelIdentity | undefined = { actual: model.modelId };
+  (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
 
   // Reasoning and message items are emitted lazily so their order in the
   // item list matches the natural stream order (reasoning before text).
@@ -1212,6 +1172,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
     caching: resolvedCaching,
     prepareStep
   })) {
+    if (chunk.resolvedIdentity !== undefined) {
+      resolvedIdentity = chunk.resolvedIdentity;
+      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = resolvedIdentity;
+    }
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
       if (emit) {
         if (!reasoningStarted) {
@@ -1228,6 +1192,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1267,6 +1232,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1286,6 +1252,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ownedBy,
             agentType,
             agentName,
+            model: resolvedIdentity,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1307,26 +1274,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
           delta: chunk.textDelta
         });
       }
-    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      if (emit) {
-        const toolName = chunk.toolInput.toolName;
-        const statusItem = {
-          id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "status" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          agentType,
-          agentName,
-          message: `Using ${toolName}…`,
-          detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
-        };
-        await ctx.response.emit({ type: "item.added", item: statusItem });
-        await ctx.response.emit({ type: "item.done", item: statusItem });
-      }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
       if (emit) {
         const delta = chunk.toolCallDelta;
@@ -1342,6 +1289,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ownedBy,
           agentType,
           agentName,
+          model: resolvedIdentity,
           toolCallId: delta.toolCallId,
           toolName: delta.toolName,
           argsDelta: delta.argsDelta
@@ -1364,6 +1312,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ownedBy,
           agentType,
           agentName,
+          model: resolvedIdentity,
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: tr.result
@@ -1373,12 +1322,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
       if (emit) {
-        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName);
+        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName, resolvedIdentity);
         await ctx.response.emit({ type: "item.added", item: sourceItem });
         await ctx.response.emit({ type: "item.done", item: sourceItem });
       }
     } else if (chunk.type === "finish") {
       finalResult = chunk.fullResult;
+      if (finalResult?.resolvedIdentity !== undefined) {
+        resolvedIdentity = finalResult.resolvedIdentity;
+      }
     }
   }
 
@@ -1404,6 +1356,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ownedBy,
         agentType,
         agentName,
+        model: resolvedIdentity,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1422,6 +1375,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ownedBy,
         agentType,
         agentName,
+        model: resolvedIdentity,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1453,6 +1407,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     const completedItem = {
       ...messageItem,
       status: "completed" as const,
+      model: resolvedIdentity,
       content: [{ type: "output_text" as const, text: accumulated }]
     };
     await ctx.response.emit({ type: "item.done", item: completedItem });
@@ -1480,7 +1435,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
     usage: finalResult?.usage,
-    providerMetadata: finalResult?.providerMetadata
+    providerMetadata: finalResult?.providerMetadata,
+    identity: resolvedIdentity
   });
 
   return parsed.output as TOutput;
@@ -1496,28 +1452,29 @@ export function generator<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
-  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResourceDefs, TResources, TTargetSchemas,
-    TUses, TCapabilities, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
@@ -1540,6 +1497,24 @@ export function generator<
   const hasStaticContext = staticContextEntries.length > 0;
   const hasStaticTools = staticToolEntries.length > 0;
   const hasDynamic = dynamicUses.length > 0;
+
+  // -- Singletons (model, providerOptions, caching): block-level wins over
+  // capability; among capabilities, last-wins (handled in mergeSurfaceInto).
+  if (normalizedConfig.model === undefined && mergedSurface?.model !== undefined) {
+    (normalizedConfig as { model?: unknown }).model = mergedSurface.model;
+  }
+  if (normalizedConfig.model === undefined) {
+    throw new Error(
+      `Generator "${String(normalizedConfig.name)}" requires a model. ` +
+      `Set one on the block or via a capability that contributes \`model\`.`,
+    );
+  }
+  if (normalizedConfig.providerOptions === undefined && mergedSurface?.providerOptions !== undefined) {
+    (normalizedConfig as { providerOptions?: unknown }).providerOptions = mergedSurface.providerOptions;
+  }
+  if (normalizedConfig.caching === undefined && mergedSurface?.caching !== undefined) {
+    (normalizedConfig as { caching?: unknown }).caching = mergedSurface.caching;
+  }
 
   // -- Context: append static + dynamic entries to the user's context array
   if (hasStaticContext || hasDynamic) {
@@ -1619,8 +1594,11 @@ export function generator<
     resolvedCapabilities,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
+      // model is guaranteed non-undefined at this point — the construction-
+      // time check above throws if neither the block nor any capability
+      // contributed a model.
       const { modelId, model } = await resolveModel(
-        normalizedConfig.model,
+        normalizedConfig.model as ResolvableModel<TInput, BlockContext>,
         input,
         ctx,
         blockName
@@ -1820,6 +1798,13 @@ export function generator<
         );
       }
 
+      // Prime `_currentModelIdentity` with the requested model id so tools
+      // called inside the AI SDK's multi-step loop (before the generate call
+      // returns and `resolvedIdentity` is known) still stamp an identity on
+      // their `tool_output` items. Refined to the resolved identity below.
+      (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = {
+        actual: model.modelId,
+      };
       // Non-streaming: single call, model handles multi-step loop via maxSteps.
       const generation = await model.generate({
         messages,
@@ -1835,10 +1820,15 @@ export function generator<
       });
 
       const candidate = resolveGenerationCandidate(generation);
+      const nonStreamingIdentity = generation.resolvedIdentity;
+      if (nonStreamingIdentity !== undefined) {
+        (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = nonStreamingIdentity;
+      }
       ctx._runtimeHooks?.onGeneratorModelResult?.({
         model: model.modelId,
         usage: generation.usage,
-        providerMetadata: generation.providerMetadata
+        providerMetadata: generation.providerMetadata,
+        identity: nonStreamingIdentity
       });
 
       // Emit source items from provider-native tools (e.g., web search).
@@ -1852,7 +1842,7 @@ export function generator<
           phase: sourceIdentity?.phase ?? ("main" as const)
         };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName, nonStreamingIdentity);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1902,6 +1892,7 @@ export function generator<
           ownedBy: nsOwnedBy,
           agentType,
           agentName,
+          model: nonStreamingIdentity,
           content: [{ type: "output_text" as const, text: output }]
         };
         await ctx.response.emit({ type: "item.added", item: messageItem });

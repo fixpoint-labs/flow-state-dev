@@ -102,7 +102,7 @@ function buildDefaultReviewer(opts: {
   agentType?: AgentType;
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
-}): BlockDefinition<any, any> {
+}) {
   const criteriaBlock =
     opts.reviewCriteria && opts.reviewCriteria.length > 0
       ? `\nEvaluation criteria:\n${opts.reviewCriteria
@@ -128,7 +128,7 @@ function buildDefaultReviewer(opts: {
     ],
     user: (input: unknown) =>
       typeof input === "string" ? input : JSON.stringify(input, null, 2),
-  }) as BlockDefinition<any, any>;
+  });
 }
 
 /**
@@ -171,7 +171,7 @@ function buildDefaultSynthesizer(opts: {
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
   agentType?: AgentType;
-}): BlockDefinition<any, any> {
+}) {
   const basePrompt = [
     "You are the final synthesis step in a supervisor workflow.",
     "Combine the workers' outputs into the FINAL DELIVERABLE the user requested.",
@@ -220,7 +220,7 @@ function buildDefaultSynthesizer(opts: {
       }
       return parts.join("\n\n");
     },
-  }) as BlockDefinition<any, any>;
+  });
 }
 
 /** Build a `supervisor` block. See module doc for pipeline shape. */
@@ -258,7 +258,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const boardOnError: "skip" | "fail" =
     onSubTaskError === "fail" ? "fail" : "skip";
 
-  const resolvedReviewer: BlockDefinition<any, any> | undefined =
+  const resolvedReviewer =
     config.reviewer === false
       ? undefined
       : (config.reviewer ??
@@ -271,9 +271,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         }));
 
   // Wrap each worker (uniform OR registry entry) in a reviewedWorker chain.
-  const reviewedWorkers:
-    | BlockDefinition<any, any>
-    | Record<string, BlockDefinition<any, any>> =
+  const reviewedWorkers =
     workerRegistry !== undefined
       ? Object.fromEntries(
           Object.entries(workerRegistry).map(([key, block]) => [
@@ -373,5 +371,5 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .then(board.block)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
-    .then(synthesize) as SequencerDefinition<any, any>;
+    .then(synthesize);
 }

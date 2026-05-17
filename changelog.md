@@ -2,8 +2,218 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
-## 2026-05-13
 
+## 2026-05-17
+
+### Turn-aware history windowing (FIX-608)
+
+- `history: { limit: N }` on a generator now counts conversational turns rather than raw LLM protocol messages. A tool-heavy assistant turn no longer evicts the prior user message from the window — the tool calls ride along inside the turn they belong to.
+- `{ limit: { tokens: T } }` is turn-aligned: whole turns are packed from the end of the conversation and never split across the budget boundary. If the most recent prior turn alone exceeds the budget it is still included.
+- New explicit `{ limit: { turns: N } }` form is preferred in new code that wants to be unambiguous about the unit. Bare `{ limit: N }` continues to compile and now behaves more generously than before — no migration step.
+- Live items from the in-flight request are still always included regardless of limit. This preserves the "try again" retry-after-mid-turn-failure scenario the bug was originally reported against.
+
+### Trading-desk: per-agent approach preamble streams visible reasoning in Phases 3–5 (FIX-604)
+
+- Every silent structured-output agent in Phases 3–5 — the trader, the three Phase 4 personas, the risk-assessment consolidator, and the portfolio manager — now streams a one-sentence approach preamble before its structured memo. The transcript pane no longer goes quiet during the pipeline's most consequential phases.
+- Preambles are display-only: their text is not fed into the structured generator and does not influence the memo. The mechanism is purely an observability addition with zero correctness coupling.
+- Always-fast model. Each preamble runs on `intent/utility` regardless of the user's `costPreset` choice, so the `full` preset doesn't escalate the preambles too.
+- All six preamble generators are built via a small `createApproachGenerator` factory that lives inside the example next to the `tradingDesk` capability. Single consumer today, so the pattern stays inside the consumer rather than getting promoted to `@flow-state-dev/patterns`. Each call site only specifies what differs (name, agent name, artifact name, prompt, capability presets).
+- Round Robin needs no pattern-level change. Roster blocks were already sequencers after the FIX-597 reshape, so inserting `.then(<approachGen>)` inside each roster sub-sequencer is local to the example.
+- Trading-desk walkthrough and README extended for the new Phase 3 / 4 / 5 shape and the in-flow-factory teaching moment.
+
+### Trading-desk: Company Profile analyst grounds the desk in what the business actually is (FIX-606)
+
+- New fifth Phase 1 analyst (`companyProfileAnalyst`) runs in parallel with the existing four and publishes a memo describing the underlying business: name, sector, industry, country/exchange/currency, business description, and rough scale (market cap, employees, IPO date). Downstream phases pick it up automatically via the `tradingDesk` capability's `phase1Memos` formatter.
+- Renderer, not synthesizer. The analyst is given structured fields from a deterministic provider fetch and constrained at the prompt level to render them — every body claim must trace to a field in `<data>`, with a "quote one figure verbatim" requirement as a structural defense against fabrication. The shared `<grounding>` clause from FIX-605 reinforces the boundary.
+- Provider chain reuses what's already wired: Finnhub `/stock/profile2` preferred (no new key, already called by `get_fundamentals`), Yahoo `quoteSummary` (assetProfile + summaryDetail) fallback for sector and business description. When both providers fail, the analyst emits a memo whose body explicitly states identity could not be resolved rather than inventing the company.
+- Fixture coverage for the three pinned tickers (NVDA, AAPL, JPM) at the `2026-05-06` snapshot.
+- README, walkthrough, and internal design doc updated to reflect the five-analyst fan-out and the grounding analyst's role.
+
+### Bash tool: working bash on Vercel without operator setup (FIX-587)
+
+- Kitchen-sink's `selectBashProvider()` no longer picks the Vercel adapter on every Vercel deployment regardless of credentials. The deployed demo was returning HTTP 400 on every bash, bash-read-file, and bash-write-file call because `@vercel/sandbox` had no OIDC token or static access-token triple to authenticate with. Auto-detect now requires the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple before picking the Vercel provider on Vercel; without it, the selector falls back to `just-bash` (in-memory virtual filesystem, ~70 commands, zero auth). Forks deploying to Vercel get a working demo with no environment-variable setup.
+- New `BASH_PROVIDER` env var for explicit opt-in (`vercel`, `just-bash`, `local`, `moat`). Operators with OIDC Federation enabled on their Vercel project must set `BASH_PROVIDER=vercel` to opt in — the OIDC token is delivered as a per-request `x-vercel-oidc-token` header, not as `process.env.VERCEL_OIDC_TOKEN` at module init, so auto-detect can't see it.
+- The Vercel adapter's `enrichVercelError` now recognizes the SDK's `VercelOidcContextError` and `LocalOidcContextError` (thrown before any HTTP call when no OIDC token is available). Previously these bypassed enrichment because they have no `.response.status` field — the chat UI saw a bare SDK message instead of an actionable diagnostic. The new wrapper produces a single message naming the three remediation paths: enable OIDC Federation, set the static triple, or set `BASH_PROVIDER=just-bash` to disable the Vercel adapter.
+- New "Using the bash tool on Vercel" section in the Deploying to Vercel guide documents the credential options, the `BASH_PROVIDER` env var, and cost tradeoffs for public demos. Kitchen-sink and `packages/tools` READMEs cross-link to the guide.
+- Default `destination` for the Vercel provider is now `/vercel/sandbox/workspace`. Previously the framework defaulted every provider to `/workspace`, but the Vercel Sandbox runtime user (`vercel-sandbox`) can only `mkdir` under its home (`/vercel/sandbox`), and `Sandbox.writeFiles` extracts tarballs at `/`. The old default produced `tar: workspace: Cannot mkdir: Permission denied` on every `writeFiles` call — the demo never actually wrote a file end-to-end on Vercel even when authentication worked. The new default anchors the workspace inside the user's writable home; other providers continue to default to `/workspace`.
+- `enrichVercelError` now wraps every adapter method, not just `Sandbox.create()`/`get()`. Runtime calls (`writeFile`, `executeCommand`, `readFile`) used to pass raw SDK errors through, so a 400 from `/fs/write` surfaced as `Status code 400 is not ok` with no body — the useful detail in `err.json.error.message` (e.g. tar extraction failures) went only to the deploy logs.
+- Cold-path bash block names and the ensure-sandbox status message now include the provider type, so the trace makes it obvious which sandbox a request is using (`bash-vercel-ensure-sandbox`, `bash-vercel-write-file-exec`, etc.). Warm-path leaf names are unchanged.
+
+
+## 2026-05-16
+
+### Sequencer DSL: `.throwIf(condition, error)` guard primitive
+
+- New `.throwIf((value, ctx) => boolean, Error | (value, ctx) => Error)` on the sequencer DSL. Throws the supplied error (or factory-produced error) when the predicate is true; otherwise passes through unchanged. Pairs with `.rescue([{ when: [TypedError], block: handler }])` for typed early-stop patterns. Both predicate and error factory may be async.
+
+### Trading-desk: unresolvable-ticker guardrails + shared grounding clause (FIX-605)
+
+- Pre-flight ticker resolution runs after `seedSession` and before `phase1Pipeline`. A `.tap` probes the active data source (fixture-file existence / live fundamentals fetch) and patches `stoppedReason: "unresolvable-ticker"` when the ticker can't be resolved; the following `.exitIf` bails before any model spend.
+- Post-Phase-1 data-quality `.tap` reads memo statuses and patches `stoppedReason: "phase-1-no-data"` when every analyst memo is in `error`; the following `.exitIf` halts the run before phases 2–5 synthesize on no upstream data.
+- The `tradingDesk.core` preset now injects a shared `<grounding>` clause into every generator's prompt — "operate strictly on data provided by upstream agents and tools; surface insufficient-data rather than fabricate." Expressed once, applied uniformly across all twelve agents, instead of the Phase-1-only `SHARED_PREAMBLE` line being the only source of grounding discipline.
+- Session state gains `stoppedReason` and `stoppedMessage` fields, both surfaced to the client so the navigator can render a terminal stopped banner rather than an in-progress indicator.
+
+### Round Robin pattern reshape: optional referee, `terminateWhen`, synthesizer-as-terminal (FIX-597)
+
+- `roundRobin()` no longer requires a judge. The `judge` config is removed; a new optional `referee` slot runs after every round as a per-round argument-quality auditor (returns `{ critique }`) and does not control termination. Critiques accumulate in outer state as `refereeCritiques` and the default roster agents render prior critiques into their prompts on subsequent rounds.
+- New `terminateWhen?: (ctx) => boolean` config drives runtime early-exit; `maxRounds` stays as the hard cap. The synthesizer remains the standard terminal step (`synthesizer: false` opt-out unchanged).
+- `RoundRobinFinalShape` drops `done` and `summary`; adds `refereeCritiques: Array<{ round, critique }>`. The `lastJudgeSummary` field is removed from outer state. Schema/factory renames: `roundRobinJudgeOutputSchema` → `roundRobinRefereeOutputSchema`, `createJudge` → `createReferee` (re-exported as `createRoundRobinReferee`).
+- Trading-desk Phase 2 collapses from four pre-built `roundRobin()` instances plus a router to one instance with `terminateWhen` driving `maxDebateRounds` and `uses: [tradingDesk]` resolving the model from `costPreset`. Phase 4 drops `judge: stubJudge` and otherwise keeps its three custom roster sub-sequencers. The `stub-judge.ts` workaround and its test are deleted.
+- Docs reshape: `apps/docs/docs/patterns/round-robin.md` rewritten around referee + termination + synthesizer-as-terminal; trading-desk walkthrough Phase 2 and Phase 4 prose updated; package README, example CLAUDE.md, and internal design doc reflect the new shape. The remix-primitives docs surface and a future moderator pattern are explicitly deferred.
+
+### Idempotency primitives on handler context (FIX-402)
+
+- `BlockContext` now exposes `idempotencyKey` and `runOnce(key, fn)`. The key is a stable string of the form `${requestId}:${blockPath}` — identical across retry attempts of the same logical step, so it can be passed directly to providers that accept an idempotency header (Stripe, Twilio, etc.).
+- `runOnce(key, fn)` memoizes the result of `fn` per `(requestId, userKey)`. The first invocation runs `fn` and persists the result through the `RequestStore`; subsequent calls within the same request — block retries, concurrent same-key races, or any re-entry — return the stored value without re-running the side effect. Concurrent calls with the same key share a single inflight promise so the wrapped work cannot fire twice in a race.
+- `RequestStore` gains `getRunOnceResult` / `setRunOnceResult`. Memory, filesystem, SQLite, and Postgres adapters all carry the table; SQLite and Postgres add a `request_runonce(request_id, key, value)` table to their schemas.
+- Scope is request-local on purpose. Crash-recovery dispatches that mint a new `requestId` start with an empty `runOnce` namespace — for cross-request de-dup, hand `ctx.idempotencyKey` to the external provider instead. The boundary is documented in the new `advanced/idempotency` docs page.
+
+## 2026-05-15
+
+### Kitchen-sink in-flight status indicator (FIX-600)
+
+- Default fallback verb changed from "Thinking..." to "Working..." so it no longer duplicates the reasoning chrome's header text.
+- The in-flight indicator now switches to a muted "Tidying up..." state while a request is in its background-task drain phase. After FIX-554 lifted `.work()` to a request-level pool the SSE stream stays open past the visible end of the main response; the indicator was previously suggesting the assistant was still producing the answer.
+- `RequestGroupRenderer` and `RequestGroup` gain an optional `isFinishing` prop (defaults to `false`); host apps thread `useSession.isFinishing` through to drive the drain-state rendering. Downstream consumers that do not yet thread the signal continue to render as today.
+- Generator/tool status restore: a tool's status no longer lingers past its own execution. The generator snapshots the slot on the first tool entry of a (possibly parallel) round and restores it when the last tool exits, falling back to the generator's own `activeStatusMessage` (or empty → "Working...") afterward. The "Using <tool>…" hint now also routes through the same slot, so tools that don't emit their own status (e.g. `search`, `fetch`, `crawl`) get a clean restore instead of leaving "Using …" stuck on the indicator.
+
+### Memory system extracted into `@flow-state-dev/memory` package (FIX-588)
+
+- New `@flow-state-dev/memory` package. The full memory system (working / episodic / semantic / digest tiers, capabilities, recall tool, helpers, formatters) previously hosted in `@thought-fabric/core/memory` now ships from a dedicated package. Apps that needed Thought Fabric only for memory can drop the `@thought-fabric/core` dependency entirely.
+- Memory is a separate install — it is not bundled with `@flow-state-dev/core`. Add `@flow-state-dev/memory` to your dependencies alongside core when an agent needs cross-turn persistence.
+- `@thought-fabric/core/memory` is removed. The `memory` namespace no longer ships from Thought Fabric; the subpath export and re-export shim are deleted. Until Thought Fabric ships its own cognitive memory variants on top of the shared contract, it doesn't address memory at all.
+- New minimum read-side contract `MemoryProvider` (with `MemoryContextSections`, `RankedMemoryItem`) lives next to the implementation. The `MemorySystem` returned by `system()` declares it implements `MemoryProvider`, and exposes `formatContext` as an alias of `contextFormatter` so consumers depending on the contract can call it under the contract-shaped name. `contextFormatter` is preserved.
+- Block names no longer carry the `tf.` prefix. The recall tool is now `memory/recall` (sanitized for the agent as `memory_recall`); `tf.memory/observe`, `tf.memory/consolidate/*`, `tf.memory/prune/*`, `tf.memory/digest/*` all become `memory/...`.
+- Kitchen-sink `chat-agent` and `rich-text-component` flows updated to import from `@flow-state-dev/memory`. Thought Fabric continues to host attention, identity, and metacognition.
+- New Ecosystem → Memory category in the docs site (overview, configuration, recall tool), with explicit install instructions. The Thought Fabric README and sub-site lose their memory pages and gain a short pointer to the new home.
+- The full memory consumption contract (event-shaped writes, multi-provider composition, snapshot semantics) is intentionally deferred to a follow-up.
+
+### Bash tool: tolerate `./`-prefixed paths in `bashWriteFile`
+
+- `routeWrittenFile` strips a leading `./` before matching mount prefixes. The model regularly supplies `./artifacts/foo.md` even though the schema says workspace-relative; previously these landed on disk but were silently dropped from the collection sync. Now they route correctly.
+
+### Bash tool: background purge of stale MOAT containers
+
+- **New `purgeOldRuns` helper + `bash-purge-stale-containers` block.** Wired via `.workIf(isCold, ...)` into the cold-boot sequencer step, so the purge dispatches as fire-and-forget while `ensureSandbox` is booting the new container. Lists all runs, filters to framework-managed names (prefix `fsdev-`), excludes the current run, sorts oldest-first by `StartedAt`, and destroys whatever exceeds the limit (default 50).
+- Bounds the container pool that accumulates when `persist: true` keeps each session's container alive for its full lifetime. Without this, a developer running many sessions over a week would steadily accumulate `fsdev-*` containers; the purge tops up the pool back to 50 on each cold session start. Never touches user-named (non-prefixed) containers.
+
+### Bash tool: MOAT containers persist across requests within a session
+
+- **`provider.persist` now defaults to `true`** for MOAT when the framework derives the workspace. Without it, `cleanupBlock` (wired into `request.onFinished`) destroyed the container at the end of every tool-call request, so each subsequent bash command cold-booted a fresh container (~10–30s). On the apple runtime that cold boot also races `readdir()` on the freshly-mounted host workspace — the first `ls /workspace` would return `Operation not permitted` because the host-fs contents hadn't propagated through the bind mount yet, and the model would invent explanations ("MOAT isolation prevents directory listing") instead of receiving real output.
+- With persist, the request-end cleanup only removes the in-process registry entry — the MOAT run stays alive. Next request finds it via the `moat list` reuse path and reconnects in milliseconds. Container count is bounded by the session count (`runName` is `fsdev-<sessionId>`); cleanup is the operator's responsibility — `moat clean` periodically, or rm-rf the per-session workspace dirs.
+- Users who explicitly set `provider.persist` still get their choice honored; the new default only kicks in when the field is left undefined.
+
+### Bash tool: explicit `/workspace` mount declaration; kitchen-sink artifact lookup
+
+- **`stripMountsTargeting` now strips *and* injects.** Previously it removed user-declared `/workspace` entries from the yaml on copy-in and relied on MOAT's implicit `moat run <workspace>` auto-mount. On the apple runtime that auto-mount sometimes didn't materialize, leaving the container's `/workspace` absent and the agent's `cd /workspace && ls` failing — which the model dressed up as "MOAT isolation prevents directory listing." The strip now also injects an explicit `mounts: - <abs workspace path>:/workspace` entry into the copied yaml, so the bind mount is declared rather than implied. Eliminates a class of "the container can't see what's on disk" failures and removes the ambiguity that lets the model fabricate explanations.
+- **Kitchen-sink: artifact content now renders.** `page.tsx`'s artifact-content lookup compared `item.topic` (which the framework's list endpoint returns stripped of the collection prefix — `"hello.md"`) against a manually-constructed `storageKey` (`"artifacts/hello.md"`). The `find` never matched, `setArtifactContent(null)` ran, and the renderer drew "Empty artifact." Fixed to compare bare-topic to bare-topic.
+
+### Bash tool: artifact content now persists on first write
+
+- **`routeWrittenFile` and `flush()` now upsert via `getOrCreate` + `patchState` + `writeContent`** — the same pattern the framework's own `upsertResource` utility uses for known-good resource writes. The previous `create` + `writeContent` shape registered the ref but the client-side snapshot would sometimes render the artifact with empty content until a *second* write triggered a state-update event. Aligning the bash-block upsert sequence with the framework's canonical pattern fixes the "Empty artifact" symptom on first `bashWriteFile`/`bashCommand`-driven creation.
+
+### Bash tool: `/workspace` is no longer a concept the agent has to know about
+
+- **`bashCommand` runs with PWD = workspace root.** The block factory wraps the agent's command with `cd '<destination>' && <command>` so the shell's current directory is always the workspace root. The agent can now use relative paths (`wc -c artifacts/foo.md`, `ls -la artifacts/`) and never needs to know about magic prefixes like `/workspace`. Single-quoted with POSIX escape so destination paths with spaces are safe.
+- **Block + schema descriptions updated** to explicitly tell the model "paths are relative to the workspace root; don't prefix with `/workspace`." LLMs routinely forget non-mandatory prefix rules — the cd wrapper makes the absolute-prefix form *also* work (so the agent isn't punished for forgetting), but the wording nudges toward the simpler relative form.
+- **`bashWriteFile` host-fs leaf no longer reads the user's source `moat.yaml`** to derive the mount source. Reading the *unstripped* user yaml resolved against the per-session workspace dir produced a nested path the container couldn't see at `/workspace`, so the host-fs write landed somewhere the agent's subsequent `bash` commands couldn't find. The leaf now uses the workspace dir directly — matching what MOAT auto-mounts at `/workspace` — for trivially consistent read-after-write.
+
+### Bash tool: framework-derived workspaces bypass the marker check
+
+- **New `frameworkManaged` flag on `resolveMoatSandbox`** lets the caller assert the workspace path is framework-derived (i.e. `.fsdev/workspaces/session/<sessionId>` or similar auto-generated dir) and the resolver overwrites `<workspace>/moat.yaml` unconditionally. `createScopedSandbox` passes this through whenever it derives the workspace itself.
+- This unblocks the migration case where a yaml was written by a pre-marker version of the framework: previous code treated any non-marker yaml as user-authored and threw `Refusing to overwrite ...`, which blocked every second tool call in a dev-server session. The marker check remains the fallback signal for user-supplied workspaces.
+
+### Bash tool: framework-managed yaml is now safely re-overwritable; flush warns on zero-file walks
+
+- **`configPath` copy path now marker-tags and tolerates re-overwrite.** Previously, every framework-written `<workspace>/moat.yaml` was treated as potentially user-authored on subsequent boots, so the second tool call in a dev-server session (Next.js HMR, request-scoped lifecycles, registry-clearing retries) hit "Refusing to overwrite existing `<sessionDir>/moat.yaml`" and aborted. The copy now prepends `FSDEV_MANAGED_MARKER` to the stripped yaml, and on subsequent boots checks for the marker: present → safe to refresh from source, missing → user owns it, throw. Same pattern the no-`configPath` branch has used since FIX-584.
+- **`flush()` warns when its walk finds zero files under writable mounts.** Previously a successful-but-empty walk was indistinguishable from "the agent's write went somewhere the walk didn't visit" — silent failure mode for the "I see the file on disk but my artifact didn't appear" symptom. New warning names the prefixes searched and the host walk source so the cause is visible at the moment of failure.
+
+### Bash tool: align MOAT default workspace with `local` provider; fix cold-boot readiness timeout
+
+- **Default MOAT workspace path** is now `.fsdev/workspaces/session/<sessionId>` (mirroring the `local` provider) instead of `.fsdev/moat/<sessionId>`. One mental model and one place on disk for "this session's stuff" regardless of provider. The user's hand-authored `moat.yaml` is copied (with `/workspace`-targeted mounts stripped) into each session dir; artifacts and other mount contents live alongside it under `<sessionDir>/artifacts/`, etc.
+- **`buildSubprocessEnv` runs after the configPath copy.** Previously the env was built upfront, but on a cold per-session boot `<workspace>/moat.yaml` didn't exist yet — `MOAT_RUNTIME` stayed unset, `moat list` silently defaulted to docker (and failed on apple-runtime hosts), and the readiness loop burned the full timeout because the run never appeared in the list. Reordering means the yaml's `runtime:` field is honored from the first poll.
+
+### Bash tool: per-session MOAT defaults + fail-fast on early `moat run` exit
+
+- **Default `runName` is now session-stable** (`fsdev-${sessionId}`). Previous default was a per-call `randomUUID()`, which produced a new container every bash invocation. Sessions still get their own container — sharing one across sessions would race hydrate (session A's artifact contents overwriting session B's view) and is now opt-in (set `provider.runName` explicitly, with the responsibility of avoiding workspace collisions).
+- **Default `workspace` for MOAT is now per-session** (`<cwd>/.fsdev/moat/<sessionId>`). The dir is created lazily on first boot. MOAT auto-mounts it at `/workspace`, so each session has an isolated host filesystem the agent sees as `/workspace`. The user's hand-authored `moat.yaml` (typically at the kitchen-sink root) is copied into each per-session dir on demand.
+- **`stripMountsTargeting` strips `/workspace` mounts from copied user yamls.** MOAT 0.5.x's workspace positional already auto-mounts at `/workspace`; a duplicate yaml-declared entry triggers `target "/workspace" already mounted`. When the framework copies a user's hand-authored yaml into a per-session workspace dir, it now strips any entry targeting `mountTarget` so the two don't collide. Non-`/workspace` mounts in the yaml are preserved verbatim.
+- **`buildRunArgs` no longer emits `-m <workspace>:<mountTarget>`.** Same root cause: MOAT auto-mounts the workspace positional, and our explicit `-m` was a redundant duplicate that produced the same "already mounted" error. Removed entirely; per-target host overrides go through the yaml.
+- **`moat run` early-exit is detected within the readiness poll.** `startDetached` now returns a handle exposing the child's exit info. Between `moat list` polls the resolver checks whether the child has died; if so, it throws `MoatRunStartError` immediately with the captured stderr tail (last ~16KB). Previously a fatal launch error (mount conflict, runtime unavailable, etc.) silently exited the host process and the readiness loop blocked the full timeout (default 180s) before failing with a generic "did not reach running" message.
+- **Diagnostic warning when `bashWriteFile`'s host-fs leaf finds no mounted collections on `ctx.resources`.** The write still lands on disk, but the file won't be registered in any artifact collection — typically a capability-wiring mistake on the consuming generator. The warning names the path and points at the likely cause so the symptom isn't invisible.
+
+### Bash tool: host-fs sync for bind-mount providers + cold-boot status sequencer
+
+Two related refactors in `@flow-state-dev/tools/bash` aimed at MOAT but
+applicable to any future bind-mount provider:
+
+- **Direct host-fs IO under MOAT.** `createMoatAdapter`'s `readFile` and `writeFile` now resolve the container-side path against the bind-mount source and operate on the host filesystem directly when the path is under `mountTarget`. The host directory and the container's `/workspace` are the same filesystem viewed through two paths; going through `moat exec cat` / `moat exec <stdin>` was paying an IPC round-trip per file for no isolation gain. `executeCommand` still goes through `moat exec` — only opaque shell commands need the container runtime.
+- **Workspace `moat.yaml` mount-source discovery.** New `resolveMountSource` helper reads the workspace yaml's top-level `mounts:` list and finds whichever entry targets `mountTarget` (default `/workspace`). When the user remaps `/workspace` to a different host directory (e.g. `./.fsdev/moat:/workspace`), the adapter follows. Narrow scope on purpose — we parse only what's needed for path translation, not the full yaml.
+- **`flush()` walk via host fs.** When `sandbox.hostMountSource` is set, the per-flush walk uses `fs.readdir({recursive:true})` over each mount-prefix dir on the host instead of `find` via `executeCommand`. Same algorithm, one syscall layer instead of three. Walk-via-`find` retained as the fallback for Vercel/Upstash adapters.
+- **`bashWriteFile` skips ensureSandbox under bind-mount providers.** Writes to a host directory don't need the container to be running — the bind mount picks them up when MOAT eventually boots. The leaf does `fs.writeFile` + inline single-file routing into the owning collection (no `find` walk, no hash diff loop). For Vercel/Upstash where the sandbox instance *is* the storage, `bashWriteFile` keeps the ensureSandbox gate.
+- **Sequencer split with `tapIf(isCold, ensureSandbox)`.** `bashCommand` and `bashReadFile` under setup-needing providers (MOAT, Vercel, Upstash) are now sequencer-wrapped, with the boot/connect step gated by a runtime "registry is empty" predicate. Warm path: passthrough, no extra trace node. Cold path: status emissions visible in the chat UI ("Preparing bash sandbox…", then "Booting bash sandbox (first run takes 30–60s while the image builds)…" when `probeMoatRun` reports the container is absent). Fast providers (`local`, `just-bash`, `custom`) stay leaf handlers — no sequencer wrapper, no trace overhead.
+- New exports: `resolveMountSource`, `probeMoatRun` from `@flow-state-dev/tools/bash`.
+- New optional `Sandbox.hostMountSource` property — set by adapters that know which host directory backs `/workspace`, consulted by `flush()` to decide which walk strategy to use.
+
+## 2026-05-14
+
+### `useResourceCollection` invalidates on mid-stream resource changes
+
+- `SessionView` gains a dedicated `resourceChanges: ReadonlyArray<ResourceChangeNotice>` channel. Every `resource_change` SSE item appends a `{ resourcePath, changeType, seq }` notice to this list — independent of the caller's `useSession` items filter. `resource_change` items are transient, so the prior implementation that watched `session.items` for them silently missed every mid-stream mutation whenever the consumer didn't opt into `includeTransient: true` (the default).
+- `useResourceCollection` now watches `session.resourceChanges` instead of `session.items`, invalidating its page cache as soon as a notice whose path is under the watched `ref` arrives. `get`'s callback identity also flips on invalidation (matching `list`'s existing behavior), so single-item subscribers via `useResourceCollectionItem` actually refetch.
+- User-visible effect: when a viewer is parked on a single collection item that transitions while they watch it (e.g., the trading-desk memo flipping from `writing` to `published`), the pane now updates in place instead of requiring the user to click away and back.
+- Additive public API: the new `ResourceChangeNotice` type and `SessionView.resourceChanges` field. No removals.
+
+### Bash tool: MOAT adapter compatibility with MOAT 0.5.x
+
+- `moat version` text-output fallback: MOAT 0.5.x advertises a global `--json` flag but `moat version` ignores it and prints a human-readable block. The adapter's preflight now falls back to scraping the first line (`moat <semver>`) when `JSON.parse` fails. JSON path is still tried first for forward compatibility.
+- `moat run` no longer uses the (removed-in-0.5.x) `-d` detach flag. The framework now spawns `moat run` detached on the host (stdio ignored, unref'd) and appends `-- sleep infinity` as the foreground keepalive command so the container stays up long enough for `moat exec` to interact with it. Readiness is observed via the existing `moat list` polling loop. Backwards-compatible with 0.4.x.
+- Every MOAT subprocess (`list`, `run`, `exec`, `stop`, `destroy`) now runs with `cwd: workspace` so the workspace's `moat.yaml runtime:` selector is honored. Previously these inherited the Node process CWD and silently defaulted to `docker`, ignoring `runtime: apple` declarations and failing with "docker daemon not accessible" on hosts using Apple's container runtime.
+- Default readiness timeout bumped from 10s → 180s. Cold first-run image builds on the apple runtime do apt-get installs and can take 30–60+ seconds; the previous 10s ceiling guaranteed a `MoatRunTimeoutError` on any user's first turn. Subsequent runs against the cached image still come up in seconds.
+- `moat list --json` parser now reads both PascalCase (`Name`/`State`) and lowercase (`name`/`state`) keys. MOAT 0.5.x emits PascalCase from Go's default JSON marshaling; under the lowercase-only parser, the readiness loop polled a healthy container forever and the reconnect path never matched, both manifesting as `MoatRunTimeoutError`.
+- `MOAT_RUNTIME` env var is now derived from the workspace `moat.yaml`'s top-level `runtime:` field (or explicit caller config) and injected into every MOAT subprocess. Required because `moat list` / `stop` / `destroy` don't read `moat.yaml` — only `moat run` does — so an `apple`-only workspace would fail those commands with "docker daemon not accessible" even when `moat run` worked.
+- `startDetached` now pipes `moat run` stdout/stderr through the parent process with a `[moat:<runName>]` prefix instead of discarding it, so the 30–60s cold image build is visible in the dev server logs.
+
+### Bash tool: scope `flush()` walk to mount prefixes
+
+- `flush()` after every bash command/write previously ran `find . -type f` from the destination root (`/workspace`). Under providers that bind-mount the host repo — MOAT, Vercel sandbox — that traversed the entire user repo (every `.next/`, every per-package `dist/`, every source file), routinely exceeded the 60s `execTimeoutMs`, and silently aborted via `if (result.exitCode !== 0) return;` — which dropped any just-written artifact with no warning.
+- `find` is now scoped to each mount's prefix path (`./artifacts`, `./skills`, `./tmp`) plus the scratch directory. Mount prefixes are the only paths flush can route into a collection anyway, so the wider walk produced no value to offset its cost. Hydrate now seeds an empty `.keep` marker into each mount-prefix directory so `find` doesn't error on collections that start with zero refs. The flush deletion pass skips this marker explicitly.
+### Delta store verbs: `patchField`, `incField`, `pushToArray` (FIX-405)
+
+- `Store` adapters can now implement three optional delta verbs that mutate one field at a time instead of rewriting the whole record. Single-field `patchState` calls map to `patchField`, `incState({ field: delta })` calls map to `incField`, and `pushState` calls map to `pushToArray`. Multi-field patches stay on `set` to preserve single-version semantics per logical mutation.
+- The in-memory adapter and `@flow-state-dev/store-postgres` ship the verbs in this change. SQLite and filesystem keep working unchanged — `createScopePersist` feature-detects per call and falls back to `set` when an adapter doesn't advertise the verb.
+- Postgres uses native JSONB operators (`jsonb_set`, `||`) wrapped in `UPDATE ... WHERE version = ?` so the row-level CAS contract from FIX-400 still holds for delta paths. A 100-op patchField benchmark against PGlite passes within 2× the cost of 100 `set` calls; on real Postgres the gap widens as the wire payload shrinks.
+- Hot-path cleanup on the CAS retry loop: `MemoryStateContainer.read()` no longer deep-clones on every read (callers must treat the read result as immutable, which all in-tree scope ops already do), and the `JSON.stringify` size-estimate that ran on every CAS attempt is gone. The `onStateSizeWarning` callback is removed from `ScopeStateOpsOptions`.
+- `docs/architecture/state-and-scopes.md` documents the routing decision tree and the container immutability contract.
+
+## 2026-05-14
+
+### Trading Desk example: wider indicator set and insider transactions (FIX-596)
+
+- The technical analyst's indicator bundle expands from RSI/MACD/ATR/SMA50/200 to also include Bollinger Bands, VWMA(20), the Stochastic Oscillator (%K/%D), KDJ, and OBV. The hand-rolled `indicators-math.ts` is replaced with `trading-signals` (MIT) plus two small helpers for VWMA and KDJ.
+- New `get_insider_transactions` tool wired into the news analyst — 90-day window of Form 4 filings with filing date, insider name and title, transaction code, signed share count, price, and derivative flag. Finnhub-only; returns `unavailable` on failure or missing key, consistent with the other single-provider tools.
+- News analyst prompt updated to weigh insider transactions as ground-truth signal (cluster buying, executive selling streaks, derivative vs. open-market trades) and treat headlines as complementary context.
+- Curated `insider-transactions.json` fixtures added for NVDA, AAPL, and JPM at the `2026-05-06` snapshot. Existing `indicators.json` fixtures extended with the new indicator fields.
+- Lives entirely inside `examples/trading-desk/` — no framework changes.
+
+### Observable model identity on generator emissions and block_trace (FIX-518)
+
+- New `ModelIdentity` type exported from `@flow-state-dev/core`. Shape: `{ actual, requested?, gateway? }` — `actual` is always populated (provider-reported model id when present, otherwise the framework's winning candidate string); `requested` is set only when it differs from `actual`; `gateway` is set when the call routed through a gateway.
+- Every generator-emitted item — `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress` — now carries `model: ModelIdentity`. Handler-emitted items (via `ctx.emitMessage`) leave the field absent.
+- `BlockTraceItem` for generator blocks gains a top-level `model` field as a sibling of `generator.model` (the requested string) and `modelUsage.model` (the token-accounting key). Populated even when the generator emits no items, so structured-only and tool-only turns have a durable audit trail.
+- New `<ModelBadge model={item.model} />` in `@flow-state-dev/react`. Renders the `actual` model id as a pill with the requested/gateway in the tooltip; renders nothing when `model` is undefined. Kitchen-sink wires it next to the thinking-style badge on assistant messages.
+- Additive change. Items persisted before this release surface as `model: undefined`, which renderers and audit consumers treat as absent.
+
+### `block.asTool()` — render deterministic block calls as tool pills (FIX-593)
+
+- New method on every `BlockDefinition`. Wrapping a block with `.asTool(opts?)` causes it to emit a `tool_output` item with the same envelope and lifecycle the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged.
+- Closes the transcript-visibility gap for flows that fetch data deterministically (e.g. inside `.parallel({...})`) and reserve the LLM for synthesis. Tool inputs known up front no longer have to choose between transcript pills and keeping the LLM out of the tool loop.
+- `agentType` / `agentName` opts control grouping under the parent agent's card. Failures flip the emitted `tool_output` to `failed` with the error message visible and rethrow.
+- Both `.asTool()` and the AI SDK tool-loop path now share a single envelope-emit path, so the two origins produce structurally identical `tool_output` items.
+- Trading-desk example: the app-local `callAsTool` prototype is deleted; analysts switch to `.asTool({...})`. No behavioral change to the rendered transcript.
+
+## 2026-05-13
+  
 ### Skills declare a pattern (FIX-450)
 
 - `SKILL.md` frontmatter can now declare `pattern: task-board` (or any registered key) plus a `workers:` map, an `initial-tasks:` list, and a `pattern-config:` block. Activating the skill materializes a TaskCollection, builds worker generators on the fly, runs the pattern, and streams progress through `<TaskPlan />`. No code per skill — the same registry handles every default pattern.
@@ -13,7 +223,28 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Kitchen-sink ships a `research-company` pattern skill — market-analyst + financial-analyst fan out in parallel, a primary synthesizer waits on both via `deps`, and the `<ActiveSkills>` badge renders the active pattern with a distinct icon.
 - FIX-422 closes with this work.
 
+### Trading Desk example: Phase 5 — portfolio manager final decision (FIX-564)
+
+- The `analyze` action now runs end-to-end through five phases. A single `portfolioManager` generator reads the always-on upstream artifacts (Phase 2 investment thesis, Phase 3 trade proposal, Phase 4 risk assessment) and emits a typed `PortfolioDecision`. On the `full` preset it also reads the four analyst memos, the bull/bear debate transcript, and the three persona risk critiques.
+- The structured output carries seven extension fields on top of the standard memo body: a five-tier `finalRating` (`Sell | Underweight | Hold | Overweight | Buy`), a one-line `decisionSummary`, a self-reported `decisionConfidence`, a typed `acceptedAdjustments` map that forces explicit accept-or-override with reasoning for each of the three risk-team recommendations, `keyDependencies`, `upstreamReferences`, and a derived `agreesWithTrader` boolean.
+- The right-pane PM Hero is now wired — rating bar, design-mandated metrics row, accepted-adjustments panel, key dependencies, and a static citation list referencing each upstream memo's storage key. The PM Hero reads from the same `useResourceCollectionItem` hook every other memo uses; the marquee surface has no special-case data flow. The PM Hero's stale lowercase 5-tier vocabulary is updated to the design-mandated capitalized scale (`["Sell","Underweight","Hold","Overweight","Buy"]`).
+- `agreesWithTrader` and `upstreamReferences` are computed at commit time rather than emitted by the LLM — both are fully determined by other stored values, so asking the model to mirror them would only add hallucination surface. Direction mapping: Buy/Overweight → long, Hold → flat, Underweight/Sell → short, compared against `trader.direction`.
+- New `runComplete` session-state field, exposed to the client. Resets to `false` at `seedSession` and flips to `true` when the PM commit handler succeeds, so a PM failure leaves the run marked incomplete even though the flow itself completes. New `phase-5` enum value on `activePhase` drives the transcript phase divider.
+- New `riskAssessment` preset on the `tradingDesk` capability that bundles the consolidated `memos/p4/risk-assessment` memo (body + typed extension fields). The existing `riskCritiques` preset covers only the three persona memos; Phase 5 reads both. A new `formatRiskAssessmentExtensions` helper in `services/format.ts` renders the typed fields for prompt context.
+- Per-step rescue means a PM-generator failure isolates: only `memos/p5/portfolio-manager` flips to `error` while prior phases' memos still publish. End-to-end coverage in `examples/trading-desk/test/phase-5-e2e.spec.ts` exercises both the happy path (verifies all P5 extension fields populated, `upstreamReferences` resolves to canonical keys, `agreesWithTrader` derives correctly, `runComplete: true`) and the PM-fails path (`runComplete: false`, prior memos still published). Strict-mode regression in `output-schemas-strict.spec.ts` adds `portfolioDecisionOutputSchema` to the BP-016 walker.
+- README polish: full Phase 5 subsection, "Phase 5 — single generator, weight in the schema" design-decision section, a "What this example is not" section that names the boundaries (not a product, not a backtest, not a recommendation system, not a complete data layer), and pointers to the architecture deep-dive and the public guide. New in-repo architecture doc at `docs/internal/design/trading-desk.md` covers pipeline shape, identity registry, data flow, capability surface, BP-016 schemas at convergence points, cost-preset routing, per-step rescue, and the comparison to what would be painful without the framework. New public guide at `apps/docs/guides/trading-desk-walkthrough.md` walks readers through the example phase by phase.
+
 ## 2026-05-12
+
+### Bash tool: MOAT sandbox adapter (FIX-584)
+
+- New `moat` provider for the bash tool, alongside `local`, `just-bash`, `vercel`, and `upstash`. Runs commands inside a MOAT-managed container on the same host as the agent. The host workspace is bind-mounted in; the agent process inherits no environment variables and outbound network calls flow through MOAT's credential-injecting proxy.
+- `createBashCapability` now returns a `cleanupBlock` alongside the capability. Wire it into `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })` to release the sandbox at request end. Required for MOAT to avoid orphaning containers; safe (effectively a no-op) for the other providers, so it's returned unconditionally.
+- Closes a pre-existing concurrency race in the bash blocks' module-level sandbox registry: two concurrent requests for the same scope key now share a single in-flight sandbox creation instead of both creating one and leaking the loser. Harmless for the cheap adapters, container-orphaning under MOAT.
+- Provider-aware context guidance: agents using the MOAT provider now see a system-prompt line that names the allowlisted hosts and explains the workspace boundary, mirroring the existing `local` / `just-bash` / `vercel` lines.
+- Kitchen-sink wiring: `BASH_PROVIDER=moat` (with optional `MOAT_GRANTS` and `MOAT_ALLOW_HOSTS` env vars) now selects the MOAT provider for local development. The chat-agent flow wires `bashCap.cleanupBlock` into `request.onFinished` unconditionally so swapping providers via env vars cannot reintroduce a leak.
+- `provider.persist: true` opts into reusing one MOAT container across requests. Paired with a stable `runName`, `sandbox.stop()` skips `moat stop` / `moat destroy` and the next request reconnects via `moat list --json`. Generated `moat.yaml` files carry an `# fsdev-managed` marker so a stale file from a prior persistent session is recognized as reusable instead of refused. Kitchen-sink defaults `persist: true` and derives `runName` from a hash of the project dir; `MOAT_PERSIST=0` or `MOAT_RUN_NAME=...` overrides.
+- Documentation: `apps/docs/docs/tools/bash.md` and `packages/tools/README.md` describe the new provider, the cleanup wiring requirement, the credentials model, and the v1 limits (UTF-8 reads, 60s default exec timeout, no streaming, no auto-restart).
 
 ### Block trace honors the originating block's `transient` flag (FIX-586)
 
@@ -31,6 +262,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - New advanced docs page on error handling, cross-linked from the rescue and DevTool pages.
 
 ## 2026-05-11
+
+### Scheduled actions: schedule index, auto-mirroring, and Vercel helpers (FIX-581)
+
+- New `ScheduleIndex` interface in `@flow-state-dev/scheduled` for store-backed schedule fan-out. Implementations track `(userId, key, cron, timezone, nextFireAt)` rows and expose `upsert`, `remove`, and `claimDue` (atomic claim-and-advance).
+- `@flow-state-dev/store-postgres` and `@flow-state-dev/store-sqlite` each ship a factory (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`) that plugs directly into the interface.
+- `defineScheduleCollection` in `@flow-state-dev/scheduled` wraps `defineResourceCollection` with the standard schedule state schema and mirrors every create, update, and delete into an attached index automatically. Rows with `enabled: false` are removed from the index, so disabling a schedule stops it firing without deleting the record.
+- `@flow-state-dev/vercel/schedules` ships `createGetToPostCronShim` and `createScheduleTickHandler`. Vercel hosts no longer need to hand-roll the GET-to-POST adapter or the polling tick; both helpers authenticate with constant-time bearer comparison and forward the same secret to the dispatch endpoint.
+- Vercel Cron and dynamic-schedules guides updated to recommend the helpers; hand-rolled patterns are preserved as "Advanced" subsections for custom auth, storage, or retry requirements.
 
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)
 

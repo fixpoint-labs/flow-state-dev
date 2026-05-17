@@ -449,7 +449,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);
 
-  function makeWorker(workerId: number): SequencerDefinition<any, any> {
+  function makeWorker(workerId: number) {
     return sequencer({
       name: `${name}-worker-${workerId}`,
       stateSchema: taskBoardWorkerStateSchema,
@@ -467,7 +467,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       .loopBack(claimStepName, {
         when: (v) => (v as { shouldContinue?: boolean }).shouldContinue === true,
         maxIterations,
-      }) as SequencerDefinition<any, any>;
+      });
   }
 
   const block = sequencer({
@@ -481,7 +481,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       (workerId: number) => makeWorker(workerId),
       { maxConcurrency: concurrency }
     )
-    .tap(boardMetaCompleted) as SequencerDefinition<any, any>;
+    .tap(boardMetaCompleted);
 
   // Capability — backing-aware. Sequencer-spec collections get a
   // capability that auto-resolves the collection via the parent

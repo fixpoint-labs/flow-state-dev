@@ -203,11 +203,10 @@ function Hero() {
       <div className={`container ${styles.heroContent}`}>
         <span className={styles.eyebrowBadge}>TypeScript · Composable · Remixable</span>
         <Heading as="h1" className={styles.heroTitle}>
-          Unlock your agentic flow.
+          Build what matters. Stay in the flow.
         </Heading>
         <p className={styles.heroSubtitle}>
-          The TypeScript agent framework where every layer is composable, nothing is a black box, and
-          every implementation is yours to remix.
+          The open-source TypeScript framework for building agentic software with re-usable primitives, durable state, and remixable patterns. Compose your stack. Ship what matters.
         </p>
         <div className={styles.buttons}>
           <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
@@ -351,21 +350,6 @@ function StrategiesAndEcosystem() {
               </div>
             </div>
           ))}
-        </div>
-
-        <div className={styles.thoughtFabricBlock}>
-          <div className={styles.tfHeader}>
-            <span className={styles.tfName}>Thought Fabric</span>
-            <span className={styles.tfAlpha}>Alpha</span>
-          </div>
-          <p className={styles.tfBody}>
-            A full cognitive architecture — memory, attention, reasoning, identity, metacognition, and learning — built entirely from
-            flow-state.dev blocks. Acts as an optional additional layer that can be added to any flow. Proof of what the primitives make
-            possible.
-          </p>
-          <Link className={styles.inlineLink} to="/thought-fabric/introduction">
-            Learn about Thought Fabric →
-          </Link>
         </div>
 
         <p className={styles.ecosystemNote}>

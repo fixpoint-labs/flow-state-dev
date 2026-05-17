@@ -53,8 +53,8 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import type { CASPersist } from "../stores/cas";
-import type { SetResult, TraceStore } from "../stores/types";
+import { createScopePersist } from "../stores/scope-persist";
+import type { TraceStore } from "../stores/types";
 import type {
   OrgRecord,
   RequestRecord,
@@ -76,41 +76,10 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey
 } from "../stores/scope-keys";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
 
-/**
- * Builds a CAS persist callback for a scope record. `buildNext` constructs
- * the record to write (stamped with version/updatedAt); `write` performs the
- * actual CAS store call. On success `ref.current` is advanced to the new
- * record; on conflict it's refreshed to the store's current record.
- */
-function createScopePersist<
-  TState,
-  TRecord extends { state: unknown; version: number }
->(
-  ref: { current: TRecord },
-  buildNext: (expectedVersion: number, state: Readonly<TState>) => TRecord,
-  write: (nextRecord: TRecord, expectedVersion: number) => Promise<SetResult<TRecord>>
-): CASPersist<TState> {
-  return async (state, expectedVersion) => {
-    const nextRecord = buildNext(expectedVersion, state);
-    const result = await write(nextRecord, expectedVersion);
-    if (result.ok) {
-      ref.current = nextRecord;
-      return { ok: true, version: result.version };
-    }
-    const current = result.conflict.currentValue;
-    if (current !== undefined) {
-      ref.current = current;
-    }
-    return {
-      ok: false,
-      currentState: current?.state as TState | undefined,
-      currentVersion: result.conflict.currentVersion
-    };
-  };
-}
 
 function normalizeLimit(
   valuesLength: number,
@@ -122,6 +91,10 @@ function normalizeLimit(
 
   if (typeof limit === "number") {
     return Math.max(0, Math.min(valuesLength, limit));
+  }
+
+  if ("turns" in limit) {
+    return Math.max(0, Math.min(valuesLength, limit.turns));
   }
 
   return Math.max(0, Math.min(valuesLength, limit.tokens));
@@ -203,14 +176,17 @@ function normalizeScopeResources(
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
   const normalized: Record<string, JsonObject> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — their instances are stored with path-based keys
     if (isCollectionConfig(config)) continue;
 
-    normalized[resourceName] = normalizeResourceState(
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+    normalized[storageKey] = normalizeResourceState(
       config,
-      seed?.[resourceName]
+      seed?.[storageKey]
     );
   }
 
@@ -232,30 +208,34 @@ function normalizeScopeResourceContent(
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
+  const storageKeys = resourceStorageKeys(configs);
 
-  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+  for (const [accessor, config] of Object.entries(configs ?? {})) {
     // Skip collection configs — collection instances don't have definition-time content
     if (isCollectionConfig(config)) continue;
 
-    const existing = seed?.[resourceName];
+    const storageKey = storageKeys[accessor]!;
+    if (storageKey in normalized) continue; // dual-registered alias
+
+    const existing = seed?.[storageKey];
     if (typeof existing === "string") {
-      normalized[resourceName] = existing;
+      normalized[storageKey] = existing;
       continue;
     }
 
     if (typeof config.content === "string") {
-      normalized[resourceName] = config.content;
+      normalized[storageKey] = config.content;
       continue;
     }
 
     if (typeof config.contentFile === "string") {
       try {
         // contentFile is resolved relative to process.cwd()
-        normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+        normalized[storageKey] = readFileSync(config.contentFile, "utf8");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Failed to load contentFile for resource "${resourceName}" (path: ${config.contentFile}): ${message}`
+          `Failed to load contentFile for resource "${accessor}" (path: ${config.contentFile}): ${message}`
         );
       }
     }
@@ -323,6 +303,13 @@ function updateObjectState(
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
+    /**
+     * Identifier of the concrete scope instance — `userId` for `"user"`,
+     * `orgId` for `"org"`, `sessionId` for `"session"`. Threaded into
+     * `CollectionHookContext.scopeId` so per-instance lifecycle hooks
+     * can correlate mutations back to the owning entity.
+     */
+    scopeId: string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
@@ -487,6 +474,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     };
   }
 
+  // Storage key for each accessor. Dual-registered aliases collapse to a
+  // single canonical key so their state lives in one slot (FIX-591).
+  const storageKeys = resourceStorageKeys(configs);
+
   for (const [resourceName, config] of Object.entries(configs)) {
     if (isCollectionConfig(config)) {
       // --- Create collection ref ---
@@ -501,6 +492,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           // integration is handled at a higher level when available.
         },
         scopeType: options.scope,
+        scopeId: options.scopeId,
       };
 
       const nsHandle: ResourceCollectionRef<JsonObject> = {
@@ -645,15 +637,19 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       continue;
     }
 
-    // --- Static resource (unchanged) ---
+    // --- Static resource ---
+    // Storage key may differ from the accessor name when this ref is
+    // dual-registered under a different alias elsewhere in the flow.
+    const storageKey = storageKeys[resourceName] ?? resourceName;
+
     const readState = (): JsonObject =>
       cloneValue(
-        options.readResources()[resourceName] ??
+        options.readResources()[storageKey] ??
           normalizeResourceDefault(config)
       );
 
     handles[resourceName] = {
-      name: resourceName,
+      name: storageKey,
       scope: options.scope,
       config,
       get state() {
@@ -661,13 +657,13 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         await persistResourceState(
-          resourceName,
+          storageKey,
           config,
           updateObjectState(readState(), updates)
         );
       },
       async setState(nextState: JsonObject): Promise<void> {
-        await persistResourceState(resourceName, config, nextState);
+        await persistResourceState(storageKey, config, nextState);
       },
       async updateState(
         updater: (
@@ -675,14 +671,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
         const next = await updater(readState());
-        await persistResourceState(resourceName, config, next);
+        await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
-        const content = options.readResourceContent()[resourceName];
+        const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        const raw = options.readResourceContent()[resourceName];
+        const raw = options.readResourceContent()[storageKey];
         if (typeof raw !== "string") {
           return null;
         }
@@ -698,7 +694,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           throw new Error(`Resource "${resourceName}" content is read-only`);
         }
 
-        await persistResourceContent(resourceName, content);
+        await persistResourceContent(storageKey, content);
       }
     };
   }
@@ -926,8 +922,158 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 }
 
 /**
+ * Expands the items of a single RequestRecord into LLM-ready messages.
+ *
+ * Applies, in order: a stable sort by `(ts, itemIndex)`, the transient
+ * filter, the allowed-item-types filter, and `itemToLLMMessages` per item.
+ * `itemToLLMMessages` internally applies `resolveItemVisibility` so
+ * sub-agent and trace items are dropped here as well.
+ *
+ * `allowedRoles`, when set, drops any produced LLM message whose role is
+ * not in the allowlist.
+ *
+ * Sort-equivalence assumption: this expands and sorts items per request,
+ * not globally. That is safe because completed prior requests have
+ * non-overlapping `(ts, itemIndex)` ranges — `priorRequests` is sorted by
+ * `startedAtMs` and a completed request's items have timestamps strictly
+ * within its lifetime. Concatenating expansions of pre-ordered requests
+ * therefore preserves the same global ordering the previous flatten-then-
+ * sort path produced.
+ */
+function expandRequestToMessages(
+  items: readonly (OutputItem | BlockTraceItem)[],
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): LLMMessage[] {
+  const sorted = [...items].sort((a, b) => {
+    const tsDiff = a.ts - b.ts;
+    return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+  });
+
+  const out: LLMMessage[] = [];
+  for (const item of sorted) {
+    if (item.transient === true) continue;
+    if (!allowedTypes.has(item.type)) continue;
+
+    const llmMessages = itemToLLMMessages(item, sorted);
+    for (const llmMessage of llmMessages) {
+      if (
+        allowedRoles !== undefined &&
+        !allowedRoles.has(
+          llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool"
+        )
+      ) {
+        continue;
+      }
+      out.push(llmMessage);
+    }
+  }
+  return out;
+}
+
+type SelectedTurn = { messages: LLMMessage[] };
+
+/**
+ * Selects which prior requests participate in history given the limit,
+ * returning each selected turn's pre-expanded `LLMMessage[]` so callers
+ * can assemble the final array without re-expanding.
+ *
+ * Turn-based (bare `number` or `{ turns: N }`): returns the last N
+ * completed prior requests. Guards `Array.prototype.slice(-0)` — which
+ * returns the whole array — by explicitly returning `[]` for N <= 0.
+ *
+ * Token-based (`{ tokens: T }`): walks `priorRequests` from the end,
+ * expanding each candidate to its LLM messages and counting tokens. A
+ * candidate is accepted whole if it fits the remaining budget; otherwise
+ * walking stops (turns are never split). If the first (most recent) prior
+ * turn alone exceeds the budget, it is accepted anyway — returning an
+ * empty history when a single oversized turn exists hides more context
+ * than it saves.
+ *
+ * `undefined` limit returns all prior requests.
+ */
+async function selectRequestsByLimit(
+  priorRequests: RequestRecord[],
+  limit: MessageLimit | undefined,
+  tokenCounter: TokenCounter,
+  resolveModelId: () => string,
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): Promise<SelectedTurn[]> {
+  const expand = (request: RequestRecord): SelectedTurn => ({
+    messages: expandRequestToMessages(
+      request.items ?? [],
+      allowedTypes,
+      allowedRoles,
+    ),
+  });
+
+  if (limit === undefined) {
+    return priorRequests.map(expand);
+  }
+
+  // Turn-based: bare number or { turns: N }
+  if (typeof limit === "number" || "turns" in limit) {
+    const turns = typeof limit === "number" ? limit : limit.turns;
+    if (turns <= 0) return [];
+    return priorRequests.slice(-turns).map(expand);
+  }
+
+  // Token-based: pack whole turns from the end, never split. Each
+  // candidate is expanded exactly once and the expansion is reused in
+  // the final assembly — no double-expansion.
+  const budget = limit.tokens;
+  const model = resolveModelId();
+  const selected: SelectedTurn[] = [];
+  let runningTokens = 0;
+
+  for (let i = priorRequests.length - 1; i >= 0; i--) {
+    const turn = expand(priorRequests[i]!);
+    const candidateTokens = turn.messages.length === 0
+      ? 0
+      : await tokenCounter.countMessages(turn.messages, model);
+
+    if (selected.length === 0) {
+      // Most-recent-turn exception: always include the latest prior turn
+      // even if it alone exceeds the budget.
+      selected.unshift(turn);
+      runningTokens = candidateTokens;
+      continue;
+    }
+
+    if (runningTokens + candidateTokens > budget) {
+      break;
+    }
+
+    selected.unshift(turn);
+    runningTokens += candidateTokens;
+  }
+
+  return selected;
+}
+
+/**
  * Loads conversation history from prior completed requests in this session,
- * converts to LLM-ready messages, and applies filtering/limiting.
+ * converts to LLM-ready messages, and applies turn-aware limiting.
+ *
+ * `limit` is interpreted as a count of conversational turns, where one
+ * `RequestRecord` is one turn. Tool-call/result messages within a retained
+ * turn are carried full-fidelity and do not decrement the budget. This
+ * fixes the original failure mode where a tool-heavy turn could fully
+ * consume an `N`-message window and evict the prior user message.
+ *
+ * Token-based limits are turn-aligned: whole turns are packed from the
+ * end and never split. The most recent prior turn is always included
+ * (even if alone over budget). See `selectRequestsByLimit`.
+ *
+ * Live items from the current (in-flight) request are always appended
+ * regardless of limit — this preserves the retry-after-mid-turn-failure
+ * scenario where the user's "try again" must see the in-flight tool state.
+ *
+ * Empty-of-LLM-content turns (turns whose items are all sub-agent or
+ * non-LLM types) still count against `{ turns: N }` but contribute zero
+ * messages. This keeps the slice logic at the request level and matches
+ * the spec's documented v1 behavior.
  *
  * Optionally includes items from the current in-flight request via
  * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
@@ -940,85 +1086,37 @@ async function loadLLMHistory(
   query?: ItemQuery,
   readLiveItems?: () => Array<OutputItem | BlockTraceItem>
 ): Promise<LLMMessage[]> {
-
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
     : LLM_AUDIENCE_TYPES;
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
+  const selectedTurns = await selectRequestsByLimit(
+    priorRequests,
+    query?.limit,
+    tokenCounter,
+    resolveModelId,
+    allowedTypes,
+    allowedRoles,
+  );
+
   const messages: LLMMessage[] = [];
-
-  function processItems(items: Array<OutputItem | BlockTraceItem>): void {
-    const sorted = [...items].sort((a, b) => {
-      const tsDiff = a.ts - b.ts;
-      return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
-    });
-
-    for (const item of sorted) {
-      if (item.transient === true) {
-        continue;
-      }
-
-      if (!allowedTypes.has(item.type)) {
-        continue;
-      }
-
-      const llmMessages = itemToLLMMessages(item, sorted);
-      for (const llmMessage of llmMessages) {
-        if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
-          continue;
-        }
-
-        messages.push(llmMessage);
-      }
-    }
+  for (const turn of selectedTurns) {
+    messages.push(...turn.messages);
   }
 
-  for (const request of priorRequests) {
-    if (request.items !== undefined) {
-      processItems(request.items);
-    }
-  }
-
-  // Include current request's live items so background work blocks (e.g.
-  // sessionTitleGenerator) can see the just-completed output.
+  // Live items from the in-flight request are always included regardless
+  // of limit. This is the retry/resume guarantee.
   if (readLiveItems !== undefined) {
-    processItems(readLiveItems());
+    messages.push(
+      ...expandRequestToMessages(readLiveItems(), allowedTypes, allowedRoles)
+    );
   }
 
-  // Apply limit
-  const limit = query?.limit;
-  if (limit === undefined) {
-    return messages;
-  }
-
-  if (typeof limit === "number") {
-    const sliced = limit < messages.length
-      ? messages.slice(messages.length - limit)
-      : messages;
-    // Ensure the slice didn't orphan a tool-result from its preceding
-    // assistant tool-call. AI SDK v6 requires tool-call/tool-result pairs;
-    // an orphaned tool-result causes models to produce empty output.
-    return trimOrphanedToolMessages(sliced);
-  }
-
-  // Token-based limit: pack from end within budget
-  const tokenBudget = limit.tokens;
-  let tokensUsed = 0;
-  let startIndex = messages.length;
-  const model = resolveModelId();
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const tokens = await tokenCounter.countMessages([messages[i]!], model);
-    if (tokensUsed + tokens > tokenBudget) {
-      break;
-    }
-
-    tokensUsed += tokens;
-    startIndex = i;
-  }
-
-  return trimOrphanedToolMessages(messages.slice(startIndex));
+  // Defense-in-depth: with turn-aligned slicing orphans should be
+  // structurally unreachable in normal operation, but keep the trim for
+  // edge data states (e.g., a request whose items begin mid-tool-pair).
+  return trimOrphanedToolMessages(messages);
 }
 
 /**
@@ -2299,13 +2397,6 @@ export async function createExecutionContext<
           orgRef.current.version
         );
 
-  const onStateSizeWarning = (detail: {
-    sizeBytes: number;
-    maxStateSizeBytes: number;
-  }): void => {
-    console.warn("[flow-state] Scope state exceeds recommended CAS size", detail);
-  };
-
   // Hoisted so scope-handle ops can close over these refs and emit
   // `state_change` items on mutation (FIX-576). `responseRef.current` is
   // assigned once `response` is constructed below; until then no scope op
@@ -2314,87 +2405,73 @@ export async function createExecutionContext<
   let emittedItemCount = 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
+      stores.request,
       (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.request.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const userOps = createScopeStateOps(userContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TUserState, UserRecord>(
       userRef,
+      stores.user,
       (expectedVersion, state) => ({
         ...userRef.current,
         state: state as TUserState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.user.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
-    onStateSizeWarning,
     persist: createScopePersist<TSessionState, SessionRecord>(
       sessionRef,
+      stores.session,
       (expectedVersion, state) => ({
         ...sessionRef.current,
         state: state as TSessionState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      }),
-      (nextRecord, expectedVersion) =>
-        stores.session.set(nextRecord.id, nextRecord, expectedVersion)
+      })
     )
   });
 
-  const orgOps =
-    orgRef.current === undefined || orgContainer === undefined
-      ? undefined
-      : createScopeStateOps(orgContainer, {
-          onStateSizeWarning,
-          persist: async (state, expectedVersion) => {
-            const current = orgRef.current;
-            if (current === undefined) {
-              // Org removed mid-execution; short-circuit so the retry loop exits.
-              return { ok: true, version: expectedVersion + 1 };
-            }
-            const nextRecord: OrgRecord = {
-              ...current,
-              state: state as TOrgState,
-              version: expectedVersion + 1,
-              updatedAt: Date.now()
-            };
-            const result = await stores.org.set(
-              nextRecord.id,
-              nextRecord,
-              expectedVersion
-            );
-            if (result.ok) {
-              orgRef.current = nextRecord;
-              return { ok: true, version: result.version };
-            }
-            const stored = result.conflict.currentValue;
-            if (stored !== undefined) {
-              orgRef.current = stored;
-            }
-            return {
-              ok: false,
-              currentState: stored?.state as TOrgState | undefined,
-              currentVersion: result.conflict.currentVersion
-            };
-          }
-        });
+  const orgOps = (():
+    | ReturnType<typeof createScopeStateOps<TOrgState>>
+    | undefined => {
+    if (orgRef.current === undefined || orgContainer === undefined) {
+      return undefined;
+    }
+    // Build the standard persist callback once, then wrap it with an
+    // "Org removed mid-execution" guard. The guard short-circuits before the
+    // inner callback touches `orgRef.current.id`, which would throw if the
+    // org went away mid-request.
+    const inner = createScopePersist<TOrgState, OrgRecord>(
+      orgRef as { current: OrgRecord },
+      stores.org,
+      (ev, st) => ({
+        ...(orgRef.current as OrgRecord),
+        state: st as TOrgState,
+        version: ev + 1,
+        updatedAt: Date.now()
+      })
+    );
+    return createScopeStateOps(orgContainer, {
+      persist: async (state, expectedVersion, hint) => {
+        if (orgRef.current === undefined) {
+          return { ok: true, version: expectedVersion + 1 };
+        }
+        return inner(state, expectedVersion, hint);
+      }
+    });
+  })();
 
   // Resource change emitter — pushes transient resource_change items via SSE
   // so clients can refresh clientData without waiting for request completion.
@@ -2412,6 +2489,7 @@ export async function createExecutionContext<
 
   const userResources = createScopeResourceRegistry({
     scope: "user",
+    scopeId: userId,
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
@@ -2422,6 +2500,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
+    scopeId: sessionId,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     persistResources: persistSessionResources,
@@ -2435,6 +2514,7 @@ export async function createExecutionContext<
       ? undefined
       : createScopeResourceRegistry({
           scope: "org",
+          scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
@@ -2937,6 +3017,68 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
+  // with the same key share a single fn() invocation. Sits in front of the
+  // RequestStore so the wrapped side effect cannot fire twice in a race
+  // (the store is the durable backstop across retries).
+  // In-process memo of completed runOnce results. Populated synchronously
+  // the instant `fn()` resolves — before the store write — so a store
+  // failure cannot cause `fn()` to re-execute on a subsequent retry within
+  // the same request process. Store persistence is treated as best-effort
+  // bookkeeping for cross-process durability.
+  const runOnceMemo = new Map<string, unknown>();
+  const runOnceInflight = new Map<string, Promise<unknown>>();
+  const runOnce = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (typeof key !== "string" || key.length === 0) {
+      return Promise.reject(
+        new Error("ctx.runOnce(key, fn): `key` must be a non-empty string")
+      );
+    }
+    // Fast path: memo hit (a prior call in this process already completed).
+    if (runOnceMemo.has(key)) {
+      return Promise.resolve(runOnceMemo.get(key) as T);
+    }
+    // Claim the inflight slot synchronously before awaiting the store —
+    // otherwise concurrent calls with the same key all see an empty
+    // inflight map and each spawn their own fn() invocation.
+    const existing = runOnceInflight.get(key);
+    if (existing !== undefined) return existing as Promise<T>;
+
+    const requestId = requestRef.current.id;
+    const promise = (async (): Promise<T> => {
+      // Durable lookup. Catches block-retry resumes that lost the
+      // in-process memo (none today; future-proofs for durable execution).
+      const stored = await stores.request.getRunOnceResult(requestId, key);
+      if (stored.found) {
+        runOnceMemo.set(key, stored.value);
+        return stored.value as T;
+      }
+      const value = await fn();
+      // Memoize BEFORE the store write so a store failure cannot cause
+      // re-execution on the next retry within this process.
+      runOnceMemo.set(key, value);
+      try {
+        await stores.request.setRunOnceResult(requestId, key, value);
+      } catch (err) {
+        // Persistence failure is non-fatal: the side effect already fired
+        // and the in-process memo carries de-dup for the rest of this
+        // request. Cross-process durability is degraded but we do not
+        // amplify a store outage into a double-charge by re-running fn().
+        console.warn(
+          `[flow-state] runOnce persistence failed for key "${key}" (request ${requestId}); ` +
+            `in-process dedup remains in effect`,
+          err
+        );
+      }
+      return value;
+    })();
+    runOnceInflight.set(key, promise as Promise<unknown>);
+    promise.finally(() => {
+      runOnceInflight.delete(key);
+    });
+    return promise;
+  };
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -3121,8 +3263,15 @@ export async function createExecutionContext<
       emitComponent: undefined as unknown as BlockContext["emitComponent"],
       emitStatus: undefined as unknown as BlockContext["emitStatus"],
       emit: undefined as unknown as BlockContext["emit"],
+      _peekStatus: undefined as unknown as BlockContext["_peekStatus"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
+      // FIX-402: idempotency primitives. `idempotencyKey` is populated per
+      // block by executeBlock (it depends on the current blockPath, which is
+      // only known at execution time); `runOnce` closes over the request's
+      // store ref so it works across every scoped child context.
+      idempotencyKey: undefined,
+      runOnce,
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
@@ -3301,6 +3450,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3310,6 +3463,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3358,6 +3512,10 @@ export async function createExecutionContext<
             if (generatorModelUsage !== undefined) {
               (childContext as { _generatorModelUsage?: unknown })._generatorModelUsage = undefined;
             }
+            const generatorModelIdentity = (childContext as { _generatorModelIdentity?: BlockTraceItem["model"] })._generatorModelIdentity;
+            if (generatorModelIdentity !== undefined) {
+              (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
+            }
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -3372,6 +3530,7 @@ export async function createExecutionContext<
                     ...(normalized.details ? { details: normalized.details } : {}),
                   },
                   modelUsage: generatorModelUsage,
+                  model: generatorModelIdentity,
                 },
               },
               childContext
@@ -3429,6 +3588,11 @@ export async function createExecutionContext<
       status: emitStatusImpl,
       trace: traceEmitters,
     };
+    // Read the request-scoped status slot. Internal — used by the generator's
+    // tool-call dispatch to snapshot/restore the slot around a parallel tool
+    // round so a tool's `activeStatusMessage` does not linger past the
+    // tool's lifetime.
+    context._peekStatus = (): string => statusSlot.message;
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

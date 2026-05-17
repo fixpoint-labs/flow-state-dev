@@ -12,6 +12,7 @@
 import { useCallback, type ReactElement } from "react";
 import { Sun, Moon, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FlowStateMark } from "@/components/flow-state-mark";
 import { Segmented } from "@/components/ui/segmented";
 
 export type CostPreset = "fast" | "full";
@@ -77,12 +78,7 @@ export function TopBar({
       )}
     >
       <div className="flex items-center gap-2">
-        <span
-          aria-hidden
-          className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-sm bg-[color:var(--c-fg)] font-mono text-[10px] font-semibold text-[color:var(--c-bg)]"
-        >
-          FS
-        </span>
+        <FlowStateMark theme={theme} aria-hidden className="h-[22px] w-[22px] shrink-0" />
         <span className="text-[13px] font-semibold text-[color:var(--c-fg)]">
           flow-state
         </span>

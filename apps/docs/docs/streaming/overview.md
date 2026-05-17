@@ -105,6 +105,8 @@ Three views for accessing session items:
 const history = ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
+The limit is turn-aligned: whole turns are kept or dropped together so tool-heavy turns can't evict prior conversation. See [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing).
+
 ## Item lifecycle
 
 Items go through three phases:

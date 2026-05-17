@@ -11,24 +11,21 @@
  * client's `useClientData` hook.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
-import { phase1Pipeline } from "./blocks/analyst-phase";
+import { PHASE_1_MEMO_KEYS } from "./agents";
+import { analyzeInputSchema } from "./flow-schema";
+import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
+import { phase4Pipeline } from "./phase-4";
+import { phase4Contributions } from "./phase-4/round-robin";
+import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
+import { resolveTicker } from "./services/ticker-resolver";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
-
-export const analyzeInputSchema = z.object({
-  ticker: z.string().min(1).default("NVDA"),
-  date: z.string().min(1).default("2026-05-06"),
-  costPreset: z.enum(["fast", "full"]).default("fast"),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
-});
-
-export type AnalyzeInput = z.infer<typeof analyzeInputSchema>;
+export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";
 
 /**
  * `seedSession` patches session state from action input and resets the
@@ -50,19 +47,72 @@ const seedSession = handler({
       // input never sets this — the schema's `max(2)` enforces the ceiling.
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       memoStatus: {} as Record<string, MemoStatus>,
+      runComplete: false,
+      // Reset terminal stop state from any prior run on this session key
+      // so the navigator doesn't render a stale "stopped" banner.
+      stoppedReason: null,
+      stoppedMessage: null,
     });
     return input;
   },
 });
 
+// Two `.tap` + `.exitIf` pairs implement defense-in-depth against
+// unresolvable tickers (FIX-605):
+//
+//   1. Pre-flight ticker resolution probes the active data source. If the
+//      ticker can't be resolved (missing fixture / all live providers down),
+//      the tap patches `stoppedReason: "unresolvable-ticker"` and the
+//      following `.exitIf` bails before any model spend.
+//   2. Post-Phase-1 data-quality check: if every analyst memo is in `error`,
+//      the tap patches `stoppedReason: "phase-1-no-data"` and `.exitIf`
+//      bails before phases 2–5 synthesize on no data.
+//
+// The rescue + typed-error scaffolding from the first FIX-605 cut is gone:
+// the stop is a normal terminal state, not an exceptional condition, so
+// patching state + exiting is the right shape.
 const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
+  .tap(async (input, ctx) => {
+    const result = await resolveTicker(input);
+    if (!result.resolved) {
+      await ctx.session.patchState({
+        stoppedReason: "unresolvable-ticker",
+        stoppedMessage:
+          result.reason ?? `Could not resolve ticker ${input.ticker}.`,
+        runComplete: true,
+      });
+    }
+  })
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase1Pipeline)
+  .tap(async (_v, ctx) => {
+    // `.tap` doesn't carry a typed resources slot — go through `any` so
+    // `getOptional` is callable. The `memos` collection is declared by
+    // `phase1Pipeline` upstream, so it's present at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const memos = (ctx.resources as any).memos;
+    const allErrored = Object.values(PHASE_1_MEMO_KEYS).every(
+      (m) => memos.getOptional(m.collectionKey)?.state.status === "error",
+    );
+    if (allErrored) {
+      await ctx.session.patchState({
+        stoppedReason: "phase-1-no-data",
+        stoppedMessage:
+          `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
+          "Halting before synthesis — no usable upstream data.",
+        runComplete: true,
+      });
+    }
+  })
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase2Pipeline)
-  .then(phase3Pipeline);
+  .then(phase3Pipeline)
+  .then(phase4Pipeline)
+  .then(phase5Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
@@ -85,6 +135,9 @@ const tradingDeskFlow = defineFlow({
         "activePhase",
         "maxDebateRounds",
         "memoStatus",
+        "runComplete",
+        "stoppedReason",
+        "stoppedMessage",
       ],
     },
   },
@@ -94,6 +147,9 @@ const tradingDeskFlow = defineFlow({
     // Phase 2 transcript. Registered here so post-loop consolidation
     // generators can declare it on their own `resources:` slot.
     p2Contributions: phase2Contributions,
+    // Phase 4 round-robin transcript. Registered so the riskAssessment
+    // consolidation generator can read the persona contributions.
+    p4Contributions: phase4Contributions,
   },
 });
 

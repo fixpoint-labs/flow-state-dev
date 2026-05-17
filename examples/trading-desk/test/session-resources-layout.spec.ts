@@ -5,24 +5,21 @@
  * Was originally a printf-debug to investigate "no memos in DevTool".
  * Findings (preserved as assertions below):
  *
- *  - All 7 memo collection instances ARE persisted to
+ *  - All 8 memo collection instances ARE persisted to
  *    `session.resources["memos/{phase}/{name}"]` with their full state
  *    (status, label, headline, rating, body, metrics, etc.). The framework's
  *    in-memory store path is sound.
  *  - The DevTool's session-context panel shows the memos collection as
- *    "0/7 items" because `memosCollection` declares no `prefetchWindow` —
- *    the snapshot reports a total `count` of 7 but inlines 0 item bodies.
+ *    "0/8 items" because `memosCollection` declares no `prefetchWindow` —
+ *    the snapshot reports a total `count` of 8 but inlines 0 item bodies.
  *    That display is by design (FIX-427 prefetched-window contract), not a
  *    persistence bug. To make the bodies appear inline in the DevTool,
- *    set `prefetchWindow: 7` (or higher) on `memosCollection`.
- *  - The shared `phase2Contributions` DefinedResource is stored under TWO
- *    different keys because two names register it: `contributions` (declared
- *    at the round-robin block level) and `p2Contributions` (declared on
- *    the flow). The round-robin writes only to `contributions`; the
- *    flow-level `p2Contributions` slot is never written. Consolidator
- *    generators read from `contributions` (they declare the same block-level
- *    name) so the contribution data still flows correctly — but the
- *    duplicate slot is a framework wart worth knowing about.
+ *    set `prefetchWindow: 8` (or higher) on `memosCollection`.
+ *  - The shared `phase2Contributions` `DefinedResource` is persisted to a
+ *    single slot regardless of how many accessor names register it. Both
+ *    the round-robin's `contributions` accessor and the flow-level
+ *    `p2Contributions` accessor resolve to the same canonical storage key,
+ *    so there is one entries array — not two (FIX-591).
  */
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
@@ -120,7 +117,7 @@ function rmStructuredOutput() {
 }
 
 describe("session resources are persisted after analyze run", () => {
-  it("layout: 7 memo keys + contributions slot + p2Contributions slot", async () => {
+  it("layout: 8 memo keys + single shared contributions slot", async () => {
     const stores = createInMemoryStores();
     const sessionId = "layout-session";
 
@@ -153,12 +150,16 @@ describe("session resources are persisted after analyze run", () => {
           name: "technical-analyst-generator",
           script: [analystThesis("Technical", "h4")],
         }),
-        "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-          name: "p2-research-debate-1r-fast-roster-bullResearcher",
+        "company-profile-analyst-generator": mockGenerator({
+          name: "company-profile-analyst-generator",
+          script: [analystThesis("Company Profile", "h5")],
+        }),
+        "p2-research-debate-roster-bullResearcher": mockGenerator({
+          name: "p2-research-debate-roster-bullResearcher",
           script: [{ text: "Bull r1." }],
         }),
-        "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-          name: "p2-research-debate-1r-fast-roster-bearResearcher",
+        "p2-research-debate-roster-bearResearcher": mockGenerator({
+          name: "p2-research-debate-roster-bearResearcher",
           script: [{ text: "Bear r1." }],
         }),
         "consolidate-bull-memo": mockGenerator({
@@ -183,12 +184,13 @@ describe("session resources are persisted after analyze run", () => {
     const session = await stores.session.get(sessionId);
     const resources = (session?.resources ?? {}) as Record<string, unknown>;
 
-    // The seven memo collection instances each live at their own storage key.
+    // The eight memo collection instances each live at their own storage key.
     const memoKeys = [
       "memos/p1/fundamentals",
       "memos/p1/sentiment",
       "memos/p1/news",
       "memos/p1/technical",
+      "memos/p1/company-profile",
       "memos/p2/bull",
       "memos/p2/bear",
       "memos/p2/research-manager",
@@ -201,19 +203,15 @@ describe("session resources are persisted after analyze run", () => {
       expect(memo.body).toBeDefined();
     }
 
-    // Both `contributions` (block-level name) and `p2Contributions`
-    // (flow-level name) exist as separate slots because two declarations
-    // register the same DefinedResource under different names. The
-    // round-robin writes to `contributions`; the flow's `p2Contributions`
-    // slot is never written. Consolidators read from `contributions`.
-    expect(resources.contributions).toBeDefined();
-    const contributions = resources.contributions as { entries?: unknown[] };
-    expect(Array.isArray(contributions.entries)).toBe(true);
-    expect((contributions.entries ?? []).length).toBeGreaterThan(0);
-
+    // Phase 2's round-robin uses `accessorKey: "p2Contributions"`, which
+    // matches the accessor names the consolidator and flow-level registration
+    // use — one shared name across writers and readers. FIX-591 additionally
+    // guarantees that even if a different accessor name appeared somewhere,
+    // it would resolve to the same canonical storage key for this ref.
     expect(resources.p2Contributions).toBeDefined();
     const p2Contributions = resources.p2Contributions as { entries?: unknown[] };
     expect(Array.isArray(p2Contributions.entries)).toBe(true);
-    expect((p2Contributions.entries ?? []).length).toBe(0);
+    expect((p2Contributions.entries ?? []).length).toBeGreaterThan(0);
+    expect(resources.contributions).toBeUndefined();
   });
 });

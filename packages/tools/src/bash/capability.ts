@@ -29,10 +29,11 @@
  * ```
  */
 
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, handler } from "@flow-state-dev/core";
+import type { CapabilityPresetCtx } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SandboxProvider } from "./types";
-import { createBashBlocks, type BashCollectionSpec } from "./blocks";
+import { createBashBlocks, defaultDestinationFor, releaseBashSandbox, type BashCollectionSpec } from "./blocks";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ export interface CreateBashCapabilityOptions {
   /** Sandbox provider. Default: `{ type: "just-bash" }`. */
   provider?: SandboxProvider;
 
-  /** Virtual workspace root. Default: `"/workspace"`. */
+  /** Virtual workspace root. Default: `"/workspace"` for most providers, `"/vercel/sandbox/workspace"` for the Vercel adapter (required for tarball-extract permissions). */
   destination?: string;
 
   /** Creates initial resource state for new files. */
@@ -78,7 +79,7 @@ function buildWorkspaceBoundary(destination: string): string {
 function buildGuidance(
   provider: SandboxProvider,
   destination: string,
-  ctx: any,
+  ctx: CapabilityPresetCtx,
 ): string {
   const base = buildProviderLines(provider, destination);
   const mountsLine = buildMountsGuidance(destination, ctx);
@@ -118,6 +119,10 @@ function buildProviderLines(provider: SandboxProvider, destination: string): str
       return `You have a Vercel Sandbox bash workspace. ${boundary}`;
     case "upstash":
       return `You have an Upstash Box bash workspace. ${boundary}`;
+    case "moat": {
+      const hostList = (provider.allowHosts ?? []).join(", ") || "no hosts";
+      return `You have a MOAT-isolated bash workspace running in a container. Outbound network access is restricted to: ${hostList}. ${boundary}`;
+    }
     case "custom":
       return `You have a bash workspace. ${boundary}`;
   }
@@ -128,7 +133,7 @@ function buildProviderLines(provider: SandboxProvider, destination: string): str
  * saved (and to which collection), and tells the agent about `./tmp/` as
  * explicit scratch space. Runs per-turn via the dynamic context formatter.
  */
-function buildMountsGuidance(destination: string, ctx: any): string {
+function buildMountsGuidance(destination: string, ctx: CapabilityPresetCtx): string {
   const mounts = collectMounts(ctx);
   const lines: string[] = [];
   if (mounts.length === 0) {
@@ -157,7 +162,7 @@ interface MountInfo {
   writable: boolean;
 }
 
-function collectMounts(ctx: any): MountInfo[] {
+function collectMounts(ctx: CapabilityPresetCtx): MountInfo[] {
   const seen = new Set<string>();
   const out: MountInfo[] = [];
   const bag = ctx?.resources;
@@ -221,9 +226,9 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
     createState,
   });
 
-  const resolvedDestination = destination ?? "/workspace";
+  const resolvedDestination = destination ?? defaultDestinationFor(provider);
 
-  return defineCapability({
+  const capability = defineCapability({
     name: "bash",
 
     presets: {
@@ -231,9 +236,25 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
         tools: [bashCommand, bashReadFile, bashWriteFile],
       },
       guidance: {
-        context: [(_input: unknown, ctx: any) => buildGuidance(provider, resolvedDestination, ctx)],
+        context: [(_input: unknown, ctx) => buildGuidance(provider, resolvedDestination, ctx)],
       },
       default: ["tools", "guidance"],
     },
   });
+
+  /**
+   * Tear down this capability's sandbox at request end. Required for the
+   * `moat` provider — without it, containers leak. No-op-ish for LocalFs and
+   * just-bash. Wire it via `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })`.
+   *
+   * Returned unconditionally so the capability shape is stable across providers.
+   */
+  const cleanupBlock = handler({
+    name: "bash-cleanup",
+    execute: async (_input: unknown, ctx) => {
+      await releaseBashSandbox(provider, ctx);
+    },
+  });
+
+  return Object.assign(capability, { cleanupBlock });
 }

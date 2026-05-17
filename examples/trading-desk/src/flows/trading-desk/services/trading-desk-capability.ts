@@ -1,0 +1,332 @@
+/**
+ * `tradingDesk` capability — the single capability every generator in the
+ * trading-desk pipeline lists in its `uses` slot.
+ *
+ * What it provides:
+ *
+ *   1. **Model selection** — the `core` preset (default-on) chooses
+ *      `intent/chat` when `costPreset === "full"`, else `intent/utility`.
+ *      Generators no longer carry per-block `model:` slots.
+ *
+ *   2. **Always-on context** — the same `core` preset injects
+ *      `<ticker>` and `<date>` tags from session state into every
+ *      generator's prompt. No per-generator boilerplate.
+ *
+ *   3. **Opt-in context bundles** — named presets that inject specific
+ *      memo, contribution, or debate-transcript context tags. Generators
+ *      opt in via `tradingDesk.presets({ phase1Memos: true, ... })`.
+ *      Each bundle also declares the resources it reads, so consumers
+ *      don't have to mirror that in their own `resources:` slot.
+ *
+ *   4. **Cost-preset gating lives in the preset, not the call site.**
+ *      `*Full` variants (e.g. `phase1MemosFull`, `phase2DebateFull`,
+ *      `riskCritiquesFull`) render an empty string when
+ *      `costPreset !== "full"`. Generators that want full-only context
+ *      list the `*Full` variant directly in `uses` rather than wrapping
+ *      a dynamic `uses` lambda around the always-on preset — the static
+ *      shape lets resources flow through and keeps the call site flat.
+ */
+import { defineCapability } from "@flow-state-dev/core";
+import {
+  PHASE_2_MEMO_KEYS,
+  PHASE_3_MEMO_KEYS,
+  PHASE_4_MEMO_KEYS,
+} from "../agents";
+import { memosCollection } from "../resources";
+import { phase2Contributions } from "../phase-2/contributions";
+import { phase4Contributions } from "../phase-4/contributions";
+import { sessionStateSchema, type SessionState } from "../state";
+import {
+  formatAnalystMemos,
+  formatDebate,
+  formatMemoBlock,
+  formatPersonaCritique,
+  formatRiskAssessmentExtensions,
+  formatStanceContributions,
+  formatThesisExtensions,
+  formatTradeProposalExtensions,
+  readContributionsEntries,
+} from "./format";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CtxAny = { session: { state: SessionState }; resources: any };
+
+/**
+ * Shared no-fabrication rule injected into every generator's prompt via the
+ * `core` preset (FIX-605). Expressed once, applied uniformly across all
+ * twelve agents in the pipeline.
+ *
+ * The Phase 1 analyst `SHARED_PREAMBLE` historically carried the only
+ * anti-fabrication language ("from the data provided … not from prior
+ * knowledge"); phases 2–5 had nothing forbidding the model from filling
+ * gaps with its own training knowledge. On a well-known ticker this was
+ * masked because training knowledge happened to agree with the data; on
+ * a bogus ticker the model would invent a plausible company and proceed
+ * confidently. This clause closes that gap.
+ */
+const GROUNDING_CLAUSE = [
+  "<grounding>",
+  "Operate strictly on data provided by upstream agents, tools, and the",
+  "context blocks below. Do not substitute your own training knowledge",
+  "about the company, ticker, sector, or market for missing or empty",
+  "inputs. If upstream data is materially incomplete or empty (analyst",
+  "memos missing, transcripts empty, tool payloads marked `unavailable`",
+  "or all-zero), say so explicitly — surface \"insufficient data to",
+  "assess X\" rather than fabricating to fill the shape. Quoted figures,",
+  "named entities, dates, and events must trace to an upstream artifact.",
+  "</grounding>",
+].join("\n");
+
+function memoState(ctx: CtxAny, collectionKey: string): unknown {
+  return ctx.resources.memos?.getOptional(collectionKey)?.state;
+}
+
+export const tradingDesk = defineCapability({
+  name: "tradingDesk",
+  sessionStateSchema,
+  presets: {
+    default: ["core"],
+
+    /** Required always-on slice: model selection + ticker/date context +
+     *  shared grounding clause. The grounding clause is injected once here
+     *  so every generator in every phase is bound to upstream-provided data
+     *  only — no per-prompt drift, no phases 2–5 silently substituting the
+     *  model's training knowledge for missing or empty inputs (FIX-605). */
+    core: {
+      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,
+      context: [
+        {
+          ticker: (_input, ctx) => ctx.session.state.ticker,
+          date: (_input, ctx) => ctx.session.state.date,
+        },
+        GROUNDING_CLAUSE,
+      ],
+    },
+
+    /** Phase 1 — all four analyst memos (fundamentals, sentiment, news, technical). */
+    phase1Memos: {
+      resources: { memos: memosCollection },
+      context: {
+        phase1Memos: (_input, ctx) => formatAnalystMemos(ctx.resources.memos),
+      },
+    },
+
+    /** Phase 2 — bull-side debate contributions, filtered from the round-robin
+     *  transcript. Resource state is keyed by accessor name; the phase-2
+     *  round-robin is configured with `accessorKey: "p2Contributions"` so
+     *  reads and writes line up. */
+    bullContributions: {
+      resources: { p2Contributions: phase2Contributions },
+      context: {
+        bullContributions: (_input, ctx) =>
+          formatStanceContributions(
+            readContributionsEntries(ctx, "p2Contributions"),
+            PHASE_2_MEMO_KEYS.bull.agentName,
+          ),
+      },
+    },
+
+    /** Phase 2 — bear-side debate contributions. */
+    bearContributions: {
+      resources: { p2Contributions: phase2Contributions },
+      context: {
+        bearContributions: (_input, ctx) =>
+          formatStanceContributions(
+            readContributionsEntries(ctx, "p2Contributions"),
+            PHASE_2_MEMO_KEYS.bear.agentName,
+          ),
+      },
+    },
+
+    /** Phase 2 — consolidated bull memo (full BullThesis). */
+    bullThesis: {
+      resources: { memos: memosCollection },
+      context: {
+        bullThesis: (_input, ctx) =>
+          formatMemoBlock("Bull thesis", memoState(ctx, PHASE_2_MEMO_KEYS.bull.collectionKey)),
+      },
+    },
+
+    /** Phase 2 — consolidated bear memo. */
+    bearThesis: {
+      resources: { memos: memosCollection },
+      context: {
+        bearThesis: (_input, ctx) =>
+          formatMemoBlock("Bear thesis", memoState(ctx, PHASE_2_MEMO_KEYS.bear.collectionKey)),
+      },
+    },
+
+    /** Phase 2 — research-manager InvestmentThesis (memo body + typed extension fields). */
+    investmentThesis: {
+      resources: { memos: memosCollection },
+      context: {
+        investmentThesis: (_input, ctx) =>
+          formatMemoBlock(
+            "Investment thesis",
+            memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
+          ),
+        investmentThesisFields: (_input, ctx) =>
+          formatThesisExtensions(
+            memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
+          ),
+      },
+    },
+
+    /** Phase 3 — trade-proposal memo + typed extension fields. */
+    tradeProposal: {
+      resources: { memos: memosCollection },
+      context: {
+        tradeProposal: (_input, ctx) =>
+          formatMemoBlock("Trade proposal", memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
+        tradeProposalFields: (_input, ctx) =>
+          formatTradeProposalExtensions(memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
+      },
+    },
+
+    /** Phase 4 — consolidated risk-assessment memo (body + typed extension
+     *  fields). The `riskCritiques` preset bundles only the three persona
+     *  memos; the PM generator reads both the personas and the
+     *  consolidator output, so this preset is the cleanest path to the
+     *  latter. */
+    riskAssessment: {
+      resources: { memos: memosCollection },
+      context: {
+        riskAssessment: (_input, ctx) =>
+          formatMemoBlock(
+            "Risk assessment",
+            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+          ),
+        riskAssessmentFields: (_input, ctx) =>
+          formatRiskAssessmentExtensions(
+            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+          ),
+      },
+    },
+
+    /** Phase 4 — three persona critiques (aggressive, conservative, neutral). */
+    riskCritiques: {
+      resources: { memos: memosCollection },
+      context: {
+        aggressiveCritique: (_input, ctx) =>
+          formatPersonaCritique(
+            "Aggressive Risk critique",
+            memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+          ),
+        conservativeCritique: (_input, ctx) =>
+          formatPersonaCritique(
+            "Conservative Risk critique",
+            memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+          ),
+        neutralCritique: (_input, ctx) =>
+          formatPersonaCritique(
+            "Neutral Risk critique",
+            memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
+          ),
+      },
+    },
+
+    /** Phase 2 — full bull/bear debate transcript. */
+    phase2Debate: {
+      resources: { p2Contributions: phase2Contributions },
+      context: {
+        phase2Debate: (_input, ctx) =>
+          formatDebate(readContributionsEntries(ctx, "p2Contributions")),
+      },
+    },
+
+    /** Phase 4 — full risk-debate transcript. */
+    phase4Debate: {
+      resources: { p4Contributions: phase4Contributions },
+      context: {
+        phase4Debate: (_input, ctx) =>
+          formatDebate(readContributionsEntries(ctx, "p4Contributions")),
+      },
+    },
+
+    // ────────────────────────────────────────────────────────────────────
+    // Cost-preset-gated variants.
+    //
+    // Every generator declares these statically (no dynamic `uses` lambda).
+    // The context formatters render an empty string when `costPreset !==
+    // "full"`, so the heavier prompt blocks only ride along on the full
+    // preset. Resources are still declared up-front, so static resource
+    // merging always succeeds.
+    //
+    // Why these exist as separate presets rather than always-on flags on
+    // the base presets: the Phase 2 consolidators and research manager
+    // use `phase1Memos` / `phase2Debate` as ALWAYS-ON context, while
+    // Phase 3, 4, and 5 want them as FULL-ONLY context. Same content,
+    // two different gating policies — so two presets.
+    // ────────────────────────────────────────────────────────────────────
+
+    /** Phase 1 analyst memos, rendered only on the `full` cost preset.
+     *  Always-on equivalent is `phase1Memos`. */
+    phase1MemosFull: {
+      resources: { memos: memosCollection },
+      context: {
+        phase1Memos: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatAnalystMemos(ctx.resources.memos)
+            : "",
+      },
+    },
+
+    /** Phase 2 bull/bear debate transcript, rendered only on `full`.
+     *  Always-on equivalent is `phase2Debate`. */
+    phase2DebateFull: {
+      resources: { p2Contributions: phase2Contributions },
+      context: {
+        phase2Debate: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatDebate(readContributionsEntries(ctx, "p2Contributions"))
+            : "",
+      },
+    },
+
+    /** Three persona critiques, rendered only on `full`. Always-on
+     *  equivalent is `riskCritiques` — used by the Phase 4 consolidator
+     *  which needs the persona memos regardless of preset. The Phase 5
+     *  PM reads the consolidated risk assessment always, and the persona
+     *  memos only on full as extra audit context — hence this variant. */
+    riskCritiquesFull: {
+      resources: { memos: memosCollection },
+      context: {
+        aggressiveCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Aggressive Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+              )
+            : "",
+        conservativeCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Conservative Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+              )
+            : "",
+        neutralCritique: (_input, ctx) =>
+          ctx.session.state.costPreset === "full"
+            ? formatPersonaCritique(
+                "Neutral Risk critique",
+                memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
+              )
+            : "",
+      },
+    },
+  },
+});
+
+/** Re-exports so call sites don't need to import the helpers separately
+ *  when they're using the capability. */
+export {
+  formatAnalystMemos,
+  formatDebate,
+  formatMemoBlock,
+  formatPersonaCritique,
+  formatRiskAssessmentExtensions,
+  formatStanceContributions,
+  formatThesisExtensions,
+  formatTradeProposalExtensions,
+  readContributionsEntries,
+} from "./format";
