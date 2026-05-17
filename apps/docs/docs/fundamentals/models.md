@@ -340,6 +340,9 @@ This is what makes `"openai/gpt-5.5"` keep working on Vercel even when `@ai-sdk/
 A worked resolution trace:
 
 ```ts
+import { createGateway } from "@ai-sdk/gateway";
+import { createModelResolver } from "@flow-state-dev/core/models";
+
 // App config
 const resolver = createModelResolver({
   gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
