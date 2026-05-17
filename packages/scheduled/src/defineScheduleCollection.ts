@@ -91,7 +91,15 @@ export function defineScheduleCollection(
         return;
       }
       const row = rowFromState(ctx.scopeId, k, typed);
-      if (row !== null) await index.upsert(row);
+      if (row !== null) {
+        await index.upsert(row);
+      } else {
+        // New cron failed to parse. Remove whatever the index holds
+        // (carrying the pre-update, valid cron) so the stale row stops
+        // firing — otherwise claimDue would advance the old expression
+        // indefinitely.
+        await index.remove(ctx.scopeId, k);
+      }
     },
     onInstanceDeleted: async (key, ctx) => {
       await index.remove(ctx.scopeId, bareKey(key));

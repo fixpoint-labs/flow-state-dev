@@ -146,7 +146,14 @@ export function createScheduleTickHandler(
           err
         );
       }
-      opts.onDispatch?.(row, status);
+      // Never let an observer throw kill the worker — Promise.allSettled
+      // on the worker pool would swallow the rejection and every later
+      // item assigned to this slot would be silently skipped.
+      try {
+        opts.onDispatch?.(row, status);
+      } catch {
+        /* swallow observer errors */
+      }
     });
 
     return new Response(null, { status: 200 });
