@@ -1,4 +1,5 @@
 import { generator, handler, sequencer } from '@flow-state-dev/core'
+import type { BlockContext } from '@flow-state-dev/core/types'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory.js'
 import type { WorkingMemoryHelperConfig } from './working-memory-helpers.js'
@@ -23,6 +24,26 @@ import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFI
 import { findBestOverlap } from './internal/helpers.js'
 import { createDigestMemoryResource } from './digest-memory.js'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
+
+// ---------------------------------------------------------------------------
+// Internal type alias
+// ---------------------------------------------------------------------------
+
+/**
+ * Ctx shape used by memory block execute functions. Resources are typed as
+ * `Record<string, any>` because the handlers build their resource maps
+ * conditionally (e.g. episodic and semantic are optional), which requires
+ * widening to `Record<string, any>` at the declaration site. The `any`-valued
+ * resource registry gives untyped access to named resources at runtime, which
+ * is the correct behaviour for handlers that read resources by key.
+ */
+type MemoryBlockCtx = BlockContext<
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, any>
+>
 
 // ---------------------------------------------------------------------------
 // Config types
@@ -72,7 +93,7 @@ export interface MemorySystemBlocksConfig {
   digest?: DigestBlocksConfig
   /** Shared digest resource reference — must be the same instance across blocks. */
   _digestResource?: ReturnType<typeof createDigestMemoryResource>
-  source?: (input: unknown, ctx: any) => string
+  source?: (input: unknown, ctx: MemoryBlockCtx) => string
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +322,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // memory here. LLMs reliably re-extract from any content they can see, regardless
   // of instructions. Dedup is handled structurally in the reflect handler via
   // findBestOverlap. The observer's job is pure extraction from new conversation items.
-  function buildContext(_input: unknown, ctx: any): string | undefined {
+  function buildContext(_input: unknown, ctx: MemoryBlockCtx): string | undefined {
     const sysRef = ctx.resources.memorySystem
     const sysState = sysRef.state
 
@@ -383,7 +404,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
   }
 
   // Shared execute logic — extracted to avoid duplication across scope variants
-  async function executeReflect(input: UnifiedObservations, ctx: any) {
+  async function executeReflect(input: UnifiedObservations, ctx: MemoryBlockCtx) {
     const wmRef = ctx.resources.workingMemory
     const sysRef = ctx.resources.memorySystem
 
@@ -449,7 +470,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
             significance: item.importance,
             category: item.category,
             context: {
-              sessionId: ctx.session?.instanceId ?? 'unknown',
+              sessionId: ctx.session?.identity?.id ?? 'unknown',
               precedingTopic: undefined,
             },
           }, config.episodic.maxEpisodes)
@@ -631,7 +652,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     memorySystem: memorySystemResource,
   }
 
-  async function executeGuard(_input: unknown, ctx: any) {
+  async function executeGuard(_input: unknown, ctx: MemoryBlockCtx) {
     const sysRef = ctx.resources.memorySystem
     const wmRef = ctx.resources.workingMemory
     const sysState = sysRef.state
@@ -821,7 +842,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     memorySystem: memorySystemResource,
   }
 
-  async function executePersist(input: ConsolidationOutput, ctx: any) {
+  async function executePersist(input: ConsolidationOutput, ctx: MemoryBlockCtx) {
     if (input.facts.length === 0) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
 
     // FIX-435: flat resource registry — intrinsic scope routes lookups.
@@ -1009,7 +1030,7 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
 
   const threshold = config.semantic?.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold
 
-  async function executeGuard(_input: unknown, ctx: any) {
+  async function executeGuard(_input: unknown, ctx: MemoryBlockCtx) {
     let semRef: any = undefined
     try {
       semRef = ctx.resources?.semanticMemory
@@ -1117,7 +1138,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
     ? createSemanticMemoryResource(config.semantic.scope)
     : undefined)
 
-  async function executePersist(input: PruneOutput, ctx: any) {
+  async function executePersist(input: PruneOutput, ctx: MemoryBlockCtx) {
     let semRef: any = undefined
     try {
       semRef = ctx.resources?.semanticMemory

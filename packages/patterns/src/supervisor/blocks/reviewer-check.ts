@@ -84,7 +84,7 @@ export interface BuildReviewedWorkerOptions {
 /** Build a per-task reviewed worker. See module doc for pipeline shape. */
 export function buildReviewedWorker(
   options: BuildReviewedWorkerOptions,
-): BlockDefinition<any, any> {
+) {
   const { name, workerKey, workerBlock, reviewerGenerator, reviewCriteria } =
     options;
   const collectionId = name;
@@ -207,5 +207,5 @@ export function buildReviewedWorker(
     .tap(emitReviewingStatus)
     .map(buildReviewerInput)
     .then(reviewerGenerator)
-    .then(applyVerdict) as BlockDefinition<any, any>;
+    .then(applyVerdict);
 }

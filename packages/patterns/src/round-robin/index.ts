@@ -239,7 +239,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     outputSchema: z.object({ round: z.number() }),
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       const next = state.round + 1;
       await ctx.sequencer!.patchState({ round: next });
       return { round: next };
@@ -252,7 +252,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
       const out = input as RoundRobinRefereeOutput;
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       await ctx.sequencer!.patchState({
         refereeCritiques: [
           ...state.refereeCritiques,
@@ -308,7 +308,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   pipeline = pipeline
     .loopBack(incrementRound.name, {
       when: (_value: unknown, ctx: any) => {
-        const state = ctx.sequencer!.state as RoundRobinState;
+        const state = ctx.sequencer!.state;
         if (state.round >= maxRounds) return false;
         if (terminateWhen !== undefined && terminateWhen(ctx as BlockContext)) {
           return false;
@@ -318,7 +318,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       maxIterations: Math.max(0, maxRounds - 1),
     })
     .map((_value: unknown, ctx: any) => {
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       const contribState = ctx.resources?.[accessorKey]
         ?.state as RoundRobinContributionsState | undefined;
       const final: RoundRobinFinalShape = {

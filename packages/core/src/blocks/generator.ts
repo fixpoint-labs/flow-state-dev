@@ -30,7 +30,17 @@ import type { ModelSelection } from "../models/selectModel";
 import { isModelSelection } from "../models/selectModel";
 import type { ProviderPreference } from "../models/types";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
+import type {
+  CapabilityRef,
+  InferCapabilities,
+  InferCapabilityResources,
+  InferCapabilitySequencerState,
+  InferCapabilitySessionState,
+  MergeTargetSchemas,
+  Prettify,
+  UsesEntry,
+} from "../capability/types";
+
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { sanitizeToolName } from "../utils/tool-name";
@@ -310,22 +320,26 @@ export interface GeneratorConfig<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  // Derive-once: evaluate z.infer exactly once per provided schema
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference — declared above the derived state/resource
+  // params so their defaults can intersect capability contributions.
+  TUses extends readonly UsesEntry[] = readonly [],
+  // Derive-once: evaluate z.infer exactly once per provided schema, then
+  // intersect with capability-declared shapes (block-own on the LEFT of `&`
+  // so its property declaration wins on a valid-object collision).
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
-  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
-  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  // Capability type inference
-  TUses extends readonly UsesEntry[] = readonly [],
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
@@ -1438,28 +1452,29 @@ export function generator<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
-  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResourceDefs, TResources, TTargetSchemas,
-    TUses, TCapabilities, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");

@@ -28,6 +28,7 @@
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import type { SequencerDefinition } from "@flow-state-dev/core";
 import type {
   BlockContext,
   BlockDefinition,
@@ -189,7 +190,7 @@ export interface EventActorsConfig {
 
 export interface EventActorsHandle {
   /** Sequencer block: appends entry + drains matching actors. */
-  emit: BlockDefinition<any, any>;
+  emit: SequencerDefinition<any, any>;
   /** The workspace resource. Declare on your flow's `resources`. */
   workspace: DefinedResource;
   /** The registered actors (frozen). */
@@ -276,7 +277,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     workerRegistry[a.name] = buildActorWorker(a);
   }
 
-  function buildActorWorker(a: Actor): BlockDefinition<any, any> {
+  function buildActorWorker(a: Actor) {
     const reEmitTap = handler({
       name: `${name}-${a.name}-reemit`,
       inputSchema: z.any(),

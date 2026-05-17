@@ -29,6 +29,14 @@ export type CollectionHookContext = {
   log: (message: string) => void;
   /** The scope type this collection belongs to (session, user, org). */
   scopeType: ScopeType;
+  /**
+   * The identifier of the concrete scope instance the hook fired in:
+   * `userId` for `scope:"user"`, `orgId` for `scope:"org"`,
+   * `sessionId` for `scope:"session"`. Lets hooks correlate collection
+   * mutations back to the entity that owns them (e.g. mirroring a row
+   * into a per-user schedule index).
+   */
+  scopeId: string;
 };
 
 export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {

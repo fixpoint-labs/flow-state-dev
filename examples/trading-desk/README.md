@@ -61,6 +61,9 @@ Phase 2 — research debate:
 
 Phase 3 — trader synthesis:
 
+- **Approach preamble** — a fast-model (`intent/utility`) free-text step
+  streams a one-sentence plan to the transcript before the structured
+  trader runs. Display-only; not fed into the trader.
 - **Single-shot structured synthesis** — one trader generator, no loop.
   Reads the Phase 2 `InvestmentThesis` and writes a typed `TradeProposal`.
 - **Typed extension fields** — `direction`, `sizePct`, `stopPrice`,
@@ -74,6 +77,12 @@ Phase 3 — trader synthesis:
 
 Phase 4 — risk debate:
 
+- **Per-agent approach preambles** — each of the three personas and the
+  consolidator stream a short fast-model (`intent/utility`) preamble
+  before their structured generator runs. Personas are `sub` agents and
+  don't emit struct cards, so the preambles are their only
+  transcript-visible output; the structured critique still lands in the
+  memos pane.
 - **Three risk personas in fixed round-robin order** — `aggressiveRisk`
   (push for outsized sizing), `conservativeRisk` (push for tighter risk),
   `neutralRisk` (filter signal from noise). The pattern is Round Robin
@@ -99,6 +108,9 @@ Phase 4 — risk debate:
 
 Phase 5 — portfolio manager:
 
+- **Approach preamble** — same shape as Phase 3: a fast-model preview of
+  how the PM intends to weigh the trade proposal against the risk
+  assessment, streamed before the structured decision lands.
 - **Final converging step** — a single `portfolioManager` generator reads
   the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
   trade proposal, Phase 4 risk assessment) and writes a typed
@@ -228,6 +240,7 @@ analyze
         ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
         └─ traderStep
              ├─ markWritingP3
+             ├─ traderApproachGenerator (sub, streams message item)
              ├─ traderGenerator   (.then — write `TradeProposal`)
              ├─ commitTraderMemo  (.tap)
              └─ markErrorP3       (.rescue)
@@ -237,22 +250,31 @@ analyze
         ├─ phase4RoundRobin       (.then — single round, stub judge,
         │                            three roster slots overridden with
         │                            structured-output persona generators)
-        │     ├─ aggressiveStep   (markWriting + generator + commit +
-        │     │                     toContributionShape, rescue → markError)
+        │     ├─ aggressiveStep   (markWriting + approach preamble +
+        │     │                     generator + commit + toContributionShape,
+        │     │                     rescue → markError)
         │     ├─ conservativeStep (symmetric)
         │     └─ neutralStep      (symmetric, neutral schema)
-        └─ riskAssessmentStep     (.then — consolidator, write
-                                     `RiskAssessment`; rescue → markError)
+        └─ riskAssessmentStep     (.then — approach preamble + consolidator,
+                                     write `RiskAssessment`; rescue → markError)
   └─ phase-5-portfolio-manager    (sub-sequencer, container item)
         ├─ setupPhase5Memos       (.tap — pre-create p5/portfolio-manager
         │                            in `pending`)
         └─ portfolioManagerStep
              ├─ markWritingP5
+             ├─ portfolioManagerApproachGenerator (sub, streams message item)
              ├─ portfolioManagerGenerator (.then — write `PortfolioDecision`)
              ├─ commitPortfolioManagerMemo (.tap — also flips
              │                                `session.runComplete = true`)
              └─ markErrorP5           (.rescue)
 ```
+
+All six Phase 3–5 approach preamble generators are built via the
+`createApproachGenerator` factory in
+[`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
+The factory locks the shared policy (`agentType: "sub"`,
+`model: "intent/utility"`, the user-instruction template) and exposes
+only the per-agent knobs.
 
 The four Phase 2 `roundRobin()` instances share one
 `phase2Contributions` resource (registered on the flow). Phase 4 follows

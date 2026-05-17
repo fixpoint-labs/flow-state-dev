@@ -121,6 +121,8 @@ createBashCapability({
 
 This keeps `@flow-state-dev/tools` free of a peer dep on the SDK and gives bundlers (webpack, Vercel's `nft` file tracer) a real static import to follow when building for deployment. See `apps/kitchen-sink/flows/chat-agent/blocks/bash-tools.ts` for the canonical environment-aware pattern.
 
+For deployment configuration — OIDC Federation vs. the static `VERCEL_TOKEN` triple, the `BASH_PROVIDER` opt-in env var, and cost notes for public demos — see the [Deploying to Vercel guide](/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel).
+
 ## MOAT (local container isolation)
 
 ### What it is

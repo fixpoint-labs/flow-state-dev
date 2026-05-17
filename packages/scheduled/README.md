@@ -106,9 +106,52 @@ Every scheduled-driven request carries:
 - `metadata.cron`, `metadata.nominalFireTime`, `metadata.dispatchedAt`,
   `metadata.timezone`
 
+## Schedule index
+
+`ScheduleIndex` is an opt-in adapter interface that lets a polling cron tick find due dynamic schedules in one query, instead of scanning every user's schedule collection. Store packages implement it (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`); custom backends implement the three-method interface directly.
+
+The contract is at-most-once: `claimDue` atomically advances rows before returning them, so a dispatch that fails after advance is dropped, not retried.
+
+### `defineScheduleCollection`
+
+`defineScheduleCollection({ pattern, index })` wraps `defineResourceCollection` with the schedule state schema and mirrors every create/update/delete into the supplied index using lifecycle hooks. Omit `index` and the collection still works — no mirroring, no hooks.
+
+```ts
+import { defineScheduleCollection } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
+
+const index = createSQLiteScheduleIndex(db);
+
+export const schedules = defineScheduleCollection({
+  pattern: "schedules/*",
+  index
+});
+```
+
+Rows with `enabled: false` are removed from the index, so toggling a schedule off stops it firing without deleting the underlying record.
+
+### Conformance suite
+
+`@flow-state-dev/scheduled/testing` exports `createScheduleIndexConformanceTests` for new `ScheduleIndex` implementations:
+
+```ts
+import { describe } from "vitest";
+import { createScheduleIndexConformanceTests } from "@flow-state-dev/scheduled/testing";
+
+createScheduleIndexConformanceTests("my-backend", {
+  createIndex: () => /* fresh empty index */,
+  cleanup: (idx) => /* tear down */
+});
+```
+
+Covers upsert idempotence, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
+
+See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
+
 ## See also
 
 - `apps/docs/docs/server/scheduled.md` — full reference guide
+- `apps/docs/docs/server/schedule-index.md` — schedule index reference
 - `apps/docs/guides/scheduled-vercel-cron.md`
 - `apps/docs/guides/scheduled-cloud-scheduler.md`
 - `apps/docs/guides/scheduled-eventbridge.md`

@@ -11,6 +11,7 @@
  * verbatim.
  */
 import { sequencer } from "@flow-state-dev/core";
+import { traderApproachGenerator } from "./approach";
 import { setupPhase3Memos } from "./setup";
 import { traderGenerator } from "./trader";
 import {
@@ -21,6 +22,7 @@ import {
 
 const traderStep = sequencer({ name: "phase-3-trader-step" })
   .tap(markWritingP3("trader"))
+  .then(traderApproachGenerator)
   .then(traderGenerator)
   .tap(commitTraderMemo)
   .rescue([{ block: markErrorP3("trader") }]);

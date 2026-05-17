@@ -23,7 +23,7 @@ import { executableTaskSchema, type ExecutableTask } from "../schemas";
  */
 export function legacyWorkerAdapter(
   worker: BlockDefinition<any, any>,
-): BlockDefinition<any, any> {
+) {
   if (worker.inputSchema !== executableTaskSchema) return worker;
   return worker.connectInput<TaskWorkerInput>(
     (twi: TaskWorkerInput): ExecutableTask => ({
@@ -32,5 +32,5 @@ export function legacyWorkerAdapter(
       ...(typeof twi.input === "string" ? { context: twi.input } : {}),
       ...(twi.feedback !== undefined ? { feedback: twi.feedback } : {}),
     }),
-  ) as BlockDefinition<any, any>;
+  );
 }

@@ -133,6 +133,9 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../../packages/scheduled
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -226,6 +229,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      pg:
+        specifier: ^8.13.0
+        version: 8.20.0
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -266,6 +272,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.2.0
         version: 4.2.0
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.20.0
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
@@ -670,6 +679,9 @@ importers:
       cron-parser:
         specifier: ^5.0.0
         version: 5.5.0
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@flow-state-dev/testing':
         specifier: workspace:*
@@ -677,9 +689,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/server:
     dependencies:
@@ -743,6 +755,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.17
         version: 0.2.17
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -759,6 +774,9 @@ importers:
         specifier: ^11.0.0
         version: 11.10.0
     devDependencies:
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
@@ -989,6 +1007,9 @@ importers:
         specifier: workspace:*
         version: link:../server
     devDependencies:
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13

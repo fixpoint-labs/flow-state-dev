@@ -30,6 +30,7 @@ export function createInitContributions(opts: {
     outputSchema: z.any(),
     resources: { [accessor]: opts.contributions },
     execute: async (input, ctx) => {
+      // TODO: computed-key resource accessor — see round-robin follow-up
       await (ctx.resources as any)[accessor].setState({
         entries: [],
       });

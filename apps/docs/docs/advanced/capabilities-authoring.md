@@ -84,6 +84,8 @@ When a block lists a capability in `uses`, the framework merges the capability's
 
 The merge happens before the block is built. This is the key thing: capabilities aren't just a way to share resources. They're a way to share any block configuration. A generator that `uses` a capability with context and tools presets gets those injected into its config as if they were declared inline. The existing propagation — sequencer resource collection, `defineFlow` resource merging — works unchanged.
 
+Schema declarations also flow into types. A block that lists a capability in `uses` gets the capability's `sessionStateSchema`, resource schemas, `targetStateSchemas`, and `sequencerStateSchema` reflected in its `ctx` types without re-declaring them. See [Type inference from capability declarations](/docs/fundamentals/capabilities#type-inference-from-capability-declarations) for the full rules and limits.
+
 ## Presets
 
 Presets are how capabilities contribute block-level configuration — context formatters, tools, state schemas, and resources — as named bundles that consumers can toggle. They're the mechanism that makes capabilities more than just shared resources.

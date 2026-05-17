@@ -233,7 +233,7 @@ function createDefaultReplanner(config: {
       // evaluator and synthesizer consult, so all three see one
       // canonical view of progress.
       return JSON.stringify(
-        { goal: (ctx.sequencer!.state as PlanAndExecuteState).goal ?? "" },
+        { goal: ctx.sequencer!.state.goal ?? "" },
         null,
         2,
       );
@@ -366,7 +366,7 @@ function formatDependencyContext(depId: string, value: unknown): string {
 function wrapWorkerForLegacyContract(
   name: string,
   worker: BlockDefinition<any, any>,
-): BlockDefinition<any, any> {
+): SequencerDefinition<any, any> {
   // Pre-connect adapts the substrate's TaskWorkerInput to legacy.
   const adapted = worker.connectInput<unknown>((input: unknown) => {
     const obj = input as {
@@ -409,7 +409,7 @@ function wrapWorkerForLegacyContract(
     name: `${name}-worker-adapted`,
   })
     .then(adapted)
-    .tap(checkSoftFailure) as BlockDefinition<any, any>;
+    .tap(checkSoftFailure);
 }
 
 // ---------------------------------------------------------------------------
