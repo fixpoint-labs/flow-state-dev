@@ -12,7 +12,6 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { PHASE_1_MEMO_KEYS } from "./agents";
-import { EarlyStopError, rescueEarlyStop } from "./guards";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
@@ -58,57 +57,62 @@ const seedSession = handler({
   },
 });
 
-// Inner pipeline: seed → pre-flight ticker `.throwIf` → Phase 1 →
-// post-Phase-1 `.throwIf` → Phases 2–5. Both guards throw `EarlyStopError`;
-// the outer `.rescue` matching on `EarlyStopError` catches them and
-// patches session state to a clean terminal "stopped" condition (FIX-605).
-// Any other error type bubbles past the rescue's `when:` filter.
-const analyzePipelineInner = sequencer({
-  name: "trading-desk-analyze-inner",
-  inputSchema: analyzeInputSchema,
-})
-  .then(seedSession)
-  .throwIf(
-    async (input) =>
-      !(await resolveTicker(input)).resolved,
-    async (input) => {
-      const result = await resolveTicker(input);
-      return new EarlyStopError(
-        "unresolvable-ticker",
-        result.reason ?? `Could not resolve ticker ${input.ticker}.`,
-      );
-    },
-  )
-  .then(phase1Pipeline)
-  .throwIf(
-    // `.throwIf` doesn't carry a typed resources slot — go through `any`
-    // so `getOptional` is callable. The `memos` collection is declared by
-    // `phase1Pipeline` upstream, so it's present at runtime.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (_v, ctx) =>
-      Object.values(PHASE_1_MEMO_KEYS).every(
-        (m) =>
-          (ctx.resources as any).memos.getOptional(m.collectionKey)?.state
-            .status === "error",
-      ),
-    (_v, ctx) =>
-      new EarlyStopError(
-        "phase-1-no-data",
-        `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
-          "Halting before synthesis — no usable upstream data.",
-      ),
-  )
-  .then(phase2Pipeline)
-  .then(phase3Pipeline)
-  .then(phase4Pipeline)
-  .then(phase5Pipeline);
-
+// Two `.tap` + `.exitIf` pairs implement defense-in-depth against
+// unresolvable tickers (FIX-605):
+//
+//   1. Pre-flight ticker resolution probes the active data source. If the
+//      ticker can't be resolved (missing fixture / all live providers down),
+//      the tap patches `stoppedReason: "unresolvable-ticker"` and the
+//      following `.exitIf` bails before any model spend.
+//   2. Post-Phase-1 data-quality check: if every analyst memo is in `error`,
+//      the tap patches `stoppedReason: "phase-1-no-data"` and `.exitIf`
+//      bails before phases 2–5 synthesize on no data.
+//
+// The rescue + typed-error scaffolding from the first FIX-605 cut is gone:
+// the stop is a normal terminal state, not an exceptional condition, so
+// patching state + exiting is the right shape.
 const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
   inputSchema: analyzeInputSchema,
 })
-  .then(analyzePipelineInner)
-  .rescue([{ when: [EarlyStopError], block: rescueEarlyStop }]);
+  .then(seedSession)
+  .tap(async (input, ctx) => {
+    const result = await resolveTicker(input);
+    if (!result.resolved) {
+      await ctx.session.patchState({
+        stoppedReason: "unresolvable-ticker",
+        stoppedMessage:
+          result.reason ?? `Could not resolve ticker ${input.ticker}.`,
+        runComplete: true,
+      });
+    }
+  })
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  .then(phase1Pipeline)
+  .tap(async (_v, ctx) => {
+    // `.tap` doesn't carry a typed resources slot — go through `any` so
+    // `getOptional` is callable. The `memos` collection is declared by
+    // `phase1Pipeline` upstream, so it's present at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const memos = (ctx.resources as any).memos;
+    const allErrored = Object.values(PHASE_1_MEMO_KEYS).every(
+      (m) => memos.getOptional(m.collectionKey)?.state.status === "error",
+    );
+    if (allErrored) {
+      await ctx.session.patchState({
+        stoppedReason: "phase-1-no-data",
+        stoppedMessage:
+          `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
+          "Halting before synthesis — no usable upstream data.",
+        runComplete: true,
+      });
+    }
+  })
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  .then(phase2Pipeline)
+  .then(phase3Pipeline)
+  .then(phase4Pipeline)
+  .then(phase5Pipeline);
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",

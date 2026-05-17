@@ -10,9 +10,8 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ### Trading-desk: unresolvable-ticker guardrails + shared grounding clause (FIX-605)
 
-- Pre-flight ticker resolution runs after `seedSession` and before `phase1Pipeline`. An inline `.throwIf` reads the resolver's outcome (fixture-file probe / live fundamentals fetch) and throws `EarlyStopError("unresolvable-ticker", ...)` when the ticker can't be resolved, halting the run before any model spend.
-- Post-Phase-1 data-quality `.throwIf` reads memo statuses and throws `EarlyStopError("phase-1-no-data", ...)` when every analyst memo is in `error`. Phases 2–5 never see no-data input.
-- A top-level `.rescue([{ when: [EarlyStopError], block: rescueEarlyStop }])` on `analyzePipeline` catches both errors, patches new `stoppedReason` / `stoppedMessage` session-state fields, and flips `runComplete: true`. Any other error type bubbles past the `when:` filter unchanged.
+- Pre-flight ticker resolution runs after `seedSession` and before `phase1Pipeline`. A `.tap` probes the active data source (fixture-file existence / live fundamentals fetch) and patches `stoppedReason: "unresolvable-ticker"` when the ticker can't be resolved; the following `.exitIf` bails before any model spend.
+- Post-Phase-1 data-quality `.tap` reads memo statuses and patches `stoppedReason: "phase-1-no-data"` when every analyst memo is in `error`; the following `.exitIf` halts the run before phases 2–5 synthesize on no upstream data.
 - The `tradingDesk.core` preset now injects a shared `<grounding>` clause into every generator's prompt — "operate strictly on data provided by upstream agents and tools; surface insufficient-data rather than fabricate." Expressed once, applied uniformly across all twelve agents, instead of the Phase-1-only `SHARED_PREAMBLE` line being the only source of grounding discipline.
 - Session state gains `stoppedReason` and `stoppedMessage` fields, both surfaced to the client so the navigator can render a terminal stopped banner rather than an in-progress indicator.
 
