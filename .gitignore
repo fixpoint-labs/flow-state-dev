@@ -18,3 +18,4 @@ docs/superpowers/*
 .claude/settings.json
 .claude/specs/*
 packages/devtool/dist-client/*
+.claude/skills/create-spec/_drafts/*

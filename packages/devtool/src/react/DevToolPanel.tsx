@@ -31,6 +31,7 @@ import { LiveSwitch } from "./components/workspace/live-switch";
 import { SessionContextPanel } from "./components/detail/session-context";
 import { TokenUsageSummary } from "./components/detail/token-usage-summary";
 import { ItemDetail } from "./components/detail/item-detail";
+import { FlowStateMark } from "./components/shared/flow-state-mark";
 
 import { useActiveSession } from "./hooks/use-active-session";
 import { useRequestStream } from "./hooks/use-request-stream";
@@ -335,7 +336,8 @@ function PanelContent({ className }: { className?: string }) {
     <TraceLookupProvider requestGroups={requestGroups}>
     <div className={rootClass}>
       <header className="flex h-10 select-none items-center justify-between border-b border-slate-800 px-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <FlowStateMark theme="dark" className="h-[22px] w-[22px] shrink-0" />
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
           <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
         </div>

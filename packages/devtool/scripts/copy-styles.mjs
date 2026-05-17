@@ -5,15 +5,17 @@
  *
  * TSC alone doesn't emit non-TS files, so this runs as a postbuild step.
  */
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(__dirname, "..");
 const source = resolve(packageRoot, "src/react/styles.css");
+const assetsSource = resolve(packageRoot, "src/react/assets");
 const targetDir = resolve(packageRoot, "dist/react");
 const target = resolve(targetDir, "styles.css");
+const assetsTarget = resolve(targetDir, "assets");
 
 if (!existsSync(source)) {
   console.error("copy-styles: source not found at", source);
@@ -26,3 +28,8 @@ if (!existsSync(targetDir)) {
 
 copyFileSync(source, target);
 console.log("copy-styles: copied", source, "->", target);
+
+if (existsSync(assetsSource)) {
+  cpSync(assetsSource, assetsTarget, { recursive: true });
+  console.log("copy-styles: copied", assetsSource, "->", assetsTarget);
+}

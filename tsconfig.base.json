@@ -28,6 +28,7 @@
       "@flow-state-dev/testing": ["packages/testing/src/index.ts"],
       "@flow-state-dev/mcp": ["packages/mcp/src/index.ts"],
       "@flow-state-dev/scheduled": ["packages/scheduled/src/index.ts"],
+      "@flow-state-dev/scheduled/testing": ["packages/scheduled/src/testing.ts"],
       "@flow-state-dev/cli": ["packages/cli/src/index.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
       "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
@@ -42,6 +43,7 @@
       "@flow-state-dev/devtool/react": ["packages/devtool/src/react/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],
+      "@flow-state-dev/vercel/schedules": ["packages/vercel/src/schedules.ts"],
       "@thought-fabric/core": ["packages/thought-fabric-core/src/index.ts"]
     }
   }
