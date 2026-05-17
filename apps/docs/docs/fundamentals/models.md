@@ -71,11 +71,101 @@ const resolver = createModelResolver({
 });
 ```
 
-`defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `gateway/provider/model` string — never another `intent/*`. See [Custom Model Resolver](/docs/advanced/custom-model-resolver) for the full options reference.
+`defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `gateway/provider/model` string, never another `intent/*`. Both rules are enforced at construction: missing `defaultModel` throws `createModelResolver: defaultModel is required when intents are configured`, and an `intent/*` default throws `createModelResolver: defaultModel must not be an intent/* string`. If a generator references an intent name that isn't configured, the resolver logs a dev warning (`[flow-state-dev] Unknown or empty intent "<name>"; falling back to defaultModel.`) and uses `defaultModel`.
+
+See [Custom Model Resolver](/docs/advanced/custom-model-resolver) for the full options reference.
+
+### Worked examples
+
+One generator per intent, wired to a realistic block shape. The point is to show what each intent looks like in practice; production blocks would add the usual prompt and schema details.
+
+`utility` — a small classifier with a structured output:
+
+```ts
+const classifyIntent = generator({
+  name: "classify-intent",
+  model: "intent/utility",
+  outputSchema: z.object({
+    intent: z.enum(["greeting", "question", "complaint", "other"]),
+    confidence: z.number(),
+  }),
+  prompt: "Classify the user's message. Be conservative on confidence.",
+});
+```
+
+`chat` — a user-facing assistant turn:
+
+```ts
+const assistant = generator({
+  name: "assistant",
+  model: "intent/chat",
+  prompt: "You are a helpful assistant. Keep replies under three sentences.",
+});
+```
+
+`plan` — a planner producing a list of subtasks:
+
+```ts
+const planTasks = generator({
+  name: "plan-tasks",
+  model: "intent/plan",
+  outputSchema: z.object({
+    steps: z.array(z.object({
+      title: z.string(),
+      rationale: z.string(),
+    })),
+  }),
+  prompt: "Break the goal into 3-6 concrete steps with a one-line rationale each.",
+});
+```
+
+`synthesize` — combining prior outputs into a structured result. This intent doubles as the structured-JSON intent; apps should point it at JSON-reliable models (Sonnet/GPT-class), not the cheapest tier.
+
+```ts
+const synthesize = generator({
+  name: "synthesize-findings",
+  model: "intent/synthesize",
+  outputSchema: z.object({
+    summary: z.string(),
+    keyPoints: z.array(z.string()),
+  }),
+  prompt: "Combine the research and analysis into a single structured report.",
+});
+```
+
+`code` — a code-review generator returning structured findings:
+
+```ts
+const reviewCode = generator({
+  name: "review-code",
+  model: "intent/code",
+  outputSchema: z.object({
+    findings: z.array(z.object({
+      severity: z.enum(["info", "warn", "error"]),
+      file: z.string(),
+      line: z.number(),
+      message: z.string(),
+    })),
+  }),
+  prompt: "Review the diff. Flag correctness issues, not style.",
+});
+```
+
+`reason` — open-ended deliberation, free-form output:
+
+```ts
+const deliberate = generator({
+  name: "deliberate",
+  model: "intent/reason",
+  prompt: "Work through the tradeoffs out loud. End with a recommendation.",
+});
+```
+
+Examples use `intent/*` strings, not the underlying `provider/model`. That's the point of intents: blocks declare what they need; the resolver decides which model fills the role.
 
 ## Array Fallback
 
-Don't need a named preset? Pass an array directly. The framework tries each model in order:
+Don't need a named intent? Pass an array directly. The framework tries each model in order:
 
 ```ts
 const chat = generator({
@@ -85,7 +175,7 @@ const chat = generator({
 });
 ```
 
-This gives you the same retry-and-fallback behavior as presets, without defining a named group. Useful for one-off blocks where a preset would be overkill.
+This gives you the same retry-and-fallback behavior as named intents, without defining one. Useful for one-off blocks where defining an intent would be overkill.
 
 ## Dynamic Selection
 
@@ -102,7 +192,7 @@ const adaptive = generator({
 });
 ```
 
-The function can return any valid model value: a string, a preset reference, an array, or a resolved model instance.
+The function can return any valid model value: a string, an intent string, an array, or a resolved model instance.
 
 ### `selectModel`
 
@@ -190,9 +280,35 @@ user: {
 },
 ```
 
-## Provider Detection
+## Gateways and fallback
 
-The model resolver figures out which providers are available by checking environment variables:
+Gateways let you route provider calls through a single proxy. The resolver supports gateway-prefixed model strings explicitly, and also falls back to a configured gateway when a bare `provider/model` can't be loaded directly. This section covers both, plus the env-var detection rules that drive provider availability.
+
+### Gateway model strings
+
+A `gateway/provider/model` string routes the call through the named gateway:
+
+```ts
+const chat = generator({
+  name: "chat",
+  model: "vercel/openai/gpt-5.5",
+  prompt: "You are a helpful assistant.",
+});
+```
+
+```ts
+const chat = generator({
+  name: "chat",
+  model: "openrouter/anthropic/claude-sonnet-4.6",
+  prompt: "You are a helpful assistant.",
+});
+```
+
+Gateway strings work anywhere a model string works: directly on a generator, inside `selectModel`, and inside intent candidate lists.
+
+### Provider detection
+
+The resolver figures out which providers are available by checking environment variables:
 
 | Provider | Variable |
 |----------|----------|
@@ -210,6 +326,41 @@ Zero-config setup (auto-detects from env):
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver();
+```
+
+### Direct-then-gateway fallback
+
+Bare `provider/model` strings (no gateway prefix) have a two-tier resolution:
+
+1. **Direct first.** If the provider package is installed and a direct API key is configured, the resolver loads the direct provider and calls it.
+2. **Gateway fallback.** If the direct package fails to load — not installed, can't be required in a bundled Next.js context, factory throws — the resolver walks configured gateways (explicit `options.gateways` entries first, then gateways auto-detected via env vars). The first gateway that covers this provider is used to route the call.
+
+This is what makes `"openai/gpt-5.5"` keep working on Vercel even when `@ai-sdk/openai` isn't in the bundle, as long as `AI_GATEWAY_API_KEY` is set. The behavior is intentional, not a hidden quirk.
+
+A worked resolution trace:
+
+```ts
+// App config
+const resolver = createModelResolver({
+  gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    utility: ["openai/gpt-5.5-nano", "anthropic/claude-haiku-4.5"],
+    chat: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"],
+  },
+});
+
+// In Next.js production where @ai-sdk/openai isn't in the bundle:
+generator({ model: "intent/chat", prompt: "..." });
+
+// Resolution trace:
+// 1. "intent/chat" → candidates: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"]
+// 2. Try "openai/gpt-5.5":
+//      - Direct openai package: load fails (not in bundle)
+//      - Gateway fallback: vercel gateway covers openai → use it
+//      - Wraps as gateway-routed openai/gpt-5.5
+// 3. Request succeeds.
+//    item.model = { actual: "openai/gpt-5.5", gateway: "vercel" }
 ```
 
 ## Retry and Fallback
@@ -237,7 +388,7 @@ const resolver = createModelResolver({
 
 ## Prompt Caching
 
-Every generator opts into prompt caching by default. For Anthropic models that means the adapter stamps `providerOptions.anthropic.cacheControl` on the last system message, so tools + system get cached together. OpenAI, Google, and DeepSeek cache implicitly and are left alone. If you're routing through the Vercel AI Gateway, the adapter sets `providerOptions.gateway.caching: 'auto'` instead and lets the gateway mark breakpoints for the underlying provider.
+Every generator opts into prompt caching by default. For Anthropic models that means the adapter stamps `providerOptions.anthropic.cacheControl` on the last system message, so tools + system get cached together. OpenAI, Google, and DeepSeek cache implicitly and are left alone. OpenRouter is treated like Anthropic, since its API proxies `cache_control` through unchanged. If you're routing through the Vercel AI Gateway, the adapter sets `providerOptions.gateway.caching: 'auto'` instead and lets the gateway mark breakpoints for the underlying provider.
 
 You don't have to configure anything to get the win. When it matters, tune it:
 
@@ -294,6 +445,59 @@ Cache write is ~1.25× the input rate; cache read is ~0.1×. One read refunds th
 
 For a fuller treatment — including the audit of call paths that existed before default-on, the minimum-prefix threshold, and manual-mode placement patterns — see [`docs/PROMPT_CACHING.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md).
 
+## Thinking and reasoning
+
+Different providers expose "thinking" or "reasoning" in different shapes. The framework doesn't normalize them yet (see the note at the end of this section), but it does two things that make the surface usable today: it streams reasoning output as items automatically, and it passes `providerOptions` straight through to the underlying AI SDK provider.
+
+### Streaming reasoning output
+
+Whenever the resolved model produces reasoning chunks, the generator emits them as `ReasoningItem` items on the stream. No configuration needed. See [streaming/items.md](../streaming/items.md) for the item shape.
+
+### The `providerOptions` escape hatch
+
+To turn thinking on for Anthropic, set a budget on `providerOptions.anthropic.thinking`:
+
+```ts
+const reasoner = generator({
+  name: "reasoner",
+  model: "anthropic/claude-opus-4.7",
+  providerOptions: { anthropic: { thinking: { budgetTokens: 10000 } } },
+  prompt: "Work through the problem step by step.",
+});
+```
+
+For OpenAI, use `reasoning_effort`:
+
+```ts
+const reasoner = generator({
+  name: "reasoner",
+  model: "openai/gpt-5.5",
+  providerOptions: { openai: { reasoning_effort: "high" } },
+  prompt: "Work through the problem step by step.",
+});
+```
+
+For Google, use `thinkingConfig`:
+
+```ts
+const reasoner = generator({
+  name: "reasoner",
+  model: "google/gemini-3.1-pro",
+  providerOptions: { google: { thinkingConfig: { thinkingBudget: 8000 } } },
+  prompt: "Work through the problem step by step.",
+});
+```
+
+The shapes above match what the AI SDK accepts for each provider. Verify against the SDK docs if you're targeting a newer model; the field names occasionally shift.
+
+### The `thinking` model group
+
+For apps using `createFSDProvider`, the built-in `defaultGroups.thinking` group bundles a three-model fallback chain (`anthropic/claude-opus-4-6`, `openai/gpt-5.4`, `google/gemini-3.1-pro-preview`) with the Anthropic thinking budget already set. Reach for it when you want a thinking-capable model without picking one by hand. See [Model Groups](/docs/advanced/model-groups) for the full group system.
+
+### Forward note: normalized reasoning levels
+
+A normalized `reasoning: 'low' | 'medium' | 'high'` level — orthogonal to model choice, with per-model clamp behavior — is on the roadmap but not yet implemented. Until it ships, the `providerOptions` escape hatch above is the supported surface.
+
 ## Observable model identity
 
 When a generator runs, the resolved model identity flows out on every emitted item (`message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`) and on the generator's `block_trace`. The shape is the same in both places:
@@ -316,8 +520,22 @@ import { ModelBadge } from "@flow-state-dev/react";
 
 Items emitted by handlers do not carry `model`. See [streaming/items.md](../streaming/items.md#observable-model-identity) for the full surface, including `block_trace.model` semantics.
 
+## Migration from presets
+
+The `preset/*` API was removed as part of the intents rollout. Any `preset/*` string now throws at construction time with this mapping:
+
+```
+preset/fast, preset/tiny, preset/small  → intent/utility
+preset/medium                           → intent/chat
+preset/large                            → intent/code or intent/reason
+preset/thinking-*                       → intent/reason or intent/plan
+                                          with reasoning enabled (FIX-517)
+```
+
+The runtime error still references FIX-517 (normalized reasoning levels). That feature was deferred and never shipped; for callers migrating from `preset/thinking-*`, see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch that ships today.
+
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app
-- [Model Groups](/docs/advanced/model-groups) — deeper dive into presets, gateways, introspection
+- [Model Groups](/docs/advanced/model-groups) — deeper dive into model groups, gateways, and provider introspection
 - [Custom Model Resolver](/docs/advanced/custom-model-resolver) — advanced resolver configuration
