@@ -1,54 +1,54 @@
 /* ══════════════════════════════════════════════════════════════
    flow-state.dev — Editorial Monochrome Theme
    High-contrast dark aesthetic with typography-driven hierarchy.
-   Single accent color (#38bdf8) for brand identity and links.
+   Single accent color (#B27D40) for brand identity and links.
    ══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 /* ── Light mode tokens ── */
 :root {
-  --ifm-color-primary: #0ea5e9;
-  --ifm-color-primary-dark: #0284c7;
-  --ifm-color-primary-darker: #0369a1;
-  --ifm-color-primary-darkest: #075985;
-  --ifm-color-primary-light: #38bdf8;
-  --ifm-color-primary-lighter: #7dd3fc;
-  --ifm-color-primary-lightest: #bae6fd;
+  --ifm-color-primary: #B27D40;
+  --ifm-color-primary-dark: #9A6D38;
+  --ifm-color-primary-darker: #865D31;
+  --ifm-color-primary-darkest: #724D29;
+  --ifm-color-primary-light: #C08F55;
+  --ifm-color-primary-lighter: #CEA16A;
+  --ifm-color-primary-lightest: #DCB37F;
   --ifm-code-font-size: 95%;
   --ifm-font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
   --ifm-heading-font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --ifm-heading-font-weight: 700;
   --ifm-font-weight-bold: 600;
-  --docusaurus-highlighted-code-line-bg: rgba(56, 189, 248, 0.08);
+  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.08);
   --ifm-line-height-base: 1.65;
 
   /* custom tokens */
-  --fsd-accent: #38bdf8;
-  --fsd-accent-glow: rgba(56, 189, 248, 0.15);
+  --fsd-accent: #B27D40;
+  --fsd-accent-glow: rgba(178, 125, 64, 0.15);
   --fsd-surface-border: rgba(0, 0, 0, 0.08);
   --fsd-text-muted: rgba(0, 0, 0, 0.55);
 }
 
 /* ── Dark mode tokens ── */
 [data-theme="dark"] {
-  --ifm-color-primary: #38bdf8;
-  --ifm-color-primary-dark: #0ea5e9;
-  --ifm-color-primary-darker: #0284c7;
-  --ifm-color-primary-darkest: #0369a1;
-  --ifm-color-primary-light: #7dd3fc;
-  --ifm-color-primary-lighter: #bae6fd;
-  --ifm-color-primary-lightest: #e0f2fe;
+  --ifm-color-primary: #B27D40;
+  --ifm-color-primary-dark: #9A6D38;
+  --ifm-color-primary-darker: #865D31;
+  --ifm-color-primary-darkest: #724D29;
+  --ifm-color-primary-light: #C08F55;
+  --ifm-color-primary-lighter: #CEA16A;
+  --ifm-color-primary-lightest: #DCB37F;
   --ifm-background-color: #08080c;
   --ifm-background-surface-color: #0e0e14;
   --ifm-navbar-background-color: rgba(8, 8, 12, 0.85);
   --ifm-footer-background-color: #050508;
-  --docusaurus-highlighted-code-line-bg: rgba(56, 189, 248, 0.1);
+  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.1);
 
   /* custom tokens */
-  --fsd-accent: #38bdf8;
-  --fsd-accent-glow: rgba(56, 189, 248, 0.12);
+  --fsd-accent: #B27D40;
+  --fsd-accent-glow: rgba(178, 125, 64, 0.12);
   --fsd-surface-border: rgba(255, 255, 255, 0.06);
   --fsd-text-muted: rgba(255, 255, 255, 0.45);
 }
@@ -166,7 +166,7 @@ body {
 /* ── Selection highlight ── */
 
 ::selection {
-  background: rgba(56, 189, 248, 0.2);
+  background: rgba(178, 125, 64, 0.2);
   color: inherit;
 }
 
