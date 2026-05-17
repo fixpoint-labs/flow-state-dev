@@ -80,6 +80,33 @@ sequencer({ name: "branch-state", inputSchema: z.number(), stateSchema })
     small: [(value) => value, (_input, ctx) => ctx.sequencer!.state.count > 0, addOne]
   });
 
+// ---------- 4b. `.thenIf` condition sees typed state ----------
+sequencer({ name: "then-if-state", inputSchema: z.number(), stateSchema })
+  .thenIf(
+    (input, ctx) => {
+      type State = NonNullable<typeof ctx.sequencer>["state"];
+      type _check = Assert<Equal<State["count"], number>>;
+      return input > ctx.sequencer!.state.count;
+    },
+    addOne
+  );
+
+// ---------- 4c. `.tapIf` condition + fn-form callback see typed state ----------
+sequencer({ name: "tap-if-state", inputSchema: z.number(), stateSchema })
+  .tapIf(
+    (value, ctx) => {
+      type State = NonNullable<typeof ctx.sequencer>["state"];
+      type _check = Assert<Equal<State["count"], number>>;
+      return value > ctx.sequencer!.state.count;
+    },
+    (value, ctx) => {
+      type State = NonNullable<typeof ctx.sequencer>["state"];
+      type _check = Assert<Equal<State["count"], number>>;
+      void value;
+      void ctx.sequencer!.state.count;
+    }
+  );
+
 // ---------- 5. `.doUntil` condition sees typed state ----------
 sequencer({ name: "do-until-state", inputSchema: z.number(), stateSchema })
   .doUntil((value, ctx) => {

@@ -14,27 +14,11 @@ import type {
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
-  InferCapabilityTargetSchemas,
+  MergeTargetSchemas,
   Prettify,
   UsesEntry,
 } from "../capability/types";
 
-/**
- * Merge a block's own target schema map with any contributed by capabilities
- * in `uses`. Block-own wins on key collision because it sits on the LEFT of
- * the intersection (conflicting primitive types collapse to `never`, which is
- * the documented edge-case behavior). Returns `undefined` when neither side
- * contributes, so `ctx.targets` stays typed as `Record<string, never>` for
- * blocks that don't declare or inherit targets.
- */
-type MergeTargetSchemas<TOwn, TUses extends readonly UsesEntry[]> =
-  TOwn extends Record<string, ZodTypeAny>
-    ? Prettify<TOwn & InferCapabilityTargetSchemas<TUses>>
-    : InferCapabilityTargetSchemas<TUses> extends infer C
-      ? [keyof C] extends [never]
-        ? undefined
-        : Extract<C, Record<string, ZodTypeAny>>
-      : undefined;
 import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 

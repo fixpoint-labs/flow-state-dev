@@ -473,6 +473,24 @@ type InferCapabilityTargetSchemasEntry<T> =
     : {};
 
 /**
+ * Merge a block's own target schema map with any contributed by capabilities
+ * in `uses`. Block-own wins on key collision because it sits on the LEFT of
+ * the intersection (conflicting primitive types collapse to `never`, which is
+ * the documented edge-case behavior). Returns `undefined` when neither side
+ * contributes, so `ctx.targets` stays typed as `Record<string, never>` for
+ * blocks that don't declare or inherit targets. Consumed by the handler,
+ * generator, and router factories.
+ */
+export type MergeTargetSchemas<TOwn, TUses extends readonly UsesEntry[]> =
+  TOwn extends Record<string, ZodTypeAny>
+    ? Prettify<TOwn & InferCapabilityTargetSchemas<TUses>>
+    : InferCapabilityTargetSchemas<TUses> extends infer C
+      ? [keyof C] extends [never]
+        ? undefined
+        : Extract<C, Record<string, ZodTypeAny>>
+      : undefined;
+
+/**
  * Infer the merged sequencer state shape contributed by static capabilities.
  * Same shape as session state — `z.infer` of `sequencerStateSchema` per cap,
  * with `sequencerStateType` as an override.
