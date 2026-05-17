@@ -724,13 +724,16 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // brief "Preparing…" before the leaf runs.
   const ensureSandbox = needsSetup
     ? handler({
-        name: "bash-ensure-sandbox",
+        // Provider type in the block name so the trace makes it obvious
+        // which sandbox a request is using (esp. helpful when diagnosing
+        // "did the selector pick vercel or fall back to just-bash?").
+        name: `bash-${provider.type}-ensure-sandbox`,
         inputSchema: z.any(),
         outputSchema: z.any(),
         activeStatusMessage:
           provider.type === "moat"
-            ? "Preparing bash sandbox (first run can take 30–60s while the image builds)…"
-            : "Preparing bash sandbox…",
+            ? "Preparing bash sandbox (moat — first run can take 30–60s while the image builds)…"
+            : `Preparing bash sandbox (${provider.type})…`,
         execute: async (input: unknown, ctx: any) => {
           await getOrCreate(ctx);
           return input;
@@ -787,7 +790,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   const cdPrefix = `${shellQuote(["cd", destination])} && `;
 
   const bashCommandLeaf = handler({
-    name: needsSetup ? "bash-exec" : "bash",
+    name: needsSetup ? `bash-${provider.type}-exec` : "bash",
     description: bashCommandDescription,
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
@@ -800,7 +803,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   });
 
   const bashReadFileLeaf = handler({
-    name: needsSetup ? "bash-read-file-exec" : "bash-read-file",
+    name: needsSetup ? `bash-${provider.type}-read-file-exec` : "bash-read-file",
     description: [
       "Read the contents of a file in the workspace.",
       "`path` is relative to the workspace root (e.g. `artifacts/foo.md`,",
@@ -867,7 +870,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   });
 
   const bashWriteFileSandboxLeaf = handler({
-    name: needsSetup ? "bash-write-file-exec" : "bash-write-file",
+    name: needsSetup ? `bash-${provider.type}-write-file-exec` : "bash-write-file",
     description: bashWriteFileDescription,
     inputSchema: bashWriteFileInputSchema,
     outputSchema: bashWriteFileOutputSchema,

@@ -28,35 +28,58 @@ import type {
  * other adapters. `readFile`/`writeFile` map to `readFileToBuffer`/
  * `writeFiles` since those are the byte-oriented methods on the SDK.
  */
-export function createVercelAdapter(sandbox: VercelSandboxInstance): Sandbox {
+export function createVercelAdapter(
+  sandbox: VercelSandboxInstance,
+  sandboxId?: string,
+): Sandbox {
+  // Every call into the live sandbox can throw the SDK's APIError shape
+  // (e.g. 400 from /fs/write with a useful body in `.json.error.message`).
+  // Without enrichment the framework only sees `Status code N is not ok`,
+  // which is unactionable in deploy logs and chat UIs. Wrap every method
+  // so runtime failures get the same body-inlined / OIDC-hint treatment
+  // that resolveVercelSandbox already gives to create()/get().
+  async function wrap<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (err) {
+      throw enrichVercelError(err, sandboxId);
+    }
+  }
+
   return {
     async executeCommand(command: string): Promise<CommandResult> {
-      const result = await sandbox.runCommand("sh", ["-c", command]);
-      const [stdout, stderr] = await Promise.all([
-        result.stdout(),
-        result.stderr(),
-      ]);
-      return {
-        stdout,
-        stderr,
-        exitCode: result.exitCode ?? 0,
-      };
+      return wrap(async () => {
+        const result = await sandbox.runCommand("sh", ["-c", command]);
+        const [stdout, stderr] = await Promise.all([
+          result.stdout(),
+          result.stderr(),
+        ]);
+        return {
+          stdout,
+          stderr,
+          exitCode: result.exitCode ?? 0,
+        };
+      });
     },
 
     async readFile(filePath: string): Promise<string> {
-      const buf = await sandbox.readFileToBuffer({ path: filePath });
-      if (buf === null) {
-        throw new Error(`File not found: ${filePath}`);
-      }
-      return buf.toString("utf-8");
+      return wrap(async () => {
+        const buf = await sandbox.readFileToBuffer({ path: filePath });
+        if (buf === null) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+        return buf.toString("utf-8");
+      });
     },
 
     async writeFile(filePath: string, content: string): Promise<void> {
-      await sandbox.writeFiles([{ path: filePath, content }]);
+      return wrap(async () => {
+        await sandbox.writeFiles([{ path: filePath, content }]);
+      });
     },
 
     async stop(): Promise<void> {
-      await sandbox.stop();
+      return wrap(() => sandbox.stop());
     },
   };
 }
@@ -78,11 +101,17 @@ export async function resolveVercelSandbox(opts: {
   try {
     if (opts.sandboxId) {
       const raw = await opts.Sandbox.get({ sandboxId: opts.sandboxId });
-      return { sandbox: createVercelAdapter(raw), sandboxId: opts.sandboxId };
+      return {
+        sandbox: createVercelAdapter(raw, opts.sandboxId),
+        sandboxId: opts.sandboxId,
+      };
     }
 
     const raw = await opts.Sandbox.create(opts.createOptions);
-    return { sandbox: createVercelAdapter(raw), sandboxId: raw.sandboxId };
+    return {
+      sandbox: createVercelAdapter(raw, raw.sandboxId),
+      sandboxId: raw.sandboxId,
+    };
   } catch (err) {
     throw enrichVercelError(err, opts.sandboxId);
   }
