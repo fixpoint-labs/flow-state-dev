@@ -118,6 +118,40 @@ const docReader = handler({
 });
 ```
 
+## Capability-declared schemas
+
+Capabilities can declare schemas alongside their resources and helpers. When a block lists a capability in `uses`, those schemas are reflected into the block's `ctx` types at factory time — no re-declaration on the block is needed.
+
+The four axes: `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision.
+
+```ts
+import { defineCapability, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const marketCapability = defineCapability({
+  name: "market",
+  sessionStateSchema: z.object({
+    ticker: z.string(),
+    lastPrice: z.number().nullable(),
+  }),
+});
+
+const priceLogger = handler({
+  name: "price-logger",
+  uses: [marketCapability],
+  execute: async (_input, ctx) => {
+    // ctx.session.state.ticker — string
+    // ctx.session.state.lastPrice — number | null
+    // Both typed from the capability. No sessionStateSchema on this handler.
+    const ticker = ctx.session.state.ticker;
+  },
+});
+```
+
+Two constraints to know. First, this is **direct-only**: if a capability internally `uses` another, the inner capability's schemas do not flow to the consuming block. Each layer exposes only what it declares directly. Second, **dynamic `uses` entries** (functions that return capability arrays at runtime) contribute nothing to types — only static `CapabilityRef` entries are reflected.
+
+For the full discussion of capability type flow, see [Type inference from capability declarations](/docs/fundamentals/capabilities#type-inference-from-capability-declarations).
+
 ## Generators infer tool types
 
 When you pass blocks as tools to a generator, the framework compiles their schemas into the model's tool format automatically. The tool's `inputSchema` becomes the function parameters the model sees, and the `outputSchema` types the result fed back into the conversation:
@@ -180,6 +214,10 @@ Here's what the framework infers so you don't have to:
 | Block in `.then()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
 | Scope `stateSchema` in flow | `client.derived` compute function types |
+| Capability `sessionStateSchema` (via `uses`) | `ctx.session.state` (merged with block's own) |
+| Capability `sessionResources` (via `uses`) | `ctx.session.resources.*` (merged with block's own) |
+| Capability `targetStateSchemas` (via `uses`) | `ctx.targets.*` (merged with block's own) |
+| Capability `sequencerStateSchema` preset (via `uses`) | `ctx.sequencer.state` (merged with block's own) |
 
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
 

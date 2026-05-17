@@ -77,6 +77,25 @@ The `model` / `providerOptions` / `caching` fields on `PresetDef` are typed broa
 
 The framework exports `ResolvableModel`, `ResolvableProviderOptions`, and `ResolvableCachingConfig` from `@flow-state-dev/core` so capability authors can type their helper fns over the same shapes the generator config expects.
 
+### Capability schema forwarding (FIX-616)
+
+As of FIX-616, capability-declared schemas flow into consumer block `ctx` types for static `uses` entries. The four forwarded axes:
+
+| Capability field | Consumer `ctx` slot |
+|---|---|
+| `sessionStateSchema` | `ctx.session.state` |
+| `sessionResources` / `sessionResourceSchemas` | `ctx.session.resources.*` |
+| `targetStateSchemas` | `ctx.targets.*` |
+| `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
+
+The merge intersects capability contributions with block-own declarations; block-own keys win on collision. Four `Infer*` utilities on `@flow-state-dev/core` drive the computation: `InferCapabilitySessionState<TUses>`, `InferCapabilityResources<TUses>`, `InferCapabilityTargets<TUses>`, `InferCapabilitySequencerState<TUses>`.
+
+**Direct-only contract.** If capability A `uses` capability B, B's schema contributions do NOT flow to blocks that `uses` A. Each capability exposes only what it directly declares. This matches the precedent established by tRPC, Hono, and Fastify middleware chains — transitive type propagation creates fragile deep inference chains. Capability authors who want B's schemas visible to consumers must re-declare them on A.
+
+**Dynamic `uses` entries.** Functions in a `uses` array are evaluated at runtime and continue to contribute resources, context, and tools at runtime. They contribute nothing to types — only static `CapabilityRef` entries are reflected. This is unchanged behavior; FIX-616 adds the static-only forwarding path.
+
+**Escape hatches.** `defineCapability` now accepts four type-only override fields: `sessionStateType`, `resourcesType`, `targetStatesType`, `sequencerStateType` (no underscores). These replace the inferred type on the corresponding axis without changing runtime behavior. Use them when Zod inference is too loose or hits TS2589. Each escape-hatch field requires the corresponding schema to be present — setting one without the schema is a compile error (enforced via a `never`-conditional). The runtime check in `resolve-capabilities` (preset-conditional evaluation and dynamic entry resolution) is unchanged and remains the load-bearing safety net.
+
 ## Dynamic `uses` entries
 
 `uses` accepts both static `CapabilityRef` entries and dynamic resolver functions:
