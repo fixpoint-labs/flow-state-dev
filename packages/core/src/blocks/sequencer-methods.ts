@@ -276,6 +276,18 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
   ): SequencerDefinition<TInput, TOutput>;
 
+  /**
+   * Throw an error if `condition` returns true — a guard primitive for
+   * halting the chain when an invariant fails. The error is supplied as
+   * either a static `Error` or a factory `(value, ctx) => Error` so the
+   * message can carry runtime context. Pairs with `.rescue([{ when: [...] }])`
+   * when a typed early-stop pattern is wanted.
+   */
+  throwIf(
+    condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+    error: Error | ((value: TOutput, ctx: BlockContext) => Error | Promise<Error>)
+  ): SequencerDefinition<TInput, TOutput>;
+
   // connectInput — native override returns SequencerDefinition (not a wrapper block)
   connectInput<TFrom>(
     mapper: ConnectorFn<TFrom, TInput>

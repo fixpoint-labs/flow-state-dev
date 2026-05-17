@@ -11,12 +11,8 @@
  * client's `useClientData` hook.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import {
-  EarlyStopError,
-  phase1QualityGate,
-  rescueEarlyStop,
-  validateTickerGuard,
-} from "./guards";
+import { PHASE_1_MEMO_KEYS } from "./agents";
+import { EarlyStopError, rescueEarlyStop } from "./guards";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
@@ -26,6 +22,7 @@ import { phase4Pipeline } from "./phase-4";
 import { phase4Contributions } from "./phase-4/round-robin";
 import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
+import { resolveTicker } from "./services/ticker-resolver";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
@@ -61,19 +58,55 @@ const seedSession = handler({
   },
 });
 
-// Inner pipeline: seed → pre-flight ticker guard → Phase 1 → post-Phase-1
-// data-quality gate → Phases 2–5. Both guards throw `EarlyStopError` on
-// trip; the outer `.rescue` matching on `EarlyStopError` catches them and
-// patches session state to a clean terminal "stopped" condition (FIX-605).
-// Any other error type bubbles past the rescue's `when:` filter.
+// Inner pipeline: seed → pre-flight ticker resolution → `.throwIf` if
+// unresolved → Phase 1 → post-Phase-1 `.throwIf` if all analysts errored
+// → Phases 2–5. Both guards throw `EarlyStopError`; the outer `.rescue`
+// matching on `EarlyStopError` catches them and patches session state to
+// a clean terminal "stopped" condition (FIX-605). Any other error type
+// bubbles past the rescue's `when:` filter. The pre-flight enriches the
+// value once with the resolution result so the predicate and error
+// factory don't double-call the resolver.
 const analyzePipelineInner = sequencer({
   name: "trading-desk-analyze-inner",
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
-  .tap(validateTickerGuard)
+  .map(async (input) => ({
+    input,
+    resolution: await resolveTicker({
+      ticker: input.ticker,
+      date: input.date,
+      dataSource: input.dataSource,
+    }),
+  }))
+  .throwIf(
+    (v) => !v.resolution.resolved,
+    (v) =>
+      new EarlyStopError(
+        "unresolvable-ticker",
+        v.resolution.reason ?? `Could not resolve ticker ${v.input.ticker}.`,
+      ),
+  )
+  .map((v) => v.input)
   .then(phase1Pipeline)
-  .tap(phase1QualityGate)
+  .throwIf(
+    // `.throwIf` doesn't carry a typed resources slot — go through `any`
+    // so `getOptional` is callable. The `memos` collection is declared by
+    // `phase1Pipeline` upstream, so it's present at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (_v, ctx) =>
+      Object.values(PHASE_1_MEMO_KEYS).every(
+        (m) =>
+          (ctx.resources as any).memos.getOptional(m.collectionKey)?.state
+            .status === "error",
+      ),
+    (_v, ctx) =>
+      new EarlyStopError(
+        "phase-1-no-data",
+        `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
+          "Halting before synthesis — no usable upstream data.",
+      ),
+  )
   .then(phase2Pipeline)
   .then(phase3Pipeline)
   .then(phase4Pipeline)
