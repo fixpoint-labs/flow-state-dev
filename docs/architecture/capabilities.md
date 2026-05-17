@@ -84,9 +84,9 @@ As of FIX-616, capability-declared schemas flow into consumer block `ctx` types 
 | Capability field | Consumer `ctx` slot |
 |---|---|
 | `sessionStateSchema` | `ctx.session.state` |
-| `sessionResources` / `sessionResourceSchemas` | `ctx.session.resources.*` |
+| `resources` | `ctx.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
-| `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
+| `sequencerStateSchema` | `ctx.sequencer.state` |
 
 The merge intersects capability contributions with block-own declarations; block-own keys win on collision. Four `Infer*` utilities on `@flow-state-dev/core` drive the computation: `InferCapabilitySessionState<TUses>`, `InferCapabilityResources<TUses>`, `InferCapabilityTargets<TUses>`, `InferCapabilitySequencerState<TUses>`.
 
