@@ -35,13 +35,12 @@
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
-import type { ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskCollectionRef,
 } from "@flow-state-dev/tasks";
 
-import { taskBoardStateSchema } from "./schemas";
+import { taskBoardStateSchema, type TaskBoardState } from "./schemas";
 
 /**
  * Sequencer-spec options. The capability constructs the collection
@@ -205,19 +204,17 @@ export function createTaskBoardCapability(
   // loudly here makes the misuse case obvious instead of corrupting
   // state.
   //
-  // `taskBoardStateSchema` is cast to a wider `ZodTypeAny` because
-  // without the cast TS recursively unifies the schema's shape against
-  // `defineCapability`'s `targetStateSchemas` generic and trips the
-  // "type instantiation is excessively deep" guard for nested z.record
-  // chains — the framework consumes the schema as `ZodTypeAny` at
-  // runtime, so the wider type loses no information.
-  const stateSchema: ZodTypeAny = taskBoardStateSchema;
+  // `taskBoardStateSchema` is passed directly (no `: ZodTypeAny` widening).
+  // `targetStatesType` pins the inferred type for consumers so they see
+  // `TaskBoardState` rather than the loose z.record inferred shape, without
+  // triggering the "type instantiation is excessively deep" guard.
   const { stateKey } = options;
 
   return defineCapability({
     name: capabilityName,
+    targetStatesType: undefined as unknown as TaskBoardState,
     targetStateSchemas: {
-      [boardName]: stateSchema,
+      [boardName]: taskBoardStateSchema,
     },
     fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
       tasks: () => {

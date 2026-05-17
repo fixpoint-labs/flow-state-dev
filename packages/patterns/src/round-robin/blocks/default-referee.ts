@@ -15,7 +15,6 @@ import {
   roundRobinRefereeOutputSchema,
   roundRobinStateSchema,
   type RoundRobinContributionsState,
-  type RoundRobinState,
 } from "../schemas";
 
 export type RefereeInstructions =
@@ -78,7 +77,8 @@ export function createReferee(opts: CreateRefereeOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as RoundRobinState;
+      const state = ctx.sequencer!.state;
+      // TODO: computed-key resource accessor — see round-robin follow-up
       const contribState = (ctx.resources as any)[accessor]
         ?.state as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];

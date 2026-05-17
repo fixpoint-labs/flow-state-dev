@@ -373,5 +373,5 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .then(board.block)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
-    .then(synthesize) as SequencerDefinition<any, any>;
+    .then(synthesize);
 }

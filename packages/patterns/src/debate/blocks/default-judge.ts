@@ -26,7 +26,6 @@ import {
   debateStateSchema,
   debateVerdictSchema,
   type DebateContributionEntry,
-  type DebateState,
   type DebateTranscriptState,
 } from "../schemas";
 
@@ -131,7 +130,7 @@ export function createJudge(opts: CreateJudgeOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as DebateState;
+      const state = ctx.sequencer!.state;
       const transcriptState = ctx.resources.transcript
         ?.state as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
