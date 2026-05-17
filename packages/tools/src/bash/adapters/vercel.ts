@@ -89,13 +89,26 @@ export async function resolveVercelSandbox(opts: {
 }
 
 /**
- * The SDK's `APIError` ships the upstream response body on `.json` / `.text`
- * but its `.message` is just `response.statusText` (e.g. `Status code 400 is
- * not ok`), which is useless in deploy logs. Re-throw with the body inlined
- * and a diagnostic hint when the failure looks like a credentials problem.
+ * Wrap raw errors from `@vercel/sandbox` with diagnostic detail that's
+ * meaningful in deploy logs and the chat UI. Detection is structural — we
+ * don't import the SDK's error classes to avoid taking a peer dep at the
+ * framework level.
  *
- * Detection is structural — we don't import APIError to avoid taking a
- * peer dep on @vercel/sandbox at the framework level.
+ * Three paths:
+ *
+ *   1. **APIError with a `.response.status`.** The SDK ships the upstream
+ *      body on `.json`/`.text` but its `.message` is just the statusText
+ *      (e.g. `Status code 400 is not ok`). Re-throw with the body inlined
+ *      and a credentials hint when the status looks auth-related.
+ *   2. **`VercelOidcContextError` / `LocalOidcContextError`.** Thrown
+ *      before any HTTP call when the SDK can't resolve an OIDC token at
+ *      call time (Vercel deployment without OIDC Federation enabled, or
+ *      local dev with `BASH_PROVIDER=vercel` but no static triple). These
+ *      have no `.response.status`, so without detection by name they'd
+ *      slip through as bare SDK messages. Surfaces the three remediation
+ *      paths in one actionable error.
+ *   3. **Anything else.** Returned as-is (already an Error). Non-Error
+ *      throwables (strings, plain objects) are wrapped via `new Error(...)`.
  */
 function enrichVercelError(err: unknown, sandboxId?: string): Error {
   if (!(err instanceof Error)) return new Error(String(err));
@@ -105,23 +118,44 @@ function enrichVercelError(err: unknown, sandboxId?: string): Error {
     json?: unknown;
     text?: string;
   };
-  const status = sdkErr.response?.status;
-  if (status === undefined) return err;
-
-  const detail =
-    (sdkErr.json && JSON.stringify(sdkErr.json)) ||
-    sdkErr.text ||
-    sdkErr.response?.statusText ||
-    "(no response body)";
-
-  const hint =
-    status === 400 || status === 401 || status === 403
-      ? " — likely an OIDC / credentials problem. Confirm OIDC is enabled on the Vercel project (Project Settings → OIDC) and that the team has Vercel Sandbox enabled."
-      : "";
 
   const action = sandboxId ? `get(sandboxId="${sandboxId}")` : "create()";
-  return new Error(
-    `Vercel Sandbox.${action} failed with status ${status}: ${detail}${hint}`,
-    { cause: err },
-  );
+  const status = sdkErr.response?.status;
+
+  if (status !== undefined) {
+    const detail =
+      (sdkErr.json && JSON.stringify(sdkErr.json)) ||
+      sdkErr.text ||
+      sdkErr.response?.statusText ||
+      "(no response body)";
+
+    const hint =
+      status === 400 || status === 401 || status === 403
+        ? " — likely an OIDC / credentials problem. Confirm OIDC is enabled on the Vercel project (Project Settings → OIDC) and that the team has Vercel Sandbox enabled."
+        : "";
+
+    return new Error(
+      `Vercel Sandbox.${action} failed with status ${status}: ${detail}${hint}`,
+      { cause: err },
+    );
+  }
+
+  const errName = sdkErr.name ?? sdkErr.constructor?.name;
+  const isOidcContextError =
+    errName === "VercelOidcContextError" ||
+    errName === "LocalOidcContextError" ||
+    (typeof sdkErr.message === "string" && /OIDC.*token/i.test(sdkErr.message));
+
+  if (isOidcContextError) {
+    return new Error(
+      `Vercel Sandbox.${action} failed: no OIDC token available. ` +
+        `Either enable OIDC Federation on the Vercel project (Project Settings → ` +
+        `OIDC Token Generation), or set VERCEL_TOKEN + VERCEL_TEAM_ID + ` +
+        `VERCEL_PROJECT_ID, or set BASH_PROVIDER=just-bash to disable the Vercel ` +
+        `adapter. See https://vercel.com/docs/vercel-sandbox/concepts/authentication.`,
+      { cause: err },
+    );
+  }
+
+  return err;
 }

@@ -3,6 +3,15 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-17
+
+### Bash tool: working bash on Vercel without operator setup (FIX-587)
+
+- Kitchen-sink's `selectBashProvider()` no longer picks the Vercel adapter on every Vercel deployment regardless of credentials. The deployed demo was returning HTTP 400 on every bash, bash-read-file, and bash-write-file call because `@vercel/sandbox` had no OIDC token or static access-token triple to authenticate with. Auto-detect now requires the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple before picking the Vercel provider on Vercel; without it, the selector falls back to `just-bash` (in-memory virtual filesystem, ~70 commands, zero auth). Forks deploying to Vercel get a working demo with no environment-variable setup.
+- New `BASH_PROVIDER` env var for explicit opt-in (`vercel`, `just-bash`, `local`, `moat`). Operators with OIDC Federation enabled on their Vercel project must set `BASH_PROVIDER=vercel` to opt in — the OIDC token is delivered as a per-request `x-vercel-oidc-token` header, not as `process.env.VERCEL_OIDC_TOKEN` at module init, so auto-detect can't see it.
+- The Vercel adapter's `enrichVercelError` now recognizes the SDK's `VercelOidcContextError` and `LocalOidcContextError` (thrown before any HTTP call when no OIDC token is available). Previously these bypassed enrichment because they have no `.response.status` field — the chat UI saw a bare SDK message instead of an actionable diagnostic. The new wrapper produces a single message naming the three remediation paths: enable OIDC Federation, set the static triple, or set `BASH_PROVIDER=just-bash` to disable the Vercel adapter.
+- New "Using the bash tool on Vercel" section in the Deploying to Vercel guide documents the credential options, the `BASH_PROVIDER` env var, and cost tradeoffs for public demos. Kitchen-sink and `packages/tools` READMEs cross-link to the guide.
+
 ## 2026-05-16
 
 ### Sequencer DSL: `.throwIf(condition, error)` guard primitive

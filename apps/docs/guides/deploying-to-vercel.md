@@ -236,7 +236,62 @@ The script exits 0 when no DB URL is set, so preview deployments without a datab
 
 ---
 
-## 7. Deploy
+## 7. Using the bash tool on Vercel
+
+If your flow uses `@flow-state-dev/tools/bash`, the bash tool needs to know how to find a sandbox runtime on Vercel. Two paths are supported.
+
+### Default: in-memory `just-bash`
+
+Without any extra configuration, the kitchen-sink's `selectBashProvider()` falls back to `just-bash` on Vercel — a JavaScript reimplementation of bash with an in-memory virtual filesystem, around 70 commands, and optional Python/JS interpreters via WASM. Visitors hitting your demo can write files, read them back, and run commands in the same chat turn without any operator setup.
+
+Limits to be aware of:
+- The filesystem is in-memory and per-process. It does not survive across Vercel cold starts.
+- `curl` is allowlist-gated; arbitrary outbound HTTP is denied by default.
+- No real `pip install` / `npm install` against the network. Use Vercel Sandbox if your demo needs that.
+
+### Upgrading to Vercel Sandbox
+
+[`@vercel/sandbox`](https://vercel.com/docs/vercel-sandbox) provisions real Linux microVMs in `iad1`. To use it, configure one of the two credential paths the SDK supports:
+
+1. **OIDC Federation** (recommended for Vercel-hosted projects). Enable it under Project Settings → OIDC Token Generation. The SDK will fetch a per-request `x-vercel-oidc-token` header lazily on the first bash call. Because the token is not present in `process.env` at module init, the kitchen-sink can't auto-detect this case — set `BASH_PROVIDER=vercel` to opt in.
+2. **Static access-token triple** — set `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID` in your Vercel project's environment variables. The kitchen-sink's `selectBashProvider()` detects all three together and auto-selects the Vercel provider; no `BASH_PROVIDER` opt-in needed.
+
+See the [Vercel Sandbox authentication docs](https://vercel.com/docs/vercel-sandbox/concepts/authentication) for setup details.
+
+### Cost notes for public demos
+
+Vercel Sandbox is billed at $0.128 per vCPU-hour (CPU-active), $0.0212 per GB-hour of provisioned memory, and $0.60 per million sandbox creations. Each visitor to a public demo with no auth wall potentially provisions one sandbox, so costs scale linearly with traffic. The Hobby tier allowance is 5 vCPU-hours, 5,000 creations, and 420 GB-hours of memory per month. Concurrency caps are 10 (Hobby) and 2,000 (Pro/Enterprise).
+
+For public demos without authentication, keep `just-bash` as the default. Reach for Vercel Sandbox when visitors are authenticated, when you need real package installs, or when you've added per-IP rate limiting upstream.
+
+### Forcing a provider
+
+The `BASH_PROVIDER` environment variable forces the kitchen-sink's selector:
+
+| Value | Effect |
+|--|--|
+| `vercel` | Vercel Sandbox. SDK fetches OIDC token lazily; errors surface clearly if credentials are missing. |
+| `just-bash` | In-memory virtual FS. Default fallback on Vercel without credentials. |
+| `local` | Real host shell. Only useful in environments with a writable filesystem. |
+| `moat` | MOAT container isolation. Requires the `moat` CLI on the host — not useful on Vercel. |
+
+When `BASH_PROVIDER` is unset, the selector auto-detects: Vercel Sandbox if the static triple is present, otherwise `just-bash`.
+
+```bash title=".env.production (excerpt)"
+# Opt in to real Vercel Sandbox microVMs (requires OIDC enabled OR the triple below).
+# BASH_PROVIDER=vercel
+
+# Static access-token triple — auto-detect picks `vercel` when all three are set.
+# VERCEL_TOKEN=...
+# VERCEL_TEAM_ID=team_...
+# VERCEL_PROJECT_ID=prj_...
+```
+
+When the adapter can't authenticate, you'll see an error in deploy logs and the chat UI naming the three remediation paths (enable OIDC, set the static triple, or fall back to `just-bash`). That message replaces the bare `Status code 400 is not ok` that older versions surfaced.
+
+---
+
+## 8. Deploy
 
 **From the CLI:**
 
@@ -252,7 +307,7 @@ vercel --prod
 
 ---
 
-## 8. Verify
+## 9. Verify
 
 ```bash
 # 1. Check the API responds

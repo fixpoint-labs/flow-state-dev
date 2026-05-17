@@ -17,12 +17,30 @@ import type { SandboxProvider } from "@flow-state-dev/tools/bash";
 import path from "node:path";
 
 /**
- * Pick the bash sandbox provider based on the runtime environment:
+ * Pick the bash sandbox provider based on the runtime environment.
  *
- *   - `VERCEL` set            → Vercel Sandbox (consumer-injected SDK)
- *   - `BASH_PROVIDER=moat`    → MOAT containerized sandbox (requires `moat` CLI ≥0.4.0)
- *   - `STORE_TYPE=filesystem` → local shell on the host's filesystem
- *   - otherwise               → just-bash (WASM, python + js enabled)
+ * Resolution order:
+ *
+ *   1. `BASH_PROVIDER` explicit opt-in (`vercel` | `moat` | `local` | `just-bash`)
+ *      always wins. Caller-knows-best; the adapter surfaces a clear error if
+ *      credentials are missing.
+ *   2. On Vercel (`process.env.VERCEL` truthy) with the static access-token
+ *      triple (`VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`),
+ *      auto-detect picks the Vercel Sandbox adapter.
+ *   3. `STORE_TYPE=filesystem` → local shell on the host's filesystem.
+ *   4. Fallback: `just-bash` (in-memory virtual filesystem, ~70 commands,
+ *      python + js enabled, zero auth). Anonymous-visitor demos on Vercel
+ *      land here when neither OIDC nor static creds are configured —
+ *      bash works without errors instead of returning HTTP 400 on every
+ *      call.
+ *
+ * **Why OIDC isn't auto-detected.** Vercel Sandbox supports OIDC Federation
+ * as the recommended auth path, but the OIDC token is delivered per-request
+ * via the `x-vercel-oidc-token` header — it is not present in
+ * `process.env.VERCEL_OIDC_TOKEN` when this module evaluates at cold start.
+ * Operators with OIDC enabled on the project must opt in via
+ * `BASH_PROVIDER=vercel`; the SDK then fetches the token lazily on each
+ * call. The auto-detect path can only safely detect the static triple.
  *
  * MOAT is opt-in for local development — set `BASH_PROVIDER=moat` to run
  * commands inside a host-local container with outbound network restricted
@@ -42,24 +60,50 @@ import path from "node:path";
  * transitive deps to the deployment.
  */
 export function selectBashProvider(): SandboxProvider {
-  if (process.env.VERCEL) {
+  const explicit = process.env.BASH_PROVIDER;
+  if (explicit === "moat") {
+    return { type: "moat", persist: true, configPath: "./moat.yaml" };
+  }
+  if (explicit === "local") {
+    return { type: "local" };
+  }
+  if (explicit === "just-bash") {
+    return { type: "just-bash", python: true, javascript: true };
+  }
+  if (explicit === "vercel") {
+    // Honor explicit opt-in even without credentials — the SDK will fetch
+    // an OIDC token from the per-request header on the first call, and if
+    // none is available the adapter's enrichVercelError surfaces an
+    // actionable diagnostic.
     return { type: "vercel", Sandbox: VercelSandbox };
   }
-  if (process.env.BASH_PROVIDER === "moat") {
-    return {
-      type: "moat",
-      persist: true,
-      configPath: "./moat.yaml",
-    };
+
+  if (process.env.VERCEL && hasVercelSandboxCredentials()) {
+    return { type: "vercel", Sandbox: VercelSandbox };
   }
+
   if (process.env.STORE_TYPE === "filesystem") {
     return { type: "local" };
   }
-  return {
-    type: "just-bash",
-    python: true,
-    javascript: true,
-  };
+
+  return { type: "just-bash", python: true, javascript: true };
+}
+
+/**
+ * True if the runtime has the static access-token triple required by
+ * `@vercel/sandbox` for non-OIDC auth. OIDC tokens are delivered as
+ * per-request headers and cannot be detected at module init time, so this
+ * helper is the strongest auto-detection signal available — operators with
+ * OIDC enabled must set `BASH_PROVIDER=vercel` explicitly.
+ *
+ * See https://vercel.com/docs/vercel-sandbox/concepts/authentication.
+ */
+function hasVercelSandboxCredentials(): boolean {
+  return Boolean(
+    process.env.VERCEL_TOKEN &&
+      process.env.VERCEL_TEAM_ID &&
+      process.env.VERCEL_PROJECT_ID,
+  );
 }
 
 export const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
