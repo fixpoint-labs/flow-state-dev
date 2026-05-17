@@ -48,9 +48,11 @@ const scheduleDigestInputSchema = z.object({
 });
 
 /**
- * Creates a per-user dynamic schedule in the schedules collection. The
- * `defineScheduleCollection` hook mirrors it into the `ScheduleIndex`,
- * which the polling tick (`/api/cron/schedule-tick`) then fans out.
+ * Idempotently install the per-user digest schedule. Subsequent calls
+ * with a different cron/action update the same row, so a user can only
+ * have one active digest at a time. The `defineScheduleCollection` hook
+ * mirrors create/update into the `ScheduleIndex`, which the polling
+ * tick (`/api/cron/schedule-tick`) fans out.
  */
 const scheduleDigest = handler({
   name: "schedule-digest",
@@ -66,12 +68,14 @@ const scheduleDigest = handler({
       action: string;
       enabled: boolean;
     }>;
-    const key = `digest-${Date.now()}`;
-    await schedules.create(key, {
-      cron: input.cron,
-      action: input.action,
-      enabled: true,
-    });
+    const key = "digest";
+    const nextState = { cron: input.cron, action: input.action, enabled: true };
+    const existing = schedules.getOptional(key);
+    if (existing !== undefined) {
+      await existing.setState(nextState);
+    } else {
+      await schedules.create(key, nextState);
+    }
     return { key };
   },
 });
