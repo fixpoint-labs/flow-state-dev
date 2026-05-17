@@ -197,12 +197,17 @@ export async function fetchYahooCompanyProfile(
   input: ToolInput<"get_company_profile">,
 ): Promise<ToolOutput<"get_company_profile">> {
   const yahoo = await getYahoo();
+  // `assetProfile` carries sector/industry/business-description; `summaryDetail`
+  // carries marketCap/currency; `quoteType` is the canonical home for the
+  // company's display name and exchange — `assetProfile` does not include
+  // `longName`/`shortName`, so the name has to come from `quoteType`.
   const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["assetProfile", "summaryDetail"],
+    modules: ["assetProfile", "summaryDetail", "quoteType"],
   })) as Record<string, Record<string, unknown> | undefined>;
   const profile = summary.assetProfile ?? {};
   const detail = summary.summaryDetail ?? {};
-  const name = stringFrom(profile.longName) ?? stringFrom(profile.shortName);
+  const qt = summary.quoteType ?? {};
+  const name = stringFrom(qt.longName) ?? stringFrom(qt.shortName);
   if (name === null) {
     throw new Error(`Yahoo quoteSummary returned no profile for ${input.ticker}`);
   }
@@ -216,7 +221,7 @@ export async function fetchYahooCompanyProfile(
     sector: stringFrom(profile.sector),
     industry: stringFrom(profile.industry),
     country: stringFrom(profile.country),
-    exchange: null,
+    exchange: stringFrom(qt.exchange),
     currency: stringFrom(detail.currency),
     businessDescription: stringFrom(profile.longBusinessSummary),
     marketCapUsd: marketCap > 0 ? marketCap : null,
