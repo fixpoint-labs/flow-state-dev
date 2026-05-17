@@ -7,9 +7,9 @@
  * `scheduleDigest` action can write per-user rows that the polling tick
  * picks up.
  *
- * Auth: the dispatch endpoint authenticates via `CRON_SECRET`. Other
- * inbound sources fall through to `null` — the demo only exists to
- * exercise the scheduled transport end-to-end.
+ * Auth: the scheduled-dispatch endpoint authenticates via `CRON_SECRET`.
+ * HTTP traffic (DevTool, API clients) falls through to the framework's
+ * body-userId resolver — same model as the chat-agent flow.
  */
 import {
   defineFlow,
@@ -20,7 +20,10 @@ import {
   createResourceCollectionScheduleResolver,
   defineScheduleCollection,
 } from "@flow-state-dev/scheduled";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/server";
+import {
+  createBearerSecretPrincipalResolver,
+  defaultBodyUserIdPrincipalResolver,
+} from "@flow-state-dev/server";
 import { z } from "zod";
 import { scheduleIndex } from "@/lib/schedule-index";
 
@@ -86,9 +89,7 @@ const weeklyDigestFlow = defineFlow({
         });
         return resolver(ctx);
       }
-      // Other inbound sources are out of scope for this demo. The chat
-      // surfaces handle their own auth.
-      return null;
+      return defaultBodyUserIdPrincipalResolver(ctx);
     },
     requireUser: true,
   },
