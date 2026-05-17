@@ -963,8 +963,12 @@ function expandRequestToMessages(
   return out;
 }
 
+type SelectedTurn = { messages: LLMMessage[] };
+
 /**
- * Selects which prior requests participate in history given the limit.
+ * Selects which prior requests participate in history given the limit,
+ * returning each selected turn's pre-expanded `LLMMessage[]` so callers
+ * can assemble the final array without re-expanding.
  *
  * Turn-based (bare `number` or `{ turns: N }`): returns the last N
  * completed prior requests. Guards `Array.prototype.slice(-0)` — which
@@ -987,39 +991,44 @@ async function selectRequestsByLimit(
   resolveModelId: () => string,
   allowedTypes: Set<string>,
   allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
-): Promise<RequestRecord[]> {
+): Promise<SelectedTurn[]> {
+  const expand = (request: RequestRecord): SelectedTurn => ({
+    messages: expandRequestToMessages(
+      request.items ?? [],
+      allowedTypes,
+      allowedRoles,
+    ),
+  });
+
   if (limit === undefined) {
-    return priorRequests;
+    return priorRequests.map(expand);
   }
 
   // Turn-based: bare number or { turns: N }
   if (typeof limit === "number" || "turns" in limit) {
     const turns = typeof limit === "number" ? limit : limit.turns;
     if (turns <= 0) return [];
-    return priorRequests.slice(-turns);
+    return priorRequests.slice(-turns).map(expand);
   }
 
-  // Token-based: pack whole turns from the end, never split.
+  // Token-based: pack whole turns from the end, never split. Each
+  // candidate is expanded exactly once and the expansion is reused in
+  // the final assembly — no double-expansion.
   const budget = limit.tokens;
   const model = resolveModelId();
-  const selected: RequestRecord[] = [];
+  const selected: SelectedTurn[] = [];
   let runningTokens = 0;
 
   for (let i = priorRequests.length - 1; i >= 0; i--) {
-    const candidate = priorRequests[i]!;
-    const candidateMessages = expandRequestToMessages(
-      candidate.items ?? [],
-      allowedTypes,
-      allowedRoles,
-    );
-    const candidateTokens = candidateMessages.length === 0
+    const turn = expand(priorRequests[i]!);
+    const candidateTokens = turn.messages.length === 0
       ? 0
-      : await tokenCounter.countMessages(candidateMessages, model);
+      : await tokenCounter.countMessages(turn.messages, model);
 
     if (selected.length === 0) {
       // Most-recent-turn exception: always include the latest prior turn
       // even if it alone exceeds the budget.
-      selected.unshift(candidate);
+      selected.unshift(turn);
       runningTokens = candidateTokens;
       continue;
     }
@@ -1028,7 +1037,7 @@ async function selectRequestsByLimit(
       break;
     }
 
-    selected.unshift(candidate);
+    selected.unshift(turn);
     runningTokens += candidateTokens;
   }
 
@@ -1074,7 +1083,7 @@ async function loadLLMHistory(
     : LLM_AUDIENCE_TYPES;
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
-  const selectedRequests = await selectRequestsByLimit(
+  const selectedTurns = await selectRequestsByLimit(
     priorRequests,
     query?.limit,
     tokenCounter,
@@ -1084,11 +1093,8 @@ async function loadLLMHistory(
   );
 
   const messages: LLMMessage[] = [];
-  for (const request of selectedRequests) {
-    if (request.items === undefined) continue;
-    messages.push(
-      ...expandRequestToMessages(request.items, allowedTypes, allowedRoles)
-    );
+  for (const turn of selectedTurns) {
+    messages.push(...turn.messages);
   }
 
   // Live items from the in-flight request are always included regardless

@@ -36,7 +36,11 @@ export type SessionItem = {
  * - In `items.all()` and `items.client()`, `N` means "the last N items".
  *
  * `{ turns: N }` is the explicit form for turn-based limiting and is
- * preferred in new code that targets `items.history()`.
+ * intended for `items.history()`. It is also accepted by `items.all()`
+ * and `items.client()` for type-system uniformity, but in those views it
+ * is treated as a plain item count (`N` items, not "items from N turns")
+ * — those views have no notion of a turn boundary. Prefer bare `number`
+ * or omit the limit on the non-history views to avoid this fallback.
  *
  * `{ tokens: N }` is token-aware. In `items.history()` packing is turn-
  * aligned: whole turns are accepted from the end until adding the next
