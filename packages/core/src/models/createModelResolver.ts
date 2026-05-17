@@ -89,6 +89,12 @@ const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
 };
 
+/** Env-var name that supplies the API key for each known gateway. */
+const GATEWAY_ENV_VARS: Record<string, string> = {
+  vercel: "AI_GATEWAY_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
 
@@ -281,6 +287,11 @@ export function createModelResolver(
   // Cache for auto-loaded provider resolvers (by provider name)
   const providerCache = new Map<string, ProviderResolver>();
 
+  // Providers whose direct package load has been attempted and failed
+  // (bundled Next.js: key present in env, but `@ai-sdk/openai` not requireable).
+  // Cached so we don't reprobe on every call.
+  const directLoadFailed = new Set<string>();
+
   // Cache for auto-loaded gateway resolvers (by gateway type)
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
 
@@ -316,9 +327,59 @@ export function createModelResolver(
     if (!info) return undefined;
 
     if (info.source === "key") {
-      const resolver = loadProviderSync(providerName, info.apiKey!);
-      providerCache.set(providerName, resolver);
-      return resolver;
+      if (directLoadFailed.has(providerName)) return undefined;
+      try {
+        const resolver = loadProviderSync(providerName, info.apiKey!);
+        providerCache.set(providerName, resolver);
+        return resolver;
+      } catch {
+        // Direct package not loadable (e.g. bundled Next.js): mark as failed
+        // and let the caller try a gateway fallback for the same provider.
+        directLoadFailed.add(providerName);
+        return undefined;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find a gateway that can serve a given provider when the direct path is
+   * unavailable. Looks at: (a) the availability map's "gateway" entry for the
+   * provider, (b) any configured `options.gateways` (instance, config, or
+   * env-backed), and (c) env-detected gateways. Returns the first viable
+   * entry; preserves config order. Used purely as fallback when direct
+   * resolution can't proceed.
+   */
+  function findGatewayForProvider(
+    providerName: string
+  ): { gatewayType: string; apiKey?: string } | undefined {
+    const info = availability.get(providerName);
+    if (info?.source === "gateway" && info.gatewayType) {
+      return { gatewayType: info.gatewayType, apiKey: info.apiKey };
+    }
+
+    if (gatewayCache.size > 0) {
+      const first = gatewayCache.keys().next().value as string | undefined;
+      if (first) return { gatewayType: first };
+    }
+
+    if (options?.gateways) {
+      for (const [name, entry] of Object.entries(options.gateways)) {
+        if (entry == null) continue;
+        if (isGatewayConfig(entry)) {
+          const envVar = GATEWAY_ENV_VARS[entry.type];
+          const apiKey = entry.apiKey ?? (envVar ? process.env[envVar] : undefined);
+          if (apiKey) return { gatewayType: entry.type, apiKey };
+        } else {
+          return { gatewayType: name };
+        }
+      }
+    }
+
+    for (const [gwType, envVar] of Object.entries(GATEWAY_ENV_VARS)) {
+      const key = process.env[envVar];
+      if (key) return { gatewayType: gwType, apiKey: key };
     }
 
     return undefined;
@@ -381,20 +442,16 @@ export function createModelResolver(
       }
 
       if (!gatewayCache.has(gwType)) {
-        const gwEnvVars: Record<string, string> = {
-          vercel: "AI_GATEWAY_API_KEY",
-          openrouter: "OPENROUTER_API_KEY",
-        };
         const gwEntry = options?.gateways?.[gwType];
         const apiKey =
           (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
-          process.env[gwEnvVars[gwType] ?? ""] ??
+          process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
           undefined;
 
         if (!apiKey) {
           throw new Error(
             `No API key found for gateway "${gwType}". ` +
-              `Set ${gwEnvVars[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+              `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
           );
         }
 
@@ -416,37 +473,56 @@ export function createModelResolver(
       const modelId = parsed.modelId!;
 
       const resolver = getProviderResolver(providerName);
+      let directLanguageModel: unknown;
+      let directError: unknown;
       if (resolver) {
-        const languageModel = resolver(modelId);
-        model = wrapAiSdkModel(languageModel, modelString, {
+        try {
+          directLanguageModel = resolver(modelId);
+        } catch (err) {
+          // Factory threw. Don't poison directLoadFailed — that set is for
+          // package-load failures caught inside getProviderResolver; this
+          // failure is per-invocation. Preserving the original error lets
+          // the no-gateway branch below surface it instead of the generic
+          // "failed to load" message.
+          directError = err;
+        }
+      }
+      if (resolver && directError === undefined) {
+        model = wrapAiSdkModel(directLanguageModel, modelString, {
           requested: identityOverrides?.requested ?? modelString,
         });
       } else {
-        const info = availability.get(providerName);
-        if (info?.source === "gateway" && info.gatewayType) {
-          if (!gatewayCache.has(info.gatewayType) && info.apiKey) {
-            gatewayCache.set(info.gatewayType, loadGatewaySync(info.gatewayType, info.apiKey));
+        // Direct path unavailable (no package, or package failed to load in a
+        // bundled runtime). Fall through to any configured/auto-detected
+        // gateway that can serve this provider — bare `provider/model`
+        // resolves "however it can".
+        const gw = findGatewayForProvider(providerName);
+        if (gw) {
+          if (!gatewayCache.has(gw.gatewayType)) {
+            if (!gw.apiKey) {
+              throw new Error(
+                `No API key found for gateway "${gw.gatewayType}" while ` +
+                  `falling back from direct "${providerName}".`
+              );
+            }
+            gatewayCache.set(gw.gatewayType, loadGatewaySync(gw.gatewayType, gw.apiKey));
           }
-          if (gatewayCache.has(info.gatewayType)) {
-            const languageModel = resolveViaGateway(
-              info.gatewayType,
-              providerName,
-              modelId
-            );
-            model = wrapAiSdkModel(languageModel, modelString, {
-              requested: identityOverrides?.requested ?? modelString,
-              gateway: info.gatewayType,
-            });
-          } else {
-            throw new Error(
-              `No provider available for "${providerName}". ` +
-                `Set the appropriate API key or install the provider package.`
-            );
-          }
+          const languageModel = resolveViaGateway(gw.gatewayType, providerName, modelId);
+          model = wrapAiSdkModel(languageModel, modelString, {
+            requested: identityOverrides?.requested ?? modelString,
+            gateway: gw.gatewayType,
+          });
         } else {
+          const directFailed = directLoadFailed.has(providerName);
+          if (directError && !directFailed) {
+            throw directError;
+          }
           throw new Error(
-            `No provider available for "${providerName}". ` +
-              `Set the appropriate API key or install the provider package.`
+            `No provider available for "${providerName}". Tried: ` +
+              `${directFailed ? "direct package (failed to load)" : "direct package (not installed)"}` +
+              `, gateways (none configured for this provider). ` +
+              `Install the provider package, set its API key, or configure a gateway ` +
+              `(e.g. AI_GATEWAY_API_KEY).`
           );
         }
       }
