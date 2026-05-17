@@ -409,6 +409,22 @@ pipeline
 
 Does not skip rescue handlers for errors that occurred before the exit. Outstanding `.work()` tasks dispatched by this sequencer remain on the per-request pool and are drained by the request executor (FIX-554).
 
+### `throwIf(condition, error)` — Guard / Invariant Check
+
+Throw a supplied error when a condition is met. The error can be a static `Error` instance or a factory `(value, ctx) => Error | Promise<Error>` so the message can carry runtime context. Both the condition and the factory may be async.
+
+```ts
+pipeline
+  .then(phase1Pipeline)
+  .throwIf(
+    (_value, ctx) => everyAnalystErrored(ctx),
+    (_value, ctx) => new EarlyStopError("phase-1-no-data", `No data for ${ctx.session.state.ticker}.`),
+  )
+  .then(phase2Pipeline);
+```
+
+Pairs naturally with `.rescue([{ when: [TypedError], block: handler }])` when the guard should produce a clean terminal state rather than a runtime error. Unlike `.exitIf`, the chain does not continue — control transfers to the nearest matching rescue handler, or out of the sequencer entirely if none matches.
+
 ### `branch(branches)` — Conditional Multi-Path
 
 Execute the first branch whose condition is true.

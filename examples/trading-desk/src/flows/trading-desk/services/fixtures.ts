@@ -24,9 +24,9 @@ import {
 // set to the trading-desk package directory. `import.meta.url` is unreliable
 // here because Turbopack rewrites it to a virtual path during bundling, so a
 // relative walk via the file location lands inside `.next/`.
-const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
+export const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
 
-const FIXTURE_SNAPSHOT = "2026-05-06";
+export const FIXTURE_SNAPSHOT = "2026-05-06";
 
 export type LoadFixtureOptions = {
   /** Override the fixture root for tests. */

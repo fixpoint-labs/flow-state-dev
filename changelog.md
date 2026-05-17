@@ -5,6 +5,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-16
 
+### Sequencer DSL: `.throwIf(condition, error)` guard primitive
+
+- New `.throwIf((value, ctx) => boolean, Error | (value, ctx) => Error)` on the sequencer DSL. Throws the supplied error (or factory-produced error) when the predicate is true; otherwise passes through unchanged. Pairs with `.rescue([{ when: [TypedError], block: handler }])` for typed early-stop patterns. Both predicate and error factory may be async.
+
+### Trading-desk: unresolvable-ticker guardrails + shared grounding clause (FIX-605)
+
+- Pre-flight ticker resolution runs after `seedSession` and before `phase1Pipeline`. A `.tap` probes the active data source (fixture-file existence / live fundamentals fetch) and patches `stoppedReason: "unresolvable-ticker"` when the ticker can't be resolved; the following `.exitIf` bails before any model spend.
+- Post-Phase-1 data-quality `.tap` reads memo statuses and patches `stoppedReason: "phase-1-no-data"` when every analyst memo is in `error`; the following `.exitIf` halts the run before phases 2–5 synthesize on no upstream data.
+- The `tradingDesk.core` preset now injects a shared `<grounding>` clause into every generator's prompt — "operate strictly on data provided by upstream agents and tools; surface insufficient-data rather than fabricate." Expressed once, applied uniformly across all twelve agents, instead of the Phase-1-only `SHARED_PREAMBLE` line being the only source of grounding discipline.
+- Session state gains `stoppedReason` and `stoppedMessage` fields, both surfaced to the client so the navigator can render a terminal stopped banner rather than an in-progress indicator.
+
 ### Round Robin pattern reshape: optional referee, `terminateWhen`, synthesizer-as-terminal (FIX-597)
 
 - `roundRobin()` no longer requires a judge. The `judge` config is removed; a new optional `referee` slot runs after every round as a per-round argument-quality auditor (returns `{ critique }`) and does not control termination. Critiques accumulate in outer state as `refereeCritiques` and the default roster agents render prior critiques into their prompts on subsequent rounds.
