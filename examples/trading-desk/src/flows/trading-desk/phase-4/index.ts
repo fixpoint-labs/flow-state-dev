@@ -14,6 +14,7 @@
  * order.").
  */
 import { sequencer } from "@flow-state-dev/core";
+import { riskAssessmentApproachGenerator } from "./approach";
 import { riskAssessmentGenerator } from "./consolidator";
 import { deriveRiskGoal, phase4RoundRobin } from "./round-robin";
 import { setupPhase4Memos } from "./setup";
@@ -27,6 +28,7 @@ const riskAssessmentStep = sequencer({
   name: "phase-4-risk-assessment-step",
 })
   .tap(markWritingP4("riskAssessment"))
+  .then(riskAssessmentApproachGenerator)
   .then(riskAssessmentGenerator)
   .tap(commitRiskAssessmentMemo)
   .rescue([{ block: markErrorP4("riskAssessment") }]);

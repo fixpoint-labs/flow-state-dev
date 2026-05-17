@@ -171,6 +171,10 @@ function makeAnalystAndRosterMocks() {
       name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
     }),
+    "trader-approach-generator": mockGenerator({
+      name: "trader-approach-generator",
+      script: [{ text: "I'll weigh the thesis stance against the analyst evidence." }],
+    }),
   };
 }
 
@@ -254,6 +258,16 @@ describe("Phase 3 end-to-end", () => {
     expect(trader.calls).toHaveLength(1);
     const promptText = JSON.stringify(trader.calls[0]?.input ?? "");
     expect(promptText).toContain("Investment thesis");
+
+    // Approach preamble streams as a `message` item with
+    // `agentName: "trader"` — the transcript-pane signal that the
+    // trader is "thinking out loud" before its structured memo lands.
+    const traderMessages = result.items.filter(
+      (item) =>
+        (item as { agentName?: string }).agentName === "trader" &&
+        (item as { type?: string }).type === "message",
+    );
+    expect(traderMessages.length).toBeGreaterThan(0);
   });
 
   it("trader failure isolates: only trader errors, prior phases still publish", async () => {

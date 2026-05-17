@@ -50,6 +50,13 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 
 ## Adding a new generator
 
+**Structured-output agents in Phases 3–5 are wrapped with an approach
+preamble.** Each such agent has a sibling `<agent>ApproachGenerator`
+built via `createApproachGenerator()` in
+`services/approach-generator.ts` and inserted before the structured
+generator in its step sequencer. Use the factory — don't hand-roll a
+new `generator({...})` for a preamble.
+
 Every generator in this example uses the `tradingDesk` capability for model
 selection + ticker/date context. The minimum scaffold:
 
