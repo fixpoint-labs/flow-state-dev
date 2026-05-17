@@ -254,7 +254,7 @@ Limits to be aware of:
 [`@vercel/sandbox`](https://vercel.com/docs/vercel-sandbox) provisions real Linux microVMs in `iad1`. To use it, configure one of the two credential paths the SDK supports:
 
 1. **OIDC Federation** (recommended for Vercel-hosted projects). Enable it under Project Settings → OIDC Token Generation. The SDK will fetch a per-request `x-vercel-oidc-token` header lazily on the first bash call. Because the token is not present in `process.env` at module init, the kitchen-sink can't auto-detect this case — set `BASH_PROVIDER=vercel` to opt in.
-2. **Static access-token triple** — set `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID` in your Vercel project's environment variables. The kitchen-sink's `selectBashProvider()` detects all three together and auto-selects the Vercel provider; no `BASH_PROVIDER` opt-in needed.
+2. **Static access token** — set `VERCEL_TOKEN` and `VERCEL_TEAM_ID` in your Vercel project's environment variables. (`VERCEL_PROJECT_ID` is a [Vercel system environment variable](https://vercel.com/docs/environment-variables/system-environment-variables) that's already injected on every deployment, so you don't need to add it yourself.) The kitchen-sink's `selectBashProvider()` checks all three together and auto-selects the Vercel provider when present; no `BASH_PROVIDER` opt-in needed.
 
 See the [Vercel Sandbox authentication docs](https://vercel.com/docs/vercel-sandbox/concepts/authentication) for setup details.
 
@@ -275,16 +275,16 @@ The `BASH_PROVIDER` environment variable forces the kitchen-sink's selector:
 | `local` | Real host shell. Only useful in environments with a writable filesystem. |
 | `moat` | MOAT container isolation. Requires the `moat` CLI on the host — not useful on Vercel. |
 
-When `BASH_PROVIDER` is unset, the selector auto-detects: Vercel Sandbox if the static triple is present, otherwise `just-bash`.
+When `BASH_PROVIDER` is unset, the selector auto-detects: Vercel Sandbox if the static-token credentials are present, otherwise `just-bash`.
 
 ```bash title=".env.production (excerpt)"
-# Opt in to real Vercel Sandbox microVMs (requires OIDC enabled OR the triple below).
+# Opt in to real Vercel Sandbox microVMs (requires OIDC enabled OR the token below).
 # BASH_PROVIDER=vercel
 
-# Static access-token triple — auto-detect picks `vercel` when all three are set.
+# Static access token — auto-detect picks `vercel` when both are set.
+# (VERCEL_PROJECT_ID is auto-injected by Vercel, no need to set it here.)
 # VERCEL_TOKEN=...
 # VERCEL_TEAM_ID=team_...
-# VERCEL_PROJECT_ID=prj_...
 ```
 
 When the adapter can't authenticate, you'll see an error in deploy logs and the chat UI naming the three remediation paths (enable OIDC, set the static triple, or fall back to `just-bash`). That message replaces the bare `Status code 400 is not ok` that older versions surfaced.

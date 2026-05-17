@@ -90,22 +90,22 @@ Most env vars are optional with sensible defaults. The ones below change behavio
 | Variable | Effect |
 |--|--|
 | `BASH_PROVIDER` | Forces a specific sandbox adapter. Values: `vercel`, `just-bash`, `local`, `moat`. Unset for auto-detect (Vercel Sandbox if credentials are present, otherwise `just-bash`). |
-| `VERCEL_TOKEN` | Static access-token credential for `@vercel/sandbox`. Required as part of the triple if not using OIDC Federation. |
-| `VERCEL_TEAM_ID` | Vercel team identifier for the access-token triple. |
-| `VERCEL_PROJECT_ID` | Vercel project identifier for the access-token triple. |
+| `VERCEL_TOKEN` | Static access-token credential for `@vercel/sandbox`. Operator must set on Vercel for non-OIDC auth. |
+| `VERCEL_TEAM_ID` | Vercel team identifier. Operator must set on Vercel for non-OIDC auth. |
+
+`VERCEL_PROJECT_ID` is also checked but is a [Vercel system environment variable](https://vercel.com/docs/environment-variables/system-environment-variables) — it's auto-injected on every Vercel deployment, so you don't need to add it manually.
 
 On Vercel without any of the variables above, the kitchen-sink falls back to `just-bash` — an in-memory virtual filesystem with ~70 commands and optional Python/JS interpreters. Files written by the agent live for the duration of one request; commands run without a real shell. This makes the deployed demo work for anonymous visitors with zero operator setup.
 
-To enable real Vercel Sandbox microVMs on a deployment, configure either OIDC Federation on the Vercel project (then set `BASH_PROVIDER=vercel`) or all three of `VERCEL_TOKEN` / `VERCEL_TEAM_ID` / `VERCEL_PROJECT_ID`. Full recipe in the [Deploying to Vercel guide](https://flow-state-dev.com/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel).
+To enable real Vercel Sandbox microVMs on a deployment, configure either OIDC Federation on the Vercel project (then set `BASH_PROVIDER=vercel`) or both `VERCEL_TOKEN` and `VERCEL_TEAM_ID`. Full recipe in the [Deploying to Vercel guide](https://flow-state-dev.com/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel).
 
 ```bash title=".env.production (excerpt — uncomment one path)"
 # Path A: OIDC Federation
 # BASH_PROVIDER=vercel
 
-# Path B: static access-token triple (auto-detected, no BASH_PROVIDER needed)
+# Path B: static access token (auto-detected, no BASH_PROVIDER needed)
 # VERCEL_TOKEN=...
 # VERCEL_TEAM_ID=team_...
-# VERCEL_PROJECT_ID=prj_...
 ```
 
 ## Verification

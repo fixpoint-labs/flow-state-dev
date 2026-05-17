@@ -140,7 +140,14 @@ function enrichVercelError(err: unknown, sandboxId?: string): Error {
     );
   }
 
-  const errName = sdkErr.name ?? sdkErr.constructor?.name;
+  // Error.prototype.name defaults to "Error", so a `??` would never reach
+  // the constructor name. Subclasses that don't set `this.name` (e.g.
+  // `class VercelOidcContextError extends Error {}`) still inherit "Error";
+  // for those, fall back to the constructor's name.
+  const errName =
+    sdkErr.name && sdkErr.name !== "Error"
+      ? sdkErr.name
+      : sdkErr.constructor?.name ?? "Error";
   const isOidcContextError =
     errName === "VercelOidcContextError" ||
     errName === "LocalOidcContextError" ||

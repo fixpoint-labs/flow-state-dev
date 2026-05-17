@@ -107,6 +107,18 @@ describe("resolveVercelSandbox: OIDC context error enrichment (FIX-587)", () => 
     await expect(p).rejects.toThrowError(/BASH_PROVIDER=just-bash/);
   });
 
+  it("unnamed subclass (Error.name not set on the class) is detected via constructor.name", async () => {
+    // `class VercelOidcContextError extends Error {}` without an explicit
+    // `this.name = ...` inherits Error.prototype.name === "Error". The
+    // adapter must still find the class identity via constructor.name.
+    class VercelOidcContextError extends Error {}
+    const err = new VercelOidcContextError("no token");
+    expect(err.name).toBe("Error"); // sanity: subclass didn't set name
+    await expect(
+      resolveVercelSandbox({ Sandbox: fakeSandboxClass(err) }),
+    ).rejects.toThrowError(/no OIDC token available/);
+  });
+
   it("regex fallback: unknown-name error with OIDC-token wording still detected", async () => {
     // Future SDK renames or non-English variants — match on message shape.
     const err = new Error("Cannot resolve the Vercel OIDC token at runtime");

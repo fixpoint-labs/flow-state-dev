@@ -4,7 +4,7 @@
  * Covers the behavior matrix from the FIX-587 spec: explicit BASH_PROVIDER
  * opt-in/opt-out, Vercel auto-detect, and the safe `just-bash` fallback.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectBashProvider } from "../flows/chat-agent/blocks/bash-tools";
 
 const VARS = [
@@ -96,9 +96,14 @@ describe("selectBashProvider", () => {
     expect(selectBashProvider()).toMatchObject({ type: "just-bash" });
   });
 
-  it("unknown BASH_PROVIDER values fall through to auto-detect", () => {
+  it("unknown BASH_PROVIDER values warn and fall through to auto-detect", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     process.env.BASH_PROVIDER = "nonsense-value";
     expect(selectBashProvider()).toMatchObject({ type: "just-bash" });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toMatch(/Unknown BASH_PROVIDER/);
+    expect(warn.mock.calls[0]![0]).toMatch(/nonsense-value/);
+    warn.mockRestore();
   });
 
   it("module-init smoke test: importing the kitchen-sink bash-tools module succeeds", async () => {

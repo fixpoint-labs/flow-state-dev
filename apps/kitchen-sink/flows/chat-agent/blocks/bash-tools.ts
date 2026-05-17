@@ -77,6 +77,15 @@ export function selectBashProvider(): SandboxProvider {
     // actionable diagnostic.
     return { type: "vercel", Sandbox: VercelSandbox };
   }
+  if (explicit !== undefined && explicit !== "") {
+    // Typos like "Vercel" or "verce" would otherwise silently fall through
+    // to auto-detect, hiding the operator's intent. Warn but don't throw —
+    // throwing here would crash the flow at module init, which a stale env
+    // var on a dev machine shouldn't do.
+    console.warn(
+      `[bash-tools] Unknown BASH_PROVIDER="${explicit}". Expected one of: vercel, just-bash, local, moat. Falling through to auto-detect.`,
+    );
+  }
 
   if (process.env.VERCEL && hasVercelSandboxCredentials()) {
     return { type: "vercel", Sandbox: VercelSandbox };
