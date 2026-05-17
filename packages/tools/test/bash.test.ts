@@ -943,12 +943,14 @@ describe("createBashBlocks", () => {
       files,
       async executeCommand(command: string): Promise<CommandResult> {
         if (command.startsWith("find ")) {
+          // Mirror real `find` output: when invoked with absolute path
+          // arguments, find emits absolute paths (the framework's
+          // walkMountsViaExec passes absolute paths anchored at the
+          // destination). The mock holds files keyed by absolute path.
           const out: string[] = [];
           for (const key of files.keys()) {
             if (!key.startsWith(destPrefix)) continue;
-            const rel = key.slice(destPrefix.length);
-            if (!rel) continue;
-            out.push("./" + rel);
+            out.push(key);
           }
           return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
         }

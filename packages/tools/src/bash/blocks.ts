@@ -478,7 +478,7 @@ async function flush(
   // is through the adapter's SDK.
   const filePaths = entry.sandbox.hostMountSource
     ? await walkMountsViaHostFs(entry, entry.sandbox.hostMountSource)
-    : await walkMountsViaExec(entry);
+    : await walkMountsViaExec(entry, destination);
   if (filePaths === null) return;
 
   // Diagnostic: a successful flush that sees ZERO files when writable
@@ -566,19 +566,38 @@ async function flush(
  * Mount-prefix walk via `find` through the sandbox's exec channel.
  * Returns `null` on failure — caller skips flush so a transient walk
  * error never triggers the deletion pass with an empty seen-set.
+ *
+ * Uses absolute paths anchored at `destination` because the sandbox's
+ * default shell cwd is not guaranteed to match the workspace root.
+ * For example, Vercel Sandbox commands run in `/vercel/sandbox` while
+ * the framework anchors the workspace at `/vercel/sandbox/workspace`;
+ * a relative `find ./artifacts` would look in the wrong directory and
+ * silently report zero files, causing every flush to no-op the
+ * agent's `bashCommand`-driven writes back to resource collections.
+ * Local FS sets `cwd` on its `exec()` invocation so the bug never
+ * surfaced there.
  */
-async function walkMountsViaExec(entry: SandboxEntry): Promise<string[] | null> {
-  const walkPrefixes = [...entry.mounts.map((m) => `./${m.prefix}`), `./${TMP_DIR}`];
+async function walkMountsViaExec(
+  entry: SandboxEntry,
+  destination: string,
+): Promise<string[] | null> {
+  const walkPaths = [
+    ...entry.mounts.map((m) => path.posix.join(destination, m.prefix)),
+    path.posix.join(destination, TMP_DIR),
+  ];
   const result = await entry.sandbox.executeCommand(
-    `find ${walkPrefixes.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
+    `find ${walkPaths.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
   );
   if (result.exitCode !== 0) return null;
   if (!result.stdout.trim()) return [];
+  // Strip the destination prefix so downstream sees workspace-relative
+  // paths (`artifacts/foo.md`), matching what walkMountsViaHostFs returns.
+  const prefix = destination.endsWith("/") ? destination : destination + "/";
   return result.stdout
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((p) => (p.startsWith("./") ? p.slice(2) : p));
+    .map((p) => (p.startsWith(prefix) ? p.slice(prefix.length) : p));
 }
 
 /**
