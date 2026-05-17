@@ -9,7 +9,9 @@ export interface SessionTitleGeneratorConfig {
   name: string;
   model?: string;
   /**
-   * Maximum number of recent LLM messages to include for title generation.
+   * Maximum number of recent conversational turns to include for title
+   * generation. One turn = one user → assistant request (tool-call/result
+   * messages within a turn ride along).
    * @default 4
    */
   messageLimit?: number;

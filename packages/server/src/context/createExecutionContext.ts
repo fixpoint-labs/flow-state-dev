@@ -93,6 +93,10 @@ function normalizeLimit(
     return Math.max(0, Math.min(valuesLength, limit));
   }
 
+  if ("turns" in limit) {
+    return Math.max(0, Math.min(valuesLength, limit.turns));
+  }
+
   return Math.max(0, Math.min(valuesLength, limit.tokens));
 }
 
@@ -910,8 +914,149 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 }
 
 /**
+ * Expands the items of a single RequestRecord into LLM-ready messages.
+ *
+ * Applies, in order: a stable sort by `(ts, itemIndex)`, the transient
+ * filter, the allowed-item-types filter, and `itemToLLMMessages` per item.
+ * `itemToLLMMessages` internally applies `resolveItemVisibility` so
+ * sub-agent and trace items are dropped here as well.
+ *
+ * `allowedRoles`, when set, drops any produced LLM message whose role is
+ * not in the allowlist.
+ *
+ * Sort-equivalence assumption: this expands and sorts items per request,
+ * not globally. That is safe because completed prior requests have
+ * non-overlapping `(ts, itemIndex)` ranges — `priorRequests` is sorted by
+ * `startedAtMs` and a completed request's items have timestamps strictly
+ * within its lifetime. Concatenating expansions of pre-ordered requests
+ * therefore preserves the same global ordering the previous flatten-then-
+ * sort path produced.
+ */
+function expandRequestToMessages(
+  items: readonly (OutputItem | BlockTraceItem)[],
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): LLMMessage[] {
+  const sorted = [...items].sort((a, b) => {
+    const tsDiff = a.ts - b.ts;
+    return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+  });
+
+  const out: LLMMessage[] = [];
+  for (const item of sorted) {
+    if (item.transient === true) continue;
+    if (!allowedTypes.has(item.type)) continue;
+
+    const llmMessages = itemToLLMMessages(item, sorted);
+    for (const llmMessage of llmMessages) {
+      if (
+        allowedRoles !== undefined &&
+        !allowedRoles.has(
+          llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool"
+        )
+      ) {
+        continue;
+      }
+      out.push(llmMessage);
+    }
+  }
+  return out;
+}
+
+/**
+ * Selects which prior requests participate in history given the limit.
+ *
+ * Turn-based (bare `number` or `{ turns: N }`): returns the last N
+ * completed prior requests. Guards `Array.prototype.slice(-0)` — which
+ * returns the whole array — by explicitly returning `[]` for N <= 0.
+ *
+ * Token-based (`{ tokens: T }`): walks `priorRequests` from the end,
+ * expanding each candidate to its LLM messages and counting tokens. A
+ * candidate is accepted whole if it fits the remaining budget; otherwise
+ * walking stops (turns are never split). If the first (most recent) prior
+ * turn alone exceeds the budget, it is accepted anyway — returning an
+ * empty history when a single oversized turn exists hides more context
+ * than it saves.
+ *
+ * `undefined` limit returns all prior requests.
+ */
+async function selectRequestsByLimit(
+  priorRequests: RequestRecord[],
+  limit: MessageLimit | undefined,
+  tokenCounter: TokenCounter,
+  resolveModelId: () => string,
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): Promise<RequestRecord[]> {
+  if (limit === undefined) {
+    return priorRequests;
+  }
+
+  // Turn-based: bare number or { turns: N }
+  if (typeof limit === "number" || "turns" in limit) {
+    const turns = typeof limit === "number" ? limit : limit.turns;
+    if (turns <= 0) return [];
+    return priorRequests.slice(-turns);
+  }
+
+  // Token-based: pack whole turns from the end, never split.
+  const budget = limit.tokens;
+  const model = resolveModelId();
+  const selected: RequestRecord[] = [];
+  let runningTokens = 0;
+
+  for (let i = priorRequests.length - 1; i >= 0; i--) {
+    const candidate = priorRequests[i]!;
+    const candidateMessages = expandRequestToMessages(
+      candidate.items ?? [],
+      allowedTypes,
+      allowedRoles,
+    );
+    const candidateTokens = candidateMessages.length === 0
+      ? 0
+      : await tokenCounter.countMessages(candidateMessages, model);
+
+    if (selected.length === 0) {
+      // Most-recent-turn exception: always include the latest prior turn
+      // even if it alone exceeds the budget.
+      selected.unshift(candidate);
+      runningTokens = candidateTokens;
+      continue;
+    }
+
+    if (runningTokens + candidateTokens > budget) {
+      break;
+    }
+
+    selected.unshift(candidate);
+    runningTokens += candidateTokens;
+  }
+
+  return selected;
+}
+
+/**
  * Loads conversation history from prior completed requests in this session,
- * converts to LLM-ready messages, and applies filtering/limiting.
+ * converts to LLM-ready messages, and applies turn-aware limiting.
+ *
+ * `limit` is interpreted as a count of conversational turns, where one
+ * `RequestRecord` is one turn. Tool-call/result messages within a retained
+ * turn are carried full-fidelity and do not decrement the budget. This
+ * fixes the original failure mode where a tool-heavy turn could fully
+ * consume an `N`-message window and evict the prior user message.
+ *
+ * Token-based limits are turn-aligned: whole turns are packed from the
+ * end and never split. The most recent prior turn is always included
+ * (even if alone over budget). See `selectRequestsByLimit`.
+ *
+ * Live items from the current (in-flight) request are always appended
+ * regardless of limit — this preserves the retry-after-mid-turn-failure
+ * scenario where the user's "try again" must see the in-flight tool state.
+ *
+ * Empty-of-LLM-content turns (turns whose items are all sub-agent or
+ * non-LLM types) still count against `{ turns: N }` but contribute zero
+ * messages. This keeps the slice logic at the request level and matches
+ * the spec's documented v1 behavior.
  *
  * Optionally includes items from the current in-flight request via
  * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
@@ -924,85 +1069,40 @@ async function loadLLMHistory(
   query?: ItemQuery,
   readLiveItems?: () => Array<OutputItem | BlockTraceItem>
 ): Promise<LLMMessage[]> {
-
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
     : LLM_AUDIENCE_TYPES;
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
+  const selectedRequests = await selectRequestsByLimit(
+    priorRequests,
+    query?.limit,
+    tokenCounter,
+    resolveModelId,
+    allowedTypes,
+    allowedRoles,
+  );
+
   const messages: LLMMessage[] = [];
-
-  function processItems(items: Array<OutputItem | BlockTraceItem>): void {
-    const sorted = [...items].sort((a, b) => {
-      const tsDiff = a.ts - b.ts;
-      return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
-    });
-
-    for (const item of sorted) {
-      if (item.transient === true) {
-        continue;
-      }
-
-      if (!allowedTypes.has(item.type)) {
-        continue;
-      }
-
-      const llmMessages = itemToLLMMessages(item, sorted);
-      for (const llmMessage of llmMessages) {
-        if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
-          continue;
-        }
-
-        messages.push(llmMessage);
-      }
-    }
+  for (const request of selectedRequests) {
+    if (request.items === undefined) continue;
+    messages.push(
+      ...expandRequestToMessages(request.items, allowedTypes, allowedRoles)
+    );
   }
 
-  for (const request of priorRequests) {
-    if (request.items !== undefined) {
-      processItems(request.items);
-    }
-  }
-
-  // Include current request's live items so background work blocks (e.g.
-  // sessionTitleGenerator) can see the just-completed output.
+  // Live items from the in-flight request are always included regardless
+  // of limit. This is the retry/resume guarantee.
   if (readLiveItems !== undefined) {
-    processItems(readLiveItems());
+    messages.push(
+      ...expandRequestToMessages(readLiveItems(), allowedTypes, allowedRoles)
+    );
   }
 
-  // Apply limit
-  const limit = query?.limit;
-  if (limit === undefined) {
-    return messages;
-  }
-
-  if (typeof limit === "number") {
-    const sliced = limit < messages.length
-      ? messages.slice(messages.length - limit)
-      : messages;
-    // Ensure the slice didn't orphan a tool-result from its preceding
-    // assistant tool-call. AI SDK v6 requires tool-call/tool-result pairs;
-    // an orphaned tool-result causes models to produce empty output.
-    return trimOrphanedToolMessages(sliced);
-  }
-
-  // Token-based limit: pack from end within budget
-  const tokenBudget = limit.tokens;
-  let tokensUsed = 0;
-  let startIndex = messages.length;
-  const model = resolveModelId();
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const tokens = await tokenCounter.countMessages([messages[i]!], model);
-    if (tokensUsed + tokens > tokenBudget) {
-      break;
-    }
-
-    tokensUsed += tokens;
-    startIndex = i;
-  }
-
-  return trimOrphanedToolMessages(messages.slice(startIndex));
+  // Defense-in-depth: with turn-aligned slicing orphans should be
+  // structurally unreachable in normal operation, but keep the trim for
+  // edge data states (e.g., a request whose items begin mid-tool-pair).
+  return trimOrphanedToolMessages(messages);
 }
 
 /**

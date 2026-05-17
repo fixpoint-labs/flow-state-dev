@@ -26,7 +26,24 @@ export type SessionItem = {
   agentName?: string;
 };
 
-export type MessageLimit = number | { tokens: number };
+/**
+ * Bounds the number of items / messages / turns returned by a view.
+ *
+ * The bare `number` form is interpreted per-view:
+ * - In `items.history()`, `N` means "the last N conversational turns" — a
+ *   tool-heavy turn counts as one turn regardless of how many tool-call /
+ *   tool-result protocol messages it produced.
+ * - In `items.all()` and `items.client()`, `N` means "the last N items".
+ *
+ * `{ turns: N }` is the explicit form for turn-based limiting and is
+ * preferred in new code that targets `items.history()`.
+ *
+ * `{ tokens: N }` is token-aware. In `items.history()` packing is turn-
+ * aligned: whole turns are accepted from the end until adding the next
+ * would exceed the budget. The most recent prior turn is always included
+ * even if it alone exceeds the budget.
+ */
+export type MessageLimit = number | { tokens: number } | { turns: number };
 
 export type ItemQuery = {
   limit?: MessageLimit;

@@ -3,6 +3,15 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-17
+
+### Turn-aware history windowing (FIX-608)
+
+- `history: { limit: N }` on a generator now counts conversational turns rather than raw LLM protocol messages. A tool-heavy assistant turn no longer evicts the prior user message from the window — the tool calls ride along inside the turn they belong to.
+- `{ limit: { tokens: T } }` is turn-aligned: whole turns are packed from the end of the conversation and never split across the budget boundary. If the most recent prior turn alone exceeds the budget it is still included.
+- New explicit `{ limit: { turns: N } }` form is preferred in new code that wants to be unambiguous about the unit. Bare `{ limit: N }` continues to compile and now behaves more generously than before — no migration step.
+- Live items from the in-flight request are still always included regardless of limit. This preserves the "try again" retry-after-mid-turn-failure scenario the bug was originally reported against.
+
 ## 2026-05-16
 
 ### Sequencer DSL: `.throwIf(condition, error)` guard primitive

@@ -112,7 +112,7 @@ When a block fails, `block_trace.error` is `{ message: string, code?: string, de
 
 ### `tool_output`
 
-When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns:
+When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns. In LLM-ready history each `tool_output` expands into two protocol messages — an assistant `tool-call` and a `tool` result — which is why history windowing operates on conversational turns rather than raw messages (see [Conversation history windowing](/docs/advanced/generator-context#conversation-history-windowing)):
 
 ```jsonc
 // item.added — tool was called, args known, output not yet.

@@ -139,6 +139,8 @@ const clientItems = ctx.session.items.client();
 const llmMessages = await ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
+Limits on `items.history()` operate on conversational turns rather than individual protocol messages — see [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing).
+
 **Metadata** — first-class `title`, `description`, and `tags` fields that live outside workflow state:
 
 ```ts
