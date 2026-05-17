@@ -45,6 +45,7 @@ const PHASE_1_ANALYST_AGENTS = new Set<string>([
   "sentimentAnalyst",
   "newsAnalyst",
   "technicalAnalyst",
+  "companyProfileAnalyst",
 ]);
 
 export function TranscriptPane({ session }: Props): ReactElement {
