@@ -5,6 +5,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-17
 
+### Trading-desk: per-agent approach preamble streams visible reasoning in Phases 3–5 (FIX-604)
+
+- Every silent structured-output agent in Phases 3–5 — the trader, the three Phase 4 personas, the risk-assessment consolidator, and the portfolio manager — now streams a one-sentence approach preamble before its structured memo. The transcript pane no longer goes quiet during the pipeline's most consequential phases.
+- Preambles are display-only: their text is not fed into the structured generator and does not influence the memo. The mechanism is purely an observability addition with zero correctness coupling.
+- Always-fast model. Each preamble runs on `intent/utility` regardless of the user's `costPreset` choice, so the `full` preset doesn't escalate the preambles too.
+- All six preamble generators are built via a small `createApproachGenerator` factory that lives inside the example next to the `tradingDesk` capability. Single consumer today, so the pattern stays inside the consumer rather than getting promoted to `@flow-state-dev/patterns`. Each call site only specifies what differs (name, agent name, artifact name, prompt, capability presets).
+- Round Robin needs no pattern-level change. Roster blocks were already sequencers after the FIX-597 reshape, so inserting `.then(<approachGen>)` inside each roster sub-sequencer is local to the example.
+- Trading-desk walkthrough and README extended for the new Phase 3 / 4 / 5 shape and the in-flow-factory teaching moment.
+
 ### Trading-desk: Company Profile analyst grounds the desk in what the business actually is (FIX-606)
 
 - New fifth Phase 1 analyst (`companyProfileAnalyst`) runs in parallel with the existing four and publishes a memo describing the underlying business: name, sector, industry, country/exchange/currency, business description, and rough scale (market cap, employees, IPO date). Downstream phases pick it up automatically via the `tradingDesk` capability's `phase1Memos` formatter.

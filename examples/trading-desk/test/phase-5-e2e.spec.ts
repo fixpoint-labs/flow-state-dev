@@ -356,6 +356,30 @@ function makeUpstreamMocks() {
       name: "risk-assessment-generator",
       script: [riskAssessmentStructuredOutput()],
     }),
+    "trader-approach-generator": mockGenerator({
+      name: "trader-approach-generator",
+      script: [{ text: "Trader approach preamble." }],
+    }),
+    "aggressive-approach-generator": mockGenerator({
+      name: "aggressive-approach-generator",
+      script: [{ text: "Aggressive approach preamble." }],
+    }),
+    "conservative-approach-generator": mockGenerator({
+      name: "conservative-approach-generator",
+      script: [{ text: "Conservative approach preamble." }],
+    }),
+    "neutral-approach-generator": mockGenerator({
+      name: "neutral-approach-generator",
+      script: [{ text: "Neutral approach preamble." }],
+    }),
+    "risk-assessment-approach-generator": mockGenerator({
+      name: "risk-assessment-approach-generator",
+      script: [{ text: "Risk-assessment approach preamble." }],
+    }),
+    "portfolio-manager-approach-generator": mockGenerator({
+      name: "portfolio-manager-approach-generator",
+      script: [{ text: "PM approach preamble." }],
+    }),
   };
 }
 
@@ -445,6 +469,27 @@ describe("Phase 5 end-to-end", () => {
     expect(pmMemo?.agreesWithTrader).toBe(true);
 
     expect(pm.calls).toHaveLength(1);
+
+    // Every agent in Phases 3–5 streams an approach preamble as a
+    // `message` item with the agent's `agentName`. The preamble is the
+    // mechanism that fills the transcript gap during structured-output
+    // generation; verifying its presence here covers the wiring for all
+    // six agents in one e2e run.
+    for (const agentName of [
+      "trader",
+      "aggressiveRisk",
+      "conservativeRisk",
+      "neutralRisk",
+      "riskAssessment",
+      "portfolioManager",
+    ] as const) {
+      const messages = result.items.filter(
+        (item) =>
+          (item as { agentName?: string }).agentName === agentName &&
+          (item as { type?: string }).type === "message",
+      );
+      expect(messages.length).toBeGreaterThan(0);
+    }
   });
 
   it("portfolio-manager failure isolates: PM memo errors, runComplete stays false, prior memos still publish", async () => {

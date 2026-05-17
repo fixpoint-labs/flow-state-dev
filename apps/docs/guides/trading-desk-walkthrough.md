@@ -23,6 +23,8 @@ Phase 4 runs three risk officers in round-robin order, then a consolidator emits
 
 Phase 5 reads everything upstream and emits a `PortfolioDecision` with a five-tier final rating, accepted-or-rejected risk adjustments, key dependencies, and a rationale that cites each stage.
 
+Every agent in Phases 3–5 streams a one-sentence approach preamble before its structured memo, so the transcript shows the agent's plan in plain English seconds before the typed output lands. The preamble is display-only — it's not fed back into the structured generator.
+
 ```
 analysts (x5 in parallel)
   → bull/bear debate → research manager
@@ -69,9 +71,9 @@ Why Round Robin over Debate? The research manager that runs after the loop is a 
 
 Model selection is handled by the `tradingDesk` capability. `uses: [tradingDesk]` resolves the model from `costPreset` at runtime, so the same instance serves both cost presets without per-variant build-time fan-out. One round-robin, two capability paths.
 
-## Phase 3: A single typed-output generator
+## Phase 3: An approach preamble, then the structured trader
 
-The trader is one generator. No loop, no pattern, no sub-sequencer. Just an LLM call with a structured output schema (`TradeProposal`).
+The trader runs two generators in sequence. First, a fast-model **approach preamble** streams a one-sentence plan in plain English: how the trader will weigh the thesis against the analyst evidence. Then the structured `TradeProposal` generator runs. The preamble is display-only — its text is not fed into the structured generator and does not influence the memo. It exists so the transcript pane shows the trader thinking before the typed card lands.
 
 Reading the upstream thesis happens through a capability. A capability bundles resources, tools, and context formatters; the generator opts in declaratively:
 
@@ -81,13 +83,42 @@ uses: [tradingDesk.presets({ investmentThesis: true })]
 
 That one line means: install the resource that the investment thesis lives in, and format it into the generator's prompt context. No manual wiring of `context: { ... }` functions, no threading the resource through sequencer state. Adding a new generator that needs the thesis is one preset flag.
 
-`agentType: "primary"` on the generator tells the framework to render the structured output as a card in the transcript. The transcript renderer reads the item type and dispatches to the right component. No custom event handling in the React layer.
+The preamble lives in the same step sequencer as the trader, inserted with one `.then()`:
+
+```ts
+sequencer({ name: "phase-3-trader-step" })
+  .tap(markWritingP3("trader"))
+  .then(traderApproachGenerator)   // ← fast-model preamble, streams
+  .then(traderGenerator)            // structured TradeProposal
+  .tap(commitTraderMemo)
+  .rescue([{ block: markErrorP3("trader") }]);
+```
+
+`agentType: "primary"` on the trader generator tells the framework to render the structured output as a card in the transcript. The transcript renderer reads the item type and dispatches to the right component. No custom event handling in the React layer.
+
+### An in-flow factory
+
+All six preamble generators in Phases 3–5 are built via a small `createApproachGenerator` factory that lives next to the `tradingDesk` capability in `services/approach-generator.ts`. The factory bakes in the parts that are shared across every preamble — `agentType: "sub"` (streams a message item, no struct card), `model: "intent/utility"` (always-fast, regardless of `costPreset`), and the user-instruction template — and each call site supplies only what varies: name, agent name, artifact name, prompt, and capability presets.
+
+```ts
+export const traderApproachGenerator = createApproachGenerator({
+  name: "trader-approach-generator",
+  agentName: PHASE_3_MEMO_KEYS.trader.agentName,
+  artifactName: "TradeProposal",
+  prompt: TRADER_APPROACH_PROMPT,
+  uses: [tradingDesk.presets({ investmentThesis: true })],
+});
+```
+
+The factory deliberately stays inside the example. There's exactly one consumer of this pattern today — these six call sites. The line we want to teach: a pattern lives inside the consumer until a second consumer justifies promoting it to `@flow-state-dev/patterns`. Not every reusable shape needs to be a framework export to be a real pattern.
+
+The honest tradeoff: each Phase 3–5 agent runs one extra fast-model call per session for the preamble. Cost stays bounded because the preamble always resolves to `intent/utility` — block-level model wins over the capability's cost-preset-driven model — so the `full` preset doesn't escalate the preambles too.
 
 ## Phase 4: Personas in fixed order, then a consolidator
 
-Same Round Robin primitive, used differently. The roster has three slots, each overridden with a custom sub-sequencer that wraps a structured-output generator: `aggressive-risk-generator`, `conservative-risk-generator`, `neutral-risk-generator`. Each persona's contribution and its typed critique fields come from one LLM call. `maxRounds: 1` — a single pass — and no referee.
+Same Round Robin primitive, used differently. The roster has three slots, each overridden with a custom sub-sequencer that wraps a structured-output generator: `aggressive-risk-generator`, `conservative-risk-generator`, `neutral-risk-generator`. Each persona makes two LLM calls — a fast-model approach preamble that previews the persona's stance in character, then the structured-output generator that emits the typed critique. The preamble is the persona's only transcript-visible output; personas are `sub` agents and don't emit structured cards, so the right-pane memos navigator carries the typed critique while the transcript carries the preamble. `maxRounds: 1` — a single pass — and no referee.
 
-The pattern's `synthesizer` slot is left empty (`synthesizer: false`). A downstream `riskAssessmentGenerator` runs as a separate step in the phase pipeline so the consolidated artifact is its own memo, separate from the round-robin's running transcript.
+The pattern's `synthesizer` slot is left empty (`synthesizer: false`). A downstream `riskAssessmentGenerator` runs as a separate step in the phase pipeline so the consolidated artifact is its own memo, separate from the round-robin's running transcript. The consolidator gets its own preamble too, streamed before the consolidator's structured memo runs.
 
 Per-persona `.rescue` matters here for the same reason it mattered in Phase 1: if the conservative critique fails, only that memo flips to `error`. The aggressive and neutral critiques still run. The consolidator downstream still has two of three inputs to work with.
 
@@ -95,7 +126,7 @@ The consolidator's `RiskAssessment` carries `recommendedAdjustments` across thre
 
 ## Phase 5: The final decision
 
-The portfolio manager reads everything upstream and emits a single `PortfolioDecision`. It carries:
+Like the trader, the portfolio manager streams an approach preamble before its structured decision lands. The PM then reads everything upstream and emits a single `PortfolioDecision`. It carries:
 
 - A five-tier `finalRating`: Sell, Underweight, Hold, Overweight, Buy.
 - A self-reported `decisionConfidence`.

@@ -24,6 +24,11 @@ import {
 } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
 import { sessionStateSchema } from "../state";
+import {
+  aggressiveApproachGenerator,
+  conservativeApproachGenerator,
+  neutralApproachGenerator,
+} from "./approach";
 import { phase4Contributions } from "./contributions";
 import {
   aggressiveRiskGenerator,
@@ -66,6 +71,7 @@ const toContributionShape = handler({
 
 const aggressiveStep = sequencer({ name: "phase-4-aggressive-step" })
   .tap(markWritingP4("aggressive"))
+  .then(aggressiveApproachGenerator)
   .then(aggressiveRiskGenerator)
   .tap(commitAggressiveRiskMemo)
   .then(toContributionShape)
@@ -73,6 +79,7 @@ const aggressiveStep = sequencer({ name: "phase-4-aggressive-step" })
 
 const conservativeStep = sequencer({ name: "phase-4-conservative-step" })
   .tap(markWritingP4("conservative"))
+  .then(conservativeApproachGenerator)
   .then(conservativeRiskGenerator)
   .tap(commitConservativeRiskMemo)
   .then(toContributionShape)
@@ -80,6 +87,7 @@ const conservativeStep = sequencer({ name: "phase-4-conservative-step" })
 
 const neutralStep = sequencer({ name: "phase-4-neutral-step" })
   .tap(markWritingP4("neutral"))
+  .then(neutralApproachGenerator)
   .then(neutralRiskGenerator)
   .tap(commitNeutralRiskMemo)
   .then(toContributionShape)

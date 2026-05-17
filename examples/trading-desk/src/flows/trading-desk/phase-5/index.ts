@@ -12,6 +12,7 @@
  * Phase 5 divider line.
  */
 import { sequencer } from "@flow-state-dev/core";
+import { portfolioManagerApproachGenerator } from "./approach";
 import { portfolioManagerGenerator } from "./portfolio-manager";
 import { setupPhase5Memos } from "./setup";
 import {
@@ -24,6 +25,7 @@ const portfolioManagerStep = sequencer({
   name: "phase-5-portfolio-manager-step",
 })
   .tap(markWritingP5("portfolioManager"))
+  .then(portfolioManagerApproachGenerator)
   .then(portfolioManagerGenerator)
   .tap(commitPortfolioManagerMemo)
   .rescue([{ block: markErrorP5("portfolioManager") }]);
