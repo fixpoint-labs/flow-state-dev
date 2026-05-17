@@ -1,7 +1,7 @@
 /* ══════════════════════════════════════════════════════════════
    Homepage — Editorial Monochrome Design
    Typography-driven, high-contrast, minimal decoration.
-   Brand accent (#38bdf8) used for links and labels.
+   Brand accent (#B27D40) used for links and labels.
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Hero ── */
@@ -20,9 +20,9 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(56, 189, 248, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse 40% 50% at 15% 60%, rgba(56, 189, 248, 0.025) 0%, transparent 50%);
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(178, 125, 64, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(178, 125, 64, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 50% at 15% 60%, rgba(178, 125, 64, 0.025) 0%, transparent 50%);
   pointer-events: none;
   animation: pulseGlow 8s ease-in-out infinite;
 }
@@ -84,13 +84,13 @@
   color: var(--fsd-accent);
   padding: 0.35rem 1rem;
   border-radius: 100px;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  background: rgba(178, 125, 64, 0.08);
+  border: 1px solid rgba(178, 125, 64, 0.15);
   margin-bottom: 1.75rem;
 }
 
 [data-theme="light"] .eyebrowBadge {
-  color: #0284c7;
+  color: #9A6D38;
   background: rgba(14, 165, 233, 0.06);
   border-color: rgba(14, 165, 233, 0.15);
 }
@@ -303,7 +303,7 @@
 }
 
 [data-theme="light"] .sectionLabel {
-  color: #0284c7;
+  color: #9A6D38;
 }
 
 .sectionTitle {
@@ -337,7 +337,7 @@
   border-left: 3px solid var(--fsd-accent);
   margin: 2rem auto;
   padding: 1.25rem 1.5rem;
-  background: rgba(56, 189, 248, 0.04);
+  background: rgba(178, 125, 64, 0.04);
   border-radius: 0 8px 8px 0;
   font-size: 1.05rem;
   font-weight: 400;
@@ -368,11 +368,11 @@
 }
 
 [data-theme="light"] .inlineLink {
-  color: #0284c7;
+  color: #9A6D38;
 }
 
 [data-theme="light"] .inlineLink:hover {
-  color: #0284c7;
+  color: #9A6D38;
 }
 
 /* ── Three Pillars ── */
@@ -415,7 +415,7 @@
 }
 
 [data-theme="light"] .pillarNum {
-  color: #0284c7;
+  color: #9A6D38;
 }
 
 .pillarLabel {
@@ -570,7 +570,7 @@
 }
 
 [data-theme="light"] .breakdownConceptLabel {
-  color: #0284c7;
+  color: #9A6D38;
 }
 
 .breakdownConceptProp {
@@ -729,67 +729,6 @@
   text-decoration-color: var(--ifm-color-primary);
 }
 
-/* ── Thought Fabric Block ── */
-
-.thoughtFabricBlock {
-  max-width: 900px;
-  margin: 1.5rem auto 0;
-  padding: 2rem 2.5rem;
-  background: rgba(139, 92, 246, 0.04);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  border-radius: 12px;
-  text-align: left;
-}
-
-[data-theme="light"] .thoughtFabricBlock {
-  background: rgba(139, 92, 246, 0.03);
-  border-color: rgba(139, 92, 246, 0.15);
-}
-
-.tfHeader {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.85rem;
-}
-
-.tfName {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: #a78bfa;
-}
-
-[data-theme="light"] .tfName {
-  color: #7c3aed;
-}
-
-.tfAlpha {
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.62rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--fsd-text-muted);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-}
-
-.tfBody {
-  font-size: 0.875rem;
-  color: var(--fsd-text-muted);
-  line-height: 1.75;
-  margin: 0 0 1rem;
-  font-weight: 300;
-  max-width: 640px;
-}
-
-[data-theme="light"] .tfBody {
-  color: var(--ifm-color-emphasis-600);
-}
-
 /* ── Ecosystem Note ── */
 
 .ecosystemNote {
@@ -823,8 +762,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 60% 50% at 50% 60%, rgba(56, 189, 248, 0.05) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(56, 189, 248, 0.025) 0%, transparent 50%);
+    radial-gradient(ellipse 60% 50% at 50% 60%, rgba(178, 125, 64, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(178, 125, 64, 0.025) 0%, transparent 50%);
   pointer-events: none;
 }
 
@@ -939,10 +878,6 @@
 
   .sectionTitle {
     font-size: 1.75rem;
-  }
-
-  .thoughtFabricBlock {
-    padding: 1.5rem;
   }
 
   .breakdownBlocksGrid {
