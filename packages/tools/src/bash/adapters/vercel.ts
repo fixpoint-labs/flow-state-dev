@@ -36,19 +36,21 @@ export function createVercelAdapter(
   // (e.g. 400 from /fs/write with a useful body in `.json.error.message`).
   // Without enrichment the framework only sees `Status code N is not ok`,
   // which is unactionable in deploy logs and chat UIs. Wrap every method
-  // so runtime failures get the same body-inlined / OIDC-hint treatment
-  // that resolveVercelSandbox already gives to create()/get().
-  async function wrap<T>(op: () => Promise<T>): Promise<T> {
+  // so runtime failures get the same body-inlined treatment that
+  // resolveVercelSandbox already gives to create()/get(). The operation
+  // label is passed through so a 400 from `/fs/write` doesn't get the
+  // OIDC credentials hint that only fires for create/get.
+  async function wrap<T>(op: ResolveOp, fn: () => Promise<T>): Promise<T> {
     try {
-      return await op();
+      return await fn();
     } catch (err) {
-      throw enrichVercelError(err, sandboxId);
+      throw enrichVercelError(err, { op, sandboxId });
     }
   }
 
   return {
     async executeCommand(command: string): Promise<CommandResult> {
-      return wrap(async () => {
+      return wrap("runCommand", async () => {
         const result = await sandbox.runCommand("sh", ["-c", command]);
         const [stdout, stderr] = await Promise.all([
           result.stdout(),
@@ -63,7 +65,7 @@ export function createVercelAdapter(
     },
 
     async readFile(filePath: string): Promise<string> {
-      return wrap(async () => {
+      return wrap("readFileToBuffer", async () => {
         const buf = await sandbox.readFileToBuffer({ path: filePath });
         if (buf === null) {
           throw new Error(`File not found: ${filePath}`);
@@ -73,13 +75,13 @@ export function createVercelAdapter(
     },
 
     async writeFile(filePath: string, content: string): Promise<void> {
-      return wrap(async () => {
+      return wrap("writeFiles", async () => {
         await sandbox.writeFiles([{ path: filePath, content }]);
       });
     },
 
     async stop(): Promise<void> {
-      await wrap(() => sandbox.stop());
+      await wrap("stop", () => sandbox.stop());
     },
   };
 }
@@ -113,7 +115,45 @@ export async function resolveVercelSandbox(opts: {
       sandboxId: raw.sandboxId,
     };
   } catch (err) {
-    throw enrichVercelError(err, opts.sandboxId);
+    const op: ResolveOp = opts.sandboxId ? "get" : "create";
+    throw enrichVercelError(err, { op, sandboxId: opts.sandboxId });
+  }
+}
+
+/**
+ * Which SDK call was in flight when the error was thrown. Used to label
+ * the enriched message and to decide whether the OIDC-credentials hint
+ * is relevant — auth failures only happen on `create`/`get`, never on
+ * runtime calls against an already-authenticated sandbox.
+ */
+type ResolveOp =
+  | "create"
+  | "get"
+  | "runCommand"
+  | "readFileToBuffer"
+  | "writeFiles"
+  | "stop";
+
+interface EnrichContext {
+  op: ResolveOp;
+  sandboxId?: string;
+}
+
+function formatAction(ctx: EnrichContext): string {
+  switch (ctx.op) {
+    case "create":
+      return "create()";
+    case "get":
+      return ctx.sandboxId
+        ? `get(sandboxId="${ctx.sandboxId}")`
+        : "get()";
+    default:
+      // runCommand / readFileToBuffer / writeFiles / stop — runtime ops
+      // against the already-resolved sandbox. Include the sandboxId so
+      // logs can correlate failures to a specific sandbox.
+      return ctx.sandboxId
+        ? `${ctx.op}(sandboxId="${ctx.sandboxId}")`
+        : `${ctx.op}()`;
   }
 }
 
@@ -128,7 +168,11 @@ export async function resolveVercelSandbox(opts: {
  *   1. **APIError with a `.response.status`.** The SDK ships the upstream
  *      body on `.json`/`.text` but its `.message` is just the statusText
  *      (e.g. `Status code 400 is not ok`). Re-throw with the body inlined
- *      and a credentials hint when the status looks auth-related.
+ *      and a credentials hint when the status looks auth-related *and*
+ *      the failing op was `create`/`get` — runtime ops against an
+ *      already-resolved sandbox never fail for OIDC reasons, so the
+ *      credentials suggestion would mislead operators diagnosing
+ *      e.g. a 400 from `/fs/write`.
  *   2. **`VercelOidcContextError` / `LocalOidcContextError`.** Thrown
  *      before any HTTP call when the SDK can't resolve an OIDC token at
  *      call time (Vercel deployment without OIDC Federation enabled, or
@@ -139,7 +183,7 @@ export async function resolveVercelSandbox(opts: {
  *   3. **Anything else.** Returned as-is (already an Error). Non-Error
  *      throwables (strings, plain objects) are wrapped via `new Error(...)`.
  */
-function enrichVercelError(err: unknown, sandboxId?: string): Error {
+function enrichVercelError(err: unknown, ctx: EnrichContext): Error {
   if (!(err instanceof Error)) return new Error(String(err));
 
   const sdkErr = err as Error & {
@@ -148,7 +192,8 @@ function enrichVercelError(err: unknown, sandboxId?: string): Error {
     text?: string;
   };
 
-  const action = sandboxId ? `get(sandboxId="${sandboxId}")` : "create()";
+  const action = formatAction(ctx);
+  const isResolveOp = ctx.op === "create" || ctx.op === "get";
   const status = sdkErr.response?.status;
 
   if (status !== undefined) {
@@ -159,7 +204,7 @@ function enrichVercelError(err: unknown, sandboxId?: string): Error {
       "(no response body)";
 
     const hint =
-      status === 400 || status === 401 || status === 403
+      isResolveOp && (status === 400 || status === 401 || status === 403)
         ? " — likely an OIDC / credentials problem. Confirm OIDC is enabled on the Vercel project (Project Settings → OIDC) and that the team has Vercel Sandbox enabled."
         : "";
 

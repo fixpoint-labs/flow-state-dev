@@ -14,7 +14,10 @@
  * `create` / `get` throw the synthetic errors.
  */
 import { describe, it, expect } from "vitest";
-import { resolveVercelSandbox } from "../src/bash/adapters/vercel";
+import {
+  createVercelAdapter,
+  resolveVercelSandbox,
+} from "../src/bash/adapters/vercel";
 import { defaultDestinationFor } from "../src/bash/blocks";
 import type {
   VercelSandboxClassLike,
@@ -145,6 +148,56 @@ describe("defaultDestinationFor", () => {
     expect(defaultDestinationFor({ type: "local" })).toBe("/workspace");
     expect(defaultDestinationFor({ type: "just-bash" })).toBe("/workspace");
     expect(defaultDestinationFor(undefined)).toBe("/workspace");
+  });
+});
+
+describe("runtime-op errors via createVercelAdapter", () => {
+  // Build an adapter around a sandbox whose runtime methods all throw.
+  function adapterWithFailing(err: unknown) {
+    const sandbox = {
+      runCommand: async () => {
+        throw err;
+      },
+      readFileToBuffer: async () => {
+        throw err;
+      },
+      writeFiles: async () => {
+        throw err;
+      },
+      stop: async () => {
+        throw err;
+      },
+    } as unknown as VercelSandboxInstance;
+    return createVercelAdapter(sandbox, "sbx_runtime");
+  }
+
+  it("400 from writeFiles labels the failing op and OMITS the OIDC hint", async () => {
+    const adapter = adapterWithFailing(
+      apiError(400, {
+        error: { code: "bad_request", message: "tarball broken" },
+      }),
+    );
+    const p = adapter.writeFile("/some/path", "x");
+    await expect(p).rejects.toThrowError(/writeFiles\(sandboxId="sbx_runtime"\)/);
+    await expect(p).rejects.toThrowError(/failed with status 400/);
+    // The credentials hint only makes sense for create/get; for runtime
+    // ops it would mislead operators away from the real cause.
+    await expect(p).rejects.not.toThrowError(/credentials problem/);
+  });
+
+  it("400 from executeCommand labels runCommand, no OIDC hint", async () => {
+    const adapter = adapterWithFailing(apiError(400));
+    const p = adapter.executeCommand("ls");
+    await expect(p).rejects.toThrowError(/runCommand\(sandboxId="sbx_runtime"\)/);
+    await expect(p).rejects.not.toThrowError(/credentials problem/);
+  });
+
+  it("500 from runtime op surfaces status + body but no credentials hint", async () => {
+    const adapter = adapterWithFailing(apiError(500, { err: "boom" }));
+    const p = adapter.readFile("/x");
+    await expect(p).rejects.toThrowError(/readFileToBuffer/);
+    await expect(p).rejects.toThrowError(/status 500/);
+    await expect(p).rejects.not.toThrowError(/credentials problem/);
   });
 });
 
