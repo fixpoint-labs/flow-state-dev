@@ -136,7 +136,18 @@ export function createScheduleTickHandler(
       try {
         const res = await fetch(url, {
           method: "POST",
-          headers: { Authorization: `Bearer ${secret}` }
+          headers: {
+            Authorization: `Bearer ${secret}`,
+            "Content-Type": "application/json"
+          },
+          // `row.nextFireAt` is the pre-advance fire timestamp returned
+          // by `claimDue`; passing it as `nominalFireTime` gives each
+          // legitimate fire a unique idempotency dedupeKey. Without it
+          // the framework's 60s cache collapses every dispatch for the
+          // same scheduleId, silently dropping short-interval schedules.
+          body: JSON.stringify({
+            nominalFireTime: new Date(row.nextFireAt).toISOString()
+          })
         });
         status = res.status;
       } catch (err) {
