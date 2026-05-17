@@ -52,6 +52,8 @@ const agent = generator({
 });
 ```
 
+`history: true` includes every prior conversational item in the session. To bound the window, pass an object form like `history: { limit: 8 }` — see [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing) for the turn-based semantics and the token-aware variant.
+
 What the framework handles for you:
 - **Prompt assembly** from four slots: system prompt, context entries, conversation history, and user message
 - **Tool execution loops** — tools are blocks, auto-compiled to provider-native format (see below)

@@ -11,7 +11,7 @@ import type {
   RetryPolicy
 } from "../types/block";
 import { asRuntime } from "../types/block";
-import type { ItemQuery } from "../types/scope";
+import type { ItemQuery, MessageLimit } from "../types/scope";
 import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
@@ -226,7 +226,7 @@ export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
   missing?: "error" | "empty";
-  limit?: number | { tokens: number };
+  limit?: MessageLimit;
   as?: string;
 };
 
