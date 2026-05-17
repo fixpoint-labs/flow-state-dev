@@ -11,7 +11,6 @@ import { z } from "zod";
 import {
   roundRobinStateSchema,
   type RoundRobinContributionsState,
-  type RoundRobinState,
 } from "../schemas";
 
 /** Coerce arbitrary roster-agent output into the `text` we store. */
@@ -50,9 +49,10 @@ export function createRecordContribution(opts: {
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
       const text = coerceText(input, opts.agentName, opts.warnedAgents);
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       const round = state.round;
 
+      // TODO: computed-key resource accessor — see round-robin follow-up
       const contribRef = (ctx.resources as any)[accessor];
       const current = contribRef.state as RoundRobinContributionsState;
       await contribRef.setState({

@@ -237,7 +237,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     outputSchema: z.object({ round: z.number() }),
     sequencerStateSchema: debateStateSchema,
     execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state as DebateState;
+      const state = ctx.sequencer!.state;
       const next = state.round + 1;
       await ctx.sequencer!.patchState({ round: next });
       return { round: next };
@@ -301,12 +301,12 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   pipeline = pipeline
     .loopBack(incrementRound.name, {
       when: (_out: unknown, ctx: any) =>
-        (ctx.sequencer!.state as DebateState).round < maxRounds,
+        ctx.sequencer!.state.round < maxRounds,
       maxIterations: Math.max(0, maxRounds - 1),
     })
     .then(judgeBlock)
     .map((value: unknown, ctx: any) => {
-      const state = ctx.sequencer!.state as DebateState;
+      const state = ctx.sequencer!.state;
       const transcriptState = ctx.resources?.transcript
         ?.state as DebateTranscriptState | undefined;
       const final: DebateRawOutput = {

@@ -139,6 +139,29 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 
+**Capability schema forwarding:**
+
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The four forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (from presets). Block-own declarations merge in; the block wins on key collision.
+
+```ts
+const myCap = defineCapability({
+  name: "my-cap",
+  sessionStateSchema: z.object({ ticker: z.string() }),
+  fns: (ctx) => ({ currentTicker: () => ctx.session.state.ticker }),
+});
+
+const myHandler = handler({
+  name: "my-handler",
+  uses: [myCap],
+  execute: async (_input, ctx) => {
+    // ctx.session.state.ticker — string, from the capability
+    const t = ctx.session.state.ticker;
+  },
+});
+```
+
+Forwarding is direct-only: inner capabilities used by `myCap` do not propagate to `myHandler`. Dynamic `uses` entries (functions) contribute at runtime but not to types.
+
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
 - `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.

@@ -10,7 +10,6 @@ import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
 import { z } from "zod";
 import {
   debateStateSchema,
-  type DebateState,
   type DebateTranscriptState,
 } from "../schemas";
 
@@ -46,7 +45,7 @@ export function createRecordArgument(opts: {
     sequencerStateSchema: debateStateSchema,
     execute: async (input, ctx) => {
       const text = coerceText(input, opts.agentName, opts.warnedAgents);
-      const state = ctx.sequencer!.state as DebateState;
+      const state = ctx.sequencer!.state;
       const round = state.round;
 
       const current = ctx.resources.transcript.state as DebateTranscriptState;

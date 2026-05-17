@@ -51,7 +51,7 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
         backing: "request",
         collectionId,
       });
-      const goal = (ctx.sequencer!.state.goal as string | undefined) ?? "";
+      const goal = ctx.sequencer!.state.goal ?? "";
       const completed = collection.list({ status: "completed" });
       const results = completed
         .map((t) => t.output)

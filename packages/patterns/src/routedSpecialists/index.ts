@@ -219,9 +219,7 @@ function buildDefaultController(config: {
               .join("\n")}`
           : "";
 
-      const iteration =
-        (ctx.sequencer?.state as RoutedSpecialistsControlState | undefined)
-          ?.iteration ?? 0;
+      const iteration = ctx.sequencer?.state?.iteration ?? 0;
 
       return [
         "You are a controller coordinating specialist agents over a shared workspace.",
@@ -379,7 +377,7 @@ export function routedSpecialists<
     outputSchema: controllerOutputSchema,
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state as RoutedSpecialistsControlState;
+      const state = ctx.sequencer!.state;
       const nextIteration = state.iteration + 1;
 
       let currentTaskId: string | undefined;
@@ -431,8 +429,9 @@ export function routedSpecialists<
 
   const recordError = handler({
     name: `${name}-dispatch-rescue`,
+    sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (error, ctx) => {
-      const state = ctx.sequencer!.state as RoutedSpecialistsControlState;
+      const state = ctx.sequencer!.state;
       const message = (error as Error).message;
       ctx.emitStatus(
         `[routedSpecialists:${name}] specialist failed: ${message}`
@@ -462,7 +461,7 @@ export function routedSpecialists<
     outputSchema: z.any(),
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state as RoutedSpecialistsControlState;
+      const state = ctx.sequencer!.state;
       const isRescued =
         typeof input === "object" &&
         input !== null &&
@@ -484,8 +483,7 @@ export function routedSpecialists<
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
-      const controlState =
-        ctx.sequencer!.state as RoutedSpecialistsControlState;
+      const controlState = ctx.sequencer!.state;
       ctx.emitComponent(
         "routedSpecialists",
         {
@@ -538,8 +536,7 @@ export function routedSpecialists<
     })
     .map((_value: unknown, ctx: any) => {
       const workspaceState = ctx.resources.workspace.state;
-      const controlState = ctx.sequencer!
-        .state as RoutedSpecialistsControlState;
+      const controlState = ctx.sequencer!.state;
       const collection = getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });
       const history = completed
@@ -561,6 +558,6 @@ export function routedSpecialists<
     });
 
   return finalSynthesizer
-    ? base.then(finalSynthesizer as BlockDefinition<any, any>)
+    ? base.then(finalSynthesizer)
     : base;
 }

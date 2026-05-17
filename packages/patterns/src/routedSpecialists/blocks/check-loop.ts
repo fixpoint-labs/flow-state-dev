@@ -14,7 +14,7 @@ export function createCheckLoop(name: string) {
     outputSchema: z.object({ continue: z.boolean() }),
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state as { done: boolean };
+      const state = ctx.sequencer!.state;
       return { continue: !state.done };
     },
   });
