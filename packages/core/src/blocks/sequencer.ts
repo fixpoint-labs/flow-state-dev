@@ -820,7 +820,7 @@ function runSequencerOperations(
   };
 }
 
-function createSequencer<TInput, TOutput>(
+function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | undefined = undefined>(
   config: SequencerConfig<any>,
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
@@ -829,7 +829,7 @@ function createSequencer<TInput, TOutput>(
   accumulatedResources?: DeclaredResources,
   capabilityRefs?: import("../capability/types").CapabilityRef[],
   accumulatedRequiresOrg?: boolean
-): SequencerDefinition<TInput, TOutput> {
+): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
   // individual blocks in the chain already validate their own outputs.
@@ -893,8 +893,8 @@ function createSequencer<TInput, TOutput>(
     newInputSchema?: ZodTypeAny,
     newResources?: DeclaredResources,
     newRequiresOrg?: boolean
-  ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
+  ): SequencerDefinition<TInput, TNext, TStateSchema> =>
+    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -908,11 +908,11 @@ function createSequencer<TInput, TOutput>(
     return undefined;
   };
 
-  const definition: SequencerDefinition<TInput, TOutput> = Object.assign(baseBlock, {
+  const definition = Object.assign(baseBlock, {
     then<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg2?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       // Path 1: then(factory, inlineConfig) — inline block definition
       if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
         const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
@@ -962,11 +962,11 @@ function createSequencer<TInput, TOutput>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg3?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TOutput | TNext> {
+    ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
       // Path 1: thenIf(condition, factory, inlineConfig) — inline block definition
       if (typeof arg2 === "function" && !isBlockDefinition(arg2) && arg3 !== undefined && isInlineConfig(arg3)) {
         const block = buildInlineBlock(arg2 as InlineBlockFactory, arg3 as Record<string, unknown>, lastOutputSchema);
-        return createSequencer<TInput, TOutput | TNext>(
+        return createSequencer<TInput, TOutput | TNext, TStateSchema>(
           config,
           [
             ...operations,
@@ -1000,7 +1000,7 @@ function createSequencer<TInput, TOutput>(
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
-      return createSequencer<TInput, TOutput | TNext>(
+      return createSequencer<TInput, TOutput | TNext, TStateSchema>(
         config,
         [
           ...operations,
@@ -1029,7 +1029,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext> {
+    map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext, TStateSchema> {
       return extend<TNext>(
         {
           name: "map",
@@ -1046,7 +1046,7 @@ function createSequencer<TInput, TOutput>(
     parallel<TSteps extends Record<string, ParallelStep<TOutput>>>(
       steps: TSteps,
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema> {
       // Build composite output schema: { key: step.outputSchema, ... }
       const schemaShape: Record<string, ZodTypeAny> = {};
       const stepBlocks: BlockDefinition<any, any>[] = [];
@@ -1138,7 +1138,7 @@ function createSequencer<TInput, TOutput>(
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | { maxConcurrency?: number },
       arg3?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, TStepOut[]> {
+    ): SequencerDefinition<TInput, TStepOut[], TStateSchema> {
       const hasConnector =
         arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
@@ -1220,7 +1220,7 @@ function createSequencer<TInput, TOutput>(
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | { concurrency?: number },
       arg3?: { concurrency?: number }
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector =
         arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
@@ -1314,7 +1314,7 @@ function createSequencer<TInput, TOutput>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
@@ -1364,7 +1364,7 @@ function createSequencer<TInput, TOutput>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
@@ -1413,7 +1413,7 @@ function createSequencer<TInput, TOutput>(
         when?: (value: unknown, ctx: BlockContext) => boolean | Promise<boolean>;
         maxIterations: number;
       }
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: `loopBack:${targetStepName}`,
@@ -1441,7 +1441,7 @@ function createSequencer<TInput, TOutput>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg2?: BlockDefinition<any, any> | WorkOptions,
       arg3?: WorkOptions
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector = isBlockDefinition(arg2);
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn>) : undefined;
       const block = (hasConnector ? arg2 : arg1) as BlockDefinition<any, any>;
@@ -1479,7 +1479,7 @@ function createSequencer<TInput, TOutput>(
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any> | WorkOptions,
       arg4?: WorkOptions
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector = isBlockDefinition(arg3);
       const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
       const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
@@ -1517,7 +1517,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
+    waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: "waitForWork",
@@ -1580,7 +1580,7 @@ function createSequencer<TInput, TOutput>(
         | ConnectorFn<TOutput, TStepIn>
         | InlineBlockFactory,
       arg2?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Path 1: tap(factory, inlineConfig) — inline block as side effect
       if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
         const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
@@ -1654,7 +1654,7 @@ function createSequencer<TInput, TOutput>(
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
         | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const tapTarget = (arg3 ?? arg2) as
         | BlockDefinition<any, any>
@@ -1699,7 +1699,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput> {
+    rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Collect resources from rescue handler blocks
       const rescueResources = handlers.reduce<DeclaredResources | undefined>(
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
@@ -1710,12 +1710,12 @@ function createSequencer<TInput, TOutput>(
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
       branches: TBranches
-    ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>> {
+    ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema> {
       // Branch output schema is ambiguous (depends on which branch matches at runtime),
       // so we take the first branch block's outputSchema as a best-effort propagation.
       const branchEntries = Object.values(branches) as Array<BranchStep<TOutput>>;
@@ -1763,7 +1763,7 @@ function createSequencer<TInput, TOutput>(
     thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
       steps: [...TSteps],
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema> {
       const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
         isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
       );
@@ -1823,7 +1823,7 @@ function createSequencer<TInput, TOutput>(
 
     thenAny(
       blocks: BlockDefinition<any, any>[]
-    ): SequencerDefinition<TInput, unknown> {
+    ): SequencerDefinition<TInput, unknown, TStateSchema> {
       return extend<unknown>(
         {
           name: "thenAny",
@@ -1864,7 +1864,7 @@ function createSequencer<TInput, TOutput>(
     race(
       blocks: BlockDefinition<any, any>[],
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, unknown> {
+    ): SequencerDefinition<TInput, unknown, TStateSchema> {
       return extend<unknown>(
         {
           name: "race",
@@ -1984,7 +1984,7 @@ function createSequencer<TInput, TOutput>(
 
     exitIf(
       condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: "exitIf",
@@ -2003,7 +2003,7 @@ function createSequencer<TInput, TOutput>(
     throwIf(
       condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       error: Error | ((value: TOutput, ctx: BlockContext) => Error | Promise<Error>)
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: "throwIf",
@@ -2019,7 +2019,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput, TStateSchema> {
       const connectOp: SequencerOperation = {
         name: `${config.name}/connect-input`,
         run: async (value, ctx) => {
@@ -2031,7 +2031,7 @@ function createSequencer<TInput, TOutput>(
         }
       };
 
-      return createSequencer<TFrom, TOutput>(
+      return createSequencer<TFrom, TOutput, TStateSchema>(
         { ...config, inputSchema: undefined },
         [connectOp, ...operations],
         rescueHandlers,
@@ -2042,18 +2042,19 @@ function createSequencer<TInput, TOutput>(
     }
   });
 
-  return definition;
+  return definition as unknown as SequencerDefinition<TInput, TOutput, TStateSchema>;
 }
 
 export function sequencer<
-  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  const TInputSchema extends ZodTypeAny = ZodTypeAny,
+  const TStateSchema extends ZodTypeAny | undefined = undefined,
   TInput = z.infer<TInputSchema>,
 >(
-  config: SequencerConfig<TInputSchema, TInput>
-): SequencerDefinition<TInput, TInput> {
+  config: SequencerConfig<TInputSchema, TInput, TStateSchema>
+): SequencerDefinition<TInput, TInput, TStateSchema> {
   const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
 
-  return createSequencer<TInput, TInput>(
+  return createSequencer<TInput, TInput, TStateSchema>(
     config as SequencerConfig<any>,
     [],
     [],
