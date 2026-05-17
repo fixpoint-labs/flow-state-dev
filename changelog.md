@@ -15,6 +15,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - `enrichVercelError` now wraps every adapter method, not just `Sandbox.create()`/`get()`. Runtime calls (`writeFile`, `executeCommand`, `readFile`) used to pass raw SDK errors through, so a 400 from `/fs/write` surfaced as `Status code 400 is not ok` with no body — the useful detail in `err.json.error.message` (e.g. tar extraction failures) went only to the deploy logs.
 - Cold-path bash block names and the ensure-sandbox status message now include the provider type, so the trace makes it obvious which sandbox a request is using (`bash-vercel-ensure-sandbox`, `bash-vercel-write-file-exec`, etc.). Warm-path leaf names are unchanged.
 
+### Trading-desk: Company Profile analyst grounds the desk in what the business actually is (FIX-606)
+
+- New fifth Phase 1 analyst (`companyProfileAnalyst`) runs in parallel with the existing four and publishes a memo describing the underlying business: name, sector, industry, country/exchange/currency, business description, and rough scale (market cap, employees, IPO date). Downstream phases pick it up automatically via the `tradingDesk` capability's `phase1Memos` formatter.
+- Renderer, not synthesizer. The analyst is given structured fields from a deterministic provider fetch and constrained at the prompt level to render them — every body claim must trace to a field in `<data>`, with a "quote one figure verbatim" requirement as a structural defense against fabrication. The shared `<grounding>` clause from FIX-605 reinforces the boundary.
+- Provider chain reuses what's already wired: Finnhub `/stock/profile2` preferred (no new key, already called by `get_fundamentals`), Yahoo `quoteSummary` (assetProfile + summaryDetail) fallback for sector and business description. When both providers fail, the analyst emits a memo whose body explicitly states identity could not be resolved rather than inventing the company.
+- Fixture coverage for the three pinned tickers (NVDA, AAPL, JPM) at the `2026-05-06` snapshot.
+- README, walkthrough, and internal design doc updated to reflect the five-analyst fan-out and the grounding analyst's role.
+
+
 ## 2026-05-16
 
 ### Sequencer DSL: `.throwIf(condition, error)` guard primitive
@@ -228,6 +237,14 @@ applicable to any future bind-mount provider:
 - New advanced docs page on error handling, cross-linked from the rescue and DevTool pages.
 
 ## 2026-05-11
+
+### Scheduled actions: schedule index, auto-mirroring, and Vercel helpers (FIX-581)
+
+- New `ScheduleIndex` interface in `@flow-state-dev/scheduled` for store-backed schedule fan-out. Implementations track `(userId, key, cron, timezone, nextFireAt)` rows and expose `upsert`, `remove`, and `claimDue` (atomic claim-and-advance).
+- `@flow-state-dev/store-postgres` and `@flow-state-dev/store-sqlite` each ship a factory (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`) that plugs directly into the interface.
+- `defineScheduleCollection` in `@flow-state-dev/scheduled` wraps `defineResourceCollection` with the standard schedule state schema and mirrors every create, update, and delete into an attached index automatically. Rows with `enabled: false` are removed from the index, so disabling a schedule stops it firing without deleting the record.
+- `@flow-state-dev/vercel/schedules` ships `createGetToPostCronShim` and `createScheduleTickHandler`. Vercel hosts no longer need to hand-roll the GET-to-POST adapter or the polling tick; both helpers authenticate with constant-time bearer comparison and forward the same secret to the dispatch endpoint.
+- Vercel Cron and dynamic-schedules guides updated to recommend the helpers; hand-rolled patterns are preserved as "Advanced" subsections for custom auth, storage, or retry requirements.
 
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)
 

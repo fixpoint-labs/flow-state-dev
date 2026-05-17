@@ -5,16 +5,16 @@
  * Was originally a printf-debug to investigate "no memos in DevTool".
  * Findings (preserved as assertions below):
  *
- *  - All 7 memo collection instances ARE persisted to
+ *  - All 8 memo collection instances ARE persisted to
  *    `session.resources["memos/{phase}/{name}"]` with their full state
  *    (status, label, headline, rating, body, metrics, etc.). The framework's
  *    in-memory store path is sound.
  *  - The DevTool's session-context panel shows the memos collection as
- *    "0/7 items" because `memosCollection` declares no `prefetchWindow` —
- *    the snapshot reports a total `count` of 7 but inlines 0 item bodies.
+ *    "0/8 items" because `memosCollection` declares no `prefetchWindow` —
+ *    the snapshot reports a total `count` of 8 but inlines 0 item bodies.
  *    That display is by design (FIX-427 prefetched-window contract), not a
  *    persistence bug. To make the bodies appear inline in the DevTool,
- *    set `prefetchWindow: 7` (or higher) on `memosCollection`.
+ *    set `prefetchWindow: 8` (or higher) on `memosCollection`.
  *  - The shared `phase2Contributions` `DefinedResource` is persisted to a
  *    single slot regardless of how many accessor names register it. Both
  *    the round-robin's `contributions` accessor and the flow-level
@@ -117,7 +117,7 @@ function rmStructuredOutput() {
 }
 
 describe("session resources are persisted after analyze run", () => {
-  it("layout: 7 memo keys + single shared contributions slot", async () => {
+  it("layout: 8 memo keys + single shared contributions slot", async () => {
     const stores = createInMemoryStores();
     const sessionId = "layout-session";
 
@@ -150,6 +150,10 @@ describe("session resources are persisted after analyze run", () => {
           name: "technical-analyst-generator",
           script: [analystThesis("Technical", "h4")],
         }),
+        "company-profile-analyst-generator": mockGenerator({
+          name: "company-profile-analyst-generator",
+          script: [analystThesis("Company Profile", "h5")],
+        }),
         "p2-research-debate-roster-bullResearcher": mockGenerator({
           name: "p2-research-debate-roster-bullResearcher",
           script: [{ text: "Bull r1." }],
@@ -180,12 +184,13 @@ describe("session resources are persisted after analyze run", () => {
     const session = await stores.session.get(sessionId);
     const resources = (session?.resources ?? {}) as Record<string, unknown>;
 
-    // The seven memo collection instances each live at their own storage key.
+    // The eight memo collection instances each live at their own storage key.
     const memoKeys = [
       "memos/p1/fundamentals",
       "memos/p1/sentiment",
       "memos/p1/news",
       "memos/p1/technical",
+      "memos/p1/company-profile",
       "memos/p2/bull",
       "memos/p2/bear",
       "memos/p2/research-manager",

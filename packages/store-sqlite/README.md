@@ -54,6 +54,23 @@ WAL (Write-Ahead Logging) mode is enabled by default. This allows concurrent rea
 - `foreign_keys = ON`
 - `temp_store = MEMORY`
 
+## Schedule index
+
+`createSQLiteScheduleIndex(db)` returns a `ScheduleIndex` implementation backed by the `schedule_index` table. Pair it with `defineScheduleCollection` from `@flow-state-dev/scheduled` to auto-mirror dynamic schedules, and a cron tick that dispatches the due rows.
+
+```ts
+import Database from "better-sqlite3";
+import { createSQLiteScheduleIndex, initializeSchema } from "@flow-state-dev/store-sqlite";
+
+const db = new Database("./data/flowstate.db");
+initializeSchema(db);
+const index = createSQLiteScheduleIndex(db);
+```
+
+`claimDue` runs inside `db.transaction` (BEGIN IMMEDIATE), so claim+advance is serialized against other writers. SQLite is single-writer; you can run the tick on a single node without extra coordination.
+
+See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
+
 ## Interrupted Request Recovery
 
 This adapter fully supports the interrupted request recovery feature (FIX-294). The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.

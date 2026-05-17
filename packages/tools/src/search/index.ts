@@ -68,3 +68,8 @@ export type {
   SearchInput,
 } from "./types";
 export { searchInputSchema, searchOutputSchema, searchResultSchema, searchProviders } from "./types";
+
+/** Resolve the active provider adapter + API key from `SearchConfig` + env
+ *  vars. Exposed for callers that need to run a search outside the
+ *  `search()` tool block (e.g. inside another handler's `execute`). */
+export { resolveProvider } from "./resolver";

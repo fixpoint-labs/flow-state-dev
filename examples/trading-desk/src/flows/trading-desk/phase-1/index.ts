@@ -9,6 +9,7 @@
  */
 import { sequencer } from "@flow-state-dev/core";
 import {
+  companyProfileAnalyst,
   fundamentalsAnalyst,
   newsAnalyst,
   sentimentAnalyst,
@@ -20,7 +21,7 @@ export const phase1Pipeline = sequencer({
   name: "phase-1-analysts",
   container: {
     component: "analyst-phase",
-    label: "Phase 1 — Analyst Fan-out begins. 4 analysts dispatched in parallel.",
+    label: "Phase 1 — Analyst Fan-out begins. 5 analysts dispatched in parallel.",
   },
 })
   .tap(setupPhase1Memos)
@@ -30,6 +31,7 @@ export const phase1Pipeline = sequencer({
       sentiment: sentimentAnalyst,
       news: newsAnalyst,
       technical: technicalAnalyst,
+      companyProfile: companyProfileAnalyst,
     },
     { maxConcurrency: 4 },
   );

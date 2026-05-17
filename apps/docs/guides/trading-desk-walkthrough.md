@@ -5,7 +5,7 @@ title: A walkthrough of the Trading Desk example
 
 # A walkthrough of the Trading Desk example
 
-The Trading Desk example is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Four analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call.
+The Trading Desk example is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Five analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call.
 
 It is a teaching demo. The agents reason in plain English about stocks because that domain has public, structured prior art to model against. Don't trade real money on it.
 
@@ -13,7 +13,7 @@ This walkthrough names the framework pieces the example uses, in roughly the ord
 
 ## The pipeline at a glance
 
-Phase 1 fans out four analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines, macro indicators, and 90 days of insider Form 4 transactions.
+Phase 1 fans out five analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines, macro indicators, and 90 days of insider Form 4 transactions. The company-profile analyst renders structured business identity, sector, industry, description, and scale, from a deterministic provider fetch, so the rest of the pipeline reasons from data instead of training priors.
 
 Phase 2 runs a bounded bull-versus-bear loop. A research manager synthesizes the debate into an `InvestmentThesis` with explicit `unresolvedDisagreements`.
 
@@ -24,7 +24,7 @@ Phase 4 runs three risk officers in round-robin order, then a consolidator emits
 Phase 5 reads everything upstream and emits a `PortfolioDecision` with a five-tier final rating, accepted-or-rejected risk adjustments, key dependencies, and a rationale that cites each stage.
 
 ```
-analysts (x4 in parallel)
+analysts (x5 in parallel)
   → bull/bear debate → research manager
     → trader
       → risk officers (x3 round-robin) → risk consolidator
@@ -37,7 +37,7 @@ Each arrow above is a `.then()` in a sequencer. The whole flow is one chain.
 
 A sequencer is the composition primitive. It takes blocks and chains them. The `.parallel()` step on a sequencer runs a set of branches concurrently and produces a single combined output.
 
-Phase 1 uses one `.parallel()` step with four branches. Each branch is itself a sub-sequencer that mirrors the same shape:
+Phase 1 uses one `.parallel()` step with five branches. Each branch is itself a sub-sequencer that mirrors the same shape:
 
 ```ts
 sequencer({ name: "analyst-fundamentals" })
@@ -53,11 +53,11 @@ A few teaching moments live in that one declaration.
 
 The analyst is not a special "agent" type. It's a sequencer composed of a handler (the silent state-mutating block kind), a generator (the LLM-calling block kind), and another handler. Any block composes with any other. There is no agent-versus-workflow split.
 
-The four memo slots get pre-created in `pending` by a setup tap that runs before the parallel block. The right-pane navigator sees four placeholder cards from the start of the phase, not just as each analyst completes. That kind of "show the work as it happens" UI falls out of pre-creating the resource entries.
+The five memo slots get pre-created in `pending` by a setup tap that runs before the parallel block. The right-pane navigator sees five placeholder cards from the start of the phase, not just as each analyst completes. That kind of "show the work as it happens" UI falls out of pre-creating the resource entries.
 
 Resources are the live data layer. Each analyst writes its typed memo to a session-scoped resource collection. React reads it through `useResourceCollectionItem`. The framework handles the SSE plumbing; your component is a renderer.
 
-The per-branch `.rescue()` matters too. If the news fetch fails, only the news memo flips to `error`. The other three analysts still complete.
+The per-branch `.rescue()` matters too. If the news fetch fails, only the news memo flips to `error`. The other four analysts still complete.
 
 ## Phase 2: Round Robin with a synthesizer
 
@@ -116,7 +116,7 @@ pnpm --filter @flow-state-dev/example-trading-desk dev
 
 The top bar exposes a ticker input, a date, a cost preset (`fast` or `full`), and a data source toggle (`fixture` or `live`). A disclaimer band sits above the transcript: this is a demo, not investment advice.
 
-On a fresh run, you'll see the four analyst cards appear in `pending` right away. They flip to `writing` as each analyst starts its generator call, then to `done` as the memos commit. The bull and bear cards follow. Then the trade proposal, then the three risk persona cards, then the consolidated risk assessment, then the PM Hero on the right.
+On a fresh run, you'll see the five analyst cards appear in `pending` right away. They flip to `writing` as each analyst starts its generator call, then to `done` as the memos commit. The bull and bear cards follow. Then the trade proposal, then the three risk persona cards, then the consolidated risk assessment, then the PM Hero on the right.
 
 The `fast` preset completes well under a minute on one provider key. `full` takes longer because the debate runs two rounds against larger models.
 
