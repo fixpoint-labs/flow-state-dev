@@ -228,6 +228,14 @@ applicable to any future bind-mount provider:
 
 ## 2026-05-11
 
+### Scheduled actions: schedule index, auto-mirroring, and Vercel helpers (FIX-581)
+
+- New `ScheduleIndex` interface in `@flow-state-dev/scheduled` for store-backed schedule fan-out. Implementations track `(userId, key, cron, timezone, nextFireAt)` rows and expose `upsert`, `remove`, and `claimDue` (atomic claim-and-advance).
+- `@flow-state-dev/store-postgres` and `@flow-state-dev/store-sqlite` each ship a factory (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`) that plugs directly into the interface.
+- `defineScheduleCollection` in `@flow-state-dev/scheduled` wraps `defineResourceCollection` with the standard schedule state schema and mirrors every create, update, and delete into an attached index automatically. Rows with `enabled: false` are removed from the index, so disabling a schedule stops it firing without deleting the record.
+- `@flow-state-dev/vercel/schedules` ships `createGetToPostCronShim` and `createScheduleTickHandler`. Vercel hosts no longer need to hand-roll the GET-to-POST adapter or the polling tick; both helpers authenticate with constant-time bearer comparison and forward the same secret to the dispatch endpoint.
+- Vercel Cron and dynamic-schedules guides updated to recommend the helpers; hand-rolled patterns are preserved as "Advanced" subsections for custom auth, storage, or retry requirements.
+
 ### DevTool full resource visibility, independent of prefetch / client config (FIX-579)
 
 - New privileged debug read surface under `/api/flows/sessions/:id/debug/resources*` on `@flow-state-dev/server`. Returns the full server-side resource layer for a session — every storage key, raw state, content metadata, and a per-entry `clientView` showing what production clients would receive after `client.data` projection.

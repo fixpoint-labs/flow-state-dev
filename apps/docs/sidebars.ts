@@ -71,7 +71,14 @@ const sidebars: SidebarsConfig = {
             "server/setup",
             "server/authentication",
             "server/mcp",
-            "server/scheduled",
+            {
+              type: "category",
+              label: "Scheduled actions",
+              items: [
+                "server/scheduled",
+                "server/schedule-index",
+              ],
+            },
             "server/connection-resilience",
             "persistence/overview",
           ],

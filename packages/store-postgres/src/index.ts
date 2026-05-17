@@ -16,6 +16,7 @@ import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/server";
+import { createPgPoolTx } from "./tx";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
 
@@ -83,6 +84,9 @@ export async function createPostgresStores(
       async query(text: string, values?: unknown[]) {
         const result = await pool.query(text, values);
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
       }
     };
     closePool = async () => {
@@ -139,6 +143,9 @@ export async function createPostgresStores(
       async query(text: string, values?: unknown[]) {
         const result = await pool.query(text, values);
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
       }
     };
     closePool = async () => {
@@ -218,4 +225,6 @@ export {
 };
 
 export { initializeSchema } from "./schema";
-export type { PostgresStoreOptions, PoolConfig, QueryExecutor } from "./types";
+export { createPostgresScheduleIndex } from "./schedule-index";
+export { createPgPoolTx } from "./tx";
+export type { PostgresStoreOptions, PoolConfig, QueryExecutor, TxClient } from "./types";

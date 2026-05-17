@@ -172,9 +172,28 @@ const SEQUENCER_CHECKPOINTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id)"
 ];
 
-// FIX-402: per-request runOnce result store. Identity is (request_id, key);
-// inserts upsert on the primary key. `value` is JSONB so adapters can
-// roundtrip arbitrary JSON-serializable results without ALTER TABLE.
+// Optional schedule index for `createPostgresScheduleIndex`. Keyed by
+// (user_id, key) — a derived read-model of per-user schedule resource
+// collections. `next_fire_at` is ms since epoch and is scanned/advanced
+// inside one transaction by claimDue (SELECT ... FOR UPDATE SKIP LOCKED).
+const SCHEDULE_INDEX_TABLE = `
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  cron         TEXT NOT NULL,
+  timezone     TEXT,
+  next_fire_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+`;
+
+const SCHEDULE_INDEX_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at)"
+];
+
+// Per-request runOnce result store. Identity is (request_id, key); inserts
+// upsert on the primary key. `value` is JSONB so adapters can roundtrip
+// arbitrary JSON-serializable results without ALTER TABLE.
 const REQUEST_RUNONCE_TABLE = `
 CREATE TABLE IF NOT EXISTS request_runonce (
   request_id TEXT NOT NULL,
@@ -261,7 +280,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       RESOURCE_CONTENT_TABLE,
       REQUEST_EVENTS_TABLE,
       REQUEST_RUNONCE_TABLE,
-      SEQUENCER_CHECKPOINTS_TABLE
+      SEQUENCER_CHECKPOINTS_TABLE,
+      SCHEDULE_INDEX_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -272,7 +292,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...RESOURCE_CONTENT_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,
-      ...SEQUENCER_CHECKPOINTS_INDEXES
+      ...SEQUENCER_CHECKPOINTS_INDEXES,
+      ...SCHEDULE_INDEX_INDEXES
     ]
   };
 }

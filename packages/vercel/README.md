@@ -142,6 +142,37 @@ The subpath is zero-runtime — it uses `import type` for `pg`, so importing it 
 
 For first-request cold-start latency (typical 1–3s after wake-up), swap in Neon's WebSocket `Client` using `pg.PoolConfig.Client`. See the `@flow-state-dev/store-postgres` README for the recipe.
 
+## Scheduled actions
+
+`@flow-state-dev/vercel/schedules` ships two helpers for wiring Vercel Cron to the scheduled-actions transport.
+
+`createGetToPostCronShim` turns the GET hit Vercel Cron sends into the POST the framework dispatch endpoint expects:
+
+```ts title="app/api/cron/billing/monthly-invoices/route.ts"
+import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
+
+export const GET = createGetToPostCronShim({
+  flowKind: "billing",
+  scheduleId: "monthly-invoices"
+});
+```
+
+`createScheduleTickHandler` runs once per cron beat, claims due rows from a `ScheduleIndex`, and dispatches each with bounded concurrency:
+
+```ts title="app/api/cron/schedule-tick/route.ts"
+import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
+import { scheduleIndex } from "@/lib/schedule-index";
+
+export const GET = createScheduleTickHandler({
+  flowKind: "reminders",
+  index: scheduleIndex
+});
+```
+
+Both helpers authenticate inbound requests via constant-time bearer compare against `CRON_SECRET` and forward the same bearer to the dispatch endpoint. Runtime deps stay zero — only `@flow-state-dev/scheduled` type imports cross the boundary.
+
+See [Scheduled actions on Vercel Cron](https://flowstate.dev/guides/scheduled-vercel-cron) for the full setup.
+
 ## Scripts
 
 ```bash
