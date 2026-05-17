@@ -80,7 +80,15 @@ export interface CreateBashBlocksOptions {
   /** Sandbox provider. Default: `{ type: "local" }`. */
   provider?: SandboxProvider;
 
-  /** Virtual workspace root visible to the LLM. Default: `"/workspace"`. */
+  /**
+   * Virtual workspace root visible to the LLM. Defaults to `"/workspace"`
+   * for most providers; for the Vercel adapter the default is
+   * `"/vercel/sandbox/workspace"` because the sandbox's `vercel-sandbox`
+   * runtime user can't `mkdir` outside `/vercel/sandbox` (its home).
+   * `writeFiles` extracts tarballs at `/`, so any absolute path outside
+   * the user's home fails with `Cannot mkdir: Permission denied` at tar
+   * extraction time.
+   */
   destination?: string;
 
   /**
@@ -189,6 +197,25 @@ const TMP_DIR = "tmp";
 /** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
 function defaultMoatWorkspace(sessionId: string): string {
   return path.join(process.cwd(), ".fsdev", "workspaces", "session", sessionId);
+}
+
+/**
+ * Provider-aware default for the virtual workspace root.
+ *
+ * Vercel Sandbox runs as the unprivileged `vercel-sandbox` user whose home
+ * is `/vercel/sandbox`. The SDK's `writeFiles` extracts its tarball at `/`
+ * (see `@vercel/sandbox`'s `Sandbox.writeFiles`), so any absolute path
+ * outside the user's home triggers `tar: <dir>: Cannot mkdir: Permission
+ * denied`. Anchor the workspace inside the home so tar's intermediate
+ * `mkdir`s land somewhere the user owns. Subsequent shell commands run
+ * with `cwd = /vercel/sandbox` so `cd /vercel/sandbox/workspace` works.
+ *
+ * Other providers default to `/workspace` to preserve the existing
+ * convention.
+ */
+export function defaultDestinationFor(provider: SandboxProvider | undefined): string {
+  if (provider?.type === "vercel") return "/vercel/sandbox/workspace";
+  return "/workspace";
 }
 
 /**
@@ -660,7 +687,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     collections,
     exclude,
     provider = { type: "local" },
-    destination = "/workspace",
+    destination = defaultDestinationFor(options.provider),
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 

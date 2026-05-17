@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { resolveVercelSandbox } from "../src/bash/adapters/vercel";
+import { defaultDestinationFor } from "../src/bash/blocks";
 import type {
   VercelSandboxClassLike,
   VercelSandboxInstance,
@@ -126,6 +127,24 @@ describe("resolveVercelSandbox: OIDC context error enrichment (FIX-587)", () => 
     await expect(
       resolveVercelSandbox({ Sandbox: fakeSandboxClass(err) }),
     ).rejects.toThrowError(/no OIDC token available/);
+  });
+});
+
+describe("defaultDestinationFor", () => {
+  it("vercel provider anchors the workspace under /vercel/sandbox", () => {
+    // Vercel Sandbox's writeFiles extracts tarballs at / and the runtime
+    // user can only mkdir under its home (/vercel/sandbox). A destination
+    // outside the home fails with `tar: <dir>: Cannot mkdir: Permission
+    // denied`. Verify the default keeps the workspace inside the home.
+    expect(
+      defaultDestinationFor({ type: "vercel", Sandbox: {} as never }),
+    ).toBe("/vercel/sandbox/workspace");
+  });
+
+  it("non-vercel providers keep the conventional /workspace", () => {
+    expect(defaultDestinationFor({ type: "local" })).toBe("/workspace");
+    expect(defaultDestinationFor({ type: "just-bash" })).toBe("/workspace");
+    expect(defaultDestinationFor(undefined)).toBe("/workspace");
   });
 });
 

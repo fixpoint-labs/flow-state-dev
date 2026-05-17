@@ -32,7 +32,7 @@
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SandboxProvider } from "./types";
-import { createBashBlocks, releaseBashSandbox, type BashCollectionSpec } from "./blocks";
+import { createBashBlocks, defaultDestinationFor, releaseBashSandbox, type BashCollectionSpec } from "./blocks";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ export interface CreateBashCapabilityOptions {
   /** Sandbox provider. Default: `{ type: "just-bash" }`. */
   provider?: SandboxProvider;
 
-  /** Virtual workspace root. Default: `"/workspace"`. */
+  /** Virtual workspace root. Default: `"/workspace"` for most providers, `"/vercel/sandbox/workspace"` for the Vercel adapter (required for tarball-extract permissions). */
   destination?: string;
 
   /** Creates initial resource state for new files. */
@@ -225,7 +225,7 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
     createState,
   });
 
-  const resolvedDestination = destination ?? "/workspace";
+  const resolvedDestination = destination ?? defaultDestinationFor(provider);
 
   const capability = defineCapability({
     name: "bash",
