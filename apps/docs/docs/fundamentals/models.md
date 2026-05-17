@@ -460,7 +460,7 @@ To turn thinking on for Anthropic, set a budget on `providerOptions.anthropic.th
 ```ts
 const reasoner = generator({
   name: "reasoner",
-  model: "anthropic/claude-opus-4-6",
+  model: "anthropic/claude-opus-4.7",
   providerOptions: { anthropic: { thinking: { budgetTokens: 10000 } } },
   prompt: "Work through the problem step by step.",
 });
@@ -471,7 +471,7 @@ For OpenAI, use `reasoning_effort`:
 ```ts
 const reasoner = generator({
   name: "reasoner",
-  model: "openai/gpt-5.4",
+  model: "openai/gpt-5.5",
   providerOptions: { openai: { reasoning_effort: "high" } },
   prompt: "Work through the problem step by step.",
 });
@@ -482,7 +482,7 @@ For Google, use `thinkingConfig`:
 ```ts
 const reasoner = generator({
   name: "reasoner",
-  model: "google/gemini-3.1-pro-preview",
+  model: "google/gemini-3.1-pro",
   providerOptions: { google: { thinkingConfig: { thinkingBudget: 8000 } } },
   prompt: "Work through the problem step by step.",
 });
@@ -492,7 +492,7 @@ The shapes above match what the AI SDK accepts for each provider. Verify against
 
 ### The `thinking` model group
 
-For apps using `createFSDProvider`, the built-in `defaultGroups.thinking` group bundles a three-model fallback chain (`anthropic/claude-opus-4-6`, `openai/gpt-5.4`, `google/gemini-3.1-pro-preview`) with the Anthropic thinking budget already set. Reach for it when you want a thinking-capable model without picking one by hand. See [Model Groups](/docs/advanced/model-groups) for the full group system.
+For apps using `createFSDProvider`, the built-in `defaultGroups.thinking` group bundles a three-model fallback chain across Anthropic, OpenAI, and Google with the Anthropic thinking budget already set. Reach for it when you want a thinking-capable model without picking one by hand. See [Model Groups](/docs/advanced/model-groups) for the full group system.
 
 ### Forward note: normalized reasoning levels
 
