@@ -79,7 +79,7 @@ export function createVercelAdapter(
     },
 
     async stop(): Promise<void> {
-      return wrap(() => sandbox.stop());
+      await wrap(() => sandbox.stop());
     },
   };
 }
