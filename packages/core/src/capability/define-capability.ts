@@ -23,6 +23,10 @@ export function defineCapability<
   const TTargetSchemas extends Record<string, import("zod").ZodTypeAny> | undefined = undefined,
   const TSequencerStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TPresetKeys extends string = never,
+  const TSessionStateType = unknown,
+  const TResourcesType = unknown,
+  const TTargetStatesType = unknown,
+  const TSequencerStateType = unknown,
 >(
   config: CapabilityConfig<
     TName,
@@ -33,6 +37,14 @@ export function defineCapability<
     TSequencerStateSchema
   > & {
     presets?: { [K in TPresetKeys]: PresetDef<InferSessionState<TSessionStateSchema>> | string[] } & { default?: string[] };
+    // Capture the literal override type via const generics so the
+    // InferCapability* utilities can read it via `infer O`. Without this,
+    // the field on CapabilityConfig is typed `unknown` and `infer` widens
+    // to `unknown`, which makes the override branch a no-op.
+    sessionStateType?: TSessionStateType;
+    resourcesType?: TResourcesType;
+    targetStatesType?: TTargetStatesType;
+    sequencerStateType?: TSequencerStateType;
   }
 ): DefinedCapability<
   TName,
@@ -43,7 +55,12 @@ export function defineCapability<
   TResources,
   TTargetSchemas,
   TSequencerStateSchema
-> {
+> & {
+  readonly sessionStateType?: TSessionStateType;
+  readonly resourcesType?: TResourcesType;
+  readonly targetStatesType?: TTargetStatesType;
+  readonly sequencerStateType?: TSequencerStateType;
+} {
   if (!config.name || config.name.trim() === "") {
     throw new Error("defineCapability() requires a non-empty name");
   }

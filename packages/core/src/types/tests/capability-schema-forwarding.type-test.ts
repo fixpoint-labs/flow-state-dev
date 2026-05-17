@@ -29,6 +29,11 @@ import type {
 import type { StateRef } from "../block";
 import type { ResourceRef } from "../resource";
 
+// ── Minimal type-level assertion helpers ─────────────────────────────
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+
 // ── Capabilities for testing ─────────────────────────────────────────
 
 const sessionCap = defineCapability({
@@ -119,15 +124,19 @@ const _configured: ConfiguredCapShape["ticker"] = "AAPL";
 
 // ── Escape hatch — `sessionStateType` overrides inferred shape ───────
 
+// The schema infers to `Record<string, string>` — concrete enough that the
+// `.exact` access would be `string` (or fail) without the escape hatch. The
+// override then forces the type to `{ exact: number }`, and the assertion
+// below would fail to compile if the override path weren't active.
 const escapeCap = defineCapability({
   name: "escape",
-  sessionStateSchema: z.record(z.any()),
+  sessionStateSchema: z.record(z.string()),
   // Carries no runtime value; only the type position matters.
   sessionStateType: undefined as unknown as { exact: number },
 });
 
 type EscapeSession = InferCapabilitySessionState<readonly [typeof escapeCap]>;
-const _exact: EscapeSession["exact"] = 42;
+type _escapeOverrideWins = Assert<Equal<EscapeSession["exact"], number>>;
 
 // ── Escape hatch enforcement (negative) ──────────────────────────────
 // Setting `sessionStateType` without `sessionStateSchema` must not compile.
@@ -170,5 +179,4 @@ void _twoTicker;
 void _twoCount;
 void _raw;
 void _configured;
-void _exact;
 void _step;
