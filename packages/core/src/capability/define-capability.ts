@@ -5,6 +5,7 @@
  * with phantom types for downstream type inference. The same reference is
  * reused across blocks, enabling diamond-dependency deduplication via ===.
  */
+import type { DeclaredResourceEntry } from "../types/block";
 import type {
   CapabilityConfig,
   ConfiguredCapability,
@@ -18,12 +19,31 @@ export function defineCapability<
   const TName extends string,
   const TFns extends Record<string, (...args: any[]) => any> = Record<string, never>,
   const TSessionStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
+  const TResources extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  const TTargetSchemas extends Record<string, import("zod").ZodTypeAny> | undefined = undefined,
+  const TSequencerStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
   const TPresetKeys extends string = never,
 >(
-  config: CapabilityConfig<TName, TFns, TSessionStateSchema> & {
+  config: CapabilityConfig<
+    TName,
+    TFns,
+    TSessionStateSchema,
+    TResources,
+    TTargetSchemas,
+    TSequencerStateSchema
+  > & {
     presets?: { [K in TPresetKeys]: PresetDef<InferSessionState<TSessionStateSchema>> | string[] } & { default?: string[] };
   }
-): DefinedCapability<TName, TFns, TPresetKeys, Record<string, PresetDef>> {
+): DefinedCapability<
+  TName,
+  TFns,
+  TPresetKeys,
+  Record<string, PresetDef>,
+  TSessionStateSchema,
+  TResources,
+  TTargetSchemas,
+  TSequencerStateSchema
+> {
   if (!config.name || config.name.trim() === "") {
     throw new Error("defineCapability() requires a non-empty name");
   }
