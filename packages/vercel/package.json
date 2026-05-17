@@ -12,6 +12,10 @@
     "./pg": {
       "types": "./dist/pg.d.ts",
       "default": "./dist/pg.js"
+    },
+    "./schedules": {
+      "types": "./dist/schedules.d.ts",
+      "default": "./dist/schedules.js"
     }
   },
   "license": "MIT",
@@ -24,7 +28,11 @@
   "dependencies": {
     "@flow-state-dev/server": "workspace:*"
   },
+  "peerDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*"
+  },
   "devDependencies": {
+    "@flow-state-dev/scheduled": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0"
   },

@@ -152,6 +152,31 @@ const stores = await createPostgresStores({
 
 Migrations are still idempotent if you forget — `skipSchemaInit` is a performance optimization, not a correctness requirement. See `apps/kitchen-sink/scripts/migrate.mjs` in the flow-state-dev repo for a full example.
 
+## Schedule index
+
+`createPostgresScheduleIndex(executor)` returns a `ScheduleIndex` implementation backed by the `schedule_index` table. Use it with `defineScheduleCollection` from `@flow-state-dev/scheduled` to auto-mirror dynamic schedules, then point a cron tick at the index to dispatch due rows.
+
+```ts
+import pg from "pg";
+import { createPostgresScheduleIndex } from "@flow-state-dev/store-postgres";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const executor = {
+  async query(text: string, values?: unknown[]) {
+    const r = await pool.query(text, values);
+    return { rows: r.rows, rowCount: r.rowCount ?? 0 };
+  },
+  async beginTx() {
+    return createPgPoolTx(pool);
+  }
+};
+const index = createPostgresScheduleIndex(executor);
+```
+
+`claimDue` reads + advances inside one transaction using `SELECT ... FOR UPDATE SKIP LOCKED` so multiple replicas can tick concurrently without double-firing. The factory requires the executor to implement `beginTx()` — the pool-backed executors `createPostgresStores` returns do. For PGlite-style single-connection executors, use the exported `createSingleConnectionTx` helper.
+
+See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
+
 ## Interrupted Request Recovery
 
 This adapter fully supports the interrupted request recovery feature. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query on `last_heartbeat_at`.

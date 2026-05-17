@@ -16,9 +16,8 @@ If not, start with [Scheduled actions](/docs/server/scheduled).
 ## Setup
 
 Vercel Cron sends GET requests by default, while the dispatch
-endpoint is POST-only. The standard workaround is a small
-GET-to-POST shim handler at the Vercel route, which forwards the
-request to the framework endpoint.
+endpoint is POST-only. `@flow-state-dev/vercel/schedules` ships a
+helper that bridges the two:
 
 `vercel.json`:
 
@@ -34,6 +33,28 @@ request to the framework endpoint.
 ```
 
 The shim handler in your Next.js app:
+
+```ts title="app/api/cron/billing/monthly-invoices/route.ts"
+import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
+
+export const dynamic = "force-dynamic";
+export const GET = createGetToPostCronShim({
+  flowKind: "billing",
+  scheduleId: "monthly-invoices"
+});
+```
+
+The shim reads `CRON_SECRET` and `NEXT_PUBLIC_BASE_URL` from env (both
+overridable as options), validates the inbound bearer in constant
+time, and forwards as a POST to
+`…/api/flows/billing/schedules/monthly-invoices/dispatch` with the
+same bearer.
+
+### Advanced: write the shim by hand
+
+If you need custom behaviour — alternate auth, custom logging, a
+generic route that maps `(flowKind, scheduleId)` from a path segment —
+write the handler yourself:
 
 ```ts title="app/api/cron/billing/monthly-invoices/route.ts"
 import { headers } from "next/headers";
@@ -59,11 +80,6 @@ export async function GET() {
   return new Response(await res.text(), { status: res.status });
 }
 ```
-
-You can have one shim per schedule, or one generic shim that maps
-`(flowKind, scheduleId)` from a path segment. One-per-schedule is
-simpler when there are only a few; a generic shim wins once the
-list grows.
 
 ## Bearer-secret auth
 
@@ -124,9 +140,50 @@ handler fan out per-schedule POSTs to the dispatch endpoint.
 }
 ```
 
-The tick handler reads your schedule index (a SQL table, a Redis
-sorted set by `nextFireAt`, whatever) and POSTs to the framework
-endpoint per due schedule:
+The tick handler claims due rows from a `ScheduleIndex` and POSTs to
+the framework endpoint per due schedule.
+`@flow-state-dev/vercel/schedules` ships `createScheduleTickHandler`
+to do that with bounded concurrency:
+
+```ts title="app/api/cron/schedule-tick/route.ts"
+import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
+import { scheduleIndex } from "@/lib/schedule-index"; // your ScheduleIndex
+
+export const dynamic = "force-dynamic";
+export const GET = createScheduleTickHandler({
+  flowKind: "reminders",
+  index: scheduleIndex
+});
+```
+
+The index is the read-model the cron beat scans. Define it once at
+boot — `createPostgresScheduleIndex(executor)` or
+`createSQLiteScheduleIndex(db)` from your store adapter — and feed it
+on the write side via
+[`defineScheduleCollection`](/docs/server/schedule-index#auto-mirroring).
+
+`claimDue` advances rows atomically before returning them. The
+contract is at-most-once: a dispatch that fails after the row has been
+advanced is dropped. Pass `onDispatch` to observe each attempt.
+
+The tick cadence (`*/1 * * * *` above is once a minute) is the
+floor on how soon a newly-due schedule can fire. Coarser ticks
+trade lag for invocation cost. Vercel meters cron invocations on
+Pro, so a per-minute tick is ~43k invocations/month — usually fine
+but worth knowing.
+
+The full pattern is in
+[Dynamic scheduled actions](/guides/scheduled-dynamic) and the
+[Schedule index reference](/docs/server/schedule-index). The
+takeaway for Vercel: one tick entry covers unbounded dynamic
+schedules. The `vercel.json` cap only matters for *static* entries
+you want Vercel itself to fire on a schedule.
+
+### Advanced: write the tick handler by hand
+
+When you need custom behaviour the helper doesn't cover (a non-index
+storage shape, custom retry logic, observability hooks beyond
+`onDispatch`):
 
 ```ts title="app/api/cron/schedule-tick/route.ts"
 export const dynamic = "force-dynamic";
@@ -156,13 +213,6 @@ export async function GET(req: Request) {
   return new Response("ok");
 }
 ```
-
-The full pattern — index shape, when to write/update/delete index
-rows, how to handle catch-up — is in
-[Dynamic scheduled actions](/guides/scheduled-dynamic). The
-takeaway for Vercel: one tick entry covers unbounded dynamic
-schedules. The `vercel.json` cap only matters for *static* entries
-you want Vercel itself to fire on a schedule.
 
 The tick cadence (`*/1 * * * *` above is once a minute) is the
 floor on how soon a newly-due schedule can fire. Coarser ticks

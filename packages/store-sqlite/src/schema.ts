@@ -184,6 +184,22 @@ CREATE TABLE IF NOT EXISTS trace_events (
 CREATE INDEX IF NOT EXISTS idx_trace_events_request_id ON trace_events(request_id);
 `;
 
+// FIX-581: optional schedule index for `createSQLiteScheduleIndex`.
+// Keyed by (user_id, key) and scanned by `next_fire_at` each cron tick.
+// Schedule rows are tiny + `WITHOUT ROWID` keeps the PK-clustered layout
+// compact.
+const SCHEDULE_INDEX_TABLE = `
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  cron         TEXT NOT NULL,
+  timezone     TEXT,
+  next_fire_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, key)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at);
+`;
+
 /**
  * One-shot rename migrations for databases initialised under the pre-FIX-428
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
@@ -272,6 +288,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
   db.exec(TRACE_REQUEST_ROSTER_TABLE);
   db.exec(TRACE_EVENTS_TABLE);
+  db.exec(SCHEDULE_INDEX_TABLE);
 }
 
 /**
