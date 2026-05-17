@@ -390,7 +390,8 @@ type UnionToIntersection<U> =
   (U extends any ? (k: U) => void : never) extends
   (k: infer I) => void ? I : never;
 
-type Prettify<T> = { [K in keyof T]: T[K] } & {};
+/** Flatten an intersection type to a single object shape (display-only). */
+export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 /**
  * Infer the merged `ctx.session.state` shape contributed by static capabilities
@@ -450,6 +451,25 @@ type InferCapabilityTargetsEntry<T> =
         ? S extends Record<string, ZodTypeAny> ? InferTargetStatesFromSchemas<S> : {}
         : NonNullable<O>
       : S extends Record<string, ZodTypeAny> ? InferTargetStatesFromSchemas<S> : {}
+    : {};
+
+/**
+ * Schema-level variant of {@link InferCapabilityTargets}. Returns the merged
+ * `Record<string, ZodTypeAny>` of capability-declared target schemas (without
+ * running them through `InferTargetStatesFromSchemas`). Block factories use
+ * this to intersect with the block's own `TTargetSchemas` before handing the
+ * merged schema map to `BlockContext`, which performs the handle conversion
+ * itself at `ctx.targets`. Empty arrays and arrays with no static refs
+ * resolve to `{}`.
+ */
+export type InferCapabilityTargetSchemas<TUses extends readonly UsesEntry[]> =
+  [Extract<TUses[number], CapabilityRef>] extends [never]
+    ? {}
+    : Prettify<UnionToIntersection<InferCapabilityTargetSchemasEntry<Extract<TUses[number], CapabilityRef>>>>;
+
+type InferCapabilityTargetSchemasEntry<T> =
+  T extends DefinedCapability<any, any, any, any, any, any, infer S, any>
+    ? S extends Record<string, ZodTypeAny> ? S : {}
     : {};
 
 /**
