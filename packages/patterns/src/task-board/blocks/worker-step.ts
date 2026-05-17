@@ -32,7 +32,7 @@
  * work.
  */
 import { router } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   taskSchema,
@@ -110,7 +110,7 @@ export interface BuildWorkerStepOptions {
  * heterogeneous; consumers that need a typed shape should use the
  * uniform-worker path with a worker that declares its own
  * `outputSchema`. The `routes` array is typed as
- * `BlockDefinition<any, any>[]` for the same reason — each worker in
+ * `BlockDefinition[]` for the same reason — each worker in
  * a registry can declare its own input/output schemas, and the
  * router's static type can't model that union usefully (matches the
  * convention used by `dispatch-specialist` in the blackboard
@@ -118,16 +118,16 @@ export interface BuildWorkerStepOptions {
  */
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
-): BlockDefinition<any, any> {
+) {
   const { name, workers, collection: collectionFactory } = options;
 
   if (isUniformWorker(workers)) {
     return workers.connectInput<Task>((task, ctx) =>
       packWorkerInput(task, collectionFactory(ctx))
-    ) as BlockDefinition<any, any>;
+    );
   }
 
-  const routes = Object.values(workers) as BlockDefinition<any, any>[];
+  const routes = Object.values(workers);
 
   return router({
     name: `${name}-worker-router`,
@@ -148,7 +148,7 @@ export function buildWorkerStep(
       }
       return selected.connectInput((_input, ctx) =>
         packWorkerInput(task, collectionFactory(ctx))
-      ) as BlockDefinition<any, any>;
+      );
     },
-  }) as BlockDefinition<any, any>;
+  });
 }

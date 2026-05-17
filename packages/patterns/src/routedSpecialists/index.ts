@@ -558,6 +558,6 @@ export function routedSpecialists<
     });
 
   return finalSynthesizer
-    ? base.then(finalSynthesizer as BlockDefinition<any, any>)
+    ? base.then(finalSynthesizer)
     : base;
 }
