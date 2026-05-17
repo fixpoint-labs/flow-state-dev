@@ -80,6 +80,38 @@ const scheduleDigest = handler({
   },
 });
 
+/**
+ * Delete every schedule the calling user owns. The
+ * `defineScheduleCollection` delete hook removes each row from the
+ * `ScheduleIndex`, so the polling tick stops firing them on the next
+ * beat. Returns the count of removed schedules.
+ */
+const clearSchedules = handler({
+  name: "clear-schedules",
+  inputSchema: z.object({}).passthrough(),
+  outputSchema: z.object({ cleared: z.number() }),
+  execute: async (_input, ctx) => {
+    if (!ctx.user) {
+      throw new Error("clearSchedules requires a user scope");
+    }
+    const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
+      cron: string;
+      action: string;
+      enabled: boolean;
+    }>;
+    const prefix = "schedules/";
+    const refs = schedules.list();
+    await Promise.all(
+      refs.map((ref) =>
+        schedules.delete(
+          ref.name.startsWith(prefix) ? ref.name.slice(prefix.length) : ref.name,
+        ),
+      ),
+    );
+    return { cleared: refs.length };
+  },
+});
+
 const weeklyDigestFlow = defineFlow({
   kind: "weekly-digest",
   requireUser: true,
@@ -119,6 +151,9 @@ const weeklyDigestFlow = defineFlow({
     },
     scheduleDigest: {
       block: scheduleDigest,
+    },
+    clearSchedules: {
+      block: clearSchedules,
     },
   },
 });
