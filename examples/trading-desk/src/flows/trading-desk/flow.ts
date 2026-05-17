@@ -58,36 +58,27 @@ const seedSession = handler({
   },
 });
 
-// Inner pipeline: seed → pre-flight ticker resolution → `.throwIf` if
-// unresolved → Phase 1 → post-Phase-1 `.throwIf` if all analysts errored
-// → Phases 2–5. Both guards throw `EarlyStopError`; the outer `.rescue`
-// matching on `EarlyStopError` catches them and patches session state to
-// a clean terminal "stopped" condition (FIX-605). Any other error type
-// bubbles past the rescue's `when:` filter. The pre-flight enriches the
-// value once with the resolution result so the predicate and error
-// factory don't double-call the resolver.
+// Inner pipeline: seed → pre-flight ticker `.throwIf` → Phase 1 →
+// post-Phase-1 `.throwIf` → Phases 2–5. Both guards throw `EarlyStopError`;
+// the outer `.rescue` matching on `EarlyStopError` catches them and
+// patches session state to a clean terminal "stopped" condition (FIX-605).
+// Any other error type bubbles past the rescue's `when:` filter.
 const analyzePipelineInner = sequencer({
   name: "trading-desk-analyze-inner",
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
-  .map(async (input) => ({
-    input,
-    resolution: await resolveTicker({
-      ticker: input.ticker,
-      date: input.date,
-      dataSource: input.dataSource,
-    }),
-  }))
   .throwIf(
-    (v) => !v.resolution.resolved,
-    (v) =>
-      new EarlyStopError(
+    async (input) =>
+      !(await resolveTicker(input)).resolved,
+    async (input) => {
+      const result = await resolveTicker(input);
+      return new EarlyStopError(
         "unresolvable-ticker",
-        v.resolution.reason ?? `Could not resolve ticker ${v.input.ticker}.`,
-      ),
+        result.reason ?? `Could not resolve ticker ${input.ticker}.`,
+      );
+    },
   )
-  .map((v) => v.input)
   .then(phase1Pipeline)
   .throwIf(
     // `.throwIf` doesn't carry a typed resources slot — go through `any`
