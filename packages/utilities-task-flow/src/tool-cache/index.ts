@@ -199,26 +199,40 @@ export function createToolCacheCapability(
 }
 
 /**
- * Pull the store off the request scope under a stable slot, creating
+ * Pull the store off a hidden bag on the request handle, creating
  * it lazily on first access. Single store per capability name per
  * request. Task Board wiring may install additional per-run cleanup
- * around the request-scoped lifetime (Wave 1 step 1.8).
+ * around the request-scoped lifetime.
+ *
+ * The bag lives on `ctx.request` as a non-enumerable property — NOT
+ * on `ctx.request.state` — because the runtime structured-clones
+ * `state` for snapshots and the LRU store's `get` / `set` / `delete`
+ * methods are functions, which would throw `DataCloneError`. The
+ * request handle is shared by reference across every nested ctx, so
+ * the bag is visible from any block that runs in the same request.
  */
+const STORE_BAG_KEY = "__fsd_fix610_toolCacheStores";
+
 function resolveOrCreateStore(
   ctx: BlockContext,
   name: string,
   opts: { defaultTtl: number; maxEntries: number; defaultScope: "run" | "request" | "session" },
 ): ToolCacheStore {
-  const slot = `__toolCacheStore_${name}`;
-  const requestAny = ctx.request as unknown as { state: Record<string, unknown> };
-  const existing = requestAny.state[slot];
-  if (existing !== undefined) return existing as ToolCacheStore;
+  const req = ctx.request as unknown as Record<string, unknown>;
+  let bag = req[STORE_BAG_KEY] as Record<string, ToolCacheStore> | undefined;
+  if (bag === undefined) {
+    bag = {};
+    Object.defineProperty(req, STORE_BAG_KEY, {
+      value: bag,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+  }
+  const existing = bag[name];
+  if (existing !== undefined) return existing;
   const store = createLruStore(opts);
-  // Direct write to the in-memory state bag. Tool caches are
-  // request-scoped and rebuilt per request; persisting them through the
-  // normal mutator path would force a serialization round-trip on every
-  // read, which defeats the point.
-  requestAny.state[slot] = store;
+  bag[name] = store;
   return store;
 }
 

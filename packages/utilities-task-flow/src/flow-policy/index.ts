@@ -213,17 +213,34 @@ export function createObservationLedgerCapability(
   });
 }
 
+// Hidden bag on `ctx.request` for the same reason described in the
+// tool-cache module: the ledger carries function properties, so it
+// can't go through `ctx.request.state` (which gets structured-cloned
+// for snapshots). The request handle is shared by reference across
+// every nested ctx, so a bag attached here is reachable from any
+// block executing in the request.
+const LEDGER_BAG_KEY = "__fsd_fix610_observationLedgers";
+
 function resolveOrCreateLedger(
   ctx: BlockContext,
   name: string,
   maxEntries: number,
 ): ObservationLedger {
-  const slot = `__observationLedger_${name}`;
-  const requestAny = ctx.request as unknown as { state: Record<string, unknown> };
-  const existing = requestAny.state[slot];
-  if (existing !== undefined) return existing as ObservationLedger;
+  const req = ctx.request as unknown as Record<string, unknown>;
+  let bag = req[LEDGER_BAG_KEY] as Record<string, ObservationLedger> | undefined;
+  if (bag === undefined) {
+    bag = {};
+    Object.defineProperty(req, LEDGER_BAG_KEY, {
+      value: bag,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+  }
+  const existing = bag[name];
+  if (existing !== undefined) return existing;
   const ledger = createObservationLedger({ maxEntries });
-  requestAny.state[slot] = ledger;
+  bag[name] = ledger;
   return ledger;
 }
 
