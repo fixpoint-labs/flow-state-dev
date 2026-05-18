@@ -30,6 +30,9 @@ export class FixtureMissingError extends Error {
  *   - `"yahoo"`       — live mode, Yahoo answered.
  *   - `"fred"`        — live mode, FRED API answered.
  *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
+ *   - `"xai"`         — live mode, xAI (Grok) answered. Model estimate
+ *                       grounded in xSearch-retrieved X posts, not a
+ *                       measured feed.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than
@@ -41,6 +44,7 @@ const sourceTag = z.enum([
   "finnhub",
   "fred",
   "polymarket",
+  "xai",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;
@@ -159,6 +163,15 @@ export const macroIndicatorsSchema = z.object({
   oilWtiUsd: z.number(),
 });
 
+/** A single retrieved X post used as evidence for the sentiment score.
+ *  `polarity` reflects the model's classification of THIS post (not overall
+ *  sentiment). Excerpts are one short sentence — no paraphrasing of meaning. */
+const sentimentPost = z.object({
+  handle: z.string(),
+  excerpt: z.string(),
+  polarity: z.enum(["positive", "negative", "neutral"]),
+});
+
 export const socialSentimentSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
@@ -167,7 +180,15 @@ export const socialSentimentSchema = z.object({
   positive: z.number(),
   negative: z.number(),
   neutral: z.number(),
-  shortInterestPct: z.number(),
+  /** Null when the provider can't measure short interest (e.g. xAI/xSearch
+   *  reads X chatter, not exchange short-interest filings). Honest null
+   *  beats a fabricated 0 — analysts must not read 0 as "no shorts." */
+  shortInterestPct: z.number().nullable(),
+  /** Representative posts that grounded the score. Empty in `unavailable`
+   *  mode. Fixture and live (xAI) modes populate this. The sentiment
+   *  analyst should treat these as primary evidence — the score is a
+   *  summary of these quotes, not an independent signal. */
+  posts: z.array(sentimentPost),
 });
 
 const redditMention = z.object({

@@ -100,7 +100,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     positive: 0,
     negative: 0,
     neutral: 0,
-    shortInterestPct: 0,
+    shortInterestPct: null,
+    posts: [],
   }),
   get_reddit_mentions: (i) => ({
     source: "unavailable",

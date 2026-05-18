@@ -70,7 +70,6 @@ export {
   wrapAiSdkModel,
   createModelResolver,
   createFSDProvider,
-  defaultGroups,
   detectAvailableProviders,
   parseModelString,
   createFallbackModel,
@@ -82,6 +81,7 @@ export {
 export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
+  IntentDefaults,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,

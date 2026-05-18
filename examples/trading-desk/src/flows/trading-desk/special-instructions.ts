@@ -15,13 +15,21 @@
  */
 import { z } from "zod";
 
+/** Maximum characters per field. Mirrors ChatGPT's per-field cap and keeps
+ *  the combined instruction block well under any context-window concern.
+ *  Enforced server-side in the schema below and on the textarea via
+ *  `maxLength`, so callers that bypass the UI (direct API, test harness,
+ *  programmatic `sendAction`) still can't inject unbounded text into every
+ *  generator's prompt. */
+export const FIELD_CHAR_LIMIT = 1500;
+
 export const specialInstructionsStateSchema = z.object({
-  global: z.string().default(""),
-  phase1: z.string().default(""),
-  phase2: z.string().default(""),
-  phase3: z.string().default(""),
-  phase4: z.string().default(""),
-  phase5: z.string().default(""),
+  global: z.string().max(FIELD_CHAR_LIMIT).default(""),
+  phase1: z.string().max(FIELD_CHAR_LIMIT).default(""),
+  phase2: z.string().max(FIELD_CHAR_LIMIT).default(""),
+  phase3: z.string().max(FIELD_CHAR_LIMIT).default(""),
+  phase4: z.string().max(FIELD_CHAR_LIMIT).default(""),
+  phase5: z.string().max(FIELD_CHAR_LIMIT).default(""),
 });
 
 export type SpecialInstructionsState = z.infer<typeof specialInstructionsStateSchema>;
@@ -36,10 +44,6 @@ export const EMPTY_INSTRUCTIONS: SpecialInstructionsState = {
   phase4: "",
   phase5: "",
 };
-
-/** Maximum characters per field. Mirrors ChatGPT's per-field cap and keeps
- *  the combined instruction block well under any context-window concern. */
-export const FIELD_CHAR_LIMIT = 1500;
 
 type ActivePhase =
   | "idle"

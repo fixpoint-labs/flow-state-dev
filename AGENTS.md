@@ -11,15 +11,13 @@ At the start of a new conversation in this repo, read:
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
 
-For deeper canonical authority on edge cases, consult `../preperation/architecture/*`.
-
-**Authority order**: `../preperation/architecture/*` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file.
+**Authority order**: `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins.
 
 ## Wave execution protocol
 
 Use this protocol when work is wave-based:
 
-- Waves have numbers and letters. Numbers represent the phase of wave we are in, letters indicate the major milestone. Our `..preperation/architecture/IMPLEMENTATION_PLAN.md` tracks the waves we are targeting.
+- Waves have numbers and letters. Numbers represent the phase of wave we are in, letters indicate the major milestone. Wave plans live under `docs/internal/waves/wave-<number>/` and track what's targeted for each milestone.
 - Keep wave plans under their wave number, currently at `docs/internal/waves/wave-1/` using `wave-1.<letter>.md`.
 - Each wave file must include objective, scope, task breakdown, deliverables, and verification gates.
 - Completed wave work must update:
@@ -162,7 +160,7 @@ Three tiers, picked by what kind of regression you want to catch:
 When making changes that affect the framework's behavior or API, update documentation in the same change set as the code change.
 
 **Architecture docs** (`docs/architecture/`):
-Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These docs are adapted from the canonical specs in `../preperation/architecture/` and serve as the in-repo reference for framework developers.
+Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These are the authoritative in-repo reference for framework developers; keep them in sync with the code.
 
 **Package READMEs** (`packages/*/README.md`):
 Update when a package's exported surface, behavior, or setup commands materially change. Keep the structure consistent: Purpose → Quick Start → API Surface → Scripts.

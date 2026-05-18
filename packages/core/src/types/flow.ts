@@ -86,6 +86,15 @@ export type ToolLifecycleEvent = {
   input: unknown;
   output?: unknown;
   error?: Error;
+  /**
+   * True when the tool's result was served from the per-tool memoization
+   * cache (FIX-610) rather than executed against the upstream. Observers
+   * fire on the cache-hit path with the same `onToolStarted` /
+   * `onToolCompleted` ordering as a normal call so consumers can attribute
+   * downstream side-effects either way. `onToolErrored` never fires on
+   * the cache path — errors are never cached.
+   */
+  cached?: boolean;
 };
 
 export type ToolsConfig = {
