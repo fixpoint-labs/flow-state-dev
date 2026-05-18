@@ -87,6 +87,13 @@ import {
   createBoardMetaActive,
   createBoardMetaCompleted,
 } from "./blocks/board-meta";
+import {
+  createFlowPolicyResolver,
+  createInstallBoardFlowState,
+  createTeardownBoardFlowState,
+  stampCurrentTaskId,
+  type BoardRunFlowState,
+} from "./flow-policy-wiring";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -147,6 +154,7 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
+export type { BoardRunFlowState } from "./flow-policy-wiring";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -295,6 +303,42 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * `awaiting_review` task to be resumed). Default: 50ms.
    */
   idlePollMs?: number;
+
+  /**
+   * Per-board tool-result memoization (FIX-610 Layer B). Enabled
+   * automatically when any worker tool declares `cacheable`; pass
+   * `false` to disable, or an object to tune. The cache is bound to a
+   * single board run — it's torn down whether the board completes or
+   * errors, so cross-run leakage stays impossible by construction.
+   */
+  toolCache?: TaskBoardToolCacheConfig | boolean;
+
+  /**
+   * Per-board flow policy (FIX-610 Layer A). Decides which prior-task
+   * observations a soon-to-dispatch worker sees on
+   * `TaskWorkerInput.priorWork`. Default: `flowPolicy.declaredDepsOnly()`
+   * — wire-identical to pre-FIX-610 behavior. Pattern factories like
+   * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
+   *
+   * Typed as `unknown` here to keep `@flow-state-dev/patterns` from
+   * depending on `@flow-state-dev/utilities-task-flow`. The concrete
+   * shape is `TaskFlowPolicy` from that package.
+   */
+  flowPolicy?: unknown;
+}
+
+/**
+ * Per-board tool-cache tuning (FIX-610). All fields optional.
+ */
+export interface TaskBoardToolCacheConfig {
+  /** Default true when any tool in the board's worker(s) declares `cacheable`. */
+  enabled?: boolean;
+  /** Default TTL (ms) for cacheable tools that don't specify one. */
+  defaultTtl?: number;
+  /** Max entries before LRU eviction. Default 5000. */
+  maxEntries?: number;
+  /** Default scope for tools that don't specify one. Default `"run"`. */
+  defaultScope?: "run" | "request" | "session";
 }
 
 export interface TaskBoardHandle {
@@ -353,6 +397,8 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     maxIterations = 10_000,
     shouldExit,
     idlePollMs = 50,
+    toolCache,
+    flowPolicy: flowPolicyConfig,
   } = config;
 
   if (concurrency < 1) {
@@ -404,7 +450,28 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  const workerStep = buildWorkerStep({ name, workers, collection: collectionFactory });
+  // FIX-610 shared run-state bag — populated by `installFlowState`
+  // at the top of the outer sequencer and consulted by every worker
+  // dispatch. Cleared by `teardownFlowState` on both completion and
+  // error paths so a board re-entered within the same request starts
+  // each run fresh.
+  const runState: BoardRunFlowState = { collectionId };
+  const installFlowState = createInstallBoardFlowState({
+    name,
+    collectionId,
+    flowPolicy: flowPolicyConfig,
+    toolCache,
+    collection: collectionFactory,
+    runState,
+  });
+  const teardownFlowState = createTeardownBoardFlowState({ name, runState });
+
+  const workerStep = buildWorkerStep({
+    name,
+    workers,
+    collection: collectionFactory,
+    resolveFlowPolicy: createFlowPolicyResolver(runState),
+  });
 
   const recordSuccess = createRecordSuccess({
     name: `${name}-worker-record-success`,
@@ -444,6 +511,10 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   })
     .tap(async (task: Task, ctx) => {
       await ctx.sequencer!.patchState({ currentTaskId: task.id });
+      // FIX-610: also stamp the active task id onto the shared
+      // run-state bag so any cacheable tool the worker invokes attributes
+      // cache writes to this task (later hits get `sourceTask`).
+      stampCurrentTaskId(runState, task);
     })
     .then(workerStep)
     .tap(recordSuccess)
@@ -474,6 +545,10 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     name,
     stateSchema: taskBoardStateSchema,
   })
+    // FIX-610: install run-scoped cache + ledger BEFORE seed so any
+    // tool a seed handler might call (rare but possible via custom
+    // seed paths) sees the binding too.
+    .tap(installFlowState)
     .tap(boardMetaActive)
     .tap(seedBlock)
     .forEach(
@@ -481,7 +556,13 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       (workerId: number) => makeWorker(workerId),
       { maxConcurrency: concurrency }
     )
-    .tap(boardMetaCompleted);
+    .tap(boardMetaCompleted)
+    // FIX-610: teardown on the success path. The `.rescue` below also
+    // runs teardown on errors so cleanup is symmetric — leaving stale
+    // run-state across re-entries inside the same request would
+    // otherwise misattribute cache hits.
+    .tap(teardownFlowState)
+    .rescue([{ block: teardownFlowState }]);
 
   // Capability — backing-aware. Sequencer-spec collections get a
   // capability that auto-resolves the collection via the parent

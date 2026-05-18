@@ -1,14 +1,21 @@
 ---
 name: fsd:implement-issue
-description: Use when implementing a Linear issue that has a spec document attached. Fetches the issue and spec, creates a fix branch, dispatches sub-agents for complex work, and runs a comprehensive review before presenting results.
+description: Use when implementing a Linear issue. Fetches the issue and spec, creates a fix branch, auto-routes by Linear category (Bug vs Feature/Enhancement) to the right implementation discipline, dispatches sub-agents for complex work, and runs a comprehensive review before presenting results. Handles "Fix bug for FIX-N" and "Implement FEAT-N" the same way — the routing happens inside.
 argument-hint: "<Linear issue ID, e.g. FIX-123>"
 ---
 
-You are an implementation agent. Given a Linear issue ID, your job is to pull the issue and its spec, set up a branch, implement the work (dispatching sub-agents for anything non-trivial), and run a thorough review before presenting the result.
+You are an implementation agent. Given a Linear issue ID, your job is to pull the issue and its spec, set up a branch, implement the work using the right discipline for the issue's category, dispatching sub-agents for anything non-trivial, and run a thorough review before presenting the result.
 
-## Core Principle
+## Core Principles
 
-**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The attached Linear document (the spec) says *how*. Always read both, but when they conflict on implementation details, the spec wins. If no spec exists, treat this as a simple issue and implement directly — but flag that a spec was missing.
+**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The attached Linear document (the spec) says *how*. Always read both, but when they conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
+
+**Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
+
+- **Bug** → implementer sub-agents follow **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup). For flow-execution bugs specifically, Phase 1 of diagnose hands off to **`fsd:debug-flow`** for the NDJSON trace reader.
+- **Feature / Enhancement** → implementer sub-agents follow **`fsd:tdd`** (red-green-refactor with vertical tracer-bullet slices). One test → minimal code → repeat. No horizontal slicing.
+
+Both disciplines are embedded into the implementer sub-agent prompt at dispatch time. The implementer doesn't choose — this skill picks based on the label and gives them the right shape.
 
 ## Workflow
 
@@ -28,15 +35,16 @@ If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` usi
 - Full spec content (every section)
 - Blocking/blocked-by relations and their status
 - Any decisions from comments
-- Labels and priority
+- Labels and priority — in particular, the **category label** (Bug vs Feature/Enhancement/Improvement) which determines the implementation discipline at Step 4
 
 ### Step 2: Validate Readiness
 
 Before starting work, check:
 
-1. **Spec exists?** If no spec document is attached:
-   - For issues labeled "Bug" with a clear description → proceed without spec (simple fix)
-   - For everything else → tell the user: "This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/create-spec {ID}`?"
+1. **Spec exists?**
+   - **Issue labeled "Bug" with a clear reproduction** → proceed without a full spec. Bugs follow `fsd:diagnose`, which requires a feedback loop before any code change — that's the implementer's first job, not the spec author's. If the issue body lacks a reproduction or is ambiguous, still consider running `/create-spec` (specs aren't only for features) — the spec for a bug captures the reproduction shape and the regression-test seam.
+   - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/create-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
+   - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
 2. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
@@ -52,7 +60,17 @@ If all clear, move to Step 3.
 2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
 3. Update the Linear issue state to "In Development" using `save_issue`
 
-### Step 4: Assess Complexity
+### Step 4: Determine Category and Complexity
+
+#### 4.1: Pick the discipline (by Linear category label)
+
+- **Bug** → discipline = **`fsd:diagnose`**. Implementer sub-agent must build a feedback loop and reproduce the bug *before* changing code. The discipline's six phases (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup) get embedded in the implementer prompt. For flow-execution bugs specifically, point the implementer at `fsd:debug-flow` for Phase 1 mechanics (NDJSON event types, failure-pattern table).
+- **Feature / Enhancement / Improvement** → discipline = **`fsd:tdd`**. Implementer sub-agent follows red-green-refactor with vertical tracer-bullet slices: write one behavioural test for the first slice → minimal code to pass → repeat. No "write all the specs first" — that produces tests insensitive to real bugs.
+- **Mixed** (e.g. a "bug" issue that actually requires building new infrastructure to fix, or a "feature" issue that resurfaces a known bug) → flag to the user and pick one explicitly. Default toward TDD if uncertain; the bug regression test still gets written, just inside the TDD loop.
+
+Record the discipline; you'll inject it into the implementer prompt at Step 5.
+
+#### 4.2: Assess complexity
 
 Read the spec's "Implementation Sequence" section (or equivalent) to determine scope:
 
@@ -60,31 +78,56 @@ Read the spec's "Implementation Sequence" section (or equivalent) to determine s
 - Single file change or tightly coupled changes in 2-3 files
 - No architectural decisions to make
 - Clear, unambiguous spec with < 3 implementation steps
-- Bug fixes with obvious root cause
+- Bugs where the feedback loop is trivial (single vitest spec) and the fix is local
 
 **Complex** (dispatch sub-agents):
 - 3+ implementation steps in the spec
 - Multiple packages or subsystems touched
 - New APIs, types, or abstractions to create
 - Integration work across package boundaries
+- Bugs where the feedback loop construction is non-trivial (cross-package reproduction, non-deterministic, requires instrumentation)
 
 If simple → go to Step 5A.
 If complex → go to Step 5B.
 
+#### 4.3: Familiarity check
+
+If the area being touched is unfamiliar to you (whether running this skill directly or dispatching sub-agents), get a map first via `fsd:zoom-out` shape — package / flow / actions / block kinds / capabilities / scopes / items / boundaries / callers. A 30-second orientation prevents an hour of misdirected work.
+
 ### Step 5A: Simple Implementation
 
-Implement directly following the spec:
+Follow the discipline picked at Step 4.1.
 
-1. Read relevant code to understand the area
-2. Implement the changes as specified
-3. Write or update tests
-4. Run typechecks and tests:
-   ```bash
-   pnpm --filter <affected-package> typecheck
-   pnpm --filter <affected-package> test
-   ```
-5. Commit the work with a conventional commit message referencing the issue ID
-6. Skip to Step 6 (Review)
+**For bugs (`fsd:diagnose` discipline):**
+
+1. Read relevant code to understand the area (use `fsd:zoom-out` shape if unfamiliar)
+2. **Build a feedback loop FIRST** (Phase 1 of diagnose). Don't touch code until you have a reproduction:
+   - Default: vitest filter at the package level — fastest, sharpest
+   - For block-level isolation: `fsdev block <path> -i '<json>'`
+   - For flow-level reproduction: `fsdev run` with NDJSON capture (hand off to `fsd:debug-flow` for trace reading)
+   - For type-only regressions: `pnpm --filter <pkg> typecheck`
+3. Reproduce the bug through the loop. Confirm the failure mode matches what the user described.
+4. Hypothesise: 3–5 ranked falsifiable hypotheses before testing any.
+5. Instrument with `[DEBUG-<short-hash>]` tags so cleanup is a single grep at the end.
+6. Apply the fix.
+7. Write the regression test (Phase 5 of diagnose) at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided.
+8. Run the loop again; verify the original repro no longer reproduces.
+9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
+10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
+11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
+12. Skip to Step 6 (Review)
+
+**For features/enhancements (`fsd:tdd` discipline):**
+
+1. Read relevant code to understand the area (use `fsd:zoom-out` shape if unfamiliar)
+2. List the behaviours to test from the spec's Testing Strategy — observable outcomes through the public surface (items emitted, state changes, return values), not implementation steps
+3. **Tracer bullet**: write ONE test for the first behaviour through `@flow-state-dev/testing`'s mock context → write minimal code to pass → green
+4. **Incremental loop**: for each remaining behaviour, RED (one test, fails) → GREEN (minimal code, passes). One test at a time. Do not write all tests first.
+5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
+6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
+7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
+8. Commit with a conventional commit message referencing the issue ID
+9. Skip to Step 6 (Review)
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
@@ -100,17 +143,24 @@ Create a TodoWrite with all tasks.
 
 #### 5B.2: Dispatch Implementer Sub-agents
 
-For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. Provide:
+For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. The template has a `[Discipline]` slot — fill it based on Step 4.1:
+
+- **Bug** → fill with the `fsd:diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the spec's named seam; runs the cleanup pass before reporting.
+- **Feature/Enhancement** → fill with the `fsd:tdd` discipline block (see template). Sub-agent runs red-green-refactor with tracer bullets, one test → one impl, no horizontal slicing.
+
+Provide:
 
 - **Full task text** from the spec (don't make the sub-agent read files)
-- **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints
-- **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy)
-- **Codebase conventions** from AGENTS.md and best-practices.md
+- **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `fsd:zoom-out` shape map up front
+- **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy — Testing Strategy is especially load-bearing because it names the discipline's seam)
+- **Codebase conventions** from AGENTS.md and best-practices.md (BP-007 doc-comments, BP-010–BP-016 implementation rules)
+- **The chosen discipline block** filled into the `[Discipline]` slot
 
 **Model selection:**
 - Mechanical tasks (isolated functions, clear specs, 1-2 files) → `sonnet`
 - Integration tasks (multi-file coordination, pattern matching) → default model
 - Architecture/design tasks (new abstractions, complex patterns) → `opus`
+- Bugs with non-trivial reproduction → default model or `opus` (the diagnose loop benefits from careful reading; sonnet often skips Phase 1)
 
 **Handle implementer status:**
 - **DONE** → proceed to spec review
@@ -150,10 +200,11 @@ Launch a `general-purpose` sub-agent to:
 #### Agent 2: Simplification Review
 Launch a `Plan` sub-agent to:
 - Look for over-engineering: abstractions that aren't justified by the spec's scope
-- Identify unnecessary indirection or complexity
+- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-015, BP-014 violations, etc.)
 - Check if any code could be simplified without losing functionality
 - Verify the implementation follows existing codebase patterns rather than inventing new ones
 - Check for YAGNI violations — features or flexibility that wasn't requested
+- Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.then()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
 - **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
 
 #### Agent 3: Quality and Impact Review
