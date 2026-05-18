@@ -52,7 +52,6 @@ export type AudioPlayer = {
    */
   enqueue(audioData: string, mediaType: string): void;
   stop(): void;
-  clear(): void;
   /**
    * Releases the underlying `AudioContext`. Browsers cap concurrent
    * contexts (Chrome ~6, Safari historically lower); long-lived SPAs that
@@ -247,13 +246,6 @@ export function createAudioPlayer(
         nextStartTime = audioContext.currentTime;
       }
       setState("idle");
-    },
-
-    clear() {
-      suspendedQueue.length = 0;
-      // Don't stop in-flight sources here — `clear()` is a soft reset for
-      // queued/pending work, matching the prior semantics. Use `stop()`
-      // for hard cancellation of audible playback.
     },
 
     dispose() {

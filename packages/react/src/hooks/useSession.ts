@@ -78,15 +78,6 @@ export type UseSessionHookOptions = {
    * Default: 30000 (30 seconds).
    */
   stuckThresholdMs?: number;
-  /**
-   * Fires for each streaming TTS audio chunk (FIX-523). Live-only —
-   * chunks are not part of session item state and are not replayed on
-   * reconnect. The `useVoice` hook subscribes via
-   * `SessionView.subscribeAudioDelta` for in-package gapless playback;
-   * use this option only when consuming raw chunks directly (e.g. for
-   * a custom player).
-   */
-  onContentAudioDelta?: (event: ContentAudioDeltaEvent) => void;
 };
 
 /**
@@ -471,19 +462,6 @@ export function useSession(
   const audioDeltaListenersRef = useRef<Set<(event: ContentAudioDeltaEvent) => void>>(
     new Set()
   );
-  /**
-   * Stable wrapper around `options.onContentAudioDelta` so an unmemoized
-   * inline callback from a consumer doesn't churn the SSE callback bag's
-   * identity on every render.
-   */
-  const onContentAudioDeltaOption = options?.onContentAudioDelta;
-  const onContentAudioDeltaOptionRef = useRef(onContentAudioDeltaOption);
-  // Sync the ref to the latest callback identity. Effect, not assignment
-  // during render — render-time mutation would break React's concurrent
-  // rendering invariants.
-  useEffect(() => {
-    onContentAudioDeltaOptionRef.current = onContentAudioDeltaOption;
-  }, [onContentAudioDeltaOption]);
 
   /** Track an item's ownedBy in the ownership index. */
   const trackOwnership = useCallback((item: OutputItem) => {
@@ -939,18 +917,16 @@ export function useSession(
           scheduleContentFlush();
         },
         onContentAudioDelta: (event) => {
-          // Fan out to in-package subscribers (useVoice) first so the
-          // audio player can start scheduling chunks with minimum latency,
-          // then dispatch to the consumer-provided callback if any.
+          // Fan out to subscribers (useVoice or any external consumer
+          // that attached via session.subscribeAudioDelta). A misbehaving
+          // listener must not block delivery to the rest of the set.
           for (const listener of audioDeltaListenersRef.current) {
             try {
               listener(event);
             } catch {
-              // A misbehaving listener must not block delivery to the
-              // remaining subscribers or the consumer callback.
+              // Swallow — the listener's caller owns reporting.
             }
           }
-          onContentAudioDeltaOptionRef.current?.(event);
         },
         onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
           setDetail((prev) => {

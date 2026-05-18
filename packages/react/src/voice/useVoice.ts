@@ -75,16 +75,6 @@ export function useVoice(
    * dedup entry already in place.
    */
   const streamingAudioPartsRef = useRef<Set<string>>(new Set());
-  /**
-   * Mirror of the latest `session` reference so the audio-delta callback
-   * (whose identity must be stable for the subscribe-on-mount effect) can
-   * still resolve the current item list when looking up mediaType. The
-   * callback fires from the SSE stream, which can run between renders.
-   */
-  const sessionRef = useRef(session);
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
 
   const autoPlayTTS = options.autoPlayTTS !== false;
   const buildInput = options.buildInput ?? ((text: string) => ({ message: text }));
@@ -140,7 +130,7 @@ export function useVoice(
       // placeholder hasn't arrived yet — chunks are still playable in
       // isolation; only an unverified mediaType is at risk, and MP3 is
       // the only supported codec in M1 anyway.
-      const item = sessionRef.current.items.find((i: OutputItem) => i.id === event.itemId);
+      const item = session.items.find((i: OutputItem) => i.id === event.itemId);
       let mediaType = "audio/mpeg";
       if (item !== undefined && item.type === "message") {
         const part = (item as MessageItem).content?.[event.contentIndex];
