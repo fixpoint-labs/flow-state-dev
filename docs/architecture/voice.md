@@ -165,7 +165,6 @@ type OutputAudioContent = {
   audio: string;        // base64-encoded audio data
   mediaType: string;    // "audio/mp3", "audio/wav", "audio/pcm16"
   transcript?: string;  // text that was synthesized (for accessibility)
-  duration?: number;    // duration in seconds
 };
 ```
 
@@ -213,6 +212,30 @@ The TTS pipeline runs inside `runAction()` when a flow has `voice.tts` configure
 6. On action completion, any remaining buffered text is flushed and synthesized
 
 Synthesis errors are non-fatal. If a sentence fails to synthesize, the error is logged and text streaming continues uninterrupted.
+
+## Streaming TTS path
+
+When the configured `VoiceProvider` has `abilities.speakStream === true`, the TTS pipeline (see FIX-528 for the dispatch implementation) emits audio via the `content.audio.delta` event type instead of buffering each sentence to a single `OutputAudioContent` part. First-audio latency drops from sentence-completion time (\~1–2s with batch providers) to first-chunk latency (\~100ms with streaming-capable providers like ElevenLabs).
+
+**Pipeline contract.** Before the first chunk for a content part, the pipeline emits `content.added` with an `OutputAudioContent` placeholder declaring the `mediaType`. Chunks follow, each carrying base64-encoded bytes. Once synthesis finishes, the pipeline reassembles the chunks and emits the final `OutputAudioContent.audio` snapshot via `content.added` (or `content.done`, depending on the pipeline's chosen finalization signal — FIX-528 sets this).
+
+**Player contract.** The React `audio-player` (`packages/react/src/voice/audio-player.ts`) consumes chunks via the Web Audio API: each chunk is decoded into an `AudioBuffer` and scheduled on an `AudioBufferSourceNode` at a moving `nextStartTime` cursor so consecutive sources butt up gap-free. The same player also handles the batch path (whole-buffer `enqueue`) as a thin wrapper over `enqueueChunk` with `isLast: true`. M1 supports MP3 only; PCM and WAV require either WAV-header injection or an AudioWorklet path and are deferred.
+
+**Dedup.** `useVoice` tracks `(itemId, contentIndex)` pairs that have received streaming chunks and skips the batch-path scanner for those parts so the eventual `OutputAudioContent` snapshot doesn't double-play.
+
+**Resume.** Same posture as text deltas — chunks are non-replayable. See [streaming.md](./streaming.md) for the event taxonomy and replay rules.
+
+```ts
+type ContentAudioDeltaEvent = {
+  type: "content.audio.delta";
+  itemId: string;
+  contentIndex: number;
+  audio: string;     // base64-encoded chunk bytes
+  isLast?: boolean;
+};
+
+audioPlayer.enqueueChunk({ audio, mediaType: "audio/mpeg", isLast: false });
+```
 
 ## Provider-Agnostic Design
 

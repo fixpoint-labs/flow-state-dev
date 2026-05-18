@@ -213,6 +213,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
+- `ResponseEmitter.emitContentAudioDelta(itemId, contentIndex, chunk)` — Emit a chunk of streamed TTS audio. Non-replayable; live-only.
 - `encodeStreamEvent` / `serializeSSEFrame` — Low-level SSE encoding
 - `replayRequestEvents` — Replay events from a sequence cursor
 

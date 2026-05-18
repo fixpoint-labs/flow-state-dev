@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-18
+
+### Voice (M1): streaming TTS contract + Web Audio playback (FIX-523)
+
+- New `content.audio.delta` SSE event type carries chunked TTS audio over the existing streaming protocol. Live-only and non-replayable on reconnect, mirroring `content.delta`. The durable representation remains the `OutputAudioContent` snapshot delivered via `content.added` / `content.done`.
+- `ResponseEmitter.emitContentAudioDelta(itemId, contentIndex, { bytes, isLast? })` accepts raw `Uint8Array` chunks from a `VoiceProvider.speakStream()` iterator and encodes them as base64 on the wire. The new event type is excluded from the events-log persistence hook, the in-memory replayable view, and the `Last-Event-ID` resume filter — three sites, all required to keep audio chunks off disk.
+- React `audio-player` rewritten to the Web Audio API. Chunks decode into `AudioBuffer`s and schedule on a shared `AudioContext` at a moving cursor for gap-free playback. The whole-buffer `enqueue` path is retained as a wrapper over `enqueueChunk`, so batch providers (OpenAI today) play unchanged. New `dispose()` releases the `AudioContext` on unmount to prevent the per-remount leak that hits Chrome's concurrent-context cap on long-lived SPAs.
+- `useVoice` subscribes to streaming chunks via the new `SessionView.subscribeAudioDelta(handler)` and tracks `(itemId, contentIndex)` pairs that have streamed, so the batch-path snapshot scanner skips them — the final `content.added` for a streamed part no longer double-plays.
+- MP3 (`audio/mpeg`) is the only supported codec in M1. PCM and WAV are deferred.
+
 ## 2026-05-16
 
 ### Voice (M1): `VoiceProvider` interface lands in `@flow-state-dev/core`

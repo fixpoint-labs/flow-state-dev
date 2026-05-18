@@ -2,6 +2,7 @@
  * Public client transport and API contracts shared by client and react wrappers.
  */
 import type {
+  ContentAudioDeltaEvent,
   ContentPartAddedEvent,
   ContentPartDeltaEvent,
   ContentPartDoneEvent,
@@ -407,6 +408,15 @@ export type RequestSSECallbacks = {
   onContentAdded?: (event: ContentPartAddedEvent) => void;
   onContentDelta?: (event: ContentPartDeltaEvent) => void;
   onContentDone?: (event: ContentPartDoneEvent) => void;
+  /**
+   * Fires for each chunk of streaming TTS audio (FIX-523). Live-only —
+   * these events are NOT delivered via `Last-Event-ID` resume; on
+   * reconnect, the durable representation arrives as an
+   * `OutputAudioContent` snapshot via `onContentAdded` / `onContentDone`.
+   * The chunk's `mediaType` is on the parent `OutputAudioContent`, not
+   * on the delta itself.
+   */
+  onContentAudioDelta?: (event: ContentAudioDeltaEvent) => void;
   onResourceChanged?: (event: RequestResourceChangedEvent) => void;
   onSessionMetadataChanged?: (event: SessionMetadataChangedEvent) => void;
   onDebug?: (event: RequestDebugEvent) => void;

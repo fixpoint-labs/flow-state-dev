@@ -3,6 +3,7 @@
  */
 import type {
   Content,
+  ContentAudioDeltaEvent,
   ContentPartAddedEvent,
   ContentPartDeltaEvent,
   ContentPartDoneEvent,
@@ -25,6 +26,7 @@ import { ITEM_UPDATE_INVARIANT_KEYS } from "@flow-state-dev/core/items";
 export type { RuntimeItem } from "../execution/internal/response";
 import type { RuntimeItem } from "../execution/internal/response";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
+import { uint8ArrayToBase64 } from "./binary";
 import { createRequestEventId } from "./encode-event";
 import {
   applyEnvelopeSeam,
@@ -425,6 +427,32 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
+   * Emits a chunk of streaming TTS audio for an in-flight
+   * `OutputAudioContent` part. Live-only — the chunk is delivered to wire
+   * consumers and the in-memory buffer but excluded from `getReplayableEvents`
+   * and the events-log persistence hook, mirroring the policy for text
+   * `content.delta`. The durable representation is the eventual
+   * `OutputAudioContent` snapshot delivered via `emitContentAdded` /
+   * `emitContentDone`; chunks live only on the wire.
+   *
+   * The emitter encodes raw bytes to base64 (the wire format is JSON SSE);
+   * callers pass the `Uint8Array` from `VoiceProvider.speakStream()` directly.
+   */
+  async emitContentAudioDelta(
+    itemId: string,
+    contentIndex: number,
+    chunk: { bytes: Uint8Array; isLast?: boolean }
+  ): Promise<RequestStreamEventWithId> {
+    return this.appendEvent<ContentAudioDeltaEvent>({
+      type: "content.audio.delta",
+      itemId,
+      contentIndex,
+      audio: uint8ArrayToBase64(chunk.bytes),
+      ...(chunk.isLast === true ? { isLast: true } : {})
+    });
+  }
+
+  /**
    * Emits a content-part done event for an item.
    */
   async emitContentDone(
@@ -552,18 +580,26 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Returns all replayable events (excludes ping, debug, and content.delta).
+   * Returns all replayable events (excludes ping, debug, content.delta, and
+   * content.audio.delta).
    *
    * `content.delta` is reclassified as non-replayable (FIX-479): the running
    * text is checkpointed via `MessageItem.content` / `ReasoningItem.summary`
    * snapshots through the `onItemUpdate` hook instead.
+   *
+   * `content.audio.delta` follows the same policy (FIX-523): the durable
+   * representation is the eventual `OutputAudioContent` snapshot delivered
+   * via `content.added` / `content.done`. Replaying per-chunk audio would
+   * 10–100x the event-log size for sub-second TTS without enabling any
+   * client behavior that the snapshot doesn't already cover.
    */
   getReplayableEvents(): RequestStreamEventWithId[] {
     return this.events.filter(
       (event) =>
         event.type !== "ping" &&
         event.type !== "debug" &&
-        event.type !== "content.delta"
+        event.type !== "content.delta" &&
+        event.type !== "content.audio.delta"
     );
   }
 
@@ -635,10 +671,16 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     // (Promise.all of content deltas, etc.) coalesce into a single write.
     // Backpressure also comes for free — slow persistence throttles the
     // producer instead of growing an unbounded RAM buffer.
+    // content.audio.delta is non-replayable for the same reason as
+    // content.delta (FIX-523): chunks are the live transport, the durable
+    // representation is the OutputAudioContent snapshot. Without this
+    // exclusion, every audio chunk would be persisted to the events log
+    // (10–100x bloat per sub-second TTS turn).
     const isReplayable =
       withId.type !== "ping" &&
       withId.type !== "debug" &&
-      withId.type !== "content.delta";
+      withId.type !== "content.delta" &&
+      withId.type !== "content.audio.delta";
     if (isReplayable && this.eventHooks?.onEvent !== undefined) {
       this.eventHooks.onEvent([withId]);
       if (this.eventHooks.flushEvents !== undefined) {

@@ -88,6 +88,25 @@ export type ContentPartDoneEvent = RequestEventBase & {
   content: Content;
 };
 
+/**
+ * A chunk of synthesized audio for an OutputAudioContent part that is being
+ * streamed. Live-only — not replayed on `Last-Event-ID` resume; the durable
+ * snapshot is the eventual `OutputAudioContent` delivered via
+ * `content.added` / `content.done`. Chunks do not carry `mediaType` because
+ * it is stable across the stream and declared on the parent content part.
+ *
+ * Set `isLast: true` on the final chunk so clients can flush their decode
+ * pipeline without waiting for `content.done`.
+ */
+export type ContentAudioDeltaEvent = RequestEventBase & {
+  type: "content.audio.delta";
+  itemId: string;
+  contentIndex: number;
+  /** Base64-encoded audio chunk bytes. */
+  audio: string;
+  isLast?: boolean;
+};
+
 export type RequestResourceChangedEvent = RequestEventBase & {
   type: "resource.changed";
   scope: "request";
@@ -186,6 +205,7 @@ export type RequestStreamEvent =
   | ContentPartAddedEvent
   | ContentPartDeltaEvent
   | ContentPartDoneEvent
+  | ContentAudioDeltaEvent
   | RequestResourceChangedEvent
   | SessionMetadataChangedEvent
   | RequestDebugEvent
