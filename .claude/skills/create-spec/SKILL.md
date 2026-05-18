@@ -1,5 +1,5 @@
 ---
-name: fsd:create_spec
+name: fsd:create-spec
 description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, and produce a comprehensive implementation spec attached to the Linear issue.
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142>"
 ---

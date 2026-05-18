@@ -1,4 +1,5 @@
 # General Personality
+
 You are not a sycophant. You don't tell the user they have a good idea until you have considered its pros and cons and determined if it really is an improvement or not.
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
@@ -10,6 +11,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
 Before implementing:
+
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
@@ -32,14 +34,16 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 **Touch only what you must. Clean up only your own mess.**
 
 When editing existing code:
+
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
+
 - Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+- Don't remove pre-existing dead code unless asked.skills
 
 The test: Every changed line should trace directly to the user's request.
 
@@ -48,11 +52,13 @@ The test: Every changed line should trace directly to the user's request.
 **Define success criteria. Loop until verified.**
 
 Transform tasks into verifiable goals:
+
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
+
 ```
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
@@ -79,9 +85,8 @@ If unsure why existing code is structured a certain way, ask.
 
 ## 8. Match the codebase's conventions, even if you disagree
 
-Conformance > taste inside the codebase.
+## Conformance > taste inside the codebase.
 If you think a convention is harmful, surface it. Don't fork it silently.
----
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
@@ -92,6 +97,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 ## Orientation
 
 **Read first (every session):**
+
 1. `docs/architecture/overview.md` — System architecture and package roles
 2. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
 3. `AGENTS.md` — Process protocol and code style rules
@@ -99,6 +105,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 **Verifying flow changes**: When you change flow logic, the default verification is `fsdev run` (see `AGENTS.md` → "Verifying flow changes during development"). Reach for `pnpm test` only for unit-level changes; reach for kitchen-sink in a browser only for UI-layer changes.
 
 **Read when relevant:**
+
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
@@ -107,25 +114,27 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 ## Package Map
 
-| Package | Purpose |
-|---------|---------|
-| `@flow-state-dev/core` | Isomorphic builders, type contracts, item taxonomy |
-| `@flow-state-dev/server` | Execution runtime, stores, SSE streaming, HTTP routes |
-| `@flow-state-dev/client` | Isomorphic API client (actions, sessions, streams) |
-| `@flow-state-dev/react` | React hooks and renderers (wraps client) |
-| `@flow-state-dev/testing` | Test harnesses and mocks |
-| `@flow-state-dev/integration-tests` | Tier 1 flow integration suite (private) |
-| `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
-| `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
-| `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
-| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
-| `@flow-state-dev/tools` | Reusable tool blocks |
-| `@flow-state-dev/patterns` | Higher-level composition patterns |
-| `@flow-state-dev/memory` | Cross-turn memory system (working / episodic / semantic / digest tiers) |
-| `@flow-state-dev/ui` | Component registry for flow UIs |
-| `@thought-fabric/core` | Cognitive architecture primitives (attention, identity) |
-| `apps/devtool` | DevTool source app (builds into `@flow-state-dev/devtool`) |
-| `apps/docs` | Documentation site (Docusaurus) |
+
+| Package                             | Purpose                                                                 |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `@flow-state-dev/core`              | Isomorphic builders, type contracts, item taxonomy                      |
+| `@flow-state-dev/server`            | Execution runtime, stores, SSE streaming, HTTP routes                   |
+| `@flow-state-dev/client`            | Isomorphic API client (actions, sessions, streams)                      |
+| `@flow-state-dev/react`             | React hooks and renderers (wraps client)                                |
+| `@flow-state-dev/testing`           | Test harnesses and mocks                                                |
+| `@flow-state-dev/integration-tests` | Tier 1 flow integration suite (private)                                 |
+| `@flow-state-dev/cli`               | Terminal interface (`fsdev`)                                            |
+| `@flow-state-dev/devtool`           | Pre-built DevTool assets for `fsdev dev`                                |
+| `@flow-state-dev/store-sqlite`      | SQLite-backed persistent store                                          |
+| `@flow-state-dev/vercel`            | Vercel deployment adapter (SSE shaping, heartbeats, runtime config)     |
+| `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
+| `@flow-state-dev/patterns`          | Higher-level composition patterns                                       |
+| `@flow-state-dev/memory`            | Cross-turn memory system (working / episodic / semantic / digest tiers) |
+| `@flow-state-dev/ui`                | Component registry for flow UIs                                         |
+| `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
+| `apps/devtool`                      | DevTool source app (builds into `@flow-state-dev/devtool`)              |
+| `apps/docs`                         | Documentation site (Docusaurus)                                         |
+
 
 ## Documentation Structure
 
@@ -141,25 +150,31 @@ docs/
 Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
 
 ### Workflow skills
-| Skill | Purpose |
-|-------|---------|
-| `create-spec` | Research and write implementation specs for Linear issues |
-| `implement-issue` | Implement a Linear issue from its spec document |
-| `quick-fix` | Log a bug to Linear and fix it immediately |
+
+
+| Skill                     | Purpose                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| `create-spec`             | Research and write implementation specs for Linear issues  |
+| `implement-issue`         | Implement a Linear issue from its spec document            |
+| `quick-fix`               | Log a bug to Linear and fix it immediately                 |
 | `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
-| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
-| `linear-triage` | Review and prioritize Linear issues |
-| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+| `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
+| `linear-triage`           | Review and prioritize Linear issues                        |
+| `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
+
 
 ### Development skills
-| Skill | Purpose |
-|-------|---------|
-| `create-block` | Create a new block (handler, generator, utility, router) with tests |
-| `create-pattern` | Create a multi-block composable pattern with tests and docs |
-| `add-flow` | Create a new flow definition with actions, scopes, resources, and capabilities |
-| `write-block-tests` | Write or update vitest tests for blocks and patterns |
-| `add-store-adapter` | Create a new persistence store adapter package |
-| `add-docs-page` | Add a page to the Docusaurus documentation site |
+
+
+| Skill               | Purpose                                                                        |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `create-block`      | Create a new block (handler, generator, utility, router) with tests            |
+| `create-pattern`    | Create a multi-block composable pattern with tests and docs                    |
+| `add-flow`          | Create a new flow definition with actions, scopes, resources, and capabilities |
+| `write-block-tests` | Write or update vitest tests for blocks and patterns                           |
+| `add-store-adapter` | Create a new persistence store adapter package                                 |
+| `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
+
 
 ## Capabilities
 
@@ -168,7 +183,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 - **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `workIf` on capture) instead of at the context injection level.
 - **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
 - **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
-- **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
+- `**ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
 - **Pattern factories accept `uses`.** `planAndExecute`, `supervisor`, `blackboard` all forward `uses` to their default internal generators.
 
 ## Key Architectural Constraints
@@ -186,7 +201,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 
 ## Authority Hierarchy
 
-1. `docs/architecture/*` — Reference docs
+1. `docs/architecture/`* — Reference docs
 2. `docs/contributing/best-practices.md` — Implementation standards
 3. `AGENTS.md` — Process protocol
 
@@ -241,45 +256,55 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 ### Always-applied implementation rules
 
 **File and export documentation** (BP-007)
+
 - File header comment required: explain the file's role in the runtime.
 - 100% of exported APIs documented with concise doc comments (contract + behavior, not syntax restatement).
 - Document non-obvious internal helpers (complex control flow, error semantics).
 
 **Handlers must not call blocks using block.run** (BP-011)
+
 - Never instantiate or call a block inside a handler's `execute`.
 - Compose as a sequencer: `.then(generator).then(handler)`.
 
 **Handlers must never return input as output** (BP-014)
+
 - `execute` must never `return input`. It pollutes the items log with redundant echoes.
 - No meaningful output → use `.tap()`. Transforming input → return the transformation.
 
 **Use `.tap()` for state-mutation-only blocks** (BP-012)
+
 - Blocks that only mutate state: use `.tap()`, no `outputSchema`, no `return input`.
 
 **Use conditional step variants instead of wrapper sequencers** (BP-015)
+
 - `.workIf(condition, connector, block)` — not a wrapper sequencer with `.thenIf` inside `.work()`.
 - `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
 - `.thenIf(condition, block)` — not a wrapper sequencer with a `.map` + `.then`.
 - All conditional variants accept an inline connector as a second argument for input adaptation. Don't create an intermediate sequencer just to `.map()` before a block.
 
 **Input/output adaptation belongs inside the router** (BP-013)
+
 - Use `connectInput(() => ...)` and `connectOutput(...)` inside the router's `execute`, not at block definition time.
 - Pre-connecting at definition time is only for purpose-built reusable adapters.
 
 **React: prefer `useMemo` over `useEffect` for derived state** (BP-010)
+
 - `useEffect` is for genuine side effects: subscriptions, DOM manipulation, data fetching, external system sync.
 - Comment every `useEffect` explaining what it does and why. Comment non-obvious logic.
 
 **Generator outputSchemas must be OpenAI strict-compatible** (BP-016)
+
 - No `z.record()` reachable from a generator output — use a fixed-shape `z.object({...})` or `z.array(z.object({ key, value }))` when keys are dynamic.
 - No `z.optional()` / `z.default()` on outputs — use `z.nullable()` instead.
 - No `z.union([...])` of differently-shaped variants. Collapse to a nullable single shape or split generators.
 - Guard with a test: import `makeSchemaStrict` from `@flow-state-dev/core` and assert no `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion` survives. See `examples/trading-desk/test/output-schemas-strict.spec.ts` for a copy-paste walker.
 
 **Document new and changed user-facing functionality**
+
 - Any new or changed functionality that impacts end users must be documented in the same change set.
 - Update the relevant `packages/*/README.md` for public API changes.
 - Update or add `apps/docs` (Docusaurus) pages when the change affects concepts, guides, or APIs that end users reference.
 
 ## Using Bash
+
 It is important that you not bother the user with a permission approval that isn't necessary. Think to use a bash command structure that fits within the already allowed list of commands, if possible.
