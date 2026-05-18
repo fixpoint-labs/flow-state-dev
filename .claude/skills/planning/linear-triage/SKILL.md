@@ -16,6 +16,7 @@ Read the following project files to understand objectives, current phase, archit
 - `CLAUDE.md` — current phase and package map
 - `changelog.md` — what's shipped
 - `docs/internal/waves/` — wave plans and journals for work in progress
+- `docs/internal/out-of-scope/` — directions we've already decided against (skim the filenames; read any whose concept could plausibly overlap with active issues)
 
 ### Step 2: Fetch Linear Issues
 
@@ -66,6 +67,13 @@ For any missing issue you propose creating, follow the **agent-brief template** 
 
 #### Stale or Irrelevant Issues
 Issues that appear outdated, duplicated, or no longer relevant given what's shipped or changed. For each, explain why it may be stale.
+
+#### Already Rejected
+Issues that match a concept already recorded in `docs/internal/out-of-scope/`. For each:
+- Name the issue and the matching out-of-scope file
+- One-line reminder of why it was rejected
+- Recommended action: close with a link to the out-of-scope file, **OR** flag for the user to reconsider if circumstances have changed
+- Do NOT silently close — surface for the user to confirm or override
 
 ### Step 4: Get Approval
 

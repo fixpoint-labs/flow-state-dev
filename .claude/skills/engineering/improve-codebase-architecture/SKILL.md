@@ -125,11 +125,26 @@ Side effects happen inline as decisions crystallize. **Route each by scope** —
 - **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new entry for `docs/contributing/best-practices.md` (next BP number). Keep it concise and rule-shaped, matching BP-001–BP-016.
 - **A term in `docs/architecture/<area>.md` was fuzzy and got sharpened?** Update the relevant `docs/architecture/*` doc directly in the same change set.
 - **A public API surface changed?** Update the package's `README.md` in the same change set (CLAUDE.md rule for user-facing changes); add or revise the relevant `apps/docs` page.
-- **User rejects the candidate with a load-bearing reason that future explorers would need to avoid re-suggesting?**
-  - If the reason captures an implementation rule worth preserving → propose a new BP entry recording it.
-  - If the reason is a deliberate contract choice → bake it into the relevant `docs/architecture/<area>.md` as a "Rejected alternatives" / "Why not X" note.
-  - Ephemeral reason ("not now") → don't record. Move on.
+- **User rejects the candidate?** Apply the **three-way filter** below to decide whether to record it.
 - **Want to explore alternative interfaces for the deepened module?** See [INTERFACE-DESIGN.md](INTERFACE-DESIGN.md). The parallel-sub-agent pattern is especially valuable when the candidate is a capability or pattern factory — "design it twice" applies cleanly because capabilities/patterns are the deepest reusable modules in the framework.
+
+### Recording a rejection — the three-way filter
+
+When the user rejects a candidate, the default is **don't record anything**. Rejections that meet the bar earn a durable entry; the rest fade after the conversation. A rejection is worth recording only when **all three** of these are true:
+
+1. **Hard to reverse / re-debate.** Re-litigating it would cost meaningful time. Five minutes of conversation doesn't qualify; a focused design discussion with multiple alternatives weighed does.
+2. **Surprising without context.** A future explorer (you, six months from now; or a new agent running this skill) will plausibly wonder "why didn't they just do X?" and the absence of an answer would lead them to re-propose it.
+3. **The result of a real trade-off.** There were genuine alternatives and we picked against this one for specific reasons. "Not worth it right now" doesn't qualify (that's a deferral, not a rejection); "obviously bad idea" doesn't qualify (no one will propose it).
+
+If all three pass, route by what the rejection captures:
+
+- **Implementation rule worth preserving** (a pattern we shouldn't do, a shape we should avoid in future blocks/patterns/capabilities) → propose a new BP entry in `docs/contributing/best-practices.md`. BPs codify "do this" or "don't do this" rules that propagate across the codebase.
+- **Deliberate contract choice** (item taxonomy, scope semantics, package boundary, stream protocol — something the architecture deliberately doesn't allow) → bake the reasoning into the relevant `docs/architecture/<area>.md` as a "Rejected alternatives" / "Why not X" section. The architecture doc is the durable anchor for *what* the contract is; rejections explain *what it isn't*.
+- **Out-of-scope direction** (a feature, integration, abstraction, or alternative design we deliberately won't pursue — plugin runtimes, GraphQL adapters, alternative store shapes, etc.) → add an entry to `docs/internal/out-of-scope/<concept>.md`. See [out-of-scope README](../../../../docs/internal/out-of-scope/README.md) for the format. This is where "no, and here's why" lives so the same proposal doesn't return every quarter.
+
+If any of the three filters fail, skip the record entirely. Ephemeral reasons ("not now"), self-evident ones, or one-off "didn't fit this PR" rejections don't earn durable storage — they belong in the conversation transcript and nowhere else.
+
+**Before proposing a candidate, scan `docs/internal/out-of-scope/` first.** If the candidate matches an existing rejection, surface it explicitly: *"This is similar to `docs/internal/out-of-scope/<concept>.md` — we rejected this before because [reason]. Do you still feel the same way, or has something changed?"* The user may confirm, reconsider, or distinguish; either way the conversation starts from the recorded reasoning rather than re-deriving it.
 
 ### 4. After the refactor lands (per BP-007 + CLAUDE.md rules)
 
