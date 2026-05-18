@@ -25,8 +25,6 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "@flow-state-dev/tasks";
 import {
-  bindObservationLedger,
-  bindToolCacheStore,
   createInMemoryToolCacheStore,
   createObservationLedger,
   flowPolicy as builtinFlowPolicy,
@@ -36,6 +34,44 @@ import {
   type ToolCacheStore,
 } from "@flow-state-dev/utilities-task-flow";
 import type { TaskBoardToolCacheConfig } from "./index";
+
+/**
+ * Slot names on the hidden `ctx.request` resolver bag — must stay in
+ * sync with the matching constants inside core's cache-tool-call
+ * module. We duplicate the strings here rather than reaching across
+ * package internals so the contract stays explicit at both sides.
+ */
+const SLOT_TOOL_CACHE_STORE_RESOLVER = "resolveToolCacheStore";
+const SLOT_CACHE_SOURCE_TASK_RESOLVER = "resolveCacheSourceTask";
+const SLOT_OBSERVATION_WRITER = "writeToolObservation";
+
+/**
+ * Get-or-create the per-request resolver bag on the request handle.
+ * The handle reference is shared across every nested execution scope
+ * (the runtime passes `request: requestHandle` into every
+ * `createContext` call), so mutations on this bag propagate to worker
+ * sequencers, generator tool wraps, and any other nested ctx without
+ * going through the JSON-cloned `.state`.
+ *
+ * Stored as a hidden non-enumerable property so the bag never shows up
+ * in state snapshots, devtool inspectors, or serialization passes.
+ */
+const RESOLVER_BAG_KEY = "__fsd_fix610_resolverBag";
+
+function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
+  const req = ctx.request as unknown as Record<string, unknown>;
+  let bag = req[RESOLVER_BAG_KEY] as Record<string, unknown> | undefined;
+  if (bag === undefined) {
+    bag = {};
+    Object.defineProperty(req, RESOLVER_BAG_KEY, {
+      value: bag,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return bag;
+}
 
 /**
  * Shared mutable bag stamped onto a board run's outer sequencer state.
@@ -120,6 +156,14 @@ export function createInstallBoardFlowState(
     transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
+      // Resolvers live on a hidden bag attached to `ctx.request` so
+      // nested execution scopes (forEach iterations, worker sequencers,
+      // generator tool loops) all see the same binding — the request
+      // handle is shared by reference across every nested context. We
+      // avoid `ctx.request.state` because that gets structured-cloned
+      // for state snapshots, and functions can't be cloned.
+      const state = getRequestResolverBag(ctx);
+
       if (cacheEnabled) {
         const store = createInMemoryToolCacheStore({
           defaultTtl: cacheCfg.defaultTtl,
@@ -127,22 +171,42 @@ export function createInstallBoardFlowState(
           defaultScope: cacheCfg.defaultScope ?? "run",
         });
         runState.cacheStore = store;
-        bindToolCacheStore(ctx, store);
+        state[SLOT_TOOL_CACHE_STORE_RESOLVER] = () => runState.cacheStore;
+      } else {
+        // Explicit clear — a previous board run in the same request
+        // would otherwise leave a stale resolver pointing at the old
+        // store reference (we drop it on teardown, but defense in depth).
+        state[SLOT_TOOL_CACHE_STORE_RESOLVER] = undefined;
       }
+
       const ledger = createObservationLedger();
       runState.ledger = ledger;
       runState.policy = policy;
       runState.collectionId = collectionId;
-      bindObservationLedger(ctx, ledger, {
-        collectionId,
-        getTaskId: () => runState.currentTaskId,
-      });
-      // Source-task resolver for cache writes: the next cacheable tool
-      // call inside a worker stamps the in-progress task's id onto the
-      // cache entry so later hits can attribute it as `sourceTask`.
-      (ctx as {
-        _resolveCacheSourceTask?: () => { collectionId: string; taskId: string } | undefined;
-      })._resolveCacheSourceTask = () => {
+
+      state[SLOT_OBSERVATION_WRITER] = (e: {
+        toolName: string;
+        args: unknown;
+        result?: unknown;
+        error?: string;
+        cached: boolean;
+      }) => {
+        runState.ledger?.append({
+          collectionId,
+          taskId: runState.currentTaskId,
+          toolName: e.toolName,
+          args: e.args,
+          ...(e.result !== undefined ? { result: e.result } : {}),
+          ...(e.error !== undefined ? { error: e.error } : {}),
+          cached: e.cached,
+          ts: Date.now(),
+        });
+      };
+
+      // Source-task resolver: cache writes during a worker turn carry
+      // the in-progress task id so later cross-task hits can attribute
+      // back via `sourceTask`.
+      state[SLOT_CACHE_SOURCE_TASK_RESOLVER] = () => {
         const taskId = runState.currentTaskId;
         return taskId !== undefined ? { collectionId, taskId } : undefined;
       };

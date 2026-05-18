@@ -74,6 +74,53 @@ type CtxWithCacheStore = BlockContext & {
 };
 
 /**
+ * Well-known slots on `ctx.request.state` used to share the cache
+ * store + source-task resolver across the nested execution scopes a
+ * Task Board run creates. Wiring code in `patterns/task-board` writes
+ * to these slots once per run; this module reads them as a fallback
+ * when the per-ctx resolver isn't set.
+ *
+ * Per-ctx resolvers (`_resolveToolCacheStore` etc.) still take
+ * precedence — capabilities installed via `uses: [...]` on a
+ * standalone generator continue to work without touching request
+ * state.
+ */
+/**
+ * Hidden bag attached to `ctx.request` by Task Board wiring. The
+ * request handle is shared by reference across every nested
+ * execution scope, so reading the same bag from a deeply nested
+ * worker ctx returns whatever the outer board's install handler
+ * stamped there. The bag itself is non-enumerable so it does not
+ * appear in state snapshots or get cloned with `ctx.request.state`.
+ */
+const RESOLVER_BAG_KEY = "__fsd_fix610_resolverBag";
+
+const SLOT_TOOL_CACHE_STORE_RESOLVER = "resolveToolCacheStore";
+const SLOT_CACHE_SOURCE_TASK_RESOLVER = "resolveCacheSourceTask";
+const SLOT_OBSERVATION_WRITER = "writeToolObservation";
+
+function readResolverBag(ctx: BlockContext): Record<string, unknown> | undefined {
+  const req = ctx.request as unknown as Record<string, unknown> | undefined;
+  const bag = req?.[RESOLVER_BAG_KEY];
+  return typeof bag === "object" && bag !== null ? (bag as Record<string, unknown>) : undefined;
+}
+
+/** Observation payload accepted by `_writeToolObservation` / its request-state fallback. */
+export interface ToolObservationPayload {
+  toolName: string;
+  args: unknown;
+  result?: unknown;
+  error?: string;
+  cached: boolean;
+}
+
+function readBagResolver<T>(ctx: BlockContext, slot: string): (() => T | undefined) | undefined {
+  const bag = readResolverBag(ctx);
+  const value = bag?.[slot];
+  return typeof value === "function" ? (value as () => T | undefined) : undefined;
+}
+
+/**
  * Canonicalize a value into a deterministic JSON string. Recursively
  * sorts object keys so two calls whose arg objects differ only in key
  * order produce the same cache key. Throws a clear error when the value
@@ -200,14 +247,41 @@ export function normalizeCacheable(
  * passthrough.
  */
 export function resolveToolCacheStore(ctx: BlockContext): ToolCacheStore | undefined {
-  return (ctx as CtxWithCacheStore)._resolveToolCacheStore?.();
+  const fromCtx = (ctx as CtxWithCacheStore)._resolveToolCacheStore?.();
+  if (fromCtx !== undefined) return fromCtx;
+  return readBagResolver<ToolCacheStore>(ctx, SLOT_TOOL_CACHE_STORE_RESOLVER)?.();
 }
 
 /** Read the current task-board source-task attribution, if any. */
 export function resolveCacheSourceTask(
   ctx: BlockContext,
 ): { collectionId: string; taskId: string } | undefined {
-  return (ctx as CtxWithCacheStore)._resolveCacheSourceTask?.();
+  const fromCtx = (ctx as CtxWithCacheStore)._resolveCacheSourceTask?.();
+  if (fromCtx !== undefined) return fromCtx;
+  return readBagResolver<{ collectionId: string; taskId: string }>(
+    ctx,
+    SLOT_CACHE_SOURCE_TASK_RESOLVER,
+  )?.();
+}
+
+/**
+ * Write a tool observation, preferring the per-ctx hook and falling
+ * back to a request-state writer installed by Task Board wiring. Both
+ * are best-effort: a missing writer is silent.
+ */
+export function writeToolObservation(ctx: BlockContext, payload: ToolObservationPayload): void {
+  const fromCtx = (
+    ctx as { _writeToolObservation?: (p: ToolObservationPayload) => void }
+  )._writeToolObservation;
+  if (fromCtx !== undefined) {
+    fromCtx(payload);
+    return;
+  }
+  const bag = readResolverBag(ctx);
+  const writer = bag?.[SLOT_OBSERVATION_WRITER];
+  if (typeof writer === "function") {
+    (writer as (p: ToolObservationPayload) => void)(payload);
+  }
 }
 
 /**

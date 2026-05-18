@@ -66,6 +66,7 @@ import {
   normalizeCacheable,
   resolveCacheSourceTask,
   resolveToolCacheStore,
+  writeToolObservation,
 } from "./internal/cache-tool-call";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
@@ -957,14 +958,7 @@ async function tryServeFromCache(
       );
     }
 
-    (ctx as {
-      _writeToolObservation?: (e: {
-        toolName: string;
-        args: unknown;
-        result?: unknown;
-        cached: boolean;
-      }) => void;
-    })._writeToolObservation?.({
+    writeToolObservation(ctx, {
       toolName: tool.name,
       args,
       result: entry.output,
@@ -1029,14 +1023,7 @@ async function maybeWriteCacheAndObservation(
     }
   }
 
-  (ctx as {
-    _writeToolObservation?: (e: {
-      toolName: string;
-      args: unknown;
-      result?: unknown;
-      cached: boolean;
-    }) => void;
-  })._writeToolObservation?.({
+  writeToolObservation(ctx, {
     toolName: tool.name,
     args,
     result: output,
