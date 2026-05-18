@@ -18,6 +18,7 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
+export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,
