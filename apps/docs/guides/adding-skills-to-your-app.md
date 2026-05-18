@@ -156,7 +156,7 @@ Three tiers, each gated by whether an earlier tier resolved:
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings of the lowercased message. No LLM call.
 3. **LLM classifier.** A `preset/fast` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
 
-Build an `skillActivator` next to your skills capability and opt out of the `runSkill` preset at the use site:
+Build a `skillActivator` next to your skills capability and opt out of the `runSkill` preset at the use site:
 
 ```ts
 // lib/capabilities.ts
