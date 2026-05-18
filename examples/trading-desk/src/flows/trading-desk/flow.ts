@@ -11,6 +11,7 @@
  * client's `useClientData` hook.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "./agents";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
@@ -22,6 +23,10 @@ import { phase4Contributions } from "./phase-4/round-robin";
 import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
 import { resolveTicker } from "./services/ticker-resolver";
+import {
+  specialInstructionsResource,
+  specialInstructionsStateSchema,
+} from "./special-instructions";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
@@ -114,6 +119,22 @@ const analyzePipeline = sequencer({
   .then(phase4Pipeline)
   .then(phase5Pipeline);
 
+/**
+ * Persists the user's standing special instructions (global + per-phase) to
+ * the user-scoped, flow-isolated `specialInstructionsResource`. Edits take
+ * effect on the next analyze run — the running session's prompts are already
+ * built and untouched.
+ */
+const setInstructions = handler({
+  name: "set-instructions",
+  inputSchema: specialInstructionsStateSchema,
+  outputSchema: z.void(),
+  resources: { specialInstructions: specialInstructionsResource },
+  execute: async (input, ctx) => {
+    await ctx.resources.specialInstructions.patchState(input);
+  },
+});
+
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
   requireUser: true,
@@ -121,6 +142,9 @@ const tradingDeskFlow = defineFlow({
   actions: {
     analyze: {
       block: analyzePipeline,
+    },
+    setInstructions: {
+      block: setInstructions,
     },
   },
 
@@ -150,6 +174,11 @@ const tradingDeskFlow = defineFlow({
     // Phase 4 round-robin transcript. Registered so the riskAssessment
     // consolidation generator can read the persona contributions.
     p4Contributions: phase4Contributions,
+    // User-scoped, flow-isolated standing instructions (FIX-603).
+    // Declared here so `resolveUserStorageKey` picks up `flowIsolation: true`
+    // for storage-key derivation; the capability's `core` preset also
+    // declares it for runtime context access.
+    specialInstructions: specialInstructionsResource,
   },
 });
 

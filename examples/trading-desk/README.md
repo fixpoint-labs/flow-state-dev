@@ -200,6 +200,32 @@ The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
 **re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
 for the generalized pattern.
 
+## Custom instructions
+
+The status bar carries a gear icon that opens a settings dialog where you can
+author free-text instructions that shape how the desk reasons — one global
+block applied to every phase plus one block per phase for narrower guidance.
+"Hold for days, not quarters", "weight balance-sheet quality over momentum",
+"treat litigation risk as the top concern" — that kind of thing.
+
+**Setting instructions.** The gear is enabled after the first analysis run
+(the dialog reads the user-scope resource through a session snapshot, so it
+needs a session to exist). Open it, type into any field, click Save. Empty
+fields produce no prompt content. Edits take effect on the next analysis
+run; the in-flight run, if any, is untouched.
+
+**How injection works.** The `tradingDesk` capability's always-on `core`
+preset renders a `<userInstructions>` block into every generator's prompt
+with a short framing sentence followed by the global block and the active
+phase's block. When both are empty the wrapper tag is suppressed entirely —
+no `<userInstructions/>` leaks into the prompt when nothing is set.
+
+**Where it's stored.** Per user, under
+`.fsdev/data/users/<userId>:trading-desk/` (the `:trading-desk` suffix comes
+from `flowIsolation: true` on the resource, so other flows running for the
+same user never see these instructions). The directory is covered by
+`.gitignore`.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider

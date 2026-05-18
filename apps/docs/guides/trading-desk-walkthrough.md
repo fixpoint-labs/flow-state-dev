@@ -138,6 +138,63 @@ The right-pane PM Hero is the marquee surface. It renders the rating bar, the me
 
 One honest tradeoff. `decisionConfidence` is self-reported. The PM is asked to be honest about uncertainty, not to predict accuracy. If you wanted calibration, you'd score these against outcomes, and the example does not do that.
 
+## Custom instructions and steerability
+
+The status bar carries a settings gear that opens a free-text dialog: one global block applied to every phase, and one block per phase for narrower guidance. Edits persist for the user across every run and survive server restarts. It's the example's first user-scoped resource, which makes it a useful walkthrough of three things: how to declare scope and isolation on a resource, where to inject prompt context once and have it reach every agent, and how to read user-scope state from the client without writing a new endpoint.
+
+### The user-scoped resource
+
+The resource holds six strings and is declared user-scope with `flowIsolation: true`. Isolation means the record is stored under `{userId}:trading-desk`, so trading-desk instructions never leak into another flow that happens to share the same user identity. `client.expose` opts every field into the session snapshot so the settings dialog can read persisted state without an extra fetch.
+
+```ts
+export const specialInstructionsResource = defineResource({
+  scope: "user",
+  flowIsolation: true,
+  ref: "tradingDeskSpecialInstructions",
+  stateSchema: specialInstructionsStateSchema,
+  default: EMPTY_INSTRUCTIONS,
+  writable: true,
+  client: {
+    expose: ["global", "phase1", "phase2", "phase3", "phase4", "phase5"],
+  },
+});
+```
+
+### The injection seam
+
+The `tradingDesk` capability has a `default: ["core"]` preset that every one of the pipeline's thirteen generators already pulls in. Adding the resource and a `userInstructions` context entry on `core` reaches every generator with no per-generator edits. The formatter returns an empty string when both the global and active-phase fields are blank — the XML renderer then suppresses the wrapping tag, so an unset state produces zero prompt content rather than an empty `<userInstructions/>` placeholder.
+
+```ts
+core: {
+  resources: { specialInstructions: specialInstructionsResource },
+  model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,
+  context: [
+    {
+      ticker: (_input, ctx) => ctx.session.state.ticker,
+      date: (_input, ctx) => ctx.session.state.date,
+      userInstructions: (_input, ctx) =>
+        formatUserInstructions(
+          ctx.resources.specialInstructions?.state,
+          ctx.session.state.activePhase,
+        ),
+    },
+    GROUNDING_CLAUSE,
+  ],
+},
+```
+
+### The settings UI
+
+The dialog reads persisted state with `useResource(session, "specialInstructions")`, which projects from the session snapshot using the `expose` list above. Saving dispatches the `setInstructions` flow action, which patches the resource. The framework's snapshot refresh on action completion is enough to re-render the indicator in the status bar — no manual cache invalidation, no `useEffect` to refetch.
+
+The gear stays disabled until the user has run at least one analysis. `useResource` projects from a session snapshot, and there is no session before the first run. Acceptable as a tradeoff for a demo; a more general "settings before any work" UX would lazily create a sentinel session at page load.
+
+### Why this shape
+
+A few alternatives were considered and rejected. Adding a per-generator context entry across thirteen generators would have worked, but the capability-preset path is the codebase's preferred shape and it survives the addition of new agents. Reading user-scope state via a dedicated action would have required parsing the SSE stream for the response payload — `ExecuteActionResponse` does not carry handler return values, so the snapshot-driven read is the framework-native primitive. A pre-fetch from a new REST endpoint would have been the wrong tool for an example-local feature.
+
+The generalized take on this pattern — "Projects": resource-backed agent state with optional cross-flow sharing — is tracked separately. The version here is deliberately narrow: trading-desk only, no templates, no versioning, no per-agent scope.
+
 ## Running it
 
 ```bash
