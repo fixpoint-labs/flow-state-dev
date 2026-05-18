@@ -8,17 +8,17 @@ Implement canonical Phase 1 request-stream runtime primitives in `@flow-state-de
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave F: F0-F5)
-3. `../preperation/architecture/STREAMING.md` (request stream lifecycle, event envelope, replay rules)
-4. `../preperation/architecture/SERVER_AND_CLIENT.md` (resume semantics and endpoint contracts)
-5. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (request stream as Phase 1 correctness channel)
-6. `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md` (Phase 1 readiness seam expectations)
+1. The build playbook
+2. The implementation plan (Wave F: F0-F5)
+3. The streaming spec (request stream lifecycle, event envelope, replay rules)
+4. The server and client spec (resume semantics and endpoint contracts)
+5. The architecture overview (request stream as Phase 1 correctness channel)
+6. The middleware extension plan (Phase 1 readiness seam expectations)
 7. `docs/waves/wave-1/wave-1.e.md` (context/store handoff assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -183,10 +183,10 @@ Acceptance criteria:
 - [x] `pnpm -r --if-present typecheck` passes
 - [x] `pnpm -r --if-present test` passes
 - [x] contract spot-check completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave F
-  - `../preperation/architecture/STREAMING.md`
-  - `../preperation/architecture/SERVER_AND_CLIENT.md`
-  - `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md`
+  - The implementation plan, Wave F
+  - The streaming spec
+  - The server and client spec
+  - The middleware extension plan
 - [x] `docs/waves/wave-1/wave-1.f-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.f-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.f summary

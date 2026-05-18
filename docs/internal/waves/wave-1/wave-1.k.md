@@ -6,13 +6,13 @@ Replace the incorrect Wave 1.k `apps/web` implementation with canonical `example
 
 ## Canonical Inputs
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave K intent)
-2. `../preperation/architecture/FLOW_SYSTEM.md`
-3. `../preperation/architecture/BLOCKS.md`
-4. `../preperation/architecture/SERVER_AND_CLIENT.md`
+1. The implementation plan (Wave K intent)
+2. The flow system spec
+3. The block contracts spec
+4. The server and client spec
 5. `/Users/jakehoffner/Projects/flow-state-dev/corrections/WAVE_1K_CORRECTION.md` (override authority)
 
-If docs conflict, `../preperation/architecture/*` and `WAVE_1K_CORRECTION.md` are authoritative.
+If docs conflict, the canonical architecture and `WAVE_1K_CORRECTION.md` are authoritative.
 
 ## Scope
 

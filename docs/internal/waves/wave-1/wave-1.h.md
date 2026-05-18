@@ -8,15 +8,15 @@ Implement canonical server flow registry and catch-all HTTP routing for `/api/fl
 
 Primary authority for this wave:
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave H: H1-H5)
-2. `../preperation/architecture/SERVER_AND_CLIENT.md` (registry and route contracts)
-3. `../preperation/architecture/FLOW_SYSTEM.md` (canonical route surface)
-4. `../preperation/architecture/STREAMING.md` (request stream replay semantics)
+1. The implementation plan (Wave H: H1-H5)
+2. The server and client spec (registry and route contracts)
+3. The flow system spec (canonical route surface)
+4. The streaming spec (request stream replay semantics)
 5. `docs/waves/wave-1/wave-1.g.md` (execution/runtime handoff assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -113,10 +113,10 @@ Acceptance criteria:
 - [x] `pnpm -r --if-present typecheck` passes
 - [x] `pnpm -r --if-present test` passes
 - [x] contract spot-check completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave H
-  - `../preperation/architecture/SERVER_AND_CLIENT.md`
-  - `../preperation/architecture/FLOW_SYSTEM.md`
-  - `../preperation/architecture/STREAMING.md`
+  - The implementation plan, Wave H
+  - The server and client spec
+  - The flow system spec
+  - The streaming spec
 - [x] `docs/waves/wave-1/wave-1.h-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.h-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.h summary

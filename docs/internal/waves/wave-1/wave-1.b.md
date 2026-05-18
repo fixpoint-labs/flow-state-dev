@@ -10,17 +10,17 @@ This wave is complete when Wave 1.c can implement block builders against concret
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md` (wave gates and execution constraints)
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave B tasks B0-B5)
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (core public boundary and package responsibilities)
-4. `../preperation/architecture/BLOCKS.md` (block contracts, context generics, connector types)
-5. `../preperation/architecture/FLOW_SYSTEM.md` (flow/action/types, tools config, lifecycle contracts)
-6. `../preperation/architecture/STATE_AND_SCOPES.md` (scope handles, state ops, resources/projections typing)
-7. `../preperation/architecture/STREAMING.md` (item/content model and stream envelope types)
+1. The build playbook (wave gates and execution constraints)
+2. The implementation plan (Wave B tasks B0-B5)
+3. The architecture overview (core public boundary and package responsibilities)
+4. The block contracts spec (context generics, connector types)
+5. The flow system spec (flow/action/types, tools config, lifecycle contracts)
+6. The state and scopes spec (scope handles, state ops, resources/projections typing)
+7. The streaming spec (item/content model and stream envelope types)
 
 Conflict rule:
 
-- If this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- If this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -196,11 +196,11 @@ Required to close Wave 1.b:
 - [x] targeted tests for changed packages pass (if tests exist in this wave)
 - [x] lint/static checks configured for changed packages pass
 - [x] contract spot-checks completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave B
-  - `../preperation/architecture/BLOCKS.md`
-  - `../preperation/architecture/FLOW_SYSTEM.md`
-  - `../preperation/architecture/STATE_AND_SCOPES.md`
-  - `../preperation/architecture/STREAMING.md`
+  - The implementation plan, Wave B
+  - The block contracts spec
+  - The flow system spec
+  - The state and scopes spec
+  - The streaming spec
 - [x] `docs/waves/wave-1/wave-1.b-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.b-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.b summary

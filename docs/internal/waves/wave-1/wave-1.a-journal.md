@@ -4,9 +4,9 @@ Date: 2026-02-15
 
 ## Canonical Inputs Reviewed
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md`
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`
+1. The build playbook
+2. The implementation plan
+3. The architecture overview
 4. `docs/waves/wave-1/wave-1.a.md`
 5. `docs/ARCHITECTURE_CHEAT_SHEET.compact.md`
 
@@ -52,10 +52,10 @@ Date: 2026-02-15
 
 ## Contract Spot-Check Notes
 
-- Verified Wave 1.a requirements from `../preperation/architecture/IMPLEMENTATION_PLAN.md`:
+- Verified Wave 1.a requirements from the implementation plan:
   - Wave 1.a A1 package entrypoints created.
   - Wave 1.a A2 core subpath exports configured.
-- Verified package/export boundary expectations from `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`:
+- Verified package/export boundary expectations from the architecture overview:
   - Required package set scaffolded.
   - `@flow-state-dev/core`, `@flow-state-dev/core/types`, and `@flow-state-dev/core/items` boundaries established.
   - React package includes compile-time imports from core type/item subpaths.

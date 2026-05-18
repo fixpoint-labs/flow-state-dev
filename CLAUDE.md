@@ -186,11 +186,11 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 
 ## Authority Hierarchy
 
-1. `docs/architecture/*` — Adapted reference docs
+1. `docs/architecture/*` — Reference docs
 2. `docs/contributing/best-practices.md` — Implementation standards
 3. `AGENTS.md` — Process protocol
 
-If docs conflict, `preperation/architecture/*` wins.
+If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
 
 ## Commands
 

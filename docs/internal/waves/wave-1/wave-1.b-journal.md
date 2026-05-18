@@ -4,13 +4,13 @@ Date: 2026-02-15
 
 ## Canonical Inputs Reviewed
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md`
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`
-4. `../preperation/architecture/BLOCKS.md`
-5. `../preperation/architecture/FLOW_SYSTEM.md`
-6. `../preperation/architecture/STATE_AND_SCOPES.md`
-7. `../preperation/architecture/STREAMING.md`
+1. The build playbook
+2. The implementation plan
+3. The architecture overview
+4. The block contracts spec
+5. The flow system spec
+6. The state and scopes spec
+7. The streaming spec
 8. `docs/waves/wave-1/wave-1.b.md`
 
 ## Execution Notes

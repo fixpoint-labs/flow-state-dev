@@ -8,15 +8,15 @@ Implement canonical `@flow-state-dev/testing` utilities for deterministic block/
 
 Primary authority for this wave:
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave J: J1-J6)
-2. `../preperation/architecture/TESTING.md` (testing package contracts)
-3. `../preperation/architecture/EXECUTION_AND_ERRORS.md` (error/runtime behavior expectations)
-4. `../preperation/architecture/STREAMING.md` (item/provenance semantics)
+1. The implementation plan (Wave J: J1-J6)
+2. The testing spec (testing package contracts)
+3. The execution and errors spec (error/runtime behavior expectations)
+4. The streaming spec (item/provenance semantics)
 5. `docs/waves/wave-1/wave-1.i.md` (handoff assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -139,8 +139,8 @@ Acceptance criteria:
 - [x] `pnpm --filter @flow-state-dev/testing typecheck` passes
 - [x] `pnpm --filter @flow-state-dev/testing test` passes
 - [x] architecture contract spot-check completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave J)
-  - `../preperation/architecture/TESTING.md`
+  - The implementation plan (Wave J)
+  - The testing spec
 - [x] `docs/waves/wave-1/wave-1.j-journal.md` updated
 - [x] `docs/waves/wave-1/wave-1.j-changelog.md` updated
 - [x] `changelog.md` updated with Wave 1.j summary

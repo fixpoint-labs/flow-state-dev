@@ -8,15 +8,15 @@ Implement Phase 1 server runtime context composition and persistence primitives 
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave E: E1-E5)
-3. `../preperation/architecture/STATE_AND_SCOPES.md` (scope hierarchy, state ops, CAS policy, adapters)
-4. `../preperation/architecture/SERVER_AND_CLIENT.md` (store responsibilities and server package boundaries)
+1. The build playbook
+2. The implementation plan (Wave E: E1-E5)
+3. The state and scopes spec (scope hierarchy, state ops, CAS policy, adapters)
+4. The server and client spec (store responsibilities and server package boundaries)
 5. `docs/waves/wave-1/wave-1.d.md` (core-flow/runtime handoff assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -142,9 +142,9 @@ Acceptance criteria:
 - [x] `pnpm -r --if-present typecheck` passes
 - [x] `pnpm -r --if-present test` passes
 - [x] contract spot-check complete against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave E
-  - `../preperation/architecture/STATE_AND_SCOPES.md`
-  - `../preperation/architecture/SERVER_AND_CLIENT.md`
+  - The implementation plan, Wave E
+  - The state and scopes spec
+  - The server and client spec
 - [x] `docs/waves/wave-1/wave-1.e-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.e-journal.md` updated
 - [x] `changelog.md` updated

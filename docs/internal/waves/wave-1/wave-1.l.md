@@ -8,7 +8,7 @@ This is Batch 1 of CLI work. No dependencies on other new work.
 
 ## 2. Canonical inputs
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` — Wave L intent
+1. The implementation plan — Wave L intent
 2. `docs/architecture/overview.md` — Package structure and dependency graph
 3. `docs/contributing/architecture-reference.md` — Locked contracts (CLI boundary: uses core + server + testing, never react or client)
 4. `packages/core/src/types/block.ts` — `BlockDefinition` interface, `BlockKind`, `BlockConfig`

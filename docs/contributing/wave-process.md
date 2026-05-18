@@ -70,4 +70,3 @@ Current state (Phase 1):
 - Every implementation change must map to a wave task (BP-002)
 - Wave labels must NOT appear in runtime code or tests (BP-006)
 - Documentation updates ship in the same change set as code changes
-- The `preperation/architecture/IMPLEMENTATION_PLAN.md` tracks the canonical wave sequence

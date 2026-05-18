@@ -8,9 +8,9 @@ Implement canonical flow runtime APIs in `@flow-state-dev/core` by adding `defin
 
 Primary authority for this wave:
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave D tasks D1, D2, D4)
-2. `../preperation/architecture/FLOW_SYSTEM.md` (`defineFlow`, `FlowType`, `ToolsConfig`)
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (canonical flow model defaults and constraints)
+1. The implementation plan (Wave D tasks D1, D2, D4)
+2. The flow system spec (`defineFlow`, `FlowType`, `ToolsConfig`)
+3. The architecture overview (canonical flow model defaults and constraints)
 4. `docs/waves/wave-1/wave-1.c.md` (block-builder/runtime handoff)
 
 ## 3. Scope

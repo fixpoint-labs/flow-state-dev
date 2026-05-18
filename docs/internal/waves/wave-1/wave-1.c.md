@@ -10,15 +10,15 @@ This wave is complete when the core package exports all canonical block builders
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md` (execution order and gate requirements)
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave C tasks C1-C5)
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (canonical block responsibilities)
-4. `../preperation/architecture/BLOCKS.md` (builder APIs, connector behavior, sequencer DSL, generator/router rules)
+1. The build playbook (execution order and gate requirements)
+2. The implementation plan (Wave C tasks C1-C5)
+3. The architecture overview (canonical block responsibilities)
+4. The block contracts spec (builder APIs, connector behavior, sequencer DSL, generator/router rules)
 5. `docs/waves/wave-1/wave-1.b.md` (handoff assumptions and guaranteed type surfaces)
 
 Conflict rule:
 
-- If this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- If this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -183,9 +183,9 @@ Required to close Wave 1.c:
 - [x] targeted tests for changed packages pass (if tests exist in this wave)
 - [x] lint/static checks configured for changed packages pass
 - [x] contract spot-checks completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave C
-  - `../preperation/architecture/BLOCKS.md`
-  - `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`
+  - The implementation plan, Wave C
+  - The block contracts spec
+  - The architecture overview
 - [x] `docs/waves/wave-1/wave-1.c-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.c-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.c summary

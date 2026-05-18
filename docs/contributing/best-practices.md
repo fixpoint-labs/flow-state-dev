@@ -15,15 +15,15 @@ Update policy:
 
 ## Active Practices
 
-### BP-001: Canonical authority precedence
+### BP-001: Documentation authority precedence
 
 - Status: Active
 - Date: 2026-02-15
 - Rule:
-  - If docs conflict, `preperation/architecture/*` is authoritative.
-  - Planning docs and wave docs must reference canonical architecture sources.
+  - If two in-repo docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
+  - Planning docs and wave docs must reference the relevant `docs/architecture/<area>.md` file rather than restating contracts inline.
 - Why:
-  - Prevents drift between wave execution and architecture contracts.
+  - Prevents drift between wave execution and architecture contracts, and keeps a single source of truth per concept.
 
 ### BP-002: Wave-driven execution
 

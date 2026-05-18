@@ -8,18 +8,18 @@ Implement canonical execution and error runtime primitives in `@flow-state-dev/s
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave G: G1-G8)
-3. `../preperation/architecture/EXECUTION_AND_ERRORS.md` (runtime and error behavior)
-4. `../preperation/architecture/FLOW_SYSTEM.md` (request/action lifecycle hooks and work semantics)
-5. `../preperation/architecture/BLOCKS.md` (block-kind runtime contracts and retry/rescue/work semantics)
-6. `../preperation/architecture/SERVER_AND_CLIENT.md` (server execution API shape and request lifecycle integration)
-7. `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md` (Phase 1 internal seam readiness)
+1. The build playbook
+2. The implementation plan (Wave G: G1-G8)
+3. The execution and errors spec (runtime and error behavior)
+4. The flow system spec (request/action lifecycle hooks and work semantics)
+5. The block contracts spec (block-kind runtime contracts and retry/rescue/work semantics)
+6. The server and client spec (server execution API shape and request lifecycle integration)
+7. The middleware extension plan (Phase 1 internal seam readiness)
 8. `docs/waves/wave-1/wave-1.f.md` (streaming runtime handoff assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -186,11 +186,11 @@ Acceptance criteria:
 - [x] `pnpm -r --if-present typecheck` passes
 - [x] `pnpm -r --if-present test` passes
 - [x] contract spot-check completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave G
-  - `../preperation/architecture/EXECUTION_AND_ERRORS.md`
-  - `../preperation/architecture/FLOW_SYSTEM.md`
-  - `../preperation/architecture/BLOCKS.md`
-  - `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md`
+  - The implementation plan, Wave G
+  - The execution and errors spec
+  - The flow system spec
+  - The block contracts spec
+  - The middleware extension plan
 - [x] `docs/waves/wave-1/wave-1.g-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.g-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.g summary

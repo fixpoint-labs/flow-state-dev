@@ -10,13 +10,13 @@ This wave is complete when downstream waves can start implementing runtime contr
 
 Primary authority for this wave:
 
-1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md` (execution rules and wave gates)
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave A tasks A1-A2)
-3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (package targets + public export boundaries)
+1. The build playbook (execution rules and wave gates)
+2. The implementation plan (Wave A tasks A1-A2)
+3. The architecture overview (package targets + public export boundaries)
 
 Conflict rule:
 
-- If this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- If this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -183,8 +183,8 @@ Required to close Wave 1.a:
 - [x] targeted tests for changed packages pass (if tests exist in this wave)
 - [x] lint/static checks configured for changed packages pass
 - [x] contract spot-checks completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave A
-  - `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` package/export sections
+  - The implementation plan, Wave A
+  - The architecture overview package/export sections
 - [x] `docs/waves/wave-1/wave-1.a-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.a-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.a summary

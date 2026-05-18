@@ -455,4 +455,4 @@ Mid-request, `state_change` and `resource_change` stream items signal invalidati
 
 ## Canonical Authority
 
-For full type signatures and edge cases, see `../preperation/architecture/FLOW_SYSTEM.md` and `../preperation/architecture/STATE_AND_SCOPES.md`.
+This document is authoritative for resources and client data. See also [flows-and-actions.md](./flows-and-actions.md) and [state-and-scopes.md](./state-and-scopes.md). For full type signatures, refer to the published types in `@flow-state-dev/core`.

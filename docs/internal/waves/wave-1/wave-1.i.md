@@ -8,15 +8,15 @@ Implement canonical `@flow-state-dev/client` transport APIs and `@flow-state-dev
 
 Primary authority for this wave:
 
-1. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave I: I1-I4)
-2. `../preperation/architecture/SERVER_AND_CLIENT.md` (client/react contracts)
-3. `../preperation/architecture/STREAMING.md` (SSE event/resume semantics)
-4. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (Phase 1 boundaries)
+1. The implementation plan (Wave I: I1-I4)
+2. The server and client spec (client/react contracts)
+3. The streaming spec (SSE event/resume semantics)
+4. The architecture overview (Phase 1 boundaries)
 5. `docs/waves/wave-1/wave-1.h.md` (server route/runtime assumptions)
 
 Conflict rule:
 
-- if this wave plan conflicts with `../preperation/architecture/*`, architecture docs win.
+- if this wave plan conflicts with the canonical architecture, architecture docs win.
 
 ## 3. Scope
 
@@ -138,9 +138,9 @@ Acceptance criteria:
 - [x] `pnpm -r --if-present typecheck` passes
 - [x] `pnpm -r --if-present test` passes
 - [x] contract spot-check completed against:
-  - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave I
-  - `../preperation/architecture/SERVER_AND_CLIENT.md`
-  - `../preperation/architecture/STREAMING.md`
+  - The implementation plan, Wave I
+  - The server and client spec
+  - The streaming spec
 - [x] `docs/waves/wave-1/wave-1.i-journal.md` updated
 - [x] `docs/waves/wave-1/wave-1.i-changelog.md` updated
 - [x] `changelog.md` updated with Wave 1.i summary

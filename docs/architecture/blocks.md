@@ -456,7 +456,7 @@ ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "au
 
 ## Canonical Authority
 
-For full type signatures, edge cases, and detailed semantics, see `../preperation/architecture/BLOCKS.md`.
+This document is authoritative for block contracts. For full type signatures, refer to the published types in `@flow-state-dev/core`.
 
 
 Output dependencies use block-definition references instead of name-based state handles:
