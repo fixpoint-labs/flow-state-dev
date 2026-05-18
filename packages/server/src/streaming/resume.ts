@@ -147,7 +147,8 @@ export function replayRequestEvents(
       if (
         event.type === "ping" ||
         event.type === "debug" ||
-        event.type === "content.delta"
+        event.type === "content.delta" ||
+        event.type === "content.audio.delta"
       ) {
         return false;
       }

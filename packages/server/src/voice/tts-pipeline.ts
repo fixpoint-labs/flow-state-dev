@@ -5,6 +5,7 @@
 import type { OutputAudioContent } from "@flow-state-dev/core/items";
 import type { SpeechModel, SpeechResolver, TTSConfig } from "@flow-state-dev/core/types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
+import { uint8ArrayToBase64 } from "../streaming/binary";
 import { createSentenceBuffer, type SentenceBuffer } from "./sentence-buffer";
 
 /** Maximum number of concurrent TTS API calls. */
@@ -222,18 +223,6 @@ function resolveSpeechModel(
   }
 
   return speechResolver(config.model);
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64");
-  }
-
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

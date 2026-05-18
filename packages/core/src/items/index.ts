@@ -51,6 +51,7 @@ export {
 export type { ItemLookup } from "./resolve-value";
 
 export type {
+  ContentAudioDeltaEvent,
   ContentPartAddedEvent,
   ContentPartDeltaEvent,
   ContentPartDoneEvent,

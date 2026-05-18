@@ -119,6 +119,7 @@ The request stream carries these event types:
 | `item.done` | Item finalized |
 | `content.added` | Content part added to an item |
 | `content.delta` | Text chunk appended |
+| `content.audio.delta` | Audio chunk appended (streaming TTS, live-only) |
 | `content.done` | Content part finalized |
 | `resource.changed` | Resource mutation (request scope) |
 | `session.metadata.changed` | Session title/description/tags/metadata updated |
@@ -176,6 +177,8 @@ Replayable events are persisted **before** they are flushed to the SSE wire. The
 
 `ping` and `debug` events are not replayable and skip the durability barrier — they go straight to the wire.
 
+`content.audio.delta` events are non-replayable for the same reasons (FIX-523). The durable representation of synthesized audio is the eventual `OutputAudioContent` snapshot delivered via `content.added` / `content.done`; chunks are the live transport only. Per-chunk persistence would 10–100x the events-log size for sub-second TTS without enabling any client behavior the snapshot doesn't already cover.
+
 `content.delta` events are also non-replayable. The events-log path is bypassed for streaming text, but the running text is checkpointed durably via the items snapshot: each delta mutates the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) in-place, and the emitter's `onItemUpdate` hook drives a coalesced `persistItems` write at the store's natural cadence. The motivation is throughput: under concurrent worker streams (e.g. a supervisor with `concurrency: 3` and three streaming workers), a per-token disk round-trip on the events log serializes every delta behind every other delta and the request appears to lock up. Live SSE consumers and devtool observers still receive every delta via the wire callback and the in-memory event buffer.
 
 ### Streaming-text contract
@@ -185,6 +188,7 @@ Replayable events are persisted **before** they are flushed to the SSE wire. The
 | `item.added` (message/reasoning) | yes | yes |
 | `content.added` | yes | no |
 | `content.delta` | **no** (FIX-479) | yes — accumulates text in-place |
+| `content.audio.delta` | **no** (FIX-523) | no — durable snapshot is the eventual `OutputAudioContent` |
 | `content.done` | yes | no |
 | `item.done` | yes | yes (final authoritative payload) |
 
@@ -202,6 +206,7 @@ GET /stream?starting_after=42
 - Server replays persisted events with `sequence_number > cursor` then continues live
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
+- `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume
 
 ## Store-driven event subscriptions
 

@@ -17,6 +17,7 @@ import {
 } from "@flow-state-dev/client";
 import type {
   Content,
+  ContentAudioDeltaEvent,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -77,6 +78,15 @@ export type UseSessionHookOptions = {
    * Default: 30000 (30 seconds).
    */
   stuckThresholdMs?: number;
+  /**
+   * Fires for each streaming TTS audio chunk (FIX-523). Live-only —
+   * chunks are not part of session item state and are not replayed on
+   * reconnect. The `useVoice` hook subscribes via
+   * `SessionView.subscribeAudioDelta` for in-package gapless playback;
+   * use this option only when consuming raw chunks directly (e.g. for
+   * a custom player).
+   */
+  onContentAudioDelta?: (event: ContentAudioDeltaEvent) => void;
 };
 
 /**
@@ -153,6 +163,15 @@ export type SessionView = {
    */
   resumeLatestRequest: () => Promise<void>;
   refresh: () => Promise<void>;
+  /**
+   * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
+   * and not retained in session item state — the durable representation is
+   * the eventual `OutputAudioContent` snapshot delivered via `items`. The
+   * returned function unsubscribes. Used by `useVoice` for gapless playback;
+   * external consumers can attach a custom handler when implementing their
+   * own player.
+   */
+  subscribeAudioDelta: (handler: (event: ContentAudioDeltaEvent) => void) => () => void;
 };
 
 function normalizeFlowKind(flowKind: string): string {
@@ -442,6 +461,29 @@ export function useSession(
   const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
+  /**
+   * Subscribers attached via `subscribeAudioDelta` (FIX-523). The set lives
+   * on a ref so handler identities can mutate over the lifetime of a
+   * subscriber without forcing re-renders. We dispatch synchronously inside
+   * the SSE callback so downstream consumers (the audio player) get the
+   * chunk before any React state update batching.
+   */
+  const audioDeltaListenersRef = useRef<Set<(event: ContentAudioDeltaEvent) => void>>(
+    new Set()
+  );
+  /**
+   * Stable wrapper around `options.onContentAudioDelta` so an unmemoized
+   * inline callback from a consumer doesn't churn the SSE callback bag's
+   * identity on every render.
+   */
+  const onContentAudioDeltaOption = options?.onContentAudioDelta;
+  const onContentAudioDeltaOptionRef = useRef(onContentAudioDeltaOption);
+  // Sync the ref to the latest callback identity. Effect, not assignment
+  // during render — render-time mutation would break React's concurrent
+  // rendering invariants.
+  useEffect(() => {
+    onContentAudioDeltaOptionRef.current = onContentAudioDeltaOption;
+  }, [onContentAudioDeltaOption]);
 
   /** Track an item's ownedBy in the ownership index. */
   const trackOwnership = useCallback((item: OutputItem) => {
@@ -895,6 +937,20 @@ export function useSession(
           }
 
           scheduleContentFlush();
+        },
+        onContentAudioDelta: (event) => {
+          // Fan out to in-package subscribers (useVoice) first so the
+          // audio player can start scheduling chunks with minimum latency,
+          // then dispatch to the consumer-provided callback if any.
+          for (const listener of audioDeltaListenersRef.current) {
+            try {
+              listener(event);
+            } catch {
+              // A misbehaving listener must not block delivery to the
+              // remaining subscribers or the consumer callback.
+            }
+          }
+          onContentAudioDeltaOptionRef.current?.(event);
         },
         onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
           setDetail((prev) => {
@@ -1423,6 +1479,16 @@ export function useSession(
     }
   }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
 
+  const subscribeAudioDelta = useCallback(
+    (handler: (event: ContentAudioDeltaEvent) => void) => {
+      audioDeltaListenersRef.current.add(handler);
+      return () => {
+        audioDeltaListenersRef.current.delete(handler);
+      };
+    },
+    []
+  );
+
   return {
     flowKind: resolvedFlowKind,
     sessionId,
@@ -1446,6 +1512,7 @@ export function useSession(
     abortRequest,
     dismissRequest,
     resumeLatestRequest,
-    refresh
+    refresh,
+    subscribeAudioDelta
   };
 }
