@@ -1,19 +1,18 @@
 /**
- * User-scoped persistent "special instructions" surface for the trading-desk
- * example. Holds a single global free-text block plus one per-phase block for
- * each of the five phases.
+ * User-scoped "special instructions" — schema, defaults, and prompt formatter.
  *
- * Storage: user-scope with `flowIsolation: true`, so the record lives under
- * `{userId}:trading-desk` and never bleeds into other flows that share the
- * same user identity.
+ * This file is intentionally framework-import-free so it can be imported from
+ * client components (`app/page.tsx`, `components/settings-dialog.tsx`) without
+ * pulling `@flow-state-dev/core`'s root barrel — which transitively reaches
+ * Node-only model resolvers — into the browser bundle. The matching
+ * `defineResource` lives next door in `./special-instructions-resource`.
  *
- * Injection: a `userInstructions` context entry on the `tradingDesk` capability's
- * always-on `core` preset renders `formatUserInstructions(...)` into every
- * generator's prompt. Empty fields produce an empty string so the framework's
- * XML renderer suppresses the wrapping tag entirely — no empty `<userInstructions/>`
- * leaks into the prompt when nothing is set.
+ * Injection: a `userInstructions` context entry on the `tradingDesk`
+ * capability's always-on `core` preset renders `formatUserInstructions(...)`
+ * into every generator's prompt. Empty fields produce an empty string so the
+ * framework's XML renderer suppresses the wrapping tag entirely — no empty
+ * `<userInstructions/>` leaks into the prompt when nothing is set.
  */
-import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 export const specialInstructionsStateSchema = z.object({
@@ -85,20 +84,3 @@ export function formatUserInstructions(
   if (phase) parts.push("", `## This phase (${activePhase})`, phase);
   return parts.join("\n");
 }
-
-/**
- * The user-scoped, flow-isolated singleton resource that backs the settings
- * surface. `client.expose` opts every field into the session snapshot so the
- * settings dialog can read persisted state via `useResource`.
- */
-export const specialInstructionsResource = defineResource({
-  scope: "user",
-  flowIsolation: true,
-  ref: "tradingDeskSpecialInstructions",
-  stateSchema: specialInstructionsStateSchema,
-  default: EMPTY_INSTRUCTIONS,
-  writable: true,
-  client: {
-    expose: ["global", "phase1", "phase2", "phase3", "phase4", "phase5"],
-  },
-});

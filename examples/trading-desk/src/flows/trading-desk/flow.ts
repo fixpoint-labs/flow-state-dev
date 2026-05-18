@@ -23,10 +23,8 @@ import { phase4Contributions } from "./phase-4/round-robin";
 import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
 import { resolveTicker } from "./services/ticker-resolver";
-import {
-  specialInstructionsResource,
-  specialInstructionsStateSchema,
-} from "./special-instructions";
+import { specialInstructionsStateSchema } from "./special-instructions";
+import { specialInstructionsResource } from "./special-instructions-resource";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";

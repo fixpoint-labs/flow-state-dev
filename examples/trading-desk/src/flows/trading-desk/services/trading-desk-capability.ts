@@ -38,10 +38,8 @@ import {
 import { memosCollection } from "../resources";
 import { phase2Contributions } from "../phase-2/contributions";
 import { phase4Contributions } from "../phase-4/contributions";
-import {
-  formatUserInstructions,
-  specialInstructionsResource,
-} from "../special-instructions";
+import { formatUserInstructions } from "../special-instructions";
+import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema, type SessionState } from "../state";
 import {
   formatAnalystMemos,
