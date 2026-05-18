@@ -1090,6 +1090,74 @@ describe("debate", () => {
       expect(out.moderatorDecisions).toHaveLength(1);
     });
 
+    it("a moderator that throws surfaces as a run error", async () => {
+      const brokenModerator = handler({
+        name: "moderator-broken",
+        inputSchema: z.any(),
+        outputSchema: debateModeratorOutputSchema,
+        execute: () => {
+          throw new Error("moderator-boom");
+        },
+      });
+      const pattern = debate({
+        name: "deb-mod-throws",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: brokenModerator,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).not.toBeNull();
+      expect(String(result.error?.message ?? "")).toContain("moderator-boom");
+    });
+
+    it("exits after round 2 when terminateWhen and moderator.done both fire", async () => {
+      // Both mechanisms wired to end after round 2; the loopBack predicate's
+      // short-circuit order (round cap → moderator.done → terminateWhen)
+      // means moderator.done wins here, but exit happens regardless.
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["a", "b"], newAngle: null, done: false }, // round 1 → continue
+        { nextSpeakers: [], newAngle: null, done: true },          // round 2 → done
+      ]);
+      const pattern = debate({
+        name: "deb-mod-and-terminate",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        terminateWhen: (ctx) => {
+          const state = ctx.sequencer!.state as { round: number };
+          return state.round >= 2;
+        },
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(2);
+      // Both exit conditions are truthy after round 2; either is sufficient.
+      expect(
+        out.moderatorDecisions[out.moderatorDecisions.length - 1]?.done,
+      ).toBe(true);
+    });
+
     it("terminateWhen that throws propagates as a run error", async () => {
       const pattern = debate({
         name: "deb-terminate-throws",

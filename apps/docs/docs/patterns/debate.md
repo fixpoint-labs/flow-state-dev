@@ -258,7 +258,6 @@ The default synthesizer is a generator that projects the raw debate shape — in
 | `judgeAgentType` | `AgentType` | `"primary"` | Agent type for the default judge. |
 | `synthesizerAgentType` | `AgentType` | `"primary"` | Agent type for the default synthesizer. |
 | `debaterAgentType` | `AgentType` | `"sub"` | Agent type for default debaters. |
-| `moderatorAgentType` | `AgentType` | `"sub"` | Agent type for the default moderator. |
 | `collectionId` | `string` | `name` | Stable id for the per-run `TaskCollection`. |
 
 `DebaterConfig`:

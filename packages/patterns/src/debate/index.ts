@@ -180,7 +180,6 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   judgeAgentType?: AgentType;
   synthesizerAgentType?: AgentType;
   debaterAgentType?: AgentType;
-  moderatorAgentType?: AgentType;
   /**
    * Strip debater names from the judge's view of the transcript.
    * Stances are retained. Default `true`. Mitigates identity-driven
