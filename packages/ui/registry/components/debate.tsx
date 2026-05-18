@@ -4,6 +4,7 @@ import type {
   ComponentItem,
   ContainerItem,
   OutputItem,
+  ToolOutputItem,
 } from "@flow-state-dev/core/items";
 import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
@@ -16,8 +17,10 @@ import {
   Loader2Icon,
   MessagesSquareIcon,
   ScaleIcon,
+  SearchIcon,
   TrophyIcon,
   UserIcon,
+  WrenchIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import Markdown from "react-markdown";
@@ -49,7 +52,68 @@ type DebateVerdict = {
   reasoning: string;
 };
 
+type ToolCall = {
+  name: string;
+  query?: string;
+  /** Summarized output — first few result titles/URLs for search, truncated text for others. */
+  resultSummary?: string[];
+};
+
 type StepStatus = "complete" | "active" | "pending";
+
+/** Converts camelCase / kebab-case tool names to Title Case for display. */
+function formatToolName(name: string): string {
+  return name
+    .replace(/[-_]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Extract a compact ToolCall record from a ToolOutputItem. */
+function toolCallFromOutput(tool: ToolOutputItem): ToolCall {
+  let query: string | undefined;
+  let resultSummary: string[] | undefined;
+  try {
+    const args = JSON.parse(tool.toolCall.arguments);
+    query = typeof args.query === "string" ? args.query : undefined;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const out = tool.output;
+    if (typeof out === "string") {
+      const first = out.split("\n")[0]!.trim();
+      if (first) resultSummary = [first.slice(0, 120)];
+    } else if (Array.isArray(out)) {
+      resultSummary = out
+        .slice(0, 5)
+        .map((r: any) => {
+          if (typeof r === "string") return r.slice(0, 120);
+          const title = r.title ?? r.name ?? r.url ?? "";
+          const url = r.url ? ` — ${new URL(r.url).hostname}` : "";
+          return `${title}${url}`.slice(0, 120);
+        })
+        .filter(Boolean);
+    } else if (out && typeof out === "object") {
+      const results =
+        (out as any).results ?? (out as any).items ?? (out as any).data;
+      if (Array.isArray(results)) {
+        resultSummary = results
+          .slice(0, 5)
+          .map((r: any) => {
+            if (typeof r === "string") return r.slice(0, 120);
+            const title = r.title ?? r.name ?? r.url ?? "";
+            const url = r.url ? ` — ${new URL(r.url).hostname}` : "";
+            return `${title}${url}`.slice(0, 120);
+          })
+          .filter(Boolean);
+      }
+    }
+  } catch {
+    /* ignore parse errors */
+  }
+  return { name: tool.toolCall.name, query, resultSummary };
+}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -81,11 +145,24 @@ export function Debate({ item }: { item: ContainerItem }) {
     );
   }, [ownedItems, allItems, requestId]);
 
-  const { turns, decisions, verdict } = useMemo(() => {
+  const { turns, decisions, verdict, toolsByRound, pendingTools } = useMemo(() => {
     const turns: DebateTurn[] = [];
     const decisions: DebateDecision[] = [];
     let verdict: DebateVerdict | null = null;
+    // Tool calls made by the moderator while opening a round arrive in
+    // the stream BEFORE that round's `debate-decision` (the moderator
+    // emits the decision item as its very last step). Buffer
+    // tool_outputs in encounter order, then flush them onto the next
+    // decision we see. Anything still pending at the end is attributed
+    // to a hypothetical in-flight round so the UI shows the moderator's
+    // research even when the decision hasn't streamed yet.
+    const toolsByRound = new Map<number, ToolCall[]>();
+    let pending: ToolCall[] = [];
     for (const i of scopedItems) {
+      if (i.type === "tool_output") {
+        pending.push(toolCallFromOutput(i as ToolOutputItem));
+        continue;
+      }
       if (i.type !== "component") continue;
       const comp = i as ComponentItem;
       const data = comp.data as Record<string, unknown>;
@@ -120,6 +197,10 @@ export function Debate({ item }: { item: ContainerItem }) {
               typeof data.newAngle === "string" ? data.newAngle : null,
             done: data.done,
           });
+          if (pending.length > 0) {
+            toolsByRound.set(data.round, pending);
+            pending = [];
+          }
         }
       } else if (comp.component === "debate-verdict") {
         if (
@@ -128,21 +209,21 @@ export function Debate({ item }: { item: ContainerItem }) {
         ) {
           verdict = {
             verdict: data.verdict,
-            winner:
-              typeof data.winner === "string" ? data.winner : null,
+            winner: typeof data.winner === "string" ? data.winner : null,
             reasoning: data.reasoning,
           };
         }
       }
     }
-    return { turns, decisions, verdict };
+    return { turns, decisions, verdict, toolsByRound, pendingTools: pending };
   }, [scopedItems]);
 
-  // Group turns and decisions by round in encounter order. The moderator
-  // runs at the top of each round, so the decision opens the round and
-  // the turns follow. A round may appear with only a decision (moderator
-  // just ran, turns haven't streamed in yet) or only turns (no moderator
-  // configured).
+  // Group turns, decisions, and the moderator's tool calls by round in
+  // encounter order. The moderator runs at the top of each round, so the
+  // decision opens the round and the turns follow. A round may appear
+  // with only a decision (moderator just ran, turns haven't streamed in
+  // yet) or only turns (no moderator configured) — or with pending
+  // tool calls still flowing in before the decision lands.
   const rounds = useMemo(() => {
     const seen = new Set<number>();
     for (const t of turns) seen.add(t.round);
@@ -153,14 +234,23 @@ export function Debate({ item }: { item: ContainerItem }) {
         round,
         decision: decisions.find((d) => d.round === round) ?? null,
         turns: turns.filter((t) => t.round === round),
+        tools: toolsByRound.get(round) ?? [],
       }));
-  }, [turns, decisions]);
+  }, [turns, decisions, toolsByRound]);
+
+  // The next round number whose moderator is currently mid-flight: we
+  // have tool calls but no decision yet. Used to surface live research
+  // activity as an "active" row above any committed rounds.
+  const inFlightRound = useMemo(() => {
+    if (pendingTools.length === 0) return null;
+    const lastCommitted = rounds.length > 0 ? rounds[rounds.length - 1]!.round : 0;
+    return lastCommitted + 1;
+  }, [rounds, pendingTools]);
 
   const isFinished = verdict !== null;
 
-  // Build the step list: each round, then a verdict step. A round is
-  // "complete" once it has a decision AND every named speaker has emitted
-  // a turn. The last round is "active" while its turns are streaming in.
+  // Build the step list: each round (with optional in-flight round
+  // showing the moderator's live research), then a verdict step.
   const steps = useMemo(() => {
     type DebateStep = {
       key: string;
@@ -169,12 +259,13 @@ export function Debate({ item }: { item: ContainerItem }) {
       status: StepStatus;
       turns: DebateTurn[];
       decision: DebateDecision | null;
+      tools: ToolCall[];
       verdict: DebateVerdict | null;
     };
     const out: DebateStep[] = [];
     for (let i = 0; i < rounds.length; i++) {
       const r = rounds[i]!;
-      const isLastRound = i === rounds.length - 1;
+      const isLastRound = i === rounds.length - 1 && inFlightRound === null;
       const expectedSpeakers = r.decision?.nextSpeakers.length ?? r.turns.length;
       const haveAllTurns = r.turns.length >= expectedSpeakers;
       const status: StepStatus =
@@ -190,6 +281,22 @@ export function Debate({ item }: { item: ContainerItem }) {
         status,
         turns: r.turns,
         decision: r.decision,
+        tools: r.tools,
+        verdict: null,
+      });
+    }
+    // Live "moderator opening round N" step: tool calls have started
+    // streaming but the decision hasn't landed yet. Surface them so
+    // the UI doesn't sit silent while research is in flight.
+    if (inFlightRound !== null) {
+      out.push({
+        key: `round-${inFlightRound}-pending`,
+        kind: "round",
+        round: inFlightRound,
+        status: "active",
+        turns: [],
+        decision: null,
+        tools: pendingTools,
         verdict: null,
       });
     }
@@ -197,21 +304,20 @@ export function Debate({ item }: { item: ContainerItem }) {
       key: "verdict",
       kind: "verdict",
       round: 0,
-      // Verdict step is shown as active once the last round's debaters
-      // have all spoken (judge is presumably running). It's pending
-      // before that and complete once the verdict emits.
       status: isFinished
         ? "complete"
         : rounds.length > 0 &&
+            inFlightRound === null &&
             out[out.length - 1]?.status === "complete"
           ? "active"
           : "pending",
       turns: [],
       decision: null,
+      tools: [],
       verdict,
     });
     return out;
-  }, [rounds, isFinished, verdict]);
+  }, [rounds, isFinished, verdict, inFlightRound, pendingTools]);
 
   const headerLabel = isFinished
     ? verdict?.winner
@@ -272,31 +378,40 @@ export function Debate({ item }: { item: ContainerItem }) {
             const isLast = i === steps.length - 1;
             if (step.kind === "round") {
               const hasDecision = step.decision !== null;
+              const hasTools = step.tools.length > 0;
+              const childCount =
+                (hasTools ? 1 : 0) +
+                (hasDecision ? 1 : 0) +
+                step.turns.length;
+              let childIdx = 0;
+              const renderChild = (node: React.ReactNode) => {
+                const last = childIdx === childCount - 1;
+                childIdx += 1;
+                return (
+                  <StepItem key={`child-${childIdx}`} isLast={last}>
+                    {node}
+                  </StepItem>
+                );
+              };
               return (
                 <Step
                   key={step.key}
                   icon={MessagesSquareIcon}
                   label={
-                    step.status === "active"
-                      ? `Round ${step.round} in progress...`
-                      : `Round ${step.round} — ${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"}`
+                    step.status === "active" && !hasDecision && hasTools
+                      ? `Round ${step.round} — moderator researching...`
+                      : step.status === "active"
+                        ? `Round ${step.round} in progress...`
+                        : `Round ${step.round} — ${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"}`
                   }
                   status={step.status}
                   isLast={isLast}
                 >
-                  {hasDecision && (
-                    <StepItem isLast={step.turns.length === 0}>
-                      <DecisionItem decision={step.decision!} />
-                    </StepItem>
+                  {hasTools && renderChild(<ResearchTimeline calls={step.tools} />)}
+                  {hasDecision && renderChild(<DecisionItem decision={step.decision!} />)}
+                  {step.turns.map((turn) =>
+                    renderChild(<TurnItem turn={turn} />),
                   )}
-                  {step.turns.map((turn, j) => (
-                    <StepItem
-                      key={`turn-${j}`}
-                      isLast={j === step.turns.length - 1}
-                    >
-                      <TurnItem turn={turn} />
-                    </StepItem>
-                  ))}
                 </Step>
               );
             }
@@ -460,19 +575,154 @@ function DecisionItem({ decision }: { decision: DebateDecision }) {
       <div className="text-[11px] leading-snug text-muted-foreground">
         {speakers}
       </div>
-      {decision.briefing && (
-        <div className="text-[11px] leading-snug text-muted-foreground">
-          <span className="font-medium text-foreground/70">Briefing:</span>{" "}
-          {decision.briefing}
-        </div>
-      )}
       {decision.newAngle && (
         <div className="text-[11px] leading-snug text-muted-foreground">
           <span className="font-medium text-foreground/70">Focus:</span>{" "}
           {decision.newAngle}
         </div>
       )}
+      {decision.briefing && (
+        <CollapsibleMarkdown label="Briefing" text={decision.briefing} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Markdown body that renders short by default and expands on click.
+ * The collapsed form fades out a 1-line preview; clicking it reveals
+ * the full markdown.
+ */
+function CollapsibleMarkdown({ label, text }: { label: string; text: string }) {
+  // Strip markdown syntax to a leading plain-text fragment for the
+  // preview line. We only need enough to hint at the contents — the
+  // reader expands to see the rest.
+  const preview = text
+    .replace(/^#+\s*/gm, "")
+    .replace(/\*\*|__/g, "")
+    .replace(/[`*_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
+  return (
+    <details className="group/briefing">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-[11px] leading-snug">
+        <span className="shrink-0 font-medium text-foreground/70">
+          {label}:
+        </span>
+        <span className="flex-1 truncate text-muted-foreground group-open/briefing:hidden">
+          {preview}
+          {text.length > preview.length ? "…" : ""}
+        </span>
+        <ChevronDownIcon
+          className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/40 transition-transform group-open/briefing:-rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-1">
+        <EntryMarkdown text={text} />
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Compact research timeline showing tool calls the moderator made when
+ * opening a round. Grouped by tool name; each group is collapsible.
+ */
+function ResearchTimeline({ calls }: { calls: ToolCall[] }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, ToolCall[]>();
+    for (const c of calls) {
+      const arr = map.get(c.name) ?? [];
+      arr.push(c);
+      map.set(c.name, arr);
+    }
+    return [...map.entries()].map(([name, group]) => ({
+      name,
+      displayName: formatToolName(name),
+      calls: group,
+    }));
+  }, [calls]);
+  return (
+    <div className="space-y-1 rounded-md border border-blue-500/20 bg-blue-500/5 px-2 py-1.5">
+      <div className="flex items-center gap-1.5 text-xs leading-4">
+        <WrenchIcon
+          className="h-3 w-3 shrink-0 text-blue-500 dark:text-blue-400"
+          aria-hidden="true"
+        />
+        <span className="font-medium text-foreground/80">
+          Moderator research — {calls.length} {calls.length === 1 ? "call" : "calls"}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {groups.map((g) => {
+          const Icon = g.name === "search" ? SearchIcon : WrenchIcon;
+          return (
+            <details key={g.name} className="group/tool">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] leading-4">
+                <Icon
+                  className="h-3 w-3 shrink-0 text-muted-foreground/70"
+                  aria-hidden="true"
+                />
+                <span className="font-medium text-foreground/80">
+                  {g.displayName}
+                </span>
+                <span className="text-muted-foreground">
+                  — {g.calls.length} {g.calls.length === 1 ? "call" : "calls"}
+                </span>
+                <ChevronDownIcon
+                  className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40 transition-transform group-open/tool:-rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="mt-1 space-y-1 pl-4">
+                {g.calls.map((c, i) => (
+                  <ResearchCallItem key={i} call={c} />
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResearchCallItem({ call }: { call: ToolCall }) {
+  const label = call.query ?? call.name;
+  const hasResults = call.resultSummary && call.resultSummary.length > 0;
+  if (!hasResults) {
+    return (
+      <div className="text-[11px] leading-snug text-muted-foreground">
+        {label}
+      </div>
+    );
+  }
+  return (
+    <details className="group/call">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-[11px] leading-snug">
+        <span className="shrink-0 font-medium text-foreground/70">{label}</span>
+        <span className="flex-1 truncate text-muted-foreground">
+          — {call.resultSummary!.length}{" "}
+          {call.resultSummary!.length === 1 ? "result" : "results"}
+        </span>
+        <ChevronDownIcon
+          className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/40 transition-transform group-open/call:-rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-1 space-y-0.5 pl-1">
+        {call.resultSummary!.map((r, j) => (
+          <div
+            key={j}
+            className="truncate text-[10px] text-muted-foreground/70"
+          >
+            {r}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
