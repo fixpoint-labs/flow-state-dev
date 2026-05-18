@@ -113,7 +113,7 @@ export const DEBATE_KEYWORDS = [
   "for and against",
   "pros and cons",
   "weigh the merits",
-  "is X a good idea",
+  "is this a good idea",
   "should we",
 ];
 
