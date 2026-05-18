@@ -316,6 +316,26 @@ The framework documents six canonical intent names — `utility`, `chat`, `plan`
 
 Provider preference (the "prefer Anthropic when available" axis) uses the option name `preferProvider` everywhere it appears: `selectModel({ preferProvider })`, `provider("group", { preferProvider })`, and per-call `resolver(modelString, blockName, { preferProvider })`. The earlier `prefer` name is removed.
 
+### Per-intent defaults
+
+Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators don't have to set them at each call site:
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "openai/gpt-5.4",
+  intents: { plan: ["anthropic/claude-opus-4.7"] },
+  intentDefaults: {
+    plan: {
+      providerOptions: {
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      },
+    },
+  },
+});
+```
+
+Generator-level `providerOptions` wins on key collisions. Provider-mismatched keys (e.g. `anthropic.*` when an OpenAI candidate resolves) are dropped silently. Intent defaults don't apply when an intent falls through to `defaultModel`.
+
 ### Observable model identity
 
 Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.

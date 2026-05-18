@@ -209,7 +209,6 @@ const sidebars: SidebarsConfig = {
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",
-        "advanced/model-groups",
         "advanced/inbound-transports",
         "advanced/state-targets-and-parents",
         "advanced/sequencer-state",
