@@ -54,9 +54,9 @@ const unavailableRoute = handler({
 // before exit; not part of the tool's public output.
 export const grokOutputSchema = z.object({
   score7d: z.number(),
-  positive: z.number(),
-  negative: z.number(),
-  neutral: z.number(),
+  positive: z.number().int().nonnegative(),
+  negative: z.number().int().nonnegative(),
+  neutral: z.number().int().nonnegative(),
   evidence: z.array(
     z.object({
       handle: z.string(),
@@ -130,7 +130,17 @@ const grokRoute = generator({
 // pass-through). The trading-desk capability populates both fields.
 const grokAdaptedRoute = grokRoute.connectOutput(
   (gen, ctx): ToolOutput<"get_social_sentiment"> => {
-    const state = ctx.session.state as { ticker: string; date: string };
+    const state = ctx.session.state as Partial<{ ticker: string; date: string }>;
+    // Read defensively: the trading-desk flow seeds these via
+    // `sessionStateSchema`, so absence indicates an upstream wiring
+    // bug. Surface that directly rather than letting
+    // `socialSentimentSchema`'s `z.string()` reject `undefined` with a
+    // less actionable error.
+    if (!state.ticker || !state.date) {
+      throw new Error(
+        "get_social_sentiment.xai: session.state.ticker and session.state.date must be populated before the Grok route runs",
+      );
+    }
     return {
       source: "xai",
       ticker: state.ticker,
