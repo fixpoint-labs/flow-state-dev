@@ -1,8 +1,8 @@
 # Agent-Brief Template
 
-Use this template for Linear issue bodies that an AFK agent is expected to pick up directly — issues that are too small to warrant a full implementation spec via `fsd:create_spec`, but still need clarity strong enough that an agent can implement them without asking questions.
+Use this template for Linear issue bodies that an AFK agent is expected to pick up directly — issues that are too small to warrant a full implementation spec via `fsd:create-spec`, but still need clarity strong enough that an agent can implement them without asking questions.
 
-When `fsd:create_spec` produces a full spec document, the issue body is the *what / why* and the spec is the *how* — different shape entirely. This template is for the **lightweight path**: the issue body IS the implementation contract.
+When `fsd:create-spec` produces a full spec document, the issue body is the *what / why* and the spec is the *how* — different shape entirely. This template is for the **lightweight path**: the issue body IS the implementation contract.
 
 ## Principles
 
@@ -192,7 +192,7 @@ with that string at emission time. Existing capabilities without
 
 ## When NOT to use this template
 
-- An issue large enough to need a full implementation spec → use `fsd:create_spec`. The spec doc carries the detail; the issue body stays PM-shaped.
+- An issue large enough to need a full implementation spec → use `fsd:create-spec`. The spec doc carries the detail; the issue body stays PM-shaped.
 - An issue genuinely needing human judgment (architectural decision, design choice, external access) → keep it conversational; mark it `ready-for-human` (or your team's equivalent) rather than agent-ready.
 - An incident or ops issue with no clear acceptance criteria → write a triage note instead; turn it into a brief once the shape is known.
 
