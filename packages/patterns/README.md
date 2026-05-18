@@ -213,7 +213,9 @@ const proCon = debate({
 
 Built on the Round Robin chassis; see that section for the loop substrate. Override any debater by passing a `block`; override the judge or the synthesizer with custom blocks. See [Debate](https://flow-state.dev/docs/patterns/debate) for the full reference, the bias-mitigation toggles, and the documented failure modes.
 
-**Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`
+The pattern also accepts an optional `moderator` block. When provided, the moderator runs after each round, reads the transcript, and emits `{ nextSpeakers, newAngle, done }` to drive the next round's dispatch and signal early termination. A separate `terminateWhen?: (ctx) => boolean` predicate is available for session-state-driven early exits that don't involve transcript analysis. See the full reference on the [Debate page](https://flow-state.dev/docs/patterns/debate) for the moderator output shape and behavior.
+
+**Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createJudge`, `createModerator`, `createSynthesize`, `createInitTranscript`, `createRecordArgument`, `formatTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`, `debateModeratorOutputSchema`, `debateModeratorDecisionSchema`
 
 ## Pattern-Level `instructions`
 

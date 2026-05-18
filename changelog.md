@@ -3,6 +3,18 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-18
+
+### Moderated Debate (FIX-607)
+
+- `debate()` now accepts an optional `moderator` block. When provided, the moderator runs at the end of every round, reads the transcript, and emits `{ nextSpeakers, newAngle, done }` to drive who speaks next, optionally inject a reframing, and signal early termination. Round 1 always runs in declared roster order; rounds 2+ run only the moderator's named speakers.
+- New `terminateWhen?: (ctx) => boolean` predicate exits the loop early based on session state, mirroring Round Robin's predicate. It works with or without a moderator. The judge is unchanged — it still runs once at the end and returns `{ verdict, winner, reasoning }`.
+- New `createModerator(opts)` factory ships a default moderator generator and is re-exported from `@flow-state-dev/patterns/debate`. The output schema rejects empty `nextSpeakers` with `done: false`, so a malformed moderator can't cause an empty round. `DebateRawOutput` carries a `moderatorDecisions` field — always present, empty when no moderator was configured.
+- `debate()` accepts an optional `transcript` resource (analogous to `roundRobin`'s `contributions`) so a custom moderator or judge can share the pattern's transcript.
+- Kitchen-sink ships a new "Moderated Debate" thinking style with an `advocate` / `skeptic` roster, keyword classifier hooks, and an LLM classifier category — selectable from the thinking-style dropdown or auto-routed via phrases like "should we" and "argue both sides".
+- Debate, Round Robin, and the patterns overview docs are reshaped around the Debate-vs-Round-Robin distinction: verdict-with-winner vs. synthesized deliverable, moderator vs. referee, non-deterministic dispatch vs. fixed order.
+
+
 ## 2026-05-17
 
 ### Turn-aware history windowing (FIX-608)

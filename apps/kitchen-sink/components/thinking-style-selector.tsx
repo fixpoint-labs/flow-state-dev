@@ -19,10 +19,18 @@ import {
   Users,
   ClipboardList,
   RadioIcon,
+  Scale,
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "routed-specialists" | "evented-actors";
+export type ThinkingStyle =
+  | "auto"
+  | "default"
+  | "plan-and-execute"
+  | "supervisor"
+  | "routed-specialists"
+  | "evented-actors"
+  | "moderated-debate";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -81,6 +89,15 @@ const STYLE_OPTIONS: StyleOption[] = [
     description: "Parallel actors react independently, no controller",
     icon: RadioIcon,
     color: "text-cyan-500 dark:text-cyan-400",
+  },
+  {
+    value: "moderated-debate",
+    label: "Moderated Debate",
+    shortLabel: "Debate",
+    description:
+      "Two agents argue opposing positions; a moderator drives the rounds, then a judge picks a winner",
+    icon: Scale,
+    color: "text-rose-500 dark:text-rose-400",
   },
 ];
 

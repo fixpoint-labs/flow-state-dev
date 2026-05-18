@@ -20,6 +20,11 @@ import {
   actor,
   eventActors,
 } from "@flow-state-dev/patterns/eventActors";
+import {
+  debate,
+  createModerator,
+  createDebateTranscript,
+} from "@flow-state-dev/patterns/debate";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -31,6 +36,7 @@ export const thinkingStyleSchema = z.enum([
   "supervisor",
   "routed-specialists",
   "evented-actors",
+  "moderated-debate",
   "default",
 ]);
 
@@ -101,6 +107,16 @@ export const PLAN_KEYWORDS = [
   "phase",
 ];
 
+export const DEBATE_KEYWORDS = [
+  "debate",
+  "argue both sides",
+  "for and against",
+  "pros and cons",
+  "weigh the merits",
+  "is X a good idea",
+  "should we",
+];
+
 
 // -------------------------------------------------------------------------
 // Tier 1 — Keyword Handler
@@ -124,6 +140,10 @@ export const keywordHandler = handler({
       matched = "evented-actors";
     } else if (ROUTED_SPECIALISTS_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "routed-specialists";
+    } else if (DEBATE_KEYWORDS.some((kw) => message.includes(kw))) {
+      // DEBATE_KEYWORDS is more specific than PLAN_KEYWORDS — phrases
+      // like "should we" should resolve to a debate, not a plan.
+      matched = "moderated-debate";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "plan-and-execute";
     }
@@ -178,6 +198,13 @@ export const classifierBlock = utility.intentClassifier({
       results are synthesized at the end. Examples: "analyze this from multiple
       angles", "give me parallel perspectives", "examine this simultaneously from
       different viewpoints", "concurrent analysis from different angles".
+    `,
+    "moderated-debate": `
+      The message asks for adversarial analysis — argue both sides of a
+      proposition, weigh pros and cons, evaluate the merits of a decision. The
+      user wants disagreement surfaced and a verdict rendered. Examples:
+      "should we refactor X", "is microservices the right call here", "argue
+      both sides of the SQL-vs-NoSQL question".
     `,
     default: `
       The message is a direct question, a reasoning task, an explanation request,
@@ -688,12 +715,52 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     .then(rbMesh.emit)
     .then(rbSynthesizer);
 
+  // -----------------------------------------------------------------------
+  // Moderated Debate — two agents argue opposing positions, a moderator
+  // drives the rounds, and a judge produces a verdict. The synthesizer
+  // turns the raw debate output into a single response in the assistant's
+  // voice for consistency with other thinking styles.
+  // -----------------------------------------------------------------------
+  const debateTranscript = createDebateTranscript();
+  const debateRosterNames = ["advocate", "skeptic"] as const;
+
+  const debatePipeline = debate({
+    name: "kitchen-sink-debate",
+    transcript: debateTranscript,
+    debaters: [
+      {
+        name: "advocate",
+        stance: "Argue for the proposition.",
+        role: "Argues in favor of the proposition under discussion.",
+      },
+      {
+        name: "skeptic",
+        stance: "Argue against the proposition.",
+        role: "Argues against the proposition under discussion.",
+      },
+    ],
+    maxRounds: 2,
+    model: modelId as any,
+    moderator: createModerator({
+      name: "kitchen-sink-debate",
+      rosterNames: [...debateRosterNames],
+      transcript: debateTranscript,
+      ...(modelId !== undefined ? { model: modelId as any } : {}),
+      context: workerContext,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+    }),
+    context,
+    ...(uses ? { uses: uses as any } : {}),
+    synthesizer: assistantGenerator,
+    instructions,
+  });
+
   // Router — adapts flow input to each pipeline's expected shape via connectInput.
   // connectInput delegates through the original block's .run, so route
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline, debatePipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -705,11 +772,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return routedSpecialistsPipeline.connectInput(() => input);
         case "evented-actors":
           return eventedActorsPipeline.connectInput(() => input);
+        case "moderated-debate":
+          return debatePipeline.connectInput(() => ({ question: input.message }));
         default:
           return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline, debatePipeline };
 }

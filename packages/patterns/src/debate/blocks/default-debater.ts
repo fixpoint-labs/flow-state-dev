@@ -18,6 +18,7 @@ import type { DefinedResource } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   debateStateSchema,
+  type DebateState,
   type DebateTranscriptState,
 } from "../schemas";
 
@@ -96,7 +97,7 @@ export function createDebater(opts: CreateDebaterOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = ctx.sequencer!.state;
+      const state = (ctx.sequencer?.state ?? {}) as DebateState;
       const transcriptState = ctx.resources.transcript
         ?.state as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
@@ -104,10 +105,18 @@ export function createDebater(opts: CreateDebaterOptions) {
         entries.length > 0
           ? `\nPrior arguments (in order):\n${formatPriorForDebater(entries)}\n`
           : "";
+      const decisions = state.moderatorDecisions ?? [];
+      const lastDecision =
+        decisions.length > 0 ? decisions[decisions.length - 1]! : null;
+      const angleBlock =
+        lastDecision && lastDecision.newAngle
+          ? `\nThe moderator has asked the next round to focus on:\n${lastDecision.newAngle}\n`
+          : "";
       return [
         `Question under debate: ${state.question ?? ""}`,
         `Round ${state.round} of ${opts.maxRounds}.`,
         priorBlock,
+        angleBlock,
       ]
         .filter(Boolean)
         .join("\n");

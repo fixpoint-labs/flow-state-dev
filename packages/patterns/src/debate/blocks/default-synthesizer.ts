@@ -51,12 +51,22 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
           (e) => `[Round ${e.round}] [${e.stance}] ${e.text}`,
         )
         .join("\n");
+      const angleEntries = (data.moderatorDecisions ?? []).filter(
+        (d) => d.newAngle !== null && d.newAngle !== "",
+      );
+      const moderatorBlock =
+        angleEntries.length > 0
+          ? `Moderator framing across rounds:\n${angleEntries
+              .map((d) => `- [after round ${d.round}] ${d.newAngle}`)
+              .join("\n")}`
+          : "";
       return [
         `Question: ${data.question}`,
         `Rounds executed: ${data.rounds}`,
         `Judge verdict: ${data.verdict.verdict}`,
         `Judge winner: ${data.verdict.winner ?? "(synthesis)"}`,
         `Judge reasoning: ${data.verdict.reasoning}`,
+        moderatorBlock,
         `Transcript:\n${transcript}`,
       ]
         .filter(Boolean)
