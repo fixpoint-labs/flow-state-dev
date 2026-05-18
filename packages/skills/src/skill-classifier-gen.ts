@@ -1,5 +1,5 @@
 /**
- * Tier 3 of intentSelector — LLM skill classifier.
+ * Tier 3 of skillActivator — LLM skill classifier.
  *
  * One generator call decides whether any skill in the catalog applies to
  * the user message. Returns zero-or-more matches with per-match confidence;
@@ -19,9 +19,9 @@ import type {
 import type { SkillState } from "@flow-state-dev/core";
 import { getCollection } from "./internal/get-collection";
 import {
-  intentSequencerStateSchema,
+  skillActivatorStateSchema,
   matchedSkillSchema,
-} from "./intent-types";
+} from "./skill-activation-types";
 
 /** Default confidence threshold matching FIX-311's classifier gate. */
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.65;
@@ -32,7 +32,7 @@ export const DEFAULT_MAX_SKILLS = 20;
 const inputSchema = z.object({ message: z.string() }).passthrough();
 
 /** Public so consumers can mock against this shape if they ever need to. */
-export const intentClassifierOutputSchema = z.object({
+export const skillClassifierOutputSchema = z.object({
   /** Anchoring mitigation: ask the model to think before labeling. */
   reasoning: z.string(),
   activeSkills: z.array(
@@ -44,9 +44,9 @@ export const intentClassifierOutputSchema = z.object({
   ),
 });
 
-export type IntentClassifierOutput = z.infer<typeof intentClassifierOutputSchema>;
+export type SkillClassifierOutput = z.infer<typeof skillClassifierOutputSchema>;
 
-export interface IntentClassifierOptions {
+export interface SkillClassifierOptions {
   collectionKey: string;
   /** Model to drive the classifier with. Default `"intent/utility"`. */
   classifierModel?: string;
@@ -83,17 +83,17 @@ function listSkillsForPrompt(
 
 /**
  * Build the tier-3 classifier — generator call + apply handler wrapped in
- * a sequencer. The sequencer is what `intentSelector`'s `tapIf` targets.
+ * a sequencer. The sequencer is what `skillActivator`'s `tapIf` targets.
  */
-export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
+export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
   const cap = opts.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS;
   const threshold = opts.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
   const classifier = generator({
-    name: "intent-classifier",
+    name: "skill-classifier",
     model: opts.classifierModel ?? "intent/utility",
     inputSchema,
-    outputSchema: intentClassifierOutputSchema,
+    outputSchema: skillClassifierOutputSchema,
     agentType: "trace",
     prompt: async (_input, ctx) => {
       const collection = getCollection(ctx, opts.collectionKey);
@@ -121,10 +121,10 @@ export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
   });
 
   const apply = handler({
-    name: "apply-classifier-result",
-    inputSchema: intentClassifierOutputSchema,
+    name: "apply-skill-classifier-result",
+    inputSchema: skillClassifierOutputSchema,
     outputSchema: z.object({ accepted: z.boolean() }),
-    sequencerStateSchema: intentSequencerStateSchema,
+    sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       const collection = getCollection(ctx, opts.collectionKey);
       const validNames = new Set<string>();
@@ -167,7 +167,7 @@ export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
     },
   });
 
-  return sequencer({ name: "intent-classifier-tier", inputSchema })
+  return sequencer({ name: "skill-classifier-tier", inputSchema })
     .then((input) => ({ message: (input as { message: string }).message }), classifier)
     .tap(apply);
 }

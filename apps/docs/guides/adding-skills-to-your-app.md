@@ -148,7 +148,7 @@ In this default shape, the model decides activation: it reads the catalog in its
 
 ## Step 5: Activate skills up-front (recommended)
 
-The mid-flow path costs one extra provider call per skill-active turn (decide, then run with the skill in context) and pays for the catalog listing on every turn. `createIntentSelector` runs a small router before the main generator that does the activation decision once, then the generator runs once with the skill body already in its system prompt.
+The mid-flow path costs one extra provider call per skill-active turn (decide, then run with the skill in context) and pays for the catalog listing on every turn. `createSkillActivator` runs a small router before the main generator that does the activation decision once, then the generator runs once with the skill body already in its system prompt.
 
 Three tiers, each gated by whether an earlier tier resolved:
 
@@ -156,12 +156,12 @@ Three tiers, each gated by whether an earlier tier resolved:
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings of the lowercased message. No LLM call.
 3. **LLM classifier.** A `preset/fast` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
 
-Build an `intentSelector` next to your skills capability and opt out of the `runSkill` preset at the use site:
+Build an `skillActivator` next to your skills capability and opt out of the `runSkill` preset at the use site:
 
 ```ts
 // lib/capabilities.ts
 import {
-  createIntentSelector,
+  createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
 } from "@flow-state-dev/skills";
@@ -175,7 +175,7 @@ export const skillsCap = createSkillsCapability({
   agentType: "primary",
 });
 
-export const intentSelector = createIntentSelector({
+export const skillActivator = createSkillActivator({
   scope: "user", // must match the skills capability
 });
 ```
@@ -184,7 +184,7 @@ The capability ships three presets — `tools`, `context`, `runSkill` — all on
 
 ```ts
 // flow.ts
-import { intentSelector, skillsCap } from "./lib/capabilities";
+import { skillActivator, skillsCap } from "./lib/capabilities";
 
 export const assistant = generator({
   name: "assistant",
@@ -197,15 +197,15 @@ export const assistant = generator({
 });
 ```
 
-`intentSelector` returns a `.tap`-able sequencer. Add it to your run-sequencer ahead of the assistant generator:
+`skillActivator` returns a `.tap`-able sequencer. Add it to your run-sequencer ahead of the assistant generator:
 
 ```ts
 // flow.ts
-import { intentSelector } from "./lib/capabilities";
+import { skillActivator } from "./lib/capabilities";
 
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
-  .tap(intentSelector) // <-- new
+  .tap(skillActivator) // <-- new
   .then(assistant);
 ```
 
@@ -355,7 +355,7 @@ Run the app. Open DevTool. Ask a question that should match a skill. What you sh
 
 **Up-front path (Step 5 wired in):**
 
-1. An `intent-classifier` block appears in the trace timeline as `agentType: "trace"` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
+1. A `skill-classifier` block appears in the trace timeline as `agentType: "trace"` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
 2. Session state's `activeSkills` carries the matched skill for the duration of the turn.
 3. The next generator step's system prompt contains the active-skill body inside a `<skills>` tag block — no separate catalog listing, no `runSkill` tool in the tool list.
 4. If you wired the active-skills clientData projection, your top bar should show one badge per active skill labeled with the matching tier (`slash` / `keyword` / `classifier`).

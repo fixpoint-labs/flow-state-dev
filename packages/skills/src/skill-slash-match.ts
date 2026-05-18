@@ -1,5 +1,5 @@
 /**
- * Tier 1 of intentSelector — literal slash-prefix match.
+ * Tier 1 of skillActivator — literal slash-prefix match.
  *
  * Scans the user message for a leading `/<skill-name>` token. If the named
  * skill exists in the configured collection and is not
@@ -17,7 +17,7 @@ import { handler } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
-import { intentSequencerStateSchema } from "./intent-types";
+import { skillActivatorStateSchema } from "./skill-activation-types";
 
 /** Pattern: `/skill-name` at the start of the message, optional argument tail. */
 const SLASH_PATTERN = /^\/([a-z0-9][a-z0-9-]{0,63})(?:\s+([\s\S]*))?$/;
@@ -36,12 +36,12 @@ export interface SlashMatchOptions {
  * the named skill is enabled, patches the sequencer state with a single
  * `MatchedSkill` and `resolved: true`.
  */
-export function createIntentSlashMatch(opts: SlashMatchOptions) {
+export function createSkillSlashMatch(opts: SlashMatchOptions) {
   return handler({
-    name: "intent-slash-match",
+    name: "skill-slash-match",
     inputSchema,
     outputSchema,
-    sequencerStateSchema: intentSequencerStateSchema,
+    sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       const message = (input as { message: string }).message ?? "";
       const match = message.match(SLASH_PATTERN);

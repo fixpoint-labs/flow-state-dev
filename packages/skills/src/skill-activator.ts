@@ -1,5 +1,5 @@
 /**
- * `createIntentSelector` — the public factory for FIX-421's up-front
+ * `createSkillActivator` — the public factory for FIX-421's up-front
  * skill-activation router.
  *
  * Composes a three-tier sequencer that decides which skills (if any) apply
@@ -29,20 +29,20 @@
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import { createApplyIntent } from "./apply-intent";
+import { createApplySkillActivation } from "./apply-skill-activation";
 import {
-  createIntentClassifierSequencer,
+  createSkillClassifierSequencer,
   DEFAULT_CONFIDENCE_THRESHOLD,
   DEFAULT_MAX_SKILLS,
-} from "./intent-classifier-gen";
-import { createIntentKeywordMatch } from "./intent-keyword-match";
-import { createIntentSlashMatch } from "./intent-slash-match";
-import { intentSequencerStateSchema } from "./intent-types";
+} from "./skill-classifier-gen";
+import { createSkillKeywordMatch } from "./skill-keyword-match";
+import { createSkillSlashMatch } from "./skill-slash-match";
+import { skillActivatorStateSchema } from "./skill-activation-types";
 
-const intentInputSchema = z.object({ message: z.string() }).passthrough();
+const activatorInputSchema = z.object({ message: z.string() }).passthrough();
 
-export interface IntentSelectorOptions {
-  /** Block name. Default `"intent-selector"`. */
+export interface SkillActivatorOptions {
+  /** Block name. Default `"skill-activator"`. */
   name?: string;
   /** Resource registry key for the skills collection. Default `"skills"`. */
   collectionKey?: string;
@@ -53,7 +53,7 @@ export interface IntentSelectorOptions {
   /** Cap on skills described in the classifier prompt. Default 20. */
   maxSkillsInClassifier?: number;
   /**
-   * When `false`, intentSelector skips tier 3 entirely (no LLM call). The
+   * When `false`, skillActivator skips tier 3 entirely (no LLM call). The
    * apply handler runs against whatever tiers 1–2 produced. Default `true`.
    * Set `false` in tests that should not rely on a mocked classifier and in
    * deployments that want only deterministic tiers.
@@ -62,31 +62,31 @@ export interface IntentSelectorOptions {
 }
 
 /**
- * Build the up-front skill intent selector sequencer.
+ * Build the up-front skill activator sequencer.
  *
  * Returns a `.tap`-able block — it returns its input unchanged so it can
  * be chained ahead of downstream consumers without input-shape coupling.
  */
-export function createIntentSelector(
-  options: IntentSelectorOptions = {},
-): BlockDefinition<typeof intentInputSchema, typeof intentInputSchema> {
+export function createSkillActivator(
+  options: SkillActivatorOptions = {},
+): BlockDefinition<typeof activatorInputSchema, typeof activatorInputSchema> {
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
 
-  const slashTier = createIntentSlashMatch({ collectionKey });
-  const keywordTier = createIntentKeywordMatch({ collectionKey });
-  const apply = createApplyIntent();
+  const slashTier = createSkillSlashMatch({ collectionKey });
+  const keywordTier = createSkillKeywordMatch({ collectionKey });
+  const apply = createApplySkillActivation();
 
   let pipeline = sequencer({
-    name: options.name ?? "intent-selector",
-    inputSchema: intentInputSchema,
-    stateSchema: intentSequencerStateSchema,
+    name: options.name ?? "skill-activator",
+    inputSchema: activatorInputSchema,
+    stateSchema: skillActivatorStateSchema,
   })
     .tap(slashTier)
     .tapIf((_input, ctx) => !ctx.sequencer?.state.resolved, keywordTier);
 
   if (enableLlm) {
-    const classifier = createIntentClassifierSequencer({
+    const classifier = createSkillClassifierSequencer({
       collectionKey,
       classifierModel: options.classifierModel,
       confidenceThreshold:
@@ -101,7 +101,7 @@ export function createIntentSelector(
   }
 
   return pipeline.tap(apply) as unknown as BlockDefinition<
-    typeof intentInputSchema,
-    typeof intentInputSchema
+    typeof activatorInputSchema,
+    typeof activatorInputSchema
   >;
 }
