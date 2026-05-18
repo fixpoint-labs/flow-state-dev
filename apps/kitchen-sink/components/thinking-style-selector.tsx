@@ -22,15 +22,12 @@ import {
   Scale,
   ChevronDownIcon,
 } from "lucide-react";
+import type { ThinkingStyleInput } from "@/flows/chat-agent/blocks";
 
-export type ThinkingStyle =
-  | "auto"
-  | "default"
-  | "plan-and-execute"
-  | "supervisor"
-  | "routed-specialists"
-  | "evented-actors"
-  | "moderated-debate";
+// Action-input shape is the source of truth: the selector lets users
+// pick any value the chat-agent flow accepts on input, including "auto".
+// `import type` keeps the runtime schema out of the client bundle.
+export type ThinkingStyle = ThinkingStyleInput;
 
 interface StyleOption {
   value: ThinkingStyle;

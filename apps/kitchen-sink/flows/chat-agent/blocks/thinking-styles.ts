@@ -29,18 +29,42 @@ import { z } from "zod";
 
 // -------------------------------------------------------------------------
 // Schemas
+//
+// `thinkingStyleSchema` is the set of resolved styles — what eventually
+// runs in the router and what's stored on session state after Tier-1 /
+// Tier-2 classification.
+//
+// `thinkingStyleInputSchema` is the set of values a caller can request
+// on the action input. It's a superset: the same resolved styles plus
+// `"auto"`, which triggers the keyword + LLM classifier pipeline before
+// the router dispatches.
 // -------------------------------------------------------------------------
 
-export const thinkingStyleSchema = z.enum([
+/** Concrete, resolved thinking styles the router can dispatch. */
+export const RESOLVED_THINKING_STYLES = [
   "plan-and-execute",
   "supervisor",
   "routed-specialists",
   "evented-actors",
   "moderated-debate",
   "default",
-]);
+] as const;
+
+export const thinkingStyleSchema = z.enum(RESOLVED_THINKING_STYLES);
 
 export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
+
+/** Caller-requested styles on action input. Superset of resolved styles + `"auto"`. */
+export const THINKING_STYLE_INPUTS = [
+  "auto",
+  ...RESOLVED_THINKING_STYLES,
+] as const;
+
+export const thinkingStyleInputSchema = z
+  .enum(THINKING_STYLE_INPUTS)
+  .default("default");
+
+export type ThinkingStyleInput = z.infer<typeof thinkingStyleInputSchema>;
 
 export const thinkingStyleSessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),

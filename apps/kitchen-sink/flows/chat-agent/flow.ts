@@ -37,6 +37,7 @@ import {
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
+  thinkingStyleInputSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
   intentSelectorBlock,
@@ -105,10 +106,6 @@ const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
-
-const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists", "evented-actors", "moderated-debate"])
-  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
