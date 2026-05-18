@@ -5,6 +5,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-18
 
+### Trading-desk: live social-sentiment provider via Grok (FIX-599)
+
+- `get_social_sentiment` now has a live path. In live mode with `XAI_API_KEY` set, the tool routes to a Grok generator that uses xAI's `xSearch` hosted tool to retrieve recent X/Twitter posts about the ticker and returns a schema-valid sentiment payload tagged `source: "xai"`. The sentiment analyst was the one Phase 1 tool with no real live provider after FIX-589 — it ran structurally blind and emitted noise. It now produces grounded signal when an xAI key is configured.
+- The public `socialSentimentSchema` now carries a `posts` array — handle, one-sentence verbatim excerpt, per-post polarity — alongside the numeric score and counts. The sentiment analyst reads the actual quotes rather than relying on a single non-deterministic score, and can attribute reads to specific posts. The xAI generator is prompted for 8–15 representative posts spanning polarities. Fixture mode ships a curated 12-post set so fixture runs exercise the same shape.
+- `shortInterestPct` is now `z.number().nullable()` and `null` on the xAI path. X chatter can't measure short interest from filings — a fabricated `0` would read as "no shorts." Fixture mode keeps its curated value. The sentiment-analyst prompt is updated to read `null` as "unknown," never as zero.
+- Without `XAI_API_KEY`, live mode keeps returning the `unavailable` payload. No false data, no silent fixture substitution. Fixture mode is unchanged.
+- The dispatch primitive is a `router` with three routes — fixture handler, Grok generator, unavailable handler. First Phase 1 tool to span block kinds; the others use `if` inside a handler because every branch is a deterministic HTTP fetch.
+- One new dependency in the example: `@ai-sdk/xai`. The xAI provider is registered through the model resolver's `providers` slot as a function that picks the **responses** model — `xSearch` only works there. Zero changes to `packages/core/*`.
+- New `xai` value on the `sourceTag` enum alongside `finnhub` / `yahoo` / `fred` / `polymarket` / `fixture` / `unavailable`. Provider-named to match the existing convention.
+
 ### Configurable downstream information flow on Task Board (FIX-610)
 
 - New `@flow-state-dev/utilities-task-flow` package ships two independent layers that plug into `taskBoard` and the patterns built on it: a per-tool result cache and a per-task observation policy.

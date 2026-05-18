@@ -5,5 +5,67 @@
   "positive": 0.58,
   "negative": 0.18,
   "neutral": 0.24,
-  "shortInterestPct": 1.6
+  "shortInterestPct": 1.6,
+  "posts": [
+    {
+      "handle": "@chamath",
+      "excerpt": "Blackwell Ultra ramp is tracking ahead of street — hyperscaler capex commentary this quarter will be the tell.",
+      "polarity": "positive"
+    },
+    {
+      "handle": "@elerianm",
+      "excerpt": "NVDA's pricing power on inference SKUs is the underappreciated story; gross margin trajectory matters more than headline revenue.",
+      "polarity": "positive"
+    },
+    {
+      "handle": "@CitriniResearch",
+      "excerpt": "Reiterating long NVDA into print — sell-side numbers still look stale on networking attach rates.",
+      "polarity": "positive"
+    },
+    {
+      "handle": "@HansenClarke",
+      "excerpt": "Sovereign AI deals announced this week add real bookings visibility through FY27. Underrated.",
+      "polarity": "positive"
+    },
+    {
+      "handle": "@TheTranscript_",
+      "excerpt": "Three hyperscaler CFOs reaffirmed AI capex on calls this week. Doesn't read like the digestion bears are calling for.",
+      "polarity": "positive"
+    },
+    {
+      "handle": "@modestproposal1",
+      "excerpt": "Custom silicon at the top 3 hyperscalers is real. Doesn't kill NVDA but compresses the share-of-wallet ceiling people are modeling.",
+      "polarity": "negative"
+    },
+    {
+      "handle": "@jessefelder",
+      "excerpt": "Sentiment, positioning, and valuation are all stretched here. Doesn't mean the top is in, but the asymmetry has flipped.",
+      "polarity": "negative"
+    },
+    {
+      "handle": "@zerohedge",
+      "excerpt": "Insider selling at NVDA continues to accelerate per the latest Form 4 filings. Always nothing, until it isn't.",
+      "polarity": "negative"
+    },
+    {
+      "handle": "@stevenmarkryan",
+      "excerpt": "If China export controls tighten further this quarter, the H20-class revenue line goes to zero. Tail risk, not base case.",
+      "polarity": "negative"
+    },
+    {
+      "handle": "@morganhousel",
+      "excerpt": "NVDA print next week. Bar is high but not unreasonable given the data center comps.",
+      "polarity": "neutral"
+    },
+    {
+      "handle": "@LizAnnSonders",
+      "excerpt": "Semi sentiment is rolling over at the index level even as NVDA holds up. Worth watching for a breadth divergence.",
+      "polarity": "neutral"
+    },
+    {
+      "handle": "@StockMarketNerd",
+      "excerpt": "Watching gross margin guide more than the revenue number. That's the variable that actually moves the multiple here.",
+      "polarity": "neutral"
+    }
+  ]
 }
