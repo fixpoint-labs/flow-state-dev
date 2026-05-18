@@ -741,9 +741,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
 
   // -----------------------------------------------------------------------
   // Moderated Debate — two agents argue opposing positions, a moderator
-  // drives the rounds, and a judge produces a verdict. The synthesizer
-  // turns the raw debate output into a single response in the assistant's
-  // voice for consistency with other thinking styles.
+  // drives the rounds, and a judge produces a verdict. The pattern's
+  // default synthesizer projects the raw debate output into a single
+  // primary-agent response that streams into the conversation lane.
+  // We can't reuse `assistantGenerator` here as the synthesizer because
+  // it expects the flow's `{ message, mode, thinkingStyle, features }`
+  // input shape, while `debate()` calls the synthesizer with
+  // `DebateRawOutput`.
   // -----------------------------------------------------------------------
   const debateTranscript = createDebateTranscript();
   const debateRosterNames = ["advocate", "skeptic"] as const;
@@ -775,7 +779,6 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     }),
     context,
     ...(uses ? { uses: uses as any } : {}),
-    synthesizer: assistantGenerator,
     instructions,
   });
 
