@@ -59,6 +59,14 @@ import {
 
 import { getEmitterItemCount, toError, withTimeout } from "./internal/utils";
 import { emitToolOutputAround } from "./internal/emit-tool-output";
+import {
+  buildCacheKey,
+  getInFlightMap,
+  isFresh,
+  normalizeCacheable,
+  resolveCacheSourceTask,
+  resolveToolCacheStore,
+} from "./internal/cache-tool-call";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -745,6 +753,29 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
+      // FIX-610: opt-in tool-result memoization. The cache wrapping
+      // composes around the rest of this closure. On a hit we skip the
+      // entire scope/retry/timeout machinery and emit a `tool_output`
+      // carrying `cached: true`; observers fire with `cached: true` so
+      // downstream consumers see the same lifecycle pair. Errors are
+      // never cached. Misses fall through to the normal path and write
+      // the cache afterward unless `cacheIf` returned false.
+      const cacheable = tool.config.cacheable;
+      if (cacheable !== undefined) {
+        const cacheResult = await tryServeFromCache(
+          tool,
+          args,
+          ctx,
+          flowTools,
+          generatorBlockName,
+          agentType,
+          agentName,
+          options?.toolCallId,
+        );
+        if (cacheResult.kind === "hit") return cacheResult.output;
+        if (cacheResult.kind === "in-flight") return cacheResult.promise;
+      }
+
       // FIX-573 Path A: when invoked through the model loop with a
       // `toolCallId`, emit a `tool_output` placeholder around the called
       // block's run. The called block's own `block_trace.output` is set to a
@@ -811,7 +842,9 @@ function compileToolsWithExecute(
       // No `toolCallId` → no stable envelope callId; run the tool directly
       // with retry + observer hooks (matches prior behavior).
       if (options?.toolCallId === undefined) {
-        return await withScope(callToolWithErrorObserver);
+        const output = await withScope(callToolWithErrorObserver);
+        await maybeWriteCacheAndObservation(tool, args, output, ctx, undefined);
+        return output;
       }
       const attribution = {
         callId: options.toolCallId,
@@ -824,15 +857,190 @@ function compileToolsWithExecute(
         // chunk that carries a resolvedIdentity.
         model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
       };
-      return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+      const output = await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
         withScope((scopedCtx) => {
           (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
             ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
           return callToolWithErrorObserver(scopedCtx);
         })
       );
+      await maybeWriteCacheAndObservation(tool, args, output, ctx, undefined);
+      return output;
     }
     };
+  });
+}
+
+/**
+ * Cache-lookup helper for `compileToolsWithExecute`. Returns:
+ *  - `{ kind: "hit", output }` when the call was served from the cache
+ *    (observers fired, `tool_output` item emitted if a `toolCallId` is
+ *    present, observation hook called).
+ *  - `{ kind: "in-flight", promise }` when an identical call is already
+ *    running in this request; the caller awaits the shared promise.
+ *  - `{ kind: "miss" }` when the call should fall through to the normal
+ *    execute path. The miss path registers an in-flight entry so
+ *    siblings can join it.
+ *
+ * Cache attribution (`sourceTask`) flows through via the Task Board
+ * `_resolveCacheSourceTask` hook installed by board wiring. When no
+ * cache store is installed, returns `miss` immediately — caching is
+ * a no-op for non-board generators.
+ */
+async function tryServeFromCache(
+  tool: GeneratorTool,
+  args: unknown,
+  ctx: BlockContext,
+  flowTools: ToolsConfig | undefined,
+  generatorBlockName: string,
+  agentType: AgentType | undefined,
+  agentName: string | undefined,
+  toolCallId: string | undefined,
+): Promise<
+  | { kind: "hit"; output: unknown }
+  | { kind: "in-flight"; promise: Promise<unknown> }
+  | { kind: "miss" }
+> {
+  const cacheable = tool.config.cacheable;
+  if (cacheable === undefined) return { kind: "miss" };
+  const store = resolveToolCacheStore(ctx);
+  if (store === undefined) return { kind: "miss" };
+
+  const cfg = normalizeCacheable(cacheable);
+  let key: string;
+  try {
+    key = buildCacheKey(tool.name, args, ctx, cfg, store);
+  } catch (err) {
+    // Canonicalize failure → fall back to executing the call (no
+    // caching). The thrown message names the offending tool.
+    // eslint-disable-next-line no-console
+    console.warn((err as Error).message);
+    return { kind: "miss" };
+  }
+
+  const inFlightMap = getInFlightMap(ctx);
+  const inFlight = inFlightMap.get(key);
+  if (inFlight !== undefined) return { kind: "in-flight", promise: inFlight };
+
+  const entry = store.get(key);
+  if (entry !== undefined && isFresh(entry, cfg, store)) {
+    const ageMs = Date.now() - entry.storedAt;
+    await runToolObserver(
+      flowTools?.onToolStarted,
+      { toolName: tool.name, input: args, cached: true },
+      ctx,
+    );
+    await runToolObserver(
+      flowTools?.onToolCompleted,
+      { toolName: tool.name, input: args, output: entry.output, cached: true },
+      ctx,
+    );
+
+    if (toolCallId !== undefined) {
+      const attribution = {
+        callId: toolCallId,
+        generatorBlock: generatorBlockName,
+        agentType,
+        agentName,
+        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+        cached: {
+          ageMs,
+          ...(entry.sourceTask !== undefined ? { sourceTask: entry.sourceTask } : {}),
+        },
+      };
+      await emitToolOutputAround(
+        tool,
+        ctx,
+        args,
+        attribution,
+        async () => entry.output,
+      );
+    }
+
+    (ctx as {
+      _writeToolObservation?: (e: {
+        toolName: string;
+        args: unknown;
+        result?: unknown;
+        cached: boolean;
+      }) => void;
+    })._writeToolObservation?.({
+      toolName: tool.name,
+      args,
+      result: entry.output,
+      cached: true,
+    });
+
+    return { kind: "hit", output: entry.output };
+  }
+
+  // Miss path: nothing to return from the cache. The caller proceeds to
+  // execute. We do NOT pre-register a placeholder in `inFlightMap` here
+  // because we don't yet hold the promise — the wrapper helper
+  // `maybeWriteCacheAndObservation` is invoked after the call resolves.
+  // Concurrent identical calls within the same request will each fall
+  // through to a separate execution; last writer wins for the cache
+  // entry. Tightening single-flight to pre-register requires hoisting
+  // the entire execute body up here, which is left for a follow-up if
+  // the simpler shape proves insufficient.
+  return { kind: "miss" };
+}
+
+/**
+ * Post-execute write to the cache and observation ledger. Called from
+ * both the no-`toolCallId` path and the envelope path after the tool
+ * returns successfully. Skips the write when no cache is installed,
+ * when `cacheIf` rejects, or when the tool is not marked cacheable
+ * (the function is invoked unconditionally for the observation hook so
+ * the ledger sees every call regardless of caching).
+ */
+async function maybeWriteCacheAndObservation(
+  tool: GeneratorTool,
+  args: unknown,
+  output: unknown,
+  ctx: BlockContext,
+  _toolCallId: string | undefined,
+): Promise<void> {
+  const cacheable = tool.config.cacheable;
+  if (cacheable !== undefined) {
+    const store = resolveToolCacheStore(ctx);
+    if (store !== undefined) {
+      const cfg = normalizeCacheable(cacheable);
+      const shouldCache =
+        cfg.cacheIf === undefined ? true : cfg.cacheIf(output, args);
+      if (shouldCache) {
+        try {
+          const key = buildCacheKey(tool.name, args, ctx, cfg, store);
+          const ttl = cfg.ttl ?? store.defaultTtl;
+          const sourceTask = resolveCacheSourceTask(ctx);
+          store.set(key, {
+            output,
+            storedAt: Date.now(),
+            ...(ttl !== undefined ? { ttl } : {}),
+            toolName: tool.name,
+            ...(sourceTask !== undefined ? { sourceTask } : {}),
+          });
+        } catch {
+          // Canonicalize failure on write — already warned on the read
+          // path; silently skip the write rather than tearing down the
+          // tool call after a successful execution.
+        }
+      }
+    }
+  }
+
+  (ctx as {
+    _writeToolObservation?: (e: {
+      toolName: string;
+      args: unknown;
+      result?: unknown;
+      cached: boolean;
+    }) => void;
+  })._writeToolObservation?.({
+    toolName: tool.name,
+    args,
+    result: output,
+    cached: false,
   });
 }
 

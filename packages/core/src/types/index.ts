@@ -1,4 +1,5 @@
 export type {
+  BlockCacheableConfig,
   BlockConfig,
   BlockContext,
   BlockTraceCapturePayload,

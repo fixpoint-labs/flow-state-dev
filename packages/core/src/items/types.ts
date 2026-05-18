@@ -251,6 +251,25 @@ export type ToolOutputItem = OutputItemBase & {
      */
     details?: Record<string, unknown>;
   };
+  /**
+   * True when this `tool_output` was served from the per-tool memoization
+   * cache (FIX-610) rather than executed against the upstream. The cached
+   * value flows through the same envelope so transcripts, replay, and
+   * downstream consumers see one shape regardless of source.
+   */
+  cached?: boolean;
+  /**
+   * Age (in milliseconds) of the cached entry at the moment the cache
+   * hit served it. Set only when `cached === true`.
+   */
+  cacheAgeMs?: number;
+  /**
+   * Attribution back to the task whose original tool call populated this
+   * cache entry, when the cache hit crossed a task boundary inside a
+   * Task Board run (FIX-610 Wave 2). Absent for same-task cache hits and
+   * for non-board contexts.
+   */
+  sourceTask?: { collectionId: string; taskId: string };
 };
 
 export type RouterDecisionItem = OutputItemBase & {

@@ -1,4 +1,4 @@
-export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { BlockCacheableConfig, BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { AgentType, ItemVisibility } from "./items/types";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
