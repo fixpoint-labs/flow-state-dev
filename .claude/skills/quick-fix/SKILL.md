@@ -44,10 +44,7 @@ Create the issue in Linear using the `save_issue` tool:
 - **Label**: "Bug" or "Improvement" based on Step 1 analysis
 - **Priority**: based on severity assessment (1=Urgent, 2=High, 3=Normal, 4=Low)
 - **State**: "In Progress" — you're starting work immediately
-- **Description**: follow the project's issue description conventions:
-  - 2-3 sentence overview of what and why
-  - Key details about the problem (reproduction, symptoms, affected area)
-  - Keep it scannable — this is a quick fix, not a feature spec
+- **Description**: follow the **agent-brief template** at `docs/contributing/agent-brief-template.md`. Quick-fix issues are durable contracts even though we're acting on them immediately — the brief shape (What we're solving → Current → Desired → Key surfaces → Acceptance criteria → Out of scope → Context) keeps the record useful for future readers. Keep each section short; this isn't a feature spec, but it's not freeform prose either.
 
 Assign the issue to the relevant team and project if determinable from context. If not, create it without — the user can organize later.
 

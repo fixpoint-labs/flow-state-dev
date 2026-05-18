@@ -242,7 +242,6 @@ pnpm --filter @flow-state-dev/cli test
 
 ## Architecture reference
 
-- [CLI Specification](../../prep/architecture/CLI.md) — Full command tree, configuration, and Phase 1/2 boundaries
-- [Flows and Actions](../../prep/architecture/FLOW_SYSTEM.md) — defineFlow, actions, lifecycle
-- [Blocks](../../prep/architecture/BLOCKS.md) — The four block kinds
-- [Streaming](../../prep/architecture/STREAMING.md) — Item/content model, event taxonomy
+- [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle
+- [Blocks](../../docs/architecture/blocks.md) — The four block kinds
+- [Streaming](../../docs/architecture/streaming.md) — Item/content model, event taxonomy
