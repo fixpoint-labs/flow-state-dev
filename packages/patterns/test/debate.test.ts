@@ -510,15 +510,15 @@ describe("debate", () => {
     const debaterMock = mockGenerator({
       name: "deb-prompts-debater-a",
       script: [
-        { structuredOutput: { text: "first-a" } },
-        { structuredOutput: { text: "second-a" } },
+        { text: "first-a" },
+        { text: "second-a" },
       ],
     });
     const debaterMockB = mockGenerator({
       name: "deb-prompts-debater-b",
       script: [
-        { structuredOutput: { text: "first-b" } },
-        { structuredOutput: { text: "second-b" } },
+        { text: "first-b" },
+        { text: "second-b" },
       ],
     });
     const judgeMock = mockGenerator({
@@ -567,11 +567,11 @@ describe("debate", () => {
   it("default judge anonymizes by default and de-anonymizes when toggled off", async () => {
     const debaterMockA = mockGenerator({
       name: "deb-anon-debater-a",
-      script: [{ structuredOutput: { text: "A says" } }],
+      script: [{ text: "A says" }],
     });
     const debaterMockB = mockGenerator({
       name: "deb-anon-debater-b",
-      script: [{ structuredOutput: { text: "B says" } }],
+      script: [{ text: "B says" }],
     });
     const judgeMock = mockGenerator({
       name: "deb-anon-judge",
@@ -613,11 +613,11 @@ describe("debate", () => {
     // Now run with anonymization off; judge prompt should include names.
     const debaterMockA2 = mockGenerator({
       name: "deb-anon2-debater-alpha",
-      script: [{ structuredOutput: { text: "A says" } }],
+      script: [{ text: "A says" }],
     });
     const debaterMockB2 = mockGenerator({
       name: "deb-anon2-debater-beta",
-      script: [{ structuredOutput: { text: "B says" } }],
+      script: [{ text: "B says" }],
     });
     const judgeMock2 = mockGenerator({
       name: "deb-anon2-judge",
@@ -817,15 +817,15 @@ describe("debate", () => {
       const debaterMockA = mockGenerator({
         name: "deb-mod-angle-debater-a",
         script: [
-          { structuredOutput: { text: "first-a" } },
-          { structuredOutput: { text: "second-a" } },
+          { text: "first-a" },
+          { text: "second-a" },
         ],
       });
       const debaterMockB = mockGenerator({
         name: "deb-mod-angle-debater-b",
         script: [
-          { structuredOutput: { text: "first-b" } },
-          { structuredOutput: { text: "second-b" } },
+          { text: "first-b" },
+          { text: "second-b" },
         ],
       });
       const moderator = makeScriptedModerator([

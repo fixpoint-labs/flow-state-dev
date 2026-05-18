@@ -3,6 +3,7 @@
 import type {
   ComponentItem,
   ContainerItem,
+  MessageItem,
   OutputItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
@@ -165,11 +166,20 @@ export function Debate({ item }: { item: ContainerItem }) {
     toolsByRound,
     pendingTools,
     pendingTurnsByRound,
+    liveDrafts,
   } = useMemo(() => {
     const turns: DebateTurn[] = [];
     const decisions: DebateDecision[] = [];
     const pendingTurnsByRound = new Map<number, DebateTurnPending[]>();
     let verdict: DebateVerdict | null = null;
+    // Live draft text per debater. The state machine:
+    //   - debate-turn-pending → reset the draft for that agentName
+    //   - message item with matching agentName → append text content
+    //   - debate-turn (committed) → clear the draft
+    // With maxConcurrency:1 only one debater speaks at a time, so the
+    // map holds at most one "active" entry. Past rounds' drafts are
+    // cleared as their committed turns land.
+    const liveDrafts = new Map<string, string>();
     // The moderator's tool calls all stream BEFORE the moderator emits
     // its `debate-decision` item (the decision is the generator's final
     // output). Buffer moderator-owned tool_outputs in encounter order
@@ -193,6 +203,23 @@ export function Debate({ item }: { item: ContainerItem }) {
         }
         continue;
       }
+      if (i.type === "message") {
+        const m = i as MessageItem;
+        if (m.agentName && liveDrafts.has(m.agentName)) {
+          const text = m.content
+            .filter(
+              (c): c is { type: "output_text"; text: string } & {
+                ephemeral?: boolean;
+              } => c.type === "output_text",
+            )
+            .map((c) => c.text)
+            .join("");
+          if (text.length > 0) {
+            liveDrafts.set(m.agentName, text);
+          }
+        }
+        continue;
+      }
       if (i.type !== "component") continue;
       const comp = i as ComponentItem;
       const data = comp.data as Record<string, unknown>;
@@ -209,6 +236,10 @@ export function Debate({ item }: { item: ContainerItem }) {
             stance: data.stance,
             text: data.text,
           });
+          // The committed turn supersedes the live draft. Clear so a
+          // future round's pending-event for the same debater starts
+          // from an empty draft.
+          liveDrafts.delete(data.agentName);
         }
       } else if (comp.component === "debate-decision") {
         if (
@@ -245,6 +276,10 @@ export function Debate({ item }: { item: ContainerItem }) {
             stance: data.stance,
           });
           pendingTurnsByRound.set(data.round, arr);
+          // Open a fresh draft slot for this debater. Subsequent
+          // message items with matching `agentName` will accumulate
+          // into it until the committed turn clears it.
+          liveDrafts.set(data.agentName, "");
         }
       } else if (comp.component === "debate-verdict") {
         if (
@@ -266,6 +301,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       toolsByRound,
       pendingTools: pending,
       pendingTurnsByRound,
+      liveDrafts,
     };
   }, [scopedItems]);
 
@@ -482,7 +518,12 @@ export function Debate({ item }: { item: ContainerItem }) {
                   {step.turns.map((turn) =>
                     renderChild(<TurnItem turn={turn} />),
                   )}
-                  {hasInFlight && renderChild(<PendingTurnItem pending={step.inFlight!} />)}
+                  {hasInFlight && renderChild(
+                    <PendingTurnItem
+                      pending={step.inFlight!}
+                      draft={liveDrafts.get(step.inFlight!.agentName) ?? ""}
+                    />,
+                  )}
                 </Step>
               );
             }
@@ -625,20 +666,35 @@ function TurnItem({ turn }: { turn: DebateTurn }) {
   );
 }
 
-function PendingTurnItem({ pending }: { pending: DebateTurnPending }) {
+function PendingTurnItem({
+  pending,
+  draft,
+}: {
+  pending: DebateTurnPending;
+  draft: string;
+}) {
+  // Header row mirrors the committed TurnItem so the layout doesn't
+  // jump when the live draft is replaced by the final turn.
   return (
-    <div className="flex items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-      <Loader2Icon
-        className="h-3 w-3 shrink-0 animate-spin text-blue-500"
-        aria-hidden="true"
-      />
-      <span className="font-medium text-foreground/70">{pending.agentName}</span>
-      <span className="shrink-0 rounded bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
-        {pending.stance}
-      </span>
-      <Shimmer className="text-xs" duration={2}>
-        is composing a response...
-      </Shimmer>
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5 text-xs leading-4">
+        <Loader2Icon
+          className="h-3 w-3 shrink-0 animate-spin text-blue-500"
+          aria-hidden="true"
+        />
+        <span className="font-medium text-foreground/80">
+          {pending.agentName}
+        </span>
+        <span className="shrink-0 rounded bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+          {pending.stance}
+        </span>
+        {draft.length === 0 && (
+          <Shimmer className="text-xs" duration={2}>
+            is composing a response...
+          </Shimmer>
+        )}
+      </div>
+      {draft.length > 0 && <EntryMarkdown text={draft} />}
     </div>
   );
 }

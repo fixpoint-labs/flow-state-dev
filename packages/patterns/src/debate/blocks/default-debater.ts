@@ -26,8 +26,6 @@ export type DebaterInstructions =
   | string
   | ((input: any, ctx: any) => string | Promise<string>);
 
-const debaterOutputSchema = z.object({ text: z.string() });
-
 /** Render prior arguments as a stance-tagged transcript, in turn order. */
 function formatPriorForDebater(
   entries: { round: number; stance: string; text: string }[],
@@ -67,7 +65,16 @@ export function createDebater(opts: CreateDebaterOptions) {
   return generator({
     name: `${opts.name}-debater-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
-    outputSchema: debaterOutputSchema,
+    // Plain-string output is intentional: with a structured schema the
+    // model is forced into JSON mode, which prevents the framework from
+    // streaming content as it generates. The recorder coerces both
+    // `string` and `{ text: string }` shapes, so custom override blocks
+    // can still return either.
+    outputSchema: z.string(),
+    // Stamp the streamed `message` items with the role name (e.g.
+    // "advocate") instead of the long generator name, so renderers can
+    // attribute streaming text to a debater by short identity.
+    agentName: opts.agentName,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     agentType: opts.agentType ?? "sub",
