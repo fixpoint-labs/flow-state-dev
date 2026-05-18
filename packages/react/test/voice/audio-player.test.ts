@@ -136,6 +136,26 @@ describe("audio-player — Web Audio scheduling", () => {
     expect(startedSources[0]!.connect).toHaveBeenCalledWith(activeContext.destination);
   });
 
+  it("stop() invalidates in-flight decodeAudioData promises so they don't play after stop", async () => {
+    // Hold the decode promise so stop() lands while the decode is in
+    // flight. Then resolve it and assert no source was scheduled — the
+    // generation counter must have caught the stale chunk.
+    let resolveDecode!: (buf: { duration: number }) => void;
+    activeContext.decodeAudioData = vi.fn(
+      () => new Promise<{ duration: number }>((res) => { resolveDecode = res; })
+    );
+
+    const player = createAudioPlayer();
+    player.enqueueChunk({ audio: SAMPLE_AUDIO_BASE64, mediaType: "audio/mpeg" });
+
+    player.stop();
+
+    resolveDecode({ duration: 0.5 });
+    await flush();
+
+    expect(startedSources).toHaveLength(0);
+  });
+
   it("stop() aborts in-flight sources and resets the cursor", async () => {
     const player = createAudioPlayer();
     player.enqueueChunk({ audio: SAMPLE_AUDIO_BASE64, mediaType: "audio/mpeg" });

@@ -95,6 +95,11 @@ export function createAudioPlayer(
   let nextStartTime = 0;
   let chunkIndex = 0;
   let activeChunkCount = 0;
+  // Bumped on every `stop()` so in-flight decodes started before the stop
+  // can detect they've been invalidated and exit before scheduling.
+  // Without this, a chunk whose `decodeAudioData` resolves ~10–50ms after
+  // the user pressed Stop would still create a buffer source and play.
+  let stopGeneration = 0;
   // Live sources kept so `stop()` can cancel in-flight playback. Sources
   // are removed from the set in their `onended` handler whether they end
   // naturally or are stopped explicitly.
@@ -128,19 +133,22 @@ export function createAudioPlayer(
   function scheduleChunk(chunk: AudioChunk, ctx: AudioContext): void {
     const index = chunkIndex++;
     const arrayBuffer = base64ToArrayBuffer(chunk.audio);
+    const generation = stopGeneration;
 
-    // Track this chunk as active immediately so concurrent decodes don't
-    // race a `clear()` that would otherwise leave `activeChunkCount` out
-    // of sync with the playing state.
+    // Increment before the async decode so the playing state is set
+    // immediately and the counter stays consistent if `dispose()` or
+    // `stop()` fires while we are waiting on `decodeAudioData`.
     activeChunkCount += 1;
     setState("playing");
 
     ctx.decodeAudioData(arrayBuffer).then(
       (audioBuffer) => {
-        // `clear()` may have invalidated this chunk while we were decoding.
-        // The decoded buffer is harmless to discard; the chunk counter was
-        // already drained by clear().
-        if (audioContext !== ctx) {
+        // Bail out if the player was disposed (ctx replaced or nulled) or
+        // stopped (generation advanced) while the decode was in flight.
+        // Without these checks, a chunk decoded ~10–50ms after the user
+        // pressed Stop would still schedule and play.
+        if (audioContext !== ctx || generation !== stopGeneration) {
+          activeChunkCount = Math.max(0, activeChunkCount - 1);
           return;
         }
 
@@ -232,6 +240,9 @@ export function createAudioPlayer(
     },
 
     stop() {
+      // Advance the generation so any decode promises started before this
+      // call see they've been invalidated when they resolve.
+      stopGeneration += 1;
       for (const source of activeSources) {
         try {
           source.stop();

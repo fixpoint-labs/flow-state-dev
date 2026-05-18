@@ -150,7 +150,17 @@ export function useVoice(
     };
 
     return session.subscribeAudioDelta(handler);
-  }, [session, autoPlayTTS]);
+    // `useSession` returns a fresh SessionView reference on every render, so
+    // depending on `session` itself would tear down + reattach this
+    // subscription per render — including every SSE batch during active
+    // streaming. `subscribeAudioDelta` is `useCallback([])`-stable, so
+    // depending on it instead pins the subscription to the component's
+    // lifetime. The handler reads `session.items` directly (closure) which
+    // can be stale, but the mediaType lookup safely falls back to
+    // "audio/mpeg" when the placeholder hasn't landed yet — the only M1
+    // codec anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.subscribeAudioDelta, autoPlayTTS]);
 
   // Auto-play OutputAudioContent from session items (batch / non-streaming
   // providers). Skips any (itemId, contentIndex) that has already received

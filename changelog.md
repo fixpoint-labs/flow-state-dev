@@ -11,7 +11,6 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - React `audio-player` rewritten to the Web Audio API. Chunks decode into `AudioBuffer`s and schedule on a shared `AudioContext` at a moving cursor for gap-free playback. The whole-buffer `enqueue` path is retained as a wrapper over `enqueueChunk`, so batch providers (OpenAI today) play unchanged. New `dispose()` releases the `AudioContext` on unmount to prevent the per-remount leak that hits Chrome's concurrent-context cap on long-lived SPAs.
 - `useVoice` subscribes to streaming chunks via the new `SessionView.subscribeAudioDelta(handler)` and tracks `(itemId, contentIndex)` pairs that have streamed, so the batch-path snapshot scanner skips them — the final `content.added` for a streamed part no longer double-plays.
 - MP3 (`audio/mpeg`) is the only supported codec in M1. PCM and WAV are deferred.
-- The TTS pipeline switch that actually emits the new event (gated on `abilities.speakStream`) lives in FIX-528; this change ships the contract and the client so FIX-528 has something to wire into.
 
 ## 2026-05-16
 
