@@ -110,6 +110,11 @@ function packWorkerInput(
   task: Task,
   collection: TaskCollectionRef,
 ): TaskWorkerInput {
+  // Note: the patterns-side `packWorkerInput` (in
+  // `packages/patterns/src/task-board/blocks/worker-step.ts`) gained
+  // optional flow-policy parameters in FIX-610. This helper-local copy
+  // stays synchronous and dep-only — flow policy is a board concern, not
+  // a free-function-helper concern.
   const deps: Record<string, unknown> = {};
   if (task.deps !== undefined) {
     for (const depId of task.deps) {

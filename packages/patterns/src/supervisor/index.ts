@@ -14,6 +14,7 @@
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import { flowPolicy } from "@flow-state-dev/utilities-task-flow";
 import type {
   AgentType,
   GeneratorHistoryConfig,
@@ -324,6 +325,11 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     dispatcher: "topological",
     onIdle: "wait",
     onError: boardOnError,
+    // FIX-610: pin declaredDepsOnly explicitly. Supervisor workers
+    // are reviewed per-task; widening visibility across all tasks
+    // would let reviewers attribute reasoning to siblings that the
+    // worker never actually consulted.
+    flowPolicy: flowPolicy.declaredDepsOnly(),
     shouldExit: (collection) => {
       if (
         collection.count({ status: ["in_progress", "awaiting_review"] }) > 0

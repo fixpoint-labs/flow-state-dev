@@ -422,6 +422,31 @@ export interface BlockContext<
    * tests), sequencer DSL falls back to per-sequencer auto-await.
    */
   _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
+
+  /**
+   * @internal Per-request single-flight map for cacheable tool calls
+   * (FIX-610). Keys are the cache keys produced by `buildCacheKey`; values
+   * are the in-flight promises so concurrent calls within the same request
+   * share one upstream execution. Lazily created by
+   * `wrapToolExecuteWithCache` on the first cacheable tool call. Scope is
+   * per-request — concurrent calls across different requests each execute.
+   */
+  _toolInFlight?: Map<string, Promise<unknown>>;
+
+  /**
+   * @internal Optional hook invoked by `wrapToolExecuteWithCache` after a
+   * tool call resolves (hit or miss). Wave 2 of FIX-610 wires this up to
+   * write into the Task Board observation ledger so a later worker's
+   * flow policy can see prior tool traffic. Absent in Wave 1 and in any
+   * runtime that has no observation ledger installed.
+   */
+  _writeToolObservation?: (entry: {
+    toolName: string;
+    args: unknown;
+    result?: unknown;
+    error?: string;
+    cached: boolean;
+  }) => void;
 }
 
 /**
@@ -497,6 +522,67 @@ export interface BlockConfig<
    * (not flow-wide) — block authors opt in deliberately.
    */
   requireOrg?: boolean;
+
+  /**
+   * Opt-in tool-result memoization (FIX-610). When set, and when this
+   * block is installed as a tool on a generator, the framework caches the
+   * tool's output keyed on `(toolName, canonicalize(args), scope)` and
+   * serves repeat calls from the cache. Errors are never cached. Identical
+   * concurrent calls within a request are coalesced (single-flight).
+   *
+   * Pass `true` for cache-everything defaults, or an object to tune TTL,
+   * scope, key derivation, and a `cacheIf` predicate.
+   *
+   * No effect when the block is used outside a generator's tool slot.
+   */
+  cacheable?: BlockCacheableConfig | true;
+}
+
+/**
+ * Per-tool memoization config (FIX-610). See {@link BlockConfig.cacheable}.
+ *
+ * Cache writes happen after the tool returns successfully. Errors are
+ * never cached. Within a request, identical concurrent calls share one
+ * in-flight execution (single-flight). Cross-request concurrent calls
+ * each execute; last writer wins for the cache entry.
+ */
+export interface BlockCacheableConfig {
+  /**
+   * TTL in milliseconds. Omit to use the cache's default (board-level or
+   * the framework default of 5 minutes). `0` disables caching and
+   * emits a dev-mode warning.
+   */
+  ttl?: number;
+
+  /**
+   * Cache scope, controlling how widely a cached entry is reused:
+   *
+   * - `"run"` (default): one Task Board run. Entries are dropped when
+   *   the outer board exits.
+   * - `"request"`: the lifetime of the current request.
+   * - `"session"`: persists across requests within a session. Carries
+   *   the most leakage risk — only use when arguments unambiguously
+   *   identify the tenant.
+   */
+  scope?: "run" | "request" | "session";
+
+  /**
+   * Custom key derivation. Receives the tool's input and ctx; returns a
+   * deterministic string. Defaults to `JSON.stringify(canonicalize(args))`
+   * with recursive object-key sorting. Override when args carry
+   * irrelevant fields (timestamps, request ids) that should be excluded
+   * from the key.
+   */
+  keyFn?: (input: unknown, ctx: BlockContext) => string;
+
+  /**
+   * Predicate gating which results are cacheable. Receives the resolved
+   * output; return `true` to store, `false` to skip. Errors are never
+   * cached regardless of this predicate. Useful for tools that return a
+   * structured "no result" envelope that shouldn't poison the cache.
+   * Default: cache every successful result.
+   */
+  cacheIf?: (output: unknown, input: unknown) => boolean;
 }
 
 export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;

@@ -30,6 +30,7 @@
  * legacy status translation.
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import { flowPolicy } from "@flow-state-dev/utilities-task-flow";
 import type {
   AgentType,
   GeneratorHistoryConfig,
@@ -646,6 +647,13 @@ export function planAndExecute<
     dispatcher: "topological",
     onIdle: "wait",
     onError: "skip",
+    // FIX-610: plan-shaped patterns benefit most from seeing prior
+    // tool traffic from anywhere in the run, not just declared deps.
+    // A recent-trajectory window (8 by default) is what lets a later
+    // step skip re-doing a search an earlier step already ran while
+    // staying bounded — callers can override on the underlying
+    // taskBoard if they want a stricter policy.
+    flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
     shouldExit: (collection) => {
       // No active workers AND no claimable pending tasks → drain done.
       const active = collection.count({
