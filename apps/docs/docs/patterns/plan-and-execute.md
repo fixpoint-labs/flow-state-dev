@@ -351,6 +351,12 @@ const research = planAndExecute({
 });
 ```
 
+## Sharing context across iterations
+
+Each step in a plan runs as its own worker generator. By default that worker has no awareness of what previous steps already looked up or tried — only its declared `deps` and the materialized `dependencyResults` shape get plumbed through. For a plan whose later steps refine or build on earlier ones, that's often too narrow.
+
+Plan and Execute pins `flowPolicy.recentTrajectory({ n: 8 })` by default. Each step's worker sees the last eight tool observations the run produced, regardless of which task they came from, on its `priorWork` slot. The evaluator and replanner pick up the same trajectory, which is how they can reason about whether the plan is converging. Override with the `flowPolicy` config slot if you want a different selection (declared-deps-only for stricter isolation, `allCompleted` for an aggregating final pass). See the [Flow policy](./flow-policy) guide for the full list of built-in policies and the cross-task tool-result memoization layer that pairs with them.
+
 ## Stream items
 
 The pattern emits two component-item streams renderers can subscribe to:

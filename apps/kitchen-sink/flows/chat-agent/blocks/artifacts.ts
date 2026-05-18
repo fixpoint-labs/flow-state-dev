@@ -107,6 +107,12 @@ export const readArtifact = handler({
   inputSchema: readArtifactInputSchema,
   outputSchema: readArtifactOutputSchema,
   resources: artifactResources,
+  // FIX-610: artifact content is deterministic per (artifactId,
+  // updatedAt). A short TTL means repeated reads inside one plan
+  // iteration are served from cache without staling fresh writes
+  // across turns. The default board-run scope clears the cache when
+  // the surrounding Task Board exits.
+  cacheable: { ttl: 60_000 },
 
   execute: async (input, ctx) => {
     const ref = ctx.resources.artifacts.getOptional(input.artifactId);

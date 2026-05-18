@@ -13,6 +13,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - One new dependency in the example: `@ai-sdk/xai`. The xAI provider is registered through the model resolver's `providers` slot as a function that picks the **responses** model — `xSearch` only works there. Zero changes to `packages/core/*`.
 - New `xai` value on the `sourceTag` enum alongside `finnhub` / `yahoo` / `fred` / `polymarket` / `fixture` / `unavailable`. Provider-named to match the existing convention.
 
+### Configurable downstream information flow on Task Board (FIX-610)
+
+- New `@flow-state-dev/utilities-task-flow` package ships two independent layers that plug into `taskBoard` and the patterns built on it: a per-tool result cache and a per-task observation policy.
+- Tool blocks opt into memoization via `cacheable: true` or `cacheable: { ttl, scope, keyFn, cacheIf }`. Identical calls within the configured scope (`run` / `request` / `session`) serve from cache; identical in-flight calls in one request coalesce to a single execution. Errors are never cached. Cached `tool_output` items carry `cached: true`, `cacheAgeMs`, and `sourceTask` for cross-task hits so the DevTool transcript can attribute them.
+- `TaskBoardConfig.flowPolicy` controls which prior-task observations a freshly dispatched worker sees on its `TaskWorkerInput.priorWork` slot. Built-in policies: `flowPolicy.none`, `declaredDepsOnly`, `ancestors`, `recentTrajectory`, `allCompleted`, `compact`, and `custom`.
+- Pattern defaults: `planAndExecute` pins `recentTrajectory({ n: 8 })`; `supervisor` pins `declaredDepsOnly`; bare `taskBoard` defaults to `declaredDepsOnly` for every topology.
+- Kitchen-sink's `readArtifact` block in the chat-agent flow is now `cacheable: { ttl: 60_000 }`, so repeated reads of the same artifact within a Task Board run are served from cache.
+- New `patterns/flow-policy` docs page; `plan-and-execute` gains a "Sharing context across iterations" section; `tools/overview` gains a "Marking tools cacheable" section; new BP-021 covers when to opt in.
+
 ## 2026-05-17
 
 ### Turn-aware history windowing (FIX-608)
