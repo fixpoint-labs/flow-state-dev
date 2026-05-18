@@ -6,5 +6,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../core" }, { "path": "../tasks" }]
+  "references": [{ "path": "../core" }, { "path": "../tasks" }, { "path": "../utilities-task-flow" }]
 }

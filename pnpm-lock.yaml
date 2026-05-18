@@ -638,6 +638,9 @@ importers:
       '@flow-state-dev/tasks':
         specifier: workspace:*
         version: link:../tasks
+      '@flow-state-dev/utilities-task-flow':
+        specifier: workspace:*
+        version: link:../utilities-task-flow
       zod:
         specifier: ^3.24.1
         version: 3.25.76
