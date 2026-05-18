@@ -322,6 +322,26 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(judgeAgentType !== undefined ? { agentType: judgeAgentType } : {}),
     });
 
+  // Emit the judge's verdict as a renderable component item right after
+  // the judge runs, so the closing card streams into the debate
+  // container before the synthesizer (if any) projects to a final shape.
+  const emitVerdictTap = handler({
+    name: `${name}-emit-verdict`,
+    inputSchema: z.any(),
+    execute: (input, ctx) => {
+      const verdict = input as DebateVerdict;
+      ctx.emit.component(
+        "debate-verdict",
+        {
+          verdict: verdict.verdict,
+          winner: verdict.winner,
+          reasoning: verdict.reasoning,
+        },
+        { key: "verdict" },
+      );
+    },
+  });
+
   const buildRawOutput = (value: unknown, ctx: any): DebateRawOutput => {
     const state = ctx.sequencer!.state as DebateState;
     const transcriptState = ctx.resources?.transcript
@@ -341,6 +361,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   ): SequencerDefinition<any, any> => {
     const withJudge = pipeline
       .then(judge)
+      .tap(emitVerdictTap)
       .map((value: unknown, ctx: any) => buildRawOutput(value, ctx));
     if (config.synthesizer === false) {
       return withJudge as SequencerDefinition<any, any>;
@@ -495,6 +516,19 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           },
         ],
       });
+
+      // Renderable snapshot of the moderator's decision. The renderer
+      // shows this as a divider strip between rounds.
+      ctx.emit.component(
+        "debate-decision",
+        {
+          round: state.round,
+          nextSpeakers: out.nextSpeakers,
+          newAngle: out.newAngle,
+          done: out.done,
+        },
+        { key: `decision-${state.round}` },
+      );
     },
   });
 

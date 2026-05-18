@@ -289,6 +289,75 @@ describe("debate", () => {
     expect(result.error).not.toBeNull();
   });
 
+  it("emits debate-turn, debate-decision, and debate-verdict component items for the UI renderer", async () => {
+    const moderator = handler({
+      name: "moderator-emits",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        nextSpeakers: z.array(z.string()),
+        newAngle: z.string().nullable(),
+        done: z.boolean(),
+      }),
+      execute: () => ({ nextSpeakers: [], newAngle: null, done: true }),
+    });
+    const judge = handler({
+      name: "judge-emits",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        verdict: z.string(),
+        winner: z.string().nullable(),
+        reasoning: z.string(),
+      }),
+      execute: () => ({ verdict: "v", winner: "for", reasoning: "r" }),
+    });
+    const pattern = debate({
+      name: "deb-emits",
+      debaters: [
+        { name: "a", stance: "for", block: makeDebater("a", "for") },
+        { name: "b", stance: "against", block: makeDebater("b", "against") },
+      ],
+      maxRounds: 1,
+      moderator,
+      judge,
+      synthesizer: false,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { question: "q" },
+      session: { resources: { transcript: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    const turns = result.items.filter(
+      (i) => i.type === "component" && (i as any).component === "debate-turn",
+    );
+    const decisions = result.items.filter(
+      (i) =>
+        i.type === "component" && (i as any).component === "debate-decision",
+    );
+    const verdicts = result.items.filter(
+      (i) =>
+        i.type === "component" && (i as any).component === "debate-verdict",
+    );
+    expect(turns).toHaveLength(2);
+    expect(decisions).toHaveLength(1);
+    expect(verdicts).toHaveLength(1);
+    // Spot-check shape of one turn and the verdict — the UI renderer
+    // depends on these fields.
+    const firstTurn = turns[0] as any;
+    expect(firstTurn.data).toMatchObject({
+      round: 1,
+      agentName: "a",
+      stance: "for",
+    });
+    expect(typeof firstTurn.data.text).toBe("string");
+    expect((verdicts[0] as any).data).toEqual({
+      verdict: "v",
+      winner: "for",
+      reasoning: "r",
+    });
+  });
+
   it("emits one task per (round, debater) turn", async () => {
     const pattern = debate({
       name: "deb-tasks",

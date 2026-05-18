@@ -7,6 +7,7 @@ import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { RoutedSpecialists } from "./routed-specialists";
 import { EventedActors } from "./evented-actors";
+import { Debate } from "./debate";
 import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
 
@@ -45,6 +46,15 @@ export const chatAssistantRenderers: RendererRegistry = {
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
     "task-change": false,
+    // Debate's per-round, per-decision, and verdict items are
+    // collected and rendered by the <Debate /> container renderer.
+    "debate-turn": false,
+    "debate-decision": false,
+    "debate-verdict": false,
   },
-  container: { routedSpecialists: RoutedSpecialists, "evented-actors": EventedActors },
+  container: {
+    routedSpecialists: RoutedSpecialists,
+    "evented-actors": EventedActors,
+    debate: Debate,
+  },
 };
