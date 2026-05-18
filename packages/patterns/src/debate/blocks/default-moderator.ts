@@ -64,6 +64,14 @@ export function createModerator(opts: CreateModeratorOptions) {
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     agentType: opts.agentType ?? "sub",
+    // The moderator's tool loop can run for a while before it commits a
+    // decision. Surface a global status so it's clear work is in flight.
+    activeStatusMessage: (_input, ctx) => {
+      const state = (ctx.sequencer?.state ?? {}) as DebateState;
+      return state.round > 0
+        ? `Moderator opening round ${state.round}...`
+        : "Moderator preparing...";
+    },
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),

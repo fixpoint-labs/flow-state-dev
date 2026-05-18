@@ -52,6 +52,19 @@ type DebateVerdict = {
   reasoning: string;
 };
 
+/**
+ * Transient signal that a debater is mid-composition. Emitted by the
+ * pattern just before the debater's generator runs. Carries no text —
+ * the renderer just needs to know "{agentName} is composing in round
+ * N" so it can surface a live row before the committed `debate-turn`
+ * lands.
+ */
+type DebateTurnPending = {
+  round: number;
+  agentName: string;
+  stance: string;
+};
+
 type ToolCall = {
   name: string;
   query?: string;
@@ -145,9 +158,17 @@ export function Debate({ item }: { item: ContainerItem }) {
     );
   }, [ownedItems, allItems, requestId]);
 
-  const { turns, decisions, verdict, toolsByRound, pendingTools } = useMemo(() => {
+  const {
+    turns,
+    decisions,
+    verdict,
+    toolsByRound,
+    pendingTools,
+    pendingTurnsByRound,
+  } = useMemo(() => {
     const turns: DebateTurn[] = [];
     const decisions: DebateDecision[] = [];
+    const pendingTurnsByRound = new Map<number, DebateTurnPending[]>();
     let verdict: DebateVerdict | null = null;
     // The moderator's tool calls all stream BEFORE the moderator emits
     // its `debate-decision` item (the decision is the generator's final
@@ -211,6 +232,20 @@ export function Debate({ item }: { item: ContainerItem }) {
             pending = [];
           }
         }
+      } else if (comp.component === "debate-turn-pending") {
+        if (
+          typeof data.round === "number" &&
+          typeof data.agentName === "string" &&
+          typeof data.stance === "string"
+        ) {
+          const arr = pendingTurnsByRound.get(data.round) ?? [];
+          arr.push({
+            round: data.round,
+            agentName: data.agentName,
+            stance: data.stance,
+          });
+          pendingTurnsByRound.set(data.round, arr);
+        }
       } else if (comp.component === "debate-verdict") {
         if (
           typeof data.verdict === "string" &&
@@ -224,7 +259,14 @@ export function Debate({ item }: { item: ContainerItem }) {
         }
       }
     }
-    return { turns, decisions, verdict, toolsByRound, pendingTools: pending };
+    return {
+      turns,
+      decisions,
+      verdict,
+      toolsByRound,
+      pendingTools: pending,
+      pendingTurnsByRound,
+    };
   }, [scopedItems]);
 
   // Group turns, decisions, and the moderator's tool calls by round in
@@ -237,15 +279,29 @@ export function Debate({ item }: { item: ContainerItem }) {
     const seen = new Set<number>();
     for (const t of turns) seen.add(t.round);
     for (const d of decisions) seen.add(d.round);
+    for (const r of pendingTurnsByRound.keys()) seen.add(r);
     return [...seen]
       .sort((a, b) => a - b)
-      .map((round) => ({
-        round,
-        decision: decisions.find((d) => d.round === round) ?? null,
-        turns: turns.filter((t) => t.round === round),
-        tools: toolsByRound.get(round) ?? [],
-      }));
-  }, [turns, decisions, toolsByRound]);
+      .map((round) => {
+        const committed = turns.filter((t) => t.round === round);
+        const pendings = pendingTurnsByRound.get(round) ?? [];
+        // With maxConcurrency:1 only one speaker runs at a time, so if
+        // pendings exceed commits, the latest pending is the speaker
+        // currently composing. Once their `debate-turn` lands the
+        // counts match and the live row disappears.
+        const inFlight =
+          pendings.length > committed.length
+            ? pendings[pendings.length - 1]!
+            : null;
+        return {
+          round,
+          decision: decisions.find((d) => d.round === round) ?? null,
+          turns: committed,
+          tools: toolsByRound.get(round) ?? [],
+          inFlight,
+        };
+      });
+  }, [turns, decisions, toolsByRound, pendingTurnsByRound]);
 
   // True when the moderator is mid-research with no decision yet. We
   // surface a live "researching..." row in that case. Suppressed once
@@ -267,6 +323,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       turns: DebateTurn[];
       decision: DebateDecision | null;
       tools: ToolCall[];
+      inFlight: DebateTurnPending | null;
       verdict: DebateVerdict | null;
     };
     const out: DebateStep[] = [];
@@ -278,7 +335,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       const status: StepStatus =
         isFinished || !isLastRound
           ? "complete"
-          : haveAllTurns && r.decision !== null
+          : haveAllTurns && r.decision !== null && r.inFlight === null
             ? "complete"
             : "active";
       out.push({
@@ -289,6 +346,7 @@ export function Debate({ item }: { item: ContainerItem }) {
         turns: r.turns,
         decision: r.decision,
         tools: r.tools,
+        inFlight: r.inFlight,
         verdict: null,
       });
     }
@@ -305,6 +363,7 @@ export function Debate({ item }: { item: ContainerItem }) {
         turns: [],
         decision: null,
         tools: pendingTools,
+        inFlight: null,
         verdict: null,
       });
     }
@@ -322,6 +381,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       turns: [],
       decision: null,
       tools: [],
+      inFlight: null,
       verdict,
     });
     return out;
@@ -387,10 +447,12 @@ export function Debate({ item }: { item: ContainerItem }) {
             if (step.kind === "round") {
               const hasDecision = step.decision !== null;
               const hasTools = step.tools.length > 0;
+              const hasInFlight = step.inFlight !== null;
               const childCount =
                 (hasTools ? 1 : 0) +
                 (hasDecision ? 1 : 0) +
-                step.turns.length;
+                step.turns.length +
+                (hasInFlight ? 1 : 0);
               let childIdx = 0;
               const renderChild = (node: React.ReactNode) => {
                 const last = childIdx === childCount - 1;
@@ -420,6 +482,7 @@ export function Debate({ item }: { item: ContainerItem }) {
                   {step.turns.map((turn) =>
                     renderChild(<TurnItem turn={turn} />),
                   )}
+                  {hasInFlight && renderChild(<PendingTurnItem pending={step.inFlight!} />)}
                 </Step>
               );
             }
@@ -562,6 +625,24 @@ function TurnItem({ turn }: { turn: DebateTurn }) {
   );
 }
 
+function PendingTurnItem({ pending }: { pending: DebateTurnPending }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+      <Loader2Icon
+        className="h-3 w-3 shrink-0 animate-spin text-blue-500"
+        aria-hidden="true"
+      />
+      <span className="font-medium text-foreground/70">{pending.agentName}</span>
+      <span className="shrink-0 rounded bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+        {pending.stance}
+      </span>
+      <Shimmer className="text-xs" duration={2}>
+        is composing a response...
+      </Shimmer>
+    </div>
+  );
+}
+
 function DecisionItem({ decision }: { decision: DebateDecision }) {
   const speakers =
     decision.nextSpeakers.length > 0
@@ -584,9 +665,11 @@ function DecisionItem({ decision }: { decision: DebateDecision }) {
         {speakers}
       </div>
       {decision.newAngle && (
-        <div className="text-[11px] leading-snug text-muted-foreground">
-          <span className="font-medium text-foreground/70">Focus:</span>{" "}
-          {decision.newAngle}
+        <div className="space-y-0.5">
+          <div className="text-[11px] font-medium leading-4 text-foreground/70">
+            Focus
+          </div>
+          <EntryMarkdown text={decision.newAngle} />
         </div>
       )}
       {decision.briefing && (

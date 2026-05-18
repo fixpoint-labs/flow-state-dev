@@ -327,6 +327,28 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(judgeAgentType !== undefined ? { agentType: judgeAgentType } : {}),
     });
 
+  /**
+   * Live-progress hint emitted before each debater starts. Renderers
+   * use it to draw a "{agentName} is composing..." row so the UI
+   * doesn't sit silent during the debater's tool loop and structured
+   * output generation. Transient — replayed only on the stream; the
+   * committed `debate-turn` carries the persistent record.
+   */
+  const makePendingTurnTap = (agentName: string, stance: string) =>
+    handler({
+      name: `${name}-pending-${agentName}`,
+      inputSchema: z.any(),
+      sequencerStateSchema: debateStateSchema,
+      execute: (_input, ctx) => {
+        const state = ctx.sequencer!.state;
+        ctx.emit.component(
+          "debate-turn-pending",
+          { round: state.round, agentName, stance },
+          { transient: true },
+        );
+      },
+    });
+
   // Emit the judge's verdict as a renderable component item right after
   // the judge runs, so the closing card streams into the debate
   // container before the synthesizer (if any) projects to a final shape.
@@ -429,7 +451,10 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         collectionId,
         warnedAgents,
       });
-      pipeline = pipeline.then(debaterBlock).tap(recordTap);
+      pipeline = pipeline
+        .tap(makePendingTurnTap(entry.name, entry.stance))
+        .then(debaterBlock)
+        .tap(recordTap);
     }
 
     pipeline = pipeline.loopBack(incrementRound.name, {
@@ -498,6 +523,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       name: `${name}-speaker-${entry.name}`,
       inputSchema: z.any(),
     })
+      .tap(makePendingTurnTap(entry.name, entry.stance))
       .then(debaterBlock)
       .tap(recordTap);
     speakerBlocks.set(entry.name, speakerStep as BlockDefinition<any, any>);

@@ -71,6 +71,12 @@ export function createDebater(opts: CreateDebaterOptions) {
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     agentType: opts.agentType ?? "sub",
+    // Surface a live "Advocate is responding..." string in the global
+    // status slot while this block runs. Without it the UI sits silent
+    // through tool loops and the model's main generation; the renderer
+    // also emits an inline pending row but the global status is the
+    // fallback for non-debate UIs.
+    activeStatusMessage: `${opts.agentName} is composing a response...`,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),

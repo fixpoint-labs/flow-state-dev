@@ -49,6 +49,7 @@ export const chatAssistantRenderers: RendererRegistry = {
     // Debate's per-round, per-decision, and verdict items are
     // collected and rendered by the <Debate /> container renderer.
     "debate-turn": false,
+    "debate-turn-pending": false,
     "debate-decision": false,
     "debate-verdict": false,
   },
