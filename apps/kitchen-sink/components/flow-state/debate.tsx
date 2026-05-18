@@ -149,18 +149,27 @@ export function Debate({ item }: { item: ContainerItem }) {
     const turns: DebateTurn[] = [];
     const decisions: DebateDecision[] = [];
     let verdict: DebateVerdict | null = null;
-    // Tool calls made by the moderator while opening a round arrive in
-    // the stream BEFORE that round's `debate-decision` (the moderator
-    // emits the decision item as its very last step). Buffer
-    // tool_outputs in encounter order, then flush them onto the next
-    // decision we see. Anything still pending at the end is attributed
-    // to a hypothetical in-flight round so the UI shows the moderator's
-    // research even when the decision hasn't streamed yet.
+    // The moderator's tool calls all stream BEFORE the moderator emits
+    // its `debate-decision` item (the decision is the generator's final
+    // output). Buffer moderator-owned tool_outputs in encounter order
+    // and flush them onto the next decision we see. Anything still
+    // pending at the end is held in `pendingTools` so we can decide,
+    // outside this walk, whether to surface a live "moderator
+    // researching..." row.
+    //
+    // Critically, debaters / judge / synthesizer in the same pattern
+    // can also have tools (kitchen-sink wires `uses` on every default
+    // sub-block). Filtering by `agentName` keeps the research panel
+    // tied to the moderator instead of attributing every nearby tool
+    // call to it.
     const toolsByRound = new Map<number, ToolCall[]>();
     let pending: ToolCall[] = [];
     for (const i of scopedItems) {
       if (i.type === "tool_output") {
-        pending.push(toolCallFromOutput(i as ToolOutputItem));
+        const tool = i as ToolOutputItem;
+        if (tool.agentName && tool.agentName.endsWith("-moderator")) {
+          pending.push(toolCallFromOutput(tool));
+        }
         continue;
       }
       if (i.type !== "component") continue;
@@ -238,14 +247,12 @@ export function Debate({ item }: { item: ContainerItem }) {
       }));
   }, [turns, decisions, toolsByRound]);
 
-  // The next round number whose moderator is currently mid-flight: we
-  // have tool calls but no decision yet. Used to surface live research
-  // activity as an "active" row above any committed rounds.
-  const inFlightRound = useMemo(() => {
-    if (pendingTools.length === 0) return null;
-    const lastCommitted = rounds.length > 0 ? rounds[rounds.length - 1]!.round : 0;
-    return lastCommitted + 1;
-  }, [rounds, pendingTools]);
+  // True when the moderator is mid-research with no decision yet. We
+  // surface a live "researching..." row in that case. Suppressed once
+  // the judge's verdict has landed, since no more moderators can run
+  // — any stray tool calls past that point belong to the synthesizer
+  // and aren't this pattern's to render.
+  const moderatorInFlight = pendingTools.length > 0 && verdict === null;
 
   const isFinished = verdict !== null;
 
@@ -265,7 +272,7 @@ export function Debate({ item }: { item: ContainerItem }) {
     const out: DebateStep[] = [];
     for (let i = 0; i < rounds.length; i++) {
       const r = rounds[i]!;
-      const isLastRound = i === rounds.length - 1 && inFlightRound === null;
+      const isLastRound = i === rounds.length - 1 && !moderatorInFlight;
       const expectedSpeakers = r.decision?.nextSpeakers.length ?? r.turns.length;
       const haveAllTurns = r.turns.length >= expectedSpeakers;
       const status: StepStatus =
@@ -285,14 +292,15 @@ export function Debate({ item }: { item: ContainerItem }) {
         verdict: null,
       });
     }
-    // Live "moderator opening round N" step: tool calls have started
-    // streaming but the decision hasn't landed yet. Surface them so
-    // the UI doesn't sit silent while research is in flight.
-    if (inFlightRound !== null) {
+    // Live "moderator researching..." step. We don't know which round
+    // number it's for — the moderator hasn't committed a decision yet
+    // — so we render it without a round number. Suppressed once the
+    // verdict lands (no more moderators can run after that).
+    if (moderatorInFlight) {
       out.push({
-        key: `round-${inFlightRound}-pending`,
+        key: "moderator-pending",
         kind: "round",
-        round: inFlightRound,
+        round: 0,
         status: "active",
         turns: [],
         decision: null,
@@ -307,7 +315,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       status: isFinished
         ? "complete"
         : rounds.length > 0 &&
-            inFlightRound === null &&
+            !moderatorInFlight &&
             out[out.length - 1]?.status === "complete"
           ? "active"
           : "pending",
@@ -317,7 +325,7 @@ export function Debate({ item }: { item: ContainerItem }) {
       verdict,
     });
     return out;
-  }, [rounds, isFinished, verdict, inFlightRound, pendingTools]);
+  }, [rounds, isFinished, verdict, moderatorInFlight, pendingTools]);
 
   const headerLabel = isFinished
     ? verdict?.winner
@@ -398,8 +406,8 @@ export function Debate({ item }: { item: ContainerItem }) {
                   key={step.key}
                   icon={MessagesSquareIcon}
                   label={
-                    step.status === "active" && !hasDecision && hasTools
-                      ? `Round ${step.round} — moderator researching...`
+                    step.round === 0
+                      ? "Moderator researching..."
                       : step.status === "active"
                         ? `Round ${step.round} in progress...`
                         : `Round ${step.round} — ${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"}`
