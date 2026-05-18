@@ -330,9 +330,11 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   /**
    * Live-progress hint emitted before each debater starts. Renderers
    * use it to draw a "{agentName} is composing..." row so the UI
-   * doesn't sit silent during the debater's tool loop and structured
-   * output generation. Transient — replayed only on the stream; the
-   * committed `debate-turn` carries the persistent record.
+   * doesn't sit silent during the debater's tool loop and content
+   * generation. Persisted (not transient) so React clients that
+   * default `useSession({ includeTransient: false })` still receive
+   * it — the renderer hides the pending row once the matching
+   * persisted `debate-turn` lands via count-matching.
    */
   const makePendingTurnTap = (agentName: string, stance: string) =>
     handler({
@@ -341,11 +343,11 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       sequencerStateSchema: debateStateSchema,
       execute: (_input, ctx) => {
         const state = ctx.sequencer!.state;
-        ctx.emit.component(
-          "debate-turn-pending",
-          { round: state.round, agentName, stance },
-          { transient: true },
-        );
+        ctx.emit.component("debate-turn-pending", {
+          round: state.round,
+          agentName,
+          stance,
+        });
       },
     });
 
