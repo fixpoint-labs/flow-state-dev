@@ -69,6 +69,45 @@ describe("materializeWorker — prompt-driven branches", () => {
     warn.mockRestore();
   });
 
+  it("resolves model: per-worker → deps default → 'intent/chat' fallback", async () => {
+    const collection = createMockSkillsCollection();
+
+    // 1. Per-worker model wins.
+    const withWorkerModel = await materializeWorker(
+      "a",
+      { prompt: "x", model: "anthropic/claude-haiku" },
+      { catalog: {}, skillName: "demo", skillCollection: collection, collectionId: "skill_demo_r1_1" },
+    );
+    expect((withWorkerModel as { config?: { model?: string } }).config?.model).toBe(
+      "anthropic/claude-haiku",
+    );
+
+    // 2. Falls back to deps.defaultModelId.
+    const withDepsDefault = await materializeWorker(
+      "b",
+      { prompt: "x" },
+      {
+        catalog: {},
+        skillName: "demo",
+        skillCollection: collection,
+        defaultModelId: "openai/gpt-4o-mini",
+        collectionId: "skill_demo_r1_1",
+      },
+    );
+    expect((withDepsDefault as { config?: { model?: string } }).config?.model).toBe(
+      "openai/gpt-4o-mini",
+    );
+
+    // 3. Final fallback to 'intent/chat' — no per-worker model, no deps default.
+    //    This is the kitchen-sink default-skills-capability scenario.
+    const fallback = await materializeWorker(
+      "c",
+      { prompt: "x" },
+      { catalog: {}, skillName: "demo", skillCollection: collection, collectionId: "skill_demo_r1_1" },
+    );
+    expect((fallback as { config?: { model?: string } }).config?.model).toBe("intent/chat");
+  });
+
   it("defaults agent-type to sub and propagates spec.agentType", async () => {
     const sub = await materializeWorker("a", { prompt: "x" }, deps());
     expect((sub as { config?: { agentType?: string } }).config?.agentType).toBe("sub");

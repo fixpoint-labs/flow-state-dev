@@ -107,12 +107,12 @@ export async function materializeWorker(
   const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
   const tools = resolveTools(workerKey, catalogToolKeys, deps.catalog);
 
-  const modelId = spec.model ?? deps.defaultModelId;
-  if (!modelId) {
-    throw new Error(
-      `Worker '${workerKey}': no model id resolved (set worker \`model\` or pass \`defaultModelId\` to the skills capability).`,
-    );
-  }
+  // Model resolution: per-worker `model:` wins, then the capability's
+  // `defaultModelId`, then the same `"intent/chat"` fallback the
+  // fork-mode generator uses. The fallback keeps pattern skills working
+  // out of the box without forcing every app to wire a default; apps
+  // that want a specific model still override at either level.
+  const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
 
   return generator({
     name: `skillWorker_${deps.skillName}_${workerKey}`,
