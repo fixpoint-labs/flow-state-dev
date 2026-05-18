@@ -130,7 +130,34 @@ export function skillManifestKey(name: string): string {
   return `${name}/SKILL.md`;
 }
 
-/** Resource key (relative to prefix) for a skill's supporting file. */
+/** Resource key (relative to prefix) for a skill's supporting file.
+ *
+ * Normalizes the caller's path so authors can write either `reference/x.md`
+ * or `./reference/x.md` in their `prompt-ref` / similar fields and get the
+ * same lookup key. Without normalization, `./reference/x.md` joined against
+ * `<skillName>` produces `<skillName>/./reference/x.md`, which never matches
+ * the seeded entry at `<skillName>/reference/x.md`.
+ *
+ * Rejects `..` segments — supporting files must live inside the skill folder.
+ */
 export function skillFileKey(name: string, relativePath: string): string {
-  return `${name}/${relativePath.replace(/^\/+/, "")}`;
+  const normalized = normalizeSkillFilePath(relativePath);
+  return `${name}/${normalized}`;
+}
+
+function normalizeSkillFilePath(relativePath: string): string {
+  // Strip any leading slashes, then walk segments dropping `.` and rejecting `..`.
+  const trimmed = relativePath.replace(/^\/+/, "");
+  const segments = trimmed.split("/");
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      throw new Error(
+        `Invalid skill file path "${relativePath}": ".." segments are not allowed`,
+      );
+    }
+    out.push(seg);
+  }
+  return out.join("/");
 }

@@ -11,7 +11,7 @@
  * cascaded into a runSkill tool error.
  */
 import { describe, expect, it } from "vitest";
-import { skillStateSchema } from "../src/collection";
+import { skillFileKey, skillStateSchema } from "../src/collection";
 
 describe("skillStateSchema", () => {
   it("accepts a fully-populated manifest state", () => {
@@ -67,5 +67,34 @@ describe("skillStateSchema", () => {
     const parsed = skillStateSchema.parse(state);
     expect(parsed.contextMode).toBe("pattern");
     expect(parsed.patternBinding).toEqual(state.patternBinding);
+  });
+});
+
+describe("skillFileKey", () => {
+  it("joins a bare relative path", () => {
+    expect(skillFileKey("comp-analysis", "reference/x.md")).toBe(
+      "comp-analysis/reference/x.md",
+    );
+  });
+
+  // Regression: a pattern-skill worker spec with `prompt-ref: ./reference/x.md`
+  // was producing `comp-analysis/./reference/x.md` and missing the seeded file.
+  it("strips leading './' so authors can use either form", () => {
+    expect(skillFileKey("comp-analysis", "./reference/x.md")).toBe(
+      "comp-analysis/reference/x.md",
+    );
+  });
+
+  it("collapses interior './' segments", () => {
+    expect(skillFileKey("s", "a/./b/./c.md")).toBe("s/a/b/c.md");
+  });
+
+  it("strips leading slashes", () => {
+    expect(skillFileKey("s", "/a/b.md")).toBe("s/a/b.md");
+  });
+
+  it("rejects '..' segments to keep files inside the skill folder", () => {
+    expect(() => skillFileKey("s", "../other/x.md")).toThrow(/\.\./);
+    expect(() => skillFileKey("s", "a/../../x.md")).toThrow(/\.\./);
   });
 });
