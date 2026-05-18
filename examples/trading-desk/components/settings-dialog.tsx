@@ -203,10 +203,7 @@ function InstructionField({
   value,
   onChange,
 }: InstructionFieldProps): ReactElement {
-  const overLimit = value.length > FIELD_CHAR_LIMIT;
-  // Soft cap: stop typing well above the warn threshold rather than rejecting
-  // on save. Mirrors how product fields like ChatGPT custom instructions feel.
-  const hardMax = Math.floor(FIELD_CHAR_LIMIT * 1.1);
+  const nearLimit = value.length >= FIELD_CHAR_LIMIT;
 
   return (
     <label className="block">
@@ -215,7 +212,7 @@ function InstructionField({
         <span
           className={cn(
             "font-mono text-[10.5px]",
-            overLimit
+            nearLimit
               ? "text-[color:var(--c-warn)]"
               : "text-[color:var(--c-fg-faint)]",
           )}
@@ -230,7 +227,7 @@ function InstructionField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
-        maxLength={hardMax}
+        maxLength={FIELD_CHAR_LIMIT}
         className={cn(
           "block w-full resize-y rounded border px-2 py-1 font-mono text-xs",
           "border-[color:var(--c-border)] bg-[color:var(--c-bg)]",

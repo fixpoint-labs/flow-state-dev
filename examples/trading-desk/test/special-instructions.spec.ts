@@ -8,7 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_INSTRUCTIONS,
+  FIELD_CHAR_LIMIT,
   formatUserInstructions,
+  specialInstructionsStateSchema,
   type SpecialInstructionsState,
 } from "../src/flows/trading-desk/special-instructions";
 
@@ -81,5 +83,21 @@ describe("formatUserInstructions", () => {
     expect(out).toContain("G.");
     expect(out).not.toContain("P1.");
     expect(out).not.toContain("## This phase");
+  });
+});
+
+describe("specialInstructionsStateSchema", () => {
+  it("accepts fields exactly at the character limit", () => {
+    const max = "x".repeat(FIELD_CHAR_LIMIT);
+    expect(() =>
+      specialInstructionsStateSchema.parse({ ...EMPTY_INSTRUCTIONS, global: max }),
+    ).not.toThrow();
+  });
+
+  it("rejects fields over the character limit (server-side guard against unbounded prompt injection)", () => {
+    const over = "x".repeat(FIELD_CHAR_LIMIT + 1);
+    expect(() =>
+      specialInstructionsStateSchema.parse({ ...EMPTY_INSTRUCTIONS, phase3: over }),
+    ).toThrow();
   });
 });
