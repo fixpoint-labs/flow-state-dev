@@ -20,6 +20,7 @@
  * consumer of the new package, and existing patterns continue to
  * compile without it on their classpath.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -77,18 +78,29 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
  * Shared mutable bag stamped onto a board run's outer sequencer state.
  * Both setup and teardown read it; the worker-step resolver reads it to
  * pick up the current ledger / policy.
+ *
+ * Per-worker state (the current task id) is tracked via AsyncLocalStorage
+ * on `workerTaskIdStore`, NOT on this bag — a single shared field would
+ * race under `concurrency > 1`, with Worker B's `stampCurrentTaskId`
+ * clobbering Worker A's id mid-await and misattributing A's cache writes
+ * and observation entries to B.
  */
 export interface BoardRunFlowState {
   cacheStore?: ToolCacheStore;
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;
   collectionId: string;
-  /**
-   * Stamped onto cache entries when a tool call ran inside a worker
-   * — read by the cache wrapping to populate `sourceTask` on later hits.
-   */
-  currentTaskId?: string;
 }
+
+/**
+ * Per-worker task id, scoped via Node's `AsyncLocalStorage`. Each
+ * forEach iteration runs in its own async context tree (Node propagates
+ * the store through `await` boundaries automatically). The worker
+ * body's leading tap calls `enterWith(task.id)` so every subsequent
+ * step in that worker — including any cacheable tool call inside a
+ * generator — reads its own task id, not a sibling's.
+ */
+const workerTaskIdStore = new AsyncLocalStorage<string>();
 
 /** Resolve a user-supplied `flowPolicy` value to a concrete `TaskFlowPolicy`. */
 export function resolveFlowPolicyValue(
@@ -191,9 +203,13 @@ export function createInstallBoardFlowState(
         error?: string;
         cached: boolean;
       }) => {
+        // Read taskId from the AsyncLocalStorage scope of the calling
+        // worker — never from a shared bag field, which would race under
+        // concurrency > 1.
+        const taskId = workerTaskIdStore.getStore();
         runState.ledger?.append({
           collectionId,
-          taskId: runState.currentTaskId,
+          ...(taskId !== undefined ? { taskId } : {}),
           toolName: e.toolName,
           args: e.args,
           ...(e.result !== undefined ? { result: e.result } : {}),
@@ -205,9 +221,9 @@ export function createInstallBoardFlowState(
 
       // Source-task resolver: cache writes during a worker turn carry
       // the in-progress task id so later cross-task hits can attribute
-      // back via `sourceTask`.
+      // back via `sourceTask`. Same per-worker isolation via ALS.
       state[SLOT_CACHE_SOURCE_TASK_RESOLVER] = () => {
-        const taskId = runState.currentTaskId;
+        const taskId = workerTaskIdStore.getStore();
         return taskId !== undefined ? { collectionId, taskId } : undefined;
       };
     },
@@ -234,7 +250,6 @@ export function createTeardownBoardFlowState(options: { name: string; runState: 
       // a reference to the runState bag.
       runState.cacheStore = undefined;
       runState.ledger = undefined;
-      runState.currentTaskId = undefined;
       // Dual-purpose handler: also used as a `.rescue` branch on the
       // board's outer sequencer. The rescue path passes the caught
       // error as the handler's input — rethrow so the board failure
@@ -270,11 +285,18 @@ export function createFlowPolicyResolver(runState: BoardRunFlowState) {
 }
 
 /**
- * Helper for the worker body's leading `.tap()` — stamps the current
- * task id onto the run state so cache writes during this worker turn
- * carry the right `sourceTask` attribution. Exported for board
- * wiring; not part of the public surface.
+ * Helper for the worker body's leading `.tap()` — enters the
+ * AsyncLocalStorage scope with this worker's task id so every
+ * subsequent step in the same async chain (cache writes, observation
+ * appends) reads the right id. `enterWith` mutates the *current*
+ * async resource so all downstream `await` chains in this worker
+ * iteration inherit the value; sibling worker iterations have their
+ * own resource and never see it.
+ *
+ * `_runState` is accepted only to keep the existing call-site
+ * signature stable; it's intentionally unused now that per-worker
+ * state lives in ALS.
  */
-export function stampCurrentTaskId(runState: BoardRunFlowState, task: Task): void {
-  runState.currentTaskId = task.id;
+export function stampCurrentTaskId(_runState: BoardRunFlowState, task: Task): void {
+  workerTaskIdStore.enterWith(task.id);
 }

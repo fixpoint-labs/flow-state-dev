@@ -141,9 +141,12 @@ export function createObservationLedger(opts: {
         let used = 0;
         for (let i = observations.length - 1; i >= 0; i--) {
           const o = observations[i]!;
+          // safeStringify so circular references or non-JSON values
+          // in args/result don't crash the policy — `formatPriorWork`
+          // already uses the same guard for the same reason.
           const approx = Math.ceil(
-            (JSON.stringify(o.args).length +
-              JSON.stringify(o.result ?? o.error ?? "").length) /
+            (safeStringify(o.args).length +
+              safeStringify(o.result ?? o.error ?? "").length) /
               4,
           );
           if (used + approx > maxTokens) break;
