@@ -14,6 +14,7 @@
  */
 import type { ContentAudioDeltaEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
+import { createClientEventFilter } from "../../src/streaming/client-filter";
 import { createResponseEmitter } from "../../src/streaming/response-emitter";
 import { replayRequestEvents } from "../../src/streaming/resume";
 
@@ -171,6 +172,51 @@ describe("FIX-523 — content.audio.delta is non-replayable", () => {
     const persistedTypes = persisted.map((e) => e.type);
     expect(persistedTypes).toContain("content.added");
     expect(persistedTypes).not.toContain("content.audio.delta");
+  });
+
+  it("client-filter suppresses audio deltas for non-client items", () => {
+    // If a non-client item ever streamed TTS audio (e.g. an internal
+    // reasoning item synthesized for an internal subscriber, or a future
+    // item type whose visibility defaults to client: false), its chunks
+    // must be filtered along with the rest of its content events.
+    const filter = createClientEventFilter();
+    const requestId = "req_audio_client_filter";
+
+    // A trace-stamped item resolves to client: false.
+    const nonClientItem = {
+      stream: "request" as const,
+      type: "item.added" as const,
+      requestId,
+      sequence_number: 1,
+      ts: 100,
+      item: {
+        id: "trace_0",
+        type: "block_trace",
+        status: "in_progress" as const,
+        requestId,
+        itemIndex: 0,
+        provenance: { blockName: "test", blockInstanceId: "test_1", phase: "main" as const },
+        agentType: "trace" as const,
+        ts: 100,
+        blockName: "test",
+        blockKind: "handler" as const,
+        blockInstanceId: "test_1"
+      }
+    };
+
+    const audioDelta = {
+      stream: "request" as const,
+      type: "content.audio.delta" as const,
+      requestId,
+      sequence_number: 2,
+      ts: 101,
+      itemId: "trace_0",
+      contentIndex: 0,
+      audio: "AQI="
+    };
+
+    expect(filter(nonClientItem as never)).toBe(false);
+    expect(filter(audioDelta as never)).toBe(false);
   });
 
   it("replayRequestEvents drops any persisted content.audio.delta entries (belt-and-braces)", () => {

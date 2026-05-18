@@ -7,7 +7,7 @@ import { transcribe, type TranscribeOptions } from "@flow-state-dev/client";
 import type { Content, MessageItem, OutputAudioContent } from "@flow-state-dev/core/items";
 import { createAudioRecorder, type AudioRecorder } from "./audio-recorder";
 import { createAudioPlayer, type AudioPlayer, type AudioPlayerState } from "./audio-player";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { ContentAudioDeltaEvent, OutputItem } from "@flow-state-dev/core/items";
 import {
   createSpeechRecognition,
   isSpeechRecognitionAvailable,
@@ -112,15 +112,18 @@ export function useVoice(
   useEffect(() => {
     if (!autoPlayTTS) return;
 
-    const handler = (event: { itemId: string; contentIndex: number; audio: string; isLast?: boolean }) => {
+    const handler = (event: ContentAudioDeltaEvent) => {
       const player = playerRef.current;
       if (player === null) return;
 
-      // EAGER dedup write — synchronous, before any await. The batch-path
-      // scanner below runs on every session.items change; if it fires
-      // before this write, it would see the eventual `OutputAudioContent`
-      // snapshot and double-play. Writing the set up-front closes that
-      // window.
+      // Dedup write must land in the same React tick that React will use
+      // to flush any setItems triggered by the surrounding SSE batch.
+      // Because both the audio-delta and the eventual content.added flow
+      // through the same SSE callback chain on the same tick, writing
+      // here (synchronously, before the decode awaits inside the player)
+      // means the batch-path scanner — which runs in an effect keyed on
+      // session.items — never observes the streaming OutputAudioContent
+      // without its dedup entry already present.
       const key = `${event.itemId}:${event.contentIndex}`;
       streamingAudioPartsRef.current.add(key);
 
