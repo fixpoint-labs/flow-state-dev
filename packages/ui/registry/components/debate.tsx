@@ -38,6 +38,7 @@ type DebateTurn = {
 type DebateDecision = {
   round: number;
   nextSpeakers: string[];
+  briefing: string | null;
   newAngle: string | null;
   done: boolean;
 };
@@ -113,6 +114,8 @@ export function Debate({ item }: { item: ContainerItem }) {
             nextSpeakers: data.nextSpeakers.filter(
               (s): s is string => typeof s === "string",
             ),
+            briefing:
+              typeof data.briefing === "string" ? data.briefing : null,
             newAngle:
               typeof data.newAngle === "string" ? data.newAngle : null,
             done: data.done,
@@ -135,31 +138,29 @@ export function Debate({ item }: { item: ContainerItem }) {
     return { turns, decisions, verdict };
   }, [scopedItems]);
 
-  // Group turns by round in encounter order. Within a round, turns stay
-  // in the order they were emitted (matches the speakers' actual order
-  // including same-debater duplicates and moderator-chosen sequences).
+  // Group turns and decisions by round in encounter order. The moderator
+  // runs at the top of each round, so the decision opens the round and
+  // the turns follow. A round may appear with only a decision (moderator
+  // just ran, turns haven't streamed in yet) or only turns (no moderator
+  // configured).
   const rounds = useMemo(() => {
-    const byRound = new Map<number, DebateTurn[]>();
-    for (const t of turns) {
-      const arr = byRound.get(t.round) ?? [];
-      arr.push(t);
-      byRound.set(t.round, arr);
-    }
-    return [...byRound.keys()]
+    const seen = new Set<number>();
+    for (const t of turns) seen.add(t.round);
+    for (const d of decisions) seen.add(d.round);
+    return [...seen]
       .sort((a, b) => a - b)
       .map((round) => ({
         round,
-        turns: byRound.get(round)!,
         decision: decisions.find((d) => d.round === round) ?? null,
+        turns: turns.filter((t) => t.round === round),
       }));
   }, [turns, decisions]);
 
   const isFinished = verdict !== null;
 
-  // Build the step list: each round, plus a verdict step. A round is
-  // "complete" once a decision was stashed for it OR the verdict ran
-  // (the final round's loopBack exit doesn't always produce a decision
-  // when `done: false` and `round >= maxRounds`).
+  // Build the step list: each round, then a verdict step. A round is
+  // "complete" once it has a decision AND every named speaker has emitted
+  // a turn. The last round is "active" while its turns are streaming in.
   const steps = useMemo(() => {
     type DebateStep = {
       key: string;
@@ -174,10 +175,12 @@ export function Debate({ item }: { item: ContainerItem }) {
     for (let i = 0; i < rounds.length; i++) {
       const r = rounds[i]!;
       const isLastRound = i === rounds.length - 1;
+      const expectedSpeakers = r.decision?.nextSpeakers.length ?? r.turns.length;
+      const haveAllTurns = r.turns.length >= expectedSpeakers;
       const status: StepStatus =
-        r.decision !== null || (!isLastRound && rounds.length > 0)
+        isFinished || !isLastRound
           ? "complete"
-          : isFinished
+          : haveAllTurns && r.decision !== null
             ? "complete"
             : "active";
       out.push({
@@ -194,13 +197,15 @@ export function Debate({ item }: { item: ContainerItem }) {
       key: "verdict",
       kind: "verdict",
       round: 0,
+      // Verdict step is shown as active once the last round's debaters
+      // have all spoken (judge is presumably running). It's pending
+      // before that and complete once the verdict emits.
       status: isFinished
         ? "complete"
-        : rounds.length > 0 && rounds[rounds.length - 1]?.decision?.done
+        : rounds.length > 0 &&
+            out[out.length - 1]?.status === "complete"
           ? "active"
-          : rounds.length === 0
-            ? "pending"
-            : "pending",
+          : "pending",
       turns: [],
       decision: null,
       verdict,
@@ -266,6 +271,7 @@ export function Debate({ item }: { item: ContainerItem }) {
           {steps.map((step, i) => {
             const isLast = i === steps.length - 1;
             if (step.kind === "round") {
+              const hasDecision = step.decision !== null;
               return (
                 <Step
                   key={step.key}
@@ -278,21 +284,19 @@ export function Debate({ item }: { item: ContainerItem }) {
                   status={step.status}
                   isLast={isLast}
                 >
+                  {hasDecision && (
+                    <StepItem isLast={step.turns.length === 0}>
+                      <DecisionItem decision={step.decision!} />
+                    </StepItem>
+                  )}
                   {step.turns.map((turn, j) => (
                     <StepItem
                       key={`turn-${j}`}
-                      isLast={
-                        j === step.turns.length - 1 && step.decision === null
-                      }
+                      isLast={j === step.turns.length - 1}
                     >
                       <TurnItem turn={turn} />
                     </StepItem>
                   ))}
-                  {step.decision !== null && (
-                    <StepItem isLast>
-                      <DecisionItem decision={step.decision} />
-                    </StepItem>
-                  )}
                 </Step>
               );
             }
@@ -436,24 +440,35 @@ function TurnItem({ turn }: { turn: DebateTurn }) {
 }
 
 function DecisionItem({ decision }: { decision: DebateDecision }) {
-  const headline = decision.done
-    ? "Moderator: ending debate"
-    : decision.nextSpeakers.length > 0
-      ? `Moderator: next → ${decision.nextSpeakers.join(", ")}`
-      : "Moderator decision";
-
+  const speakers =
+    decision.nextSpeakers.length > 0
+      ? `Speakers: ${decision.nextSpeakers.join(" → ")}`
+      : "No speakers this round";
+  const closer = decision.done ? " (final round)" : "";
   return (
-    <div className="space-y-1 rounded-md bg-muted/40 px-2 py-1.5">
+    <div className="space-y-1.5 rounded-md border border-muted-foreground/15 bg-muted/40 px-2 py-1.5">
       <div className="flex items-center gap-1.5 text-xs leading-4">
         <CompassIcon
           className="h-3 w-3 shrink-0 text-muted-foreground/70"
           aria-hidden="true"
         />
-        <span className="font-medium text-foreground/80">{headline}</span>
+        <span className="font-medium text-foreground/80">
+          Moderator opens round {decision.round}
+          {closer}
+        </span>
       </div>
+      <div className="text-[11px] leading-snug text-muted-foreground">
+        {speakers}
+      </div>
+      {decision.briefing && (
+        <div className="text-[11px] leading-snug text-muted-foreground">
+          <span className="font-medium text-foreground/70">Briefing:</span>{" "}
+          {decision.briefing}
+        </div>
+      )}
       {decision.newAngle && (
         <div className="text-[11px] leading-snug text-muted-foreground">
-          <span className="font-medium text-foreground/70">New angle:</span>{" "}
+          <span className="font-medium text-foreground/70">Focus:</span>{" "}
           {decision.newAngle}
         </div>
       )}

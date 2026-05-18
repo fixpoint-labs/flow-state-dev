@@ -1,14 +1,19 @@
 /**
- * Default moderator factory — a generator that reads the debate
- * transcript at the end of each round and decides who speaks next,
- * whether to inject a redirection (`newAngle`), and whether the debate
- * is finished. Optional; when no moderator is configured the debate
- * runs in fixed declared-roster order.
+ * Default moderator factory — a generator that opens each round of the
+ * debate. It picks who speaks in the round, can supply a research
+ * briefing for the debaters, can name a focus angle, and can declare
+ * that this should be the final round.
  *
- * The moderator sees the full, ordered, name-tagged transcript and the
- * history of its own decisions. It does NOT receive the judge's
- * anonymization toggle — knowing who said what is necessary for
- * dispatch.
+ * The moderator sees the full, ordered, name-tagged transcript so far
+ * (which is empty in round 1) plus the history of its own decisions.
+ * It is NOT subject to the judge's `anonymizeTranscript` toggle —
+ * knowing who said what is necessary for dispatch decisions.
+ *
+ * Pass `tools` or `uses` to give the moderator research capabilities
+ * (e.g. web search, fetch). When tools are configured, the default
+ * prompt nudges the moderator to gather current information and
+ * summarize it in `briefing` so every debater in the round argues from
+ * the same factual base.
  */
 import { generator } from "@flow-state-dev/core";
 import type {
@@ -75,23 +80,41 @@ export function createModerator(opts: CreateModeratorOptions) {
         ? opts.rosterNames.map((n) => `- ${n}`).join("\n")
         : "(none)";
       return [
-        "You are moderating a structured debate. Read the transcript and decide",
-        "what should happen in the next round.",
+        "You are moderating a structured debate. You open each round by",
+        "deciding who speaks and how the round is framed. The debaters you",
+        "name will see your briefing and angle before they argue.",
         "",
         "Available debaters (you MUST only return names from this list):",
         rosterBlock,
         "",
+        "If research tools are available to you (e.g. web search, fetch),",
+        "use them to gather current information before opening the round.",
+        "Summarize the key facts you found in `briefing` so every debater",
+        "argues from the same factual base — that's the value of having a",
+        "moderator vs. letting each debater research separately.",
+        "",
         "Your decision must include:",
-        "- nextSpeakers: which debaters speak next round, in the order they",
+        "- nextSpeakers: which debaters speak this round, in the order they",
         "  should speak. May be all of them, a subset, or just one. Earlier",
         "  speakers' arguments are visible to later speakers within the same",
-        "  round. If done is true, return [].",
-        "- newAngle: an optional reframing or sub-question to inject into the",
-        "  next round. Use this when the panel has plateaued, when an",
-        "  unexamined angle deserves engagement, or when arguments are",
-        "  rehashing prior rounds. Return null if no redirection is needed.",
-        "- done: true if the debate is sufficiently explored. The framework",
+        "  round. If done is true, you may still name speakers — they get a",
+        "  closing round before the judge runs. Return [] only if you want",
+        "  to end without any further debate.",
+        "- briefing: contextual information for the debaters this round.",
+        "  Use this for the round's setup: the question being argued,",
+        "  relevant facts you gathered via tools, framing that orients",
+        "  both sides. Return null if no briefing is needed (e.g. the",
+        "  prior round's transcript already establishes context).",
+        "- newAngle: an optional focus question or reframing for this round.",
+        "  Use when you want the debaters to focus on a specific aspect.",
+        "  Return null if no angle shift is needed.",
+        "- done: true if this should be the final round. The framework",
         "  also enforces a maxRounds cap; you do not need to track it.",
+        "",
+        "Round 1 has no transcript yet — open with the full roster (or a",
+        "balanced subset), a briefing that frames the question, and any",
+        "research findings. Later rounds can dispatch a single speaker for",
+        "a focused rebuttal or the full roster for another cross-cut.",
         instructionsBlock,
       ]
         .filter(Boolean)
@@ -117,7 +140,7 @@ export function createModerator(opts: CreateModeratorOptions) {
         }
       }
       const transcriptBlock =
-        transcriptLines.length > 0 ? transcriptLines.join("\n") : "(empty)";
+        transcriptLines.length > 0 ? transcriptLines.join("\n") : "(none yet — this is the opening round)";
 
       const priorDecisions = state.moderatorDecisions ?? [];
       const decisionsBlock =
@@ -126,15 +149,16 @@ export function createModerator(opts: CreateModeratorOptions) {
               .map(
                 (d) =>
                   `[Round ${d.round}] nextSpeakers=${JSON.stringify(d.nextSpeakers)} ` +
+                  `briefing=${d.briefing === null ? "null" : JSON.stringify(d.briefing)} ` +
                   `newAngle=${d.newAngle === null ? "null" : JSON.stringify(d.newAngle)} ` +
                   `done=${d.done}`,
               )
               .join("\n")
-          : "(none)";
+          : "(none — this is your first decision)";
 
       return [
         `Question: ${state.question ?? ""}`,
-        `Round ${state.round} just completed.`,
+        `You are opening round ${state.round}.`,
         `Transcript so far:\n${transcriptBlock}`,
         `Your prior decisions:\n${decisionsBlock}`,
       ].join("\n\n");

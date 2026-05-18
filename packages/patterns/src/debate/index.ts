@@ -8,16 +8,18 @@
  *      declared order. The loop terminates at `maxRounds`, or earlier
  *      if `terminateWhen(ctx)` returns true. Identical to historical
  *      behavior.
- *   2. **With a `moderator` block.** Round 1 still runs in declared
- *      roster order; round 2+ runs the speakers the moderator named in
- *      its prior decision, in the order it specified. The moderator
- *      can also inject a `newAngle` and signal `done` to end the loop.
+ *   2. **With a `moderator` block.** The moderator opens each round:
+ *      it picks who speaks, can supply a `briefing` (e.g. research
+ *      synthesized from tool calls) and a `newAngle` for the round,
+ *      and may flag `done: true` to make this round the last. With
+ *      the moderator at the top, every decision drives a real round —
+ *      there are no orphan decisions before the judge.
  *
  * Pipeline (no moderator):
  *   sequencer
  *     .tap(initTranscript)
  *     .tap(stampQuestion)
- *     .tap(incrementRound)
+ *     .then(incrementRound)                          ← loopBack target
  *     .then(debater[0]).tap(record[0])
  *     ...
  *     .then(debater[N-1]).tap(record[N-1])
@@ -30,10 +32,10 @@
  *   sequencer
  *     .tap(initTranscript)
  *     .tap(stampQuestion)
- *     .then(incrementRound)
+ *     .then(incrementRound)                          ← loopBack target
+ *     .then(moderator).tap(stashModeratorDecision)   // opens the round
  *     .forEach(speakersForRound, dispatchByName, { maxConcurrency: 1 })
- *     .then(moderator).tap(stashModeratorDecision)
- *     .loopBack(incrementRound, { when: ! (round >= maxRounds || last.done || terminateWhen) })
+ *     .loopBack(incrementRound, { when: round < maxRounds && !last.done && !terminateWhen })
  *     .then(judge)
  *     .map(buildRawOutput)
  *     [.then(synthesizer)]
@@ -505,42 +507,38 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     execute: async (input, ctx) => {
       const out = input as DebateModeratorOutput;
       const state = ctx.sequencer!.state;
+      const decision = {
+        round: state.round,
+        nextSpeakers: out.nextSpeakers,
+        briefing: out.briefing,
+        newAngle: out.newAngle,
+        done: out.done,
+      };
       await ctx.sequencer!.patchState({
-        moderatorDecisions: [
-          ...state.moderatorDecisions,
-          {
-            round: state.round,
-            nextSpeakers: out.nextSpeakers,
-            newAngle: out.newAngle,
-            done: out.done,
-          },
-        ],
+        moderatorDecisions: [...state.moderatorDecisions, decision],
       });
 
       // Renderable snapshot of the moderator's decision. The renderer
-      // shows this as a divider strip between rounds.
-      ctx.emit.component(
-        "debate-decision",
-        {
-          round: state.round,
-          nextSpeakers: out.nextSpeakers,
-          newAngle: out.newAngle,
-          done: out.done,
-        },
-        { key: `decision-${state.round}` },
-      );
+      // shows this as the opener of the round.
+      ctx.emit.component("debate-decision", decision, {
+        key: `decision-${state.round}`,
+      });
     },
   });
 
-  // Round 1 uses declared roster order; subsequent rounds use the most
-  // recent moderator decision (stashed at the END of the previous round).
+  // The moderator runs at the top of every round and stashes the decision
+  // BEFORE this connector fires, so the freshly-appended decision is the
+  // one for the current round. Match on the round number explicitly to
+  // stay robust if the loop order ever changes.
   const speakersForRound = (_input: unknown, ctx: BlockContext): string[] => {
     const state = ctx.sequencer!.state as DebateState;
     const decisions = state.moderatorDecisions ?? [];
-    if (decisions.length === 0) {
-      return debaters.map((d) => d.name);
-    }
-    return decisions[decisions.length - 1]!.nextSpeakers;
+    const current = decisions.find((d) => d.round === state.round);
+    if (current) return current.nextSpeakers;
+    // Defensive fallback if the moderator's decision is somehow missing —
+    // e.g. a custom moderator that returned an empty list with done=true:
+    // use the declared roster so we don't blow up on .forEach over [].
+    return debaters.map((d) => d.name);
   };
 
   const dispatchByName = (
@@ -567,14 +565,18 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .tap(initTranscript)
     .tap(stampQuestion)
     .then(incrementRound)
+    // Moderator opens each round: it picks speakers, optionally supplies
+    // a briefing and angle for the debaters, and may flag this as the
+    // last round. With the moderator at the top, every decision drives
+    // a real round — there are no orphan decisions before the judge.
+    .then(config.moderator)
+    .tap(stashModeratorDecision)
     // `maxConcurrency: 1` is load-bearing: it makes within-round speakers
     // sequential, so later speakers see the freshly recorded transcript
     // entries of earlier ones. Without it `.forEach` defaults to parallel.
     .forEach(speakersForRound as any, dispatchByName as any, {
       maxConcurrency: 1,
     })
-    .then(config.moderator)
-    .tap(stashModeratorDecision)
     .loopBack(incrementRound.name, {
       when: (_out: unknown, ctx: any) => {
         const state = ctx.sequencer!.state as DebateState;

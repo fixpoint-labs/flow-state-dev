@@ -295,10 +295,18 @@ describe("debate", () => {
       inputSchema: z.any(),
       outputSchema: z.object({
         nextSpeakers: z.array(z.string()),
+        briefing: z.string().nullable(),
         newAngle: z.string().nullable(),
         done: z.boolean(),
       }),
-      execute: () => ({ nextSpeakers: [], newAngle: null, done: true }),
+      execute: () => ({
+        // Moderator opens the round with both debaters and immediately
+        // declares this the last round, so both speakers still go.
+        nextSpeakers: ["a", "b"],
+        briefing: null,
+        newAngle: null,
+        done: true,
+      }),
     });
     const judge = handler({
       name: "judge-emits",
@@ -685,12 +693,12 @@ describe("debate", () => {
       return { block, getCount: () => count };
     }
 
-    it("round 1 with moderator uses declared roster order", async () => {
+    it("each moderator decision opens its own round (moderator runs at the top)", async () => {
       const moderator = makeScriptedModerator([
-        // After round 1: only c speaks next round.
-        { nextSpeakers: ["c"], newAngle: null, done: false },
-        // After round 2: end.
-        { nextSpeakers: [], newAngle: null, done: true },
+        // Round 1: full roster opens.
+        { nextSpeakers: ["a", "b", "c"], briefing: null, newAngle: null, done: false },
+        // Round 2: only c speaks; then done.
+        { nextSpeakers: ["c"], briefing: null, newAngle: null, done: true },
       ]);
       const judge = makeJudgeOnce();
       const pattern = debate({
@@ -713,6 +721,9 @@ describe("debate", () => {
 
       expect(result.error).toBeNull();
       const out = result.output as DebateRawOutput;
+      // decision[0] (round 1) → a, b, c speak. decision[1] (round 2,
+      // done:true) → c speaks as closer, then loop exits. The judge
+      // runs after the round that just completed — no orphan decisions.
       expect(out.transcript.map((e) => `${e.round}:${e.agentName}`)).toEqual([
         "1:a",
         "1:b",
@@ -721,14 +732,17 @@ describe("debate", () => {
       ]);
       expect(out.rounds).toBe(2);
       expect(judge.getCount()).toBe(1);
+      expect(out.moderatorDecisions).toHaveLength(2);
+      expect(out.moderatorDecisions[0]?.round).toBe(1);
+      expect(out.moderatorDecisions[1]?.round).toBe(2);
     });
 
-    it("dispatches the moderator's named speakers in declared order in subsequent rounds", async () => {
+    it("dispatches the moderator's named speakers per round, in the order specified", async () => {
       const moderator = makeScriptedModerator([
-        // After round 1: send d and a in that order.
-        { nextSpeakers: ["d", "a"], newAngle: null, done: false },
-        // Done after round 2.
-        { nextSpeakers: [], newAngle: null, done: true },
+        // Round 1: full roster.
+        { nextSpeakers: ["a", "b", "c", "d"], briefing: null, newAngle: null, done: false },
+        // Round 2: d then a (in that order); this is also the last round.
+        { nextSpeakers: ["d", "a"], briefing: null, newAngle: null, done: true },
       ]);
       const pattern = debate({
         name: "deb-mod-dispatch",
@@ -764,8 +778,10 @@ describe("debate", () => {
     it("debaters within a round see prior debaters' arguments (sequential visibility)", async () => {
       const seen: Array<{ name: string; round: number; priors: number }> = [];
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
-        { nextSpeakers: [], newAngle: null, done: true },
+        // Round 1: a then b.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        // Round 2 (closer): a then b again.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: true },
       ]);
       const pattern = debate({
         name: "deb-mod-visibility",
@@ -797,7 +813,7 @@ describe("debate", () => {
       ]);
     });
 
-    it("renders newAngle into the next round's default debater prompt", async () => {
+    it("renders the moderator's briefing and newAngle into the same round's default debater prompt", async () => {
       const debaterMockA = mockGenerator({
         name: "deb-mod-angle-debater-a",
         script: [
@@ -813,12 +829,20 @@ describe("debate", () => {
         ],
       });
       const moderator = makeScriptedModerator([
+        // Round 1: open with briefing + plain frame.
         {
           nextSpeakers: ["a", "b"],
-          newAngle: "What about latency under load?",
+          briefing: "P99 latency on the current SQL deploy is 240ms.",
+          newAngle: null,
           done: false,
         },
-        { nextSpeakers: [], newAngle: null, done: true },
+        // Round 2 (closer): inject a new focus angle.
+        {
+          nextSpeakers: ["a", "b"],
+          briefing: null,
+          newAngle: "What about latency under load?",
+          done: true,
+        },
       ]);
       const judgeMock = mockGenerator({
         name: "deb-mod-angle-judge",
@@ -853,15 +877,22 @@ describe("debate", () => {
       expect(result.error).toBeNull();
       const round1A = JSON.stringify(debaterMockA.calls[0]?.input ?? "");
       const round2A = JSON.stringify(debaterMockA.calls[1]?.input ?? "");
-      // Round 1 has no moderator decisions yet, so no angle block.
+      // Round 1's debater sees the round-1 briefing but not the round-2
+      // angle the moderator hasn't issued yet.
+      expect(round1A).toContain("P99 latency");
       expect(round1A).not.toContain("latency under load");
-      // Round 2's debater prompt must reference the moderator's angle.
+      // Round 2's debater sees the round-2 angle (and not the prior
+      // round's briefing leaking forward).
       expect(round2A).toContain("latency under load");
+      expect(round2A).not.toContain("P99 latency on the current SQL");
     });
 
-    it("moderator done=true exits the loop early", async () => {
+    it("moderator done=true lets the current round run, then exits the loop", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: [], newAngle: null, done: true },
+        // First and only decision opens round 1 with both debaters and
+        // immediately declares it the last round. Both still speak;
+        // judge then runs over the round-1 transcript.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: true },
       ]);
       const judge = makeJudgeOnce();
       const pattern = debate({
@@ -919,9 +950,9 @@ describe("debate", () => {
 
     it("terminateWhen exits the loop early with a moderator", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
       ]);
       const pattern = debate({
         name: "deb-mod-terminate",
@@ -951,9 +982,9 @@ describe("debate", () => {
 
     it("maxRounds caps the loop when the moderator keeps signalling done=false", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
       ]);
       const pattern = debate({
         name: "deb-mod-cap",
@@ -980,7 +1011,7 @@ describe("debate", () => {
 
     it("rejects an unknown speaker name with the available-names list", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["nobody"], newAngle: null, done: false },
+        { nextSpeakers: ["nobody"], briefing: null, newAngle: null, done: false },
       ]);
       const pattern = debate({
         name: "deb-mod-unknown",
@@ -1007,8 +1038,9 @@ describe("debate", () => {
 
     it("allows the moderator to request the same speaker twice in one round", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a", "a"], newAngle: null, done: false },
-        { nextSpeakers: [], newAngle: null, done: true },
+        // Round 1 dispatches a twice in a row; closer at round 2.
+        { nextSpeakers: ["a", "a"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["b"], briefing: null, newAngle: null, done: true },
       ]);
       const pattern = debate({
         name: "deb-mod-dup",
@@ -1029,20 +1061,19 @@ describe("debate", () => {
 
       expect(result.error).toBeNull();
       const out = result.output as DebateRawOutput;
-      // Round 1 (declared order) → a, b; then round 2 has a twice.
+      // Round 1 (a twice as moderator chose), then round 2's closer (b).
       expect(out.transcript.map((e) => `${e.round}:${e.agentName}`)).toEqual([
         "1:a",
-        "1:b",
-        "2:a",
-        "2:a",
+        "1:a",
+        "2:b",
       ]);
     });
 
     it("moderatorDecisions is populated on raw output and equals rounds in length", async () => {
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a"], newAngle: "first", done: false },
-        { nextSpeakers: ["b"], newAngle: null, done: false },
-        { nextSpeakers: [], newAngle: null, done: true },
+        { nextSpeakers: ["a"], briefing: null, newAngle: "first", done: false },
+        { nextSpeakers: ["b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: [], briefing: null, newAngle: null, done: true },
       ]);
       const pattern = debate({
         name: "deb-mod-decisions",
@@ -1104,7 +1135,7 @@ describe("debate", () => {
         },
       });
       const moderator = makeScriptedModerator([
-        { nextSpeakers: [], newAngle: "x", done: true },
+        { nextSpeakers: [], briefing: null, newAngle: "x", done: true },
       ]);
       const pattern = debate({
         name: "deb-mod-synth",
@@ -1131,9 +1162,10 @@ describe("debate", () => {
 
     it("maxRounds=1 with moderator runs one round and records its decision", async () => {
       const moderator = makeScriptedModerator([
-        // The moderator runs once before the loopBack predicate fires the
-        // round-cap exit; its decision is stashed but never drives dispatch.
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false },
+        // Moderator opens the one round it gets, dispatches both speakers,
+        // and the loopBack exits via the round-cap. Decision is stashed
+        // and drove the round's dispatch.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
       ]);
       const pattern = debate({
         name: "deb-mod-one",
@@ -1194,8 +1226,8 @@ describe("debate", () => {
       // short-circuit order (round cap → moderator.done → terminateWhen)
       // means moderator.done wins here, but exit happens regardless.
       const moderator = makeScriptedModerator([
-        { nextSpeakers: ["a", "b"], newAngle: null, done: false }, // round 1 → continue
-        { nextSpeakers: [], newAngle: null, done: true },          // round 2 → done
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false }, // round 1 → continue
+        { nextSpeakers: [], briefing: null, newAngle: null, done: true },          // round 2 → done
       ]);
       const pattern = debate({
         name: "deb-mod-and-terminate",
@@ -1326,8 +1358,7 @@ describe("debate", () => {
 
     it("empty nextSpeakers with done=false is rejected by the moderator's output schema", () => {
       const parsed = debateModeratorOutputSchema.safeParse({
-        nextSpeakers: [],
-        newAngle: null,
+        nextSpeakers: [], briefing: null, newAngle: null,
         done: false,
       });
       expect(parsed.success).toBe(false);

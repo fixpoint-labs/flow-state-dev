@@ -105,17 +105,27 @@ export function createDebater(opts: CreateDebaterOptions) {
         entries.length > 0
           ? `\nPrior arguments (in order):\n${formatPriorForDebater(entries)}\n`
           : "";
+      // Pick the moderator decision that opened THIS round (the one whose
+      // round number matches state.round). With the moderator running at
+      // the top of the round, the most recent decision is the current
+      // round's opener — but match on `round` explicitly to stay robust
+      // if the loop order ever changes.
       const decisions = state.moderatorDecisions ?? [];
-      const lastDecision =
-        decisions.length > 0 ? decisions[decisions.length - 1]! : null;
+      const currentDecision =
+        decisions.find((d) => d.round === state.round) ?? null;
+      const briefingBlock =
+        currentDecision && currentDecision.briefing
+          ? `\nBriefing from the moderator:\n${currentDecision.briefing}\n`
+          : "";
       const angleBlock =
-        lastDecision && lastDecision.newAngle
-          ? `\nThe moderator has asked the next round to focus on:\n${lastDecision.newAngle}\n`
+        currentDecision && currentDecision.newAngle
+          ? `\nFocus for this round:\n${currentDecision.newAngle}\n`
           : "";
       return [
         `Question under debate: ${state.question ?? ""}`,
         `Round ${state.round} of ${opts.maxRounds}.`,
         priorBlock,
+        briefingBlock,
         angleBlock,
       ]
         .filter(Boolean)

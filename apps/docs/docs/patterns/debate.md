@@ -24,8 +24,9 @@ When NOT to use it: discrete-answer factual lookup, tasks where the right answer
 | | Debate | Round Robin |
 |---|---|---|
 | Defining output | `{ verdict, winner, reasoning }` | A synthesized deliverable |
-| Turn order | Declared order in round 1; moderator-driven in rounds 2+ when a moderator is configured | Always declared order |
-| Optional auditor | `moderator` — decides who speaks next, can inject a `newAngle`, can end the debate | `referee` — audits argument quality, never controls order or termination |
+| Turn order | Declared order without a moderator; moderator-chosen per round when a moderator is configured | Always declared order |
+| Optional auditor | `moderator` — opens each round, picks speakers, can issue a briefing or focus angle, can end the debate | `referee` — audits argument quality, never controls order or termination |
+| Tools | Moderator can call tools (search, fetch) and pass findings to debaters via `briefing` | No tool integration at the pattern level |
 | Termination | `maxRounds`, moderator `done`, or `terminateWhen` predicate | `maxRounds` or `terminateWhen` predicate |
 | Stances | Required per debater | Roles only; no assigned stance |
 
@@ -47,16 +48,16 @@ input { question }
   → synthesizer           (optional)
 ```
 
-With a moderator, rounds 2+ dispatch only the speakers the moderator named:
+With a moderator, the moderator runs at the top of each round and dispatches only the speakers it picks:
 
 ```
 input { question }
   → initTranscript
   → stampQuestion
   → incrementRound                              ← loopBack target
+  → moderator → stashModeratorDecision         (opens the round: { nextSpeakers, briefing, newAngle, done })
   → forEach(speakersForRound, dispatchByName, maxConcurrency: 1)
-        speakersForRound: round 1 → declared roster; round N+1 → last moderator decision
-  → moderator → stashModeratorDecision         (reads transcript, emits { nextSpeakers, newAngle, done })
+        speakersForRound: most recent decision's nextSpeakers (for this round)
   → loopBack(when: round < maxRounds && !done && !terminateWhen)
   → judge
   → buildOutput
@@ -122,23 +123,49 @@ When passing a custom moderator that needs to read the transcript, share the sam
 
 ## The moderator
 
-The moderator runs after every round, reads the transcript, and emits:
+The moderator **opens each round**. It picks the speakers for that round, can supply a briefing and a focus angle that the debaters see, and may flag the round as the last one. Because it runs at the top, every decision drives a real round — there are no orphan decisions before the judge.
 
 ```ts
 {
-  nextSpeakers: string[];   // ordered list of debater names for the next round
-  newAngle: string | null;  // optional reframing to inject into the next round
-  done: boolean;            // true to end the loop after this round
+  nextSpeakers: string[];   // ordered list of debater names for THIS round
+  briefing: string | null;  // optional context for THIS round's debaters
+  newAngle: string | null;  // optional focus question for THIS round
+  done: boolean;            // true: this round still runs, then loop exits
 }
 ```
 
-A length-1 `nextSpeakers` is a single-speaker decision; a longer list is an ordered batch. Round 1 always runs in declared roster order, so the moderator's first decision drives round 2. When `done: true`, `nextSpeakers` is ignored, the loop exits, and the judge runs.
+A length-1 `nextSpeakers` is a single-speaker round; a longer list is an ordered batch. Earlier speakers' arguments are visible to later speakers within the same round (`.forEach` runs with `maxConcurrency: 1`). When `done: true`, the round still runs — useful for "give one closing round and stop" semantics — and the loop exits afterward.
 
-The default moderator (`createModerator`) is a generator that sees the full, ordered, name-tagged transcript plus its own prior decisions. It is NOT subject to the judge's `anonymizeTranscript` toggle — knowing who said what is necessary for dispatch.
+### Research and tool use
+
+Pass `tools` or `uses` to `createModerator` (or your own custom moderator block) to give the moderator research capabilities. Tool calls stream as ordinary `tool_output` items in the request, and the moderator should summarize what it learned in `briefing` so every debater in the round argues from the same factual base.
+
+```ts
+moderator: createModerator({
+  name: "feature-debate",
+  rosterNames: ["advocate", "skeptic"],
+  transcript,
+  uses: [webSearchCapability],
+})
+```
+
+The default moderator's prompt nudges it to use available tools and to fold any findings into `briefing`. Without tools, it falls back to reasoning over the transcript and its own prior decisions.
+
+### What the debaters see
+
+The default debater prompt finds the decision whose `round` matches the current round and renders the `briefing` and `newAngle` for that round. The fields are independent — a briefing without an angle is fine ("here are the facts, debate freely"), and an angle without a briefing is fine ("focus on latency under load"). Both null is fine too.
+
+### Round 1 with a moderator
+
+Round 1 has no transcript yet. The default prompt asks the moderator to open with the full roster (or a balanced subset), use tools to gather facts if available, and fold those into `briefing`. The result is more like a classical debate: the moderator frames the question before the debaters speak rather than the first debater making up its own frame.
+
+### Validation
+
+The default moderator (`createModerator`) is a generator that sees the full, ordered, name-tagged transcript so far plus its own prior decisions. It is NOT subject to the judge's `anonymizeTranscript` toggle — knowing who said what is necessary for dispatch.
 
 Empty `nextSpeakers` with `done: false` is rejected by the output schema — that would cause an empty round and an infinite loop. Names not in the roster throw at dispatch time with the available-names list in the error. Duplicate names in `nextSpeakers` are allowed and produce a turn for each occurrence.
 
-The moderator's decision history is stashed on outer state and surfaced as `moderatorDecisions` on the raw output. Length always equals `rounds`; when no moderator is configured, the array is empty.
+The moderator's decision history is stashed on outer state and surfaced as `moderatorDecisions` on the raw output. With a moderator configured, length equals `rounds`; without a moderator, it's an empty array.
 
 ## Termination
 
@@ -244,7 +271,7 @@ The default synthesizer is a generator that projects the raw debate shape — in
 | `maxRounds` | `number` | `2` | Hard cap on round cycling. Above 4 logs a warning. |
 | `judge` | `BlockDefinition` | default LLM judge | Returns `{ verdict, winner, reasoning }`. Cannot be `false`. |
 | `synthesizer` | `BlockDefinition \| false` | default LLM synthesizer | Final transformation. `false` returns the raw shape. |
-| `moderator` | `BlockDefinition` | — | Optional. Drives dispatch in rounds 2+ and can end the loop. Cannot be `false`. |
+| `moderator` | `BlockDefinition` | — | Optional. Opens each round and picks its speakers; can supply a briefing and angle; can end the loop. Cannot be `false`. |
 | `terminateWhen` | `(ctx) => boolean` | — | Optional runtime predicate; return true to exit before `maxRounds`. |
 | `transcript` | `DefinedResource` | internal | Optional shared transcript resource. Pass when a custom moderator/judge/synthesizer reads the same resource. |
 | `outputSchema` | `ZodTypeAny` | — | Applied to the synthesizer's output. |

@@ -37,13 +37,25 @@ export const debateVerdictSchema = z.object({
 export type DebateVerdict = z.infer<typeof debateVerdictSchema>;
 
 /**
- * Output the moderator emits at the end of each round. `nextSpeakers`
- * must be non-empty when `done` is false (enforced via `.refine()`); the
- * framework would otherwise loop indefinitely on an empty round.
+ * Output the moderator emits at the top of each round.
+ *
+ * - `nextSpeakers` must be non-empty when `done` is false (enforced via
+ *   `.refine()`); the framework would otherwise loop indefinitely on an
+ *   empty round.
+ * - `briefing` is optional context the moderator gathered for the round
+ *   — typically a synthesis of tool-fetched information that should be
+ *   visible to every debater in this round so they argue from the same
+ *   information base. Rendered into the default debater's prompt.
+ * - `newAngle` is an optional reframing or focus question for the round
+ *   — rendered into the default debater's prompt alongside the briefing.
+ * - `done: true` lets the current round still run (debaters speak), then
+ *   exits the loop before the next round. Useful for "give one closing
+ *   round and stop" semantics.
  */
 export const debateModeratorOutputSchema = z
   .object({
     nextSpeakers: z.array(z.string()),
+    briefing: z.string().nullable(),
     newAngle: z.string().nullable(),
     done: z.boolean(),
   })
@@ -55,10 +67,11 @@ export const debateModeratorOutputSchema = z
   });
 export type DebateModeratorOutput = z.infer<typeof debateModeratorOutputSchema>;
 
-/** A stashed moderator decision tagged with the round it concluded. */
+/** A stashed moderator decision tagged with the round it opened. */
 export const debateModeratorDecisionSchema = z.object({
   round: z.number().int().min(1),
   nextSpeakers: z.array(z.string()),
+  briefing: z.string().nullable(),
   newAngle: z.string().nullable(),
   done: z.boolean(),
 });

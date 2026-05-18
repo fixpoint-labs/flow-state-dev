@@ -51,14 +51,19 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
           (e) => `[Round ${e.round}] [${e.stance}] ${e.text}`,
         )
         .join("\n");
-      const angleEntries = (data.moderatorDecisions ?? []).filter(
-        (d) => d.newAngle !== null && d.newAngle !== "",
-      );
+      const framingEntries = (data.moderatorDecisions ?? [])
+        .map((d) => {
+          const parts: string[] = [];
+          if (d.briefing && d.briefing !== "") parts.push(`briefing: ${d.briefing}`);
+          if (d.newAngle && d.newAngle !== "") parts.push(`angle: ${d.newAngle}`);
+          return parts.length > 0
+            ? `- [round ${d.round}] ${parts.join(" | ")}`
+            : null;
+        })
+        .filter((s): s is string => s !== null);
       const moderatorBlock =
-        angleEntries.length > 0
-          ? `Moderator framing across rounds:\n${angleEntries
-              .map((d) => `- [after round ${d.round}] ${d.newAngle}`)
-              .join("\n")}`
+        framingEntries.length > 0
+          ? `Moderator framing across rounds:\n${framingEntries.join("\n")}`
           : "";
       return [
         `Question: ${data.question}`,
