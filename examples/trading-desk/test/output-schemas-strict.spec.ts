@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
+import { grokOutputSchema } from "../src/flows/trading-desk/phase-1/tools/get_social_sentiment";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
@@ -115,6 +116,7 @@ function findStrictViolations(schema: ZodTypeAny, path = "$"): Issue[] {
 
 const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 1 thesisOutputSchema", thesisOutputSchema],
+  ["Phase 1 get_social_sentiment grokOutputSchema", grokOutputSchema],
   ["Phase 2 bullThesisOutputSchema", bullThesisOutputSchema],
   ["Phase 2 bearThesisOutputSchema", bearThesisOutputSchema],
   ["Phase 2 investmentThesisOutputSchema", investmentThesisOutputSchema],

@@ -3,6 +3,16 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-18
+
+### Trading-desk: live social-sentiment provider via Grok (FIX-599)
+
+- `get_social_sentiment` now has a live path. In live mode with `XAI_API_KEY` set, the tool routes to a Grok generator that uses xAI's `xSearch` hosted tool to retrieve recent X/Twitter posts about the ticker and returns a schema-valid sentiment payload tagged `source: "xai"`. The sentiment analyst was the one Phase 1 tool with no real live provider after FIX-589 — it ran structurally blind and emitted noise. It now produces grounded signal when an xAI key is configured.
+- Without `XAI_API_KEY`, live mode keeps returning the `unavailable` payload. No false data, no silent fixture substitution. Fixture mode is unchanged.
+- The dispatch primitive is a `router` with three routes — fixture handler, Grok generator, unavailable handler. First Phase 1 tool to span block kinds; the others use `if` inside a handler because every branch is a deterministic HTTP fetch.
+- One new dependency in the example: `@ai-sdk/xai`. The xAI provider is registered through the model resolver's `providers` slot as a function that picks the **responses** model — `xSearch` only works there. Zero changes to `packages/core/*`.
+- New `xai` value on the `sourceTag` enum alongside `finnhub` / `yahoo` / `fred` / `polymarket` / `fixture` / `unavailable`. Provider-named to match the existing convention.
+
 ## 2026-05-17
 
 ### Turn-aware history windowing (FIX-608)

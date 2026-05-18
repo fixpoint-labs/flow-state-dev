@@ -30,6 +30,9 @@ export class FixtureMissingError extends Error {
  *   - `"yahoo"`       — live mode, Yahoo answered.
  *   - `"fred"`        — live mode, FRED API answered.
  *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
+ *   - `"xai"`         — live mode, xAI (Grok) answered. Model estimate
+ *                       grounded in xSearch-retrieved X posts, not a
+ *                       measured feed.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than
@@ -41,6 +44,7 @@ const sourceTag = z.enum([
   "finnhub",
   "fred",
   "polymarket",
+  "xai",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;
