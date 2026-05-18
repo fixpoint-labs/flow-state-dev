@@ -302,6 +302,8 @@ This step is required, not optional. The spec now exists as the authoritative so
 - Anything labeled "design" or "approach" — that's spec territory
 - Long checklists of work items (the spec's Implementation Sequence covers this; the issue's acceptance criteria should be outcome-shaped, not task-shaped)
 
+**Note for borderline issues.** Not every issue warrants a separate spec document. If the work is small enough that the full create-spec workflow would be overkill but still requires agent-ready clarity, the **agent-brief template** at `docs/contributing/agent-brief-template.md` is the right shape for the issue body itself. In that case you're not running create-spec at all — the brief IS the contract. Use create-spec when the implementation needs research, multiple sub-agents, or a documentation plan; use the agent-brief template directly when the issue fits on one screen and the contract is local.
+
 **7.4. What's legitimately allowed to stay even though it's specific:**
 
 - Concrete success criteria that happen to mention public API surface a user will see (e.g., "users can call `defineCapability({...})` to declare a reusable capability") — this is *what users get*, not *how it's built*.
