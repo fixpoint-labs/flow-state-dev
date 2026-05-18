@@ -5,6 +5,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-18
 
+### Trading-desk: user-settable special instructions injected into every agent's prompt (FIX-603)
+
+- New settings dialog reachable from a gear in the status bar lets a user author free-text "special instructions" — one global block applied to every phase, plus one block per phase for narrower guidance. Edits persist per user and survive server restarts; the next analysis run picks them up automatically.
+- Injection rides the `tradingDesk` capability's always-on `core` preset, so every one of the pipeline's thirteen generators sees a `<userInstructions>` block with a short framing sentence followed by the global text and the active phase's text. Empty fields produce zero prompt content — the wrapping tag is suppressed when nothing is set.
+- The example's first user-scoped resource: `scope: "user"` with `flowIsolation: true` so trading-desk instructions stay under `{userId}:trading-desk` and never bleed into other flows the same user touches. State is read on the client via `useResource` from the session snapshot — no new server route.
+- Status bar surfaces an `instructions: N active` indicator next to the gear. The gear is disabled until the first analysis run creates a session, since `useResource` projects from a session snapshot.
+- README and trading-desk walkthrough updated with the feature, the resource shape, and the capability-preset injection seam.
+
 ### Trading-desk: live social-sentiment provider via Grok (FIX-599)
 
 - `get_social_sentiment` now has a live path. In live mode with `XAI_API_KEY` set, the tool routes to a Grok generator that uses xAI's `xSearch` hosted tool to retrieve recent X/Twitter posts about the ticker and returns a schema-valid sentiment payload tagged `source: "xai"`. The sentiment analyst was the one Phase 1 tool with no real live provider after FIX-589 — it ran structurally blind and emitted noise. It now produces grounded signal when an xAI key is configured.
