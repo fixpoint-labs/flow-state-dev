@@ -39,6 +39,26 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
           ? <span className="text-red-400/70 font-mono truncate">failed</span>
           : <span className="text-slate-500 font-mono truncate">({truncatedArgs})</span>
         }
+        {item.cached === true && (
+          // FIX-610: cache-hit badge. Hovering surfaces the age and
+          // (when the hit crossed a task boundary inside a Task Board
+          // run) the originating taskId so reviewers can trace the
+          // reuse without expanding the row.
+          <span
+            className="px-1 rounded text-[10px] uppercase font-mono text-emerald-300 bg-emerald-900/40 shrink-0"
+            title={renderCachedTitle(item.cacheAgeMs, item.sourceTask)}
+          >
+            cached
+          </span>
+        )}
+        {item.sourceTask !== undefined && (
+          <span
+            className="text-[10px] font-mono text-slate-400 truncate"
+            title={`Inherited from task ${item.sourceTask.taskId}`}
+          >
+            ← {item.sourceTask.taskId}
+          </span>
+        )}
         {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
       </button>
 
@@ -69,6 +89,20 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
       )}
     </div>
   );
+}
+
+function renderCachedTitle(
+  ageMs: number | undefined,
+  sourceTask: { collectionId: string; taskId: string } | undefined,
+): string {
+  const parts: string[] = ["served from cache"];
+  if (typeof ageMs === "number") {
+    parts.push(`age ${Math.max(0, Math.round(ageMs / 100) / 10)}s`);
+  }
+  if (sourceTask !== undefined) {
+    parts.push(`from task ${sourceTask.taskId}`);
+  }
+  return parts.join(" — ");
 }
 
 function formatToolArgs(raw: string): string {

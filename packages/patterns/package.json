@@ -56,10 +56,12 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/tasks": "workspace:*",
+    "@flow-state-dev/utilities-task-flow": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
     "vitest": "^3.2.4",
     "typescript": "^5.9.3"
   },

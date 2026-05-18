@@ -90,6 +90,75 @@ Per-call provider preference flows through the resolver callable's optional thir
 resolver("intent/chat", "block-name", { preferProvider: "openai" });
 ```
 
+## Intent defaults
+
+`intentDefaults` lets you attach configuration to an intent so generators that resolve through it don't have to repeat it at each call site. The most common use is `providerOptions` — Anthropic thinking budgets, OpenAI reasoning effort, prompt caching. Treat these as defaults, not overrides: the call site still wins.
+
+### Shape
+
+```ts
+interface IntentDefaults {
+  providerOptions?: Record<string, Record<string, unknown>>;
+}
+```
+
+The shape is intentionally open. Future fields (`reasoning`, caching presets, max-token defaults) will land here without a breaking change.
+
+### Provider filtering
+
+When the resolved candidate's provider doesn't match a key in `providerOptions`, that key is dropped silently. If `intent/plan` ships with `providerOptions: { anthropic: { thinking: {...} } }` and the OpenAI fallback wins, the request goes out without the `anthropic` block — matching the underlying AI SDK's per-provider namespace behavior. Power users who want the silent drop surfaced can wrap the resolved model in their own middleware.
+
+### Precedence
+
+From lowest to highest priority, for a request that resolves through an intent:
+
+1. **Intent default** — `intentDefaults[name].providerOptions[<resolvedProvider>]`.
+2. **Generator-level `providerOptions`** — whatever the generator passes at call time. Wins on key collisions; non-conflicting nested keys (intent default sets `thinking.type`, call-site sets `thinking.budgetTokens`) survive together because the merge is deep.
+3. **Prompt caching** — applied with set-if-absent semantics, so it never overwrites either of the above.
+
+When an intent has no available candidate and falls through to `defaultModel`, no intent defaults apply: `defaultModel` has no intent context.
+
+### Worked example
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "openai/gpt-5.4",
+  intents: {
+    plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"],
+    utility: ["openai/gpt-5.4-mini"],
+  },
+  intentDefaults: {
+    plan: {
+      providerOptions: {
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      },
+    },
+    utility: {
+      providerOptions: {
+        openai: { reasoning: { effort: "low" } },
+      },
+    },
+  },
+});
+```
+
+A generator can still override at the call site:
+
+```ts
+generator({
+  name: "deep-plan",
+  model: "intent/plan",
+  providerOptions: { anthropic: { thinking: { budgetTokens: 32000 } } },
+  // ...
+});
+```
+
+The merged Anthropic block is `{ thinking: { type: "enabled", budgetTokens: 32000 } }` — the intent's `type: "enabled"` survives, and the call site's `budgetTokens` wins on the collision.
+
+### Validation
+
+`createModelResolver` throws at construction if an `intentDefaults` key isn't also present in `intents`. Catches typos eagerly rather than at first call.
+
 ## Array Fallback
 
 Generators support array fallback directly. The resolver tries models in order:

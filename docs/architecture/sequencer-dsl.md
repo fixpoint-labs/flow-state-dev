@@ -492,4 +492,4 @@ This emits a `container` item that wraps child items for UI grouping.
 
 ## Canonical Authority
 
-For full type signatures and all overload variants, see `../preperation/architecture/BLOCKS.md` (section 6).
+This document is authoritative for the sequencer DSL. See also [blocks.md](./blocks.md). For full type signatures and overload variants, refer to the published types in `@flow-state-dev/core`.

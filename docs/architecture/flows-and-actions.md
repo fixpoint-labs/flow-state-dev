@@ -250,7 +250,7 @@ Generators still explicitly choose which tools are exposed per call — flow-lev
 
 ## Canonical Authority
 
-For full type signatures and edge cases, see `../preperation/architecture/FLOW_SYSTEM.md`.
+This document is authoritative for flow and action contracts. For full type signatures, refer to the published types in `@flow-state-dev/core`.
 
 
 ### Token controls

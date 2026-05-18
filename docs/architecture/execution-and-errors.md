@@ -221,7 +221,7 @@ The full request execution sequence:
 
 ## Canonical Authority
 
-For full type signatures, execution pseudocode, and edge cases, see `../preperation/architecture/EXECUTION_AND_ERRORS.md`.
+This document is authoritative for execution and error semantics. For full type signatures, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/server`.
 
 
 ### Token budget enforcement

@@ -61,11 +61,32 @@ export function isUniformWorker(
  * task declares `deps`, this resolves each dep's `output` from the
  * collection and exposes them under `deps: Record<depId, output>` so
  * the worker can read upstream context via `input.deps`.
+ *
+ * When a `flowPolicy` + active ledger view are supplied (FIX-610
+ * Layer A), the policy is consulted to select a `priorWork` slice and
+ * stamped on the worker input. The optional `ctx` is forwarded to the
+ * policy's `select` so policies that need request/session state can
+ * read it. Back-compat: omitting the new parameters yields a
+ * `TaskWorkerInput` with no `priorWork` field — wire-identical to
+ * pre-FIX-610 boards.
  */
-export function packWorkerInput(
+export async function packWorkerInput(
   task: Task,
   collection: TaskCollectionRef,
-): TaskWorkerInput {
+  opts?: {
+    ctx?: BlockContext;
+    flowPolicy?: {
+      name: string;
+      select: (args: {
+        task: Task;
+        ledger: unknown;
+        collection: TaskCollectionRef;
+        ctx: BlockContext;
+      }) => unknown | Promise<unknown>;
+    };
+    ledger?: unknown;
+  },
+): Promise<TaskWorkerInput> {
   const deps: Record<string, unknown> = {};
   if (task.deps !== undefined) {
     for (const depId of task.deps) {
@@ -75,6 +96,23 @@ export function packWorkerInput(
       }
     }
   }
+
+  let priorWork: unknown;
+  if (opts?.flowPolicy !== undefined && opts.ledger !== undefined && opts.ctx !== undefined) {
+    const selected = await opts.flowPolicy.select({
+      task,
+      ledger: opts.ledger,
+      collection,
+      ctx: opts.ctx,
+    });
+    const obs = (selected as { observations?: unknown[]; narrative?: string } | undefined)
+      ?.observations;
+    const narrative = (selected as { narrative?: string } | undefined)?.narrative;
+    if ((Array.isArray(obs) && obs.length > 0) || (typeof narrative === "string" && narrative.length > 0)) {
+      priorWork = selected;
+    }
+  }
+
   return {
     taskId: task.id,
     goal: task.goal,
@@ -83,6 +121,7 @@ export function packWorkerInput(
     feedback: task.feedback,
     metadata: task.metadata,
     ...(Object.keys(deps).length > 0 ? { deps } : {}),
+    ...(priorWork !== undefined ? { priorWork } : {}),
   };
 }
 
@@ -97,6 +136,24 @@ export interface BuildWorkerStepOptions {
    * state.
    */
   collection: (ctx: BlockContext) => TaskCollectionRef;
+  /**
+   * Optional flow-policy resolver (FIX-610). When the resolver returns
+   * a `{ flowPolicy, ledger }` pair, `packWorkerInput` stamps the
+   * worker input's `priorWork` slot with the policy's selection.
+   * Returning `undefined` skips the field entirely (back-compat).
+   */
+  resolveFlowPolicy?: (ctx: BlockContext) => {
+    flowPolicy: {
+      name: string;
+      select: (args: {
+        task: Task;
+        ledger: unknown;
+        collection: TaskCollectionRef;
+        ctx: BlockContext;
+      }) => unknown | Promise<unknown>;
+    };
+    ledger: unknown;
+  } | undefined;
 }
 
 /**
@@ -119,11 +176,19 @@ export interface BuildWorkerStepOptions {
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
 ) {
-  const { name, workers, collection: collectionFactory } = options;
+  const { name, workers, collection: collectionFactory, resolveFlowPolicy } = options;
+
+  const packOpts = (ctx: BlockContext) => {
+    if (resolveFlowPolicy === undefined) return { ctx };
+    const resolved = resolveFlowPolicy(ctx);
+    return resolved === undefined
+      ? { ctx }
+      : { ctx, flowPolicy: resolved.flowPolicy, ledger: resolved.ledger };
+  };
 
   if (isUniformWorker(workers)) {
     return workers.connectInput<Task>((task, ctx) =>
-      packWorkerInput(task, collectionFactory(ctx))
+      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
     );
   }
 
@@ -147,7 +212,7 @@ export function buildWorkerStep(
         );
       }
       return selected.connectInput((_input, ctx) =>
-        packWorkerInput(task, collectionFactory(ctx))
+        packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
       );
     },
   });

@@ -40,6 +40,15 @@ Phase 1 — analyst fan-out:
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
   filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
   on failure, like other single-provider tools).
+- **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
+  sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
+  xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
+  single-provider tools). The payload carries both the numeric score and a
+  `posts` array of representative X excerpts (handle + one-sentence
+  verbatim quote + per-post polarity), so the analyst reasons from the
+  actual quotes rather than a single non-deterministic score.
+  `shortInterestPct` is `null` on the xAI path — short interest can't be
+  measured from chatter, and a fabricated 0 would read as "no shorts."
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -162,8 +171,9 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
 - **source** — `fixture` (canonical hand-curated JSON) or `live` (Yahoo Finance
-  for prices and fundamentals; news and sentiment fall back to fixtures with a
-  noted follow-on).
+  + Finnhub + FRED + Polymarket for structured data; Grok via `xSearch` for
+  social sentiment when `XAI_API_KEY` is set; tools whose provider key is
+  absent return `unavailable`).
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -234,11 +244,13 @@ and `intent/chat` intents can resolve. The example does not bundle a
 default-model assumption — extend `lib/server.ts`'s `createModelResolver` call
 if you want to wire intents to specific gateway models.
 
-`yahoo-finance2` is keyless. The live source for news and sentiment is a
-fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
-`get_insider_transactions` — without it, the tool returns `unavailable` and
-the news analyst treats insider data as missing signal.
+`yahoo-finance2` is keyless. `FINNHUB_API_KEY` enables live Finnhub-backed
+tools (fundamentals, prices, news, insider transactions); without it those
+tools return `unavailable` and the relevant analyst treats the result as
+missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
+`xSearch` over X/Twitter; without it, `get_social_sentiment` returns
+`unavailable` and the sentiment analyst applies the same missing-signal
+treatment.
 
 ## Architecture in brief
 

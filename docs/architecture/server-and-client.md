@@ -313,4 +313,4 @@ Client                        Server
 
 ## Canonical Authority
 
-For full type signatures, store interfaces, and rendering contracts, see `../preperation/architecture/SERVER_AND_CLIENT.md`.
+This document is authoritative for server and client contracts. For full type signatures, store interfaces, and rendering contracts, refer to the published types in `@flow-state-dev/server`, `@flow-state-dev/client`, and `@flow-state-dev/react`.
