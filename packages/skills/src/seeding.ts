@@ -66,11 +66,11 @@ async function doSeed(
       console.warn(`[skills] skipped initial skill: ${(err as Error).message}`);
       continue;
     }
-    if (alreadySeeded.has(skill.name)) continue;
+    if (alreadySeeded.has(skill.name) && !needsResed(collection, skill)) continue;
 
     try {
       await seedOne(collection, skill);
-      additions.push(skill.name);
+      if (!alreadySeeded.has(skill.name)) additions.push(skill.name);
     } catch (err) {
       console.warn(
         `[skills] failed to seed "${skill.name}": ${(err as Error).message}; will retry on next hydrate`,
@@ -84,6 +84,46 @@ async function doSeed(
     };
     await writeMeta(collection, next);
   }
+}
+
+/**
+ * Decide whether an already-seeded skill needs to be re-seeded because
+ * the persisted state has drifted from what the source SKILL.md would
+ * now produce. This catches the schema-evolution case: when the
+ * collection's state schema gains a new field (e.g. pattern binding),
+ * older persisted records lack it and `normalizeResourceState` would
+ * have wiped them at write time. The bare presence-check below is the
+ * minimum signal — a parsed SKILL.md with a `contextMode` or
+ * `patternBinding` whose persisted record is missing them is stale.
+ *
+ * Intentionally conservative: returns `false` on any parse error or
+ * unknown state shape so a malformed source skill doesn't loop the
+ * seeder. Returns `false` when both source and persisted agree on
+ * having (or lacking) the fields.
+ */
+function needsResed(
+  collection: ResourceCollectionRef,
+  skill: InitialSkill,
+): boolean {
+  let parsed: ReturnType<typeof parseSkillMd>;
+  try {
+    parsed = parseSkillMd(skill.skillMd);
+  } catch {
+    return false;
+  }
+  const ref = collection.getOptional(skillManifestKey(skill.name));
+  // A missing manifest on an already-seeded skill means the user
+  // deleted it deliberately — preserve that decision, do not re-seed.
+  if (!ref) return false;
+  const persisted = ref.state as Record<string, unknown> | undefined;
+  if (!persisted) return false;
+  if (parsed.state.contextMode !== undefined && persisted.contextMode !== parsed.state.contextMode) {
+    return true;
+  }
+  if (parsed.state.patternBinding !== undefined && persisted.patternBinding === undefined) {
+    return true;
+  }
+  return false;
 }
 
 /**

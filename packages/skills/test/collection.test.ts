@@ -43,4 +43,29 @@ describe("skillStateSchema", () => {
       skillStateSchema.parse({ description: "x", custom: "anything" }),
     ).not.toThrow();
   });
+
+  // Regression: a previous version of the schema only allowed
+  // `contextMode: "inline" | "fork"`. A pattern skill arriving with
+  // `contextMode: "pattern"` would fail Zod validation; the framework's
+  // `normalizeResourceState` then fell back to the default empty state,
+  // wiping `patternBinding` entirely. The runSkill router would then
+  // see `contextMode === undefined`, default to "inline", and dispatch
+  // to inlineActivate instead of the pattern route.
+  it("accepts pattern mode and round-trips patternBinding", () => {
+    const state = {
+      description: "Multi-angle research",
+      contextMode: "pattern" as const,
+      patternBinding: {
+        pattern: "task-board",
+        workers: {
+          analyst: { promptRef: "./reference/analyst.md" },
+        },
+        initialTasks: [{ id: "t", goal: "do it", assignee: "analyst" }],
+        patternConfig: { concurrency: 2 },
+      },
+    };
+    const parsed = skillStateSchema.parse(state);
+    expect(parsed.contextMode).toBe("pattern");
+    expect(parsed.patternBinding).toEqual(state.patternBinding);
+  });
 });
