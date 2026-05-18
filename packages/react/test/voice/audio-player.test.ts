@@ -156,6 +156,28 @@ describe("audio-player — Web Audio scheduling", () => {
     expect(startedSources).toHaveLength(0);
   });
 
+  it("stop() suppresses onError from in-flight decodes that reject after the stop", async () => {
+    // If decodeAudioData rejects ~10–50ms after the user pressed Stop, the
+    // consumer's onError must NOT fire — they intentionally stopped, and a
+    // phantom error would surface in telemetry or UI.
+    let rejectDecode!: (err: Error) => void;
+    activeContext.decodeAudioData = vi.fn(
+      () => new Promise<{ duration: number }>((_res, rej) => { rejectDecode = rej; })
+    );
+
+    const errors: Error[] = [];
+    const player = createAudioPlayer({ onError: (e) => errors.push(e) });
+    player.enqueueChunk({ audio: SAMPLE_AUDIO_BASE64, mediaType: "audio/mpeg" });
+
+    player.stop();
+
+    rejectDecode(new Error("corrupt mpeg frame"));
+    await flush();
+
+    expect(errors).toHaveLength(0);
+    expect(startedSources).toHaveLength(0);
+  });
+
   it("stop() aborts in-flight sources and resets the cursor", async () => {
     const player = createAudioPlayer();
     player.enqueueChunk({ audio: SAMPLE_AUDIO_BASE64, mediaType: "audio/mpeg" });

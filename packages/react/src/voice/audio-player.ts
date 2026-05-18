@@ -173,6 +173,16 @@ export function createAudioPlayer(
         };
       },
       (err: unknown) => {
+        // Mirror the success-path guard: a decode that rejects after the
+        // player was stopped (generation advanced) or disposed (ctx
+        // replaced/nulled) is no longer interesting — the caller pressed
+        // stop intentionally, and forwarding the error would surface a
+        // phantom failure in telemetry or error UI. Decrement the counter
+        // for bookkeeping symmetry and exit silently.
+        if (audioContext !== ctx || generation !== stopGeneration) {
+          activeChunkCount = Math.max(0, activeChunkCount - 1);
+          return;
+        }
         // Decoding can fail for corrupt bytes or unsupported formats — log
         // and skip without tearing down subsequent chunks (the user just
         // hears a brief gap).
