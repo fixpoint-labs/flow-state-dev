@@ -120,6 +120,7 @@ const sidebars: SidebarsConfig = {
                 "patterns/parallelTasks",
                 "patterns/supervisor",
                 "patterns/plan-and-execute",
+                "patterns/flow-policy",
                 "patterns/routed-specialists",
                 "patterns/round-robin",
                 "patterns/debate",

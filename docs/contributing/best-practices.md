@@ -256,6 +256,23 @@ Update policy:
   - "No data" is a recoverable signal the LLM can reason about ("I'm missing fundamentals for this ticker, so I'll lean on technicals and macro"). "Wrong data labeled as right data" is not recoverable.
   - The trading-desk used a fixture floor in its first multi-provider implementation and the resulting analyst memos cited fixture numbers as if they were live for two days before anyone noticed. The empty-payload-with-sentinel pattern landed in FIX-589 to prevent recurrence.
 
+### BP-021: Tool blocks declare `cacheable` deliberately
+
+- Status: Active
+- Date: 2026-05-18
+- Rule:
+  - Opt a tool block into `cacheable` only when the call is functionally a deterministic read of state that won't move underneath the run, or an expensive idempotent computation whose inputs fully determine its output. Examples: reading an artifact by key, resolving a config value, looking up a fixture record, fetching an immutable file by hash.
+  - Do **not** declare `cacheable` on:
+    - Tools that mutate state (writes, deletes, status changes). A cached "write succeeded" is a lie on the second call.
+    - Tools whose result depends on time, randomness, or external mutation not captured in their input arguments. A cached "get current price" returns yesterday's price. Use a short `ttl` only when staleness has bounded blast radius; prefer no cache when the cost of being wrong is high.
+    - Tools whose output the worker needs to observe happening (e.g. a tool whose side-effect on the transcript is the point — a "show user" tool that suppresses on cache hit is broken).
+  - Default to `scope: "run"`. Reach for `"request"` when sibling boards within the same request would benefit; reach for `"session"` only with a concrete reason — session lifetimes are long, and stale entries are hard to reason about across turns.
+  - Pair `cacheable` with a `cacheIf` guard when the same input legitimately produces both cacheable and non-cacheable outputs (e.g. a fetch that returns either a stable document or an error envelope as a successful return value — cache only the document).
+- Why:
+  - Errors are never cached and identical in-flight calls in the same request coalesce to one execution, so opting in is safe for the common deterministic-read case — but those guarantees don't cover the tool's correctness model. A cached mutating tool corrupts state; a cached time-sensitive read corrupts reasoning. Both fail silently and only surface on the second call.
+  - The wrong default is "cache everything that's expensive." Cost reduction is real but is bought with stale-data risk. Make the call per tool, not per package.
+  - Cross-task observation flow (`flowPolicy`) records every tool call regardless of cacheability — the ledger is the substrate's information-sharing channel, the cache is its cost-reduction channel. They're independent. Don't reach for `cacheable` to make a tool's results visible to other workers; reach for the right `flowPolicy` instead.
+
 ## Template For New Entries
 
 ```md
