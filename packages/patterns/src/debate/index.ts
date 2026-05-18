@@ -142,11 +142,14 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   /** Optional final synthesizer. Pass `false` to return the raw shape. */
   synthesizer?: BlockDefinition<any, any> | false;
   /**
-   * Optional moderator block. When provided, runs at the end of every
-   * round to decide who speaks next, optionally inject a redirection
-   * (`newAngle`), and decide whether to end the debate. When omitted,
-   * the debate runs in fixed declared-roster order — every debater
-   * every round.
+   * Optional moderator block. When provided, opens each round: it picks
+   * which debaters speak that round, may supply a `briefing` and
+   * `newAngle` that those debaters see, and may set `done: true` to
+   * make this the last round (the round still runs; the loop exits
+   * after). Sees the full transcript of all PRIOR rounds — the current
+   * round's speakers haven't run yet when the moderator decides. When
+   * omitted, the debate runs in fixed declared-roster order — every
+   * debater every round.
    *
    * Pass `false` is NOT permitted; use `undefined` to opt out.
    */
