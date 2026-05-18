@@ -43,7 +43,7 @@ When editing existing code:
 When your changes create orphans:
 
 - Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.skills
+- Don't remove pre-existing dead code unless asked.
 
 The test: Every changed line should trace directly to the user's request.
 
@@ -85,7 +85,7 @@ If unsure why existing code is structured a certain way, ask.
 
 ## 8. Match the codebase's conventions, even if you disagree
 
-## Conformance > taste inside the codebase.
+Conformance > taste inside the codebase.
 If you think a convention is harmful, surface it. Don't fork it silently.
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
@@ -183,7 +183,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 - **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `workIf` on capture) instead of at the context injection level.
 - **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
 - **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
-- `**ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
+- **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
 - **Pattern factories accept `uses`.** `planAndExecute`, `supervisor`, `blackboard` all forward `uses` to their default internal generators.
 
 ## Key Architectural Constraints
@@ -201,7 +201,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 
 ## Authority Hierarchy
 
-1. `docs/architecture/`* — Reference docs
+1. `docs/architecture/*` — Reference docs
 2. `docs/contributing/best-practices.md` — Implementation standards
 3. `AGENTS.md` — Process protocol
 

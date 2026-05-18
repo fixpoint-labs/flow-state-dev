@@ -113,7 +113,7 @@ Follow the discipline picked at Step 4.1.
 7. Write the regression test (Phase 5 of diagnose) at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided.
 8. Run the loop again; verify the original repro no longer reproduces.
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
-10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && test`
+10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
 12. Skip to Step 6 (Review)
 
@@ -125,7 +125,7 @@ Follow the discipline picked at Step 4.1.
 4. **Incremental loop**: for each remaining behaviour, RED (one test, fails) → GREEN (minimal code, passes). One test at a time. Do not write all tests first.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
-7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && test`
+7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 8. Commit with a conventional commit message referencing the issue ID
 9. Skip to Step 6 (Review)
 

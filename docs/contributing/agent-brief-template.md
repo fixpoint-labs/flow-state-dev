@@ -71,7 +71,7 @@ the architecture doc, not a file path, is the durable anchor.
        `makeSchemaStrict` per BP-016
 - [ ] (If user-facing) Updates to `packages/<pkg>/README.md` and any
        affected `apps/docs` pages land in the same change set
-- [ ] `pnpm --filter @flow-state-dev/<pkg> typecheck && test` passes
+- [ ] `pnpm --filter @flow-state-dev/<pkg> typecheck && pnpm --filter @flow-state-dev/<pkg> test` passes
 
 ## Out of scope
 
@@ -126,7 +126,7 @@ item. No item is delivered twice; no item is silently skipped.
 - [ ] A reconnect with no cursor still delivers from the start
 - [ ] Vitest integration test covers all three cases against a mock
       client
-- [ ] `pnpm --filter @flow-state-dev/server typecheck && test` passes
+- [ ] `pnpm --filter @flow-state-dev/server typecheck && pnpm --filter @flow-state-dev/server test` passes
 
 ## Out of scope
 
@@ -176,7 +176,7 @@ with that string at emission time. Existing capabilities without
       the new option
 - [ ] `apps/docs/docs/capabilities/<page>.md` reflects the option in
       its API reference
-- [ ] `pnpm --filter @flow-state-dev/core typecheck && test` passes
+- [ ] `pnpm --filter @flow-state-dev/core typecheck && pnpm --filter @flow-state-dev/core test` passes
 
 ## Out of scope
 
