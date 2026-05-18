@@ -6,7 +6,7 @@ sidebar_position: 10
 
 `debate` coordinates two or more agents arguing assigned positions across rounds. After the rounds end, a single judge reads the full transcript and produces a structured verdict — either picking the strongest stance or synthesizing a position from the strongest points of multiple stances.
 
-An optional `moderator` block can drive turn order across rounds and decide when to end the debate. Round 1 always runs in declared roster order, so consumers get predictable round-1 behavior regardless of moderation. From round 2 onward, if a moderator is configured, it picks who speaks next and may inject a fresh angle into the conversation.
+An optional `moderator` block can drive turn order across rounds and decide when to end the debate. When configured, the moderator opens every round: it picks who speaks, can supply a briefing, can shift the focus, and can flag the round as the last. Without a moderator, every debater speaks every round in declared order.
 
 Debate is the verdict pattern. If you want a synthesized deliverable shaped by panel feedback rather than a winner, reach for [Round Robin](./round-robin) instead.
 
