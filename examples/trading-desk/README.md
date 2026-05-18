@@ -43,7 +43,12 @@ Phase 1 — analyst fan-out:
 - **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
   sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
   xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
-  single-provider tools).
+  single-provider tools). The payload carries both the numeric score and a
+  `posts` array of representative X excerpts (handle + one-sentence
+  verbatim quote + per-post polarity), so the analyst reasons from the
+  actual quotes rather than a single non-deterministic score.
+  `shortInterestPct` is `null` on the xAI path — short interest can't be
+  measured from chatter, and a fabricated 0 would read as "no shorts."
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:

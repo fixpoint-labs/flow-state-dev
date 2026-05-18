@@ -92,6 +92,27 @@ describe("get_social_sentiment leaf routes", () => {
     expect(out.positive).toBe(0);
     expect(out.negative).toBe(0);
     expect(out.neutral).toBe(0);
-    expect(out.shortInterestPct).toBe(0);
+    // `null` rather than `0` — we can't measure short interest off X
+    // chatter, and a fabricated 0 would read as "no shorts" to the analyst.
+    expect(out.shortInterestPct).toBeNull();
+    expect(out.posts).toEqual([]);
+  });
+
+  it("fixture route carries representative posts the analyst can quote", async () => {
+    const out = await fixtureExecute(
+      { ticker: "NVDA", date: "2026-05-06" },
+      ctx("fixture"),
+    );
+    // The fixture is the canonical example of what the live route should
+    // produce — losing `posts` here means we'd silently revert the
+    // analyst back to score-only reasoning.
+    expect(Array.isArray(out.posts)).toBe(true);
+    expect(out.posts.length).toBeGreaterThan(0);
+    for (const p of out.posts) {
+      expect(typeof p.handle).toBe("string");
+      expect(typeof p.excerpt).toBe("string");
+      expect(["positive", "negative", "neutral"]).toContain(p.polarity);
+    }
   });
 });
+

@@ -163,6 +163,15 @@ export const macroIndicatorsSchema = z.object({
   oilWtiUsd: z.number(),
 });
 
+/** A single retrieved X post used as evidence for the sentiment score.
+ *  `polarity` reflects the model's classification of THIS post (not overall
+ *  sentiment). Excerpts are one short sentence — no paraphrasing of meaning. */
+const sentimentPost = z.object({
+  handle: z.string(),
+  excerpt: z.string(),
+  polarity: z.enum(["positive", "negative", "neutral"]),
+});
+
 export const socialSentimentSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
@@ -171,7 +180,15 @@ export const socialSentimentSchema = z.object({
   positive: z.number(),
   negative: z.number(),
   neutral: z.number(),
-  shortInterestPct: z.number(),
+  /** Null when the provider can't measure short interest (e.g. xAI/xSearch
+   *  reads X chatter, not exchange short-interest filings). Honest null
+   *  beats a fabricated 0 — analysts must not read 0 as "no shorts." */
+  shortInterestPct: z.number().nullable(),
+  /** Representative posts that grounded the score. Empty in `unavailable`
+   *  mode. Fixture and live (xAI) modes populate this. The sentiment
+   *  analyst should treat these as primary evidence — the score is a
+   *  summary of these quotes, not an independent signal. */
+  posts: z.array(sentimentPost),
 });
 
 const redditMention = z.object({

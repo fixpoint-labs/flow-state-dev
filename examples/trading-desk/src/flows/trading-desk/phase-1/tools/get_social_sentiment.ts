@@ -9,11 +9,11 @@
  * `unavailable` (BP-020: no silent fallback to fixture data). Fixture mode
  * is unchanged.
  *
- * The Grok generator's `outputSchema` is intentionally richer than the
- * tool's public `outputSchema` — it forces representative-post evidence
- * for grounding rigor. The router strips evidence via `connectOutput`
- * before exit so `socialSentimentSchema` (the public contract consumed by
- * the sentiment analyst) stays stable.
+ * The Grok generator's `outputSchema` forces representative-post evidence
+ * for grounding rigor. Posts pass through `connectOutput` to the public
+ * `socialSentimentSchema` — the sentiment analyst sees the actual quotes
+ * and treats them as primary evidence, with the numeric score as a
+ * summary of (not a replacement for) that texture.
  */
 import { generator, handler, providerTool, router } from "@flow-state-dev/core";
 import { xai } from "@ai-sdk/xai";
@@ -50,14 +50,15 @@ const unavailableRoute = handler({
 });
 
 // Generator output: forces representative posts so the score is grounded
-// in retrieved evidence rather than the model's training recall. Stripped
-// before exit; not part of the tool's public output.
+// in retrieved evidence rather than the model's training recall. `posts`
+// is passed straight through to the public schema — the analyst reads the
+// quotes, not just the counts.
 export const grokOutputSchema = z.object({
   score7d: z.number(),
   positive: z.number().int().nonnegative(),
   negative: z.number().int().nonnegative(),
   neutral: z.number().int().nonnegative(),
-  evidence: z.array(
+  posts: z.array(
     z.object({
       handle: z.string(),
       excerpt: z.string(),
@@ -83,10 +84,14 @@ const sentimentPrompt = [
   "- If xSearch returns no relevant posts, return all zeros with empty",
   "  evidence.",
   "",
-  "Evidence:",
-  "- Return 3-6 representative posts that span the polarity distribution.",
-  "- Use the actual handle and a short excerpt (one sentence). No",
-  "  paraphrasing of meaning. No invented handles.",
+  "Posts (primary deliverable):",
+  "- Return 8-15 representative posts spanning the polarity distribution.",
+  "- The downstream analyst reads these directly — they are the main",
+  "  value of this call, not the score. Pick quotes that actually carry",
+  "  information (concrete claims, reactions to events, specific numbers),",
+  "  not generic hype or one-word reactions.",
+  "- Use the actual handle and a short excerpt (one sentence, verbatim).",
+  "  No paraphrasing. No invented handles. No invented posts.",
 ].join("\n");
 
 // `providerTools` is static (the framework does not resolve it per call),
@@ -117,15 +122,14 @@ const grokRoute = generator({
     `Ticker: ${input.ticker}. Characterize sentiment over the 7 days ending ${input.date}. Use xSearch to retrieve relevant posts about $${input.ticker} from that window.`,
 });
 
-// Adapt grokRoute's richer output to the tool's public schema once at
-// module load. `connectOutput` produces a new BlockDefinition with the
-// same `.name` as `grokRoute`; the router matches candidates by name OR
+// Adapt grokRoute's output to the tool's public schema once at module
+// load. `connectOutput` produces a new BlockDefinition with the same
+// `.name` as `grokRoute`; the router matches candidates by name OR
 // reference, so this adapted block still satisfies route validation.
 //
-// The mapper drops `evidence` (kept on the generator only for grounding
-// rigor) and forces `shortInterestPct: 0` — X chatter can't measure
-// short interest; honest provenance > fake data. `ticker` and `asOf`
-// come from `ctx.session.state` rather than the input because
+// `shortInterestPct` is null on this route — X chatter can't measure
+// short interest, and a fabricated 0 reads as "no shorts" to the analyst.
+// `ticker` and `asOf` come from `ctx.session.state` because
 // `connectOutput`'s mapper only sees `(output, ctx)` (no input
 // pass-through). The trading-desk capability populates both fields.
 const grokAdaptedRoute = grokRoute.connectOutput(
@@ -149,7 +153,8 @@ const grokAdaptedRoute = grokRoute.connectOutput(
       positive: gen.positive,
       negative: gen.negative,
       neutral: gen.neutral,
-      shortInterestPct: 0,
+      shortInterestPct: null,
+      posts: gen.posts,
     };
   },
 );
