@@ -14,6 +14,21 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
+## Companion skills
+
+The spec is the input to `fsd:implement-issue`, which auto-routes based on the Linear category label:
+
+- **Bug** → implementation follows `fsd:diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
+- **Feature / Enhancement** → implementation follows `fsd:tdd` (red-green-refactor with vertical tracer-bullet slices).
+
+Shape the spec's Testing Strategy (section 6) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
+
+Other skills the spec author should reach for when relevant:
+
+- **`fsd:zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
+- **`fsd:prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
+- **`fsd:improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in section 7 (Non-Goals) as a follow-up flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `fsd:improve-codebase-architecture`."*
+
 ## Workflow
 
 ### Step 1: Pull the Linear Issue
@@ -37,11 +52,12 @@ Launch two sub-agents in parallel:
 #### Agent A: Codebase Analysis
 Launch a `feature-dev:code-explorer` sub-agent to:
 - Trace the relevant code paths that this issue touches
-- Map the current architecture for the affected area (packages, modules, key abstractions)
+- Map the current architecture for the affected area (packages, modules, key abstractions). If the area is genuinely unfamiliar, ask for the map in `fsd:zoom-out` shape first (package / flow / actions / block kinds / capabilities / scopes / items / package boundaries / callers) before diving deeper
 - Identify existing patterns and conventions that the implementation must follow
 - Find related code that might be affected by or inform the implementation
 - Read relevant architecture docs (`docs/architecture/*.md`) and best practices
 - Check `AGENTS.md` for any implementation guardrails
+- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the Non-Goals section as follow-up flags to be handled later via `fsd:improve-codebase-architecture`
 
 #### Agent B: Dependency & PR Context
 Launch an `Explore` sub-agent to:
@@ -134,7 +150,17 @@ The agent must answer, in order:
 
 ### Step 4: Synthesize and Draft Spec
 
-Using the research from all four agents, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
+Before drafting, check whether the research has surfaced a **design question that cannot be resolved from existing code alone**. Examples:
+
+- Two plausible block / pattern / capability shapes that exercise different runtime behaviours
+- A state model that "looks fine on paper" but you can't tell whether scope boundaries handle edge cases correctly
+- A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
+
+If yes, **stop drafting and run `fsd:prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+
+If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
+
+Once design questions are resolved, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
 
 #### Spec Document Structure
 
@@ -169,13 +195,16 @@ Using the research from all four agents, draft the implementation spec. The spec
    - Fallback behaviors
 
 6. **Testing Strategy**
-   - Unit tests: what to test, which test patterns to follow
-   - Integration tests: if applicable, what end-to-end flows to verify
-   - Existing test files to reference for patterns
+   - Name the implementation discipline that will apply: **`fsd:tdd`** (red-green-refactor with tracer bullets) for features/enhancements; **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test) for bugs. `fsd:implement-issue` auto-routes by Linear category label — but the spec should match the discipline it'll be executed with.
+   - For features (TDD): list **behaviours** to test in observable terms (items emitted, state changes, return values, lifecycle hooks fired) — not implementation steps. Each behaviour becomes a tracer-bullet cycle.
+   - For bugs (diagnose): name the **seam where the feedback loop will live** (vitest spec at which level, `fsdev block` for single-block isolation, `fsdev run` with NDJSON capture for flow-level, `packages/integration-tests/` for cross-package). Name the regression test seam — Phase 5 of diagnose requires a correct seam, and the spec is where that decision happens.
+   - Existing test files to reference for patterns. For block / pattern / capability tests, the `fsd:write-block-tests` skill encodes the mock-context idiom.
 
 7. **Non-Goals**
    - Explicit list of what this spec does NOT cover
    - Phase 2 / follow-up items (prevents scope creep)
+   - **Deepening opportunities flagged by Agent A** (shallow handlers, capability-shaped wiring, BP-violating patterns in the area being touched) — list them here as follow-ups to be handled later via `fsd:improve-codebase-architecture`. Including them in Non-Goals makes them visible without expanding scope.
+   - **Already-rejected directions** — before adding anything to Non-Goals as a deliberate "won't do," check `docs/internal/out-of-scope/` for an existing rejection. If one matches, reference it rather than restating the reasoning here.
 
 8. **Documentation Plan**
 
