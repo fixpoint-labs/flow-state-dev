@@ -808,6 +808,15 @@ function compileToolsWithExecute(
         // makes the restore in `finally` actually publish a clearing item
         // instead of being deduped against an unchanged slot.
         scopedCtx.emit.status(`Using ${tool.name}…`);
+        // FSDEV_DEBUG_TOOLS=1 prints per-tool start/end with timing. Used
+        // to localize tool-dispatch hangs (e.g. when a tool_output envelope
+        // emits but the handler never completes). Off by default.
+        const debugTools = typeof process !== "undefined" && process.env?.FSDEV_DEBUG_TOOLS === "1";
+        const toolStartedAt = debugTools ? Date.now() : 0;
+        if (debugTools) {
+          // eslint-disable-next-line no-console
+          console.error(`[fsd-tool] start ${tool.name} callId=${options?.toolCallId ?? "-"}`);
+        }
         try {
           await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
           const output = await runWithRetry(
@@ -815,7 +824,18 @@ function compileToolsWithExecute(
             retry
           );
           await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          if (debugTools) {
+            // eslint-disable-next-line no-console
+            console.error(`[fsd-tool] done  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms`);
+          }
           return output;
+        } catch (err) {
+          if (debugTools) {
+            const msg = err instanceof Error ? err.message : String(err);
+            // eslint-disable-next-line no-console
+            console.error(`[fsd-tool] fail  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms err=${msg}`);
+          }
+          throw err;
         } finally {
           statusGuard.active--;
           if (statusGuard.active === 0) {
