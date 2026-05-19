@@ -42,6 +42,7 @@
       "@flow-state-dev/devtool/react": ["packages/devtool/src/react/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],
+      "@flow-state-dev/voice-openai": ["packages/voice-openai/src/index.ts"],
       "@thought-fabric/core": ["packages/thought-fabric-core/src/index.ts"]
     }
   }
