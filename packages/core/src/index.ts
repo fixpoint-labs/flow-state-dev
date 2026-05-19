@@ -22,11 +22,11 @@ export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-to
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,

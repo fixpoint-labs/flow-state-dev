@@ -145,22 +145,22 @@ export interface SkillsCollectionMeta {
 }
 
 // ---------------------------------------------------------------------------
-// Intent classification (FIX-421)
+// Skill activation (FIX-421)
 // ---------------------------------------------------------------------------
 
 /**
  * Origin of a skill-activation match. Carried on `MatchedSkill` so downstream
  * consumers (trace UI, telemetry) can branch on how the decision was reached.
  */
-export type IntentSource =
+export type SkillActivationSource =
   | "slash"            // user typed `/skill-name`
   | "keyword"          // local keyword scan matched
   | "classifier"       // LLM classifier produced the match
   | "manual-override"; // explicit user/UI selection bypassed classification
 
 /**
- * One skill matched by an intent-classification pass. Multiple may be active
- * per turn — the up-front intent selector activates all of them in inline
+ * One skill matched by a skill-activation pass. Multiple may be active
+ * per turn — the up-front skill activator activates all of them in inline
  * mode by default.
  */
 export interface MatchedSkill {
@@ -168,8 +168,8 @@ export interface MatchedSkill {
   name: string;
   /** Argument substituted for `$ARGUMENTS` in the skill body. Empty if none. */
   input: string;
-  /** Which tier of `intentSelector` produced this match. */
-  source: IntentSource;
+  /** Which tier of `skillActivator` produced this match. */
+  source: SkillActivationSource;
   /** Classifier confidence (0..1). Only present when `source === "classifier"`. */
   confidence?: number;
 }

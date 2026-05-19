@@ -66,7 +66,7 @@ A description that never triggers is a skill that never runs. A description that
 
 ### Writing keywords
 
-`keywords` is consumed by `createIntentSelector`'s tier-2 scan (see [Activation paths](./activation)). The scan lowercases the user message and matches each keyword as a plain substring. A match activates the skill without an LLM call.
+`keywords` is consumed by `createSkillActivator`'s tier-2 scan (see [Activation paths](./activation)). The scan lowercases the user message and matches each keyword as a plain substring. A match activates the skill without an LLM call.
 
 ```yaml
 ---

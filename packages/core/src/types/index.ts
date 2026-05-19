@@ -177,11 +177,11 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,

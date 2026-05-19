@@ -37,7 +37,7 @@ Reach for a capability when the behavior is structural and always present (a mem
 
 Skills are not always-on. Something has to decide a skill applies before its body lands in the system prompt.
 
-- **Up-front (default in this package).** A small pre-generator router — `createIntentSelector` — classifies the user message and writes any matched skills into session state. The main generator runs once with the body already in context. Three tiers, in order: literal `/<skill-name>` slash match, local keyword scan, then a fast LLM classifier when the earlier tiers don't decide.
+- **Up-front (default in this package).** A small pre-generator router — `createSkillActivator` — classifies the user message and writes any matched skills into session state. The main generator runs once with the body already in context. Three tiers, in order: literal `/<skill-name>` slash match, local keyword scan, then a fast LLM classifier when the earlier tiers don't decide.
 - **Mid-flow.** The agent sees a catalog of skills in its system prompt and calls a `runSkill` tool when one applies. Two provider hits per skill-active turn (decide, then run with skill in context).
 
 Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
@@ -75,10 +75,10 @@ export const skillsCap = createSkillsCapability({
 });
 ```
 
-When you adopt up-front activation via `createIntentSelector`, drop the `runSkill` preset at the use site to skip the redundant tool-call path:
+When you adopt up-front activation via `createSkillActivator`, drop the `runSkill` preset at the use site to skip the redundant tool-call path:
 
 ```ts
-uses: [skillsCap.presets({ runSkill: false }), intentSelector, /* ... */]
+uses: [skillsCap.presets({ runSkill: false }), skillActivator, /* ... */]
 ```
 
 Then attach it to any generator:
@@ -95,7 +95,7 @@ export const assistant = generator({
 });
 ```
 
-The first time the collection is read (whether by `intentSelector` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
+The first time the collection is read (whether by `skillActivator` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
 
 ## Main-agent scoping with `agentType`
 
@@ -139,12 +139,12 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 | Export | Purpose |
 |--------|---------|
 | `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.presets({ runSkill: false })`. |
-| `createIntentSelector(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
+| `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
 | `createSkillForkGenerator(options)` | The fork-mode generator, for custom wiring. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |
-| `intentSourceSchema`, `matchedSkillSchema`, `intentResultSchema` | Runtime Zod schemas mirroring the `IntentSource` / `MatchedSkill` / `IntentResult` types from `@flow-state-dev/core`. |
+| `skillActivationSourceSchema`, `matchedSkillSchema` | Runtime Zod schemas mirroring the `SkillActivationSource` / `MatchedSkill` types from `@flow-state-dev/core`. |
 
 Continue to [Activation paths](./activation) for up-front vs. mid-flow, or [Authoring skills](./authoring) for the SKILL.md format reference.

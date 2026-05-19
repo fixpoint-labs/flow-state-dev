@@ -23,7 +23,7 @@ import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
 import {
-  createIntentSelector,
+  createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
 } from "@flow-state-dev/skills";
@@ -78,7 +78,7 @@ const skillsCap = createSkillsCapability({
 });
 
 /**
- * intentSelectorBlock — the up-front skill-activation router.
+ * skillActivatorBlock — the up-front skill-activation router.
  *
  * Runs once per turn before the main generator. Three tiers (slash prefix,
  * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
@@ -89,10 +89,10 @@ const skillsCap = createSkillsCapability({
  *
  * Reads from the unified `ctx.resources.skills` registry — the skills
  * capability above declares `scope: "user"`, which routes the collection's
- * storage to the user record. The intent-selector follows whatever scope
+ * storage to the user record. The skill activator follows whatever scope
  * the capability picked (FIX-435).
  */
-export const intentSelectorBlock = createIntentSelector({});
+export const skillActivatorBlock = createSkillActivator({});
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
 // collections. No resource declarations here: bash inherits whatever
@@ -140,7 +140,7 @@ export const featuresCapability = defineCapability({
     // to primary agents by the capability's own `agentType` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
     //
-    // Skill activation is decided up-front by `intentSelectorBlock` above,
+    // Skill activation is decided up-front by `skillActivatorBlock` above,
     // so we drop the `runSkill` preset — its tool and catalog-listing
     // context become dead weight on every turn. The active-skill body
     // formatter (in the `context` preset) still injects matched skills.

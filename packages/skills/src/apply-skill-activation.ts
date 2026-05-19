@@ -1,5 +1,5 @@
 /**
- * Final step of intentSelector — collapses the cross-tier sequencer state
+ * Final step of skillActivator — collapses the cross-tier sequencer state
  * into the active-skills session-state slot.
  *
  * `activeSkills` is **replaced** (not appended) here for the up-front
@@ -15,29 +15,29 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { activeSkillStateSchema } from "./active-skill-state";
-import { intentSequencerStateSchema } from "./intent-types";
+import { skillActivatorStateSchema } from "./skill-activation-types";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 const outputSchema = z.object({
   skillCount: z.number(),
-  intentSource: z.string(),
+  activationSource: z.string(),
 });
 
-/** Build the apply-intent handler. */
-export function createApplyIntent() {
+/** Build the apply-skill-activation handler. */
+export function createApplySkillActivation() {
   return handler({
-    name: "apply-intent",
+    name: "apply-skill-activation",
     inputSchema,
     outputSchema,
-    sequencerStateSchema: intentSequencerStateSchema,
+    sequencerStateSchema: skillActivatorStateSchema,
     sessionStateSchema: activeSkillStateSchema,
     execute: async (_input, ctx) => {
       const seq = ctx.sequencer?.state;
       const skills = seq?.skills ?? [];
       // Each tier produces uniformly-sourced matches, so the top-level
-      // intent source is whichever tier produced the first skill match.
+      // activation source is whichever tier produced the first skill match.
       // No matches → classifier was the last tier to run.
-      const intentSource = skills[0]?.source ?? "classifier";
+      const activationSource = skills[0]?.source ?? "classifier";
 
       const activeSkillEntries = skills.map((s) => ({
         name: s.name,
@@ -48,7 +48,7 @@ export function createApplyIntent() {
       }));
       await ctx.session.patchState({ activeSkills: activeSkillEntries });
 
-      return { skillCount: skills.length, intentSource };
+      return { skillCount: skills.length, activationSource };
     },
   });
 }

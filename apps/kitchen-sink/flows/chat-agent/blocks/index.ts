@@ -22,5 +22,5 @@ export {
   type ThinkingStyleInput,
 } from "./thinking-styles";
 export { bashCommand, bashReadFile, bashWriteFile } from "./bash-tools";
-export { featuresCapability, bashCap, intentSelectorBlock } from "./features-capability";
+export { featuresCapability, bashCap, skillActivatorBlock } from "./features-capability";
 export { mcpCapability } from "../../../lib/mcp";

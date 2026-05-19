@@ -15,7 +15,7 @@
  *   - **Preset `runSkill`** (default-on): the mid-flow activation path —
  *     the `runSkill` tool plus the catalog listing the model reads to
  *     decide when to call it. Drop with `cap.presets({ runSkill: false })`
- *     when using up-front activation via `createIntentSelector`.
+ *     when using up-front activation via `createSkillActivator`.
  */
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
@@ -149,7 +149,7 @@ export function createSkillsCapability(
 
       // Active-skill body formatter — required for any matched skill to
       // appear in the system prompt. Both activation paths (up-front via
-      // intentSelector, mid-flow via runSkill) feed it via
+      // skillActivator, mid-flow via runSkill) feed it via
       // session.state.activeSkills. Aggregates under the `<skills>`
       // tag with the runSkill catalog when both presets are on.
       context: { context: { skills: [activeContext] } },
@@ -157,7 +157,7 @@ export function createSkillsCapability(
       // Mid-flow activation: the runSkill tool + the catalog listing the
       // model reads to decide when to call it. Drop with
       // `cap.presets({ runSkill: false })` when using up-front activation
-      // via createIntentSelector — the active-skills formatter above
+      // via createSkillActivator — the active-skills formatter above
       // still injects the matched skill's body.
       runSkill: {
         tools: [runSkillTool],

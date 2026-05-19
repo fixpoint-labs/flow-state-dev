@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  createIntentSelector,
-  intentSourceSchema,
+  createSkillActivator,
   matchedSkillSchema,
+  skillActivationSourceSchema,
 } from "../src";
 
-describe("intentSelector — public schemas", () => {
-  it("intentSourceSchema enumerates the four origin tiers", () => {
-    expect(intentSourceSchema.options).toEqual([
+describe("skillActivator — public schemas", () => {
+  it("skillActivationSourceSchema enumerates the four origin tiers", () => {
+    expect(skillActivationSourceSchema.options).toEqual([
       "slash",
       "keyword",
       "classifier",
@@ -25,25 +25,25 @@ describe("intentSelector — public schemas", () => {
   });
 });
 
-describe("createIntentSelector", () => {
-  it("returns a sequencer block named 'intent-selector' by default", () => {
-    const block = createIntentSelector();
+describe("createSkillActivator", () => {
+  it("returns a sequencer block named 'skill-activator' by default", () => {
+    const block = createSkillActivator();
     expect(block.kind).toBe("sequencer");
-    expect(block.name).toBe("intent-selector");
+    expect(block.name).toBe("skill-activator");
   });
 
   it("respects the name override", () => {
-    const block = createIntentSelector({ name: "my-selector" });
-    expect(block.name).toBe("my-selector");
+    const block = createSkillActivator({ name: "my-activator" });
+    expect(block.name).toBe("my-activator");
   });
 
   it("constructs cleanly with the LLM tier enabled (default)", () => {
-    expect(() => createIntentSelector()).not.toThrow();
+    expect(() => createSkillActivator()).not.toThrow();
   });
 
   it("constructs cleanly with the LLM tier disabled", () => {
     expect(() =>
-      createIntentSelector({ enableLlmClassifier: false }),
+      createSkillActivator({ enableLlmClassifier: false }),
     ).not.toThrow();
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Tier 2 of intentSelector — local skill-keyword scan.
+ * Tier 2 of skillActivator — local skill-keyword scan.
  *
  * Reads each enabled skill's `keywords` frontmatter from the collection and
  * matches their lowercased tokens as plain substrings of the user message.
@@ -18,7 +18,7 @@ import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
 import { getCollection } from "./internal/get-collection";
-import { intentSequencerStateSchema } from "./intent-types";
+import { skillActivatorStateSchema } from "./skill-activation-types";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 const outputSchema = z.object({ skillsMatched: z.number() });
@@ -31,12 +31,12 @@ export interface KeywordMatchOptions {
  * Build the tier-2 keyword-match handler. Skipped when the sequencer is
  * already `resolved`.
  */
-export function createIntentKeywordMatch(opts: KeywordMatchOptions) {
+export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
   return handler({
-    name: "intent-keyword-match",
+    name: "skill-keyword-match",
     inputSchema,
     outputSchema,
-    sequencerStateSchema: intentSequencerStateSchema,
+    sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       // Defensive — outer .tapIf gates this, but a direct invocation might
       // arrive after tier 1 already resolved.
