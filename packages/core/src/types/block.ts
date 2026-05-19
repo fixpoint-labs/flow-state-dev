@@ -325,9 +325,9 @@ export interface BlockContext<
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
-    onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
-    onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number) => void;
-    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
+    onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
+    onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number, transient?: boolean) => void;
+    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean) => void;
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void;
     onGeneratorModelResult?: (payload: {
       model: string;

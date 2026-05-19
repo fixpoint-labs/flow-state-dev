@@ -217,14 +217,14 @@ export function router<
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
         (scopedCtx as { _blockInputHint?: import("../items/types").BlockValueInternal<unknown> })
           ._blockInputHint = routerInputHint;
-        scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+        scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input, selected.transient);
         resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
           const output = await asRuntime(selected).run(input, scopedCtx);
-          scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
+          scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt, selected.transient);
           return output;
         } catch (error) {
-          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt);
+          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt, selected.transient);
           throw error;
         }
       };
