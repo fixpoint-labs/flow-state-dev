@@ -111,7 +111,12 @@ export async function cullByTTL(
         surviving.push(ep)
         continue
       }
-      const ageTurns = currentTurn - ep.occurredAtTurn
+      // `currentTurn` lives on session-scoped working memory and resets to 0
+      // each session. Episodes are user-scoped and persist across sessions,
+      // so `currentTurn - ep.occurredAtTurn` is negative for episodes
+      // encoded in a previous session. Treat the turn-age as 0 in that case
+      // — the wall-time leg still applies; the turn leg can't say anything.
+      const ageTurns = Math.max(0, currentTurn - ep.occurredAtTurn)
       const encodedMs = Date.parse(ep.encodedAt)
       const ageDays = Number.isFinite(encodedMs) ? (now - encodedMs) / MS_PER_DAY : 0
 

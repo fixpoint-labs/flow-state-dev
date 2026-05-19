@@ -1041,10 +1041,12 @@ export function system(config: MemorySystemConfig): MemorySystem {
     hygiene: hygiene === false ? undefined : hygiene,
   }
 
-  // Build the janitor block once when hygiene is enabled — same instance is
-  // referenced by auto-wired pipelines (via `blocksConfig.hygiene`) and by
-  // `mem.janitor` for manual scheduling. Skipped when `hygiene: false` or
-  // when neither semantic nor episodic is configured (nothing to clean).
+  // Build the janitor block exposed as `mem.janitor` (manual scheduling /
+  // direct invocation). Auto-wired pipelines (consolidation, capture) build
+  // their own janitor instances from `blocksConfig.hygiene`. All instances
+  // share the session-scoped `janitorResource`, so their writes converge on
+  // the same snapshot. Skipped when `hygiene: false` or when neither
+  // semantic nor episodic is configured.
   const janitorBlock = hygiene && (semanticConfig || episodicConfig)
     ? memorySystemJanitor({ ...blocksConfig, hygiene })
     : undefined

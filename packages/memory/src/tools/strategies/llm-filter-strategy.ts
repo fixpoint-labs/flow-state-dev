@@ -80,14 +80,18 @@ const EXACT_PHRASE_MIN_WORDS = 3
  *                 default `Date.now()`. Forwarded to `effectiveConfidence`.
  * @param halfLife Optional half-life override (days). Default 180 via
  *                 `DEFAULT_HYGIENE_CONFIG`. Pass an explicit value to match
- *                 a configured hygiene profile.
+ *                 a configured hygiene profile, or `false` to skip decay
+ *                 entirely — useful for custom strategies that mirror
+ *                 `hygiene: false` callers.
  */
 export function intrinsicSemanticScore(
   fact: SemanticFact,
   now?: number,
-  halfLife?: number,
+  halfLife?: number | false,
 ): number {
-  const effective = effectiveConfidence(fact, now, halfLife)
+  const effective = halfLife === false
+    ? fact.confidence
+    : effectiveConfidence(fact, now, halfLife)
   const normalised = Math.min(1, fact.reinforcementCount / 10)
   return Math.max(0, Math.min(1, effective * (0.5 + 0.5 * normalised)))
 }
