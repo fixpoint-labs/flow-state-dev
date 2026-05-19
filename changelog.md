@@ -3,6 +3,17 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-19
+
+### Memory: confidence decay + episodic TTL hygiene (FIX-411)
+
+- New `hygiene:` slot on `memory.system()` enables time-based confidence decay on semantic facts and durability-based TTL on episodic episodes. Defaults to on; pass `hygiene: false` to revert to pre-FIX-411 behavior.
+- `mem.recall()` ranking and the recall tool's intrinsic semantic score now use `effectiveConfidence` instead of raw `fact.confidence`. Older facts naturally rank lower than freshly-reinforced facts of the same raw confidence.
+- New `mem.janitor` block factory for direct or scheduled use, plus `effectiveConfidence(fact, now, halfLife)` helper for custom retrieval strategies.
+- Persistent episodes past `persistentTurns` or `persistentDays` are evicted; permanent episodes are never deleted and pick up `stale: true` after `permanentStaleDays` of silence. Each janitor run records what it touched on the session-scoped `janitor` resource.
+- Fix: `addFact` now populates `lastReinforced` on creation (previously left undefined). The decay model falls back to `extractedAt` for facts created before this change.
+- New `memory/hygiene` reference page covering the mechanism, defaults, configuration, and tuning.
+
 ## 2026-05-18
 
 ### Moderated Debate (FIX-607)
