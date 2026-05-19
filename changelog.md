@@ -4,15 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-19
 
-### Voice (M1): `@flow-state-dev/voice-openai` provider package (FIX-525)
+### Voice: new `@flow-state-dev/voice-openai` provider package
 
-- New `@flow-state-dev/voice-openai` package: the first concrete `VoiceProvider`, wrapping the official `openai` SDK. `new OpenAIVoiceProvider({ apiKey })` returns a provider with `providerName: "openai"` and the accurate `abilities` matrix.
-- `speak()` defaults to `gpt-4o-mini-tts`, voice `alloy`, MP3 (`audio/mpeg`). Output formats `mp3`, `opus`, `aac`, `flac`, `wav`, `pcm` map to OpenAI's `response_format` with the matching MIME on `SpeakResult.mediaType`. Unknown formats throw `format_unsupported` synchronously, before the network round-trip. The `instructions` provider option is rejected at the boundary on non-`gpt-4o-mini-tts` models instead of paying for a 400.
-- `transcribe()` defaults to `gpt-4o-mini-transcribe`, accepts either `Blob` or `Uint8Array`, and requires `mediaType` for `Uint8Array` so OpenAI can infer the audio format. Always requests `response_format: "json"`; the language hint is preserved through to the result.
-- `listVoices()` returns the 13-entry OpenAI catalog (`alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`, `verse`, `marin`, `cedar`). `marin` and `cedar` declare `supportedModels: ["gpt-4o-mini-tts"]`; every other entry omits the field to mean "supported by every OpenAI TTS model".
-- `abilities.speakStream` is `false` in M1. The OpenAI SDK does support streaming TTS now, but the framework pipeline doesn't consume OpenAI streaming yet and ElevenLabs is the canonical streaming provider in M2 — deferred to a follow-up.
-- Every SDK error is translated into a `VoiceError` with a typed `kind` so callers branch on the discriminator instead of class names: `AuthenticationError`/`PermissionDeniedError` → `auth`, `RateLimitError` → `rate_limit`, `NotFoundError` → `not_found`, `BadRequestError`/`UnprocessableEntityError` → `invalid_input` or `format_unsupported` (heuristic on `code`/`param`/message), `InternalServerError` → `provider_unavailable`, `APIConnectionError` → `network`, `APIUserAbortError` → `aborted`. `VoiceError` instances pass through untouched.
-- No `@ai-sdk/openai` dependency — the package depends on the official `openai@^6.38.0` SDK directly. Wiring the provider into the server router and migrating the kitchen-sink land in follow-up tickets.
+- Added `OpenAIVoiceProvider` — the first concrete `VoiceProvider` implementation. `new OpenAIVoiceProvider({ apiKey })` returns a provider with batch `speak()`, batch `transcribe()`, and a static `listVoices()` catalog.
+- `speak()` defaults to `gpt-4o-mini-tts` / voice `alloy` / MP3. Supports `outputFormat` of `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`, each mapped to its standard MIME on the returned `SpeakResult.mediaType`.
+- `transcribe()` defaults to `gpt-4o-mini-transcribe`. Accepts either `Blob` or `Uint8Array`; `Uint8Array` callers pass `mediaType` so the SDK can infer the audio format.
+- `listVoices()` returns OpenAI's prebuilt voice catalog: `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`, `verse`, `marin`, `cedar`. `marin` and `cedar` declare `supportedModels: ["gpt-4o-mini-tts"]`.
+- SDK errors are translated into `VoiceError` with a discriminated `kind`, so callers branch on the kind instead of `instanceof` against SDK classes.
+- The package depends on the official `openai` SDK directly. No AI SDK dependency.
 
 ## 2026-05-18
 

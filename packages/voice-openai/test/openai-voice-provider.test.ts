@@ -307,6 +307,19 @@ describe("OpenAIVoiceProvider.listVoices", () => {
     expect(cedar?.supportedModels).toEqual(["gpt-4o-mini-tts"]);
   });
 
+  it("returns a deep-cloned catalog so callers can't mutate the module-global table", async () => {
+    const p = new OpenAIVoiceProvider({ apiKey: "test" });
+    const first = await p.listVoices();
+    const marinFirst = first.find((v) => v.id === "marin")!;
+    marinFirst.name = "MUTATED";
+    marinFirst.supportedModels!.push("evil");
+
+    const second = await p.listVoices();
+    const marinSecond = second.find((v) => v.id === "marin")!;
+    expect(marinSecond.name).toBe("Marin");
+    expect(marinSecond.supportedModels).toEqual(["gpt-4o-mini-tts"]);
+  });
+
   it("leaves supportedModels undefined for the unconstrained voices", () => {
     const unconstrained = OPENAI_VOICE_CATALOG.filter(
       (v) => v.id !== "marin" && v.id !== "cedar",

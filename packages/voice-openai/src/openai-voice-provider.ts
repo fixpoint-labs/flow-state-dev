@@ -81,13 +81,16 @@ export class OpenAIVoiceProvider implements VoiceProvider {
         organization: opts.organization,
         project: opts.project,
       });
+    // Read identity fields from the resolved client so a caller-supplied
+    // `opts.client` contributes its own baseURL/org/project to the id
+    // instead of degenerating to all-`undefined`. Never include `apiKey`.
     this.id = deriveId({
       ttsModel,
       sttModel,
       voice: this.defaultVoice,
-      baseURL: opts.baseURL,
-      organization: opts.organization,
-      project: opts.project,
+      baseURL: this.client.baseURL,
+      organization: this.client.organization ?? undefined,
+      project: this.client.project ?? undefined,
     });
   }
 
