@@ -116,18 +116,18 @@ export {
   inlineActivateOutputSchema,
 } from "./inline-activate";
 
-// Intent classification (FIX-421) — up-front skill activation router.
+// Skill activation (FIX-421) — up-front skill activation router.
 export {
-  createIntentSelector,
-  type IntentSelectorOptions,
-} from "./intent-selector";
-// Public runtime shapes mirroring the IntentSource / MatchedSkill types
-// in @flow-state-dev/core. Useful for consumers writing their own apply
-// handlers or inspecting `activeSkills` entries from clientData.
+  createSkillActivator,
+  type SkillActivatorOptions,
+} from "./skill-activator";
+// Public runtime shapes mirroring the SkillActivationSource / MatchedSkill
+// types in @flow-state-dev/core. Useful for consumers writing their own
+// apply handlers or inspecting `activeSkills` entries from clientData.
 export {
-  intentSourceSchema,
+  skillActivationSourceSchema,
   matchedSkillSchema,
-} from "./intent-types";
+} from "./skill-activation-types";
 
 export {
   readSkillsDirectory,
@@ -143,11 +143,11 @@ export {
 // Re-export the canonical types from core.
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,

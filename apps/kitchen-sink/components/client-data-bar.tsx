@@ -15,7 +15,7 @@ interface ClientDataBarProps {
   /** The resolved thinking style from the most recent request. */
   thinkingStyle?: string;
   /**
-   * Skills activated by `intentSelector` for the most recent turn (FIX-421).
+   * Skills activated by `skillActivator` for the most recent turn (FIX-421).
    * Each entry carries the skill name and the tier that matched it
    * (`slash` / `keyword` / `classifier`).
    */

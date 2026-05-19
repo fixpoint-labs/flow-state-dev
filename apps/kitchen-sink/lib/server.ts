@@ -12,7 +12,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import {
   assistantMock,
   thinkingStyleClassifierMock,
-  intentClassifierMock,
+  skillClassifierMock,
   autoTitleMock,
 } from "./e2e-mock-script";
 import {
@@ -124,7 +124,7 @@ const modelResolver = process.env.KITCHEN_SINK_TEST_MODE === "1"
         generators: {
           "assistant-generator": assistantMock,
           "thinking-style-classifier": thinkingStyleClassifierMock,
-          "intent-classifier": intentClassifierMock,
+          "skill-classifier": skillClassifierMock,
           "auto-title": autoTitleMock,
         },
         policy: "allow",

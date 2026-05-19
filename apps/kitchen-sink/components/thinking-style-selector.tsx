@@ -19,10 +19,15 @@ import {
   Users,
   ClipboardList,
   RadioIcon,
+  Scale,
   ChevronDownIcon,
 } from "lucide-react";
+import type { ThinkingStyleInput } from "@/flows/chat-agent/blocks";
 
-export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "routed-specialists" | "evented-actors";
+// Action-input shape is the source of truth: the selector lets users
+// pick any value the chat-agent flow accepts on input, including "auto".
+// `import type` keeps the runtime schema out of the client bundle.
+export type ThinkingStyle = ThinkingStyleInput;
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -81,6 +86,15 @@ const STYLE_OPTIONS: StyleOption[] = [
     description: "Parallel actors react independently, no controller",
     icon: RadioIcon,
     color: "text-cyan-500 dark:text-cyan-400",
+  },
+  {
+    value: "moderated-debate",
+    label: "Moderated Debate",
+    shortLabel: "Debate",
+    description:
+      "Two agents argue opposing positions; a moderator drives the rounds, then a judge picks a winner",
+    icon: Scale,
+    color: "text-rose-500 dark:text-rose-400",
   },
 ];
 

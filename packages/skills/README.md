@@ -1,6 +1,6 @@
 # @flow-state-dev/skills
 
-Runtime implementation of the Skills System. Skills are user-modifiable folders (SKILL.md plus supporting files) stored as resources, invoked by the agent through a `runSkill` tool or matched up-front by `createIntentSelector`.
+Runtime implementation of the Skills System. Skills are user-modifiable folders (SKILL.md plus supporting files) stored as resources, invoked by the agent through a `runSkill` tool or matched up-front by `createSkillActivator`.
 
 ## Activation modes
 
@@ -54,7 +54,7 @@ When `patternRegistry` is wired, the `taskTools` capability composes in by defau
 | Export | Purpose |
 |--------|---------|
 | `createSkillsCapability` | The one-line wiring path. |
-| `createIntentSelector` | Up-front skill router (slash + keyword + classifier tiers). |
+| `createSkillActivator` | Up-front skill activator (slash + keyword + classifier tiers). |
 | `readSkillsDirectory` | Walk a filesystem tree into `InitialSkill[]`. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, including pattern bindings. |
 | `createPatternRegistry`, `materializeWorker`, `createPatternRunRoute` | Low-level pattern primitives, for custom wiring. |

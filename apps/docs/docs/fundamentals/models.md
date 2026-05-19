@@ -493,9 +493,29 @@ const reasoner = generator({
 
 The shapes above match what the AI SDK accepts for each provider. Verify against the SDK docs if you're targeting a newer model; the field names occasionally shift.
 
-### The `thinking` model group
+### Intent defaults for thinking
 
-For apps using `createFSDProvider`, the built-in `defaultGroups.thinking` group bundles a three-model fallback chain across Anthropic, OpenAI, and Google with the Anthropic thinking budget already set. Reach for it when you want a thinking-capable model without picking one by hand. See [Model Groups](/docs/advanced/model-groups) for the full group system.
+When you want every generator that resolves through `intent/plan` (or any thinking-shaped intent) to send a budget without spelling it out at each call site, attach it to the intent itself via `intentDefaults`:
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "openai/gpt-5.4",
+  intents: {
+    plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"],
+  },
+  intentDefaults: {
+    plan: {
+      providerOptions: {
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      },
+    },
+  },
+});
+```
+
+When Anthropic wins resolution, the thinking budget is applied. When the fallback runs the OpenAI candidate instead, the `anthropic.*` block is dropped — only the resolved provider's keys travel with the request. A generator that sets its own `providerOptions` at the call site still wins on key collisions.
+
+See [Custom Model Resolver](/docs/advanced/custom-model-resolver#intent-defaults) for the full configuration surface.
 
 ### Forward note: normalized reasoning levels
 
@@ -540,5 +560,4 @@ The runtime error still references FIX-517 (normalized reasoning levels). That f
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app
-- [Model Groups](/docs/advanced/model-groups) — deeper dive into model groups, gateways, and provider introspection
-- [Custom Model Resolver](/docs/advanced/custom-model-resolver) — advanced resolver configuration
+- [Custom Model Resolver](/docs/advanced/custom-model-resolver) — resolver options, intent defaults, gateway configuration, and provider introspection

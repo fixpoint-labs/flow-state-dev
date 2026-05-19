@@ -3,6 +3,45 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-18
+
+### Moderated Debate (FIX-607)
+
+- `debate()` now accepts an optional `moderator` block that opens each round. The moderator picks who speaks, can supply a `briefing` and `newAngle` that the round's debaters see, and may flag a round as the last one. With the moderator at the top, every decision drives a real round — no orphan decisions before the judge.
+- The moderator can use tools. Passing `tools`/`uses` to `createModerator` (or a custom moderator) gives it research capabilities; the default prompt nudges it to call available tools and fold findings into `briefing` so every debater in the round argues from the same factual base.
+- New `terminateWhen?: (ctx) => boolean` predicate exits the loop early based on session state, mirroring Round Robin's predicate. It works with or without a moderator. The judge is unchanged — it still runs once at the end and returns `{ verdict, winner, reasoning }`.
+- New `createModerator(opts)` factory ships a default moderator generator and is re-exported from `@flow-state-dev/patterns/debate`. The output schema rejects empty `nextSpeakers` with `done: false`, so a malformed moderator can't cause an empty round. `DebateRawOutput` carries a `moderatorDecisions` field with `briefing` and `newAngle` alongside `nextSpeakers` and `done`.
+- `debate()` accepts an optional `transcript` resource (analogous to `roundRobin`'s `contributions`) so a custom moderator, judge, or synthesizer can share the pattern's transcript.
+- Kitchen-sink ships a new "Moderated Debate" thinking style with an `advocate` / `skeptic` roster, keyword classifier hooks, and an LLM classifier category — selectable from the thinking-style dropdown or auto-routed via phrases like "should we" and "argue both sides". A dedicated `<Debate />` container renderer groups the transcript by round, opens each round with the moderator's decision card (speakers, briefing, focus), and closes with the judge's verdict.
+- Debate, Round Robin, and the patterns overview docs are reshaped around the Debate-vs-Round-Robin distinction: verdict-with-winner vs. synthesized deliverable, moderator vs. referee, non-deterministic dispatch vs. fixed order.
+
+### Trading-desk: user-settable special instructions injected into every agent's prompt (FIX-603)
+
+- New settings dialog reachable from a gear in the status bar lets a user author free-text "special instructions" — one global block applied to every phase, plus one block per phase for narrower guidance. Edits persist per user and survive server restarts; the next analysis run picks them up automatically.
+- Injection rides the `tradingDesk` capability's always-on `core` preset, so every one of the pipeline's thirteen generators sees a `<userInstructions>` block with a short framing sentence followed by the global text and the active phase's text. Empty fields produce zero prompt content — the wrapping tag is suppressed when nothing is set.
+- The example's first user-scoped resource: `scope: "user"` with `flowIsolation: true` so trading-desk instructions stay under `{userId}:trading-desk` and never bleed into other flows the same user touches. State is read on the client via `useResource` from the session snapshot — no new server route.
+- Status bar surfaces an `instructions: N active` indicator next to the gear. The gear is disabled until the first analysis run creates a session, since `useResource` projects from a session snapshot.
+- README and trading-desk walkthrough updated with the feature, the resource shape, and the capability-preset injection seam.
+
+### Trading-desk: live social-sentiment provider via Grok (FIX-599)
+
+- `get_social_sentiment` now has a live path. In live mode with `XAI_API_KEY` set, the tool routes to a Grok generator that uses xAI's `xSearch` hosted tool to retrieve recent X/Twitter posts about the ticker and returns a schema-valid sentiment payload tagged `source: "xai"`. The sentiment analyst was the one Phase 1 tool with no real live provider after FIX-589 — it ran structurally blind and emitted noise. It now produces grounded signal when an xAI key is configured.
+- The public `socialSentimentSchema` now carries a `posts` array — handle, one-sentence verbatim excerpt, per-post polarity — alongside the numeric score and counts. The sentiment analyst reads the actual quotes rather than relying on a single non-deterministic score, and can attribute reads to specific posts. The xAI generator is prompted for 8–15 representative posts spanning polarities. Fixture mode ships a curated 12-post set so fixture runs exercise the same shape.
+- `shortInterestPct` is now `z.number().nullable()` and `null` on the xAI path. X chatter can't measure short interest from filings — a fabricated `0` would read as "no shorts." Fixture mode keeps its curated value. The sentiment-analyst prompt is updated to read `null` as "unknown," never as zero.
+- Without `XAI_API_KEY`, live mode keeps returning the `unavailable` payload. No false data, no silent fixture substitution. Fixture mode is unchanged.
+- The dispatch primitive is a `router` with three routes — fixture handler, Grok generator, unavailable handler. First Phase 1 tool to span block kinds; the others use `if` inside a handler because every branch is a deterministic HTTP fetch.
+- One new dependency in the example: `@ai-sdk/xai`. The xAI provider is registered through the model resolver's `providers` slot as a function that picks the **responses** model — `xSearch` only works there. Zero changes to `packages/core/*`.
+- New `xai` value on the `sourceTag` enum alongside `finnhub` / `yahoo` / `fred` / `polymarket` / `fixture` / `unavailable`. Provider-named to match the existing convention.
+
+### Configurable downstream information flow on Task Board (FIX-610)
+
+- New `@flow-state-dev/utilities-task-flow` package ships two independent layers that plug into `taskBoard` and the patterns built on it: a per-tool result cache and a per-task observation policy.
+- Tool blocks opt into memoization via `cacheable: true` or `cacheable: { ttl, scope, keyFn, cacheIf }`. Identical calls within the configured scope (`run` / `request` / `session`) serve from cache; identical in-flight calls in one request coalesce to a single execution. Errors are never cached. Cached `tool_output` items carry `cached: true`, `cacheAgeMs`, and `sourceTask` for cross-task hits so the DevTool transcript can attribute them.
+- `TaskBoardConfig.flowPolicy` controls which prior-task observations a freshly dispatched worker sees on its `TaskWorkerInput.priorWork` slot. Built-in policies: `flowPolicy.none`, `declaredDepsOnly`, `ancestors`, `recentTrajectory`, `allCompleted`, `compact`, and `custom`.
+- Pattern defaults: `planAndExecute` pins `recentTrajectory({ n: 8 })`; `supervisor` pins `declaredDepsOnly`; bare `taskBoard` defaults to `declaredDepsOnly` for every topology.
+- Kitchen-sink's `readArtifact` block in the chat-agent flow is now `cacheable: { ttl: 60_000 }`, so repeated reads of the same artifact within a Task Board run are served from cache.
+- New `patterns/flow-policy` docs page; `plan-and-execute` gains a "Sharing context across iterations" section; `tools/overview` gains a "Marking tools cacheable" section; new BP-021 covers when to opt in.
+
 ## 2026-05-17
 
 ### Turn-aware history windowing (FIX-608)

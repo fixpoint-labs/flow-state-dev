@@ -40,6 +40,15 @@ Phase 1 — analyst fan-out:
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
   filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
   on failure, like other single-provider tools).
+- **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
+  sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
+  xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
+  single-provider tools). The payload carries both the numeric score and a
+  `posts` array of representative X excerpts (handle + one-sentence
+  verbatim quote + per-post polarity), so the analyst reasons from the
+  actual quotes rather than a single non-deterministic score.
+  `shortInterestPct` is `null` on the xAI path — short interest can't be
+  measured from chatter, and a fabricated 0 would read as "no shorts."
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -162,8 +171,9 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
 - **source** — `fixture` (canonical hand-curated JSON) or `live` (Yahoo Finance
-  for prices and fundamentals; news and sentiment fall back to fixtures with a
-  noted follow-on).
+  + Finnhub + FRED + Polymarket for structured data; Grok via `xSearch` for
+  social sentiment when `XAI_API_KEY` is set; tools whose provider key is
+  absent return `unavailable`).
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -200,6 +210,32 @@ The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
 **re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
 for the generalized pattern.
 
+## Custom instructions
+
+The status bar carries a gear icon that opens a settings dialog where you can
+author free-text instructions that shape how the desk reasons — one global
+block applied to every phase plus one block per phase for narrower guidance.
+"Hold for days, not quarters", "weight balance-sheet quality over momentum",
+"treat litigation risk as the top concern" — that kind of thing.
+
+**Setting instructions.** The gear is enabled after the first analysis run
+(the dialog reads the user-scope resource through a session snapshot, so it
+needs a session to exist). Open it, type into any field, click Save. Empty
+fields produce no prompt content. Edits take effect on the next analysis
+run; the in-flight run, if any, is untouched.
+
+**How injection works.** The `tradingDesk` capability's always-on `core`
+preset renders a `<userInstructions>` block into every generator's prompt
+with a short framing sentence followed by the global block and the active
+phase's block. When both are empty the wrapper tag is suppressed entirely —
+no `<userInstructions/>` leaks into the prompt when nothing is set.
+
+**Where it's stored.** Per user, under
+`.fsdev/data/users/<userId>:trading-desk/` (the `:trading-desk` suffix comes
+from `flowIsolation: true` on the resource, so other flows running for the
+same user never see these instructions). The directory is covered by
+`.gitignore`.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider
@@ -208,11 +244,13 @@ and `intent/chat` intents can resolve. The example does not bundle a
 default-model assumption — extend `lib/server.ts`'s `createModelResolver` call
 if you want to wire intents to specific gateway models.
 
-`yahoo-finance2` is keyless. The live source for news and sentiment is a
-fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
-`get_insider_transactions` — without it, the tool returns `unavailable` and
-the news analyst treats insider data as missing signal.
+`yahoo-finance2` is keyless. `FINNHUB_API_KEY` enables live Finnhub-backed
+tools (fundamentals, prices, news, insider transactions); without it those
+tools return `unavailable` and the relevant analyst treats the result as
+missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
+`xSearch` over X/Twitter; without it, `get_social_sentiment` returns
+`unavailable` and the sentiment analyst applies the same missing-signal
+treatment.
 
 ## Architecture in brief
 

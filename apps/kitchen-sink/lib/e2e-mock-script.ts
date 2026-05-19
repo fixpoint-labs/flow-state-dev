@@ -2,7 +2,7 @@
  * Deterministic mock generators for kitchen-sink E2E tests. Loaded only
  * when `KITCHEN_SINK_TEST_MODE=1`.
  *
- * The chat-agent flow runs four generators per turn (intent-classifier,
+ * The chat-agent flow runs four generators per turn (skill-classifier,
  * thinking-style-classifier, assistant-generator, auto-title). Each gets
  * its own mock instance below. `policy: "allow"` (set in `lib/server.ts`)
  * catches anything else with a no-op model.
@@ -106,7 +106,7 @@ const thinkingStyleClassifierScript: MockGeneratorScriptEntry[] = [
 ];
 
 /** Empty active-skills → no skill activation in test mode. */
-const intentClassifierScript: MockGeneratorScriptEntry[] = [
+const skillClassifierScript: MockGeneratorScriptEntry[] = [
   {
     when: alwaysTrue,
     then: {
@@ -124,9 +124,9 @@ export const thinkingStyleClassifierMock = mockGenerator({
   script: thinkingStyleClassifierScript,
 });
 
-export const intentClassifierMock = mockGenerator({
-  name: "intent-classifier",
-  script: intentClassifierScript,
+export const skillClassifierMock = mockGenerator({
+  name: "skill-classifier",
+  script: skillClassifierScript,
 });
 
 export const autoTitleMock = mockGenerator({

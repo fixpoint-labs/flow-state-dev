@@ -6,7 +6,7 @@ sidebar_position: 2
 
 A skill can become active in two ways:
 
-- **Up-front**, before the main generator runs, via `createIntentSelector`. A small router classifies the user message and writes the matched skills into session state. The generator runs once with the skill body already in its system prompt.
+- **Up-front**, before the main generator runs, via `createSkillActivator`. A small router classifies the user message and writes the matched skills into session state. The generator runs once with the skill body already in its system prompt.
 - **Mid-flow**, while the generator is running, via the `runSkill` tool. The model sees a catalog of skills in its system prompt, decides one applies, and emits a tool call to activate it. The generator re-enters with the skill body in context.
 
 Most apps want the up-front path as the default and `runSkill` as an escape hatch the agent can use when it changes its mind mid-turn. This page covers both.
@@ -21,12 +21,12 @@ The up-front path addresses three downsides of tool-call activation:
 
 The tool-call path is still the right choice when activation is fluid (the agent decides several steps in) or when you don't want to add a classifier call to the front of every turn. They compose — see below.
 
-## Up-front: `createIntentSelector`
+## Up-front: `createSkillActivator`
 
 ```ts
-import { createIntentSelector } from "@flow-state-dev/skills";
+import { createSkillActivator } from "@flow-state-dev/skills";
 
-export const intentSelector = createIntentSelector({
+export const skillActivator = createSkillActivator({
   scope: "user", // matches the skills capability's scope
 });
 ```
@@ -36,7 +36,7 @@ The result is a `.tap`-able sequencer. Insert it ahead of your main generator in
 ```ts
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
-  .tap(intentSelector)
+  .tap(skillActivator)
   .then(assistantGenerator);
 ```
 
@@ -44,7 +44,7 @@ It reads `input.message`, decides what (if any) skills apply, and writes the mat
 
 ### Three tiers
 
-`intentSelector` runs three tiers in order, each gated by whether an earlier tier already resolved:
+`skillActivator` runs three tiers in order, each gated by whether an earlier tier already resolved:
 
 1. **Slash match.** If the message starts with `/<skill-name>`, look up the skill in the collection and activate it. Deterministic, no LLM call. The argument tail (`/check-news quantum computing`) becomes `$ARGUMENTS` in the body.
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings against the lowercased message. Every skill whose keywords match activates with `source: "keyword"`. Local, no LLM call.
@@ -55,7 +55,7 @@ A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn tha
 ### Options
 
 ```ts
-createIntentSelector({
+createSkillActivator({
   // Resource registry key for the skills collection. Default "skills".
   collectionKey: "skills",
   // Scope to read the collection from. Must match the skills capability.
@@ -75,10 +75,10 @@ Set `enableLlmClassifier: false` in tests that shouldn't depend on a mocked clas
 
 ### Drop the tool-call path
 
-When a flow uses `intentSelector`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. The capability ships them in a `runSkill` preset that you opt out of with the standard preset overrides:
+When a flow uses `skillActivator`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. The capability ships them in a `runSkill` preset that you opt out of with the standard preset overrides:
 
 ```ts
-import { createSkillsCapability, createIntentSelector } from "@flow-state-dev/skills";
+import { createSkillsCapability, createSkillActivator } from "@flow-state-dev/skills";
 
 export const skillsCap = createSkillsCapability({
   catalog: { /* ... */ },
@@ -86,19 +86,19 @@ export const skillsCap = createSkillsCapability({
   scope: "user",
 });
 
-export const intentSelector = createIntentSelector({ scope: "user" });
+export const skillActivator = createSkillActivator({ scope: "user" });
 
 // At the use site:
-//   uses: [skillsCap.presets({ runSkill: false }), intentSelector, ...]
+//   uses: [skillsCap.presets({ runSkill: false }), skillActivator, ...]
 ```
 
 The active-skill body formatter lives on a separate `context` preset that stays on by default — that's how matched skills get their substituted body into the system prompt. Dropping `runSkill` only removes the catalog listing and the tool itself.
 
 ### Active-skill state
 
-`intentSelector`'s apply step writes the matched skills to `session.state.activeSkills` — the same slot the active-skill body formatter reads on every generator step. Each entry carries `{ name, mode, input, activatedAt, source }`. The `source` field is what `intentSelector` sets to record which tier matched; entries pushed by mid-flow `runSkill` calls leave it undefined.
+`skillActivator`'s apply step writes the matched skills to `session.state.activeSkills` — the same slot the active-skill body formatter reads on every generator step. Each entry carries `{ name, mode, input, activatedAt, source }`. The `source` field is what `skillActivator` sets to record which tier matched; entries pushed by mid-flow `runSkill` calls leave it undefined.
 
-`activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
+`activeSkills` is **replaced** each turn by `skillActivator`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
 
 ### Showing the active skill in your UI
 
@@ -144,7 +144,7 @@ This path is appropriate when:
 
 ## Composing both
 
-You can keep `runSkill` bound while also using `intentSelector`. The up-front pass sets the baseline each turn; any agent-initiated mid-flow `runSkill` call appends on top. There's no gating between them — the escape hatch stays open.
+You can keep `runSkill` bound while also using `skillActivator`. The up-front pass sets the baseline each turn; any agent-initiated mid-flow `runSkill` call appends on top. There's no gating between them — the escape hatch stays open.
 
 This is useful when most turns benefit from up-front classification but you also want the agent to be able to activate something mid-investigation. Most flows don't need this; pick one path and stick with it.
 

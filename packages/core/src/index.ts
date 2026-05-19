@@ -1,4 +1,4 @@
-export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { BlockCacheableConfig, BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { AgentType, ItemVisibility } from "./items/types";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
@@ -18,15 +18,16 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
+export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
   PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,
@@ -188,7 +189,6 @@ export {
   createAiSdkTranscriptionResolver,
   wrapAiSdkTranscriptionModel,
   createFSDProvider,
-  defaultGroups,
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
@@ -205,6 +205,7 @@ export type {
   ResolveAiSdkSpeechModel,
   ResolveAiSdkTranscriptionModel,
   CreateModelResolverOptions,
+  IntentDefaults,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,

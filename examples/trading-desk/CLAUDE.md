@@ -199,14 +199,25 @@ When adding a new ticker to fixture coverage:
 
 Live mode wires Finnhub → Yahoo → FRED → Polymarket as the upstream
 providers, plus the `fetch` tool from `@flow-state-dev/tools` for article
-bodies. Required environment variables:
+bodies, plus Grok (xAI) for social sentiment when `XAI_API_KEY` is set.
+Required environment variables:
 
 ```
 FINNHUB_API_KEY=...      # finnhub.io — fundamentals, prices, news, insider transactions
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
+XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
 ```
 
 Polymarket and Yahoo Finance don't require keys.
+
+`get_social_sentiment` is the only Phase 1 tool that routes between a
+handler and a generator. Fixture and unavailable are handlers; the
+live-Grok path is a generator with the `xSearch` provider tool installed.
+The dispatch primitive is a `router` (block kinds differ across routes —
+the rest of the Phase 1 tools use `if` inside a handler because every
+branch is the same kind). See
+[`phase-1/tools/get_social_sentiment.ts`](src/flows/trading-desk/phase-1/tools/get_social_sentiment.ts)
+as the canonical example of a router-with-LLM-route pattern.
 
 If a live provider fails for a given tool, the tool returns an empty payload
 tagged `source: "unavailable"` (see BP-020). It does **not** fall back to

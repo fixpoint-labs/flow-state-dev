@@ -93,7 +93,7 @@ More specifically:
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Controller-driven multi-agent workspace (incremental synthesis)** → [Routed Specialists](./routed-specialists)
 - **Fixed-roster turn-taking with a judge deciding when to stop** → [Round Robin](./round-robin)
-- **Adversarial argumentation across assigned positions with a final judge** → [Debate](./debate)
+- **Adversarial argumentation with assigned stances and a final judge. An optional moderator can drive non-deterministic dispatch across rounds and signal early termination.** → [Debate](./debate)
 - **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
 - **Concurrent dependency-aware drain over a Task Collection** → Task Board (see `@flow-state-dev/patterns/task-board`)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`

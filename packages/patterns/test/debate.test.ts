@@ -7,12 +7,15 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
+import { makeSchemaStrict } from "@flow-state-dev/core";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
-import { z } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import {
   debate,
+  debateModeratorOutputSchema,
   formatTranscriptForJudge,
   type DebateContributionEntry,
+  type DebateModeratorOutput,
   type DebateRawOutput,
 } from "../src/debate";
 
@@ -286,6 +289,83 @@ describe("debate", () => {
     expect(result.error).not.toBeNull();
   });
 
+  it("emits debate-turn, debate-decision, and debate-verdict component items for the UI renderer", async () => {
+    const moderator = handler({
+      name: "moderator-emits",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        nextSpeakers: z.array(z.string()),
+        briefing: z.string().nullable(),
+        newAngle: z.string().nullable(),
+        done: z.boolean(),
+      }),
+      execute: () => ({
+        // Moderator opens the round with both debaters and immediately
+        // declares this the last round, so both speakers still go.
+        nextSpeakers: ["a", "b"],
+        briefing: null,
+        newAngle: null,
+        done: true,
+      }),
+    });
+    const judge = handler({
+      name: "judge-emits",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        verdict: z.string(),
+        winner: z.string().nullable(),
+        reasoning: z.string(),
+      }),
+      execute: () => ({ verdict: "v", winner: "for", reasoning: "r" }),
+    });
+    const pattern = debate({
+      name: "deb-emits",
+      debaters: [
+        { name: "a", stance: "for", block: makeDebater("a", "for") },
+        { name: "b", stance: "against", block: makeDebater("b", "against") },
+      ],
+      maxRounds: 1,
+      moderator,
+      judge,
+      synthesizer: false,
+    });
+
+    const result = await testBlock(pattern, {
+      input: { question: "q" },
+      session: { resources: { transcript: { entries: [] } } },
+    });
+
+    expect(result.error).toBeNull();
+    const turns = result.items.filter(
+      (i) => i.type === "component" && (i as any).component === "debate-turn",
+    );
+    const decisions = result.items.filter(
+      (i) =>
+        i.type === "component" && (i as any).component === "debate-decision",
+    );
+    const verdicts = result.items.filter(
+      (i) =>
+        i.type === "component" && (i as any).component === "debate-verdict",
+    );
+    expect(turns).toHaveLength(2);
+    expect(decisions).toHaveLength(1);
+    expect(verdicts).toHaveLength(1);
+    // Spot-check shape of one turn and the verdict — the UI renderer
+    // depends on these fields.
+    const firstTurn = turns[0] as any;
+    expect(firstTurn.data).toMatchObject({
+      round: 1,
+      agentName: "a",
+      stance: "for",
+    });
+    expect(typeof firstTurn.data.text).toBe("string");
+    expect((verdicts[0] as any).data).toEqual({
+      verdict: "v",
+      winner: "for",
+      reasoning: "r",
+    });
+  });
+
   it("emits one task per (round, debater) turn", async () => {
     const pattern = debate({
       name: "deb-tasks",
@@ -430,15 +510,15 @@ describe("debate", () => {
     const debaterMock = mockGenerator({
       name: "deb-prompts-debater-a",
       script: [
-        { structuredOutput: { text: "first-a" } },
-        { structuredOutput: { text: "second-a" } },
+        { text: "first-a" },
+        { text: "second-a" },
       ],
     });
     const debaterMockB = mockGenerator({
       name: "deb-prompts-debater-b",
       script: [
-        { structuredOutput: { text: "first-b" } },
-        { structuredOutput: { text: "second-b" } },
+        { text: "first-b" },
+        { text: "second-b" },
       ],
     });
     const judgeMock = mockGenerator({
@@ -487,11 +567,11 @@ describe("debate", () => {
   it("default judge anonymizes by default and de-anonymizes when toggled off", async () => {
     const debaterMockA = mockGenerator({
       name: "deb-anon-debater-a",
-      script: [{ structuredOutput: { text: "A says" } }],
+      script: [{ text: "A says" }],
     });
     const debaterMockB = mockGenerator({
       name: "deb-anon-debater-b",
-      script: [{ structuredOutput: { text: "B says" } }],
+      script: [{ text: "B says" }],
     });
     const judgeMock = mockGenerator({
       name: "deb-anon-judge",
@@ -533,11 +613,11 @@ describe("debate", () => {
     // Now run with anonymization off; judge prompt should include names.
     const debaterMockA2 = mockGenerator({
       name: "deb-anon2-debater-alpha",
-      script: [{ structuredOutput: { text: "A says" } }],
+      script: [{ text: "A says" }],
     });
     const debaterMockB2 = mockGenerator({
       name: "deb-anon2-debater-beta",
-      script: [{ structuredOutput: { text: "B says" } }],
+      script: [{ text: "B says" }],
     });
     const judgeMock2 = mockGenerator({
       name: "deb-anon2-judge",
@@ -570,5 +650,722 @@ describe("debate", () => {
     const judgeMessages2 = JSON.stringify(judgeMock2.calls[0]?.input ?? "");
     expect(judgeMessages2).toContain("alpha");
     expect(judgeMessages2).toContain("beta");
+  });
+
+  describe("moderator", () => {
+    /**
+     * Scripted moderator: each call returns the next entry from a fixed
+     * list of decisions. Counts invocations so tests can assert it ran
+     * once per completed round.
+     */
+    function makeScriptedModerator(decisions: DebateModeratorOutput[]) {
+      let i = 0;
+      let count = 0;
+      const block = handler({
+        name: "moderator-handler",
+        inputSchema: z.any(),
+        outputSchema: debateModeratorOutputSchema,
+        execute: () => {
+          count++;
+          const next = decisions[Math.min(i, decisions.length - 1)]!;
+          i++;
+          return next;
+        },
+      });
+      return { block, getCount: () => count };
+    }
+
+    function makeJudgeOnce() {
+      let count = 0;
+      const block = handler({
+        name: "moderator-judge",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          verdict: z.string(),
+          winner: z.string().nullable(),
+          reasoning: z.string(),
+        }),
+        execute: () => {
+          count++;
+          return { verdict: "v", winner: null, reasoning: "r" };
+        },
+      });
+      return { block, getCount: () => count };
+    }
+
+    it("each moderator decision opens its own round (moderator runs at the top)", async () => {
+      const moderator = makeScriptedModerator([
+        // Round 1: full roster opens.
+        { nextSpeakers: ["a", "b", "c"], briefing: null, newAngle: null, done: false },
+        // Round 2: only c speaks; then done.
+        { nextSpeakers: ["c"], briefing: null, newAngle: null, done: true },
+      ]);
+      const judge = makeJudgeOnce();
+      const pattern = debate({
+        name: "deb-mod-r1",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+          { name: "c", stance: "neutral", block: makeDebater("c", "neutral") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: judge.block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      // decision[0] (round 1) → a, b, c speak. decision[1] (round 2,
+      // done:true) → c speaks as closer, then loop exits. The judge
+      // runs after the round that just completed — no orphan decisions.
+      expect(out.transcript.map((e) => `${e.round}:${e.agentName}`)).toEqual([
+        "1:a",
+        "1:b",
+        "1:c",
+        "2:c",
+      ]);
+      expect(out.rounds).toBe(2);
+      expect(judge.getCount()).toBe(1);
+      expect(out.moderatorDecisions).toHaveLength(2);
+      expect(out.moderatorDecisions[0]?.round).toBe(1);
+      expect(out.moderatorDecisions[1]?.round).toBe(2);
+    });
+
+    it("dispatches the moderator's named speakers per round, in the order specified", async () => {
+      const moderator = makeScriptedModerator([
+        // Round 1: full roster.
+        { nextSpeakers: ["a", "b", "c", "d"], briefing: null, newAngle: null, done: false },
+        // Round 2: d then a (in that order); this is also the last round.
+        { nextSpeakers: ["d", "a"], briefing: null, newAngle: null, done: true },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-dispatch",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+          { name: "c", stance: "neutral", block: makeDebater("c", "neutral") },
+          { name: "d", stance: "wildcard", block: makeDebater("d", "wildcard") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.transcript.map((e) => `${e.round}:${e.agentName}`)).toEqual([
+        "1:a",
+        "1:b",
+        "1:c",
+        "1:d",
+        "2:d",
+        "2:a",
+      ]);
+    });
+
+    it("debaters within a round see prior debaters' arguments (sequential visibility)", async () => {
+      const seen: Array<{ name: string; round: number; priors: number }> = [];
+      const moderator = makeScriptedModerator([
+        // Round 1: a then b.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        // Round 2 (closer): a then b again.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: true },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-visibility",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for", seen) },
+          { name: "b", stance: "against", block: makeDebater("b", "against", seen) },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      // Round 1: a sees 0, b sees 1. Round 2: a sees 2, b sees 3.
+      // The round-2 visibility numbers prove maxConcurrency: 1 is in
+      // effect — under parallel execution both round-2 speakers would
+      // see the same 2 priors.
+      expect(seen).toEqual([
+        { name: "a", round: 1, priors: 0 },
+        { name: "b", round: 1, priors: 1 },
+        { name: "a", round: 2, priors: 2 },
+        { name: "b", round: 2, priors: 3 },
+      ]);
+    });
+
+    it("renders the moderator's briefing and newAngle into the same round's default debater prompt", async () => {
+      const debaterMockA = mockGenerator({
+        name: "deb-mod-angle-debater-a",
+        script: [
+          { text: "first-a" },
+          { text: "second-a" },
+        ],
+      });
+      const debaterMockB = mockGenerator({
+        name: "deb-mod-angle-debater-b",
+        script: [
+          { text: "first-b" },
+          { text: "second-b" },
+        ],
+      });
+      const moderator = makeScriptedModerator([
+        // Round 1: open with briefing + plain frame.
+        {
+          nextSpeakers: ["a", "b"],
+          briefing: "P99 latency on the current SQL deploy is 240ms.",
+          newAngle: null,
+          done: false,
+        },
+        // Round 2 (closer): inject a new focus angle.
+        {
+          nextSpeakers: ["a", "b"],
+          briefing: null,
+          newAngle: "What about latency under load?",
+          done: true,
+        },
+      ]);
+      const judgeMock = mockGenerator({
+        name: "deb-mod-angle-judge",
+        script: [
+          {
+            structuredOutput: { verdict: "v", winner: null, reasoning: "r" },
+          },
+        ],
+      });
+
+      const pattern = debate({
+        name: "deb-mod-angle",
+        debaters: [
+          { name: "a", stance: "for" },
+          { name: "b", stance: "against" },
+        ],
+        maxRounds: 3,
+        moderator: moderator.block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+        generators: {
+          "deb-mod-angle-debater-a": debaterMockA,
+          "deb-mod-angle-debater-b": debaterMockB,
+          "deb-mod-angle-judge": judgeMock,
+        },
+      });
+
+      expect(result.error).toBeNull();
+      const round1A = JSON.stringify(debaterMockA.calls[0]?.input ?? "");
+      const round2A = JSON.stringify(debaterMockA.calls[1]?.input ?? "");
+      // Round 1's debater sees the round-1 briefing but not the round-2
+      // angle the moderator hasn't issued yet.
+      expect(round1A).toContain("P99 latency");
+      expect(round1A).not.toContain("latency under load");
+      // Round 2's debater sees the round-2 angle (and not the prior
+      // round's briefing leaking forward).
+      expect(round2A).toContain("latency under load");
+      expect(round2A).not.toContain("P99 latency on the current SQL");
+    });
+
+    it("moderator done=true lets the current round run, then exits the loop", async () => {
+      const moderator = makeScriptedModerator([
+        // First and only decision opens round 1 with both debaters and
+        // immediately declares it the last round. Both still speak;
+        // judge then runs over the round-1 transcript.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: true },
+      ]);
+      const judge = makeJudgeOnce();
+      const pattern = debate({
+        name: "deb-mod-done",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: judge.block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(1);
+      expect(out.transcript).toHaveLength(2);
+      expect(out.moderatorDecisions).toHaveLength(1);
+      expect(out.moderatorDecisions[0]?.done).toBe(true);
+      expect(judge.getCount()).toBe(1);
+    });
+
+    it("terminateWhen exits the loop early when no moderator is configured", async () => {
+      const pattern = debate({
+        name: "deb-terminate-no-mod",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        terminateWhen: (ctx) => {
+          const state = ctx.sequencer!.state as { round: number };
+          return state.round >= 2;
+        },
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(2);
+      expect(out.moderatorDecisions).toEqual([]);
+    });
+
+    it("terminateWhen exits the loop early with a moderator", async () => {
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-terminate",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        terminateWhen: (ctx) => {
+          const state = ctx.sequencer!.state as { round: number };
+          return state.round >= 2;
+        },
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(2);
+    });
+
+    it("maxRounds caps the loop when the moderator keeps signalling done=false", async () => {
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-cap",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 3,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(3);
+      expect(out.moderatorDecisions).toHaveLength(3);
+    });
+
+    it("rejects an unknown speaker name with the available-names list", async () => {
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["nobody"], briefing: null, newAngle: null, done: false },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-unknown",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).not.toBeNull();
+      const msg = String(result.error?.message ?? "");
+      expect(msg).toContain('unknown debater "nobody"');
+      expect(msg).toContain("Available: a, b");
+    });
+
+    it("allows the moderator to request the same speaker twice in one round", async () => {
+      const moderator = makeScriptedModerator([
+        // Round 1 dispatches a twice in a row; closer at round 2.
+        { nextSpeakers: ["a", "a"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: ["b"], briefing: null, newAngle: null, done: true },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-dup",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      // Round 1 (a twice as moderator chose), then round 2's closer (b).
+      expect(out.transcript.map((e) => `${e.round}:${e.agentName}`)).toEqual([
+        "1:a",
+        "1:a",
+        "2:b",
+      ]);
+    });
+
+    it("moderatorDecisions is populated on raw output and equals rounds in length", async () => {
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["a"], briefing: null, newAngle: "first", done: false },
+        { nextSpeakers: ["b"], briefing: null, newAngle: null, done: false },
+        { nextSpeakers: [], briefing: null, newAngle: null, done: true },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-decisions",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(3);
+      expect(out.moderatorDecisions).toHaveLength(3);
+      expect(out.moderatorDecisions.map((d) => d.round)).toEqual([1, 2, 3]);
+      expect(out.moderatorDecisions[0]?.newAngle).toBe("first");
+      expect(out.moderatorDecisions[2]?.done).toBe(true);
+    });
+
+    it("moderatorDecisions is an empty array when no moderator is configured", async () => {
+      const pattern = debate({
+        name: "deb-no-mod-decisions",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 1,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.moderatorDecisions).toEqual([]);
+    });
+
+    it("the synthesizer receives moderatorDecisions on its input", async () => {
+      let captured: DebateRawOutput | null = null;
+      const synth = handler({
+        name: "capture-synth",
+        inputSchema: z.any(),
+        outputSchema: z.object({ ok: z.boolean() }),
+        execute: (input) => {
+          captured = input as DebateRawOutput;
+          return { ok: true };
+        },
+      });
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: [], briefing: null, newAngle: "x", done: true },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-synth",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 3,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      expect(captured).not.toBeNull();
+      expect(captured!.moderatorDecisions).toHaveLength(1);
+      expect(captured!.moderatorDecisions[0]?.newAngle).toBe("x");
+    });
+
+    it("maxRounds=1 with moderator runs one round and records its decision", async () => {
+      const moderator = makeScriptedModerator([
+        // Moderator opens the one round it gets, dispatches both speakers,
+        // and the loopBack exits via the round-cap. Decision is stashed
+        // and drove the round's dispatch.
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false },
+      ]);
+      const pattern = debate({
+        name: "deb-mod-one",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 1,
+        moderator: moderator.block,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(1);
+      expect(out.transcript).toHaveLength(2);
+      expect(out.moderatorDecisions).toHaveLength(1);
+    });
+
+    it("a moderator that throws surfaces as a run error", async () => {
+      const brokenModerator = handler({
+        name: "moderator-broken",
+        inputSchema: z.any(),
+        outputSchema: debateModeratorOutputSchema,
+        execute: () => {
+          throw new Error("moderator-boom");
+        },
+      });
+      const pattern = debate({
+        name: "deb-mod-throws",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: brokenModerator,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).not.toBeNull();
+      expect(String(result.error?.message ?? "")).toContain("moderator-boom");
+    });
+
+    it("exits after round 2 when terminateWhen and moderator.done both fire", async () => {
+      // Both mechanisms wired to end after round 2; the loopBack predicate's
+      // short-circuit order (round cap → moderator.done → terminateWhen)
+      // means moderator.done wins here, but exit happens regardless.
+      const moderator = makeScriptedModerator([
+        { nextSpeakers: ["a", "b"], briefing: null, newAngle: null, done: false }, // round 1 → continue
+        { nextSpeakers: [], briefing: null, newAngle: null, done: true },          // round 2 → done
+      ]);
+      const pattern = debate({
+        name: "deb-mod-and-terminate",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        moderator: moderator.block,
+        terminateWhen: (ctx) => {
+          const state = ctx.sequencer!.state as { round: number };
+          return state.round >= 2;
+        },
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).toBeNull();
+      const out = result.output as DebateRawOutput;
+      expect(out.rounds).toBe(2);
+      // Both exit conditions are truthy after round 2; either is sufficient.
+      expect(
+        out.moderatorDecisions[out.moderatorDecisions.length - 1]?.done,
+      ).toBe(true);
+    });
+
+    it("terminateWhen that throws propagates as a run error", async () => {
+      const pattern = debate({
+        name: "deb-terminate-throws",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        maxRounds: 5,
+        terminateWhen: () => {
+          throw new Error("boom");
+        },
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(pattern, {
+        input: { question: "q" },
+        session: { resources: { transcript: { entries: [] } } },
+      });
+
+      expect(result.error).not.toBeNull();
+      expect(String(result.error?.message ?? "")).toContain("boom");
+    });
+
+    it("rejects moderator: false at factory construction", () => {
+      expect(() =>
+        debate({
+          name: "deb-mod-false",
+          debaters: [
+            { name: "a", stance: "for" },
+            { name: "b", stance: "against" },
+          ],
+          // Intentional misuse — runtime error path.
+          moderator: false as any,
+        }),
+      ).toThrow(/moderator cannot be set to false/);
+    });
+
+    it("output schema retains its refinement and survives makeSchemaStrict cleanly", () => {
+      // Guard against accidental removal of the .refine() guarding
+      // nextSpeakers: [] + done: false.
+      expect(
+        (debateModeratorOutputSchema as any)._def?.typeName,
+      ).toBe("ZodEffects");
+
+      const strict = makeSchemaStrict(debateModeratorOutputSchema);
+      const violations: string[] = [];
+      const walk = (node: ZodTypeAny, path: string) => {
+        const def = (node as any)._def;
+        const t = def?.typeName as string | undefined;
+        switch (t) {
+          case "ZodOptional":
+          case "ZodDefault":
+            violations.push(`${path}: ${t} survived`);
+            walk(def.innerType, path);
+            break;
+          case "ZodRecord":
+            violations.push(`${path}: ZodRecord present`);
+            break;
+          case "ZodUnion":
+          case "ZodDiscriminatedUnion": {
+            const options = (def.options ?? []) as ZodTypeAny[];
+            const allLiterals = options.every(
+              (o) =>
+                ((o as any)._def?.typeName as string | undefined) ===
+                "ZodLiteral",
+            );
+            if (!allLiterals) {
+              violations.push(`${path}: non-literal ${t}`);
+            }
+            options.forEach((opt, i) => walk(opt, `${path}|${i}`));
+            break;
+          }
+          case "ZodNullable":
+            walk(def.innerType, path);
+            break;
+          case "ZodEffects":
+            walk(def.schema, path);
+            break;
+          case "ZodObject": {
+            const shape = def.shape() as Record<string, ZodTypeAny>;
+            for (const [k, v] of Object.entries(shape)) {
+              walk(v, `${path}.${k}`);
+            }
+            break;
+          }
+          case "ZodArray":
+            walk(def.type, `${path}[]`);
+            break;
+          default:
+            break;
+        }
+      };
+      walk(strict, "$");
+      expect(violations).toEqual([]);
+    });
+
+    it("empty nextSpeakers with done=false is rejected by the moderator's output schema", () => {
+      const parsed = debateModeratorOutputSchema.safeParse({
+        nextSpeakers: [], briefing: null, newAngle: null,
+        done: false,
+      });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) {
+        const msg = parsed.error.issues.map((i) => i.message).join("\n");
+        expect(msg).toContain("non-empty nextSpeakers");
+      }
+    });
   });
 });

@@ -24,7 +24,7 @@ import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
 import {
-  createIntentSelector,
+  createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
 } from "@flow-state-dev/skills";
@@ -83,7 +83,7 @@ const skillsCap = createSkillsCapability({
 });
 
 /**
- * intentSelectorBlock — the up-front skill-activation router.
+ * skillActivatorBlock — the up-front skill-activation router.
  *
  * Runs once per turn before the main generator. Three tiers (slash prefix,
  * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
@@ -94,10 +94,10 @@ const skillsCap = createSkillsCapability({
  *
  * Reads from the unified `ctx.resources.skills` registry — the skills
  * capability above declares `scope: "user"`, which routes the collection's
- * storage to the user record. The intent-selector follows whatever scope
+ * storage to the user record. The skill activator follows whatever scope
  * the capability picked (FIX-435).
  */
-export const intentSelectorBlock = createIntentSelector({});
+export const skillActivatorBlock = createSkillActivator({});
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
 // collections. No resource declarations here: bash inherits whatever
@@ -146,10 +146,10 @@ export const featuresCapability = defineCapability({
     // generators in plan-and-execute / supervisor / blackboard skip it.
     //
     // The `runSkill` preset stays ON because pattern- and fork-mode skills
-    // need the tool to actually dispatch — the intent-selector matches
+    // need the tool to actually dispatch — the skill activator matches
     // them and writes their mode into activeSkills, but the dispatch
     // itself runs through `runSkill`. Inline skills still pre-activate via
-    // the intent-selector + body-formatter path; the runSkill tool is a
+    // the skill activator + body-formatter path; the runSkill tool is a
     // no-op for them.
     skillsCap,
 

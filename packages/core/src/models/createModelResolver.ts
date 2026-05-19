@@ -9,7 +9,14 @@
  */
 import { createRequire } from "node:module";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
-import type { RetryPolicy, GatewayConfig, GatewayEntry, ProviderPreference } from "./types";
+import type {
+  RetryPolicy,
+  GatewayConfig,
+  GatewayEntry,
+  ProviderPreference,
+  IntentDefaults,
+  ModelGroupDefaults,
+} from "./types";
 import {
   detectAvailableProviders,
   parseModelString,
@@ -62,6 +69,18 @@ export interface CreateModelResolverOptions {
   defaultModel?: string;
   /** Map of intent name → ordered candidate model strings. */
   intents?: Record<string, string[]>;
+  /**
+   * Optional per-intent defaults. Keys must match a key in `intents`.
+   * When a candidate from `intents[name]` wins resolution, the resolver
+   * applies `intentDefaults[name]` to the request before the generator's
+   * own `providerOptions` overrides it.
+   *
+   * Construction throws if a key in `intentDefaults` is not also present
+   * in `intents`. Applies only on successful candidate resolution — when
+   * an intent falls through to `defaultModel`, no intent defaults apply
+   * (`defaultModel` has no associated intent context).
+   */
+  intentDefaults?: Record<string, IntentDefaults>;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +216,27 @@ function resolveExplicitProviders(
 }
 
 // ---------------------------------------------------------------------------
+// Intent defaults → fallback model defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps the public {@link IntentDefaults} shape onto the internal
+ * {@link ModelGroupDefaults} shape consumed by `createFallbackModel`.
+ * Returns `undefined` when there are no defaults to apply, so the fallback
+ * model can skip the merge path entirely.
+ */
+function intentDefaultsToFallbackDefaults(
+  intentDefaults: IntentDefaults | undefined
+): ModelGroupDefaults | undefined {
+  if (!intentDefaults) return undefined;
+  const providerOptions = intentDefaults.providerOptions;
+  if (!providerOptions || Object.keys(providerOptions).length === 0) {
+    return undefined;
+  }
+  return { providerOptions };
+}
+
+// ---------------------------------------------------------------------------
 // Construction-time validation
 // ---------------------------------------------------------------------------
 
@@ -240,6 +280,18 @@ function validateOptions(options: CreateModelResolverOptions | undefined): void 
       if (parsed.type === "intent") {
         throw new Error(
           `createModelResolver: intent "${name}" candidate "${candidate}" must not be an intent/* string.`
+        );
+      }
+    }
+  }
+
+  if (options.intentDefaults) {
+    const intentKeys = new Set(Object.keys(options.intents ?? {}));
+    for (const key of Object.keys(options.intentDefaults)) {
+      if (!intentKeys.has(key)) {
+        throw new Error(
+          `createModelResolver: intentDefaults key "${key}" is not a defined intent. ` +
+            `Defined intents: ${[...intentKeys].join(", ") || "(none)"}.`
         );
       }
     }
@@ -606,6 +658,9 @@ export function createModelResolver(
           groupName: `intent/${name}`,
           models: resolved,
           retryPolicy,
+          defaults: intentDefaultsToFallbackDefaults(
+            options?.intentDefaults?.[name]
+          ),
         });
     intentCache.set(cacheKey, result);
     return result;

@@ -350,7 +350,7 @@ State and resource mutations emit streaming events:
 
 ## Canonical Authority
 
-For full type signatures, resource/clientData details, and edge cases, see `../preperation/architecture/STATE_AND_SCOPES.md`.
+This document is authoritative for state and scope semantics. For full type signatures and resource/clientData details, refer to the published types in `@flow-state-dev/core`.
 
 
 ### Token-aware MessageLimit

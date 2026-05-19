@@ -6,12 +6,12 @@
  * resources, clientData, and tool-use.
  *
  * Pipeline:
- *   applyRequestedMode → intentSelector → resolveThinkingStyle → thinkingStyleRouter
+ *   applyRequestedMode → skillActivator → resolveThinkingStyle → thinkingStyleRouter
  *     ├─ default (or auto-classified default) → assistantGenerator (direct generation)
  *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
  *     └─ supervisor         → supervisor wrapping the assistant
  *
- * `intentSelector` (FIX-421) decides which skills (if any) apply to the
+ * `skillActivator` (FIX-421) decides which skills (if any) apply to the
  * turn before the main generator runs; matched skills are activated into
  * session state and injected into the system prompt by the skills
  * capability's active-skill body formatter.
@@ -37,9 +37,10 @@ import {
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
+  thinkingStyleInputSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
-  intentSelectorBlock,
+  skillActivatorBlock,
   bashCap,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
@@ -105,10 +106,6 @@ const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
-
-const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists", "evented-actors"])
-  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -411,7 +408,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   // FIX-421: up-front skill router. Decides activeSkills before the
   // generator runs; results land on `session.state.activeSkills` for
   // the skills capability's active-skill formatter to render.
-  .tap(intentSelectorBlock)
+  .tap(skillActivatorBlock)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)

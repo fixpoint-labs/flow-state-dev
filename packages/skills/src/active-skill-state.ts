@@ -13,8 +13,8 @@
  */
 
 import { z } from "zod";
-import type { IntentSource, SkillContextMode } from "@flow-state-dev/core";
-import { intentSourceSchema } from "./intent-types";
+import type { SkillActivationSource, SkillContextMode } from "@flow-state-dev/core";
+import { skillActivationSourceSchema } from "./skill-activation-types";
 
 /** A single active-skill record stored in session state. */
 export interface ActiveSkillEntry {
@@ -27,12 +27,12 @@ export interface ActiveSkillEntry {
   /** ms-since-epoch the skill was activated. */
   activatedAt: number;
   /**
-   * Which path activated this skill. Set by `intentSelector` (slash /
+   * Which path activated this skill. Set by `skillActivator` (slash /
    * keyword / classifier / manual-override). `runSkill`-driven activations
    * leave this undefined since the model decided mid-flow rather than the
    * up-front router.
    */
-  source?: IntentSource;
+  source?: SkillActivationSource;
   /**
    * Set when `mode === "pattern"`. Carries enough info for the
    * `taskTools` capability to reconstruct the live TaskCollection from
@@ -65,7 +65,7 @@ export const activeSkillStateSchema = z.object({
         mode: z.enum(["inline", "fork", "pattern"]),
         input: z.string().optional(),
         activatedAt: z.number(),
-        source: intentSourceSchema.optional(),
+        source: skillActivationSourceSchema.optional(),
         pattern: z
           .object({
             patternKey: z.string(),

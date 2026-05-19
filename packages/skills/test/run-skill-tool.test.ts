@@ -114,7 +114,7 @@ describe("buildRunSkillDescription", () => {
     expect(out).toContain("- bar: bar desc");
   });
 
-  it("omits slash-command guidance — slash routing is handled server-side by createIntentSelector", () => {
+  it("omits slash-command guidance — slash routing is handled server-side by createSkillActivator", () => {
     const out = buildRunSkillDescription([
       { name: "foo", description: "foo desc" },
     ]);

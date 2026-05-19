@@ -1,4 +1,5 @@
 export type {
+  BlockCacheableConfig,
   BlockConfig,
   BlockContext,
   BlockTraceCapturePayload,
@@ -176,12 +177,12 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
   PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,

@@ -71,6 +71,40 @@ A common workflow the LLM will discover on its own: search for a topic, then fet
 
 With zero environment variables, `tools.fetch()` and `tools.crawl()` still work using the built-in fallback (Node.js fetch + Readability + Turndown). Only `tools.search()` requires at least one configured provider.
 
+## Marking tools cacheable
+
+A tool block can opt into result memoization by declaring `cacheable` on its config. When the tool runs under a Task Board with caching enabled, identical calls within the configured scope serve from cache instead of re-executing.
+
+Two shorthands. Pass `true` for defaults, or a config object to tune scope, TTL, key derivation, or a per-call guard:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const readArtifact = handler({
+  name: "read-artifact",
+  inputSchema: z.object({ key: z.string() }),
+  outputSchema: z.object({ content: z.string() }),
+  cacheable: { ttl: 60_000 },   // 60 seconds, "run" scope
+  execute: async (input, ctx) => {
+    const artifact = await ctx.resources.artifacts.get(input.key);
+    return { content: artifact.content };
+  },
+});
+```
+
+Scope choices:
+
+- `run` (default) — entries live for the current Task Board run.
+- `request` — entries live for the lifetime of the request.
+- `session` — entries persist across requests within the same session.
+
+Errors are never cached. If `execute` throws, no entry is written and the next caller re-runs the block. Identical in-flight calls within the same request coalesce into one execution, so two workers asking for the same key at the same time share the result instead of racing.
+
+Don't mark a tool cacheable if it mutates state, depends on time or randomness not captured in its arguments, or if a stale result would cause real harm. A cache hit isn't always a correct hit.
+
+The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/patterns/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
+
 ## Installation
 
 The tools package is part of the monorepo. For external projects:
