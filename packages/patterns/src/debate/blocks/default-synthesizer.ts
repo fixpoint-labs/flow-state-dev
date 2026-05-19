@@ -31,9 +31,32 @@ export interface CreateSynthesizeOptions {
 /** Build the default debate synthesizer. */
 export function createSynthesize(opts: CreateSynthesizeOptions) {
   const basePrompt = [
-    "You are the final synthesis step after a structured debate.",
-    "Use the judge's verdict and the transcript to produce the final",
-    "deliverable in the shape requested by the caller.",
+    "You are responding directly to the user. Their question is below.",
+    "",
+    "Before you reply, you ran an internal deliberation: two or more",
+    "debaters argued opposing positions across several rounds with a",
+    "moderator framing the discussion, and a judge weighed the",
+    "arguments to reach a conclusion. That deliberation is your",
+    "**private reasoning** — treat it the way a person treats their",
+    "own thinking before answering a question.",
+    "",
+    "Your reply must:",
+    "- Answer the user's question directly, in your own voice.",
+    "- Lead with the conclusion. If the judge picked a winner, that's",
+    "  your answer. If the judge synthesized, present the synthesized",
+    "  view as your view.",
+    "- Support the answer with the strongest reasoning surfaced in the",
+    "  debate, presented as your reasoning (not as something a",
+    "  debater said).",
+    "",
+    "Do NOT:",
+    "- Mention the debate, the debaters, the moderator, the judge,",
+    "  the rounds, the verdict, or the transcript.",
+    "- Narrate the process (\"after careful consideration\", \"weighing",
+    "  both sides\", etc.) — just answer.",
+    "- Hedge with structure-flavored language (\"the proposition holds\",",
+    "  \"the affirmative case is...\"). Talk like a person answering a",
+    "  question, not like a debate moderator.",
   ].join("\n");
   return generator({
     name: `${opts.name}-synthesizer`,
@@ -47,32 +70,38 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
     user: (input: unknown) => {
       const data = input as DebateRawOutput;
       const transcript = data.transcript
-        .map(
-          (e) => `[Round ${e.round}] [${e.stance}] ${e.text}`,
-        )
+        .map((e) => `[Round ${e.round}] [${e.stance}] ${e.text}`)
         .join("\n");
       const framingEntries = (data.moderatorDecisions ?? [])
         .map((d) => {
           const parts: string[] = [];
-          if (d.briefing && d.briefing !== "") parts.push(`briefing: ${d.briefing}`);
-          if (d.newAngle && d.newAngle !== "") parts.push(`angle: ${d.newAngle}`);
+          if (d.briefing && d.briefing !== "")
+            parts.push(`briefing: ${d.briefing}`);
+          if (d.newAngle && d.newAngle !== "")
+            parts.push(`angle: ${d.newAngle}`);
           return parts.length > 0
             ? `- [round ${d.round}] ${parts.join(" | ")}`
             : null;
         })
         .filter((s): s is string => s !== null);
-      const moderatorBlock =
+      const framingBlock =
         framingEntries.length > 0
-          ? `Moderator framing across rounds:\n${framingEntries.join("\n")}`
+          ? `Framing notes you made along the way:\n${framingEntries.join("\n")}`
           : "";
       return [
-        `Question: ${data.question}`,
-        `Rounds executed: ${data.rounds}`,
-        `Judge verdict: ${data.verdict.verdict}`,
-        `Judge winner: ${data.verdict.winner ?? "(synthesis)"}`,
-        `Judge reasoning: ${data.verdict.reasoning}`,
-        moderatorBlock,
-        `Transcript:\n${transcript}`,
+        `The user asked: ${data.question}`,
+        "",
+        "## Your private reasoning (do not reference this in your reply)",
+        "",
+        `Conclusion you reached: ${data.verdict.verdict}`,
+        data.verdict.winner
+          ? `Position that won out: ${data.verdict.winner}`
+          : "You synthesized rather than picking one side.",
+        `Why: ${data.verdict.reasoning}`,
+        framingBlock,
+        `Arguments you considered:\n${transcript}`,
+        "",
+        "Now answer the user directly.",
       ]
         .filter(Boolean)
         .join("\n\n");
