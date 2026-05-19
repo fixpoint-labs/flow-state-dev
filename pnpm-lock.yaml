@@ -572,6 +572,9 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
+      '@flow-state-dev/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
