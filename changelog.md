@@ -5,6 +5,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-18
 
+### Moderated Debate (FIX-607)
+
+- `debate()` now accepts an optional `moderator` block that opens each round. The moderator picks who speaks, can supply a `briefing` and `newAngle` that the round's debaters see, and may flag a round as the last one. With the moderator at the top, every decision drives a real round — no orphan decisions before the judge.
+- The moderator can use tools. Passing `tools`/`uses` to `createModerator` (or a custom moderator) gives it research capabilities; the default prompt nudges it to call available tools and fold findings into `briefing` so every debater in the round argues from the same factual base.
+- New `terminateWhen?: (ctx) => boolean` predicate exits the loop early based on session state, mirroring Round Robin's predicate. It works with or without a moderator. The judge is unchanged — it still runs once at the end and returns `{ verdict, winner, reasoning }`.
+- New `createModerator(opts)` factory ships a default moderator generator and is re-exported from `@flow-state-dev/patterns/debate`. The output schema rejects empty `nextSpeakers` with `done: false`, so a malformed moderator can't cause an empty round. `DebateRawOutput` carries a `moderatorDecisions` field with `briefing` and `newAngle` alongside `nextSpeakers` and `done`.
+- `debate()` accepts an optional `transcript` resource (analogous to `roundRobin`'s `contributions`) so a custom moderator, judge, or synthesizer can share the pattern's transcript.
+- Kitchen-sink ships a new "Moderated Debate" thinking style with an `advocate` / `skeptic` roster, keyword classifier hooks, and an LLM classifier category — selectable from the thinking-style dropdown or auto-routed via phrases like "should we" and "argue both sides". A dedicated `<Debate />` container renderer groups the transcript by round, opens each round with the moderator's decision card (speakers, briefing, focus), and closes with the judge's verdict.
+- Debate, Round Robin, and the patterns overview docs are reshaped around the Debate-vs-Round-Robin distinction: verdict-with-winner vs. synthesized deliverable, moderator vs. referee, non-deterministic dispatch vs. fixed order.
+
 ### Trading-desk: user-settable special instructions injected into every agent's prompt (FIX-603)
 
 - New settings dialog reachable from a gear in the status bar lets a user author free-text "special instructions" — one global block applied to every phase, plus one block per phase for narrower guidance. Edits persist per user and survive server restarts; the next analysis run picks them up automatically.

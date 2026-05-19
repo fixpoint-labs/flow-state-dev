@@ -9,12 +9,17 @@ export {
   keywordHandler,
   classifierBlock,
   thinkingStyleSchema,
+  thinkingStyleInputSchema,
   thinkingStyleSessionStateSchema,
+  RESOLVED_THINKING_STYLES,
+  THINKING_STYLE_INPUTS,
   SUPERVISOR_KEYWORDS,
   ROUTED_SPECIALISTS_KEYWORDS,
   EVENTED_ACTORS_KEYWORDS,
   PLAN_KEYWORDS,
+  DEBATE_KEYWORDS,
   type ThinkingStyle,
+  type ThinkingStyleInput,
 } from "./thinking-styles";
 export { bashCommand, bashReadFile, bashWriteFile } from "./bash-tools";
 export { featuresCapability, bashCap, intentSelectorBlock } from "./features-capability";

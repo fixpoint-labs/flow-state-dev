@@ -36,10 +36,58 @@ export const debateVerdictSchema = z.object({
 });
 export type DebateVerdict = z.infer<typeof debateVerdictSchema>;
 
+/**
+ * Output the moderator emits at the top of each round.
+ *
+ * - `nextSpeakers` must be non-empty when `done` is false (enforced via
+ *   `.refine()`); the framework would otherwise loop indefinitely on an
+ *   empty round.
+ * - `briefing` is optional context the moderator gathered for the round
+ *   — typically a synthesis of tool-fetched information that should be
+ *   visible to every debater in this round so they argue from the same
+ *   information base. Rendered into the default debater's prompt.
+ * - `newAngle` is an optional reframing or focus question for the round
+ *   — rendered into the default debater's prompt alongside the briefing.
+ * - `done: true` lets the current round still run (debaters speak), then
+ *   exits the loop before the next round. Useful for "give one closing
+ *   round and stop" semantics.
+ */
+export const debateModeratorOutputSchema = z
+  .object({
+    nextSpeakers: z.array(z.string()),
+    briefing: z.string().nullable(),
+    newAngle: z.string().nullable(),
+    done: z.boolean(),
+  })
+  .refine((out) => out.done || out.nextSpeakers.length > 0, {
+    message:
+      "Moderator must return non-empty nextSpeakers when done is false. " +
+      "Returning [] with done=false would cause an empty round and loop indefinitely.",
+    path: ["nextSpeakers"],
+  });
+export type DebateModeratorOutput = z.infer<typeof debateModeratorOutputSchema>;
+
+/** A stashed moderator decision tagged with the round it opened. */
+export const debateModeratorDecisionSchema = z.object({
+  round: z.number().int().min(1),
+  nextSpeakers: z.array(z.string()),
+  briefing: z.string().nullable(),
+  newAngle: z.string().nullable(),
+  done: z.boolean(),
+});
+export type DebateModeratorDecision = z.infer<
+  typeof debateModeratorDecisionSchema
+>;
+
 /** Outer sequencer state. */
 export const debateStateSchema = z.object({
   question: z.string().default(""),
   round: z.number().default(0),
+  /**
+   * Append-only log of moderator decisions, one per concluded round
+   * when a moderator is configured. Empty array when no moderator runs.
+   */
+  moderatorDecisions: z.array(debateModeratorDecisionSchema).default([]),
 });
 export type DebateState = z.infer<typeof debateStateSchema>;
 
@@ -69,4 +117,6 @@ export interface DebateRawOutput {
   question: string;
   transcript: DebateContributionEntry[];
   verdict: DebateVerdict;
+  /** Always present; empty array when no moderator was configured. */
+  moderatorDecisions: DebateModeratorDecision[];
 }

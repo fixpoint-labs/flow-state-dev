@@ -128,6 +128,32 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     expect(result.error).toBeNull();
     expect(result.state.session).toMatchObject({ thinkingStyle: "supervisor" });
   });
+
+  it("selects moderated-debate for debate keywords", async () => {
+    const result = await testSequencer(keywordTestSeq, {
+      input: { message: "Argue both sides of microservices vs monolith" },
+      flow: testFlow,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.state.session).toMatchObject({
+      thinkingStyle: "moderated-debate",
+    });
+  });
+
+  it("prefers debate over plan when 'should we' is used", async () => {
+    // "should we" is in DEBATE_KEYWORDS; the debate branch runs ahead of
+    // the plan-keyword branch in the handler.
+    const result = await testSequencer(keywordTestSeq, {
+      input: { message: "Should we adopt event sourcing for the order service?" },
+      flow: testFlow,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.state.session).toMatchObject({
+      thinkingStyle: "moderated-debate",
+    });
+  });
 });
 
 describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
@@ -190,6 +216,34 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
     expect(result.error).toBeNull();
     expect(result.state.session).toMatchObject({
       thinkingStyle: "plan-and-execute",
+    });
+  });
+
+  it("LLM classifier can select moderated-debate", async () => {
+    const debateClassifier = mockGenerator({
+      name: "thinking-style-classifier",
+      script: [
+        {
+          structuredOutput: {
+            category: "moderated-debate",
+            confidence: 0.85,
+            reasoning: "Adversarial question",
+          },
+        },
+      ],
+    });
+
+    const result = await testSequencer(autoClassifyStyle, {
+      input: { message: "Evaluate the case for and against this decision" },
+      flow: testFlow,
+      generators: {
+        "thinking-style-classifier": debateClassifier,
+      },
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.state.session).toMatchObject({
+      thinkingStyle: "moderated-debate",
     });
   });
 

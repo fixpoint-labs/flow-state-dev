@@ -249,7 +249,7 @@ The default synthesizer is a generator that composes the transcript into a unifi
 
 ## See also
 
-- [Debate](./debate) — uses a single judge at the end to render a verdict over the transcript. Round Robin's referee is per-round, optional, and audits argument quality rather than picking a winner. Reach for Debate when the desired output is "who won and why"; reach for Round Robin with an optional referee when the desired output is a synthesized deliverable shaped by panel feedback.
+- [Debate](./debate) — runs multiple agents arguing assigned stances with a final judge that always produces a verdict. Debate also accepts an optional `moderator` paralleling Round Robin's optional `referee`, but with broader scope: the moderator picks who speaks next, can inject a new angle to redirect the panel, and can end the debate early. Round Robin's referee audits argument quality without controlling order or termination. Reach for Debate when the desired output is "who won and why" and you may want non-deterministic dispatch; reach for Round Robin when you want fixed-order panel-style turn-taking with a synthesized deliverable.
 - [Routed Specialists](./routed-specialists) — for when the next speaker depends on context.
 - [Supervisor](./supervisor) — for per-task review with retry, not full-roster turn-taking.
 - [Patterns overview](./overview).
