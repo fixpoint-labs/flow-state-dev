@@ -9,8 +9,11 @@
  *      Generators no longer carry per-block `model:` slots.
  *
  *   2. **Always-on context** — the same `core` preset injects
- *      `<ticker>` and `<date>` tags from session state into every
- *      generator's prompt. No per-generator boilerplate.
+ *      `<ticker>`, `<date>`, and `<userInstructions>` tags from session
+ *      state and the user-scoped special-instructions resource into every
+ *      generator's prompt. No per-generator boilerplate. The
+ *      `<userInstructions>` tag is auto-suppressed when both the global
+ *      and active-phase fields are empty (FIX-603).
  *
  *   3. **Opt-in context bundles** — named presets that inject specific
  *      memo, contribution, or debate-transcript context tags. Generators
@@ -35,6 +38,8 @@ import {
 import { memosCollection } from "../resources";
 import { phase2Contributions } from "../phase-2/contributions";
 import { phase4Contributions } from "../phase-4/contributions";
+import { formatUserInstructions } from "../special-instructions";
+import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema, type SessionState } from "../state";
 import {
   formatAnalystMemos,
@@ -93,11 +98,17 @@ export const tradingDesk = defineCapability({
      *  only — no per-prompt drift, no phases 2–5 silently substituting the
      *  model's training knowledge for missing or empty inputs (FIX-605). */
     core: {
+      resources: { specialInstructions: specialInstructionsResource },
       model: (_input, ctx) => `intent/${ctx.session.state.costPreset}`,
       context: [
         {
           ticker: (_input, ctx) => ctx.session.state.ticker,
           date: (_input, ctx) => ctx.session.state.date,
+          userInstructions: (_input, ctx) =>
+            formatUserInstructions(
+              ctx.resources.specialInstructions?.state,
+              ctx.session.state.activePhase,
+            ),
         },
         GROUNDING_CLAUSE,
       ],
