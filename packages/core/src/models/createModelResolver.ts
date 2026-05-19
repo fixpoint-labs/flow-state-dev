@@ -384,12 +384,12 @@ function readIntentEnvOverrides(
 
   for (const [envKey, envValue] of Object.entries(env)) {
     if (envKey === DEFAULT_MODEL_ENV_VAR) {
-      validateOverrideValue(envValue, envKey);
       if (declared.size === 0) {
         throw new Error(
           `createModelResolver: ${DEFAULT_MODEL_ENV_VAR} was set, but no intents are declared; the override has no effect.`
         );
       }
+      validateOverrideValue(envValue, envKey);
       result.defaultModelOverride = (envValue as string).trim();
       continue;
     }
