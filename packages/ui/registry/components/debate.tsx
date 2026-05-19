@@ -23,7 +23,7 @@ import {
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 import { Shimmer } from "./shimmer";
@@ -135,6 +135,11 @@ function toolCallFromOutput(tool: ToolOutputItem): ToolCall {
 
 export function Debate({ item }: { item: ContainerItem }) {
   const [isOpen, setIsOpen] = useState(true);
+  // Track whether we've already done the auto-collapse on completion,
+  // so a user who manually re-expands the card after it finishes
+  // doesn't get it slammed shut again on the next render.
+  const didAutoCollapseRef = useRef(false);
+  const cardRef = useRef<HTMLDivElement>(null);
   const allItems = useSessionItems();
   const { items: ownedItems } = useContainerItems(item, allItems);
 
@@ -348,6 +353,29 @@ export function Debate({ item }: { item: ContainerItem }) {
 
   const isFinished = verdict !== null;
 
+  // Once the verdict lands, collapse the card so the synthesizer's
+  // user-facing response becomes the dominant element in the view, and
+  // scroll the conversation so the content right after the card lands
+  // at the top of the viewport. Best-effort — runs once per mount, and
+  // does nothing if the next sibling hasn't rendered yet.
+  useEffect(() => {
+    if (!isFinished || didAutoCollapseRef.current) return;
+    didAutoCollapseRef.current = true;
+    setIsOpen(false);
+    // Give the layout one frame to settle after the collapse, then
+    // scroll past the (now-small) card so the synthesizer's reply is
+    // at the top.
+    const handle = requestAnimationFrame(() => {
+      const next = cardRef.current?.nextElementSibling;
+      if (next instanceof HTMLElement) {
+        next.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [isFinished]);
+
   // Build the step list: each round (with optional in-flight round
   // showing the moderator's live research), then a verdict step.
   const steps = useMemo(() => {
@@ -432,7 +460,10 @@ export function Debate({ item }: { item: ContainerItem }) {
       : "Debate";
 
   return (
-    <div className="not-prose my-2 rounded-md border bg-card text-card-foreground">
+    <div
+      ref={cardRef}
+      className="not-prose my-2 rounded-md border bg-card text-card-foreground"
+    >
       {/* Header — collapsible trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
