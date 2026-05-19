@@ -61,6 +61,18 @@ Resources are the live data layer. Each analyst writes its typed memo to a sessi
 
 The per-branch `.rescue()` matters too. If the news fetch fails, only the news memo flips to `error`. The other four analysts still complete.
 
+### Investigation and citations
+
+Phase 1 analysts are aggressively grounded by default — the `<grounding>` clause tells every generator to operate strictly on upstream-provided data. That floor is good for anti-hallucination but leaves a real gap: an analyst that recognises the numbers don't tell the whole story has no way to look. The trading-desk closes that gap with a two-step pattern that mirrors how the news analyst already worked.
+
+Each non-News analyst gains a deterministic discovery step in its parallel block (`discover_fundamentals_context`, `discover_sentiment_context`, `discover_technical_context`, `discover_profile_context`). The discovery tool calls a generic web search and returns up to five numbered URLs the analyst can read with `fetch` when the structured data leaves a material question open. Pick two or three at most.
+
+Every URL the analyst relies on goes into a required `citations` field on the thesis output. The analyst-card renderer shows them as a "Sources" footer with `target="_blank"` anchors. A reviewer can audit which sources backed which claim without leaving the memo.
+
+The whole investigative slice — the `fetch` tool, the `<investigation>` clause that codifies the citation contract, and the discovery tool calls — is gated on `costPreset === "full"`. On `fast` the `fetch` tool is absent, the clause is suppressed entirely (not rendered as an empty tag), and each discovery tool short-circuits to a `source: "skipped"` payload before any provider call. The cheap demo path stays free of web fetches; the full path investigates and cites.
+
+The gating lives in one place — an `investigate` preset on the `tradingDesk` capability — that every Phase 1 generator opts into. The preset's `tools` resolver returns `[fetchArticle]` on full and `[]` on fast; its context entry returns the clause string on full and `null` on fast. Two coordinated seams, same session-state key, no leakage.
+
 ## Phase 2: Round Robin with a synthesizer
 
 Phase 2 introduces a pattern from `@flow-state-dev/patterns`. A pattern is a pre-built sequencer composition that solves a recurring shape. Round Robin runs a roster of agents in fixed order for N rounds and exits when either the round cap is hit or an optional runtime predicate says to stop.

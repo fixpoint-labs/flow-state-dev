@@ -7,6 +7,11 @@
  * on dispatch logic (fixture vs. live, provider preference).
  */
 import { z } from "zod";
+import { searchProviders } from "@flow-state-dev/tools/search";
+
+/** Re-export so other trading-desk files don't take a direct dep on the
+ *  search package's types module. */
+export { searchProviders };
 
 export class FixtureMissingError extends Error {
   readonly ticker: string;
@@ -300,6 +305,49 @@ export const companyProfileSchema = z.object({
     .nullable(),
 });
 
+/**
+ * Provenance tag for discovery payloads (web-search wrappers). Distinct
+ * from the data-provider `sourceTag` above — discovery has its own failure
+ * modes:
+ *
+ *   - `"fixture"`     — fixture-mode read.
+ *   - `"web"`         — live mode, any configured search provider answered.
+ *   - `"skipped"`     — `costPreset !== "full"`; no provider call made.
+ *                       The analyst sees an empty items list and the prompt
+ *                       short-circuits investigation entirely.
+ *   - `"unavailable"` — `costPreset === "full"` but the search provider
+ *                       failed or no provider key is configured. Per BP-020
+ *                       discovery never silently falls back to fixture data
+ *                       — false discovery items are worse than none.
+ */
+const discoverySourceTag = z.enum(["fixture", "web", "skipped", "unavailable"]);
+
+/** A single numbered web-search result returned by a discovery tool. The
+ *  `id` is sequential ("1", "2", ...) so the analyst prompt can ask the
+ *  LLM to reference URLs by their numeric tag. `publisher` is best-effort
+ *  domain extraction; null when URL parsing fails. */
+const discoveryItem = z.object({
+  id: z.string(),
+  url: z.string(),
+  title: z.string(),
+  snippet: z.string(),
+  publisher: z.string().nullable(),
+  provider: z.enum(searchProviders),
+});
+
+export const discoveryPayloadSchema = z.object({
+  source: discoverySourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** The composed query string sent to the search provider — kept on the
+   *  payload for auditability. Empty string on `"skipped"` and the
+   *  `"unavailable"` empty payload. */
+  query: z.string(),
+  items: z.array(discoveryItem),
+});
+
+export type DiscoveryPayload = z.infer<typeof discoveryPayloadSchema>;
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -314,6 +362,10 @@ export const toolInputSchemas = {
   get_prediction_markets: periodInput,
   get_insider_transactions: periodInput,
   get_company_profile: periodInput,
+  discover_fundamentals_context: periodInput,
+  discover_sentiment_context: periodInput,
+  discover_technical_context: periodInput,
+  discover_profile_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -330,6 +382,10 @@ export const toolOutputSchemas = {
   get_prediction_markets: predictionMarketsSchema,
   get_insider_transactions: insiderTransactionsSchema,
   get_company_profile: companyProfileSchema,
+  discover_fundamentals_context: discoveryPayloadSchema,
+  discover_sentiment_context: discoveryPayloadSchema,
+  discover_technical_context: discoveryPayloadSchema,
+  discover_profile_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -351,6 +407,10 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_prediction_markets: "prediction-markets.json",
   get_insider_transactions: "insider-transactions.json",
   get_company_profile: "company-profile.json",
+  discover_fundamentals_context: "discover-fundamentals-context.json",
+  discover_sentiment_context: "discover-sentiment-context.json",
+  discover_technical_context: "discover-technical-context.json",
+  discover_profile_context: "discover-profile-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

@@ -44,6 +44,7 @@ function analystThesis(label: string, headline: string) {
         { h: "Composite reading", p: "Synthesis holds.", items: null },
         { h: "Material items", p: null, items: ["Watch item A"] },
       ],
+      citations: null,
     },
   };
 }

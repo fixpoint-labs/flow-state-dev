@@ -3,6 +3,16 @@
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
 
+## 2026-05-19
+
+### Trading-desk: Phase 1 analysts gain investigative search/fetch with auditable citations (FIX-612)
+
+- The four non-News Phase 1 analysts (Fundamentals, Sentiment, Technical, Company Profile) now get a deterministic discovery step that surfaces up to 5 numbered web URLs alongside their structured data. Each analyst may read 2–3 of those URLs with `fetch` when the structured data leaves a material question open. Every URL the analyst relies on lands in a required `citations` field on the thesis output, rendered as a "Sources" footer on the analyst card so a reviewer can audit which sources backed which claim.
+- The investigative slice (the `fetch` tool plus the `<investigation>` clause that codifies the citation contract) lives in a new `investigate` preset on the `tradingDesk` capability. The preset is hard-gated on `costPreset === "full"` — on `fast` the `fetch` tool is absent, the clause is suppressed from the prompt entirely (resolver returns `null`, not `""`), and each of the four new discovery tools short-circuits to a `source: "skipped"` payload before any provider call.
+- News-on-fast loses `fetch` as a deliberate consequence of consolidating the gating in the preset. News on `full` is unchanged — the existing discovery via `search_news` (Finnhub `/company-news`) keeps surfacing URLs and the analyst keeps citing what it fetched.
+- Live discovery uses `@flow-state-dev/tools/search`'s auto-detected provider — Tavily is the recommended default (`TAVILY_API_KEY`). On any provider failure the discovery tool emits `source: "unavailable"` per BP-020; it does not fall back to fixture data on the live path.
+- Fixture coverage shipped for `NVDA / AAPL / JPM` × four discovery tools so cheap fixture demos render the investigative path identically to live.
+
 ## 2026-05-18
 
 ### Moderated Debate (FIX-607)

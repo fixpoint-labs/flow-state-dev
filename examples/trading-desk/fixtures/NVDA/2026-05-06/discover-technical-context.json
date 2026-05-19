@@ -1,0 +1,24 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA technical analysis chart breakout support resistance",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.investors.com/research/nvda-stock-technical-setup-2026.html",
+      "title": "NVDA technical setup: holding above 50-day, eyeing prior high",
+      "snippet": "Stock has held the 50-day moving average through three test attempts; bulls watching for a close above the April high to confirm breakout.",
+      "publisher": "investors.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.tradingview.com/symbols/NASDAQ-NVDA/ideas/",
+      "title": "TradingView consensus: NVDA in ascending triangle with resistance at $148",
+      "snippet": "Multiple charters flagging the same ascending-triangle pattern over the last six weeks, with $148 the converging resistance.",
+      "publisher": "tradingview.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

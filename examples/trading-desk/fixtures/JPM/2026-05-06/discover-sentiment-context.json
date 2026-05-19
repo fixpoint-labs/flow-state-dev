@@ -1,0 +1,24 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "query": "JPM retail investor sentiment forum stocktwits seekingalpha",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://stocktwits.com/symbol/JPM",
+      "title": "JPM Stocktwits stream: bullish bias but low volume",
+      "snippet": "Retail attention on JPM remains modest compared to tech names; message volume sits well below the S&P top 50 average.",
+      "publisher": "stocktwits.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://seekingalpha.com/article/jpmorgan-defensive-positioning-in-rate-cycle.html",
+      "title": "JPMorgan as a defensive positioning name in late-cycle rates",
+      "snippet": "Author argues JPM's diversified mix and Dimon-era discipline make it a relative-safety pick within financials.",
+      "publisher": "seekingalpha.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

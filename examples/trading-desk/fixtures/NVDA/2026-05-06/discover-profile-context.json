@@ -1,0 +1,24 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA recent strategic announcement product launch regulatory filing",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-rubin-platform-launch-2026.html",
+      "title": "NVIDIA launches Rubin platform: next-gen data-center GPU architecture",
+      "snippet": "Rubin succeeds Blackwell with claimed 2.5x perf/watt improvement and integrated networking; volume shipments begin Q4.",
+      "publisher": "nvidianews.nvidia.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/technology/nvidia-doj-antitrust-review-extended.html",
+      "title": "DOJ extends antitrust review of NVIDIA's networking-stack bundling",
+      "snippet": "Review extension adds an estimated three to six months; no formal complaint filed.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

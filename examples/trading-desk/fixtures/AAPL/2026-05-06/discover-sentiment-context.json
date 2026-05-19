@@ -1,0 +1,24 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL retail investor sentiment forum stocktwits seekingalpha",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://stocktwits.com/symbol/AAPL",
+      "title": "AAPL Stocktwits stream: neutral, slight bullish skew",
+      "snippet": "Sentiment ratio close to balanced; messaging has shifted from product-cycle excitement to Services durability.",
+      "publisher": "stocktwits.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://seekingalpha.com/article/apple-investor-positioning-2026.html",
+      "title": "Apple: long-only positioning crowded but conviction shallow",
+      "snippet": "Author surveys mutual-fund holdings — Apple remains the largest single position for many active managers, but recent commentary skews defensive.",
+      "publisher": "seekingalpha.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

@@ -1,0 +1,24 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL recent strategic announcement product launch regulatory filing",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.apple.com/newsroom/2026/05/apple-intelligence-expansion.html",
+      "title": "Apple expands Apple Intelligence to all iPhone 15 Pro and later",
+      "snippet": "Cloud Compute capabilities now extended across the installed base of compatible devices; on-device features remain Pro-tier.",
+      "publisher": "apple.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/technology/eu-digital-markets-act-apple-store-fees.html",
+      "title": "EU regulators flag Apple's revised App Store fee structure",
+      "snippet": "European Commission opens formal review of Apple's adjusted Core Technology Fee schedule; outcome could reset fee economics in the EU.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

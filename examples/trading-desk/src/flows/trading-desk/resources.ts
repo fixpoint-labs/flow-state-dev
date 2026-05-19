@@ -34,6 +34,17 @@ export const thesisSection = z.object({
 
 export type ThesisSection = z.infer<typeof thesisSection>;
 
+/** Shared citation shape — kept in resources.ts (not the per-phase thesis
+ *  schema) because the renderer reads citations off memo state, and memo
+ *  state is the canonical persisted shape. Phase 1's thesis-schema
+ *  re-exports its own `citation` for the LLM output contract; they agree. */
+export const memoCitation = z.object({
+  url: z.string(),
+  title: z.string(),
+});
+
+export type MemoCitation = z.infer<typeof memoCitation>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -53,6 +64,11 @@ export const memoStateSchema = z.object({
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   errorMessage: z.string().nullable(),
+  /** Phase 1 investigative citations (FIX-612). Populated by analyst
+   *  generators when they invoke `fetch` on a discovery URL; null on the
+   *  cheap preset and on memos that never investigated. Renderer shows a
+   *  "Sources" footer when non-empty. */
+  citations: z.array(memoCitation).nullable().default(null),
   // Phase 2 InvestmentThesis extension. Only the research-manager memo
   // (`memos/p2/research-manager`) populates these; all other memos leave
   // them `null`. Read by Phase 3+ to reason about the debate's outcome.

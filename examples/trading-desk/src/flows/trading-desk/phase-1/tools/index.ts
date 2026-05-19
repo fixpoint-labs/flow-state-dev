@@ -15,5 +15,9 @@ export { get_reddit_mentions } from "./get_reddit_mentions";
 export { get_prediction_markets } from "./get_prediction_markets";
 export { get_insider_transactions } from "./get_insider_transactions";
 export { get_company_profile } from "./get_company_profile";
+export { discover_fundamentals_context } from "./discover_fundamentals_context";
+export { discover_sentiment_context } from "./discover_sentiment_context";
+export { discover_technical_context } from "./discover_technical_context";
+export { discover_profile_context } from "./discover_profile_context";
 
 export * from "./schemas";
