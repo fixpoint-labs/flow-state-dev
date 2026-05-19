@@ -22,6 +22,7 @@ import {
   parseModelString,
   extractProviderName,
   INTENT_NAME_REGEX,
+  canonicalizeIntentName,
 } from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
@@ -81,6 +82,16 @@ export interface CreateModelResolverOptions {
    * (`defaultModel` has no associated intent context).
    */
   intentDefaults?: Record<string, IntentDefaults>;
+  /**
+   * Optional env-var source for intent overrides. Defaults to `process.env`.
+   * Tests and library callers can pass an explicit object to avoid mutating
+   * the global environment.
+   *
+   * Reads at construction time only — never per-call. See the
+   * `Env-var overrides` section in the package README for the variable
+   * naming convention.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,12 +280,23 @@ function validateOptions(options: CreateModelResolverOptions | undefined): void 
     }
   }
 
+  const canonicalToOriginal = new Map<string, string>();
   for (const [name, candidates] of intentEntries) {
     if (!INTENT_NAME_REGEX.test(name)) {
       throw new Error(
         `createModelResolver: invalid intent name "${name}". Must match ${INTENT_NAME_REGEX.source}.`
       );
     }
+    const canonical = canonicalizeIntentName(name);
+    const existing = canonicalToOriginal.get(canonical);
+    if (existing !== undefined && existing !== name) {
+      throw new Error(
+        `createModelResolver: intent names "${existing}" and "${name}" ` +
+          `both map to environment variable FSDEV_INTENT_${canonical}, which is ambiguous. ` +
+          `Rename one to avoid collisions for env-var overrides.`
+      );
+    }
+    canonicalToOriginal.set(canonical, name);
     for (const candidate of candidates) {
       const parsed = parseModelString(candidate);
       if (parsed.type === "intent") {
@@ -299,6 +321,128 @@ function validateOptions(options: CreateModelResolverOptions | undefined): void 
 }
 
 // ---------------------------------------------------------------------------
+// Env-var overrides
+// ---------------------------------------------------------------------------
+
+const INTENT_ENV_PREFIX = "FSDEV_INTENT_";
+const DEFAULT_MODEL_ENV_VAR = "FSDEV_DEFAULT_MODEL";
+
+interface IntentEnvOverrides {
+  /** intent name (as declared in `options.intents`) → override model string */
+  intentOverrides: Map<string, string>;
+  /** `FSDEV_DEFAULT_MODEL`, if set; replaces `options.defaultModel`. */
+  defaultModelOverride: string | undefined;
+}
+
+/**
+ * Validate a single env-var override value through the existing model-string
+ * parser. Throws with a `createModelResolver: <ENV_VAR>: ...` prefix so the
+ * operator can see which variable failed.
+ */
+function validateOverrideValue(value: string | undefined, envKey: string): void {
+  if (value === undefined || value.trim() === "") {
+    throw new Error(
+      `createModelResolver: ${envKey} must be a non-empty string.`
+    );
+  }
+  let parsed;
+  try {
+    parsed = parseModelString(value);
+  } catch (err) {
+    const inner = err instanceof Error ? err.message : String(err);
+    throw new Error(`createModelResolver: ${envKey}: ${inner}`);
+  }
+  if (parsed.type === "intent") {
+    throw new Error(
+      `createModelResolver: ${envKey} must be a 'provider/model' or 'gateway/provider/model' string; received "${value}".`
+    );
+  }
+}
+
+/**
+ * Scan the env source for `FSDEV_INTENT_*` and `FSDEV_DEFAULT_MODEL` keys,
+ * validate each value, and map them back to declared intent names. Throws if
+ * an `FSDEV_INTENT_<NAME>` doesn't match a declared intent, or if
+ * `FSDEV_DEFAULT_MODEL` is set with no declared intents.
+ *
+ * Iterates `env` (not declared intents) so typo'd env-var names surface as
+ * loud errors rather than being silently ignored.
+ */
+function readIntentEnvOverrides(
+  env: Record<string, string | undefined>,
+  options: CreateModelResolverOptions | undefined
+): IntentEnvOverrides {
+  const declared = new Map<string, string>();
+  for (const name of Object.keys(options?.intents ?? {})) {
+    declared.set(canonicalizeIntentName(name), name);
+  }
+
+  const result: IntentEnvOverrides = {
+    intentOverrides: new Map(),
+    defaultModelOverride: undefined,
+  };
+
+  for (const [envKey, envValue] of Object.entries(env)) {
+    if (envKey === DEFAULT_MODEL_ENV_VAR) {
+      validateOverrideValue(envValue, envKey);
+      if (declared.size === 0) {
+        throw new Error(
+          `createModelResolver: ${DEFAULT_MODEL_ENV_VAR} was set, but no intents are declared; the override has no effect.`
+        );
+      }
+      result.defaultModelOverride = (envValue as string).trim();
+      continue;
+    }
+
+    if (!envKey.startsWith(INTENT_ENV_PREFIX)) continue;
+
+    const canonical = envKey.slice(INTENT_ENV_PREFIX.length);
+    const declaredName = declared.get(canonical);
+    if (!declaredName) {
+      const declaredList = [...declared.values()].join(", ") || "(none)";
+      throw new Error(
+        `createModelResolver: ${envKey} does not match any declared intent. ` +
+          `Declared intents: ${declaredList}.`
+      );
+    }
+    validateOverrideValue(envValue, envKey);
+    result.intentOverrides.set(declaredName, (envValue as string).trim());
+  }
+
+  return result;
+}
+
+/**
+ * Produce a shallow-cloned options object with override values folded into
+ * `intents` (each overridden intent becomes a one-element candidate list) and
+ * `defaultModel` (replaced when `FSDEV_DEFAULT_MODEL` is set). Returns the
+ * original reference unchanged when no overrides apply, so the common path
+ * allocates nothing.
+ */
+function applyOverrides(
+  options: CreateModelResolverOptions | undefined,
+  overrides: IntentEnvOverrides
+): CreateModelResolverOptions | undefined {
+  if (
+    overrides.intentOverrides.size === 0 &&
+    overrides.defaultModelOverride === undefined
+  ) {
+    return options;
+  }
+  const baseIntents = options?.intents ?? {};
+  const nextIntents: Record<string, string[]> = { ...baseIntents };
+  for (const [name, value] of overrides.intentOverrides) {
+    nextIntents[name] = [value];
+  }
+  return {
+    ...(options ?? {}),
+    intents: nextIntents,
+    defaultModel:
+      overrides.defaultModelOverride ?? options?.defaultModel,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -316,6 +460,27 @@ export function createModelResolver(
   options?: CreateModelResolverOptions
 ): ModelResolver {
   validateOptions(options);
+
+  // Apply env-var overrides before any read sites below pick up `options`.
+  // The parameter is shadowed by the post-override value so every subsequent
+  // read inside this function (including inner closures) sees the overrides.
+  const envSource = options?.env ?? process.env;
+  const overrides = readIntentEnvOverrides(envSource, options);
+  options = applyOverrides(options, overrides);
+
+  for (const [name, value] of overrides.intentOverrides) {
+    const envKey = `${INTENT_ENV_PREFIX}${canonicalizeIntentName(name)}`;
+    warnOnceDev(
+      envKey,
+      `Intent "${name}" overridden by ${envKey}; resolves to "${value}".`
+    );
+  }
+  if (overrides.defaultModelOverride !== undefined) {
+    warnOnceDev(
+      DEFAULT_MODEL_ENV_VAR,
+      `defaultModel overridden by ${DEFAULT_MODEL_ENV_VAR}; resolves to "${overrides.defaultModelOverride}".`
+    );
+  }
 
   const retryPolicy: Required<RetryPolicy> = {
     ...DEFAULT_RETRY_POLICY,
