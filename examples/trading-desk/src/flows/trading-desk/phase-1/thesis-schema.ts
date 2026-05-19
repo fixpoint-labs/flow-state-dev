@@ -10,16 +10,6 @@
 import { z } from "zod";
 import { thesisSection } from "../resources";
 
-/**
- * Output schema enforced on the analyst generators.
- *
- * `metrics` is an array of `{ key, value }` pairs rather than a `Record`:
- * OpenAI strict structured-output requires a closed `properties` set, so an
- * open string-keyed map (`z.record`) trips the schema check. Each analyst
- * still emits the four role-specific keys named in its prompt; the writer
- * (`commitMemo`) flattens the array to a `Record<string, string>` before
- * persisting, so the stored memo shape is unchanged.
- */
 /** A single auditable citation. `url` and `title` only — inline `[n]`
  *  markers and per-claim source IDs are deferred (FIX-612 v1 is body-
  *  section citations only). */
@@ -30,6 +20,16 @@ export const citation = z.object({
 
 export type Citation = z.infer<typeof citation>;
 
+/**
+ * Output schema enforced on the analyst generators.
+ *
+ * `metrics` is an array of `{ key, value }` pairs rather than a `Record`:
+ * OpenAI strict structured-output requires a closed `properties` set, so an
+ * open string-keyed map (`z.record`) trips the schema check. Each analyst
+ * still emits the four role-specific keys named in its prompt; the writer
+ * (`commitMemo`) flattens the array to a `Record<string, string>` before
+ * persisting, so the stored memo shape is unchanged.
+ */
 export const thesisOutputSchema = z.object({
   label: z.string(),
   headline: z.string(),
