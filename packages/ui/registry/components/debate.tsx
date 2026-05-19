@@ -494,7 +494,12 @@ export function Debate({ item }: { item: ContainerItem }) {
       {/* Content — timeline */}
       {isOpen && (
         <div className="border-t px-3 pb-2 pt-0">
-          {rounds.length === 0 && !isFinished && (
+          {/* Initial placeholder — only when nothing has happened yet
+              AND the moderator's tool loop hasn't started either. Once
+              `moderatorInFlight` is true, the in-flight step below is a
+              more specific representation of the same idea, so showing
+              both produces a redundant shimmer pair. */}
+          {rounds.length === 0 && !isFinished && !moderatorInFlight && (
             <div className="pt-3">
               <Step
                 icon={MessagesSquareIcon}
