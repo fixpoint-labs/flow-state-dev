@@ -857,6 +857,19 @@ function resolveHygieneConfig(
       operator: et.operator ?? defaults.episodicTTL.operator,
       permanentStaleDays: et.permanentStaleDays ?? defaults.episodicTTL.permanentStaleDays,
     }
+    // Bounds-check every threshold. A value of `0` is a footgun:
+    // `ageDays >= 0` is true on the first run for every episode encoded so
+    // far, so the janitor would wipe the persistent store and mark every
+    // permanent episode stale before any user-visible action.
+    if (!(episodicTTL.persistentTurns > 0)) {
+      throw new Error(`hygiene.episodicTTL.persistentTurns must be > 0, got ${episodicTTL.persistentTurns}`)
+    }
+    if (!(episodicTTL.persistentDays > 0)) {
+      throw new Error(`hygiene.episodicTTL.persistentDays must be > 0, got ${episodicTTL.persistentDays}`)
+    }
+    if (!(episodicTTL.permanentStaleDays > 0)) {
+      throw new Error(`hygiene.episodicTTL.permanentStaleDays must be > 0, got ${episodicTTL.permanentStaleDays}`)
+    }
   }
 
   return {

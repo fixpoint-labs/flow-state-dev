@@ -633,6 +633,33 @@ describe('memory/janitor — system() factory plumbing', () => {
       hygiene: { confidenceDecay: { cullFloor: 1.5 } },
     })).toThrow(/cullFloor/)
   })
+
+  it('throws on episodicTTL persistentTurns <= 0', () => {
+    expect(() => system({
+      model: 'gpt-test',
+      working: true,
+      episodic: true,
+      hygiene: { episodicTTL: { persistentTurns: 0 } },
+    })).toThrow(/persistentTurns must be > 0/)
+  })
+
+  it('throws on episodicTTL persistentDays <= 0', () => {
+    expect(() => system({
+      model: 'gpt-test',
+      working: true,
+      episodic: true,
+      hygiene: { episodicTTL: { persistentDays: 0 } },
+    })).toThrow(/persistentDays must be > 0/)
+  })
+
+  it('throws on episodicTTL permanentStaleDays <= 0', () => {
+    expect(() => system({
+      model: 'gpt-test',
+      working: true,
+      episodic: true,
+      hygiene: { episodicTTL: { permanentStaleDays: 0 } },
+    })).toThrow(/permanentStaleDays must be > 0/)
+  })
 })
 
 // ---------------------------------------------------------------------------
