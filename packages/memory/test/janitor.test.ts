@@ -593,6 +593,16 @@ describe('memory/janitor — system() factory plumbing', () => {
     expect(mem.janitor).toBeUndefined()
   })
 
+  it('exposes janitor for an episodic-only configuration (no semantic)', () => {
+    const mem = system({
+      model: 'gpt-test',
+      working: true,
+      episodic: true,
+    })
+    expect(mem.janitor).toBeDefined()
+    expect(mem.janitorResource).toBeDefined()
+  })
+
   it('accepts partial overrides (halfLife only) and preserves other defaults', () => {
     const mem = system({
       model: 'gpt-test',

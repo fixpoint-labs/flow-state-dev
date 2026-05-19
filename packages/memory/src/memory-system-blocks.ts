@@ -1289,8 +1289,17 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   // `.work()` step every turn. Decay is slow so this rarely earns its keep
   // — `'onConsolidation'` (default) is preferred. `'manual'` skips wiring
   // entirely; the caller invokes `mem.janitor` themselves.
-  if (config.hygiene && config.hygiene.schedule === 'onCapture') {
-    pipeline = pipeline.work(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+  //
+  // Episodic-only fallback: when `'onConsolidation'` is set but no semantic
+  // tier is configured, there is no consolidate sequencer to host the
+  // janitor. Wire it onto capture instead so episodic TTL still runs.
+  if (config.hygiene) {
+    const sched = config.hygiene.schedule
+    const wantOnCapture = sched === 'onCapture'
+    const fallbackForEpisodicOnly = sched === 'onConsolidation' && !config.semantic && !!config.episodic
+    if (wantOnCapture || fallbackForEpisodicOnly) {
+      pipeline = pipeline.work(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+    }
   }
 
   return pipeline
