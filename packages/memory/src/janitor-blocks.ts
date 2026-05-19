@@ -9,7 +9,6 @@
  */
 
 import { handler } from '@flow-state-dev/core'
-import type { BlockContext } from '@flow-state-dev/core/types'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory.js'
 import { memorySystemResource } from './memory-system.js'
@@ -20,14 +19,6 @@ import { cullByTTL, markStale } from './episodic-memory-helpers.js'
 import type { EpisodicTTLConfig } from './episodic-memory-helpers.js'
 import { janitorResource } from './janitor.js'
 import type { MemorySystemBlocksConfig } from './memory-system-blocks.js'
-
-type JanitorBlockCtx = BlockContext<
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, unknown>,
-  Record<string, any>
->
 
 /**
  * Resolved hygiene configuration passed into the janitor block. The factory
@@ -71,49 +62,59 @@ export function memorySystemJanitor(
 
   const hygiene = config.hygiene
 
-  async function execute(_input: unknown, ctx: JanitorBlockCtx) {
-    const wmRef = ctx.resources.workingMemory as any
-    const janRef = ctx.resources.janitor as any
-    const currentTurn = wmRef?.state?.currentTurn ?? 0
+  return handler({
+    name: config.name ? `${config.name}/janitor` : 'memory/janitor',
+    inputSchema: z.any(),
+    // No outputSchema — state mutation only (BP-012, BP-014).
+    resources: {
+      workingMemory: workingMemoryResource,
+      memorySystem: memorySystemResource,
+      janitor: janitorResource,
+      // Semantic and episodic are conditionally installed — the janitor's
+      // body silently no-ops on whichever tier is absent.
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
+    },
+    execute: async (_input, ctx) => {
+      const wmRef = ctx.resources.workingMemory
+      const janRef = ctx.resources.janitor
+      const currentTurn = wmRef.state.currentTurn ?? 0
+      // Semantic and episodic resources are installed conditionally above,
+      // which forces the inferred ctx type to a wider shape. Cast at the
+      // point of use to the specific helper signatures.
+      const semRef = ctx.resources.semanticMemory as any
+      const epRef = ctx.resources.episodicMemory as any
 
-    // Resource lookups happen at runtime — missing stores are silently
-    // skipped so the janitor builds cleanly even when one tier is absent.
-    let semRef: any = undefined
-    try { semRef = ctx.resources?.semanticMemory } catch { /* not installed */ }
-    let epRef: any = undefined
-    try { epRef = ctx.resources?.episodicMemory } catch { /* not installed */ }
+      const now = Date.now()
 
-    const now = Date.now()
+      let culledFactIds: string[] = []
+      let culledEpisodeIds: string[] = []
+      let markedStaleEpisodeIds: string[] = []
 
-    let culledFactIds: string[] = []
-    let culledEpisodeIds: string[] = []
-    let markedStaleEpisodeIds: string[] = []
-
-    if (semRef && hygiene.confidenceDecay) {
-      try {
-        const { halfLife, cullFloor } = hygiene.confidenceDecay
-        culledFactIds = await cullByEffectiveConfidence(semRef, now, halfLife, cullFloor)
-      } catch (err) {
-        console.warn('[memory] janitor: confidence-decay cull failed:', (err as Error).message ?? err)
+      if (semRef && hygiene.confidenceDecay) {
+        try {
+          const { halfLife, cullFloor } = hygiene.confidenceDecay
+          culledFactIds = await cullByEffectiveConfidence(semRef, now, halfLife, cullFloor)
+        } catch (err) {
+          console.warn('[memory] janitor: confidence-decay cull failed:', (err as Error).message ?? err)
+        }
       }
-    }
 
-    if (epRef && hygiene.episodicTTL) {
-      const ttl = hygiene.episodicTTL
-      try {
-        culledEpisodeIds = await cullByTTL(epRef, currentTurn, now, ttl)
-      } catch (err) {
-        console.warn('[memory] janitor: episodic TTL cull failed:', (err as Error).message ?? err)
+      if (epRef && hygiene.episodicTTL) {
+        const ttl = hygiene.episodicTTL
+        try {
+          culledEpisodeIds = await cullByTTL(epRef, currentTurn, now, ttl)
+        } catch (err) {
+          console.warn('[memory] janitor: episodic TTL cull failed:', (err as Error).message ?? err)
+        }
+        try {
+          markedStaleEpisodeIds = await markStale(epRef, now, ttl.permanentStaleDays)
+        } catch (err) {
+          console.warn('[memory] janitor: stale-marking failed:', (err as Error).message ?? err)
+        }
       }
-      try {
-        markedStaleEpisodeIds = await markStale(epRef, now, ttl.permanentStaleDays)
-      } catch (err) {
-        console.warn('[memory] janitor: stale-marking failed:', (err as Error).message ?? err)
-      }
-    }
 
-    if (janRef?.updateState) {
-      await janRef.updateState((s: any) => ({
+      await janRef.updateState((s) => ({
         ...s,
         lastRunTurn: currentTurn,
         lastRunAt: new Date(now).toISOString(),
@@ -122,22 +123,6 @@ export function memorySystemJanitor(
         lastCulledEpisodeIds: culledEpisodeIds,
         lastMarkedStaleEpisodeIds: markedStaleEpisodeIds,
       }))
-    }
-  }
-
-  const resources: Record<string, any> = {
-    workingMemory: workingMemoryResource,
-    memorySystem: memorySystemResource,
-    janitor: janitorResource,
-  }
-  if (semanticResource) resources.semanticMemory = semanticResource
-  if (episodicResource) resources.episodicMemory = episodicResource
-
-  return handler({
-    name: config.name ? `${config.name}/janitor` : 'memory/janitor',
-    inputSchema: z.any(),
-    // No outputSchema — state mutation only (BP-012, BP-014).
-    resources,
-    execute,
+    },
   })
 }
