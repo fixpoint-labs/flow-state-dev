@@ -4,11 +4,15 @@ import { shortId } from './internal/helpers.js'
 
 type EpRef = ResourceContext<EpisodicMemoryState>
 
+/** Milliseconds in a day. */
+const MS_PER_DAY = 1000 * 60 * 60 * 24
+
 /**
- * Input for encoding a new episode — ID, encodedAt, and consolidated
- * are generated automatically.
+ * Input for encoding a new episode — ID, `encodedAt`, `consolidated`, and
+ * `stale` are generated automatically. `durability` must be supplied by the
+ * caller (reflect routes only `'persistent'` and `'permanent'` items here).
  */
-export type EncodeEpisodeInput = Omit<Episode, 'id' | 'encodedAt' | 'consolidated'>
+export type EncodeEpisodeInput = Omit<Episode, 'id' | 'encodedAt' | 'consolidated' | 'stale'>
 
 /**
  * Encode a new episode into episodic memory.
@@ -28,6 +32,7 @@ export async function encode(
     id: `ep_${shortId(6)}`,
     encodedAt: new Date().toISOString(),
     consolidated: false,
+    stale: false,
   }
 
   await ref.updateState((s: EpisodicMemoryState) => {
@@ -64,6 +69,98 @@ export function recent(ref: EpRef, limit?: number): Episode[] {
     (a, b) => b.occurredAtTurn - a.occurredAtTurn,
   )
   return limit != null ? sorted.slice(0, limit) : sorted
+}
+
+/**
+ * TTL configuration for `cullByTTL`. Mirrors
+ * `HygieneConfig.episodicTTL` so the janitor can pass its resolved config
+ * through unchanged.
+ */
+export interface EpisodicTTLConfig {
+  /** Cull persistent episodes encoded more than this many turns ago. */
+  persistentTurns: number
+  /** Cull persistent episodes encoded more than this many days ago. */
+  persistentDays: number
+  /**
+   * `'OR'` (default) — cull when either turn-count OR wall-time threshold
+   * fires. `'AND'` — require both thresholds. Knowledge is preserved in
+   * consolidation-derived semantic facts either way; `'OR'` is the
+   * conservative, default-on shape.
+   */
+  operator: 'OR' | 'AND'
+}
+
+/**
+ * Cull persistent episodes that have crossed the configured TTL thresholds.
+ *
+ * Permanent episodes are NEVER touched here — they are sacrosanct and only
+ * pick up a `stale: true` marker via `markStale`. Returns the IDs of culled
+ * episodes so the caller can record them on the janitor resource.
+ */
+export async function cullByTTL(
+  ref: EpRef,
+  currentTurn: number,
+  now: number,
+  ttl: EpisodicTTLConfig,
+): Promise<string[]> {
+  const culled: string[] = []
+  await ref.updateState((s: EpisodicMemoryState) => {
+    const surviving: Episode[] = []
+    for (const ep of s.episodes) {
+      if (ep.durability !== 'persistent') {
+        surviving.push(ep)
+        continue
+      }
+      const ageTurns = currentTurn - ep.occurredAtTurn
+      const encodedMs = Date.parse(ep.encodedAt)
+      const ageDays = Number.isFinite(encodedMs) ? (now - encodedMs) / MS_PER_DAY : 0
+
+      const turnFired = ageTurns >= ttl.persistentTurns
+      const dayFired = ageDays >= ttl.persistentDays
+      const shouldCull = ttl.operator === 'AND'
+        ? (turnFired && dayFired)
+        : (turnFired || dayFired)
+
+      if (shouldCull) {
+        culled.push(ep.id)
+      } else {
+        surviving.push(ep)
+      }
+    }
+    if (culled.length === 0) return s
+    return { ...s, episodes: surviving }
+  })
+  return culled
+}
+
+/**
+ * Flip `stale: true` on permanent episodes that have been silent longer
+ * than `staleDays`. Persistent episodes are ignored (the janitor culls
+ * them via `cullByTTL` instead). Idempotent: episodes already marked stale
+ * are not re-touched. Returns the IDs newly flagged.
+ */
+export async function markStale(
+  ref: EpRef,
+  now: number,
+  staleDays: number,
+): Promise<string[]> {
+  const marked: string[] = []
+  await ref.updateState((s: EpisodicMemoryState) => {
+    let changed = false
+    const episodes = s.episodes.map((ep) => {
+      if (ep.durability !== 'permanent') return ep
+      if (ep.stale) return ep
+      const encodedMs = Date.parse(ep.encodedAt)
+      if (!Number.isFinite(encodedMs)) return ep
+      const ageDays = (now - encodedMs) / MS_PER_DAY
+      if (ageDays < staleDays) return ep
+      changed = true
+      marked.push(ep.id)
+      return { ...ep, stale: true }
+    })
+    return changed ? { ...s, episodes } : s
+  })
+  return marked
 }
 
 /**

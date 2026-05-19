@@ -51,6 +51,12 @@ import {
   query,
 } from './semantic-memory-helpers.js'
 import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
+import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks.js'
+import {
+  effectiveConfidence,
+  janitorResource,
+  DEFAULT_HYGIENE_CONFIG,
+} from './janitor.js'
 import {
   createWorkingMemoryCapability,
   createEpisodicMemoryCapability,
@@ -242,6 +248,58 @@ export interface SemanticMemoryConfig {
   pruneThreshold?: number
 }
 
+/**
+ * Configuration for the memory hygiene pass (FIX-411).
+ *
+ * Drives the janitor block that decays semantic-fact confidence over time
+ * and applies durability-based TTL to episodic episodes. Default-on:
+ * omitting `hygiene` from `memory.system()` opts into
+ * `DEFAULT_HYGIENE_CONFIG`. Pass `false` to revert to pre-FIX-411 behaviour
+ * — no decay, unbounded growth.
+ */
+export interface HygieneConfig {
+  /**
+   * Confidence-decay configuration. `true` uses defaults; an object
+   * overrides selected fields; `false` disables the semantic branch
+   * entirely (recall ranking falls back to raw `fact.confidence`).
+   */
+  confidenceDecay?: boolean | {
+    /** Half-life in days. Default 180. */
+    halfLife?: number
+    /** Effective-confidence threshold below which facts are culled. Default 0.1. */
+    cullFloor?: number
+  }
+  /**
+   * Episodic TTL configuration. `true` uses defaults; an object overrides
+   * selected fields; `false` disables the episodic branch entirely.
+   */
+  episodicTTL?: boolean | {
+    /** Cull persistent episodes encoded more than this many turns ago. Default 500. */
+    persistentTurns?: number
+    /** Cull persistent episodes encoded more than this many days ago. Default 90. */
+    persistentDays?: number
+    /** `'OR'` (default) — cull when either threshold fires. `'AND'` — require both. */
+    operator?: 'OR' | 'AND'
+    /** Days of silence after which permanent episodes pick up `stale: true`. Default 180. */
+    permanentStaleDays?: number
+  }
+  /**
+   * When the janitor runs.
+   *
+   * - `'onConsolidation'` (default): appended to the consolidation chain;
+   *   runs whenever consolidation runs (matches the cadence of fact updates).
+   * - `'onCapture'`: appended to the capture pipeline; runs every turn.
+   *   Decay is slow, so this is rarely worth the cost — reserved for
+   *   high-churn deployments.
+   * - `'manual'`: never auto-wired. Invoke `mem.janitor` directly when
+   *   custom scheduling is required.
+   */
+  schedule?: 'onConsolidation' | 'onCapture' | 'manual'
+}
+
+/** Default hygiene configuration. Mirrors `DEFAULT_HYGIENE_CONFIG` in `./janitor.ts`. */
+export { DEFAULT_HYGIENE_CONFIG } from './janitor.js'
+
 /** Configuration for the agent-invocable recall tool (FIX-409). */
 export interface MemoryToolConfig {
   /**
@@ -305,6 +363,12 @@ export interface MemorySystemConfig {
   maxAssistantChars?: number
   /** Recall-tool config. Omit to use defaults (`llm-filter` strategy). */
   tool?: MemoryToolConfig
+  /**
+   * Memory hygiene configuration (FIX-411). Default-on. Pass `false` to
+   * revert to pre-FIX-411 behaviour: no confidence decay, no episodic TTL,
+   * stores grow without bound.
+   */
+  hygiene?: HygieneConfig | true | false
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +393,15 @@ export interface MemorySystem extends MemoryProvider {
   consolidate?: ReturnType<typeof memorySystemConsolidate>
   /** Standalone prune sequencer (when semantic configured). */
   prune?: ReturnType<typeof memorySystemPrune>
+  /**
+   * Memory hygiene janitor block (when `hygiene !== false` and at least one
+   * of semantic/episodic is configured). State-mutation-only — invoke
+   * directly via `.tap()`/`.work()` for custom scheduling, or rely on the
+   * auto-wiring driven by `hygiene.schedule`.
+   */
+  janitor?: ReturnType<typeof memorySystemJanitor>
+  /** Session-scoped janitor tracking resource (when janitor is configured). */
+  janitorResource?: typeof janitorResource
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
   /**
@@ -415,6 +488,8 @@ export interface MemorySystem extends MemoryProvider {
   sessionResources: {
     workingMemory: typeof workingMemoryResource
     memorySystem: typeof memorySystemResource
+    /** Session-scoped janitor resource — included when hygiene is enabled. */
+    janitor?: typeof janitorResource
   }
   /**
    * User-scoped resources for this memory system. Spread into `defineFlow`'s
@@ -530,6 +605,12 @@ export interface MemorySystem extends MemoryProvider {
 function createRecall(
   episodicConfig?: { scope: 'user' | 'org' },
   semanticConfig?: { scope: 'user' | 'org' },
+  /**
+   * When `confidenceDecay` is set, the semantic ranking branch uses
+   * `effectiveConfidence` (decayed by elapsed days). When `false` or
+   * undefined, raw `fact.confidence` is used — pre-FIX-411 behaviour.
+   */
+  decayConfig?: false | { halfLife: number },
 ) {
   return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
     const results: RankedMemoryItem[] = []
@@ -543,10 +624,16 @@ function createRecall(
 
         if (semRef) {
           const facts = allFacts(semRef)
+          const now = Date.now()
           for (const fact of facts) {
-            // Relevance: confidence × (0.5 + 0.5 × normalizedReinforcement)
+            // Relevance: effective × (0.5 + 0.5 × normalizedReinforcement).
+            // When hygiene's confidence-decay is disabled we fall through
+            // to the raw fact.confidence — pre-FIX-411 ranking.
+            const baseConfidence = decayConfig
+              ? effectiveConfidence(fact, now, decayConfig.halfLife)
+              : fact.confidence
             const normalizedReinforcement = Math.min(1, fact.reinforcementCount / 10)
-            let relevance = fact.confidence * (0.5 + 0.5 * normalizedReinforcement)
+            let relevance = baseConfidence * (0.5 + 0.5 * normalizedReinforcement)
 
             if (cue) {
               const overlap = tokenOverlap(cue, fact.content)
@@ -723,6 +810,62 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
   }
 }
 
+/**
+ * Resolve user-supplied hygiene config into the concrete shape the janitor
+ * block expects. Validates `halfLife > 0` and `cullFloor` in `[0, 1]` at
+ * construction time so misconfiguration fails fast.
+ *
+ * Returns `false` when hygiene is explicitly disabled (`hygiene: false`) so
+ * downstream call sites can skip every branch with one check.
+ */
+function resolveHygieneConfig(
+  input: HygieneConfig | true | false | undefined,
+): false | ResolvedHygieneConfig {
+  if (input === false) return false
+
+  const userConfig: HygieneConfig = input === true || input == null ? {} : input
+  const defaults = DEFAULT_HYGIENE_CONFIG
+
+  let confidenceDecay: ResolvedHygieneConfig['confidenceDecay']
+  if (userConfig.confidenceDecay === false) {
+    confidenceDecay = false
+  } else {
+    const cd = userConfig.confidenceDecay === true || userConfig.confidenceDecay == null
+      ? {}
+      : userConfig.confidenceDecay
+    const halfLife = cd.halfLife ?? defaults.confidenceDecay.halfLife
+    const cullFloor = cd.cullFloor ?? defaults.confidenceDecay.cullFloor
+    if (!(halfLife > 0)) {
+      throw new Error(`hygiene.confidenceDecay.halfLife must be > 0, got ${halfLife}`)
+    }
+    if (!(cullFloor >= 0 && cullFloor < 1)) {
+      throw new Error(`hygiene.confidenceDecay.cullFloor must be in [0, 1), got ${cullFloor}`)
+    }
+    confidenceDecay = { halfLife, cullFloor }
+  }
+
+  let episodicTTL: ResolvedHygieneConfig['episodicTTL']
+  if (userConfig.episodicTTL === false) {
+    episodicTTL = false
+  } else {
+    const et = userConfig.episodicTTL === true || userConfig.episodicTTL == null
+      ? {}
+      : userConfig.episodicTTL
+    episodicTTL = {
+      persistentTurns: et.persistentTurns ?? defaults.episodicTTL.persistentTurns,
+      persistentDays: et.persistentDays ?? defaults.episodicTTL.persistentDays,
+      operator: et.operator ?? defaults.episodicTTL.operator,
+      permanentStaleDays: et.permanentStaleDays ?? defaults.episodicTTL.permanentStaleDays,
+    }
+  }
+
+  return {
+    confidenceDecay,
+    episodicTTL,
+    schedule: userConfig.schedule ?? defaults.schedule,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -819,6 +962,29 @@ export function system(config: MemorySystemConfig): MemorySystem {
       }
     : undefined
 
+  // Resolve hygiene config (FIX-411). Default-on: omitting the key resolves
+  // to DEFAULT_HYGIENE_CONFIG. `hygiene: true` is identical to omission.
+  // `hygiene: false` disables every branch and skips auto-wiring; the
+  // ranking sites fall back to raw fact.confidence.
+  const hygiene = resolveHygieneConfig(config.hygiene)
+
+  // Operator-visibility warning: the janitor is being asked to run but
+  // there's nothing for it to operate on. Only fires when the caller
+  // EXPLICITLY opted into hygiene — silent for the default-on path on
+  // working-only configurations (spec §10.3).
+  const hygieneExplicit = config.hygiene !== undefined && config.hygiene !== false
+  if (
+    hygieneExplicit &&
+    hygiene &&
+    hygiene.schedule !== 'manual' &&
+    !config.semantic &&
+    !config.episodic
+  ) {
+    console.warn(
+      '[memory] hygiene is enabled but neither semantic nor episodic memory is configured — janitor will no-op.',
+    )
+  }
+
   // Create tier capabilities FIRST — these own the resource references.
   // Blocks and the system both derive resources from capabilities to avoid
   // resource conflicts (same defineResource() reference everywhere).
@@ -872,7 +1038,16 @@ export function system(config: MemorySystemConfig): MemorySystem {
     digest: digestConfig,
     _digestResource: digestResource,
     source: config.source,
+    hygiene: hygiene === false ? undefined : hygiene,
   }
+
+  // Build the janitor block once when hygiene is enabled — same instance is
+  // referenced by auto-wired pipelines (via `blocksConfig.hygiene`) and by
+  // `mem.janitor` for manual scheduling. Skipped when `hygiene: false` or
+  // when neither semantic nor episodic is configured (nothing to clean).
+  const janitorBlock = hygiene && (semanticConfig || episodicConfig)
+    ? memorySystemJanitor({ ...blocksConfig, hygiene })
+    : undefined
 
   // Create capture pipeline
   const capture = memorySystemCapture(blocksConfig)
@@ -886,10 +1061,16 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? memorySystemPrune(blocksConfig)
     : undefined
 
-  // Create recall and contextFormatter
+  // Create recall and contextFormatter. The recall ranking uses
+  // effectiveConfidence only when hygiene's confidence decay is on; passing
+  // `false` makes recall fall through to raw fact.confidence (pre-FIX-411).
+  const recallDecayConfig = hygiene && hygiene.confidenceDecay
+    ? { halfLife: hygiene.confidenceDecay.halfLife }
+    : false
   const recallFn = createRecall(
     episodicConfig ? { scope: episodicConfig.scope } : undefined,
     semanticConfig ? { scope: semanticConfig.scope } : undefined,
+    recallDecayConfig,
   )
   // The bundled formatter retains the previous default behaviour (digest +
   // working) for direct consumers of `mem.contextFormatter`. Capability
@@ -1011,6 +1192,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     sessionResources: {
       workingMemory: workingMemoryResource,
       memorySystem: memorySystemResource,
+      ...(janitorBlock ? { janitor: janitorResource } : {}),
     },
     userResources: {
       ...(episodicResource ? { episodicMemory: episodicResource } : {}),
@@ -1026,6 +1208,11 @@ export function system(config: MemorySystemConfig): MemorySystem {
 
   if (consolidate) {
     result.consolidate = consolidate
+  }
+
+  if (janitorBlock) {
+    result.janitor = janitorBlock
+    result.janitorResource = janitorResource
   }
 
   if (prune) {

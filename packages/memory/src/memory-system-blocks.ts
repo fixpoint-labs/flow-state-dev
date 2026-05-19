@@ -24,6 +24,7 @@ import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFI
 import { findBestOverlap } from './internal/helpers.js'
 import { createDigestMemoryResource } from './digest-memory.js'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
+import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Internal type alias
@@ -94,6 +95,12 @@ export interface MemorySystemBlocksConfig {
   /** Shared digest resource reference — must be the same instance across blocks. */
   _digestResource?: ReturnType<typeof createDigestMemoryResource>
   source?: (input: unknown, ctx: MemoryBlockCtx) => string
+  /**
+   * Resolved hygiene configuration (FIX-411). When set, the consolidation
+   * and capture pipelines auto-wire the janitor block per `hygiene.schedule`.
+   * `undefined` means hygiene is disabled — janitor is neither built nor wired.
+   */
+  hygiene?: ResolvedHygieneConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -469,6 +476,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
             occurredAtTurn: wmRef.state.currentTurn,
             significance: item.importance,
             category: item.category,
+            durability: item.durability,
             context: {
               sessionId: ctx.session?.identity?.id ?? 'unknown',
               precedingTopic: undefined,
@@ -976,15 +984,22 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
   const generateBlock = consolidationGenerate(config)
   const persistBlock = consolidationPersist(config)
 
-  const generateAndPersist = withDigestRegenerate(
-    sequencer({
-      name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
-      inputSchema: z.any(),
-    })
-      .then(generateBlock)
-      .then(persistBlock),
-    config,
-  )
+  // Order: generate → persist → janitor → digest-regen. Janitor runs after
+  // persist so reinforcement updates land before decay reads them, and
+  // before the digest so the digest summarises the post-cull store. Wired
+  // via `.tap()` because the janitor is state-mutation-only (BP-012/14).
+  let chain: any = sequencer({
+    name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
+    inputSchema: z.any(),
+  })
+    .then(generateBlock)
+    .then(persistBlock)
+
+  if (config.hygiene && config.hygiene.schedule === 'onConsolidation') {
+    chain = chain.tap(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+  }
+
+  const generateAndPersist = withDigestRegenerate(chain, config)
 
   return sequencer({
     name: config.name ? `${config.name}/consolidate` : 'memory/consolidate',
@@ -1268,6 +1283,14 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
     const consolidateBlock = memorySystemConsolidate(config)
     const pruneBlock = memorySystemPrune(config)
     pipeline = pipeline.work(consolidateBlock).work(pruneBlock)
+  }
+
+  // Hygiene with `schedule: 'onCapture'` wires the janitor as a background
+  // `.work()` step every turn. Decay is slow so this rarely earns its keep
+  // — `'onConsolidation'` (default) is preferred. `'manual'` skips wiring
+  // entirely; the caller invokes `mem.janitor` themselves.
+  if (config.hygiene && config.hygiene.schedule === 'onCapture') {
+    pipeline = pipeline.work(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
   }
 
   return pipeline

@@ -180,6 +180,7 @@ const sidebars: SidebarsConfig = {
             "memory/overview",
             "memory/configuration",
             "memory/recall-tool",
+            "memory/hygiene",
           ],
         },
         "ecosystem/thought-fabric-pointer",

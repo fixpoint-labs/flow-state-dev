@@ -22,6 +22,22 @@ export const episodeSchema = z.object({
   }),
   /** Whether this episode has been consolidated into semantic memory. */
   consolidated: z.boolean().default(false),
+  /**
+   * Durability classification at encode time. `transient` and `session`
+   * never reach the episodic store (reflect routes only `persistent` and
+   * `permanent` here), so the schema restricts the field accordingly.
+   * Drives janitor TTL: `persistent` is cullable, `permanent` is sacrosanct.
+   * Defaults to `persistent` for backward-compatible deserialization of
+   * pre-FIX-411 episodes.
+   */
+  durability: z.enum(['persistent', 'permanent']).default('persistent'),
+  /**
+   * Observer-visible flag set by the janitor on permanent episodes that
+   * have gone silent past `permanentStaleDays`. Never causes culling;
+   * exists so operators inspecting the store can see what's gone cold.
+   * Defaults to `false` for backward-compatible deserialization.
+   */
+  stale: z.boolean().default(false),
 })
 
 /** A single episodic memory record. */
