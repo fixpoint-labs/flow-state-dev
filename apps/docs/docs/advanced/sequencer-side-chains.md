@@ -118,6 +118,10 @@ pipeline
 
 If `requiredSyncTask` fails, the pipeline throws. If only `optionalLogTask` fails, the pipeline continues. The tradeoff: `failOnError` applies to *all* queued work. You can't fail only on specific tasks. If you need per-task behavior, use separate `.work()` / `.waitForWork()` segments.
 
+## Waiting on the item stream
+
+`.waitForWork()` is the right tool when you're waiting on work the *same sequencer* dispatched. When the thing you're waiting for happens elsewhere — a worker pattern writing an artifact, a task-board flipping a task status, an external actor resuming a paused review — reach for [`waitForCondition`](/docs/sequencers/wait-for-condition) instead. It subscribes to the request's item stream and re-evaluates a predicate on each fan-out, so the wait is event-driven rather than polled.
+
 ## When to use work vs tap
 
 | | `tap` | `work` |

@@ -40,6 +40,7 @@ const sidebars: SidebarsConfig = {
             "sequencers/overview",
             "sequencers/composing-blocks",
             "sequencers/control-flow",
+            "sequencers/wait-for-condition",
             "sequencers/connectors",
           ],
         },

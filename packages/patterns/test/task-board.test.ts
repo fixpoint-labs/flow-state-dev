@@ -594,7 +594,11 @@ describe("taskBoard - awaiting_review", () => {
         { id: "trigger", goal: "trigger" },
       ],
       onIdle: "complete",
-      idlePollMs: 20,
+      // FIX-621: prove event-driven wake. With a 50s idle-poll baseline,
+      // the test can only finish in time if `resumeFromReview` fans out
+      // a `task-change` item that wakes `.waitForCondition` directly
+      // rather than waiting for the next tick.
+      idlePollMs: 50_000,
       maxIterations: 500,
     });
 

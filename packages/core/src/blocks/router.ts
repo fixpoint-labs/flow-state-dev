@@ -235,6 +235,9 @@ export function router<
       // the ref instead of duplicating content. Set AFTER runSelected below.
       const installRouterHint = (selectedInstanceId: string): void => {
         if (ctx.response === undefined) return;
+        // Defensive: some legacy test fixtures use partial `ctx.response`
+        // mocks without `getItems`. No-op falls back to inline (no ref hint).
+        if (typeof ctx.response.getItems !== "function") return;
         const items = ctx.response.getItems();
         for (let i = items.length - 1; i >= 0; i -= 1) {
           const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };

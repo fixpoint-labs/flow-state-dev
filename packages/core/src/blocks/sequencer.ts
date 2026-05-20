@@ -129,6 +129,9 @@ function findEmittedBlockTraceId(
   childInstanceId: string
 ): string | undefined {
   if (ctx.response === undefined) return undefined;
+  // Defensive: some legacy test fixtures construct partial `ctx.response`
+  // mocks without `getItems`. Returning undefined falls back to inline refs.
+  if (typeof ctx.response.getItems !== "function") return undefined;
   const items = ctx.response.getItems();
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };

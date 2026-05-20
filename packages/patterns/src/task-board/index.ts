@@ -52,6 +52,8 @@
  * pattern-level coordination beyond that.
  */
 import { sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import {
@@ -488,7 +490,6 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     name: `${name}-worker-check-board`,
     collection: collectionFactory,
     onIdle,
-    idlePollMs,
     shouldExit,
   });
 
@@ -521,11 +522,49 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     .rescue([{ block: recordError }]);
 
   function makeWorker(workerId: number) {
+    // Per-worker mutable cell holding the resolved collection ref. The
+    // `.waitForCondition` predicate signature is `(items) => boolean`
+    // and does not receive a ctx, so we capture the ref via a leading
+    // `.tap` step the first time this worker runs. Resolving once per
+    // worker is fine: the collection factory is idempotent (same
+    // collectionId → same ref) and avoids re-doing the lookup every
+    // iteration. Predicate reads from `cell.collection!` — guaranteed
+    // populated because the tap runs before the wait.
+    const cell: { collection?: TaskCollectionRef } = {};
+
+    const idleWait = sequencer({
+      name: `${name}-worker-${workerId}-idle-wait`,
+      inputSchema: z.unknown(),
+    })
+      .tap((_input, ctx) => {
+        cell.collection ??= collectionFactory(ctx);
+      })
+      .waitForCondition(
+        (items) =>
+          cell.collection === undefined
+            ? false
+            : whenBoardClaimable(cell.collection, { onIdle, shouldExit })(items),
+        // Long timeout: a quiet board still wakes when any task-change
+        // or resource_change item fans out. The timeout is the upper
+        // bound on starvation if the wake signal is somehow missed —
+        // and the worker's outer `loopBack` re-evaluates exit on every
+        // wake, so even a hard timeout cycles cleanly back through
+        // `checkBoard`. Per spec §3.6, scale to `idlePollMs * 100`
+        // so test boards with tiny poll intervals still cycle quickly.
+        { timeoutMs: Math.max(idlePollMs * 100, 50) }
+      )
+      .map(() => ({ claimed: false, task: undefined as Task | undefined }));
+
     return sequencer({
       name: `${name}-worker-${workerId}`,
       stateSchema: taskBoardWorkerStateSchema,
     })
       .then(claimTask)
+      .thenIf(
+        (out: ClaimResult) => !out.claimed,
+        () => undefined,
+        idleWait
+      )
       .thenIf(
         (out: ClaimResult) => out.claimed,
         // Connector: ClaimResult → Task (the workerStep's input).
