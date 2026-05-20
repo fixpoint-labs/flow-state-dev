@@ -20,9 +20,14 @@ The block subscribes to the request emitter while it waits and unsubscribes on e
 ```ts
 sequencer.waitForCondition(
   predicate: (items: readonly OutputItem[]) => boolean,
-  options: { timeoutMs: number }
+  options: {
+    timeoutMs: number;
+    wakeOn?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+  }
 ): SequencerDefinition<TInput, { timedOut: boolean }>
 ```
+
+The optional `wakeOn` filter is documented under [Wake filtering](#wake-filtering).
 
 ## Examples
 
@@ -114,6 +119,66 @@ pipeline.waitForCondition(whenCollectionDrained(myCollection), {
 ```
 
 If the predicate throws, the wait aborts and the error propagates out of the step. Don't throw on bad items — return false.
+
+## Wake filtering
+
+By default, `.waitForCondition` re-evaluates the predicate on every item event, including transient items like `resource_change` and `block_trace`. In high-fanout patterns (a `taskBoard` with many idle workers, an `eventActors` cascade with frequent workspace patches), the per-event predicate cost compounds: every subscriber rescans collection state on every emit, even when the wake item could not plausibly change the result.
+
+The `wakeOn` option lets callers fast-path uninteresting events so the predicate runs only when it could plausibly change.
+
+### When to use it
+
+Reach for `wakeOn` when many subscribers share an emitter and most events are irrelevant to most subscribers. A single sequencer waiting on a single condition rarely needs it — the default behavior is fine.
+
+A canonical case: the `taskBoard` worker idle-wait. The worker only cares about `task-change` items for its own collection. Without `wakeOn`, every `resource_change` from a sibling worker (or any other source) wakes the predicate, costs a `collection.list()` scan, and returns false. With `wakeOn`, the listener is skipped entirely for non-task-change events.
+
+### Signature
+
+```ts
+wakeOn?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean
+```
+
+The filter is synchronous, per-event, per-listener. It does NOT gate the initial on-entry predicate evaluation — that always runs once before any subscription. Only the subscription path consults `wakeOn`.
+
+A filter that throws is caught at the emitter boundary and the listener still fires (fail-open). A filter that silently rejects everything is allowed; the predicate will never re-evaluate and the wait resolves at `timeoutMs`. Keep filters cheap — two or three equality checks, no allocations.
+
+### Example
+
+Pair the task-board claim predicate with the task-change wake filter:
+
+```ts
+import { sequencer } from "@flow-state-dev/core";
+import { whenBoardClaimable } from "@flow-state-dev/patterns/task-board";
+import { onTaskChangeFor } from "@flow-state-dev/tasks";
+
+sequencer({ name: "idle-wait" })
+  .waitForCondition(whenBoardClaimable(collection), {
+    timeoutMs: 5_000,
+    wakeOn: onTaskChangeFor(collection.collectionId),
+  });
+```
+
+`resource_change`, `block_trace`, and `task-change` items targeting other collections are filtered out before the predicate runs.
+
+### Anti-pattern
+
+Do not pair a `wakeOn` that excludes the items your predicate inspects:
+
+```ts
+// Wrong — predicate looks for resource_change items, but the wake
+// filter excludes them. The predicate is never re-evaluated; the
+// wait resolves at timeoutMs as if no event ever arrived.
+sequencer.waitForCondition(whenResourceChanged({ scope, path }), {
+  timeoutMs: 5_000,
+  wakeOn: (item) => item.type === "component",
+});
+```
+
+When in doubt, omit `wakeOn` — the default behavior wakes on every item.
+
+### Helpers
+
+`@flow-state-dev/tasks` exports `onTaskChangeFor(collectionId)` — the wake filter for any predicate that reads from a task collection.
 
 ## Lifecycle
 

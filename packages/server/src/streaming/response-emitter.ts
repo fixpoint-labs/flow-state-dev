@@ -185,9 +185,10 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
   private itemHooks?: ResponseEmitterItemHooks;
   private eventHooks?: ResponseEmitterEventHooks;
-  private readonly itemListeners = new Set<
-    (item: OutputItem, kind: "added" | "updated" | "done") => void
-  >();
+  private readonly itemListeners = new Set<{
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void;
+    filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+  }>();
 
   /**
    * Creates a request-scoped emitter instance.
@@ -237,33 +238,59 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * iteration, so a listener that unsubscribes itself (or registers a new
    * listener) mid-fan-out does not corrupt the in-flight loop. A listener
    * registered during fan-out only sees subsequent events.
+   *
+   * When `options.filter` is provided, the listener is skipped for events
+   * the filter returns false for (FIX-660). Filter throws are caught and
+   * the listener STILL fires (fail-open) — a filter that throws is a
+   * caller bug; failing closed would silently produce 5-second
+   * `.waitForCondition` timeouts with nothing in the trace explaining why.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    options?: {
+      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+    }
   ): () => void {
-    this.itemListeners.add(listener);
+    const entry = { listener, filter: options?.filter };
+    this.itemListeners.add(entry);
     let unsubscribed = false;
     return () => {
       if (unsubscribed) return;
       unsubscribed = true;
-      this.itemListeners.delete(listener);
+      this.itemListeners.delete(entry);
     };
   }
 
   /**
    * Fans out an item transition to all currently-registered listeners.
    * Snapshots the listener set first so in-flight unsubscribe/subscribe
-   * calls do not affect the current iteration. Listener exceptions are
-   * captured and emitted as debug events; they do not propagate.
+   * calls do not affect the current iteration. Per-listener filters are
+   * evaluated against the snapshot entry; listener and filter exceptions
+   * are both isolated via debug events and do not propagate.
    */
   private fanoutItemEvent(
     item: OutputItem,
     kind: "added" | "updated" | "done"
   ): void {
     const snapshot = Array.from(this.itemListeners);
-    for (const listener of snapshot) {
+    for (const entry of snapshot) {
+      let pass = true;
+      if (entry.filter !== undefined) {
+        try {
+          pass = entry.filter(item, kind);
+        } catch (err) {
+          void this.emitDebug("response.subscribeToItems.filter_threw", {
+            err: String(err),
+            itemType: item.type
+          });
+          // Fail-open: a throwing filter is a caller bug; silently
+          // skipping the listener would surface as a phantom timeout.
+          pass = true;
+        }
+      }
+      if (!pass) continue;
       try {
-        listener(item, kind);
+        entry.listener(item, kind);
       } catch (err) {
         // Fire-and-forget — emitDebug is async but we deliberately don't
         // await it inside the fan-out loop to avoid serializing listeners

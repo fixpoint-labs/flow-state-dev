@@ -298,7 +298,7 @@ pipeline.waitForCondition(
 );
 ```
 
-Output is `{ timedOut: boolean }`. The sequencer does not throw on timeout; downstream steps decide what to do with it. The block listens via `ResponseEmitter.subscribeToItems` and unsubscribes on exit (timeout, satisfaction, or parent abort).
+Output is `{ timedOut: boolean }`. The sequencer does not throw on timeout; downstream steps decide what to do with it. The block listens via `ResponseEmitter.subscribeToItems` and unsubscribes on exit (timeout, satisfaction, or parent abort). An optional `wakeOn` filter narrows which items wake the predicate — see [Wake filtering](/docs/sequencers/wait-for-condition#wake-filtering).
 
 **When to reach for this**: coordinating with side-channel state — a worker pattern that writes an artifact, a task-board that flips a task status, an external actor that resumes a paused review. Cheaper than polling and event-driven, but the predicate must be a pure synchronous function over `readonly OutputItem[]`. See the full [waitForCondition reference](/docs/sequencers/wait-for-condition) for predicate helpers and custom-predicate guidance.
 

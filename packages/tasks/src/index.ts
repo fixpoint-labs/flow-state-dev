@@ -55,6 +55,9 @@ export {
   type ResourceBackingSpec,
 } from "./collection/get-or-create";
 
+// Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
+export { onTaskChangeFor } from "./collection/predicates";
+
 // Dispatchers
 export type { TaskDispatcher } from "./dispatchers/types";
 export { fifoDispatcher } from "./dispatchers/fifo";

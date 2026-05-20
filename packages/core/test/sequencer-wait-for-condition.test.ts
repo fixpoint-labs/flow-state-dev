@@ -12,28 +12,43 @@ import { createMockContext, runForTest } from "./helpers";
  */
 function createFakeResponse(initial: OutputItem[] = []) {
   const items: OutputItem[] = [...initial];
-  const listeners = new Set<(item: OutputItem, kind: "added" | "updated" | "done") => void>();
+  type Kind = "added" | "updated" | "done";
+  type Entry = {
+    listener: (item: OutputItem, kind: Kind) => void;
+    filter?: (item: OutputItem, kind: Kind) => boolean;
+  };
+  const entries = new Set<Entry>();
 
   return {
     handle: {
       emit: () => undefined,
       getItems: () => items,
-      subscribeToItems: (listener: (item: OutputItem, kind: "added" | "updated" | "done") => void) => {
-        listeners.add(listener);
+      subscribeToItems: (
+        listener: (item: OutputItem, kind: Kind) => void,
+        options?: { filter?: (item: OutputItem, kind: Kind) => boolean }
+      ) => {
+        const entry: Entry = { listener, filter: options?.filter };
+        entries.add(entry);
         return () => {
-          listeners.delete(listener);
+          entries.delete(entry);
         };
       }
     },
-    pushItem(item: OutputItem, kind: "added" | "updated" | "done" = "added"): void {
+    pushItem(item: OutputItem, kind: Kind = "added"): void {
       items.push(item);
-      for (const listener of listeners) listener(item, kind);
+      for (const entry of entries) {
+        if (entry.filter !== undefined && !entry.filter(item, kind)) continue;
+        entry.listener(item, kind);
+      }
     },
     triggerUpdate(item: OutputItem): void {
-      for (const listener of listeners) listener(item, "updated");
+      for (const entry of entries) {
+        if (entry.filter !== undefined && !entry.filter(item, "updated")) continue;
+        entry.listener(item, "updated");
+      }
     },
     get listenerCount(): number {
-      return listeners.size;
+      return entries.size;
     }
   };
 }
@@ -238,5 +253,105 @@ describe("sequencer .waitForCondition", () => {
     // Initial 0 + one eval per pushed item = 6 calls, then short-circuits.
     expect(evaluations).toEqual([0, 1, 2, 3, 4, 5]);
     expect(fake.listenerCount).toBe(0);
+  });
+
+  describe("wakeOn option (FIX-660)", () => {
+    it("forwards wakeOn as the subscribeToItems filter option", async () => {
+      const fake = createFakeResponse();
+      const ctx = makeCtx(fake);
+      const subscribeSpy = vi.spyOn(fake.handle, "subscribeToItems");
+
+      const wakeOn = (item: OutputItem) => item.type === "message";
+      const seq = sequencer({ name: "wfc-wakeon-forward" }).waitForCondition(
+        (items) => items.length >= 2,
+        { timeoutMs: 1000, wakeOn }
+      );
+
+      const pending = runForTest(seq, undefined, ctx);
+      await Promise.resolve();
+      expect(subscribeSpy).toHaveBeenCalledTimes(1);
+      expect(subscribeSpy.mock.calls[0][1]).toEqual({ filter: wakeOn });
+
+      // Drive to completion so the test does not leak a pending timer.
+      fake.pushItem(makeItem({ type: "message" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+      fake.pushItem(makeItem({ type: "message" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+      await pending;
+    });
+
+    it("predicate is not re-evaluated for events the filter rejects", async () => {
+      const fake = createFakeResponse();
+      const ctx = makeCtx(fake);
+
+      const evaluations: number[] = [];
+      const seq = sequencer({ name: "wfc-wakeon-skip" }).waitForCondition(
+        (items) => {
+          evaluations.push(items.length);
+          return items.some((i) => i.type === "message");
+        },
+        {
+          timeoutMs: 1000,
+          wakeOn: (item) => item.type === "message"
+        }
+      );
+
+      const pending = runForTest(seq, undefined, ctx);
+      await Promise.resolve();
+      expect(evaluations).toEqual([0]);
+
+      // Filter-out item — listener (and thus predicate) must not fire.
+      fake.pushItem(makeItem({ type: "block_trace" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+      expect(evaluations).toEqual([0]);
+
+      // Filter-in item — listener fires, predicate re-evaluates and matches.
+      fake.pushItem(makeItem({ type: "message" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+
+      const out = await pending;
+      expect(out).toEqual({ timedOut: false });
+      expect(evaluations).toEqual([0, 2]);
+    });
+
+    it("wakeOn does not gate the initial on-entry predicate evaluation", async () => {
+      // Predicate is true on entry; wakeOn that rejects everything must
+      // not change the synchronous initial-eval short-circuit.
+      const fake = createFakeResponse([
+        makeItem({ type: "message" } as Partial<OutputItem> & { type: OutputItem["type"] })
+      ]);
+      const ctx = makeCtx(fake);
+      const subscribeSpy = vi.spyOn(fake.handle, "subscribeToItems");
+
+      const seq = sequencer({ name: "wfc-wakeon-entry" }).waitForCondition(
+        (items) => items.some((i) => i.type === "message"),
+        {
+          timeoutMs: 1000,
+          wakeOn: () => false
+        }
+      );
+
+      const out = await runForTest(seq, undefined, ctx);
+      expect(out).toEqual({ timedOut: false });
+      expect(subscribeSpy).not.toHaveBeenCalled();
+    });
+
+    it("wakeOn that matches nothing resolves with { timedOut: true }", async () => {
+      const fake = createFakeResponse();
+      const ctx = makeCtx(fake);
+
+      const seq = sequencer({ name: "wfc-wakeon-nomatch" }).waitForCondition(
+        (items) => items.length > 0,
+        {
+          timeoutMs: 25,
+          wakeOn: () => false
+        }
+      );
+
+      const pending = runForTest(seq, undefined, ctx);
+      await Promise.resolve();
+
+      // Push items that the filter rejects; predicate never re-evaluates.
+      fake.pushItem(makeItem({ type: "message" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+
+      const out = await pending;
+      expect(out).toEqual({ timedOut: true });
+    });
   });
 });
