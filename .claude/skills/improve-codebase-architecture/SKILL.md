@@ -152,4 +152,4 @@ If any of the three filters fail, skip the record entirely. Ephemeral reasons ("
 - File header comment + doc comments on every export (BP-007).
 - Per-package check: `pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test`. Root `pnpm typecheck` if the refactor crossed packages (also runs the boundary validator).
 - Update the per-package `README.md` if the public API changed. Update any affected `apps/docs` pages.
-- Add a `changelog.md` entry if the change ships to consumers.
+- Add a `.changeset/*.md` fragment if the change ships to consumers. See [`docs/contributing/release-notes-workflow.md`](../../../docs/contributing/release-notes-workflow.md).

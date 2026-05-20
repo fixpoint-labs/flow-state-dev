@@ -38,7 +38,7 @@ Read the current `.claude/todos/` directory:
 #### 1d: Project Context
 Read orientation docs to understand current phase and priorities:
 - `CLAUDE.md` — current phase, what's remaining
-- `changelog.md` — recent completions
+- `packages/*/CHANGELOG.md` and `.changeset/*.md` — recent completions and pending release notes
 - `docs/objectives.md` — if it exists, project goals
 
 ### Step 2: Clean Stale Todos

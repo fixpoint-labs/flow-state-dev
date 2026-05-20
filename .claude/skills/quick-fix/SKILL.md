@@ -98,13 +98,13 @@ Launch a `general-purpose` sub-agent to determine what documentation and changel
    - `apps/docs/` (hosted site) — Are there guides, references, or getting-started pages that describe the old behavior?
    - `packages/*/README.md` — Does the affected package's README describe the pre-fix behavior?
    - `AGENTS.md` or `docs/contributing/best-practices.md` — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
-3. **Changelog** — Determine whether `changelog.md` needs an entry. Not every fix warrants one. It does if:
+3. **Changeset** — Determine whether the fix needs a `.changeset/*.md` fragment. Not every fix warrants one. It does if:
    - The fix changes observable behavior (API response shape, error messages, default values)
    - The fix affects how developers use the framework
    - The fix resolves a known issue that users may have worked around
-   - It does NOT need an entry for purely internal refactors or test-only changes
+   - It does NOT need a changeset for purely internal refactors or test-only changes. For those, run `pnpm changeset --empty` and commit the empty fragment, or state "no changeset needed" in the PR description.
 
-   When an entry is warranted, follow the **Changelog style** section in `AGENTS.md`: 3–6 bullets, each one or two short sentences naming a user-facing fact. No file paths, no test counts, no "Out of scope" sections, no implementation rationale. The 2026-04-11 and 2026-03-20 entries in `changelog.md` are the reference style.
+   When a fragment is warranted, follow the [Release notes workflow](../../../docs/contributing/release-notes-workflow.md) and BP-022: one user-facing sentence per affected package, no file paths, no test counts, no implementation rationale. Pre-1.0: `patch` or `minor` only, never `major`.
 4. **Return a concrete list** of files that need updating and what specifically should change in each. Don't just say "README might need updating" — say which section and what the new content should reflect.
 
 Review the sub-agent results. If they surface anything critical (a bug in the fix, a clearly better approach, a missed test case), address it before presenting to the user. For non-critical observations (possible future refactor, related issues to create), include them in the summary.

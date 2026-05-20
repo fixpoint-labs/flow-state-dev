@@ -1,6 +1,5 @@
 {
   "name": "@flow-state-dev/integration-tests",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",

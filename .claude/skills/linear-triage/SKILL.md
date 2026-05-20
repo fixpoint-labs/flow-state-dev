@@ -14,7 +14,7 @@ Read the following project files to understand objectives, current phase, archit
 
 - `docs/objectives.md` — project goals and prioritization criteria (read this first)
 - `CLAUDE.md` — current phase and package map
-- `changelog.md` — what's shipped
+- `packages/*/CHANGELOG.md` and `.changeset/*.md` — what's shipped and what's queued
 - `docs/internal/waves/` — wave plans and journals for work in progress
 - `docs/internal/out-of-scope/` — directions we've already decided against (skim the filenames; read any whose concept could plausibly overlap with active issues)
 
@@ -57,7 +57,7 @@ Batch 2 (parallel, after Batch 1 review):
 ```
 
 #### Missing Issues
-Tasks that should exist based on the project plans, architecture docs, or changelog gaps but don't have Linear issues yet. For each:
+Tasks that should exist based on the project plans, architecture docs, or per-package CHANGELOG/changeset gaps but don't have Linear issues yet. For each:
 - Suggested title
 - Suggested description (1-2 sentences)
 - Why it's needed

@@ -7,7 +7,7 @@ These instructions define the collaboration protocol for agent-driven work in th
 At the start of a new conversation in this repo, read:
 
 - `CLAUDE.md` — project orientation and key constraints
-- `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-009)
+- `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
 
@@ -23,24 +23,21 @@ Use this protocol when work is wave-based:
 - Completed wave work must update:
   - `docs/internal/waves/wave-1/wave-1.<letter>-journal.md`
   - `docs/internal/waves/wave-1/wave-1.<letter>-changelog.md`
-  - `changelog.md` (concise project-level summary — see Changelog style below)
 
-## Changelog style
+## Release notes
 
-`changelog.md` is read by humans scanning what shipped — not by reviewers auditing how. Keep it tight.
+This repo uses Changesets for release coordination. Do not edit a root `changelog.md` — none exists.
 
-**Audience and depth.** Write for a contributor or user catching up on the project, not for the reviewer of the originating PR. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and references to other tickets belong in the PR description, the wave journal, or the Linear comment — not here.
+**On every PR with user-facing impact:**
 
-**Shape of an entry:**
+1. Run `pnpm changeset`. Pick the affected publishable package(s).
+2. Pre-1.0: choose `patch` for non-breaking, `minor` for breaking. Never `major`.
+3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
+4. Commit the generated `.changeset/<name>.md` file with the PR.
 
-- One H3 per shipped change, dated under the H2 of the day it landed on `main`.
-- 3–6 bullets. Each bullet is one or two short sentences conveying a single user-facing fact: a new API, a renamed concept, a behavior change, a doc location. If you can't summarize at this level, the entry probably needs to be split or trimmed.
-- Lead each bullet with the fact, not bolded preamble. Inline `code` for symbol names is fine; bolded category labels at the start of every bullet are not.
-- No file paths, line numbers, LOC counts, test counts, or "Tests" / "Out of scope" sections. If a doc page is genuinely worth pointing readers at, name it; don't list every README that got a sentence updated.
+**Skip changesets** for internal-only changes (refactors, test-only edits, internal helpers, infra). State that explicitly in the PR description so a reviewer can verify, or run `pnpm changeset --empty` and commit the resulting empty fragment.
 
-**One entry per PR, not per intermediate decision.** Mid-PR refinements get folded into the single entry for that PR. If a follow-up PR materially revises a feature whose entry is still in the same release window, prefer extending or rewriting the original entry rather than adding a "follow-up" entry that documents the diff.
-
-**When in doubt, look at the older entries.** The 2026-04-11 (`fsdev dev`, `defineCapability`, View Sequencer State) and 2026-03-20 (Resource Namespaces) entries are the reference style. The recent verbose entries were a regression — don't repeat them.
+**Reference:** [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) covers when to write what, the multi-package case, common mistakes, and what happens at release time. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule.
 
 ## Implementation guardrails
 
