@@ -94,6 +94,7 @@ describe("memo-writer taps", () => {
         { h: "Composite reading", p: "Fundamentals supportive.", items: null },
         { h: "Material items", p: null, items: ["Cap-ex ramp"] },
       ],
+      citations: null,
     };
     const result = await testBlock(commitBlock, {
       input: thesis,

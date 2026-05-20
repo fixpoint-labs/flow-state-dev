@@ -1,0 +1,24 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL earnings guidance management commentary business mix segment",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.cnbc.com/2026/05/03/apple-services-revenue-record.html",
+      "title": "Apple's Services revenue hits new record on subscription density",
+      "snippet": "Services contributed $26.6B in the quarter, up 14% YoY. Subscriptions per active device continues to climb across geographies.",
+      "publisher": "cnbc.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/technology/apple-iphone-china-share-2026.html",
+      "title": "Apple's iPhone share in China stabilises after two quarters of decline",
+      "snippet": "Management commentary cited improving competitive dynamics and the new Pro lineup; share losses to Huawei appear to have plateaued.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA earnings guidance management commentary business mix segment",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.cnbc.com/2026/05/02/nvidia-data-center-revenue-mix-shift.html",
+      "title": "NVIDIA's data-center mix keeps climbing — gaming now under 10%",
+      "snippet": "Data-center revenue accounted for 89% of total revenue last quarter, up from 78% a year ago. Gaming, once the cash cow, now contributes less than 10%.",
+      "publisher": "cnbc.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/technology/nvidia-guidance-q2-2026-sovereign-ai.html",
+      "title": "NVIDIA guides Q2 above consensus on sovereign-AI bookings",
+      "snippet": "Management cited new government-backed AI infrastructure contracts in the Middle East and Europe as the driver behind the raised Q2 outlook.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://seekingalpha.com/article/nvda-margin-trajectory-2026.html",
+      "title": "NVIDIA margin trajectory: networking-stack bundling adds ~200bps",
+      "snippet": "Operating margin expanded ~200bps quarter-over-quarter as InfiniBand and Spectrum-X attach rates climbed alongside GPU shipments.",
+      "publisher": "seekingalpha.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

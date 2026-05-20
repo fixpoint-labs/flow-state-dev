@@ -168,6 +168,7 @@ type MemoClientData = {
   rating: string | null;
   body: ThesisSection[] | null;
   metrics: Record<string, string> | null;
+  citations: Array<{ url: string; title: string }> | null;
   errorMessage: string | null;
   // Phase 5 extension fields — only populated on `memos/p5/portfolio-manager`.
   decisionSummary: string | null;
@@ -277,7 +278,7 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
         metrics={data?.metrics ?? null}
       />
       {data?.body !== null && data?.body !== undefined && data.body.length > 0 && (
-        <ThesisBody body={data.body} />
+        <ThesisBody body={data.body} citations={data.citations ?? null} />
       )}
       <p className="font-mono text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
         end of memo · {data?.label ?? AGENTS[agent]?.role ?? ""} · {agent}

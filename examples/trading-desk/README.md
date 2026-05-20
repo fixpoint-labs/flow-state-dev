@@ -16,6 +16,16 @@ Phase 1 — analyst fan-out:
 - **Parallel analyst fan-out** — five sub-agents (Fundamentals, Sentiment,
   News, Technical, Company Profile) running in parallel, each with a
   distinct identity.
+- **Investigative discovery + auditable citations** — on the `full` cost
+  preset each analyst gets a deterministic per-role web-search step
+  (`discover_*_context`) that surfaces up to 5 numbered URLs. The analyst
+  may read 2–3 via the `fetch` tool when the structured data leaves a
+  material question open. Every URL it relies on goes into a `citations`
+  field that renders as a "Sources" footer on the analyst card. The
+  `fast` preset keeps the cheap path cheap — discovery returns
+  `source: "skipped"`, `fetch` is absent, and the `<investigation>` clause
+  is suppressed from the prompt. The contract lives in the `investigate`
+  preset of the `tradingDesk` capability.
 - **Company Profile grounding** — a renderer-style analyst that fetches
   structured business identity (sector, industry, business description,
   scale) from public providers and writes it as a memo, so downstream
@@ -251,6 +261,14 @@ missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
 `xSearch` over X/Twitter; without it, `get_social_sentiment` returns
 `unavailable` and the sentiment analyst applies the same missing-signal
 treatment.
+
+Live investigative discovery on the `full` preset uses
+`@flow-state-dev/tools/search`'s auto-detected provider — Tavily, Exa,
+Perplexity, Serper, Brave, or Perplexity Sonar — whichever has a key in
+the environment. `TAVILY_API_KEY` is the recommended default. With no
+provider key the discovery tools emit `source: "unavailable"` per BP-020
+(no silent fallback to fixture data on the live path) and analysts
+skip investigation accordingly.
 
 ## Architecture in brief
 

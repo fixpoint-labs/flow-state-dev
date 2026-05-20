@@ -18,7 +18,6 @@
  * history but lets them flow to the client for live observability.
  */
 import { generator, sequencer } from "@flow-state-dev/core";
-import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import { z } from "zod";
 import {
   AGENTS,
@@ -37,6 +36,10 @@ import {
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
+  discover_fundamentals_context,
+  discover_profile_context,
+  discover_sentiment_context,
+  discover_technical_context,
   get_balance_sheet,
   get_cashflow,
   get_company_profile,
@@ -89,12 +92,13 @@ const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.fundamentals.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     balanceSheet: toolOutputSchemas.get_balance_sheet,
     incomeStatement: toolOutputSchemas.get_income_statement,
     cashflow: toolOutputSchemas.get_cashflow,
     fundamentals: toolOutputSchemas.get_fundamentals,
+    fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
   prompt: fundamentalsPrompt,
   context: {
@@ -120,6 +124,7 @@ export const fundamentalsAnalyst = sequencer({
       incomeStatement: t(get_income_statement),
       cashflow: t(get_cashflow),
       fundamentals: t(get_fundamentals),
+      fundamentalsContext: t(discover_fundamentals_context),
     };
   })())
   .then(fundamentalsGenerator)
@@ -136,10 +141,11 @@ const technicalGenerator = generator({
   name: "technical-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.technical.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     priceHistory: toolOutputSchemas.get_price_history,
     indicators: toolOutputSchemas.compute_indicators,
+    technicalContext: toolOutputSchemas.discover_technical_context,
   }),
   prompt: technicalPrompt,
   context: {
@@ -163,6 +169,7 @@ export const technicalAnalyst = sequencer({
     return {
       priceHistory: t(get_price_history),
       indicators: t(compute_indicators),
+      technicalContext: t(discover_technical_context),
     };
   })())
   .then(technicalGenerator)
@@ -176,13 +183,11 @@ export const technicalAnalyst = sequencer({
 // that still does tool calls.
 // ---------------------------------------------------------------------------
 
-const fetchArticle = createFetchTool();
-
 const newsGenerator = generator({
   name: "news-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.news.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     news: toolOutputSchemas.search_news,
     macro: toolOutputSchemas.get_macro_indicators,
@@ -196,7 +201,6 @@ const newsGenerator = generator({
     "Pick 2–3 of the most material article URLs from the news data above and " +
     "call `fetch` to read their bodies, then synthesize the Thesis. Return " +
     "the JSON object only.",
-  tools: [fetchArticle],
   outputSchema: thesisOutputSchema,
 });
 
@@ -229,11 +233,12 @@ const sentimentGenerator = generator({
   name: "sentiment-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.sentiment.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     socialSentiment: toolOutputSchemas.get_social_sentiment,
     redditMentions: toolOutputSchemas.get_reddit_mentions,
     predictionMarkets: toolOutputSchemas.get_prediction_markets,
+    sentimentContext: toolOutputSchemas.discover_sentiment_context,
   }),
   prompt: sentimentPrompt,
   context: {
@@ -258,6 +263,7 @@ export const sentimentAnalyst = sequencer({
       socialSentiment: t(get_social_sentiment),
       redditMentions: t(get_reddit_mentions),
       predictionMarkets: t(get_prediction_markets),
+      sentimentContext: t(discover_sentiment_context),
     };
   })())
   .then(sentimentGenerator)
@@ -275,9 +281,10 @@ const companyProfileGenerator = generator({
   name: "company-profile-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.companyProfile.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     companyProfile: toolOutputSchemas.get_company_profile,
+    profileContext: toolOutputSchemas.discover_profile_context,
   }),
   prompt: companyProfilePrompt,
   context: {
@@ -300,6 +307,7 @@ export const companyProfileAnalyst = sequencer({
     const t = toolFor(PHASE_1_MEMO_KEYS.companyProfile.agentName);
     return {
       companyProfile: t(get_company_profile),
+      profileContext: t(discover_profile_context),
     };
   })())
   .then(companyProfileGenerator)

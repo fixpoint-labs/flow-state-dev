@@ -1,0 +1,24 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "query": "JPM earnings guidance management commentary business mix segment",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.bloomberg.com/news/articles/jpmorgan-net-interest-income-2026.html",
+      "title": "JPMorgan signals net-interest-income peak may have passed",
+      "snippet": "CFO commentary on the Q1 call suggested NII has likely peaked for the cycle; deposit re-pricing now outpacing asset re-pricing.",
+      "publisher": "bloomberg.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/business/finance/jpmorgan-investment-banking-fees.html",
+      "title": "JPMorgan IB fees rebound as M&A pipeline normalises",
+      "snippet": "Advisory and underwriting fees up 28% YoY as deal volume recovers. Trading revenue held steady against tough prior-year compares.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

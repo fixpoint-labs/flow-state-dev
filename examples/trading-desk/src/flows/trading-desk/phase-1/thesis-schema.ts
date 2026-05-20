@@ -10,6 +10,16 @@
 import { z } from "zod";
 import { thesisSection } from "../resources";
 
+/** A single auditable citation. `url` and `title` only — inline `[n]`
+ *  markers and per-claim source IDs are deferred (FIX-612 v1 is body-
+ *  section citations only). */
+export const citation = z.object({
+  url: z.string(),
+  title: z.string(),
+});
+
+export type Citation = z.infer<typeof citation>;
+
 /**
  * Output schema enforced on the analyst generators.
  *
@@ -26,6 +36,11 @@ export const thesisOutputSchema = z.object({
   rating: z.enum(["constructive", "neutral", "cautious"]),
   metrics: z.array(z.object({ key: z.string(), value: z.string() })),
   body: z.array(thesisSection),
+  /** URLs the analyst actually fetched and relied on, with their titles.
+   *  Required (no default) so the LLM is forced to emit the key — `null`
+   *  when nothing was fetched (cheap preset, no material context found),
+   *  or an array when investigation produced citable sources. */
+  citations: z.array(citation).nullable(),
 });
 
 export type ThesisOutput = z.infer<typeof thesisOutputSchema>;

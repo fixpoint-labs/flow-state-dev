@@ -60,6 +60,7 @@ export function markWriting(shortName: Phase1MemoShortName) {
           metrics: null,
           completedAt: null,
           errorMessage: null,
+          citations: null,
         });
       }
       const memoStatus = ctx.session.state.memoStatus;
@@ -104,6 +105,7 @@ export function commitMemo(shortName: Phase1MemoShortName) {
         // Flatten the array-of-pairs back into the stored `Record<string,string>`
         // shape. See thesis-schema.ts for why the wire format is an array.
         metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
+        citations: thesis.citations,
         completedAt,
         errorMessage: null,
       });

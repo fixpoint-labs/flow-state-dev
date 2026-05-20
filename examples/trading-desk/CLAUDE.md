@@ -88,6 +88,25 @@ uses: [tradingDesk.presets({
 See the capability's available presets in
 [`services/trading-desk-capability.ts`](src/flows/trading-desk/services/trading-desk-capability.ts).
 
+### The `investigate` preset
+
+Phase 1 analysts opt into investigative search/fetch with
+`tradingDesk.presets({ investigate: true })`. The preset exposes the
+`fetch` tool and the `<investigation>` clause only on `costPreset ===
+"full"`; on `fast` both are absent and the prompt suppresses the
+`<investigation>` tag entirely (the resolver returns `null`, not `""`).
+Each analyst also wires a deterministic discovery tool
+(`discover_*_context`) into its parallel data fan-out. The discovery
+tools self-gate at the body level — they short-circuit to
+`skippedDiscoveryPayload` before any provider call when the preset isn't
+full. Two coordinated seams, same key, no leakage.
+
+The citation contract — every claim traces to either a `<data>` field
+or a URL the analyst actually fetched, and fetched URLs go in the
+`citations` array — is enforced by the prompt clauses, not by runtime
+validation. Body-section "Sources" is the v1 surface; inline `[n]`
+markers are intentionally deferred.
+
 If you have **costPreset-conditional** content (heavier context only on
 `full`), list the `*Full` variant of the preset alongside the always-on
 ones. The gating lives inside the preset — the context formatter renders

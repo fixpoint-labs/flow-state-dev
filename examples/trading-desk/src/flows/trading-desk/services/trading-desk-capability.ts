@@ -30,6 +30,7 @@
  *      shape lets resources flow through and keeps the call site flat.
  */
 import { defineCapability } from "@flow-state-dev/core";
+import { fetch as createFetchTool } from "@flow-state-dev/tools";
 import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
@@ -69,6 +70,36 @@ type CtxAny = { session: { state: SessionState }; resources: any };
  * a bogus ticker the model would invent a plausible company and proceed
  * confidently. This clause closes that gap.
  */
+/**
+ * Codifies the citation contract for the `investigate` preset (FIX-612).
+ * Paired with the `fetch` tool. Both ride along only on `costPreset ===
+ * "full"`; the cheap path stays free of web fetches and this clause is
+ * suppressed from the prompt entirely (the context resolver returns
+ * `null`, which `core/capability` drops, so the `<investigation>` tag
+ * isn't emitted at all rather than as an empty pair).
+ */
+const INVESTIGATION_CLAUSE = [
+  "<investigation>",
+  "Your <data> block may include a discovery payload listing numbered URLs.",
+  "You may read them via the `fetch` tool when the deterministic data does",
+  "not capture material context (recent management change, regulatory",
+  "action, business-mix shift, competitor move). Read at most 2-3 URLs per",
+  "memo — pick the most material.",
+  "",
+  "Every claim in your memo body must trace to either a <data> field or a",
+  "URL you fetched. When you cite a fetched URL in your body, add it to",
+  "the `citations` array with its title. Do not cite URLs you did not",
+  "actually fetch. If your <data> already answers the question, do not",
+  "fetch — emit `citations: null` and synthesise from <data> only.",
+  "</investigation>",
+].join("\n");
+
+/** Shared `fetch` tool instance used by the `investigate` preset. One
+ *  instance reused across all generators that opt in — the tool is
+ *  stateless and the framework binds per-call agentType / agentName from
+ *  the generator that consumed it. */
+const fetchArticle = createFetchTool();
+
 const GROUNDING_CLAUSE = [
   "<grounding>",
   "Operate strictly on data provided by upstream agents, tools, and the",
@@ -251,6 +282,27 @@ export const tradingDesk = defineCapability({
       context: {
         phase4Debate: (_input, ctx) =>
           formatDebate(readContributionsEntries(ctx, "p4Contributions")),
+      },
+    },
+
+    /**
+     * Opt-in investigative slice for Phase 1 analysts (FIX-612). Exposes
+     * the `fetch` tool and the `INVESTIGATION_CLAUSE` (which codifies the
+     * citation contract). Both are hard-gated on `costPreset === "full"`
+     * so cheap runs perform no extra web fetches and the prompt stays
+     * lean. Returning `null` from the context function (rather than `""`)
+     * suppresses the `<investigation>` tag entirely on `fast` runs.
+     *
+     * Per-analyst discovery tools (`discover_*_context`) self-gate at
+     * the tool-body level. This preset and those tool short-circuits are
+     * the two coordinated cost-preset seams; neither alone is sufficient.
+     */
+    investigate: {
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? [fetchArticle] : [],
+      context: {
+        investigation: (_input, ctx) =>
+          ctx.session.state.costPreset === "full" ? INVESTIGATION_CLAUSE : null,
       },
     },
 
