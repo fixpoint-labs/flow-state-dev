@@ -113,8 +113,10 @@ describe("FIX-660: eventActors at high concurrency with reEmit", () => {
       action: "run",
       userId: "u",
       input: { type: "request", topic: "query", body: "seed" },
-      unmockedGeneratorPolicy: "allow",
-      session: { resources: { eventedActors: { entries: [] } } },
+      unmockedGeneratorPolicy: "error",
+      seed: {
+        session: { resources: { eventedActors: { entries: [] } } },
+      },
     });
 
     expect(result.error).toBeUndefined();
