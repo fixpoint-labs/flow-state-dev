@@ -236,27 +236,20 @@ export function createMockModelResolver(options: {
           blockName
         });
 
-        const toolCalls: MockToolCall[] = [];
-        const toolResults: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
-
+        // `steps` is intentionally not synthesised: the mock can't know how
+        // a real provider would partition tool rounds into AI SDK steps,
+        // and collapsing every round into one synthetic entry would mislead
+        // any direct caller asserting on `result.steps.length`. Leaving
+        // `steps` undefined matches pre-FIX-661 mock behavior. Tests that
+        // need to assert on the non-streaming branch's per-step pairing
+        // should use an inline model literal (see generator.test.ts).
         for await (const outcome of runScript(mock, modelId, blockName, generateOptions)) {
-          if (outcome.kind === "tool_call") {
-            toolCalls.push(outcome.toolCall);
-          } else if (outcome.kind === "tool_result") {
-            toolResults.push({
-              toolCallId: outcome.toolCallId,
-              toolName: outcome.toolName,
-              result: outcome.result
-            });
-          } else {
+          if (outcome.kind === "terminal") {
             return {
               text: outcome.text,
               structuredOutput: outcome.structuredOutput,
               toolCalls: outcome.toolCalls,
-              finishReason: outcome.finishReason,
-              steps: toolCalls.length > 0
-                ? [{ toolCalls, toolResults, finishReason: outcome.finishReason }]
-                : undefined
+              finishReason: outcome.finishReason
             };
           }
         }
@@ -271,13 +264,12 @@ export function createMockModelResolver(options: {
           blockName
         });
 
-        const toolCalls: MockToolCall[] = [];
-        const toolResults: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
+        const streamedCallIds = new Set<string>();
         let terminal: ScriptOutcome | undefined;
 
         for await (const outcome of runScript(mock, modelId, blockName, streamOptions)) {
           if (outcome.kind === "tool_call") {
-            toolCalls.push(outcome.toolCall);
+            streamedCallIds.add(outcome.toolCall.toolCallId);
             yield {
               type: "tool_call_delta",
               toolCallDelta: {
@@ -287,11 +279,6 @@ export function createMockModelResolver(options: {
               }
             };
           } else if (outcome.kind === "tool_result") {
-            toolResults.push({
-              toolCallId: outcome.toolCallId,
-              toolName: outcome.toolName,
-              result: outcome.result
-            });
             yield {
               type: "tool_result",
               toolResult: {
@@ -302,6 +289,46 @@ export function createMockModelResolver(options: {
             };
           } else {
             terminal = outcome;
+            // Terminal-step-with-toolCalls idiom: a script step that has BOTH
+            // `text`/`structuredOutput` AND `toolCalls` declares the calls
+            // observable without driving the mock's tool-execute loop (see
+            // module docstring + `runScript` terminal handling). For
+            // observability parity with the streaming branch in production —
+            // and so kitchen-sink-style tool-group UIs can render their
+            // placeholder rows — we still emit `tool_call_delta` chunks for
+            // each call here. The framework-compiled tool's `execute` is
+            // invoked best-effort so its `emitToolOutputAround` wrapper
+            // fires the `tool_output` placeholder; errors are swallowed
+            // because the script author opted out of tool execution by
+            // packaging the calls onto a terminal step.
+            const terminalToolCalls = outcome.toolCalls ?? [];
+            const unstreamed = terminalToolCalls.filter((c) => !streamedCallIds.has(c.toolCallId));
+            if (unstreamed.length > 0) {
+              const toolByName = new Map(
+                (streamOptions.tools ?? []).map((t) => [t.name, t] as const)
+              );
+              for (const call of unstreamed) {
+                yield {
+                  type: "tool_call_delta",
+                  toolCallDelta: {
+                    toolCallId: call.toolCallId,
+                    toolName: call.toolName,
+                    argsDelta: JSON.stringify(call.args ?? {})
+                  }
+                };
+                const tool = toolByName.get(call.toolName);
+                if (tool?.execute !== undefined) {
+                  try {
+                    await tool.execute(call.args, { toolCallId: call.toolCallId });
+                  } catch {
+                    /* terminal-step idiom: tool errors are intentionally
+                       swallowed so the placeholder `tool_output` item fires
+                       without the script having to register a non-throwing
+                       execute closure for each tool. */
+                  }
+                }
+              }
+            }
             if (outcome.text !== undefined && outcome.text.length > 0) {
               yield { type: "text_delta", textDelta: outcome.text };
             }
@@ -314,10 +341,7 @@ export function createMockModelResolver(options: {
           text: terminal?.kind === "terminal" ? terminal.text : undefined,
           structuredOutput: terminal?.kind === "terminal" ? terminal.structuredOutput : undefined,
           toolCalls: terminal?.kind === "terminal" ? terminal.toolCalls : undefined,
-          finishReason,
-          steps: toolCalls.length > 0
-            ? [{ toolCalls, toolResults, finishReason }]
-            : undefined
+          finishReason
         };
         yield { type: "finish", finishReason, fullResult };
       }

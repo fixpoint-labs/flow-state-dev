@@ -2095,6 +2095,15 @@ export function generator<
       // return them on the generation result and we synthesise the same
       // items here so observability is independent of transport. Mirrors the
       // streaming branch's emission shape (lines 1518-1562).
+      //
+      // Ordering caveat: on the streaming branch the interleave is
+      // `tool_call_progress { in_progress }` → `tool_output` (durable, from
+      // `emitToolOutputAround` inside the AI SDK's tool loop) →
+      // `tool_call_progress { completed }`. Here the tool runs *during*
+      // `model.generate()`, so any `tool_output` items have already been
+      // emitted by the time this block runs. Subscribers that key UI state
+      // off the `in_progress` transient must tolerate the durable
+      // `tool_output` arriving first on non-streaming providers.
       if (agentType !== undefined) {
         const toolIdentity = ctx._blockIdentity;
         const toolProvenance = {
