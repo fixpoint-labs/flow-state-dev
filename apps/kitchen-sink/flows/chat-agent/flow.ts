@@ -159,7 +159,10 @@ const assistantGenerator = generator({
   // system message. Capabilities (mem, perspective) contribute their own
   // tags; same-key contributions across sources aggregate cleanly. See
   // docs/fundamentals/generator-context.md for the full contract.
-  context: { voice: voiceContext },
+  context: { 
+    todaysDate: new Date().toLocaleDateString(),
+    voice: voiceContext
+  },
 
   inputSchema,
   history: { limit: 8 },

@@ -55,6 +55,11 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  /**
+   * Output items produced by this request. Adapters that store items
+   * separately may leave this `undefined` on `list()` results unless
+   * `RequestListOptions.withItems` is true.
+   */
   items?: OutputItem[];
   interruptedAt?: number;
   abortRequested?: boolean;
@@ -86,6 +91,13 @@ export type RequestListOptions = {
   status?: RequestStatus;
   limit?: number;
   offset?: number;
+  /**
+   * If true, populate `record.items` for each returned record. Default
+   * false. Adapters that store items separately (Postgres) avoid an
+   * extra query per list when this is false; adapters that store items
+   * inline ignore the flag.
+   */
+  withItems?: boolean;
 };
 
 export type UserListOptions = {

@@ -2063,7 +2063,8 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    stores.request.list({ sessionId })
+    // `items` are read below to reconstruct cross-turn history.
+    stores.request.list({ sessionId, withItems: true })
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()

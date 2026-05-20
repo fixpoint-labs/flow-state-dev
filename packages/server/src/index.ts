@@ -120,6 +120,7 @@ export { BoundedQueue } from "./utils/bounded-queue";
 export type { BoundedQueuePushResult } from "./utils/bounded-queue";
 export {
   isTerminalRequestStreamEvent,
+  isTerminalRequestStatus,
   synthesizeRequestInterrupted,
   pollEvents,
   abortableSleep,

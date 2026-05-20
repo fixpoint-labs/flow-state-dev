@@ -150,6 +150,24 @@ const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
 ];
 
+// Request items: one row per item produced by a request. PK
+// `(request_id, item_id)` so keyed-component re-emissions UPSERT in place.
+// Per-row storage keeps unchanged rows out of every flush's TOAST rewrite.
+const REQUEST_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS request_items (
+  request_id  TEXT   NOT NULL,
+  item_id     TEXT   NOT NULL,
+  sequence    BIGINT NOT NULL,
+  item_type   TEXT   NOT NULL,
+  data        JSONB  NOT NULL,
+  PRIMARY KEY (request_id, item_id)
+);
+`;
+
+const REQUEST_ITEMS_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_request_items_request_sequence ON request_items(request_id, sequence)"
+];
+
 // FIX-401: durable sequencer checkpoints. Identity is
 // (request_id, block_instance_id); upsert overwrites the latest record,
 // delete removes it at terminal completion. `data` is JSONB so the schema
@@ -279,6 +297,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       REQUEST_EVENTS_TABLE,
+      REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
       SEQUENCER_CHECKPOINTS_TABLE,
       SCHEDULE_INDEX_TABLE
@@ -291,6 +310,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
+      ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,
       ...SEQUENCER_CHECKPOINTS_INDEXES,
       ...SCHEDULE_INDEX_INDEXES
