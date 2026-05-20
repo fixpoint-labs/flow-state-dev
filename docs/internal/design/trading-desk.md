@@ -12,7 +12,7 @@ analyzePipeline
   .then(phase1Pipeline)   // setupPhase1Memos → parallel(4 analysts)
   .then(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
   .then(phase3Pipeline)   // setupPhase3Memos → traderStep
-  .then(phase4Pipeline)   // setupPhase4Memos → deriveRiskGoal → roundRobin(3 personas) → riskAssessmentStep
+  .then(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
   .then(phase5Pipeline)   // setupPhase5Memos → portfolioManagerStep
 ```
 
