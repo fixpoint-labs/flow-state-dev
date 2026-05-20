@@ -55,6 +55,13 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  /**
+   * Output items produced by this request. The Postgres adapter (FIX-657)
+   * stores these in a dedicated `request_items` table and populates this
+   * field on `get()` and on `list({ withItems: true })`. `list()` without
+   * the flag leaves it `undefined` on Postgres. Other adapters return items
+   * inline regardless.
+   */
   items?: OutputItem[];
   interruptedAt?: number;
   abortRequested?: boolean;
@@ -86,6 +93,17 @@ export type RequestListOptions = {
   status?: RequestStatus;
   limit?: number;
   offset?: number;
+  /**
+   * If true, populate `record.items` for each returned record. Defaults to
+   * false. The Postgres adapter (FIX-657) stores items in a separate table
+   * and populating them costs an additional query per `list()` call. Callers
+   * that depend on items in the listing response (cross-turn history
+   * reconstruction, the `?includeItems` state endpoint, session listings)
+   * must pass `withItems: true` explicitly. Other adapters that store items
+   * inline (memory, filesystem, SQLite) ignore the flag and return items
+   * regardless.
+   */
+  withItems?: boolean;
 };
 
 export type UserListOptions = {

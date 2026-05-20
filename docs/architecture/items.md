@@ -119,6 +119,15 @@ There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
 - **Event log** — every SSE event in order, including transient items and intermediate states, used for SSE resume and devtool replay
 
+### Storage by adapter
+
+The item record's physical layout varies per adapter:
+
+- **Memory, filesystem, SQLite** — items live inline in the request record as `data.items`.
+- **Postgres** — items live in a dedicated `request_items` table, one row per item, written via batched UPSERT (see [`@flow-state-dev/store-postgres` README](../../packages/store-postgres/README.md#items-storage)). The same `RequestStore.persistItems` interface is used everywhere; the diff and per-row write happen inside the adapter. The framework code does not care.
+
+The Postgres shape sidesteps a write-amplification pathology that affected long-running requests on serverless deployments. The semantics are identical from the framework's perspective — `get(requestId)` returns the same `RequestRecord` shape regardless of adapter.
+
 ### Streaming-text contract (FIX-479)
 
 `content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.

@@ -97,6 +97,15 @@ The store interface is pluggable. If you need Redis, an alternative SQL backend,
 - SQLite and the filesystem store poll `getEvents(requestId, fromSequence)`.
 - Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
 
+### Postgres: items storage
+
+The Postgres adapter stores items in a dedicated `request_items` table, one row per item, rather than inside the request record's JSONB column. The change avoids a TOAST write-amplification pathology on long-running requests under serverless-throttled autovacuum. The framework surface is unchanged — the same `RequestStore.persistItems` and `get` shape — but two operator-visible consequences are worth knowing:
+
+- `RequestStore.list()` no longer populates `record.items` by default on Postgres. Pass `withItems: true` to opt in.
+- Upgrade is lazy (no offline backfill), but the deploy is **forward-only**. Validate in staging before rolling out.
+
+See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-postgres/README.md#items-storage) for the schema, the optional storage-reclamation steps (`pg_repack`), and the rollback constraints.
+
 `getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests.
 
 The exact interface may evolve. Check the `@flow-state-dev/server` package source for the current contract.

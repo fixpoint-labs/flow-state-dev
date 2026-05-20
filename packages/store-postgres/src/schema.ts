@@ -150,6 +150,31 @@ const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
 ];
 
+// FIX-657: request items live in a dedicated table, one row per item. Prior
+// design stored items as a JSONB sub-path `requests.data->'items'` and
+// rewrote the entire array on every coalesced flush. Under Postgres MVCC +
+// TOAST that produced full re-TOAST cycles on every write and amplified
+// disk usage proportional to flush cadence rather than data volume
+// (measured ~78x on long-running requests under serverless-throttled
+// autovacuum). Per-row storage keeps INSERT cost per item paid once,
+// updated-item writes touch only that row's payload, and unchanged item
+// rows are never re-TOAST'd. PK is (request_id, item_id) so keyed-component
+// re-emissions (FIX-491) naturally UPSERT.
+const REQUEST_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS request_items (
+  request_id  TEXT   NOT NULL,
+  item_id     TEXT   NOT NULL,
+  sequence    BIGINT NOT NULL,
+  item_type   TEXT   NOT NULL,
+  data        JSONB  NOT NULL,
+  PRIMARY KEY (request_id, item_id)
+);
+`;
+
+const REQUEST_ITEMS_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_request_items_request_sequence ON request_items(request_id, sequence)"
+];
+
 // FIX-401: durable sequencer checkpoints. Identity is
 // (request_id, block_instance_id); upsert overwrites the latest record,
 // delete removes it at terminal completion. `data` is JSONB so the schema
@@ -279,6 +304,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       REQUEST_EVENTS_TABLE,
+      REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
       SEQUENCER_CHECKPOINTS_TABLE,
       SCHEDULE_INDEX_TABLE
@@ -291,6 +317,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
+      ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,
       ...SEQUENCER_CHECKPOINTS_INDEXES,
       ...SCHEDULE_INDEX_INDEXES

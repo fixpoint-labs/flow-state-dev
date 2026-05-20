@@ -2063,7 +2063,10 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    stores.request.list({ sessionId })
+    // FIX-657: items live in a separate table for Postgres; opt in to
+    // populating them on each prior request so cross-turn history
+    // reconstruction sees the same payload as before.
+    stores.request.list({ sessionId, withItems: true })
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()
