@@ -157,6 +157,12 @@ Plain steps and predicate entries mix freely. Predicates win when they fire; oth
 
 When a returned step has `toolCalls` but no `text` / `structuredOutput`, the mock model resolver invokes each tool's `execute` closure and pulls the next script step — mirroring the AI SDK's internal multi-step loop.
 
+### Tool-call observability
+
+The resolved model exposes both `generate()` and `stream()`, matching the production `GeneratorModel` contract. The framework routes mock-driven tests through the streaming branch, so a script with `toolCalls` now produces `tool_call_progress` items on the response stream — the same items real flows emit. Tests built around `result.items` see the same shape end users observe.
+
+If you previously relied on the absence of `tool_call_progress` items from a mock (or wrapped the resolver to synthesise a `stream()` yourself), the wrapper is no longer needed and assertions may need updating to expect the items.
+
 ### Sharing stores across runs
 
 `testFlow` accepts an optional `stores: StoreRegistry`. Pass the same registry to two calls and the second resumes from the first run's session, journal, and resource state:

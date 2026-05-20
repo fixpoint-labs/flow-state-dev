@@ -31,8 +31,100 @@
 import type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelStreamChunk,
+  GeneratorModelTool,
   ModelResolver
 } from "@flow-state-dev/core/types";
+
+type MockToolCall = { toolCallId: string; toolName: string; args: unknown };
+
+type ScriptOutcome =
+  | { kind: "tool_call"; toolCall: MockToolCall }
+  | { kind: "tool_result"; toolCallId: string; toolName: string; result: unknown }
+  | {
+      kind: "terminal";
+      text?: string;
+      structuredOutput?: unknown;
+      toolCalls?: MockToolCall[];
+      finishReason: string;
+    };
+
+/**
+ * Walk a mock script as an async generator of outcomes. Both `generate()` and
+ * `stream()` consume this so they stay in lockstep — the only difference
+ * between the two surfaces is how outcomes are assembled into a result
+ * vs. yielded as chunks.
+ *
+ * Loop invariants:
+ *   - Predicate entries match per-call against the current messages.
+ *   - A non-terminal step with `toolCalls` yields one `tool_call` outcome per
+ *     call; the loop awaits `tool.execute(args, { toolCallId })` (synthesises
+ *     `{ ok: true }` when no execute closure is registered) and yields a
+ *     `tool_result` outcome before pulling the next script step. Tool errors
+ *     propagate.
+ *   - The first step with `text` or `structuredOutput` is terminal: yields a
+ *     `terminal` outcome carrying the accumulated tool calls (when the
+ *     terminal step itself has none) and returns.
+ *   - Exhausting `maxSteps` without a terminal step throws the same message
+ *     `generate()` did before this helper existed.
+ */
+async function* runScript(
+  mock: MockGeneratorInstance,
+  modelId: string,
+  blockName: string | undefined,
+  options: {
+    messages: unknown;
+    maxSteps?: number;
+    tools?: GeneratorModelTool[];
+  }
+): AsyncGenerator<ScriptOutcome> {
+  const maxSteps = options.maxSteps ?? 8;
+  const tools = options.tools ?? [];
+  const toolByName = new Map(tools.map((tool) => [tool.name, tool] as const));
+  const accumulatedToolCalls: MockToolCall[] = [];
+
+  for (let i = 0; i < maxSteps; i += 1) {
+    const step = mock.next(options.messages);
+    if (step === undefined) {
+      const mockName = blockName ?? modelId;
+      throw new Error(
+        `Mock generator "${mockName}" has no script entry matching the current call. ` +
+        `Plain-step queue is exhausted and no predicate matched. ` +
+        `Add a plain step, a matching \`{ when, then }\` predicate, or call .reset().`
+      );
+    }
+
+    const isTerminal = step.text !== undefined || step.structuredOutput !== undefined;
+
+    if (!isTerminal && step.toolCalls !== undefined && step.toolCalls.length > 0) {
+      for (const call of step.toolCalls) {
+        accumulatedToolCalls.push(call);
+        yield { kind: "tool_call", toolCall: call };
+        const tool = toolByName.get(call.toolName);
+        const result = tool?.execute === undefined
+          ? { ok: true }
+          : await tool.execute(call.args, { toolCallId: call.toolCallId });
+        yield { kind: "tool_result", toolCallId: call.toolCallId, toolName: call.toolName, result };
+      }
+      continue;
+    }
+
+    yield {
+      kind: "terminal",
+      text: step.text,
+      structuredOutput: step.structuredOutput,
+      toolCalls: step.toolCalls ?? (accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined),
+      finishReason: step.finishReason ?? "stop"
+    };
+    return;
+  }
+
+  const mockName = blockName ?? modelId;
+  throw new Error(
+    `Mock generator "${mockName}" exceeded maxSteps=${maxSteps} without producing a terminal step. ` +
+    `Add a script entry with \`text\` or \`structuredOutput\` after the tool calls.`
+  );
+}
 
 export type MockGeneratorScriptStep = {
   text?: string;
@@ -90,6 +182,9 @@ function createNoopModel(modelId: string): GeneratorModel {
       return {
         finishReason: "stop"
       };
+    },
+    async *stream(): AsyncIterable<GeneratorModelStreamChunk> {
+      yield { type: "finish", fullResult: { finishReason: "stop" } };
     }
   };
 }
@@ -131,68 +226,100 @@ export function createMockModelResolver(options: {
     return {
       modelId,
       async generate(generateOptions): Promise<GeneratorModelResult> {
-        // Simulate the AI SDK's internal multi-step tool loop. The framework
-        // calls `generate()` once per generator invocation; the model is
-        // expected to return the terminal output after running any tool
-        // calls itself. Walk script steps until we hit a terminal step or
-        // exhaust `maxSteps`.
-        //
-        // `mock.calls` records framework invocations of `generate()` — one
-        // entry per call, not per inner iteration. Tool-loop steps consumed
-        // inside this single call don't push additional entries; tests that
-        // count generator invocations stay accurate.
+        // Simulate the AI SDK's internal multi-step tool loop via `runScript`.
+        // `mock.calls` records external invocations — one entry per call
+        // regardless of how many inner script steps are consumed, and shared
+        // with `stream()` so tests counting generator invocations stay accurate.
         mock.calls.push({
           input: generateOptions.messages,
           model: modelId,
           blockName
         });
 
-        const maxSteps = generateOptions.maxSteps ?? 8;
-        const tools = generateOptions.tools ?? [];
-        const toolByName = new Map(tools.map((tool) => [tool.name, tool] as const));
-        const accumulatedToolCalls: NonNullable<GeneratorModelResult["toolCalls"]> = [];
+        const toolCalls: MockToolCall[] = [];
+        const toolResults: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
 
-        for (let i = 0; i < maxSteps; i += 1) {
-          const step = mock.next(generateOptions.messages);
-          if (step === undefined) {
-            const mockName = blockName ?? modelId;
-            throw new Error(
-              `Mock generator "${mockName}" has no script entry matching the current call. ` +
-              `Plain-step queue is exhausted and no predicate matched. ` +
-              `Add a plain step, a matching \`{ when, then }\` predicate, or call .reset().`
-            );
+        for await (const outcome of runScript(mock, modelId, blockName, generateOptions)) {
+          if (outcome.kind === "tool_call") {
+            toolCalls.push(outcome.toolCall);
+          } else if (outcome.kind === "tool_result") {
+            toolResults.push({
+              toolCallId: outcome.toolCallId,
+              toolName: outcome.toolName,
+              result: outcome.result
+            });
+          } else {
+            return {
+              text: outcome.text,
+              structuredOutput: outcome.structuredOutput,
+              toolCalls: outcome.toolCalls,
+              finishReason: outcome.finishReason,
+              steps: toolCalls.length > 0
+                ? [{ toolCalls, toolResults, finishReason: outcome.finishReason }]
+                : undefined
+            };
           }
-
-          const isTerminal = step.text !== undefined || step.structuredOutput !== undefined;
-
-          // Tool-only step — invoke each registered tool's execute closure
-          // (the framework attached one when it compiled the tools), record
-          // the call list, and loop for the next script step.
-          if (!isTerminal && step.toolCalls !== undefined && step.toolCalls.length > 0) {
-            for (const call of step.toolCalls) {
-              accumulatedToolCalls.push(call);
-              const tool = toolByName.get(call.toolName);
-              if (tool?.execute !== undefined) {
-                await tool.execute(call.args, { toolCallId: call.toolCallId });
-              }
-            }
-            continue;
-          }
-
-          // Terminal step — text, structured output, or empty.
-          return {
-            text: step.text,
-            structuredOutput: step.structuredOutput,
-            toolCalls: step.toolCalls ?? (accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined),
-            finishReason: step.finishReason ?? "stop"
-          };
         }
 
-        const mockName = blockName ?? modelId;
-        throw new Error(
-          `Mock generator "${mockName}" exceeded maxSteps=${maxSteps} without producing a terminal step. ` +
-          `Add a script entry with \`text\` or \`structuredOutput\` after the tool calls.`
-        );
+        // Unreachable: runScript either yields a terminal outcome or throws.
+        return { finishReason: "stop" };
+      },
+      async *stream(streamOptions): AsyncIterable<GeneratorModelStreamChunk> {
+        mock.calls.push({
+          input: streamOptions.messages,
+          model: modelId,
+          blockName
+        });
+
+        const toolCalls: MockToolCall[] = [];
+        const toolResults: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
+        let terminal: ScriptOutcome | undefined;
+
+        for await (const outcome of runScript(mock, modelId, blockName, streamOptions)) {
+          if (outcome.kind === "tool_call") {
+            toolCalls.push(outcome.toolCall);
+            yield {
+              type: "tool_call_delta",
+              toolCallDelta: {
+                toolCallId: outcome.toolCall.toolCallId,
+                toolName: outcome.toolCall.toolName,
+                argsDelta: JSON.stringify(outcome.toolCall.args ?? {})
+              }
+            };
+          } else if (outcome.kind === "tool_result") {
+            toolResults.push({
+              toolCallId: outcome.toolCallId,
+              toolName: outcome.toolName,
+              result: outcome.result
+            });
+            yield {
+              type: "tool_result",
+              toolResult: {
+                toolCallId: outcome.toolCallId,
+                toolName: outcome.toolName,
+                result: outcome.result
+              }
+            };
+          } else {
+            terminal = outcome;
+            if (outcome.text !== undefined && outcome.text.length > 0) {
+              yield { type: "text_delta", textDelta: outcome.text };
+            }
+            break;
+          }
+        }
+
+        const finishReason = terminal?.kind === "terminal" ? terminal.finishReason : "stop";
+        const fullResult: GeneratorModelResult = {
+          text: terminal?.kind === "terminal" ? terminal.text : undefined,
+          structuredOutput: terminal?.kind === "terminal" ? terminal.structuredOutput : undefined,
+          toolCalls: terminal?.kind === "terminal" ? terminal.toolCalls : undefined,
+          finishReason,
+          steps: toolCalls.length > 0
+            ? [{ toolCalls, toolResults, finishReason }]
+            : undefined
+        };
+        yield { type: "finish", finishReason, fullResult };
       }
     };
   }) as ModelResolver;

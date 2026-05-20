@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockModelResolver, mockGenerator } from "../src";
 
 describe("mockGenerator", () => {
@@ -147,6 +147,87 @@ describe("mockGenerator", () => {
       await expect(
         model.generate({ messages: "something-else" as unknown as never })
       ).rejects.toThrow(/no script entry matching/);
+    });
+  });
+
+  describe("stream() (FIX-661)", () => {
+    it("exposes a stream() method matching production chunk shape", async () => {
+      const mock = mockGenerator({
+        name: "echo-mock",
+        script: [
+          { toolCalls: [{ toolCallId: "tc_1", toolName: "echo", args: { v: 1 } }] },
+          { text: "done" }
+        ]
+      });
+      const resolver = createMockModelResolver({ generators: { "g": mock } });
+      const model = resolver("any/model", "g");
+      expect(model.stream).toBeDefined();
+
+      const execute = vi.fn(async (args: unknown) => ({ echoed: (args as { v: number }).v }));
+      const echoTool = { name: "echo", execute };
+
+      const chunks: any[] = [];
+      for await (const chunk of model.stream!({ messages: [], tools: [echoTool] })) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks[0]).toEqual({
+        type: "tool_call_delta",
+        toolCallDelta: { toolCallId: "tc_1", toolName: "echo", argsDelta: '{"v":1}' }
+      });
+      expect(chunks[1]).toEqual({
+        type: "tool_result",
+        toolResult: { toolCallId: "tc_1", toolName: "echo", result: { echoed: 1 } }
+      });
+      expect(chunks[2]).toEqual({ type: "text_delta", textDelta: "done" });
+      expect(chunks[3].type).toBe("finish");
+      expect(chunks[3].fullResult.text).toBe("done");
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith({ v: 1 }, { toolCallId: "tc_1" });
+    });
+
+    it("generate() returns the same shape after the runScript refactor", async () => {
+      const mock = mockGenerator({
+        name: "regression-mock",
+        script: [
+          { toolCalls: [{ toolCallId: "tc_a", toolName: "ping", args: { n: 1 } }] },
+          { text: "pong" }
+        ]
+      });
+      const resolver = createMockModelResolver({ generators: { "g": mock } });
+      const model = resolver("any/model", "g");
+
+      const execute = vi.fn(async () => ({ ok: true }));
+      const result = await model.generate({ messages: [], tools: [{ name: "ping", execute }] });
+
+      expect(result.text).toBe("pong");
+      expect(result.finishReason).toBe("stop");
+      expect(result.toolCalls).toEqual([
+        { toolCallId: "tc_a", toolName: "ping", args: { n: 1 } }
+      ]);
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("records one calls[] entry per external invocation regardless of surface", async () => {
+      const mock = mockGenerator({
+        name: "calls-counter",
+        script: [
+          { text: "first" },
+          { text: "second" }
+        ]
+      });
+      const resolver = createMockModelResolver({ generators: { "g": mock } });
+      const model = resolver("any/model", "g");
+
+      await model.generate({ messages: [] });
+      expect(mock.calls.length).toBe(1);
+
+      const chunks: any[] = [];
+      for await (const chunk of model.stream!({ messages: [] })) {
+        chunks.push(chunk);
+      }
+      expect(mock.calls.length).toBe(2);
     });
   });
 });
