@@ -1,0 +1,36 @@
+{
+  "name": "@flow-state-dev/voice-openai",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "openai": "^6.38.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "build": "pnpm --filter @flow-state-dev/core build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm --filter @flow-state-dev/core build && vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

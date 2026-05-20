@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-19
+
+### Voice: new `@flow-state-dev/voice-openai` provider package
+
+- Added `OpenAIVoiceProvider` — the first concrete `VoiceProvider` implementation. `new OpenAIVoiceProvider({ apiKey })` returns a provider with batch `speak()`, batch `transcribe()`, and a static `listVoices()` catalog.
+- `speak()` defaults to `gpt-4o-mini-tts` / voice `alloy` / MP3. Supports `outputFormat` of `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`, each mapped to its standard MIME on the returned `SpeakResult.mediaType`.
+- `transcribe()` defaults to `gpt-4o-mini-transcribe`. Accepts either `Blob` or `Uint8Array`; `Uint8Array` callers pass `mediaType` so the SDK can infer the audio format.
+- `listVoices()` returns OpenAI's prebuilt voice catalog: `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`, `verse`, `marin`, `cedar`. `marin` and `cedar` declare `supportedModels: ["gpt-4o-mini-tts"]`.
+- SDK errors are translated into `VoiceError` with a discriminated `kind`, so callers branch on the kind instead of `instanceof` against SDK classes.
+- The package depends on the official `openai` SDK directly. No AI SDK dependency.
+
 ## 2026-05-18
 
 ### Voice (M1): streaming TTS contract + Web Audio playback (FIX-523)
