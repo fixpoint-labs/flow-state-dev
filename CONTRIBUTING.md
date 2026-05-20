@@ -7,9 +7,10 @@ Thanks for your interest in contributing. This is a TypeScript monorepo implemen
 Read these first:
 
 - [`AGENTS.md`](AGENTS.md) — Process protocol and code style rules
-- [`docs/contributing/best-practices.md`](docs/contributing/best-practices.md) — Implementation standards (BP-001–BP-009)
+- [`docs/contributing/best-practices.md`](docs/contributing/best-practices.md) — Implementation standards (active BPs listed at top of file)
 - [`docs/architecture/overview.md`](docs/architecture/overview.md) — System architecture and package roles
 - [`docs/contributing/development-setup.md`](docs/contributing/development-setup.md) — Monorepo workflow
+- [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) — When and how to write a changeset
 
 ## Setup
 
@@ -49,6 +50,7 @@ The architecture has locked contracts. Don't change these without explicit discu
 3. Include tests for new behavior
 4. Run `pnpm typecheck && pnpm test` before submitting
 5. Follow the code style in `AGENTS.md`
+6. Run `pnpm changeset` if the change has user-facing impact (see [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md)). Internal-only PRs can skip this — state that in the PR description or commit an empty fragment via `pnpm changeset --empty`.
 
 ## Code of conduct
 

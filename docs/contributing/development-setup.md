@@ -56,7 +56,7 @@ docs/
 
 ## Versioning and Publishing
 
-This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps.
+This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps. The contributor walk-through — when to write a fragment, the pre-1.0 discipline, multi-package PRs — lives in [`release-notes-workflow.md`](release-notes-workflow.md).
 
 | Command | Purpose |
 |---------|---------|
@@ -137,9 +137,10 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 |------|---------|
 | `AGENTS.md` | Agent collaboration protocol and code style rules |
 | `README.md` | Project overview and onboarding |
-| `changelog.md` | Wave completion summaries |
+| `packages/*/CHANGELOG.md` | Per-package release notes (generated from `.changeset/` fragments) |
+| `.changeset/` | Pending release-note fragments; see [`release-notes-workflow.md`](release-notes-workflow.md) |
 | `docs/architecture/` | Framework architecture reference |
-| `docs/contributing/best-practices.md` | Implementation standards (BP-001–BP-009) |
+| `docs/contributing/best-practices.md` | Implementation standards (active BPs listed at top of file) |
 | `docs/contributing/architecture-reference.md` | Quick reference for locked contracts |
 | `docs/internal/waves/` | Wave plans, journals, changelogs |
 

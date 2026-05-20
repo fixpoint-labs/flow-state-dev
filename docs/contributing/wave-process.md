@@ -41,7 +41,7 @@ Before declaring a wave complete, all of these must pass:
 - [ ] Lint/static checks pass
 - [ ] Architecture contract spot-check against `docs/architecture/`
 - [ ] Wave changelog and journal updated
-- [ ] Root `changelog.md` updated with concise summary
+- [ ] Changesets present for all packages with user-facing impact (verify via `pnpm changeset status`; see [`release-notes-workflow.md`](release-notes-workflow.md))
 
 ## Wave Completion Record
 
