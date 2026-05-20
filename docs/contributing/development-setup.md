@@ -74,6 +74,7 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for semver
 
 ### Required repository secrets
 
+- `CHANGESETS_TOKEN`: release automation token with repository contents and pull request write access
 - `NPM_TOKEN`: npm automation token with publish access to `@flow-state-dev` packages
 
 ### npm organization checklist
