@@ -669,6 +669,58 @@ describe("PostgreSQL store adapter", () => {
       expect(Number((got.rows[0] as any).c)).toBe(2);
     });
 
+    it("flushItems drains snapshots queued during an in-flight flush", async () => {
+      // Regression for the coalescing race: persistItems(A) queues a flush;
+      // while that flush is awaiting the UPSERT, persistItems(B) lands. The
+      // early-return contract means no second microtask is scheduled — the
+      // in-flight flush must loop and pick up B before settling, otherwise
+      // flushItems returns with B's rows still missing from the DB.
+      //
+      // PGlite's query is synchronous, so a bare `await Promise.resolve()`
+      // doesn't yield long enough for the race to materialize. Wrap the
+      // executor in a delay-on-INSERT shim so the UPSERT genuinely
+      // suspends — that's what real Postgres does.
+      pglite = new PGlite();
+      const raw = pgliteExecutor(pglite);
+      let upsertCount = 0;
+      let resolveFirstUpsert: (() => void) | undefined;
+      const firstUpsertGate = new Promise<void>((r) => {
+        resolveFirstUpsert = r;
+      });
+      const gate: QueryExecutor = {
+        async query(text, values) {
+          if (text.startsWith("INSERT INTO request_items")) {
+            upsertCount += 1;
+            if (upsertCount === 1) await firstUpsertGate;
+          }
+          return raw.query(text, values);
+        }
+      };
+      stores = await createPostgresStores({ executor: gate });
+
+      await stores.request.set(
+        "req_race",
+        makeRequestRecord("req_race", "flow-a", "run", "u"),
+        "any"
+      );
+      const a = makeMessageItem("req_race", "a", 0, "x");
+      const b = makeMessageItem("req_race", "b", 1, "y");
+      stores.request.persistItems("req_race", [a] as any);
+      // Let microtasks run so doFlushRequestItems reaches the gated UPSERT.
+      await new Promise((r) => setTimeout(r, 10));
+      // persistItems(B) lands DURING the awaited first INSERT.
+      stores.request.persistItems("req_race", [a, b] as any);
+      resolveFirstUpsert!();
+
+      await stores.request.flushItems("req_race");
+
+      const got = await raw.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_race"]
+      );
+      expect(Number((got.rows[0] as any).c)).toBe(2);
+    });
+
     it("concurrent persistItems on different requests do not interfere", async () => {
       const s = await freshStores();
       await s.request.set(

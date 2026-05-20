@@ -216,58 +216,66 @@ export function createPostgresRequestStore(
   }
 
   async function doFlushRequestItems(requestId: string): Promise<void> {
-    const snapshot = latestItemSnapshots.get(requestId) ?? [];
-    latestItemSnapshots.delete(requestId);
+    // Drain in a loop: if a `persistItems` call lands during the awaited
+    // UPSERT below, the early-return guard in `persistItems` skips
+    // scheduling a second microtask (one in-flight write per request is
+    // the coalescing contract). Looping here is what makes `flushItems`
+    // a real barrier — without it we'd settle the in-flight promise with
+    // stale rows still pending, and the pre-terminal `flushItems` could
+    // exit before the latest snapshot reached the DB.
+    while (latestItemSnapshots.has(requestId)) {
+      const snapshot = latestItemSnapshots.get(requestId) ?? [];
+      latestItemSnapshots.delete(requestId);
 
-    const priorById = lastPersistedItems.get(requestId);
-    const delta: OutputItem[] = [];
-    for (const item of snapshot) {
-      if (item.id.length > MAX_ITEM_ID_LENGTH) {
-        throw new Error(
-          `request_items: item.id length ${item.id.length} exceeds limit ${MAX_ITEM_ID_LENGTH} ` +
-            `(Postgres B-tree index row size). Item ID prefix: ${item.id.slice(0, 64)}...`
+      const priorById = lastPersistedItems.get(requestId);
+      const delta: OutputItem[] = [];
+      for (const item of snapshot) {
+        if (item.id.length > MAX_ITEM_ID_LENGTH) {
+          throw new Error(
+            `request_items: item.id length ${item.id.length} exceeds limit ${MAX_ITEM_ID_LENGTH} ` +
+              `(Postgres B-tree index row size). Item ID prefix: ${item.id.slice(0, 64)}...`
+          );
+        }
+        if (priorById?.get(item.id) !== item) delta.push(item);
+      }
+      if (delta.length > 0) {
+        // De-dup defensively (itemsById is already keyed by ID, but ON CONFLICT
+        // errors on duplicate keys in a single batch). Sort by item_id for
+        // deterministic ON CONFLICT row ordering — guards against the documented
+        // deadlock pattern when concurrent batches arrive in different orders,
+        // even though in practice there's one writer per request.
+        const byId = new Map<string, OutputItem>();
+        for (const item of delta) byId.set(item.id, item);
+        const batch = [...byId.values()].sort((a, b) =>
+          a.id.localeCompare(b.id)
+        );
+
+        await executor.query(
+          "INSERT INTO request_items (request_id, item_id, sequence, item_type, data) " +
+            "SELECT $1, item_id, sequence, item_type, data::jsonb FROM unnest(" +
+            "$2::text[], $3::bigint[], $4::text[], $5::text[]" +
+            ") AS t(item_id, sequence, item_type, data) " +
+            "ON CONFLICT (request_id, item_id) DO UPDATE SET " +
+            "sequence = EXCLUDED.sequence, " +
+            "item_type = EXCLUDED.item_type, " +
+            "data = EXCLUDED.data",
+          [
+            requestId,
+            batch.map((i) => i.id),
+            batch.map((i) => i.itemIndex),
+            batch.map((i) => i.type),
+            batch.map((i) => JSON.stringify(i))
+          ]
         );
       }
-      if (priorById?.get(item.id) !== item) delta.push(item);
-    }
-    if (delta.length > 0) {
-      // De-dup defensively (itemsById is already keyed by ID, but ON CONFLICT
-      // errors on duplicate keys in a single batch). Sort by item_id for
-      // deterministic ON CONFLICT row ordering — guards against the documented
-      // deadlock pattern when concurrent batches arrive in different orders,
-      // even though in practice there's one writer per request.
-      const byId = new Map<string, OutputItem>();
-      for (const item of delta) byId.set(item.id, item);
-      const batch = [...byId.values()].sort((a, b) =>
-        a.id.localeCompare(b.id)
-      );
 
-      await executor.query(
-        "INSERT INTO request_items (request_id, item_id, sequence, item_type, data) " +
-          "SELECT $1, item_id, sequence, item_type, data::jsonb FROM unnest(" +
-          "$2::text[], $3::bigint[], $4::text[], $5::text[]" +
-          ") AS t(item_id, sequence, item_type, data) " +
-          "ON CONFLICT (request_id, item_id) DO UPDATE SET " +
-          "sequence = EXCLUDED.sequence, " +
-          "item_type = EXCLUDED.item_type, " +
-          "data = EXCLUDED.data",
-        [
-          requestId,
-          batch.map((i) => i.id),
-          batch.map((i) => i.itemIndex),
-          batch.map((i) => i.type),
-          batch.map((i) => JSON.stringify(i))
-        ]
-      );
+      // Reconcile from what we actually persisted. If `latestItemSnapshots`
+      // gained a newer snapshot during the await, the next loop iteration
+      // picks it up.
+      const next = new Map<string, OutputItem>();
+      for (const item of snapshot) next.set(item.id, item);
+      lastPersistedItems.set(requestId, next);
     }
-
-    // Reconcile the per-request reference map with whatever state is
-    // visible NOW. If a `persistItems` arrived during the await, that
-    // snapshot is the latest; otherwise the snapshot we just persisted is.
-    const post = latestItemSnapshots.get(requestId) ?? snapshot;
-    const next = new Map<string, OutputItem>();
-    for (const item of post) next.set(item.id, item);
-    lastPersistedItems.set(requestId, next);
   }
 
   return {
