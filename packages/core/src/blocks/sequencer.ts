@@ -33,6 +33,9 @@ import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
+/** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
+const waitForConditionOutputSchema = z.object({ timedOut: z.boolean() });
+
 let inlineBlockCounter = 0;
 let sequencerScopeCounter = 0;
 
@@ -125,13 +128,15 @@ function findEmittedBlockTraceId(
   ctx: BlockContext,
   childInstanceId: string
 ): string | undefined {
-  const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
-  if (response === undefined || typeof response.getItems !== "function") return undefined;
-  const items = response.getItems();
+  if (ctx.response === undefined) return undefined;
+  // Defensive: some legacy test fixtures construct partial `ctx.response`
+  // mocks without `getItems`. Returning undefined falls back to inline refs.
+  if (typeof ctx.response.getItems !== "function") return undefined;
+  const items = ctx.response.getItems();
   for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item.type === "block_trace" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === childInstanceId) {
-      return (item as { id: string }).id;
+    const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };
+    if (item.type === "block_trace" && item.provenance?.blockInstanceId === childInstanceId) {
+      return item.id;
     }
   }
   return undefined;
@@ -1979,6 +1984,93 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         mergeFrom(...blocks),
         mergeRequiresOrgFrom(...blocks)
+      );
+    },
+
+    waitForCondition(
+      predicate: (items: readonly OutputItem[]) => boolean,
+      options: { timeoutMs: number }
+    ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema> {
+      return extend<{ timedOut: boolean }>(
+        {
+          name: "waitForCondition",
+          run: async (_value, ctx) => {
+            const response = ctx.response;
+            if (response === undefined) {
+              throw new Error("waitForCondition requires a response emitter on the context");
+            }
+
+            // Initial synchronous eval — if already satisfied, no subscription
+            // and no timer. Predicate throws here propagate directly.
+            if (predicate(response.getItems())) {
+              return { value: { timedOut: false } };
+            }
+
+            // Derived abort controller so timer/parent abort can stop the wait
+            // without abusing the parent signal.
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+            // AbortSignal.addEventListener does not fire for listeners
+            // registered after `aborted` already flipped true. Without this
+            // sync check, an already-aborted parent would still cost a full
+            // `timeoutMs` of waiting before the timer fired.
+            if (ctx.signal?.aborted === true) controller.abort();
+
+            let timedOut = false;
+            let evaluationError: unknown = undefined;
+            let unsubscribe: undefined | (() => void) = undefined;
+            let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+
+            try {
+              await new Promise<void>((resolve) => {
+                // Resolve once on first satisfaction (predicate true / timeout / abort).
+                let settled = false;
+                const settle = (): void => {
+                  if (settled) return;
+                  settled = true;
+                  resolve();
+                };
+
+                controller.signal.addEventListener("abort", settle);
+                // Parent may have aborted synchronously above; in that
+                // case the listener we just registered never fires because
+                // `controller.signal.aborted` was already true. Settle now
+                // and skip subscribing/timing.
+                if (controller.signal.aborted) {
+                  settle();
+                  return;
+                }
+
+                timer = setTimeout(() => {
+                  timedOut = true;
+                  controller.abort();
+                }, options.timeoutMs);
+
+                unsubscribe = response.subscribeToItems((_item, _kind) => {
+                  if (settled) return;
+                  try {
+                    if (predicate(response.getItems())) {
+                      controller.abort();
+                    }
+                  } catch (error) {
+                    evaluationError = error;
+                    controller.abort();
+                  }
+                });
+              });
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+              if (timer !== undefined) clearTimeout(timer);
+              const unsub = unsubscribe as (() => void) | undefined;
+              if (unsub !== undefined) unsub();
+            }
+
+            if (evaluationError !== undefined) throw evaluationError;
+            return { value: { timedOut } };
+          }
+        },
+        waitForConditionOutputSchema
       );
     },
 

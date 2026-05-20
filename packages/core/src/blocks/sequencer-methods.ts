@@ -306,6 +306,30 @@ export interface SequencerDefinition<
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, unknown, TStateSchema>;
 
+  /**
+   * Suspend the chain until `predicate` over the request's item stream
+   * returns true, or until `timeoutMs` elapses (whichever comes first).
+   *
+   * Evaluation: once synchronously at entry against the items already
+   * emitted on the response (no subscription if it returns true). Otherwise
+   * the runtime subscribes to subsequent item lifecycle events and re-runs
+   * the predicate on each — exactly once per event. On timeout or parent
+   * abort the subscription is torn down.
+   *
+   * Output: `{ timedOut: false }` when the predicate became true,
+   * `{ timedOut: true }` when the timer fired first. Parent abort also
+   * resolves with `{ timedOut: false }` — `timedOut` is strictly a timer
+   * signal, not a cancellation signal. Callers that need to distinguish
+   * "condition met" from "request cancelled" should check `ctx.signal.aborted`
+   * on the next step (the sequencer kernel also short-circuits between steps
+   * on an aborted signal). If the predicate itself throws the error
+   * propagates after teardown.
+   */
+  waitForCondition(
+    predicate: (items: readonly import("../items/types").OutputItem[]) => boolean,
+    options: { timeoutMs: number }
+  ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema>;
+
   /** Exit the sequencer chain early if condition returns true. Current value becomes the sequencer output. */
   exitIf(
     condition: (value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>

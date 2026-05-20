@@ -284,6 +284,7 @@ The six methods above handle the common cases. The DSL has more once you need it
 - **Conditional taps and work** → [`tapIf`, `workIf`, `exitIf`](/docs/sequencers/control-flow#conditional-sub-cases)
 - **Fallback chains and races** → [`thenAny`, `race`, `branch`](/docs/sequencers/control-flow#specialization)
 - **Wait on background work before continuing** → [`waitForWork`](/docs/sequencers/control-flow#side-chain-coordination)
+- **Wait for a condition over the item stream** → [`waitForCondition`](/docs/sequencers/wait-for-condition)
 - **Per-block input adaptation** → [`connectInput`](/docs/sequencers/control-flow#connector-adaptation)
 
 All of these live in the [Control Flow Reference](/docs/sequencers/control-flow), grouped by use case.

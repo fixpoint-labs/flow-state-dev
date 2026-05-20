@@ -234,15 +234,17 @@ export function router<
       // descriptor on the outer ctx so the router's own block_trace.output carries
       // the ref instead of duplicating content. Set AFTER runSelected below.
       const installRouterHint = (selectedInstanceId: string): void => {
-        const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
-        if (response === undefined || typeof response.getItems !== "function") return;
-        const items = response.getItems();
+        if (ctx.response === undefined) return;
+        // Defensive: some legacy test fixtures use partial `ctx.response`
+        // mocks without `getItems`. No-op falls back to inline (no ref hint).
+        if (typeof ctx.response.getItems !== "function") return;
+        const items = ctx.response.getItems();
         for (let i = items.length - 1; i >= 0; i -= 1) {
-          const item = items[i];
-          if (item.type === "block_trace" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === selectedInstanceId) {
+          const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };
+          if (item.type === "block_trace" && item.provenance?.blockInstanceId === selectedInstanceId) {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
               kind: "ref",
-              sourceItemId: (item as { id: string }).id
+              sourceItemId: item.id
             };
             return;
           }

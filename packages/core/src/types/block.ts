@@ -16,6 +16,7 @@ import type {
   BlockValueInternal,
   StructureShape,
   BlockTraceItem,
+  OutputItem,
   RouterDecisionItem,
   StateSnapshotItem
 } from "../items/types";
@@ -96,6 +97,22 @@ export type ExecutionParent = {
 
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
+  /**
+   * Snapshot of every item emitted to this response so far, in stream order.
+   * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
+   * over already-flushed items before subscribing for future ones.
+   */
+  getItems(): readonly OutputItem[];
+  /**
+   * Subscribe to subsequent item lifecycle transitions on this response.
+   * `kind` distinguishes the underlying mutation: `"added"` for a freshly
+   * emitted item, `"updated"` for an in-place mutation, `"done"` for a
+   * terminal status. Returns an unsubscribe function — callers must invoke
+   * it to release the listener (typically inside a `finally`).
+   */
+  subscribeToItems(
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void
+  ): () => void;
 }
 
 export type StateRef<TState extends object = Record<string, unknown>> = {

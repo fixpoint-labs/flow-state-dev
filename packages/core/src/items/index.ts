@@ -42,6 +42,12 @@ export type {
 export { resolveItemVisibility } from "./resolve-visibility";
 
 export {
+  whenAnyItem,
+  whenResourceChanged,
+  whenResourceMatching
+} from "./predicates";
+
+export {
   buildItemLookup,
   inlineBlockValue,
   isBlockValue,

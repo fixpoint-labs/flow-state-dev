@@ -76,6 +76,23 @@ export function inFlightCount(collection: TaskCollectionRef): number {
   });
 }
 
+/**
+ * Read-only probe: does the collection currently hold at least one
+ * `pending` task whose deps are satisfied? Mirrors the substrate's
+ * default dispatcher eligibility (FIX-443 §4) without performing a CAS
+ * claim. Used by the worker idle-wait predicate to decide whether a
+ * sleeping worker should wake up and re-attempt `claim`. Non-atomic by
+ * design — a sibling worker may win the race; the predicate's job is
+ * only to gate the wake-up, not to guarantee dispatch.
+ */
+export function hasClaimableTask(collection: TaskCollectionRef): boolean {
+  const pending = collection.list({ status: ["pending"] });
+  for (let i = 0; i < pending.length; i += 1) {
+    if (depsSatisfied(pending[i], collection)) return true;
+  }
+  return false;
+}
+
 /** Sleep for `ms` milliseconds. Used for idle-poll backoff in the worker loop. */
 export function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();

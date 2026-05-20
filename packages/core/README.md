@@ -97,7 +97,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
-- `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
+- `sequencer(config)` — Fluent composition DSL (22 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `waitForCondition`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
 **Block methods** (available on every `BlockDefinition`):
@@ -107,6 +107,8 @@ export default defineFlow({
 - `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
 
 **Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
+
+**Event-driven waits:** `.waitForCondition(predicate, { timeoutMs })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch.
 
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks

@@ -185,6 +185,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
   private itemHooks?: ResponseEmitterItemHooks;
   private eventHooks?: ResponseEmitterEventHooks;
+  private readonly itemListeners = new Set<
+    (item: OutputItem, kind: "added" | "updated" | "done") => void
+  >();
 
   /**
    * Creates a request-scoped emitter instance.
@@ -220,6 +223,56 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    */
   setItemHooks(hooks: ResponseEmitterItemHooks): void {
     this.itemHooks = hooks;
+  }
+
+  /**
+   * Subscribes to subsequent item lifecycle transitions on this emitter
+   * (FIX-621). `kind` is `"added"` for fresh items, `"updated"` for in-place
+   * mutations (item.updated and streaming content.delta), and `"done"` for
+   * terminal status. Returns an idempotent unsubscribe — calling it more
+   * than once is a no-op. Listener errors are isolated: a throw routes to
+   * a debug event and other listeners still fire.
+   *
+   * Fan-out uses snapshot semantics: the listener set is copied before
+   * iteration, so a listener that unsubscribes itself (or registers a new
+   * listener) mid-fan-out does not corrupt the in-flight loop. A listener
+   * registered during fan-out only sees subsequent events.
+   */
+  subscribeToItems(
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void
+  ): () => void {
+    this.itemListeners.add(listener);
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) return;
+      unsubscribed = true;
+      this.itemListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Fans out an item transition to all currently-registered listeners.
+   * Snapshots the listener set first so in-flight unsubscribe/subscribe
+   * calls do not affect the current iteration. Listener exceptions are
+   * captured and emitted as debug events; they do not propagate.
+   */
+  private fanoutItemEvent(
+    item: OutputItem,
+    kind: "added" | "updated" | "done"
+  ): void {
+    const snapshot = Array.from(this.itemListeners);
+    for (const listener of snapshot) {
+      try {
+        listener(item, kind);
+      } catch (err) {
+        // Fire-and-forget — emitDebug is async but we deliberately don't
+        // await it inside the fan-out loop to avoid serializing listeners
+        // behind the debug-event persistence path.
+        void this.emitDebug("response.subscribeToItems.listener_threw", {
+          err: String(err)
+        });
+      }
+    }
   }
 
   /**
@@ -305,6 +358,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.added"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    this.fanoutItemEvent(interceptedItem, "added");
 
     // Skip the runtime log line for transient items. Long-lived polling
     // patterns (task-board claim-task / check-board) emit hundreds of
@@ -334,6 +388,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.done"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    this.fanoutItemEvent(interceptedItem, "done");
     const event = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
       item: interceptedItem
@@ -368,6 +423,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     const sanitized = stripInvariantKeys(patch);
     const merged = { ...existing, ...sanitized } as OutputItem;
     this.itemsById.set(itemId, merged);
+    this.fanoutItemEvent(merged, "updated");
 
     if (existing.transient !== true) {
       this.onLogEvent?.("item.updated", {
@@ -748,6 +804,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       return;
     }
     this.itemHooks?.onItemUpdate?.(item);
+    this.fanoutItemEvent(item, "updated");
   }
 
   private enforceBufferLimit(): void {
