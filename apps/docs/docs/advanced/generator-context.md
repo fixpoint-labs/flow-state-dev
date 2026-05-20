@@ -187,6 +187,69 @@ import { xmlTag, renderTaggedContext, validateTagName, RESERVED_TAG_NAMES } from
 
 They're stable, pure functions — useful if you ever want to compose XML strings outside a generator slot.
 
+## User slot
+
+The `user` slot resolves to the user-role message representing this turn's input. It's the generator-side complement to the action-level `userMessage`.
+
+### What the user slot does
+
+The slot sits in the assembled `messages` array after `history` and before any tool calls. The slot function receives the block input and returns either a string (wrapped into `{ role: "user", content: <string> }` internally) or a pre-shaped LLM message (passed through as-is). Like the other slots, it can also be a static value or an array of entries.
+
+### Relationship to `userMessage`
+
+`userMessage` is defined on the action. It emits a durable `MessageItem` with `role: "user"` to the response stream. Transports, replay, and observability all read that item. It feeds future turns' `history` because past requests' items flow back through `session.items.history()`.
+
+`user` is defined on the generator. It resolves the current turn's user-role message at generator runtime, when the model is being called.
+
+They serve complementary contracts. Wiring both to the same source is safe. The framework deduplicates equivalent user-role content at message assembly, so the model sees the user's turn exactly once even when both surfaces resolve to identical text.
+
+### When to use which
+
+Action-wrapped flows — the standard chat-agent shape — typically wire both. `userMessage: (input) => input.message` on the action keeps the durable item correct. `user: (input) => input.message` on the generator keeps the generator's own definition complete, so the same block works in a sequencer composition or a unit test without an action wrapper above it. The framework dedup is what makes this redundancy safe.
+
+Sub-generators and worker blocks usually set `user` only, with content derived from state, tool output, or a reformulation of the input. They have no enclosing `userMessage` of equivalent content, so the dedup is a no-op for them.
+
+### Examples
+
+Chat-agent shape — both surfaces wired:
+
+```ts
+import { defineFlow, generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const chat = generator({
+  name: "chat",
+  model: "openai/gpt-5.4-mini",
+  prompt: "You are a helpful assistant.",
+  inputSchema: z.object({ message: z.string() }),
+  history: { limit: 8 },
+  user: (input) => input.message
+});
+
+defineFlow({
+  kind: "chat-app",
+  actions: {
+    chat: {
+      inputSchema: z.object({ message: z.string() }),
+      block: chat,
+      userMessage: (input) => input.message
+    }
+  }
+});
+```
+
+Worker shape — `user` only, content derived from task state:
+
+```ts
+const worker = generator({
+  name: "worker",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Execute the assigned task.",
+  agentType: "sub",
+  user: (input, ctx) => `Task: ${input.description}\nWorkspace:\n${ctx.cap.workspace.summary()}`
+});
+```
+
 ## Conversation history windowing
 
 When `history` is enabled on a generator, the framework assembles the LLM-ready history from the session's prior requests. The window is measured in **conversational turns**, not raw protocol messages. A turn is one user request and the assistant response that followed it — including any tool calls the assistant made along the way. Asking for "the last 8" gives you the last 8 turns, not the last 8 wire messages.

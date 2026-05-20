@@ -34,7 +34,7 @@ const myFlow = defineFlow({
 Each action has:
 - **`inputSchema`** — Zod schema that validates every incoming request. Invalid input is rejected before any block runs.
 - **`block`** — The block (or pipeline) to execute. This is where the work happens.
-- **`userMessage`** (optional) — Extracts a display string from the input. The framework emits it as a user-role `message` item before execution begins, so the conversation history shows what the user said.
+- **`userMessage`** (optional) — Extracts a display string from the input. The framework emits it as a user-role `message` item before execution begins, so the conversation history shows what the user said. The emitted item is what transports, replay, and observability read; it also feeds future turns' `history`. It does not directly feed this turn's LLM call — that's the generator's `user` slot. Wiring both to the same source is safe; the framework deduplicates equivalent content at message assembly. See [Generator context > User slot](../advanced/generator-context.md#user-slot) for the generator-side counterpart.
 
 ## Invoking actions
 
