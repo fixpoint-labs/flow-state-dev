@@ -317,8 +317,13 @@ export interface SequencerDefinition<
    * abort the subscription is torn down.
    *
    * Output: `{ timedOut: false }` when the predicate became true,
-   * `{ timedOut: true }` when the timer fired first. If the predicate
-   * itself throws the error propagates after teardown.
+   * `{ timedOut: true }` when the timer fired first. Parent abort also
+   * resolves with `{ timedOut: false }` — `timedOut` is strictly a timer
+   * signal, not a cancellation signal. Callers that need to distinguish
+   * "condition met" from "request cancelled" should check `ctx.signal.aborted`
+   * on the next step (the sequencer kernel also short-circuits between steps
+   * on an aborted signal). If the predicate itself throws the error
+   * propagates after teardown.
    */
   waitForCondition(
     predicate: (items: readonly import("../items/types").OutputItem[]) => boolean,
