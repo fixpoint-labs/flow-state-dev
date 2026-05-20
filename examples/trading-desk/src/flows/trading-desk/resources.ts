@@ -216,3 +216,65 @@ export const memosCollection = defineResourceCollection({
 export const memoResources = {
   memos: memosCollection,
 } as const;
+
+/** Build a complete `MemoState` with every nullable field set to `null`.
+ *  Memo creation paths (per-phase `setup*Memos` taps and the create branch
+ *  of `markWriting`/`markWritingP*`) all need this same shape; centralising
+ *  it here keeps the 30+ nullable fields listed once instead of duplicated
+ *  per phase. Caller supplies only the non-nullable scaffold
+ *  (`agentName`, `agentTeam`, `phaseId`, `ticker`, `date`) plus the
+ *  starting lifecycle state. */
+export function blankMemoState(opts: {
+  status?: MemoStatus;
+  agentName: string;
+  agentTeam: MemoState["agentTeam"];
+  phaseId: string;
+  ticker: string;
+  date: string;
+  startedAt?: string | null;
+}): MemoState {
+  return {
+    status: opts.status ?? "pending",
+    agentName: opts.agentName,
+    agentTeam: opts.agentTeam,
+    phaseId: opts.phaseId,
+    ticker: opts.ticker,
+    date: opts.date,
+    label: null,
+    headline: null,
+    rating: null,
+    body: null,
+    metrics: null,
+    startedAt: opts.startedAt ?? null,
+    completedAt: null,
+    errorMessage: null,
+    citations: null,
+    stance: null,
+    conviction: null,
+    keyRisks: null,
+    keyOpportunities: null,
+    unresolvedDisagreements: null,
+    direction: null,
+    sizePct: null,
+    stopPrice: null,
+    targetPrice: null,
+    holdingPeriod: null,
+    invalidationCriteria: null,
+    dependsOn: null,
+    posture: null,
+    raisedRisks: null,
+    proposedAdjustments: null,
+    dismissedRisks: null,
+    criticalRisks: null,
+    recommendedAdjustments: null,
+    confidenceCalibration: null,
+    calibrationRationale: null,
+    decisionSummary: null,
+    finalRating: null,
+    decisionConfidence: null,
+    acceptedAdjustments: null,
+    keyDependencies: null,
+    upstreamReferences: null,
+    agreesWithTrader: null,
+  };
+}

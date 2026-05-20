@@ -32,10 +32,7 @@ import {
   CONSERVATIVE_PROMPT,
   NEUTRAL_PROMPT,
 } from "./prompts";
-import {
-  neutralCritiqueOutputSchema,
-  personaCritiqueOutputSchema,
-} from "./schemas";
+import { personaCritiqueOutputSchema } from "./schemas";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function memoState(ctx: any, collectionKey: string): unknown {
@@ -105,5 +102,5 @@ export const neutralRiskGenerator = generator({
     "to filter, not to win. Populate `dismissedRisks` with the load-bearing " +
     "call on what does not warrant action.",
   sessionStateSchema,
-  outputSchema: neutralCritiqueOutputSchema,
+  outputSchema: personaCritiqueOutputSchema,
 });

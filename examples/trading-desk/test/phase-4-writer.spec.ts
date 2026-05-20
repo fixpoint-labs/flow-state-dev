@@ -129,6 +129,7 @@ const aggressiveCritique = {
     holdingPeriod: "unchanged" as const,
     invalidation: "looser" as const,
   },
+  dismissedRisks: [],
 };
 
 const conservativeCritique = {

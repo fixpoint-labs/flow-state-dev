@@ -5,9 +5,9 @@
  * `commitRiskAssessmentMemo` — share the same shape as Phase 3's writer:
  * each tap performs a dual write (resource patch + `session.memoStatus`
  * record). The three persona commits collapse into a single
- * `commitPersonaMemo(shortName)` factory because they share their
- * extension-field set; neutral adds `dismissedRisks` and the factory
- * forwards it via a runtime `"dismissedRisks" in critique` guard.
+ * `commitPersonaMemo(shortName)` factory because all three personas share
+ * `personaCritiqueOutputSchema` — aggressive and conservative emit
+ * `dismissedRisks: []` per their prompts, neutral populates it.
  * `riskAssessment` stays a one-off because its schema and extension
  * fields are unrelated to the persona shape.
  *
@@ -20,13 +20,11 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_4_MEMO_KEYS, type Phase4MemoShortName } from "../agents";
-import { memoResources } from "../resources";
+import { blankMemoState, memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
 import {
-  neutralCritiqueOutputSchema,
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-  type NeutralCritiqueOutput,
   type PersonaCritiqueOutput,
   type RiskAssessmentOutput,
 } from "./schemas";
@@ -51,51 +49,23 @@ export function markWritingP4(shortName: Phase4MemoShortName) {
     execute: async (_input, ctx) => {
       const ref = ctx.resources.memos.getOptional(collectionKey);
       const startedAt = new Date().toISOString();
-      const patch = {
-        status: "writing" as const,
-        startedAt,
-        agentName,
-      };
       if (ref !== undefined) {
-        await ref.patchState(patch);
+        await ref.patchState({ status: "writing", startedAt, agentName });
       } else {
-        await ctx.resources.memos.create(collectionKey, {
-          ...patch,
-          agentTeam: "risk",
-          phaseId: "p4",
-          ticker: ctx.session.state.ticker,
-          date: ctx.session.state.date,
-          label: null,
-          headline: null,
-          rating: null,
-          body: null,
-          metrics: null,
-          completedAt: null,
-          errorMessage: null,
-          stance: null,
-          conviction: null,
-          keyRisks: null,
-          keyOpportunities: null,
-          unresolvedDisagreements: null,
-          direction: null,
-          sizePct: null,
-          stopPrice: null,
-          targetPrice: null,
-          holdingPeriod: null,
-          invalidationCriteria: null,
-          dependsOn: null,
-          posture: null,
-          raisedRisks: null,
-          proposedAdjustments: null,
-          dismissedRisks: null,
-          criticalRisks: null,
-          recommendedAdjustments: null,
-          confidenceCalibration: null,
-          calibrationRationale: null,
-        });
+        await ctx.resources.memos.create(
+          collectionKey,
+          blankMemoState({
+            status: "writing",
+            startedAt,
+            agentName,
+            agentTeam: "risk",
+            phaseId: "p4",
+            ticker: ctx.session.state.ticker,
+            date: ctx.session.state.date,
+          }),
+        );
       }
-      const memoStatus = ctx.session.state.memoStatus;
-      if (memoStatus[shortName] !== "writing") {
+      if (ctx.session.state.memoStatus[shortName] !== "writing") {
         await ctx.session.setStateRecord("memoStatus", shortName, "writing");
       }
     },
@@ -162,36 +132,27 @@ function commonCommitPatch(critique: {
   };
 }
 
-/** Commit a persona's critique to its `memos/p4/{persona}-risk` memo.
- *  Aggressive and conservative use `personaCritiqueOutputSchema`; neutral
- *  uses `neutralCritiqueOutputSchema` (which adds `dismissedRisks`).
- *  The factory branches on `shortName` to pick the right input schema
- *  and forwards `dismissedRisks` only when present on the input. */
+/** Commit a persona's critique to its `memos/p4/{persona}-risk` memo. All
+ *  three personas share `personaCritiqueOutputSchema` — the aggressive and
+ *  conservative prompts emit `dismissedRisks: []`, neutral populates it.
+ *  This uniformity is what lets the factory be one straight-line function
+ *  instead of a schema-branching switch. */
 export function commitPersonaMemo(shortName: Phase4PersonaShortName) {
   const { collectionKey } = PHASE_4_MEMO_KEYS[shortName];
-  const inputSchema: z.ZodTypeAny =
-    shortName === "neutral"
-      ? neutralCritiqueOutputSchema
-      : personaCritiqueOutputSchema;
   return handler({
     name: `commit-memo-p4-${shortName}`,
-    inputSchema,
+    inputSchema: personaCritiqueOutputSchema,
     outputSchema: z.void(),
     sessionStateSchema,
     resources: memoResources,
-    execute: async (
-      critique: PersonaCritiqueOutput | NeutralCritiqueOutput,
-      ctx,
-    ) => {
+    execute: async (critique: PersonaCritiqueOutput, ctx) => {
       const ref = ctx.resources.memos.get(collectionKey);
       await ref.patchState({
         ...commonCommitPatch(critique),
         posture: critique.posture,
         raisedRisks: critique.raisedRisks,
         proposedAdjustments: critique.proposedAdjustments,
-        ...("dismissedRisks" in critique
-          ? { dismissedRisks: critique.dismissedRisks }
-          : {}),
+        dismissedRisks: critique.dismissedRisks,
       });
       if (ctx.session.state.memoStatus[shortName] !== "published") {
         await ctx.session.setStateRecord("memoStatus", shortName, "published");

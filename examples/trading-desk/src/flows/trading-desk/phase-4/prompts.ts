@@ -68,6 +68,9 @@ export const AGGRESSIVE_PROMPT = [
   "Use `unchanged` only when the trader's choice on that lever is already",
   "aggressive enough.",
   "",
+  "Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the",
+  "neutral persona's job; you raise them.",
+  "",
   SHARED_OUTPUT_PREAMBLE,
 ].join("\n");
 
@@ -114,6 +117,9 @@ export const CONSERVATIVE_PROMPT = [
   "  - invalidation: `tighter` (typical) or `unchanged`",
   "Use `unchanged` only when the trader's choice on that lever is already",
   "tight enough.",
+  "",
+  "Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the",
+  "neutral persona's job; you raise them.",
   "",
   SHARED_OUTPUT_PREAMBLE,
 ].join("\n");
