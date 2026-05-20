@@ -48,9 +48,7 @@ export async function applyRetentionPolicy(
   const requests = await stores.request.list({
     sessionId,
     status: "completed",
-    // FIX-657: the maxItems policy below counts `req.items.length` per
-    // request — explicitly opt in since `list()` no longer populates
-    // `items` by default on the Postgres adapter.
+    // maxItems policy below counts `req.items.length` per request.
     withItems: true,
   });
 

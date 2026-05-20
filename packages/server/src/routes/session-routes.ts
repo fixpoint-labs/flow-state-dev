@@ -205,9 +205,6 @@ export async function handleListSessionRequests(
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset")),
-    // FIX-657: preserves the wire contract — this endpoint historically
-    // returned items inline; opt in explicitly since `list()` no longer
-    // populates them by default on the Postgres adapter.
     withItems: true
   });
 

@@ -333,7 +333,7 @@ describe("PostgreSQL store adapter", () => {
 
   describe("request_items (FIX-657)", () => {
     it("creates the request_items table and ordering index", async () => {
-      const s = await freshStores();
+      await freshStores();
       const executor = pgliteExecutor(pglite);
       const t = await executor.query(
         "SELECT to_regclass('request_items') AS r"
@@ -343,8 +343,6 @@ describe("PostgreSQL store adapter", () => {
         "SELECT to_regclass('idx_request_items_request_sequence') AS r"
       );
       expect((i.rows[0] as any).r).toBe("idx_request_items_request_sequence");
-      // Drop unused binding warning.
-      void s;
     });
 
     it("unnest-based UPSERT lands two rows with typed-array params", async () => {
@@ -683,15 +681,22 @@ describe("PostgreSQL store adapter", () => {
       pglite = new PGlite();
       const raw = pgliteExecutor(pglite);
       let upsertCount = 0;
-      let resolveFirstUpsert: (() => void) | undefined;
+      let releaseFirstUpsert!: () => void;
       const firstUpsertGate = new Promise<void>((r) => {
-        resolveFirstUpsert = r;
+        releaseFirstUpsert = r;
+      });
+      let signalFirstUpsertEntered!: () => void;
+      const firstUpsertEntered = new Promise<void>((r) => {
+        signalFirstUpsertEntered = r;
       });
       const gate: QueryExecutor = {
         async query(text, values) {
           if (text.startsWith("INSERT INTO request_items")) {
             upsertCount += 1;
-            if (upsertCount === 1) await firstUpsertGate;
+            if (upsertCount === 1) {
+              signalFirstUpsertEntered();
+              await firstUpsertGate;
+            }
           }
           return raw.query(text, values);
         }
@@ -706,11 +711,11 @@ describe("PostgreSQL store adapter", () => {
       const a = makeMessageItem("req_race", "a", 0, "x");
       const b = makeMessageItem("req_race", "b", 1, "y");
       stores.request.persistItems("req_race", [a] as any);
-      // Let microtasks run so doFlushRequestItems reaches the gated UPSERT.
-      await new Promise((r) => setTimeout(r, 10));
-      // persistItems(B) lands DURING the awaited first INSERT.
+      // Wait until the first UPSERT is suspended on the gate before
+      // landing the second persistItems.
+      await firstUpsertEntered;
       stores.request.persistItems("req_race", [a, b] as any);
-      resolveFirstUpsert!();
+      releaseFirstUpsert();
 
       await stores.request.flushItems("req_race");
 

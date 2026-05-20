@@ -20,7 +20,10 @@ import {
   replayRequestEvents
 } from "../streaming/resume";
 import { createSSEStream } from "../streaming/sse-stream";
-import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
+import {
+  isTerminalRequestStatus,
+  isTerminalRequestStreamEvent
+} from "../stores/subscribe-helpers";
 import {
   buildReplayEvents,
   getString,
@@ -66,16 +69,6 @@ function shouldEmitToWire(
   return true;
 }
 
-/** Whether a request status is past the in-flight phase. */
-function isTerminalStatus(status: RequestRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "incomplete" ||
-    status === "interrupted" ||
-    status === "aborted"
-  );
-}
 
 export async function handleRequestStream(
   request: Request,
@@ -116,7 +109,7 @@ export async function handleRequestStream(
   }
 
   // Live-tail branch: a known-in-flight request streams via subscribeToEvents.
-  if (requestRecord !== undefined && !isTerminalStatus(requestRecord.status)) {
+  if (requestRecord !== undefined && !isTerminalRequestStatus(requestRecord.status)) {
     if (requestRecord.flowKind !== flow.kind) {
       return jsonResponse(404, {
         error: `Unknown request "${route.requestId}"`

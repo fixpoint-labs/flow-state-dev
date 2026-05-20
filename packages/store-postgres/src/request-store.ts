@@ -2,14 +2,12 @@
  * PostgreSQL RequestStore implementation.
  *
  * Two persistence paths layer on top of the generic record store:
- * - items: microtask-batched, last-write-wins. Persisted to a dedicated
- *   `request_items` table (FIX-657), one row per item, written via batched
- *   UPSERT. Replaces the prior `jsonb_set(data, '{items}', ...)` shape which
- *   re-TOAST'd the entire `requests.data` column on every flush and amplified
- *   on-disk storage by ~78x under serverless-throttled autovacuum.
+ * - items: microtask-batched, last-write-wins. One row per item in
+ *   `request_items`, written via batched UPSERT keyed by
+ *   `(request_id, item_id)`.
  * - events: per-row INSERT INTO request_events with `pg_notify('flow_events', ...)`
- *   inside the same transaction. The notify is suppressed on rollback —
- *   subscribers never see signals for events that aren't durable (FIX-569 §3.4).
+ *   inside the same statement. The notify is suppressed on rollback so
+ *   subscribers never see signals for events that aren't durable.
  *
  * `subscribeToEvents` consumes notifications via a dedicated `pg.Client`
  * checked out from `liveTailPool` and uses the dirty-bit Notifier Pattern:
@@ -21,6 +19,7 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import {
   abortableSleep,
+  isTerminalRequestStatus,
   isTerminalRequestStreamEvent,
   pollEvents,
   synthesizeRequestInterrupted,
@@ -29,7 +28,6 @@ import {
   type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
-  type RequestStatus,
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
@@ -46,34 +44,32 @@ const RECONNECT_BACKOFF_MIN_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 1_600;
 
 /**
- * Postgres B-tree index row size is ~2704 bytes. Keyed item IDs include
- * a user-provided key inside `item_component_keyed:${key}` (~22-byte
- * prefix). Reject items at the application layer with a clear error rather
- * than let Postgres surface `index row size … exceeds maximum`. The
- * practical user-key ceiling is ~2580 bytes; keys are normally short
- * (e.g. `task-board-meta`).
+ * Postgres B-tree index row size is ~2704 bytes. Reject overlong item IDs
+ * at the application layer with a clear error rather than let Postgres
+ * surface `index row size … exceeds maximum`.
  */
 const MAX_ITEM_ID_LENGTH = 2600;
 
-function isTerminalStatus(status: RequestStatus | undefined): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "aborted" ||
-    status === "interrupted" ||
-    status === "incomplete"
-  );
-}
-
-/**
- * Item rows are JSONB. `node-pg` and PGlite both auto-parse JSONB into
- * JS values on read, but bypass paths (raw injection, future drivers)
- * may return the column as a string. Mirror the same shape the events
- * path uses for safety.
- */
+/** `node-pg` and PGlite auto-parse JSONB; bypass paths may return strings. */
 function parseItemData(data: unknown): OutputItem {
   if (typeof data === "string") return JSON.parse(data) as OutputItem;
   return data as OutputItem;
+}
+
+/**
+ * Merge per-row `request_items` with any legacy `data.items` slice that
+ * predates the dedicated-table migration. Table version wins on item-id
+ * collision; output is sorted by `itemIndex`.
+ */
+function mergeLegacyWithTable(
+  fromTable: OutputItem[],
+  legacy: OutputItem[] | undefined
+): OutputItem[] {
+  if (!Array.isArray(legacy) || legacy.length === 0) return fromTable;
+  const seen = new Set(fromTable.map((i) => i.id));
+  const legacyOnly = legacy.filter((i) => !seen.has(i.id));
+  if (legacyOnly.length === 0) return fromTable;
+  return [...fromTable, ...legacyOnly].sort((a, b) => a.itemIndex - b.itemIndex);
 }
 
 export type CreatePostgresRequestStoreOptions = {
@@ -156,13 +152,11 @@ export function createPostgresRequestStore(
   const latestItemSnapshots = new Map<string, OutputItem[]>();
   /**
    * Per-request map of the item references that were last persisted to
-   * `request_items`. ResponseEmitter creates a new reference on
-   * emitItemAdded / emitItemUpdated / emitItemDone (`itemsById.set(id, merged)`),
-   * so reference inequality catches every item-boundary update. `applyDelta`
-   * mutates the inner text part in place — those token-rate updates
-   * intentionally accumulate in the events log (which captures every delta)
-   * rather than rewriting a row per keystroke; the items table is the
-   * "state at item-boundary events" snapshot, not the replay journal.
+   * `request_items`. ResponseEmitter swaps the item reference on each
+   * item-boundary event, so reference inequality catches every boundary
+   * update. `applyDelta` mutates the inner text part in place — those
+   * token-rate updates intentionally accumulate in the events log (which
+   * captures every delta) rather than rewriting a row per keystroke.
    */
   const lastPersistedItems = new Map<string, Map<string, OutputItem>>();
   const pendingEventWrites = new Map<string, Promise<void>>();
@@ -189,40 +183,20 @@ export function createPostgresRequestStore(
     });
   }
 
-  async function readItems(
-    requestId: string,
-    legacyItems: OutputItem[] | undefined
-  ): Promise<OutputItem[]> {
+  async function queryItems(requestId: string): Promise<OutputItem[]> {
     const { rows } = await executor.query(
       "SELECT data FROM request_items WHERE request_id = $1 ORDER BY sequence ASC",
       [requestId]
     );
-    const fromTable = rows.map((r) => parseItemData(r.data));
-
-    // Lazy migration: requests written before FIX-657 carry items in
-    // `data.items`. The new table is authoritative — on collision the
-    // table version wins. After the optional operator cleanup
-    // (`UPDATE requests SET data = data - 'items'`) the legacy slice is
-    // gone and this fallback is a no-op.
-    if (!Array.isArray(legacyItems) || legacyItems.length === 0) return fromTable;
-
-    const seenIds = new Set(fromTable.map((i) => i.id));
-    const legacyOnly = legacyItems.filter((i) => !seenIds.has(i.id));
-    if (legacyOnly.length === 0) return fromTable;
-
-    return [...fromTable, ...legacyOnly].sort(
-      (a, b) => a.itemIndex - b.itemIndex
-    );
+    return rows.map((r) => parseItemData(r.data));
   }
 
   async function doFlushRequestItems(requestId: string): Promise<void> {
-    // Drain in a loop: if a `persistItems` call lands during the awaited
-    // UPSERT below, the early-return guard in `persistItems` skips
-    // scheduling a second microtask (one in-flight write per request is
-    // the coalescing contract). Looping here is what makes `flushItems`
-    // a real barrier — without it we'd settle the in-flight promise with
-    // stale rows still pending, and the pre-terminal `flushItems` could
-    // exit before the latest snapshot reached the DB.
+    // Drain loop: a `persistItems` call landing during the awaited UPSERT
+    // below updates `latestItemSnapshots` but does not schedule a second
+    // microtask (only one in-flight write per request). Looping here makes
+    // `flushItems` a real barrier; without it the in-flight promise would
+    // settle with the latest snapshot still pending.
     while (latestItemSnapshots.has(requestId)) {
       const snapshot = latestItemSnapshots.get(requestId) ?? [];
       latestItemSnapshots.delete(requestId);
@@ -239,11 +213,8 @@ export function createPostgresRequestStore(
         if (priorById?.get(item.id) !== item) delta.push(item);
       }
       if (delta.length > 0) {
-        // De-dup defensively (itemsById is already keyed by ID, but ON CONFLICT
-        // errors on duplicate keys in a single batch). Sort by item_id for
-        // deterministic ON CONFLICT row ordering — guards against the documented
-        // deadlock pattern when concurrent batches arrive in different orders,
-        // even though in practice there's one writer per request.
+        // De-dup by id (ON CONFLICT errors on duplicate keys in a single
+        // batch). Sort by id for deterministic conflict-row ordering.
         const byId = new Map<string, OutputItem>();
         for (const item of delta) byId.set(item.id, item);
         const batch = [...byId.values()].sort((a, b) =>
@@ -269,50 +240,51 @@ export function createPostgresRequestStore(
         );
       }
 
-      // Reconcile from what we actually persisted. If `latestItemSnapshots`
-      // gained a newer snapshot during the await, the next loop iteration
-      // picks it up.
+      // Reconcile from what we actually persisted. If a newer snapshot
+      // arrived during the await, the next loop iteration picks it up.
       const next = new Map<string, OutputItem>();
       for (const item of snapshot) next.set(item.id, item);
       lastPersistedItems.set(requestId, next);
     }
   }
 
+  function clearItemMaps(id: string): void {
+    lastPersistedItems.delete(id);
+    latestItemSnapshots.delete(id);
+  }
+
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
-      const base_ = await base.get(id);
+      const [base_, fromTable] = await Promise.all([
+        base.get(id),
+        queryItems(id)
+      ]);
       if (base_ === undefined) return undefined;
       const record = withSourceDefault(base_) as RequestRecord;
-      // `base.get` reads `requests.data` which (post-FIX-657) carries no
-      // items slice for new requests; legacy and in-flight-at-deploy
-      // records may still have `data.items` populated, surfaced here as
-      // `record.items`. `readItems` merges both sources, table-wins on
-      // collision.
-      const items = await readItems(id, record.items);
-      return { ...record, items };
+      return { ...record, items: mergeLegacyWithTable(fromTable, record.items) };
     },
     async set(
       id: string,
       value: RequestRecord,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<RequestRecord>> {
-      // Strip `items` before JSONB serialization. Items are persisted via
-      // `request_items`; carrying them in `requests.data` as well would
-      // resurrect the FIX-657 bloat on every terminal set. The in-memory
-      // record returned by `get` still has `items` populated (assembled
-      // from the items table + legacy fallback above).
+      // On terminal status, drain in-flight item writes first so the last
+      // snapshot is durable AND so a late `doFlushRequestItems` can't
+      // repopulate `lastPersistedItems` after this set clears it.
+      if (isTerminalRequestStatus(value.status)) {
+        const pending = pendingItemWrites.get(id);
+        if (pending) await pending;
+      }
+      // Items live in `request_items`; keep them out of `requests.data` to
+      // avoid double-storage.
       const { items: _omitted, ...withoutItems } = value;
       const result = await base.set(
         id,
         withoutItems as RequestRecord,
         expectedVersion
       );
-      if (result.ok && isTerminalStatus(value.status)) {
-        // Release the reference map for the request. A subsequent stray
-        // `persistItems` (which the framework should not issue post-terminal)
-        // would treat all items as new and re-UPSERT them idempotently —
-        // not a correctness issue, just an extra round-trip.
-        lastPersistedItems.delete(id);
+      if (result.ok && isTerminalRequestStatus(value.status)) {
+        clearItemMaps(id);
       }
       return result;
     },
@@ -320,26 +292,24 @@ export function createPostgresRequestStore(
     incField: base.incField,
     pushToArray: base.pushToArray,
     async delete(id: string): Promise<void> {
-      // Await any pending flush first — otherwise a queued microtask could
+      // Drain pending flush first; otherwise a queued microtask could
       // re-insert rows after the DELETE.
       const pending = pendingItemWrites.get(id);
       if (pending) await pending;
-      await executor.query("DELETE FROM request_items WHERE request_id = $1", [id]);
-      await base.delete(id);
-      lastPersistedItems.delete(id);
-      latestItemSnapshots.delete(id);
+      await Promise.all([
+        executor.query("DELETE FROM request_items WHERE request_id = $1", [id]),
+        base.delete(id)
+      ]);
+      clearItemMaps(id);
     },
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       const records = await base.list(options);
       const withSource = records.map((r) => withSourceDefault(r) as RequestRecord);
 
       if (options?.withItems !== true) {
-        // Strip any legacy `data.items` from results so the wire shape is
-        // consistent across mixed-state requests.
-        return withSource.map((r) => {
-          if (r.items === undefined) return r;
-          return { ...r, items: undefined };
-        });
+        return withSource.map((r) =>
+          r.items === undefined ? r : { ...r, items: undefined }
+        );
       }
 
       if (withSource.length === 0) return withSource;
@@ -358,33 +328,19 @@ export function createPostgresRequestStore(
         byRequestId.set(rid, list);
       }
 
-      return withSource.map((r) => {
-        const fromTable = byRequestId.get(r.id) ?? [];
-        const legacy = r.items;
-        if (!Array.isArray(legacy) || legacy.length === 0) {
-          return { ...r, items: fromTable };
-        }
-        const seen = new Set(fromTable.map((i) => i.id));
-        const legacyOnly = legacy.filter((i) => !seen.has(i.id));
-        const merged = [...fromTable, ...legacyOnly].sort(
-          (a, b) => a.itemIndex - b.itemIndex
-        );
-        return { ...r, items: merged };
-      });
+      return withSource.map((r) => ({
+        ...r,
+        items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
+      }));
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
-      // Always capture the latest snapshot so the queued write uses the most
-      // recent items, even when subsequent calls are coalesced away.
+      // Always capture the latest snapshot so the queued write picks up
+      // the freshest items even when intervening calls are coalesced.
       latestItemSnapshots.set(requestId, [...items]);
 
       if (pendingItemWrites.has(requestId)) return;
 
-      // Wrap the microtask + flush in a single promise that also clears
-      // the in-flight map entry on settle. The cleanup is on the same
-      // chain as the stored promise — a caller awaiting `flushItems`
-      // sees the rejection (so it can be handled), and there's no
-      // dangling `.finally` to surface as an unhandled rejection.
       const writePromise = (async () => {
         try {
           await new Promise<void>((r) => queueMicrotask(r));
@@ -394,11 +350,9 @@ export function createPostgresRequestStore(
         }
       })();
       pendingItemWrites.set(requestId, writePromise);
-      // Suppress unhandled-rejection warnings for fire-and-forget
-      // `persistItems` callers. A caller that awaits `flushItems` still
-      // observes the rejection through the stored promise; this attached
-      // no-op handler simply marks it as handled to avoid the process-
-      // level warning when nothing is awaiting the flush.
+      // Mark as handled so fire-and-forget callers don't trigger Node's
+      // unhandled-rejection warning; a caller awaiting `flushItems` still
+      // observes the rejection through the stored promise.
       writePromise.catch(() => {});
     },
 

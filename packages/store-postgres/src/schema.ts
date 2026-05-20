@@ -150,16 +150,9 @@ const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
 ];
 
-// FIX-657: request items live in a dedicated table, one row per item. Prior
-// design stored items as a JSONB sub-path `requests.data->'items'` and
-// rewrote the entire array on every coalesced flush. Under Postgres MVCC +
-// TOAST that produced full re-TOAST cycles on every write and amplified
-// disk usage proportional to flush cadence rather than data volume
-// (measured ~78x on long-running requests under serverless-throttled
-// autovacuum). Per-row storage keeps INSERT cost per item paid once,
-// updated-item writes touch only that row's payload, and unchanged item
-// rows are never re-TOAST'd. PK is (request_id, item_id) so keyed-component
-// re-emissions (FIX-491) naturally UPSERT.
+// Request items: one row per item produced by a request. PK
+// `(request_id, item_id)` so keyed-component re-emissions UPSERT in place.
+// Per-row storage keeps unchanged rows out of every flush's TOAST rewrite.
 const REQUEST_ITEMS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_items (
   request_id  TEXT   NOT NULL,

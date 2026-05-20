@@ -91,9 +91,6 @@ export async function handleGetSessionState(
   if (includeItems) {
     const requests = await ctx.stores.request.list({
       sessionId: session.id,
-      // FIX-657: `?includeItems` aggregates items across the session's
-      // requests; explicitly opt in since `list()` no longer populates
-      // `items` by default on the Postgres adapter.
       withItems: true
     });
     aggregatedItems = [];

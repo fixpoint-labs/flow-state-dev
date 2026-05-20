@@ -2063,9 +2063,7 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    // FIX-657: items live in a separate table for Postgres; opt in to
-    // populating them on each prior request so cross-turn history
-    // reconstruction sees the same payload as before.
+    // `items` are read below to reconstruct cross-turn history.
     stores.request.list({ sessionId, withItems: true })
   ]);
 
