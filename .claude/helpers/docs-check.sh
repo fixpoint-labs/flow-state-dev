@@ -18,7 +18,7 @@ CHANGED=$(git diff HEAD --name-only 2>/dev/null; git ls-files --others --exclude
 SRC=$(printf '%s\n' "$CHANGED" | grep -E '^packages/[^/]+/src/' | grep -vE '(/__tests__/|\.test\.|\.spec\.|/internal/)' || true)
 
 # Doc surfaces that satisfy BP-009 / BP-022 ("document user-facing changes in the same change set").
-DOCS=$(printf '%s\n' "$CHANGED" | grep -E '^(apps/docs/|packages/[^/]+/README\.md$|\.changeset/[^/]+\.md$)' || true)
+DOCS=$(printf '%s\n' "$CHANGED" | grep -E '^(apps/docs/|packages/[^/]+/README\.md$|\.changeset/[^/]+\.md$)' | grep -vE '^\.changeset/(README\.md|config\.json)$' || true)
 
 if [ -n "$SRC" ] && [ -z "$DOCS" ]; then
   REASON="BP-009 / BP-022 docs check: source files changed without matching doc or release-note updates.

@@ -64,7 +64,7 @@ Update policy:
   - Each wave must also add a concise summary entry to root `changelog.md`.
 - Why (historical):
   - Wave-local docs preserve detail; root changelog preserved project-level continuity pre-Changesets.
-- Successor: BP-022 replaces the root-changelog half of this rule. Wave-local artifacts are no longer required.
+- Successor: BP-022 replaces the root-changelog half of this rule (the `changelog.md` entry). Wave-local journal and changelog artifacts remain required per AGENTS.md and `wave-process.md`.
 
 ### BP-006: Keep wave labels out of code and tests
 
