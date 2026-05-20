@@ -1,5 +1,10 @@
 export type { BlockCacheableConfig, BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { AgentType, ItemVisibility } from "./items/types";
+export {
+  whenAnyItem,
+  whenResourceChanged,
+  whenResourceMatching
+} from "./items/predicates";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,

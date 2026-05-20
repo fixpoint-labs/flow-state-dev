@@ -56,7 +56,9 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
       list: () => []
     } as any,
     response: {
-      emit: () => undefined
+      emit: () => undefined,
+      getItems: () => [],
+      subscribeToItems: (_l) => () => undefined
     },
     emit: {
       message: () => undefined,
