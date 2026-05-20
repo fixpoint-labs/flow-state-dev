@@ -205,7 +205,12 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const {
     name,
     actors,
-    concurrency = 16,
+    // FIX-660: default lowered from 16 → 4 to align with peer patterns
+    // (taskBoard=4, supervisor=3, parallelTasks=3). The 16 default
+    // predated the `.waitForCondition` wiring; once wake-storm costs
+    // were exposed, 16 was a 4× outlier with no architectural rationale.
+    // Callers who want more can still pass `concurrency: 16` explicitly.
+    concurrency = 4,
     reEmit = false,
     maxDepth = 3,
   } = config;

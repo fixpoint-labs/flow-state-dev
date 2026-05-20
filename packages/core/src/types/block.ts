@@ -109,9 +109,24 @@ export interface ResponseEmitterHandle {
    * emitted item, `"updated"` for an in-place mutation, `"done"` for a
    * terminal status. Returns an unsubscribe function — callers must invoke
    * it to release the listener (typically inside a `finally`).
+   *
+   * When `options.filter` is provided, the listener fires only for items
+   * the filter returns true for. The filter is evaluated per-event,
+   * per-listener; non-matching events skip the listener invocation
+   * entirely. Use `filter` to reduce wake-cost when many subscribers share
+   * an emitter and most events are uninteresting to most subscribers.
+   *
+   * Filter exceptions are caught at the emitter boundary, logged via a
+   * `response.subscribeToItems.filter_threw` debug event, and the listener
+   * STILL FIRES (fail-open). A filter that throws is a caller bug; treating
+   * the throw as "skip" would silently mask the bug and surface only as a
+   * `.waitForCondition` timeout. Filters MUST be cheap and SHOULD NOT throw.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    options?: {
+      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+    }
   ): () => void;
 }
 

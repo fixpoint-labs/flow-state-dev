@@ -125,12 +125,14 @@ eventActors({
   name: string;
   workspace: { workspace: DefinedResource };  // from createEventActorsWorkspace()
   actors: Actor[];
-  concurrency?: number;       // Default 16. Maximum concurrent workers in the underlying taskBoard.
+  concurrency?: number;       // Default 4. Maximum concurrent workers in the underlying taskBoard.
   reEmit?: boolean;           // Default false. When true, actor outputs that match the entry shape become new dispatched entries.
   maxDepth?: number;          // Default 3. With reEmit, caps the recursive chain depth.
 });
 // Returns: { emit, workspace, actors }
 ```
+
+The default `concurrency` of 4 aligns `eventActors` with peer patterns (`taskBoard`, `supervisor`, `parallelTasks`). Callers can pass a higher value explicitly; the underlying `taskBoard` worker now uses a `wakeOn` wake filter so transient workspace patches do not impose a per-worker scan cost on every emit. See [waitForCondition wake filtering](/docs/sequencers/wait-for-condition#wake-filtering).
 
 ## Topic matching
 

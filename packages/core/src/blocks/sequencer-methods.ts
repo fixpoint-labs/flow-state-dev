@@ -324,10 +324,23 @@ export interface SequencerDefinition<
    * on the next step (the sequencer kernel also short-circuits between steps
    * on an aborted signal). If the predicate itself throws the error
    * propagates after teardown.
+   *
+   * `wakeOn` is an optional cheap pre-filter on item events. When provided,
+   * the predicate is only re-evaluated for items the filter matches. Use
+   * to reduce wake-cost in high-fanout patterns (e.g. a task-board worker
+   * that only cares about `task-change` items, not `resource_change` churn
+   * from sibling workers). The filter does NOT affect the initial on-entry
+   * predicate evaluation; that always runs once before any subscription.
    */
   waitForCondition(
     predicate: (items: readonly import("../items/types").OutputItem[]) => boolean,
-    options: { timeoutMs: number }
+    options: {
+      timeoutMs: number;
+      wakeOn?: (
+        item: import("../items/types").OutputItem,
+        kind: "added" | "updated" | "done"
+      ) => boolean;
+    }
   ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema>;
 
   /** Exit the sequencer chain early if condition returns true. Current value becomes the sequencer output. */

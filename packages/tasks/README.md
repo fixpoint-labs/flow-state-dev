@@ -356,6 +356,19 @@ const result = await dispatchAndExecute(
 // result.taskId, result.output, result.error (per outcome)
 ```
 
+### `onTaskChangeFor(collectionId)`
+
+Wake filter for `.waitForCondition`'s `wakeOn` option. Matches `task-change` component items targeting the given collection and rejects everything else (other collections, `resource_change`, `block_trace`, etc.). Pair it with `whenBoardClaimable` (or any collection-bound predicate) so high-fanout patterns skip predicate evaluation on irrelevant events.
+
+```ts
+import { onTaskChangeFor } from "@flow-state-dev/tasks";
+
+sequencer.waitForCondition(whenBoardClaimable(collection), {
+  timeoutMs: 5_000,
+  wakeOn: onTaskChangeFor(collection.collectionId),
+});
+```
+
 ## `task-change` component items
 
 Every lifecycle mutation emits a `task-change` component item on the active

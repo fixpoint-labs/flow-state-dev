@@ -119,6 +119,133 @@ describe("ResponseEmitter.subscribeToItems", () => {
     expect(late[0]).toBe("added");
   });
 
+  describe("filter option (FIX-660)", () => {
+    function makeComponent(itemIndex: number, component: string, id?: string): OutputItem {
+      return {
+        id: id ?? `item_${itemIndex}`,
+        type: "component",
+        component,
+        data: { collectionId: "c1" },
+        status: "completed",
+        requestId: "req_test",
+        itemIndex,
+        provenance: {
+          blockName: "test",
+          blockInstanceId: "test_1",
+          phase: "main"
+        },
+        ts: 100 + itemIndex
+      } as OutputItem;
+    }
+
+    it("listener fires only when filter returns true", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const calls: string[] = [];
+      emitter.subscribeToItems(
+        (item) => calls.push(item.id),
+        { filter: (item) => item.type === "component" }
+      );
+      await emitter.emitItemAdded(makeItem(0));
+      await emitter.emitItemAdded(makeComponent(1, "task-change", "c_1"));
+      expect(calls).toEqual(["c_1"]);
+    });
+
+    it("filter is evaluated per-event-kind (added, updated, done)", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const calls: Array<{ kind: string }> = [];
+      emitter.subscribeToItems(
+        (_item, kind) => calls.push({ kind }),
+        { filter: (_item, kind) => kind === "added" }
+      );
+      await emitter.emitItemAdded(makeItem(0));
+      await emitter.emitItemUpdated("item_0", { status: "in_progress" });
+      await emitter.emitItemDone(makeItem(0));
+      expect(calls.map((c) => c.kind)).toEqual(["added"]);
+    });
+
+    it("filter throw is caught, debug event emitted, listener STILL fires (fail-open)", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const fired: string[] = [];
+      emitter.subscribeToItems(
+        (_item, kind) => fired.push(kind),
+        {
+          filter: () => {
+            throw new Error("filter boom");
+          }
+        }
+      );
+      await emitter.emitItemAdded(makeItem(0));
+      // Fail-open: listener fires despite the filter throwing.
+      expect(fired).toEqual(["added"]);
+      // Subscription stays alive — next event still fires.
+      await emitter.emitItemAdded(makeItem(1, "item_1"));
+      expect(fired).toEqual(["added", "added"]);
+      const debug = emitter
+        .getEvents()
+        .filter(
+          (e) =>
+            e.type === "debug" &&
+            (e as { name?: string }).name === "response.subscribeToItems.filter_threw"
+        );
+      // One per emit (two filter throws above).
+      expect(debug.length).toBe(2);
+    });
+
+    it("mixed subscribers — filtered and unfiltered — evaluate independently", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const filtered: string[] = [];
+      const all: string[] = [];
+      emitter.subscribeToItems(
+        (item) => filtered.push(item.id),
+        { filter: (item) => item.type === "component" }
+      );
+      emitter.subscribeToItems((item) => all.push(item.id));
+      await emitter.emitItemAdded(makeItem(0));
+      await emitter.emitItemAdded(makeComponent(1, "task-change", "c_1"));
+      expect(filtered).toEqual(["c_1"]);
+      expect(all).toEqual(["item_0", "c_1"]);
+    });
+
+    it("two subscribers with different filters do not share state", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const taskChanges: string[] = [];
+      const resourceChanges: string[] = [];
+      emitter.subscribeToItems(
+        (item) => taskChanges.push(item.id),
+        {
+          filter: (item) =>
+            item.type === "component" &&
+            (item as { component?: string }).component === "task-change"
+        }
+      );
+      emitter.subscribeToItems(
+        (item) => resourceChanges.push(item.id),
+        {
+          filter: (item) =>
+            item.type === "component" &&
+            (item as { component?: string }).component === "resource-change"
+        }
+      );
+      await emitter.emitItemAdded(makeComponent(0, "task-change", "tc_0"));
+      await emitter.emitItemAdded(makeComponent(1, "resource-change", "rc_0"));
+      expect(taskChanges).toEqual(["tc_0"]);
+      expect(resourceChanges).toEqual(["rc_0"]);
+    });
+
+    it("unsubscribe stops a filtered subscription", async () => {
+      const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
+      const calls: string[] = [];
+      const off = emitter.subscribeToItems(
+        (item) => calls.push(item.id),
+        { filter: () => true }
+      );
+      await emitter.emitItemAdded(makeItem(0));
+      off();
+      await emitter.emitItemAdded(makeItem(1, "item_1"));
+      expect(calls).toEqual(["item_0"]);
+    });
+  });
+
   it("listener that unsubscribes itself during fan-out does not break iteration", async () => {
     const emitter = createResponseEmitter({ requestId: "req_test", now: () => 100 });
     const events: string[] = [];

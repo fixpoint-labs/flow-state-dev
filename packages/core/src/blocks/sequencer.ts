@@ -1989,7 +1989,13 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 
     waitForCondition(
       predicate: (items: readonly OutputItem[]) => boolean,
-      options: { timeoutMs: number }
+      options: {
+        timeoutMs: number;
+        wakeOn?: (
+          item: OutputItem,
+          kind: "added" | "updated" | "done"
+        ) => boolean;
+      }
     ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema> {
       return extend<{ timedOut: boolean }>(
         {
@@ -2047,17 +2053,20 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                   controller.abort();
                 }, options.timeoutMs);
 
-                unsubscribe = response.subscribeToItems((_item, _kind) => {
-                  if (settled) return;
-                  try {
-                    if (predicate(response.getItems())) {
+                unsubscribe = response.subscribeToItems(
+                  (_item, _kind) => {
+                    if (settled) return;
+                    try {
+                      if (predicate(response.getItems())) {
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      evaluationError = error;
                       controller.abort();
                     }
-                  } catch (error) {
-                    evaluationError = error;
-                    controller.abort();
-                  }
-                });
+                  },
+                  options.wakeOn !== undefined ? { filter: options.wakeOn } : undefined
+                );
               });
             } finally {
               ctx.signal?.removeEventListener("abort", onParentAbort);

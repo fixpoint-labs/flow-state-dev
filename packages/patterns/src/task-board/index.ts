@@ -55,9 +55,11 @@ import { sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  onTaskChangeFor,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskInit,
@@ -530,28 +532,52 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     // collectionId → same ref) and avoids re-doing the lookup every
     // iteration. Predicate reads from `cell.collection!` — guaranteed
     // populated because the tap runs before the wait.
-    const cell: { collection?: TaskCollectionRef } = {};
+    const cell: {
+      collection?: TaskCollectionRef;
+      wakeFilter?: (item: OutputItem) => boolean;
+    } = {};
 
     const idleWait = sequencer({
       name: `${name}-worker-${workerId}-idle-wait`,
       inputSchema: z.unknown(),
     })
       .tap((_input, ctx) => {
-        cell.collection ??= collectionFactory(ctx);
+        if (cell.collection === undefined) {
+          cell.collection = collectionFactory(ctx);
+          cell.wakeFilter = onTaskChangeFor(cell.collection.collectionId);
+        }
       })
       .waitForCondition(
         (items) =>
           cell.collection === undefined
             ? false
             : whenBoardClaimable(cell.collection, { onIdle, shouldExit })(items),
-        // Long timeout: a quiet board still wakes when any task-change
-        // or resource_change item fans out. The timeout is the upper
-        // bound on starvation if the wake signal is somehow missed —
-        // and the worker's outer `loopBack` re-evaluates exit on every
-        // wake, so even a hard timeout cycles cleanly back through
-        // `checkBoard`. Per spec §3.6, scale to `idlePollMs * 100`
-        // so test boards with tiny poll intervals still cycle quickly.
-        { timeoutMs: Math.max(idlePollMs * 100, 50) }
+        // Long timeout: a quiet board still wakes on task-change items.
+        // The timeout is the upper bound on starvation if the wake
+        // signal is somehow missed — the worker's outer `loopBack`
+        // re-evaluates exit on every wake, so even a hard timeout
+        // cycles cleanly back through `checkBoard`. Per spec §3.6,
+        // scale to `idlePollMs * 100` so test boards with tiny poll
+        // intervals still cycle quickly.
+        //
+        // `wakeOn` (FIX-660): fast-path the listener so transient
+        // `resource_change` and `block_trace` items emitted by sibling
+        // workers do not trigger a full collection scan. Without this
+        // filter, a 16-worker `eventActors` board pays
+        // `16 × collection.list()` per workspace patchState — visible
+        // as multi-second idle gaps. `cell.collection` is guaranteed
+        // populated by the leading `.tap`.
+        {
+          timeoutMs: Math.max(idlePollMs * 100, 50),
+          // Defer to the cell because `cell.wakeFilter` is only known
+          // after the leading `.tap` resolves the collection at runtime.
+          // The outer closure is stable; the inner call is one
+          // indirection per fan-out event. Pre-tap (impossible by
+          // construction, but typed-defensively) the filter is open
+          // (`true`) so no signal is dropped before the cell populates.
+          wakeOn: (item) =>
+            cell.wakeFilter === undefined ? true : cell.wakeFilter(item),
+        }
       )
       .map(() => ({ claimed: false, task: undefined as Task | undefined }));
 
