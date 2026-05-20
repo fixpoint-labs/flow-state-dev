@@ -1,35 +1,36 @@
 /**
  * Phase 4 memo state-transition taps.
  *
- * Generic `markWritingP4` / `markErrorP4` factories (same shape as Phase 3's),
- * plus four commit handlers — one per memo. Each commit handler asserts
- * the resource ref exists (`get()` throws on miss): by commit time setup
- * and `markWritingP4` have created or patched the resource, and a missing
- * ref signals a real bug we want surfaced through the per-step rescue.
+ * Factories — `markWritingP4`, `markErrorP4`, `commitPersonaMemo`,
+ * `commitRiskAssessmentMemo` — share the same shape as Phase 3's writer:
+ * each tap performs a dual write (resource patch + `session.memoStatus`
+ * record). The three persona commits collapse into a single
+ * `commitPersonaMemo(shortName)` factory because all three personas share
+ * `personaCritiqueOutputSchema` — aggressive and conservative emit
+ * `dismissedRisks: []` per their prompts, neutral populates it.
+ * `riskAssessment` stays a one-off because its schema and extension
+ * fields are unrelated to the persona shape.
  *
- * `markErrorP4` returns a `text` field in addition to `status`. The
- * persona steps live inside the round-robin's `.then(agent).tap(record)`
- * frame, where `record-contribution` coerces the upstream output to a
- * string via `obj.text`. Returning a `text` placeholder on rescue means
- * subsequent personas see "(critique unavailable: …)" in the round-robin
- * transcript instead of `String(error)` noise.
+ * `markErrorP4` returns a `text` placeholder alongside `status: "error"`
+ * so the rescue path's output is a non-empty value rather than `void`.
+ * Downstream personas read prior critiques from the persona memos (which
+ * `markErrorP4` flips to `error` with the captured `errorMessage`), not
+ * from this output, so the placeholder is consumed only by tests.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import {
-  PHASE_4_MEMO_KEYS,
-  type Phase4MemoShortName,
-} from "../agents";
+import { PHASE_4_MEMO_KEYS, type Phase4MemoShortName } from "../agents";
 import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
 import {
-  neutralCritiqueOutputSchema,
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-  type NeutralCritiqueOutput,
   type PersonaCritiqueOutput,
   type RiskAssessmentOutput,
 } from "./schemas";
+
+/** The three persona memos share a commit shape; `riskAssessment` does not. */
+export type Phase4PersonaShortName = "aggressive" | "conservative" | "neutral";
 
 const ERROR_OUTPUT_SCHEMA = z.object({
   status: z.literal("error"),
@@ -48,51 +49,23 @@ export function markWritingP4(shortName: Phase4MemoShortName) {
     execute: async (_input, ctx) => {
       const ref = ctx.resources.memos.getOptional(collectionKey);
       const startedAt = new Date().toISOString();
-      const patch = {
-        status: "writing" as const,
-        startedAt,
-        agentName,
-      };
       if (ref !== undefined) {
-        await ref.patchState(patch);
+        await ref.patchState({ status: "writing", startedAt, agentName });
       } else {
+        // Framework parses input against memoStateSchema and applies
+        // `.default(null)` to every nullable field — only the scaffold
+        // needs to be supplied here.
         await ctx.resources.memos.create(collectionKey, {
-          ...patch,
+          status: "writing",
+          startedAt,
+          agentName,
           agentTeam: "risk",
           phaseId: "p4",
           ticker: ctx.session.state.ticker,
           date: ctx.session.state.date,
-          label: null,
-          headline: null,
-          rating: null,
-          body: null,
-          metrics: null,
-          completedAt: null,
-          errorMessage: null,
-          stance: null,
-          conviction: null,
-          keyRisks: null,
-          keyOpportunities: null,
-          unresolvedDisagreements: null,
-          direction: null,
-          sizePct: null,
-          stopPrice: null,
-          targetPrice: null,
-          holdingPeriod: null,
-          invalidationCriteria: null,
-          dependsOn: null,
-          posture: null,
-          raisedRisks: null,
-          proposedAdjustments: null,
-          dismissedRisks: null,
-          criticalRisks: null,
-          recommendedAdjustments: null,
-          confidenceCalibration: null,
-          calibrationRationale: null,
         });
       }
-      const memoStatus = ctx.session.state.memoStatus;
-      if (memoStatus[shortName] !== "writing") {
+      if (ctx.session.state.memoStatus[shortName] !== "writing") {
         await ctx.session.setStateRecord("memoStatus", shortName, "writing");
       }
     },
@@ -100,8 +73,10 @@ export function markWritingP4(shortName: Phase4MemoShortName) {
 }
 
 /** Mark a specific Phase 4 memo as `error` with the rescued error's message.
- *  Returns a `{ text }`-bearing object so the round-robin's record-contribution
- *  tap renders a graceful placeholder for the next persona. */
+ *  Returns a `{ status, text }` shape so the rescue path has a typed,
+ *  non-empty output. The placeholder isn't consumed by downstream
+ *  personas — they read prior critiques from the persona memos
+ *  directly — but keeping a stable shape simplifies the test seam. */
 export function markErrorP4(shortName: Phase4MemoShortName) {
   const { collectionKey, agentName } = PHASE_4_MEMO_KEYS[shortName];
   return handler({
@@ -138,9 +113,13 @@ export function markErrorP4(shortName: Phase4MemoShortName) {
   });
 }
 
-function commonCommitPatch<T extends { label: string; headline: string; rating: string; metrics: Record<string, string>; body: unknown[] }>(
-  critique: T,
-) {
+function commonCommitPatch(critique: {
+  label: string;
+  headline: string;
+  rating: string;
+  metrics: Record<string, string>;
+  body: unknown[];
+}) {
   return {
     status: "published" as const,
     label: critique.label,
@@ -153,80 +132,40 @@ function commonCommitPatch<T extends { label: string; headline: string; rating: 
   };
 }
 
-/** Commit the aggressive persona's critique to `memos/p4/aggressive-risk`.
- *  Used as a `.tap()` — mutates resource + session state only (BP-012/014). */
-export const commitAggressiveRiskMemo = handler({
-  name: "commit-memo-p4-aggressive",
-  inputSchema: personaCritiqueOutputSchema,
-  outputSchema: z.void(),
-  sessionStateSchema,
-  resources: memoResources,
-  execute: async (critique: PersonaCritiqueOutput, ctx) => {
-    const ref = ctx.resources.memos.get(
-      PHASE_4_MEMO_KEYS.aggressive.collectionKey,
-    );
-    await ref.patchState({
-      ...commonCommitPatch(critique),
-      posture: critique.posture,
-      raisedRisks: critique.raisedRisks,
-      proposedAdjustments: critique.proposedAdjustments,
-    });
-    const memoStatus = ctx.session.state.memoStatus;
-    if (memoStatus.aggressive !== "published") {
-      await ctx.session.setStateRecord("memoStatus", "aggressive", "published");
-    }
-  },
-});
+/** Commit a persona's critique to its `memos/p4/{persona}-risk` memo. All
+ *  three personas share `personaCritiqueOutputSchema` — the aggressive and
+ *  conservative prompts emit `dismissedRisks: []`, neutral populates it.
+ *  This uniformity is what lets the factory be one straight-line function
+ *  instead of a schema-branching switch. */
+export function commitPersonaMemo(shortName: Phase4PersonaShortName) {
+  const { collectionKey } = PHASE_4_MEMO_KEYS[shortName];
+  return handler({
+    name: `commit-memo-p4-${shortName}`,
+    inputSchema: personaCritiqueOutputSchema,
+    outputSchema: z.void(),
+    sessionStateSchema,
+    resources: memoResources,
+    execute: async (critique: PersonaCritiqueOutput, ctx) => {
+      const ref = ctx.resources.memos.get(collectionKey);
+      await ref.patchState({
+        ...commonCommitPatch(critique),
+        posture: critique.posture,
+        raisedRisks: critique.raisedRisks,
+        proposedAdjustments: critique.proposedAdjustments,
+        dismissedRisks: critique.dismissedRisks,
+      });
+      if (ctx.session.state.memoStatus[shortName] !== "published") {
+        await ctx.session.setStateRecord("memoStatus", shortName, "published");
+      }
+    },
+  });
+}
 
-/** Commit the conservative persona's critique to `memos/p4/conservative-risk`. */
-export const commitConservativeRiskMemo = handler({
-  name: "commit-memo-p4-conservative",
-  inputSchema: personaCritiqueOutputSchema,
-  outputSchema: z.void(),
-  sessionStateSchema,
-  resources: memoResources,
-  execute: async (critique: PersonaCritiqueOutput, ctx) => {
-    const ref = ctx.resources.memos.get(
-      PHASE_4_MEMO_KEYS.conservative.collectionKey,
-    );
-    await ref.patchState({
-      ...commonCommitPatch(critique),
-      posture: critique.posture,
-      raisedRisks: critique.raisedRisks,
-      proposedAdjustments: critique.proposedAdjustments,
-    });
-    const memoStatus = ctx.session.state.memoStatus;
-    if (memoStatus.conservative !== "published") {
-      await ctx.session.setStateRecord("memoStatus", "conservative", "published");
-    }
-  },
-});
-
-/** Commit the neutral persona's critique to `memos/p4/neutral-risk`.
- *  Same persona fields as aggressive/conservative plus `dismissedRisks`. */
-export const commitNeutralRiskMemo = handler({
-  name: "commit-memo-p4-neutral",
-  inputSchema: neutralCritiqueOutputSchema,
-  outputSchema: z.void(),
-  sessionStateSchema,
-  resources: memoResources,
-  execute: async (critique: NeutralCritiqueOutput, ctx) => {
-    const ref = ctx.resources.memos.get(PHASE_4_MEMO_KEYS.neutral.collectionKey);
-    await ref.patchState({
-      ...commonCommitPatch(critique),
-      posture: critique.posture,
-      raisedRisks: critique.raisedRisks,
-      proposedAdjustments: critique.proposedAdjustments,
-      dismissedRisks: critique.dismissedRisks,
-    });
-    const memoStatus = ctx.session.state.memoStatus;
-    if (memoStatus.neutral !== "published") {
-      await ctx.session.setStateRecord("memoStatus", "neutral", "published");
-    }
-  },
-});
-
-/** Commit the consolidated `RiskAssessment` to `memos/p4/risk-assessment`. */
+/** Commit the consolidated `RiskAssessment` to `memos/p4/risk-assessment`.
+ *  Distinct from `commitPersonaMemo` because its output schema and
+ *  extension fields (`criticalRisks`, `recommendedAdjustments`,
+ *  `confidenceCalibration`, `calibrationRationale`) are unrelated to the
+ *  persona shape. */
 export const commitRiskAssessmentMemo = handler({
   name: "commit-memo-p4-risk-assessment",
   inputSchema: riskAssessmentOutputSchema,
@@ -245,8 +184,7 @@ export const commitRiskAssessmentMemo = handler({
       confidenceCalibration: assessment.confidenceCalibration,
       calibrationRationale: assessment.calibrationRationale,
     });
-    const memoStatus = ctx.session.state.memoStatus;
-    if (memoStatus.riskAssessment !== "published") {
+    if (ctx.session.state.memoStatus.riskAssessment !== "published") {
       await ctx.session.setStateRecord(
         "memoStatus",
         "riskAssessment",

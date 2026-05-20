@@ -178,23 +178,45 @@ call with `getOrFetch`).
 
 ## Round-robin patterns
 
-Round-robin instances (Phase 2 bull/bear debate, Phase 4 risk debate) use
-the `roundRobin()` pattern from `@flow-state-dev/patterns`. Both phases call
-the factory directly — Phase 2 uses `terminateWhen` to drive round count
-from session state (`maxDebateRounds`) and `uses: [tradingDesk]` to resolve
-the model from `costPreset`; Phase 4 uses `maxRounds: 1` for its
-single-pass risk panel. Neither phase configures a referee. Two conventions
-for this example:
+**Phase 2's bull/bear debate is the canonical `roundRobin()` demo in this
+example.** It uses the pattern's distinguishing features: `terminateWhen`
+drives the round count from session state (`maxDebateRounds`),
+`uses: [tradingDesk]` resolves the model from `costPreset`, and the two
+researcher slots share a single transcript via the contributions accessor.
+No referee.
+
+Two conventions when using `roundRobin()` in this example:
 
 1. **Always set `accessorKey` explicitly.** Default `"contributions"` collides
-   when multiple round-robins coexist in the same flow. Trading-desk uses
-   `accessorKey: "p2Contributions"` for Phase 2 and `accessorKey:
-   "p4Contributions"` for Phase 4.
+   when multiple round-robins coexist in the same flow. Phase 2 uses
+   `accessorKey: "p2Contributions"`.
 
-2. **Declare the contributions resource in `phase-N/resources.ts`.** Importers
-   (the round-robin instance, the capability, the consolidator) all pull
-   from there. This keeps the phase's import graph cycle-free
+2. **Declare the contributions resource in `phase-N/contributions.ts`.**
+   Importers (the round-robin instance, the capability, the consolidator)
+   all pull from there. This keeps the phase's import graph cycle-free
    (see BP-019).
+
+**Phase 4 deliberately does NOT use `roundRobin()`.** It's a plain
+sequencer chain — `aggressiveStep.then(conservativeStep).then(neutralStep)`
+— even though the prose framing ("three risk officers in round-robin
+order") sounds like the pattern. None of `roundRobin()`'s features
+apply here:
+
+- `maxRounds` would be `1` (no debate cycling).
+- No synthesizer / referee.
+- The roster is heterogeneous — the neutral persona has its own output
+  schema, so the slots aren't interchangeable.
+- The personas don't read a shared transcript; they pull prior critiques
+  from the structured persona memos (`memos/p4/{aggressive,conservative}-risk`)
+  via per-generator `context` entries. The memo audit trail is the
+  richer source — using `roundRobin()` here would force every persona
+  through an adapter that flattens the structured output to free-form
+  text, then read that text back instead of the typed fields.
+
+Reintroducing `roundRobin()` for Phase 4 would require a `deriveRiskGoal`
+input adapter, a `toContributionShape` output adapter on every persona, a
+contributions resource, and a debate-transcript capability preset — all
+of them with no consumer. Keep it a plain chain.
 
 ## Fixture mode
 

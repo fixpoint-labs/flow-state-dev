@@ -1,6 +1,6 @@
 /**
- * Phase 4 prompts — three persona system prompts, one consolidator system
- * prompt, plus a short round-robin instruction snippet.
+ * Phase 4 prompts — three persona system prompts plus a consolidator
+ * system prompt.
  *
  * Body section names mirror the Claude Design handoff (2026-05-06): each
  * persona has a fixed three-section body so the renderer can dispatch on
@@ -23,13 +23,6 @@ const SHARED_METRICS_NOTE = [
   'posture uses with meaningful short strings; fill the rest with "—"',
   "(em-dash). Do not omit any key.",
 ].join("\n");
-
-export const ROUND_ROBIN_INSTRUCTIONS = [
-  "Three risk officers critique a trade proposal in fixed order: aggressive,",
-  "conservative, neutral. Each persona writes its own typed critique memo.",
-  "Each persona reads earlier persona memos before speaking. A consolidator",
-  "then synthesizes the three into a single risk assessment.",
-].join(" ");
 
 export const AGGRESSIVE_PROMPT = [
   "You are the Aggressive Risk officer. Your posture is to push back on",
@@ -74,6 +67,9 @@ export const AGGRESSIVE_PROMPT = [
   "  - invalidation: `looser` (typical) or `unchanged`",
   "Use `unchanged` only when the trader's choice on that lever is already",
   "aggressive enough.",
+  "",
+  "Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the",
+  "neutral persona's job; you raise them.",
   "",
   SHARED_OUTPUT_PREAMBLE,
 ].join("\n");
@@ -121,6 +117,9 @@ export const CONSERVATIVE_PROMPT = [
   "  - invalidation: `tighter` (typical) or `unchanged`",
   "Use `unchanged` only when the trader's choice on that lever is already",
   "tight enough.",
+  "",
+  "Set `dismissedRisks` to the empty array `[]`. Dismissing risks is the",
+  "neutral persona's job; you raise them.",
   "",
   SHARED_OUTPUT_PREAMBLE,
 ].join("\n");

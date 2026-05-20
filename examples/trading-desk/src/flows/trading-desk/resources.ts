@@ -56,14 +56,14 @@ export const memoStateSchema = z.object({
   ticker: z.string(),
   date: z.string(),
   phaseId: z.string(),
-  label: z.string().nullable(),
-  headline: z.string().nullable(),
-  rating: z.string().nullable(),
-  body: z.array(thesisSection).nullable(),
-  metrics: z.record(z.string(), z.string()).nullable(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  errorMessage: z.string().nullable(),
+  label: z.string().nullable().default(null),
+  headline: z.string().nullable().default(null),
+  rating: z.string().nullable().default(null),
+  body: z.array(thesisSection).nullable().default(null),
+  metrics: z.record(z.string(), z.string()).nullable().default(null),
+  startedAt: z.string().nullable().default(null),
+  completedAt: z.string().nullable().default(null),
+  errorMessage: z.string().nullable().default(null),
   /** Phase 1 investigative citations (FIX-612). Populated by analyst
    *  generators when they invoke `fetch` on a discovery URL; null on the
    *  cheap preset and on memos that never investigated. Renderer shows a

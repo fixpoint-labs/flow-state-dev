@@ -102,12 +102,12 @@ Phase 4 — risk debate:
   don't emit struct cards, so the preambles are their only
   transcript-visible output; the structured critique still lands in the
   memos pane.
-- **Three risk personas in fixed round-robin order** — `aggressiveRisk`
+- **Three risk personas in fixed order** — `aggressiveRisk`
   (push for outsized sizing), `conservativeRisk` (push for tighter risk),
-  `neutralRisk` (filter signal from noise). The pattern is Round Robin
-  with structured roster overrides — three custom generators replace the
-  default `{ text }` agents so each persona's contribution and its typed
-  critique fields come from a single LLM call.
+  `neutralRisk` (filter signal from noise). Each runs as its own step in
+  a plain sequencer chain. Personas after the first read prior critiques
+  from the persona memos via memo-backed `context` entries on their
+  generator definitions — no shared transcript resource.
 - **Four p4 memos** — three persona critiques plus a consolidated
   `riskAssessment`. The persona memos are the audit trail; the
   `riskAssessment` is the artifact Phase 5 reads.
@@ -302,15 +302,11 @@ analyze
              └─ markErrorP3       (.rescue)
   └─ phase-4-risk-debate          (sub-sequencer, container item)
         ├─ setupPhase4Memos       (.tap — pre-create 4 p4 memos in `pending`)
-        ├─ deriveRiskGoal         (.then — { goal } from session state)
-        ├─ phase4RoundRobin       (.then — single round, stub judge,
-        │                            three roster slots overridden with
-        │                            structured-output persona generators)
-        │     ├─ aggressiveStep   (markWriting + approach preamble +
-        │     │                     generator + commit + toContributionShape,
-        │     │                     rescue → markError)
-        │     ├─ conservativeStep (symmetric)
-        │     └─ neutralStep      (symmetric, neutral schema)
+        ├─ aggressiveStep         (.then — markWriting + approach preamble +
+        │                            generator + commit; rescue → markError)
+        ├─ conservativeStep       (.then — symmetric; reads aggressive memo)
+        ├─ neutralStep            (.then — symmetric, neutral schema; reads
+        │                            aggressive + conservative memos)
         └─ riskAssessmentStep     (.then — approach preamble + consolidator,
                                      write `RiskAssessment`; rescue → markError)
   └─ phase-5-portfolio-manager    (sub-sequencer, container item)
@@ -333,10 +329,11 @@ The factory locks the shared policy (`agentType: "sub"`,
 only the per-agent knobs.
 
 The four Phase 2 `roundRobin()` instances share one
-`phase2Contributions` resource (registered on the flow). Phase 4 follows
-the same pattern with its own `phase4Contributions` resource. The
-consolidation generators declare these on their `resources:` slot and
-read entries via `ctx.resources`.
+`phase2Contributions` resource (registered on the flow). The
+consolidation generators declare this on their `resources:` slot and
+read entries via `ctx.resources`. Phase 4 doesn't use `roundRobin()`
+(see "Why Round Robin and not Debate" below), so there's no Phase 4
+contributions resource.
 
 Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
 with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
@@ -352,23 +349,21 @@ with a 3-line stub that always returns `done: false` and leans on
 fixed-length loops. Debate's judge is the pattern's identity, so using
 Debate without a real judge would be reaching for the wrong primitive.
 
-Phase 4's risk debate uses `roundRobin()` for a different reason: there
-is no judge at all. The three risk personas (aggressive, conservative,
-neutral) are not adversaries — they are different postures contributing
-to a multi-angled critique. The neutral persona's job is to filter, not
-to win, and a downstream consolidation generator synthesizes the three
-persona memos into a single `RiskAssessment` that Phase 5 reads. Debate's
-anonymized-shuffled-transcript-then-judge identity does not match: Phase
-4 wants attributed contributions and a synthesizer, not a verdict.
-
-Phase 4 differs from Phase 2 in two ways. First, all three roster slots
-are overridden with custom structured-output generators rather than the
-pattern's default `{ text }` agents — each persona's contribution and
-its typed critique fields come from one LLM call. Second, the
-synthesizer slot is left empty (`synthesizer: false`) and the
-`riskAssessmentGenerator` runs as a separate downstream step, so the
-consolidated artifact is its own memo rather than the pattern's return
-value.
+Phase 4's risk panel does NOT use `roundRobin()` — it's a plain
+sequencer chain. The prose framing ("three risk officers in round-robin
+order") sounds like the pattern, but none of `roundRobin()`'s
+distinguishing features fit: single pass (no debate cycling), no
+referee, heterogeneous roster (the neutral persona has its own output
+schema), and the personas read prior critiques from the structured
+persona memos rather than from a shared free-form transcript. The
+memo-backed read is the richer source — using `roundRobin()` here
+would force every persona through an adapter that flattens the typed
+output to text and then read that text back instead of the typed
+fields. The three persona steps run as
+`aggressiveStep.then(conservativeStep).then(neutralStep)` inside
+`phase4Pipeline`, and the `riskAssessmentGenerator` runs as a separate
+downstream step that synthesizes the three persona memos into a single
+`RiskAssessment` that Phase 5 reads.
 
 ### Per-preset routing
 

@@ -7,9 +7,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import {
-  commitAggressiveRiskMemo,
-  commitConservativeRiskMemo,
-  commitNeutralRiskMemo,
+  commitPersonaMemo,
   commitRiskAssessmentMemo,
   markErrorP4,
   markWritingP4,
@@ -19,14 +17,17 @@ import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const writeAggressive = markWritingP4("aggressive");
 const errorAggressive = markErrorP4("aggressive");
+const commitAggressive = commitPersonaMemo("aggressive");
+const commitConservative = commitPersonaMemo("conservative");
+const commitNeutral = commitPersonaMemo("neutral");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p4-writer-test",
   actions: {
     writeAggressive: { block: writeAggressive },
-    commitAggressive: { block: commitAggressiveRiskMemo },
-    commitConservative: { block: commitConservativeRiskMemo },
-    commitNeutral: { block: commitNeutralRiskMemo },
+    commitAggressive: { block: commitAggressive },
+    commitConservative: { block: commitConservative },
+    commitNeutral: { block: commitNeutral },
     commitAssessment: { block: commitRiskAssessmentMemo },
     errorAggressive: { block: errorAggressive },
   },
@@ -128,6 +129,7 @@ const aggressiveCritique = {
     holdingPeriod: "unchanged" as const,
     invalidation: "looser" as const,
   },
+  dismissedRisks: [],
 };
 
 const conservativeCritique = {
@@ -239,8 +241,8 @@ describe("Phase 4 writer taps", () => {
     expect(last.memoStatus.aggressive).toBe("writing");
   });
 
-  it("commitAggressiveRiskMemo flips aggressive to published", async () => {
-    const result = await testBlock(commitAggressiveRiskMemo, {
+  it("commitPersonaMemo('aggressive') flips aggressive to published", async () => {
+    const result = await testBlock(commitAggressive, {
       input: aggressiveCritique,
       flow: fixtureFlow,
       session: {
@@ -257,8 +259,8 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.aggressive).toBe("published");
   });
 
-  it("commitConservativeRiskMemo flips conservative to published", async () => {
-    const result = await testBlock(commitConservativeRiskMemo, {
+  it("commitPersonaMemo('conservative') flips conservative to published", async () => {
+    const result = await testBlock(commitConservative, {
       input: conservativeCritique,
       flow: fixtureFlow,
       session: {
@@ -275,8 +277,8 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.conservative).toBe("published");
   });
 
-  it("commitNeutralRiskMemo writes persona fields plus dismissedRisks", async () => {
-    const result = await testBlock(commitNeutralRiskMemo, {
+  it("commitPersonaMemo('neutral') writes persona fields plus dismissedRisks", async () => {
+    const result = await testBlock(commitNeutral, {
       input: neutralCritique,
       flow: fixtureFlow,
       session: {
