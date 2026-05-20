@@ -7,7 +7,7 @@
  * sequencer instance — root or nested. Also verifies the opt-out
  * (`durable: false`) and that legacy stream emission keying is preserved.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -682,6 +682,59 @@ describe("FIX-401 CheckpointStore implementations — round trip and overwrite",
       await expect(store.delete("nope", "nada")).resolves.toBeUndefined();
     });
 
+    it(`${name}: long blockInstanceId round trip (FIX-654)`, async () => {
+      const LONG_BLOCK_INSTANCE_ID =
+        "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+        "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
+        "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
+        "/forEach[3]/iter[0]/thenIf[1]:0";
+      await store.write({
+        requestId: "req_1779230206704_89c8331161094",
+        blockInstanceId: LONG_BLOCK_INSTANCE_ID,
+        parentBlockInstanceId: null,
+        stepIndex: 0,
+        state: { count: 7 },
+        version: 1,
+        createdAt: 1000
+      });
+      const got = await store.latest("req_1779230206704_89c8331161094", LONG_BLOCK_INSTANCE_ID);
+      expect(got).not.toBeNull();
+      expect(got!.state).toEqual({ count: 7 });
+      expect(got!.blockInstanceId).toBe(LONG_BLOCK_INSTANCE_ID);
+    });
+
+    it(`${name}: distinct long blockInstanceIds do not collide (FIX-654)`, async () => {
+      const BASE =
+        "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+        "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
+        "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
+        "/forEach[3]/iter[0]/thenIf[1]:";
+      const idA = `${BASE}0`;
+      const idB = `${BASE}1`;
+      await store.write({
+        requestId: "req_1779230206704_89c8331161094",
+        blockInstanceId: idA,
+        parentBlockInstanceId: null,
+        stepIndex: 0,
+        state: { who: "a" },
+        version: 1,
+        createdAt: 1000
+      });
+      await store.write({
+        requestId: "req_1779230206704_89c8331161094",
+        blockInstanceId: idB,
+        parentBlockInstanceId: null,
+        stepIndex: 0,
+        state: { who: "b" },
+        version: 1,
+        createdAt: 1000
+      });
+      const a = await store.latest("req_1779230206704_89c8331161094", idA);
+      const b = await store.latest("req_1779230206704_89c8331161094", idB);
+      expect(a!.state).toEqual({ who: "a" });
+      expect(b!.state).toEqual({ who: "b" });
+    });
+
     it(`${name}: independent records by (requestId, blockInstanceId)`, async () => {
       await store.write({
         requestId: "r1",
@@ -706,6 +759,39 @@ describe("FIX-401 CheckpointStore implementations — round trip and overwrite",
       expect(a!.state).toEqual({ who: "first" });
       expect(b!.state).toEqual({ who: "second" });
     });
+  });
+});
+
+describe("FIX-654 filesystem checkpoint filename is hash-derived", () => {
+  let tempDir: string;
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(tmpdir(), "fsd-checkpoints-hash-"));
+  });
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("filename is a 32-char lowercase hex digest with .json suffix", async () => {
+    const store = createFilesystemCheckpointStore(tempDir);
+    const requestId = "req_1779230206704_89c8331161094";
+    const blockInstanceId =
+      "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+      "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
+      "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
+      "/forEach[3]/iter[0]/thenIf[1]:0";
+    await store.write({
+      requestId,
+      blockInstanceId,
+      parentBlockInstanceId: null,
+      stepIndex: 0,
+      state: {},
+      version: 1,
+      createdAt: 1000
+    });
+    const requestDir = path.join(tempDir, "checkpoints", encodeURIComponent(requestId));
+    const entries = (await readdir(requestDir)).filter((name) => !name.includes(".tmp-"));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatch(/^[0-9a-f]{32}\.json$/);
   });
 });
 
