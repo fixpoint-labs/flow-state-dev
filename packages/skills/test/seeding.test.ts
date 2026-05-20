@@ -100,4 +100,37 @@ describe("ensureSeeded", () => {
     // The good skill should still have seeded.
     expect(c._store.has("skills/code/SKILL.md")).toBe(true);
   });
+
+  // Regression: under the original skillStateSchema enum, a pattern skill
+  // got persisted with an empty state because the framework's
+  // `normalizeResourceState` wiped records that failed schema validation.
+  // After the enum widening, fresh seeds work — but already-seeded skills
+  // were stuck on the bad state. The re-seed-on-stale path catches them.
+  it("re-seeds when the persisted manifest is stale vs. the source SKILL.md", async () => {
+    const patternSkill: InitialSkill = {
+      name: "team-skill",
+      skillMd: `---\ndescription: Multi-worker team\npattern: task-board\nworkers:\n  w:\n    prompt: do the thing\ninitial-tasks:\n  - id: t\n    goal: do it\n    assignee: w\n---\n\nbody`,
+    };
+
+    // First seed plants the skill correctly and records it in seededNames.
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [patternSkill]);
+    const initialState = c._store.get("skills/team-skill/SKILL.md")!.state;
+    expect(initialState.contextMode).toBe("pattern");
+
+    // Simulate the stale-state case: manifest exists, _meta lists it, but
+    // contextMode + patternBinding were stripped (what the old schema would
+    // have caused). Hand-roll the bad state on a fresh collection.
+    const c2 = createMockSkillsCollection();
+    for (const [k, v] of c._store) c2._store.set(k, { ...v, state: { ...v.state } });
+    const manifest = c2._store.get("skills/team-skill/SKILL.md")!;
+    delete manifest.state.contextMode;
+    delete manifest.state.patternBinding;
+
+    // Next ensureSeeded should notice the drift and re-write the manifest.
+    await ensureSeeded(c2, [patternSkill]);
+    const restored = c2._store.get("skills/team-skill/SKILL.md")!.state;
+    expect(restored.contextMode).toBe("pattern");
+    expect(restored.patternBinding).toBeDefined();
+  });
 });

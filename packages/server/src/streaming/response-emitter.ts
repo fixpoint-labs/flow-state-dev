@@ -140,6 +140,35 @@ function isOutputItem(value: unknown): value is OutputItem {
 }
 
 /**
+ * True when the event carries (or refers to) an item with `transient: true`.
+ *
+ * `item.added` / `item.done` carry the full item inline. The other item-bound
+ * events (`item.updated`, `content.*`) reference the item by id, so the lookup
+ * goes through `itemsById` — which the caller has already populated for
+ * `item.added` before `appendEvent` runs. Non-item-bound events (request.*,
+ * ping, debug, resource_changed) return false; they're never transient at
+ * this layer.
+ */
+function isTransientItemEvent(
+  event: RequestStreamEventWithId,
+  itemsById: ReadonlyMap<string, OutputItem>
+): boolean {
+  if (event.type === "item.added" || event.type === "item.done") {
+    return (event.item as { transient?: boolean }).transient === true;
+  }
+  if (
+    event.type === "item.updated" ||
+    event.type === "content.added" ||
+    event.type === "content.delta" ||
+    event.type === "content.done"
+  ) {
+    const item = itemsById.get(event.itemId);
+    return item?.transient === true;
+  }
+  return false;
+}
+
+/**
  * Stateful request event emitter used by runtime execution and SSE transport.
  */
 export class ResponseEmitter implements ResponseEmitterHandle {
@@ -277,11 +306,17 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
 
-    this.onLogEvent?.("item.added", {
-      itemId: interceptedItem.id,
-      itemType: interceptedItem.type,
-      blockName: interceptedItem.provenance?.blockName
-    });
+    // Skip the runtime log line for transient items. Long-lived polling
+    // patterns (task-board claim-task / check-board) emit hundreds of
+    // these per second; logging each one floods stderr without adding
+    // operator value. Persistence and wire delivery are unchanged below.
+    if (interceptedItem.transient !== true) {
+      this.onLogEvent?.("item.added", {
+        itemId: interceptedItem.id,
+        itemType: interceptedItem.type,
+        blockName: interceptedItem.provenance?.blockName
+      });
+    }
 
     return this.appendEvent<ItemAddedEvent>({
       type: "item.added",
@@ -334,10 +369,12 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     const merged = { ...existing, ...sanitized } as OutputItem;
     this.itemsById.set(itemId, merged);
 
-    this.onLogEvent?.("item.updated", {
-      itemId,
-      patchKeys: Object.keys(sanitized)
-    });
+    if (existing.transient !== true) {
+      this.onLogEvent?.("item.updated", {
+        itemId,
+        patchKeys: Object.keys(sanitized)
+      });
+    }
 
     return this.appendEvent<ItemUpdatedEvent>({
       type: "item.updated",
@@ -394,11 +431,13 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     contentIndex: number,
     content: Content
   ): Promise<RequestStreamEventWithId> {
-    this.onLogEvent?.("content.added", {
-      itemId,
-      contentIndex,
-      contentType: content.type
-    });
+    if (this.itemsById.get(itemId)?.transient !== true) {
+      this.onLogEvent?.("content.added", {
+        itemId,
+        contentIndex,
+        contentType: content.type
+      });
+    }
 
     return this.appendEvent<ContentPartAddedEvent>({
       type: "content.added",
@@ -609,8 +648,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       id: interceptedEnvelope.id
     };
 
-    this.events.push(withId);
-    this.enforceBufferLimit();
+    // Transient-item events skip the in-RAM buffer. Long-lived polling
+    // patterns (e.g. task-board's claim-task / check-board worker loop)
+    // emit hundreds of `block_trace` lifecycle events per second; counting
+    // them against `maxBufferSize` evicts earlier non-transient events
+    // that operators still want in post-mortem inspection. The wire and
+    // persistence paths below are unaffected — transient events still
+    // stream live and still land in the events log per the streaming
+    // contract.
+    if (!isTransientItemEvent(withId, this.itemsById)) {
+      this.events.push(withId);
+      this.enforceBufferLimit();
+    }
 
     // Mutate the in-flight item snapshot for streaming-text deltas
     // (FIX-479). The events log no longer carries content.delta entries,

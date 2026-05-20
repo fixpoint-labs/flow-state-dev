@@ -38,6 +38,8 @@ Memory here is a composed system, not a single store. Each tier has its own scop
 
 Working is always present. Episodic, semantic, and digest are opt-in via config. Working-only is a real configuration. A chat that just needs to remember the last few turns can wire in working alone and stop there.
 
+Once you have semantic or episodic configured, the system also runs a periodic [hygiene pass](./hygiene): semantic confidence decays over time so stale facts rank below freshly-reinforced ones, and old persistent episodes are evicted. The pass is on by default and tunable — turn it off entirely with `hygiene: false` if you'd rather keep raw confidence and unbounded growth.
+
 ## Quickest start
 
 ```ts

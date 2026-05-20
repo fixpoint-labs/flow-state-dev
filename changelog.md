@@ -13,6 +13,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Live discovery uses `@flow-state-dev/tools/search`'s auto-detected provider — Tavily is the recommended default (`TAVILY_API_KEY`). On any provider failure the discovery tool emits `source: "unavailable"` per BP-020; it does not fall back to fixture data on the live path.
 - Fixture coverage shipped for `NVDA / AAPL / JPM` × four discovery tools so cheap fixture demos render the investigative path identically to live.
 
+### Memory: confidence decay + episodic TTL hygiene (FIX-411)
+
+- New `hygiene:` slot on `memory.system()` enables time-based confidence decay on semantic facts and durability-based TTL on episodic episodes. Defaults to on; pass `hygiene: false` to revert to pre-FIX-411 behavior.
+- `mem.recall()` ranking and the recall tool's intrinsic semantic score now use `effectiveConfidence` instead of raw `fact.confidence`. Older facts naturally rank lower than freshly-reinforced facts of the same raw confidence.
+- New `mem.janitor` block factory for direct or scheduled use, plus `effectiveConfidence(fact, now, halfLife)` helper for custom retrieval strategies.
+- Persistent episodes past `persistentTurns` or `persistentDays` are evicted; permanent episodes are never deleted and pick up `stale: true` after `permanentStaleDays` of silence. Each janitor run records what it touched on the session-scoped `janitor` resource.
+- Fix: `addFact` now populates `lastReinforced` on creation (previously left undefined). The decay model falls back to `extractedAt` for facts created before this change.
+- New `memory/hygiene` reference page covering the mechanism, defaults, configuration, and tuning.
+
 ## 2026-05-18
 
 ### Moderated Debate (FIX-607)
@@ -262,6 +271,21 @@ applicable to any future bind-mount provider:
 - Trading-desk example: the app-local `callAsTool` prototype is deleted; analysts switch to `.asTool({...})`. No behavioral change to the rendered transcript.
 
 ## 2026-05-13
+  
+### Skills declare a pattern (FIX-450)
+
+- `SKILL.md` frontmatter can now declare `pattern: task-board` (or any registered key) plus a `workers:` map, an `initial-tasks:` list, and a `pattern-config:` block. Activating the skill materializes a TaskCollection, builds worker generators on the fly, runs the pattern, and streams progress through `<TaskPlan />`. No code per skill — the same registry handles every default pattern.
+- Workers carry exactly one of `prompt`, `prompt-ref`, `block-ref`, or `agent-ref`. The first two ship resolution; `block-ref` looks up an optional caller-supplied registry; `agent-ref` is the reserved slot for the forthcoming Agents primitive, throwing clear deferral errors at activation until that work lands.
+- `@flow-state-dev/patterns` exports `defaultPatternRegistry` with eight entries: task-board, plan-and-execute, supervisor, parallel-tasks, routed-specialists, the deprecated `coordinator` alias, and stubs for event-actors and approval-gate. Each adapter validates its kebab-case `pattern-config` via a strict Zod schema — unknown keys reject at parse rather than silently passing through.
+- New `taskTools` capability exposes `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` for runtime mutation of the active pattern's board. Composes by default when `patternRegistry` is wired; opt out with `taskTools: false`. With no pattern active each tool returns a structured `no_active_pattern` error instead of throwing.
+- Kitchen-sink ships a `research-company` pattern skill — market-analyst + financial-analyst fan out in parallel, a primary synthesizer waits on both via `deps`, and the `<ActiveSkills>` badge renders the active pattern with a distinct icon.
+- Response-emitter + runtime-log noise fix for transient items. Three coupled changes silence the polling firehose without changing what the wire or events log carries:
+  - `block_trace` events for transient blocks (`claim-task`, `check-board`) no longer count against the in-RAM `maxBufferSize`, so a long-running pattern skill's idle polling no longer evicts earlier non-transient events from the buffer.
+  - The runtime debug logger (`[flow-state] item.added`, `[flow-state] item.updated`, `[flow-state] content.added`) skips transient items. At default `idlePollMs: 50` × 4 workers, each polling block previously logged four lines per cycle (~640 lines/sec of pure idle-poll); now zero.
+  - `_runtimeHooks.onBlockStart` / `onBlockComplete` accept a `transient?: boolean` argument; sequencer + router callers forward `block.transient`, and the debug logger (`[flow-state] nested block started/completed`) skips when transient. `onBlockError` still logs on failure regardless — a failing poll loop is exactly what operators need to see.
+  - No change to wire delivery (devtool / `?include=trace` still observes every transient event), no change to the persisted events log (transient events still land there per `docs/architecture/streaming.md`).
+  - This silences the symptom but not the cause. The polling architecture itself is the real issue — see [FIX-621](https://linear.app/fixpoint-labs/issue/FIX-621) (urgent) for the `.waitForChange()` primitive that replaces the worker busy-poll with event-driven waits. Re-test pattern skills end-to-end as part of that work.
+- FIX-422 closes with this work.
 
 ### Trading Desk example: Phase 5 — portfolio manager final decision (FIX-564)
 

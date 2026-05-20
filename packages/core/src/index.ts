@@ -23,6 +23,7 @@ export { defineResourceCollection, isDefinedResourceCollection } from "./types/r
 export type {
   InitialSkill,
   MatchedSkill,
+  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -31,8 +32,12 @@ export type {
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
+  TaskInitYaml,
   ToolCatalog,
+  WorkerSpec,
 } from "./types/skill";
+
+export type { Agent, AgentOverrides, AgentRegistry } from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,

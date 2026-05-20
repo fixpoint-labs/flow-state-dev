@@ -18,6 +18,7 @@
  * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
 import { defineCapability } from "@flow-state-dev/core";
+import { defaultPatternRegistry } from "@flow-state-dev/patterns";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -75,6 +76,10 @@ const skillsCap = createSkillsCapability({
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   agentType: "primary",
+  // Pattern skills opt in here. Default registry covers the six
+  // implemented Wave 1 patterns plus coordinator alias and the two
+  // forward-compat stubs. taskTools composes by default.
+  patternRegistry: defaultPatternRegistry,
 });
 
 /**
@@ -140,11 +145,13 @@ export const featuresCapability = defineCapability({
     // to primary agents by the capability's own `agentType` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
     //
-    // Skill activation is decided up-front by `skillActivatorBlock` above,
-    // so we drop the `runSkill` preset — its tool and catalog-listing
-    // context become dead weight on every turn. The active-skill body
-    // formatter (in the `context` preset) still injects matched skills.
-    skillsCap.presets({ runSkill: false }),
+    // The `runSkill` preset stays ON because pattern- and fork-mode skills
+    // need the tool to actually dispatch — the skill activator matches
+    // them and writes their mode into activeSkills, but the dispatch
+    // itself runs through `runSkill`. Inline skills still pre-activate via
+    // the skill activator + body-formatter path; the runSkill tool is a
+    // no-op for them.
+    skillsCap,
 
     // Static: artifacts — inventory context only. Bash is the write path,
     // so readArtifact/updateArtifact tools are disabled here.

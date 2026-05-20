@@ -51,10 +51,11 @@ export const myFlow = defineFlow({
 | Episodic | user | Past sessions stored as discrete episodes, recallable by content |
 | Semantic | user | Consolidated facts the agent has decided are worth keeping |
 | Digest | user | Summarized rollups across many sessions |
+| Hygiene | session | Time-based confidence decay and episodic TTL maintenance |
 
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
-**Key exports:** `system`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+**Key exports:** `system`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
 
 ## Where it came from
 

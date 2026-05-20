@@ -75,6 +75,57 @@ const resolver = createModelResolver({
 
 See [Custom Model Resolver](/docs/advanced/custom-model-resolver) for the full options reference.
 
+### Env-var overrides
+
+You can replace which model a declared intent (or `defaultModel`) resolves to per environment, without touching code. The motivating case is debugging AI flows against real LLMs cheaply in dev or CI. Production wiring stays the source of truth.
+
+**Variable naming.** `FSDEV_INTENT_<NAME>` overrides intent `<name>`'s candidate list. `<NAME>` is the intent name uppercased with hyphens replaced by underscores, so `chat` → `FSDEV_INTENT_CHAT` and `my-custom` → `FSDEV_INTENT_MY_CUSTOM`. If two declared intents normalize to the same env-var name (`my-custom` and `my_custom` both → `FSDEV_INTENT_MY_CUSTOM`), construction throws.
+
+**Value shape.** A single `provider/model` or `gateway/provider/model` string. `intent/*`, `preset/*`, empty values, and malformed strings all throw at construction. Comma-separated multi-value lists are deliberately not supported in this phase.
+
+**`defaultModel` override.** `FSDEV_DEFAULT_MODEL` replaces `defaultModel`. This covers the fallback path for empty, unknown, or fully-unavailable intents.
+
+**When it's read.** Construction time only, once. Set the env var before `createModelResolver` is called; changing it later in a running process has no effect.
+
+**What happens if it's wrong.** Failure modes are construction-time errors, not silent fallbacks:
+
+- malformed value (`intent/foo`, `preset/fast`, empty, garbage)
+- `FSDEV_INTENT_<NAME>` with no matching declared intent (typo or missing config)
+- any `FSDEV_INTENT_*` or `FSDEV_DEFAULT_MODEL` set when no intents are declared
+
+**Confirming it took effect.** Each applied override emits one dev-only log at construction (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Example: `[flow-state-dev] Intent "chat" overridden by FSDEV_INTENT_CHAT; resolves to "openai/gpt-5.4-mini".`
+
+**Worked example.** Same resolver, two environments:
+
+```ts
+// server.ts — unchanged across environments
+const resolver = createModelResolver({
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: {
+    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-4.5"],
+  },
+});
+```
+
+```bash
+# .env.test — point dev/CI at the cheap tier
+FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
+FSDEV_INTENT_UTILITY=openai/gpt-5.4-mini
+FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+```
+
+In CI the resolver runs against the cheap models; in production the env vars are unset and the declared candidates win.
+
+**Construction-time error example.**
+
+```bash
+FSDEV_INTENT_CHAT=garbage pnpm dev
+# Error: createModelResolver: FSDEV_INTENT_CHAT: Invalid model format: "garbage". ...
+```
+
+For the resolver-author view (the `env` injection seam used by tests, and the precedence table), see [Env-var overrides in Custom Model Resolver](/docs/advanced/custom-model-resolver#env-var-overrides).
+
 ### Worked examples
 
 One generator per intent, wired to a realistic block shape. The point is to show what each intent looks like in practice; production blocks would add the usual prompt and schema details.

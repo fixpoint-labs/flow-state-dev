@@ -1,3 +1,5 @@
+export { defaultPatternRegistry } from "./skill-registry";
+
 export * from "./rlm";
 export {
   parallelTasks,

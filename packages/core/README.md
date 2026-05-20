@@ -336,6 +336,25 @@ const resolver = createModelResolver({
 
 Generator-level `providerOptions` wins on key collisions. Provider-mismatched keys (e.g. `anthropic.*` when an OpenAI candidate resolves) are dropped silently. Intent defaults don't apply when an intent falls through to `defaultModel`.
 
+### Env-var overrides
+
+Env vars can replace which model a declared intent (or `defaultModel`) resolves to per environment, without editing code. The motivating case is running real LLMs cheaply in dev or CI.
+
+- `FSDEV_INTENT_<NAME>` — replace the candidate list for intent `<name>`. `<NAME>` is the intent name uppercased with hyphens replaced by underscores (`my-custom` → `FSDEV_INTENT_MY_CUSTOM`).
+- `FSDEV_DEFAULT_MODEL` — replace `defaultModel`. Useful when an intent falls through.
+
+Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` and `preset/*` are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
+
+```bash
+# .env.local
+FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
+FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+```
+
+Invalid values, unknown intent names, and an `FSDEV_INTENT_*` without a matching declared intent throw at construction. Each applied override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`) so you can confirm the override took effect. Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.
+
+See the [models page](https://flow-state.dev/docs/fundamentals/models#env-var-overrides) for the failure-mode taxonomy.
+
 ### Observable model identity
 
 Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.

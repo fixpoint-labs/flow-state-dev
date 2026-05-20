@@ -161,6 +161,7 @@ const sidebars: SidebarsConfig = {
             "skills/overview",
             "skills/activation",
             "skills/authoring",
+            "skills/pattern-skills",
           ],
         },
         {
@@ -180,6 +181,7 @@ const sidebars: SidebarsConfig = {
             "memory/overview",
             "memory/configuration",
             "memory/recall-tool",
+            "memory/hygiene",
           ],
         },
         "ecosystem/thought-fabric-pointer",

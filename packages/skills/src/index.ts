@@ -68,8 +68,36 @@ export {
   pushActiveSkill,
   readActiveSkills,
   unionAllowedTools,
+  type ActivePatternMeta,
   type ActiveSkillEntry,
 } from "./active-skill-state";
+
+export {
+  createPatternRegistry,
+  type MaterializedPattern,
+  type PatternFactory,
+  type PatternRegistry,
+  type PatternRegistryDeps,
+} from "./pattern-registry";
+
+export {
+  materializeWorker,
+} from "./worker-materializer";
+
+export {
+  createPatternRunRoute,
+  type PatternRunRouterOptions,
+} from "./pattern-run";
+
+export {
+  createTaskToolsCapability,
+  taskTools,
+} from "./task-tools-capability";
+
+export {
+  getActivePatternCollection,
+  getActivePatternMeta,
+} from "./active-pattern-collection";
 
 export {
   ensureSeeded,

@@ -67,6 +67,14 @@ User-scoped rolling summary that gets regenerated periodically. The digest is th
 | `topN.facts` | `number` | `30` | Top-N semantic facts (by reinforcement count) fed to regeneration |
 | `topN.episodes` | `number` | `10` | Top-N recent-and-significant episodes fed to regeneration |
 
+### `hygiene`
+
+Time-based maintenance for the semantic and episodic stores. On by default. Decays the confidence of stable facts as time-since-reinforcement grows, and applies durability-based TTLs to episodic episodes. See [Hygiene](./hygiene) for the full picture and how to tune it.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hygiene` | `HygieneConfig \| true \| false` | `true` | Pass `false` to revert to pre-hygiene behavior (no decay, unbounded growth) |
+
 ## Capability presets
 
 `mem.capability` exposes presets for each contribution, so you can dial in exactly what gets injected into a given block:

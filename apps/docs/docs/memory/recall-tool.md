@@ -29,6 +29,12 @@ Each item gets a content cap of 400 chars by default (`DEFAULT_PER_ITEM_CHAR_CAP
 
 > **Working-only caveat:** If you configure `system({ working: { ... } })` alone, the recall tool's description still says it searches "semantic facts + past episodes". The description string doesn't currently adapt to the configured tiers. Pre-existing, tracked separately. If you're working-only, leave the recall preset off.
 
+## Ranking and decay
+
+The cross-store `mem.recall()` helper uses each fact's *effective confidence* — the raw confidence decayed by time-since-last-reinforcement (see [Hygiene](./hygiene)). A year-old fact at confidence `0.8` ranks below a freshly-reinforced fact at the same `0.8`. When hygiene is disabled (`hygiene: false`), recall falls back to raw `fact.confidence`.
+
+The default `llm-filter` strategy passes every semantic fact through to the LLM filter unconditionally (the semantic store is already bounded by `pruneThreshold`), so its candidate selection isn't driven by intrinsic scores. The model sees raw `fact.confidence` in the candidate metadata; the time-decay surface is the `effectiveConfidence` helper, exposed for custom strategies that want to apply it.
+
 ## Strategies
 
 A retrieval strategy is a block factory that produces a handler-shaped block. (A handler is FSD's term for a plain function block: typed input, typed output, no LLM call.) The default `llm-filter` strategy uses an LLM to score candidates by relevance. To plug in something else, pass a different `strategy` to `system()`, or construct the recall tool directly.

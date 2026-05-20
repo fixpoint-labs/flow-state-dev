@@ -423,6 +423,41 @@ export async function runActionInternal<
     });
   });
 
+  // FSDEV_DEBUG_EVENTS_RATE_MS=<ms> turns on a periodic stderr log that
+  // summarises events-per-second by (transient, type) bucket. Useful when
+  // the on-disk events log grows fast and the operator wants to see how
+  // much is real work vs. polling noise. Off when the env var is unset.
+  let eventsRateInterval: ReturnType<typeof setInterval> | undefined;
+  const eventsRateMsRaw = typeof process !== "undefined" ? process.env?.FSDEV_DEBUG_EVENTS_RATE_MS : undefined;
+  const eventsRateMs = eventsRateMsRaw !== undefined ? Number(eventsRateMsRaw) : 0;
+  if (Number.isFinite(eventsRateMs) && eventsRateMs > 0) {
+    const counts = new Map<string, number>();
+    response.addEventObserver((event) => {
+      const itemType =
+        event.type === "item.added" || event.type === "item.done"
+          ? `(${(event.item as { type?: string }).type ?? "?"})`
+          : "";
+      const key = `${event.type}${itemType}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    let lastTick = Date.now();
+    eventsRateInterval = setInterval(() => {
+      const now = Date.now();
+      const windowMs = now - lastTick;
+      lastTick = now;
+      if (counts.size === 0) return;
+      const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+      const summary = ranked
+        .map(([key, n]) => `${key}=${n} (${Math.round((n / windowMs) * 1000)}/s)`)
+        .join(" ");
+      counts.clear();
+      // eslint-disable-next-line no-console
+      console.error(`[fsd-events] window=${windowMs}ms req=${requestId} ${summary}`);
+    }, eventsRateMs);
+    // Don't keep the event loop alive solely for this diagnostic.
+    eventsRateInterval.unref?.();
+  }
+
   // Set up TTS pipeline if the flow has voice.tts configured AND the client
   // explicitly opted in (ttsEnabled: true). TTS is off by default — we don't
   // want to synthesize audio unless the client specifically asks for it.
@@ -855,6 +890,7 @@ export async function runActionInternal<
         requestId, error: String(err)
       });
     });
+    if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
       output: result.output,
@@ -999,6 +1035,7 @@ export async function runActionInternal<
         requestId, error: String(err)
       });
     });
+    if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
       output: undefined,
