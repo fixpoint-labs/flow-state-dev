@@ -264,3 +264,164 @@ describe("createRunSkillTool — fork mode", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pattern mode — FIX-450
+// ---------------------------------------------------------------------------
+
+import { createPatternRegistry, type PatternFactory } from "../src/pattern-registry";
+import { handler as h2 } from "@flow-state-dev/core";
+
+/** Helper: a deterministic factory whose materialized block records the dispatch. */
+function recordingFactory(opts: { key: string; impl?: () => void }): PatternFactory {
+  return {
+    key: opts.key,
+    configSchema: z.object({}).passthrough(),
+    async fromConfig(_binding, deps) {
+      opts.impl?.();
+      const block = h2({
+        name: "recorded-block",
+        inputSchema: z.unknown(),
+        outputSchema: z.object({ skill: z.string() }),
+        execute: async () => ({ skill: deps.skillName }),
+      });
+      return {
+        block: block as never,
+        collectionId: deps.collectionId,
+        backing: "request",
+      };
+    },
+  };
+}
+
+describe("createRunSkillTool — pattern mode", () => {
+  it("dispatches a pattern skill through the pattern route", async () => {
+    let dispatched = false;
+    const factory = recordingFactory({ key: "task-board", impl: () => (dispatched = true) });
+    const c = createMockSkillsCollection();
+    c._store.set("skills/research/SKILL.md", {
+      name: "skills/research/SKILL.md",
+      state: {
+        description: "Research stuff",
+        contextMode: "pattern",
+        patternBinding: {
+          pattern: "task-board",
+          workers: { w: { prompt: "do" } },
+          initialTasks: [{ id: "t", goal: "x", assignee: "w" }],
+        },
+      },
+      content: "---\ndescription: Research stuff\n---\n\nbody",
+    });
+    const tool = createRunSkillTool({
+      collectionKey: "skills",
+      catalog: {},
+      patternRegistry: createPatternRegistry([factory]),
+    });
+    const ctx = buildCtx(c);
+    const result = await runForTest(tool, { name: "research" }, ctx);
+    expect(dispatched).toBe(true);
+    expect(result.mode).toBe("pattern");
+    expect(result.skill).toBe("research");
+    const activeSkills = (ctx as {
+      session: {
+        state: {
+          activeSkills?: Array<{
+            mode: string;
+            pattern?: { patternKey: string; collectionId: string; backing: string };
+          }>;
+        };
+      };
+    }).session.state.activeSkills;
+    expect(activeSkills?.[0]?.mode).toBe("pattern");
+    expect(activeSkills?.[0]?.pattern?.patternKey).toBe("task-board");
+    // Unique-per-activation id: skill_<name>_<requestId>_<n>
+    expect(activeSkills?.[0]?.pattern?.collectionId).toMatch(/^skill_research_r1_1$/);
+    expect(activeSkills?.[0]?.pattern?.backing).toBe("request");
+  });
+
+  it("fails with a clear error when pattern mode is used but no registry was wired", async () => {
+    const c = createMockSkillsCollection();
+    c._store.set("skills/research/SKILL.md", {
+      name: "skills/research/SKILL.md",
+      state: {
+        description: "Research",
+        contextMode: "pattern",
+        patternBinding: {
+          pattern: "task-board",
+          workers: { w: { prompt: "do" } },
+          initialTasks: [{ id: "t", goal: "x", assignee: "w" }],
+        },
+      },
+      content: "---\ndescription: Research\n---\n\nbody",
+    });
+    const tool = createRunSkillTool({ collectionKey: "skills", catalog: {} });
+    await expect(runForTest(tool, { name: "research" }, buildCtx(c))).rejects.toThrow(
+      /no patternRegistry/,
+    );
+  });
+
+  it("fails with a clear error when binding.pattern misses the registry", async () => {
+    const c = createMockSkillsCollection();
+    c._store.set("skills/research/SKILL.md", {
+      name: "skills/research/SKILL.md",
+      state: {
+        description: "Research",
+        contextMode: "pattern",
+        patternBinding: {
+          pattern: "no-such-pattern",
+          workers: { w: { prompt: "do" } },
+          initialTasks: [{ id: "t", goal: "x", assignee: "w" }],
+        },
+      },
+      content: "---\ndescription: Research\n---\n\nbody",
+    });
+    const tool = createRunSkillTool({
+      collectionKey: "skills",
+      catalog: {},
+      patternRegistry: createPatternRegistry([recordingFactory({ key: "task-board" })]),
+    });
+    await expect(runForTest(tool, { name: "research" }, buildCtx(c))).rejects.toThrow(
+      /not in registry/,
+    );
+  });
+
+  it("rejects unknown pattern-config keys via the factory schema", async () => {
+    const strictFactory: PatternFactory = {
+      key: "task-board",
+      configSchema: z.object({ concurrency: z.number().optional() }).strict(),
+      async fromConfig(_binding, deps) {
+        const block = h2({
+          name: "noop",
+          inputSchema: z.unknown(),
+          outputSchema: z.unknown(),
+          execute: async () => ({}),
+        });
+        return { block: block as never, collectionId: `skill_${deps.skillName}`, backing: "request" };
+      },
+    };
+    const c = createMockSkillsCollection();
+    c._store.set("skills/r/SKILL.md", {
+      name: "skills/r/SKILL.md",
+      state: {
+        description: "x",
+        contextMode: "pattern",
+        patternBinding: {
+          pattern: "task-board",
+          workers: { w: { prompt: "do" } },
+          initialTasks: [{ id: "t", goal: "x", assignee: "w" }],
+          patternConfig: { bogusKey: 1 },
+        },
+      },
+      content: "---\ndescription: x\n---\n\nbody",
+    });
+    const tool = createRunSkillTool({
+      collectionKey: "skills",
+      catalog: {},
+      patternRegistry: createPatternRegistry([strictFactory]),
+    });
+    await expect(runForTest(tool, { name: "r" }, buildCtx(c))).rejects.toThrow(
+      /rejected by schema/,
+    );
+  });
+});
+

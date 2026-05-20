@@ -572,6 +572,9 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
+      '@flow-state-dev/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
@@ -638,6 +641,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@flow-state-dev/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -735,6 +741,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/tasks':
+        specifier: workspace:*
+        version: link:../tasks
       zod:
         specifier: ^3.24.1
         version: 3.25.76

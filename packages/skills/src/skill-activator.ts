@@ -75,7 +75,7 @@ export function createSkillActivator(
 
   const slashTier = createSkillSlashMatch({ collectionKey });
   const keywordTier = createSkillKeywordMatch({ collectionKey });
-  const apply = createApplySkillActivation();
+  const apply = createApplySkillActivation({ collectionKey });
 
   let pipeline = sequencer({
     name: options.name ?? "skill-activator",

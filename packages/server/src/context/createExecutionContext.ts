@@ -2871,7 +2871,12 @@ export async function createExecutionContext<
 
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
     onBlockStart: logger
-      ? (blockName, blockKind, input) => {
+      ? (blockName, blockKind, input, transient) => {
+          // Transient blocks (e.g. task-board's poll loop) fire hundreds
+          // of times per second; the runtime debug log floods stderr
+          // without adding operator value. The block_trace lifecycle is
+          // still emitted; this only suppresses the human-readable line.
+          if (transient === true) return;
           logRuntimeEvent(logger, "debug", "[flow-state] nested block started", {
             ...baseLogContext,
             blockName,
@@ -2881,7 +2886,8 @@ export async function createExecutionContext<
         }
       : undefined,
     onBlockComplete: logger
-      ? (blockName, blockKind, output, durationMs) => {
+      ? (blockName, blockKind, output, durationMs, transient) => {
+          if (transient === true) return;
           logRuntimeEvent(logger, "debug", "[flow-state] nested block completed", {
             ...baseLogContext,
             blockName,
@@ -2892,7 +2898,10 @@ export async function createExecutionContext<
         }
       : undefined,
     onBlockError: logger
-      ? (blockName, blockKind, error, durationMs) => {
+      ? (blockName, blockKind, error, durationMs, transient) => {
+          // Errors keep logging even for transient blocks — a failing
+          // poll loop is exactly the kind of thing operators need to see.
+          void transient;
           logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
             ...baseLogContext,
             blockName,

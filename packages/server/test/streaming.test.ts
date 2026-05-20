@@ -13,7 +13,10 @@ import {
 } from "../src";
 import { encodeStreamEventInternal } from "../src/streaming/encode-event";
 import { NOOP_INTERNAL_STREAMING_SEAMS } from "../src/streaming/internal/seams";
-import { createInternalResponseEmitter } from "../src/streaming/response-emitter";
+import {
+  createInternalResponseEmitter,
+  type RequestStreamEventWithId
+} from "../src/streaming/response-emitter";
 import { createStreamEnvelope } from "../src/streaming/types";
 
 function makeMessageItem(options: {
@@ -99,9 +102,18 @@ describe("streaming runtime", () => {
   });
 
   it("emits resource update items for all scopes and request-scope resource.changed event", async () => {
+    // resource_change items default to `transient: true`, so the wire path
+    // is the canonical evidence that they emitted. The in-RAM buffer skips
+    // transient-item events to bound memory under long polling loops; the
+    // `resource.changed` event itself is not item-bound, so it still lands
+    // in the buffer.
+    const wired: RequestStreamEventWithId[] = [];
     const emitter = createResponseEmitter({
       requestId: "req_resource",
-      now: () => 100
+      now: () => 100,
+      onEvent: (event) => {
+        wired.push(event);
+      }
     });
 
     const requestMutation = await emitter.emitResourceChange({
@@ -128,13 +140,18 @@ describe("streaming runtime", () => {
     expect(sessionMutation.item.scope).toBe("session");
     expect(sessionMutation.changedEvent).toBeUndefined();
 
-    const events = emitter.getEvents();
-    expect(events.map((event) => event.type)).toEqual([
+    expect(wired.map((event) => event.type)).toEqual([
       "item.added",
       "item.done",
       "resource.changed",
       "item.added",
       "item.done"
+    ]);
+
+    // Only the non-transient `resource.changed` envelope lands in the
+    // buffer; transient resource_change items are stream-only.
+    expect(emitter.getEvents().map((event) => event.type)).toEqual([
+      "resource.changed"
     ]);
 
     expect(emitter.getItems().map((item) => item.id)).toEqual([

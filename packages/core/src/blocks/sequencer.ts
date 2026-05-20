@@ -449,7 +449,7 @@ async function executeBlock(
     if (pendingInputHint !== undefined) {
       (scopedCtx as { _blockInputHint?: BlockValueInternal<unknown> })._blockInputHint = pendingInputHint;
     }
-    scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+    scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input, block.transient);
     resolveActiveStatusMessage(block, input, scopedCtx);
 
     // For generator blocks, intercept onGeneratorModelResult to capture token usage.
@@ -503,7 +503,7 @@ async function executeBlock(
     // `onBlockTraceCapture` firing the `added` phase from build-block.ts.
     try {
       const output = await asRuntime(block).run(input, execCtx);
-      scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
+      scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt, block.transient);
 
       // FIX-573: stash captured generator modelUsage on the scoped ctx so
       // `_withExecutionScope`'s `output` phase capture picks it up. The
@@ -523,7 +523,7 @@ async function executeBlock(
 
       return output;
     } catch (error) {
-      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient);
 
       // FIX-573: forward partial modelUsage on the failure path too. The
       // `output` phase in `_withExecutionScope` reads it and patches the
