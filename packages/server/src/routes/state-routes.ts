@@ -90,7 +90,8 @@ export async function handleGetSessionState(
   let totalItems = 0;
   if (includeItems) {
     const requests = await ctx.stores.request.list({
-      sessionId: session.id
+      sessionId: session.id,
+      withItems: true
     });
     aggregatedItems = [];
     for (const req of requests) {

@@ -204,7 +204,8 @@ export async function handleListSessionRequests(
       | "in_progress" | "completed" | "failed" | "incomplete" | "aborted"
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
-    offset: getPositiveInteger(url.searchParams.get("offset"))
+    offset: getPositiveInteger(url.searchParams.get("offset")),
+    withItems: true
   });
 
   return jsonResponse(200, {

@@ -48,6 +48,8 @@ export async function applyRetentionPolicy(
   const requests = await stores.request.list({
     sessionId,
     status: "completed",
+    // maxItems policy below counts `req.items.length` per request.
+    withItems: true,
   });
 
   // Exclude current request, sort oldest-first by completion time
