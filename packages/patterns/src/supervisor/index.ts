@@ -314,36 +314,21 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       agentType: synthesizerAgentType,
     });
 
-  // `onIdle: "wait"` + `shouldExit` mirrors plan-and-execute so pendings
-  // whose deps `errored` don't deadlock the drain — they get
-  // cascade-skipped after instead.
+  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
+  // (FIX-626) so pendings whose deps `errored` don't deadlock the
+  // drain — they get cascade-skipped after instead.
   const board = taskBoard({
     name: `${name}-board`,
     collection: { backing: "request", collectionId: name },
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",
-    onIdle: "wait",
     onError: boardOnError,
     // FIX-610: pin declaredDepsOnly explicitly. Supervisor workers
     // are reviewed per-task; widening visibility across all tasks
     // would let reviewers attribute reasoning to siblings that the
     // worker never actually consulted.
     flowPolicy: flowPolicy.declaredDepsOnly(),
-    shouldExit: (collection) => {
-      if (
-        collection.count({ status: ["in_progress", "awaiting_review"] }) > 0
-      )
-        return false;
-      const pending = collection.list({ status: "pending" });
-      if (pending.length === 0) return true;
-      const completedIds = new Set(
-        collection.list({ status: "completed" }).map((t) => t.id),
-      );
-      return !pending.some((t) =>
-        (t.deps ?? []).every((d) => completedIds.has(d)),
-      );
-    },
   });
 
   const captureAndPlan = createCaptureAndPlan({

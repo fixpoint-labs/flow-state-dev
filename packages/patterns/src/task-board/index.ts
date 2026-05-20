@@ -35,8 +35,19 @@
  *
  * ## Termination
  *
- * - `onIdle: 'complete'` (default): exit when no `pending`,
- *   `in_progress`, or `awaiting_review` tasks remain.
+ * - `onIdle: 'complete-or-blocked'` (default, FIX-626): exit when the
+ *   collection drains, OR when no active worker is in-flight and no
+ *   `pending` task is claimable (every remaining pending has a
+ *   non-`completed` dep). Handles the DAG case where an upstream task
+ *   errors and downstream pendings can never run. The final
+ *   `task-board-meta` item carries `terminationReason:
+ *   "all-completed" | "blocked-by-failures"` so callers can tell the
+ *   two outcomes apart without inspecting `counts`.
+ *
+ * - `onIdle: 'complete'`: exit only when no `pending`, `in_progress`,
+ *   or `awaiting_review` tasks remain. Legacy default. Use when a
+ *   pending task with a non-completed dep is a transient state an
+ *   external pump will eventually resolve.
  *   `awaiting_review` keeps the loop alive — workers idle-poll until
  *   an external actor transitions the task out.
  *
@@ -261,12 +272,18 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Termination behavior when the worker pool is idle.
    *
-   * - `"complete"` (default): exit when no `pending`, `in_progress`,
-   *   or `awaiting_review` tasks remain. Single-pass drain.
+   * - `"complete-or-blocked"` (default, FIX-626): exit when the
+   *   collection drains, OR when no in-flight worker is active and no
+   *   `pending` task is claimable. The final `task-board-meta` item's
+   *   `terminationReason` field distinguishes `"all-completed"` from
+   *   `"blocked-by-failures"`.
+   * - `"complete"`: exit only when no `pending`, `in_progress`, or
+   *   `awaiting_review` tasks remain. Pre-FIX-626 default; preserved
+   *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
    */
-  onIdle?: "wait" | "complete";
+  onIdle?: "wait" | "complete" | "complete-or-blocked";
 
   /** Tasks seeded into the collection at board start. Optional. */
   initialTasks?: readonly TaskInit<TInput>[];
@@ -295,7 +312,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Predicate for `onIdle: 'wait'` — return `true` to terminate the
    * loop. Evaluated once per iteration in `checkBoard`. Ignored in
-   * `onIdle: 'complete'` mode.
+   * `onIdle: 'complete'` and `onIdle: 'complete-or-blocked'` modes.
    */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
 
@@ -393,7 +410,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     workers,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
-    onIdle = "complete",
+    onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
     maxIterations = 10_000,

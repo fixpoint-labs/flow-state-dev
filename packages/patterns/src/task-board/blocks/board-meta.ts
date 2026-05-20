@@ -69,10 +69,20 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
 }
 
 /**
- * Emit `{ status: "completed", counts: ... }` after the forEach
- * drains. The counts snapshot the final lifecycle distribution so a
- * renderer can display "5 completed, 1 errored" without re-walking
- * the per-task event stream.
+ * Emit `{ status: "completed", terminationReason, counts: ... }` after
+ * the forEach drains. The counts snapshot the final lifecycle
+ * distribution so a renderer can display "5 completed, 1 errored"
+ * without re-walking the per-task event stream.
+ *
+ * `terminationReason` distinguishes a clean drain (`"all-completed"`)
+ * from a board that exited with non-`completed` tasks remaining
+ * (`"blocked-by-failures"`). The classification is purely structural —
+ * `counts.completed === counts.total` — so it works identically for
+ * all `onIdle` modes (FIX-626). Note: in `onIdle: "wait"` mode an
+ * early-firing `shouldExit` while tasks are still `in_progress` /
+ * `pending` will report `"blocked-by-failures"` even though nothing
+ * actually failed; users overriding termination can read `counts`
+ * directly to disambiguate.
  */
 export function createBoardMetaCompleted(options: BoardMetaOptions) {
   const { name, collection: collectionFactory, collectionId } = options;
@@ -96,9 +106,11 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
       };
+      const terminationReason: "all-completed" | "blocked-by-failures" =
+        counts.completed === counts.total ? "all-completed" : "blocked-by-failures";
       ctx.emitComponent(
         TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "completed", counts },
+        { collectionId, status: "completed", terminationReason, counts },
         { key: collectionId }
       );
     },

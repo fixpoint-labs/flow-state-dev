@@ -498,12 +498,15 @@ describe("taskBoard - failure handling", () => {
     expect(result.error?.message).toContain("boom-err");
   });
 
-  it("downstream pending task with errored deps blocks loop exit until cancelled", async () => {
-    // The topological dispatcher excludes `d` (its dep `u` is errored,
-    // not completed). v1 has no automatic dep-failure propagation —
-    // downstream stays `pending` and the `complete` loop counts it as
-    // in-flight, so workers spin-poll. An external actor must
-    // explicitly cancel the unreachable task to drain the board.
+  it("downstream pending task with errored deps blocks loop exit until cancelled (onIdle: 'complete')", async () => {
+    // Regression for the legacy `onIdle: "complete"` behavior the
+    // FIX-626 default change supersedes. Pinned explicitly: the
+    // topological dispatcher excludes `d` (its dep `u` is errored,
+    // not completed), and `"complete"` mode still counts `d` as
+    // in-flight — workers spin-poll until an external actor cancels
+    // the unreachable task. The new `"complete-or-blocked"` default
+    // covered by a separate test exits cleanly without the manual
+    // cancel.
     let scheduled = false;
     const failingWorker = handler({
       name: "fail-up",
@@ -538,6 +541,7 @@ describe("taskBoard - failure handling", () => {
         { id: "d", goal: "d", deps: ["u"] },
       ],
       onError: "skip",
+      onIdle: "complete",
       idlePollMs: 10,
       maxIterations: 200,
     });
@@ -671,6 +675,66 @@ describe("taskBoard - onIdle modes", () => {
       );
     });
     expect(lastClaimedEmits).toHaveLength(0);
+  });
+
+  it("onIdle: 'complete-or-blocked' (default) exits cleanly when downstream pending has an errored dep", async () => {
+    // FIX-626: with the new default, a pending task whose dep errored
+    // is detected as structurally unclaimable, so the board exits
+    // without requiring an external cancel. Contrast with the legacy
+    // `"complete"` regression test above which spins until cancelled.
+    const failingWorker = handler({
+      name: "fail-up",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
+        if (input.goal === "u") throw new Error("upstream failed");
+        return null;
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "deps-fail-default",
+      collection: { collectionId: "dfd" },
+      concurrency: 1,
+      dispatcher: "topological",
+      workers: failingWorker,
+      initialTasks: [
+        { id: "u", goal: "u" },
+        { id: "d", goal: "d", deps: ["u"] },
+      ],
+      onError: "skip",
+      idlePollMs: 10,
+      maxIterations: 200,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("u")).toBe("errored");
+    // `d` stays `pending` — the substrate exits without mutating it;
+    // cascade-skip (which lives one layer up in P&E / supervisor)
+    // would transition it to `cancelled` post-drain.
+    expect(final.get("d")).toBe("pending");
+  });
+
+  it("onIdle: 'complete-or-blocked' exits cleanly on a successful drain", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "cob-success",
+      collection: { collectionId: "cob-success" },
+      concurrency: 2,
+      dispatcher: "topological",
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: [
+        { id: "a", goal: "a", input: { topic: "a" } },
+        { id: "b", goal: "b", input: { topic: "b" }, deps: ["a"] },
+      ],
+      onIdle: "complete-or-blocked",
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(trace.length).toBe(2);
   });
 
   it("onIdle: 'wait' continues until shouldExit returns true", async () => {
@@ -1176,6 +1240,62 @@ describe("taskBoard - board-meta emission", () => {
     expect(final?.total).toBe(2);
     expect(final?.completed).toBe(2);
     expect(final?.errored).toBe(0);
+
+    // FIX-626: terminationReason on a fully-succeeded drain.
+    expect(
+      (metaItems[0]?.data as { terminationReason?: string } | undefined)
+        ?.terminationReason
+    ).toBe("all-completed");
+  });
+
+  it("emits terminationReason='blocked-by-failures' when a pending task can't be claimed (FIX-626)", async () => {
+    const failingWorker = handler({
+      name: "fail-up-meta",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
+        if (input.goal === "u") throw new Error("upstream failed");
+        return null;
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "meta-blocked",
+      collection: { collectionId: "meta-blocked" },
+      concurrency: 1,
+      dispatcher: "topological",
+      workers: failingWorker,
+      initialTasks: [
+        { id: "u", goal: "u" },
+        { id: "d", goal: "d", deps: ["u"] },
+      ],
+      onError: "skip",
+      idlePollMs: 10,
+      maxIterations: 200,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    type MetaItem = {
+      type?: string;
+      component?: string;
+      data?: {
+        status?: string;
+        terminationReason?: string;
+        counts?: Record<string, number>;
+      };
+    };
+    const completed = (result.items as MetaItem[]).find(
+      (i) =>
+        i.type === "component" &&
+        i.component === "task-board-meta" &&
+        i.data?.status === "completed"
+    );
+    expect(completed?.data?.terminationReason).toBe("blocked-by-failures");
+    expect(completed?.data?.counts?.completed).toBe(0);
+    expect(completed?.data?.counts?.errored).toBe(1);
+    expect(completed?.data?.counts?.pending).toBe(1);
   });
 
   it("counts errored tasks on completion", async () => {
@@ -1219,6 +1339,10 @@ describe("taskBoard - board-meta emission", () => {
     expect(completed?.data?.counts?.total).toBe(2);
     expect(completed?.data?.counts?.errored).toBe(2);
     expect(completed?.data?.counts?.completed).toBe(0);
+    expect(
+      (completed?.data as { terminationReason?: string } | undefined)
+        ?.terminationReason
+    ).toBe("blocked-by-failures");
   });
 });
 

@@ -631,13 +631,10 @@ export function planAndExecute<
   // the planner/replanner contracts don't carry, so we stay on the
   // uniform path even when the spec illustration shows a registry.
   //
-  // `onIdle: "wait"` + `shouldExit` is a deliberate substitute for
-  // `onIdle: "complete"`. With the topological dispatcher, a pending
-  // task whose dep `errored` is never claimable but still counts in
-  // `inFlightCount`, so the default `complete` mode would spin forever
-  // waiting for tasks the dispatcher cannot pick. The custom predicate
-  // exits the drain as soon as no claimable work remains — pendings
-  // with `errored` deps are then cascade-skipped by
+  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
+  // (FIX-626): a pending task whose dep `errored` is never claimable,
+  // and the substrate now exits the drain as soon as no claimable work
+  // remains. Pendings with `errored` deps get cascade-skipped by
   // `cascadeSkipDependents` after the drain.
   const board = taskBoard({
     name: `${name}-board`,
@@ -645,7 +642,6 @@ export function planAndExecute<
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",
-    onIdle: "wait",
     onError: "skip",
     // FIX-610: plan-shaped patterns benefit most from seeing prior
     // tool traffic from anywhere in the run, not just declared deps.
@@ -654,29 +650,6 @@ export function planAndExecute<
     // staying bounded — callers can override on the underlying
     // taskBoard if they want a stricter policy.
     flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
-    shouldExit: (collection) => {
-      // No active workers AND no claimable pending tasks → drain done.
-      const active = collection.count({
-        status: ["in_progress", "awaiting_review"],
-      });
-      if (active > 0) return false;
-
-      const pending = collection.list({ status: "pending" });
-      if (pending.length === 0) return true;
-
-      const completedIds = new Set(
-        collection
-          .list({ status: "completed" })
-          .map((t) => t.id),
-      );
-      // A pending task is claimable iff every dep is completed. Note
-      // that `errored` and `cancelled` deps make a pending task
-      // permanently unclaimable until cascade-skip runs.
-      const claimable = pending.some((t) =>
-        (t.deps ?? []).every((d) => completedIds.has(d)),
-      );
-      return !claimable;
-    },
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });

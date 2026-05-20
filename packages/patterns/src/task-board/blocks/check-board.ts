@@ -8,9 +8,21 @@
  *
  * Modes:
  *
- * - `complete`: exit when no `pending`, `in_progress`, or
- *   `awaiting_review` tasks remain. `awaiting_review` keeps the loop
- *   alive (FIX-443 §10.1) — the worker's preceding `.waitForCondition`
+ * - `complete-or-blocked` (default): exit when no `pending`,
+ *   `in_progress`, or `awaiting_review` tasks remain (`drained`), OR
+ *   when no in-flight worker is active AND no `pending` task is
+ *   claimable because every remaining pending has a non-`completed`
+ *   dep (`blocked`). The blocked exit closes the dispatcher-deadlock
+ *   class of bug where a `pending` task with an `errored` /
+ *   `cancelled` dep keeps `inFlightCount` non-zero forever.
+ *
+ * - `complete`: exit only when no `pending`, `in_progress`, or
+ *   `awaiting_review` tasks remain. Legacy default; preserves the
+ *   spinning-poll behavior for boards that legitimately wait on an
+ *   external pump to mark deps complete.
+ *
+ *   `awaiting_review` keeps the loop alive in both modes above
+ *   (FIX-443 §10.1) — the worker's preceding `.waitForCondition`
  *   blocks until an external actor transitions the task back to
  *   `pending` (or to a terminal state).
  *
@@ -32,12 +44,12 @@ import {
   taskBoardWorkerStateSchema,
   type CheckBoardOutput,
 } from "../schemas";
-import { inFlightCount } from "../shared";
+import { hasClaimableTask, inFlightCount } from "../shared";
 
 export interface CheckBoardOptions {
   name: string;
   collection: (ctx: BlockContext) => TaskCollectionRef;
-  onIdle: "wait" | "complete";
+  onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
 }
 
@@ -64,6 +76,23 @@ export function createCheckBoard(options: CheckBoardOptions) {
       if (onIdle === "complete") {
         if (inFlightCount(collection) === 0) {
           return { shouldContinue: false, reason: "drained" };
+        }
+        return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
+      }
+
+      if (onIdle === "complete-or-blocked") {
+        // Drained dominates: every task reached a terminal status.
+        if (inFlightCount(collection) === 0) {
+          return { shouldContinue: false, reason: "drained" };
+        }
+        // No worker is producing state changes AND no `pending` task
+        // has all deps `completed`, so the dispatcher cannot claim
+        // anything. Continuing would spin at idle-poll forever.
+        if (
+          collection.count({ status: ["in_progress", "awaiting_review"] }) === 0 &&
+          !hasClaimableTask(collection)
+        ) {
+          return { shouldContinue: false, reason: "blocked" };
         }
         return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
       }
