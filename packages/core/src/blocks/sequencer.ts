@@ -2011,6 +2011,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const controller = new AbortController();
             const onParentAbort = (): void => { controller.abort(); };
             ctx.signal?.addEventListener("abort", onParentAbort);
+            // AbortSignal.addEventListener does not fire for listeners
+            // registered after `aborted` already flipped true. Without this
+            // sync check, an already-aborted parent would still cost a full
+            // `timeoutMs` of waiting before the timer fired.
+            if (ctx.signal?.aborted === true) controller.abort();
 
             let timedOut = false;
             let evaluationError: unknown = undefined;
@@ -2028,6 +2033,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                 };
 
                 controller.signal.addEventListener("abort", settle);
+                // Parent may have aborted synchronously above; in that
+                // case the listener we just registered never fires because
+                // `controller.signal.aborted` was already true. Settle now
+                // and skip subscribing/timing.
+                if (controller.signal.aborted) {
+                  settle();
+                  return;
+                }
 
                 timer = setTimeout(() => {
                   timedOut = true;

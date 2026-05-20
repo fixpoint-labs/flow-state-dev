@@ -149,6 +149,27 @@ describe("sequencer .waitForCondition", () => {
     expect(fake.listenerCount).toBe(0);
   });
 
+  it("resolves promptly when the parent signal is already aborted on entry", async () => {
+    const fake = createFakeResponse();
+    const controller = new AbortController();
+    controller.abort();
+    const ctx = makeCtx(fake, { signal: controller.signal });
+
+    const seq = sequencer({ name: "wfc-pre-aborted" }).waitForCondition(
+      () => false,
+      // Large timeout — if we accidentally wait for it the test will hang
+      // long past its 5s vitest budget. Resolution must come from the
+      // already-aborted signal, not the timer.
+      { timeoutMs: 60_000 }
+    );
+
+    const start = Date.now();
+    const out = await runForTest(seq, undefined, ctx);
+    expect(Date.now() - start).toBeLessThan(100);
+    expect(out).toEqual({ timedOut: false });
+    expect(fake.listenerCount).toBe(0);
+  });
+
   it("propagates a predicate throw at entry without subscribing", async () => {
     const fake = createFakeResponse();
     const ctx = makeCtx(fake);
