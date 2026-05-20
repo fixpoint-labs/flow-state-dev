@@ -20,7 +20,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_4_MEMO_KEYS, type Phase4MemoShortName } from "../agents";
-import { blankMemoState, memoResources } from "../resources";
+import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
 import {
   personaCritiqueOutputSchema,
@@ -52,18 +52,18 @@ export function markWritingP4(shortName: Phase4MemoShortName) {
       if (ref !== undefined) {
         await ref.patchState({ status: "writing", startedAt, agentName });
       } else {
-        await ctx.resources.memos.create(
-          collectionKey,
-          blankMemoState({
-            status: "writing",
-            startedAt,
-            agentName,
-            agentTeam: "risk",
-            phaseId: "p4",
-            ticker: ctx.session.state.ticker,
-            date: ctx.session.state.date,
-          }),
-        );
+        // Framework parses input against memoStateSchema and applies
+        // `.default(null)` to every nullable field — only the scaffold
+        // needs to be supplied here.
+        await ctx.resources.memos.create(collectionKey, {
+          status: "writing",
+          startedAt,
+          agentName,
+          agentTeam: "risk",
+          phaseId: "p4",
+          ticker: ctx.session.state.ticker,
+          date: ctx.session.state.date,
+        });
       }
       if (ctx.session.state.memoStatus[shortName] !== "writing") {
         await ctx.session.setStateRecord("memoStatus", shortName, "writing");

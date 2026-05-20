@@ -56,14 +56,14 @@ export const memoStateSchema = z.object({
   ticker: z.string(),
   date: z.string(),
   phaseId: z.string(),
-  label: z.string().nullable(),
-  headline: z.string().nullable(),
-  rating: z.string().nullable(),
-  body: z.array(thesisSection).nullable(),
-  metrics: z.record(z.string(), z.string()).nullable(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  errorMessage: z.string().nullable(),
+  label: z.string().nullable().default(null),
+  headline: z.string().nullable().default(null),
+  rating: z.string().nullable().default(null),
+  body: z.array(thesisSection).nullable().default(null),
+  metrics: z.record(z.string(), z.string()).nullable().default(null),
+  startedAt: z.string().nullable().default(null),
+  completedAt: z.string().nullable().default(null),
+  errorMessage: z.string().nullable().default(null),
   /** Phase 1 investigative citations (FIX-612). Populated by analyst
    *  generators when they invoke `fetch` on a discovery URL; null on the
    *  cheap preset and on memos that never investigated. Renderer shows a
@@ -216,65 +216,3 @@ export const memosCollection = defineResourceCollection({
 export const memoResources = {
   memos: memosCollection,
 } as const;
-
-/** Build a complete `MemoState` with every nullable field set to `null`.
- *  Memo creation paths (per-phase `setup*Memos` taps and the create branch
- *  of `markWriting`/`markWritingP*`) all need this same shape; centralising
- *  it here keeps the 30+ nullable fields listed once instead of duplicated
- *  per phase. Caller supplies only the non-nullable scaffold
- *  (`agentName`, `agentTeam`, `phaseId`, `ticker`, `date`) plus the
- *  starting lifecycle state. */
-export function blankMemoState(opts: {
-  status?: MemoStatus;
-  agentName: string;
-  agentTeam: MemoState["agentTeam"];
-  phaseId: string;
-  ticker: string;
-  date: string;
-  startedAt?: string | null;
-}): MemoState {
-  return {
-    status: opts.status ?? "pending",
-    agentName: opts.agentName,
-    agentTeam: opts.agentTeam,
-    phaseId: opts.phaseId,
-    ticker: opts.ticker,
-    date: opts.date,
-    label: null,
-    headline: null,
-    rating: null,
-    body: null,
-    metrics: null,
-    startedAt: opts.startedAt ?? null,
-    completedAt: null,
-    errorMessage: null,
-    citations: null,
-    stance: null,
-    conviction: null,
-    keyRisks: null,
-    keyOpportunities: null,
-    unresolvedDisagreements: null,
-    direction: null,
-    sizePct: null,
-    stopPrice: null,
-    targetPrice: null,
-    holdingPeriod: null,
-    invalidationCriteria: null,
-    dependsOn: null,
-    posture: null,
-    raisedRisks: null,
-    proposedAdjustments: null,
-    dismissedRisks: null,
-    criticalRisks: null,
-    recommendedAdjustments: null,
-    confidenceCalibration: null,
-    calibrationRationale: null,
-    decisionSummary: null,
-    finalRating: null,
-    decisionConfidence: null,
-    acceptedAdjustments: null,
-    keyDependencies: null,
-    upstreamReferences: null,
-    agreesWithTrader: null,
-  };
-}

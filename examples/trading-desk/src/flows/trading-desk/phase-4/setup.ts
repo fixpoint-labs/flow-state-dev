@@ -1,17 +1,19 @@
 /**
  * `setupPhase4Memos` — pre-creates the four Phase 4 memo resources in
- * `pending` before any persona runs. Mirrors `setupPhase3Memos`: every
- * nullable field comes from `blankMemoState` so the seed shape stays in
- * sync with the schema, spreads existing `memoStatus` so prior phases'
- * entries survive, and flips `activePhase` to `"phase-4"`.
+ * `pending` before any persona runs.
  *
- * On re-run with a prior session state, `patchState(initial)` resets every
- * field so each slot starts clean.
+ * Mirrors `setupPhase3Memos`. Only the non-nullable scaffold (`status`,
+ * `agentName`, `agentTeam`, `phaseId`, `ticker`, `date`) is supplied;
+ * every nullable field on `memoStateSchema` is filled by Zod's
+ * `.default(null)` when the framework parses the input. On re-run with
+ * existing memo state, `setState(initial)` (after a local
+ * `memoStateSchema.parse(...)` to get a fully-typed object) replaces the
+ * memo entirely so prior `body` / `headline` / etc. don't bleed through.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_4_MEMO_KEYS } from "../agents";
-import { blankMemoState, memoResources } from "../resources";
+import { memoResources, memoStateSchema } from "../resources";
 import { sessionStateSchema } from "../state";
 
 export const setupPhase4Memos = handler({
@@ -25,7 +27,8 @@ export const setupPhase4Memos = handler({
     const date = ctx.session.state.date as string;
     const nextStatus: Record<string, "pending"> = {};
     for (const [shortName, mapping] of Object.entries(PHASE_4_MEMO_KEYS)) {
-      const initial = blankMemoState({
+      const initial = memoStateSchema.parse({
+        status: "pending",
         agentName: mapping.agentName,
         agentTeam: "risk",
         phaseId: "p4",
@@ -36,7 +39,7 @@ export const setupPhase4Memos = handler({
       if (existing === undefined) {
         await ctx.resources.memos.create(mapping.collectionKey, initial);
       } else {
-        await existing.patchState(initial);
+        await existing.setState(initial);
       }
       nextStatus[shortName] = "pending";
     }
