@@ -39,6 +39,8 @@ are fine when warranted.
 
 `.github/workflows/release.yml` runs `changesets/action@v1` after each merge to `main`. When pending fragments exist it opens (or updates) a "Version Packages" PR; merging that PR triggers `pnpm release:ci`, which publishes to npm with provenance and creates GitHub Releases from each package's `CHANGELOG.md`.
 
+The release-PR step uses `CHANGESETS_RELEASE_TOKEN`, a repository secret backed by a PAT or GitHub App token that can open pull requests. If that secret is absent, the workflow leaves a notice and skips PR creation instead of failing unrelated `main` builds.
+
 ## Snapshot releases
 
 Use `.github/workflows/snapshot-release.yml` (`workflow_dispatch`) from a feature branch to publish canary builds with npm dist-tags.

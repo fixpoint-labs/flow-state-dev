@@ -70,10 +70,12 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for semver
   - open/update a **Version Packages** PR when pending changesets exist
   - publish to npm (with `--provenance`) after the version PR is merged
   - create GitHub releases from generated changelogs
+  - skip release-PR creation with a notice when `CHANGESETS_RELEASE_TOKEN` is not configured
 - `.github/workflows/snapshot-release.yml` supports manual snapshot/canary publishing from feature branches via `workflow_dispatch`.
 
 ### Required repository secrets
 
+- `CHANGESETS_RELEASE_TOKEN`: PAT or GitHub App token allowed to create pull requests for the release PR path
 - `NPM_TOKEN`: npm automation token with publish access to `@flow-state-dev` packages
 
 ### npm organization checklist

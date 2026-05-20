@@ -17,6 +17,8 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+    env:
+      CHANGESETS_RELEASE_TOKEN: ${{ secrets.CHANGESETS_RELEASE_TOKEN }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -34,13 +36,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Create release PR or publish to npm
-        id: changesets
+      - name: Check for pending changesets
+        id: pending_changesets
+        shell: bash
+        run: |
+          if git ls-files '.changeset/*.md' ':!:.changeset/README.md' | read -r _; then
+            echo "has_pending=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release PR
+        id: release_pr
+        if: steps.pending_changesets.outputs.has_pending == 'true' && env.CHANGESETS_RELEASE_TOKEN != ''
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
           publish: pnpm release:ci
           createGithubReleases: true
+          github-token: ${{ env.CHANGESETS_RELEASE_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ env.CHANGESETS_RELEASE_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Notice missing release PR token
+        if: steps.pending_changesets.outputs.has_pending == 'true' && env.CHANGESETS_RELEASE_TOKEN == ''
+        run: echo "::notice title=Release PR skipped::Set the CHANGESETS_RELEASE_TOKEN secret to allow this workflow to open the Version Packages PR."
+
+      - name: Publish to npm
+        id: publish
+        if: steps.pending_changesets.outputs.has_pending == 'false'
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release:ci
+          createGithubReleases: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
