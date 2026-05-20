@@ -682,7 +682,30 @@ function isUserRoleMessage(value: unknown): value is { role: "user"; content: un
 function userMessageContentKey(msg: { content: unknown }): string {
   const c = msg.content;
   if (typeof c === "string") return c;
-  try { return JSON.stringify(c); } catch { return String(c); }
+  // Sort object keys recursively so equivalence is independent of key
+  // insertion order across the two producers (asUserMessage and
+  // itemToLLMMessages). Without this, two semantically equal multipart
+  // parts whose keys were inserted in different orders would stringify
+  // differently and dedup would silently fail.
+  try {
+    const serialized = stableStringify(c);
+    return serialized !== undefined ? serialized : String(c);
+  } catch {
+    return String(c);
+  }
+}
+
+function stableStringify(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
+        sorted[k] = (val as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return val;
+  });
 }
 
 async function resolveSlotValues<TInput, TCtx extends BlockContext>(

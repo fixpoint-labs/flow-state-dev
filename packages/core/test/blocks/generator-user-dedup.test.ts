@@ -155,6 +155,48 @@ describe("FIX-662: generator user-slot dedup", () => {
     expect(users).toHaveLength(1);
   });
 
+  it("dedups multipart content regardless of object key insertion order", async () => {
+    // Guards against the latent failure mode where the two producers
+    // (asUserMessage, itemToLLMMessages) might serialize structurally
+    // equal parts with different key insertion order. Stable-key
+    // stringify makes equivalence robust to that.
+    const captured: { messages?: CapturedMessages } = {};
+    const historyPart = { type: "text", text: "hello" };
+    const userPart = { text: "hello", type: "text" };
+    const block = generator({
+      name: "multipart-key-order",
+      model: "mock",
+      prompt: "p",
+      history: () => [{ role: "user", content: [historyPart] }],
+      user: () => ({ role: "user", content: [userPart] })
+    });
+
+    await runForTest(block, { value: "x" }, makeCapturingCtx(captured));
+
+    const users = userMessages(captured.messages);
+    expect(users).toHaveLength(1);
+  });
+
+  it("handles undefined content without throwing or returning a non-string key", async () => {
+    // Defensive: messages with undefined content should never match
+    // anything sensible, and the key function must remain a string.
+    const captured: { messages?: CapturedMessages } = {};
+    const block = generator({
+      name: "undefined-content",
+      model: "mock",
+      prompt: "p",
+      history: () => [{ role: "user", content: undefined as unknown as string }],
+      user: () => "real text"
+    });
+
+    await runForTest(block, { value: "x" }, makeCapturingCtx(captured));
+    // Either dedup fires or not — the contract here is "no crash, and the
+    // real text still reaches the model exactly once if no dedup fires."
+    const users = userMessages(captured.messages);
+    const realTextEntries = users.filter((u) => u.content === "real text");
+    expect(realTextEntries).toHaveLength(1);
+  });
+
   it("does not dedup multipart messages with structurally different content", async () => {
     const captured: { messages?: CapturedMessages } = {};
     const block = generator({
