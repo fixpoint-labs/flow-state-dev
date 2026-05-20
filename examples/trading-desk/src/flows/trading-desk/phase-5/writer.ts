@@ -47,54 +47,20 @@ export function markWritingP5(shortName: Phase5MemoShortName) {
     execute: async (_input, ctx) => {
       const ref = ctx.resources.memos.getOptional(collectionKey);
       const startedAt = new Date().toISOString();
-      const patch = {
-        status: "writing" as const,
-        startedAt,
-        agentName,
-      };
       if (ref !== undefined) {
-        await ref.patchState(patch);
+        await ref.patchState({ status: "writing", startedAt, agentName });
       } else {
+        // Framework parses against memoStateSchema and applies
+        // `.default(null)` to every nullable field — only the scaffold
+        // needs to be supplied here.
         await ctx.resources.memos.create(collectionKey, {
-          ...patch,
+          status: "writing",
+          startedAt,
+          agentName,
           agentTeam: "pm",
           phaseId: "p5",
           ticker: ctx.session.state.ticker,
           date: ctx.session.state.date,
-          label: null,
-          headline: null,
-          rating: null,
-          body: null,
-          metrics: null,
-          completedAt: null,
-          errorMessage: null,
-          stance: null,
-          conviction: null,
-          keyRisks: null,
-          keyOpportunities: null,
-          unresolvedDisagreements: null,
-          direction: null,
-          sizePct: null,
-          stopPrice: null,
-          targetPrice: null,
-          holdingPeriod: null,
-          invalidationCriteria: null,
-          dependsOn: null,
-          posture: null,
-          raisedRisks: null,
-          proposedAdjustments: null,
-          dismissedRisks: null,
-          criticalRisks: null,
-          recommendedAdjustments: null,
-          confidenceCalibration: null,
-          calibrationRationale: null,
-          decisionSummary: null,
-          finalRating: null,
-          decisionConfidence: null,
-          acceptedAdjustments: null,
-          keyDependencies: null,
-          upstreamReferences: null,
-          agreesWithTrader: null,
         });
       }
       const memoStatus = ctx.session.state.memoStatus;

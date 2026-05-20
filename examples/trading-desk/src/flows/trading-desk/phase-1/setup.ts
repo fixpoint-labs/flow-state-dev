@@ -4,11 +4,17 @@
  * the session-state mirror to render the four slots immediately, so the
  * "all four memos appear before any generator runs" acceptance criterion
  * lands on the first emitted state-change item.
+ *
+ * Only the non-nullable scaffold (`status`, `agentName`, `agentTeam`,
+ * `phaseId`, `ticker`, `date`) is supplied to `memoStateSchema.parse()` —
+ * every nullable field is filled by Zod's `.default(null)`. On re-run
+ * with existing memo state, `setState(initial)` replaces the memo
+ * entirely so prior `body` / `headline` / etc. don't bleed through.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../agents";
-import { memoResources } from "../resources";
+import { memoResources, memoStateSchema } from "../resources";
 import { sessionStateSchema } from "../state";
 
 const inputSchema = z.object({
@@ -26,27 +32,19 @@ export const setupPhase1Memos = handler({
   resources: memoResources,
   execute: async (input, ctx) => {
     for (const [, mapping] of Object.entries(PHASE_1_MEMO_KEYS)) {
-      const existing = ctx.resources.memos.getOptional(mapping.collectionKey);
-      const initial = {
-        status: "pending" as const,
+      const initial = memoStateSchema.parse({
+        status: "pending",
         agentName: mapping.agentName,
-        agentTeam: "analyst" as const,
+        agentTeam: "analyst",
         phaseId: "p1",
         ticker: input.ticker,
         date: input.date,
-        label: null,
-        headline: null,
-        rating: null,
-        body: null,
-        metrics: null,
-        startedAt: null,
-        completedAt: null,
-        errorMessage: null,
-      };
+      });
+      const existing = ctx.resources.memos.getOptional(mapping.collectionKey);
       if (existing === undefined) {
         await ctx.resources.memos.create(mapping.collectionKey, initial);
       } else {
-        await existing.patchState(initial);
+        await existing.setState(initial);
       }
     }
     // Derive the memo-status seed from PHASE_1_MEMO_KEYS so adding a new

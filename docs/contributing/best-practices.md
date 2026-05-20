@@ -291,6 +291,20 @@ Update policy:
 - See: [`docs/contributing/release-notes-workflow.md`](release-notes-workflow.md)
 - Supersedes: BP-005
 
+### BP-023: Resource state schemas use `.nullable().default(null)` so callers can pass partials
+
+- Status: Active
+- Date: 2026-05-20
+- Rule:
+  - Every nullable field on a resource state schema (anything passed as `stateSchema:` to `defineResourceCollection` or `defineResource`) is `.nullable().default(null)`, not bare `.nullable()`.
+  - With defaults declared, memo creation / reset paths supply only the non-nullable scaffold (e.g. `status`, `agentName`, `ticker`, `date`) and let the framework's `safeParse` fill the rest. Do not maintain a parallel "blank state" helper or per-call-site list of `field: null` literals.
+  - For the "reset on re-run" path where existing state must not bleed through, use `setState(memoStateSchema.parse({...minimal}))` rather than `patchState`. `patchState` merges with prior state; only `setState` (or a `patchState` whose payload happens to overwrite every field) actually replaces it.
+  - This applies only to **resource state schemas**, not to generator output schemas. Generator outputs follow BP-016 (no `.default()` reachable from a generator output — OpenAI strict mode rejects it). Resource state schemas don't go through `makeSchemaStrict`, so defaults are safe and idiomatic.
+- Why:
+  - The framework already calls `stateSchema.safeParse(input)` on every `collection.create()` and `patchState()` (see `packages/server/src/context/createExecutionContext.ts`). When the schema declares `.default(null)`, Zod fills the missing fields. Without `.default(null)`, every caller has to list all nullable fields explicitly — and the list duplicates across `setup.ts`, every `markWriting*` create branch, and any "blank state" helper.
+  - Schema-as-source-of-truth: adding a new nullable field to the schema becomes a one-place edit. Without this BP, the list is duplicated across N files (one per phase per layer) and any audit can miss a copy. The trading-desk example carried ~150 lines of duplicated null-field literals across Phase 1–5 setup and writer files before this BP landed.
+  - This is the practical answer to "why doesn't the framework provide a `defaultState()` helper?" — it already does, via Zod. The lesson is to encode defaults at the schema layer rather than at the call site.
+
 ## Template For New Entries
 
 ```md
