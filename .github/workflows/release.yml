@@ -13,6 +13,8 @@ jobs:
   release:
     name: Version & Publish
     runs-on: ubuntu-latest
+    env:
+      CHANGESETS_TOKEN: ${{ secrets.CHANGESETS_TOKEN }}
     permissions:
       contents: write
       pull-requests: write
@@ -36,11 +38,22 @@ jobs:
 
       - name: Create release PR or publish to npm
         id: changesets
+        if: env.CHANGESETS_TOKEN != ''
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
           publish: pnpm release:ci
           createGithubReleases: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ env.CHANGESETS_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Report disabled release automation
+        if: env.CHANGESETS_TOKEN == ''
+        run: |
+          echo "::notice title=Release automation skipped::CHANGESETS_TOKEN is not configured; skipping changesets/action because the default GITHUB_TOKEN cannot create release PRs in this repository."
+          {
+            echo "### Release automation skipped"
+            echo ""
+            echo "Configure \`CHANGESETS_TOKEN\` with a token that can push contents and create pull requests before relying on automatic version PRs or npm publishing."
+          } >> "$GITHUB_STEP_SUMMARY"

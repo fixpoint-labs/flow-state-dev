@@ -88,7 +88,7 @@ A maintainer (or the release workflow) runs `pnpm version-packages`. For each af
 2. The fragments' bodies concatenate under a new section in that package's `CHANGELOG.md`.
 3. The consumed fragments are deleted from `.changeset/`.
 
-`.github/workflows/release.yml` automates this: it opens a "Version Packages" PR with the proposed bumps and changelog edits. Merging that PR publishes to npm with provenance and creates GitHub Releases from the per-package changelogs.
+`.github/workflows/release.yml` automates this when `CHANGESETS_TOKEN` is configured: it opens a "Version Packages" PR with the proposed bumps and changelog edits. Merging that PR publishes to npm with provenance and creates GitHub Releases from the per-package changelogs.
 
 `.changeset/` is not a persistent store. Anything that needs to outlive a release lives in `packages/<name>/CHANGELOG.md`.
 
