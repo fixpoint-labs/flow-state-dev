@@ -1,19 +1,20 @@
 /**
  * The three Phase 4 persona generators — aggressive, conservative, neutral.
  *
- * Each runs as a round-robin roster slot override (see
- * `phase-4/round-robin.ts`). Single-shot structured critique that reads:
+ * Each runs as a step in the plain sequencer chain in `phase-4/index.ts`.
+ * Single-shot structured critique that reads:
  *   - the Phase 3 trade proposal + Phase 2 investment thesis (always),
- *   - prior persona memos in fixed round-robin order, and
+ *   - prior persona memos in fixed order (aggressive → conservative →
+ *     neutral), and
  *   - on the `full` cost preset, the four Phase 1 analyst memos plus the
  *     full bull/bear debate transcript.
  *
  * Personas read prior persona memos via per-generator `context` entries
- * because the round-robin order matters — aggressive sees no priors,
- * conservative sees aggressive, neutral sees both. The shared
- * `tradeProposal` + `investmentThesis` presets cover the static surface;
- * `phase1MemosFull` + `phase2DebateFull` are the cost-preset-gated
- * variants that render empty when `costPreset !== "full"`.
+ * because order matters — aggressive sees no priors, conservative sees
+ * aggressive, neutral sees both. The shared `tradeProposal` +
+ * `investmentThesis` presets cover the static surface; `phase1MemosFull`
+ * + `phase2DebateFull` are the cost-preset-gated variants that render
+ * empty when `costPreset !== "full"`.
  *
  * `agentType: "sub"` — per the design, P4 personas emit speak rows only
  * (no structured-output card in the transcript). The memo on the right

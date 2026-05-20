@@ -38,7 +38,6 @@ import {
 } from "../agents";
 import { memosCollection } from "../resources";
 import { phase2Contributions } from "../phase-2/contributions";
-import { phase4Contributions } from "../phase-4/contributions";
 import { formatUserInstructions } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema, type SessionState } from "../state";
@@ -273,15 +272,6 @@ export const tradingDesk = defineCapability({
       context: {
         phase2Debate: (_input, ctx) =>
           formatDebate(readContributionsEntries(ctx, "p2Contributions")),
-      },
-    },
-
-    /** Phase 4 — full risk-debate transcript. */
-    phase4Debate: {
-      resources: { p4Contributions: phase4Contributions },
-      context: {
-        phase4Debate: (_input, ctx) =>
-          formatDebate(readContributionsEntries(ctx, "p4Contributions")),
       },
     },
 

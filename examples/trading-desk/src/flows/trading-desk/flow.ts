@@ -19,7 +19,6 @@ import { phase2Pipeline } from "./phase-2";
 import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
-import { phase4Contributions } from "./phase-4/round-robin";
 import { phase5Pipeline } from "./phase-5";
 import { memosCollection, type MemoStatus } from "./resources";
 import { resolveTicker } from "./services/ticker-resolver";
@@ -169,9 +168,6 @@ const tradingDeskFlow = defineFlow({
     // Phase 2 transcript. Registered here so post-loop consolidation
     // generators can declare it on their own `resources:` slot.
     p2Contributions: phase2Contributions,
-    // Phase 4 round-robin transcript. Registered so the riskAssessment
-    // consolidation generator can read the persona contributions.
-    p4Contributions: phase4Contributions,
     // User-scoped, flow-isolated standing instructions (FIX-603).
     // Declared here so `resolveUserStorageKey` picks up `flowIsolation: true`
     // for storage-key derivation; the capability's `core` preset also

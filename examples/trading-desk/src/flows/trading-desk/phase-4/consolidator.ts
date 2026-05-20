@@ -2,9 +2,9 @@
  * The Phase 4 `riskAssessmentGenerator` — single-shot consolidation step.
  *
  * Reads the three Phase 4 persona memos with their structured fields, the
- * Phase 3 trade proposal, the Phase 2 investment thesis, and the Phase 4
- * round-robin transcript. On the `full` cost preset, also reads the four
- * Phase 1 analyst memos and the Phase 2 bull/bear debate transcript.
+ * Phase 3 trade proposal, and the Phase 2 investment thesis. On the
+ * `full` cost preset, also reads the four Phase 1 analyst memos and the
+ * Phase 2 bull/bear debate transcript.
  *
  * Emits a typed `RiskAssessment` — what Phase 5 (the portfolio manager)
  * actually consumes. The three persona memos remain as the audit trail.
@@ -28,7 +28,6 @@ export const riskAssessmentGenerator = generator({
       tradeProposal: true,
       investmentThesis: true,
       riskCritiques: true,
-      phase4Debate: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
     }),

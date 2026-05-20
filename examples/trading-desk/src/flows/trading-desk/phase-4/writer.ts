@@ -7,12 +7,11 @@
  * and `markWritingP4` have created or patched the resource, and a missing
  * ref signals a real bug we want surfaced through the per-step rescue.
  *
- * `markErrorP4` returns a `text` field in addition to `status`. The
- * persona steps live inside the round-robin's `.then(agent).tap(record)`
- * frame, where `record-contribution` coerces the upstream output to a
- * string via `obj.text`. Returning a `text` placeholder on rescue means
- * subsequent personas see "(critique unavailable: …)" in the round-robin
- * transcript instead of `String(error)` noise.
+ * `markErrorP4` returns a `text` placeholder alongside `status: "error"`
+ * so the rescue path's output is a non-empty value rather than `void`.
+ * Downstream personas read prior critiques from the persona memos (which
+ * `markErrorP4` flips to `error` with the captured `errorMessage`), not
+ * from this output, so the placeholder is consumed only by tests.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -100,8 +99,10 @@ export function markWritingP4(shortName: Phase4MemoShortName) {
 }
 
 /** Mark a specific Phase 4 memo as `error` with the rescued error's message.
- *  Returns a `{ text }`-bearing object so the round-robin's record-contribution
- *  tap renders a graceful placeholder for the next persona. */
+ *  Returns a `{ status, text }` shape so the rescue path has a typed,
+ *  non-empty output. The placeholder isn't consumed by downstream
+ *  personas — they read prior critiques from the persona memos
+ *  directly — but keeping a stable shape simplifies the test seam. */
 export function markErrorP4(shortName: Phase4MemoShortName) {
   const { collectionKey, agentName } = PHASE_4_MEMO_KEYS[shortName];
   return handler({
