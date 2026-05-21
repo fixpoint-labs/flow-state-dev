@@ -8,6 +8,7 @@
     { "path": "./packages/testing" },
     { "path": "./packages/mcp" },
     { "path": "./packages/scheduled" },
+    { "path": "./packages/chat-sdk" },
     { "path": "./packages/cli" },
     { "path": "./packages/devtool" },
     { "path": "./packages/patterns" },
