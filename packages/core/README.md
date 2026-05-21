@@ -99,6 +99,7 @@ export default defineFlow({
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
 - `sequencer(config)` — Fluent composition DSL (22 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `waitForCondition`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
+- `router.byName(config)` — Shorthand for "pick a block from a `Record` by string key"; throws with the registered keys (or routes to `fallback`) when the selected key is unregistered
 
 **Block methods** (available on every `BlockDefinition`):
 - `.connectInput(mapper)` — adapt input shape at the call boundary

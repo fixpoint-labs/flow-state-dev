@@ -1032,7 +1032,10 @@ describe("debate", () => {
 
       expect(result.error).not.toBeNull();
       const msg = String(result.error?.message ?? "");
-      expect(msg).toContain('unknown debater "nobody"');
+      // FIX-632: speaker dispatch is now `router.byName`, which raises a
+      // generic "no block registered under key X" error and lists the
+      // registered keys.
+      expect(msg).toContain('"nobody"');
       expect(msg).toContain("Available: a, b");
     });
 

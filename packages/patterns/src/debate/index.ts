@@ -40,7 +40,7 @@
  *     .map(buildRawOutput)
  *     [.then(synthesizer)]
  */
-import { sequencer, handler } from "@flow-state-dev/core";
+import { sequencer, handler, router } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
@@ -493,7 +493,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // transparent so `recordTap`'s `ctx.sequencer` resolves to the outer
   // debate sequencer (where `round` lives and the task collection is
   // backed).
-  const speakerBlocks = new Map<string, BlockDefinition<any, any>>();
+  const speakerBlocks: Record<string, BlockDefinition<any, any>> = {};
   for (const entry of debaters) {
     const debaterBlock =
       entry.block ??
@@ -528,7 +528,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       .tap(makePendingTurnTap(entry.name, entry.stance))
       .then(debaterBlock)
       .tap(recordTap);
-    speakerBlocks.set(entry.name, speakerStep as BlockDefinition<any, any>);
+    speakerBlocks[entry.name] = speakerStep as BlockDefinition<any, any>;
   }
 
   const stashModeratorDecision = handler({
@@ -572,20 +572,15 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     return debaters.map((d) => d.name);
   };
 
-  const dispatchByName = (
-    speakerName: string,
-    _index: number,
-    _ctx: unknown,
-  ): BlockDefinition<any, any> => {
-    const block = speakerBlocks.get(speakerName);
-    if (!block) {
-      throw new Error(
-        `[debate] moderator returned unknown debater "${speakerName}" in "${name}". ` +
-          `Available: ${Array.from(speakerBlocks.keys()).join(", ")}`,
-      );
-    }
-    return block;
-  };
+  // Per-iteration dispatch by debater name. The forEach factory feeds
+  // each speaker name as the router's input; `router.byName` looks the
+  // name up in `speakerBlocks` and throws (with the registered list)
+  // if the moderator returned an unknown debater.
+  const dispatchByName = router.byName({
+    name: `${name}-dispatch-speaker`,
+    blocks: speakerBlocks,
+    select: (speakerName: string) => speakerName,
+  });
 
   let pipeline: any = sequencer({
     name,
