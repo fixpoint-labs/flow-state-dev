@@ -9,6 +9,13 @@
  * don't have to depend on the upstream package directly.
  */
 import type { Chat, Thread, Message } from "chat";
+
+/**
+ * Stable provenance identifier stamped on every chat-originated envelope.
+ * Lives here rather than alongside the adapter factory so internal modules
+ * can import it without a circular dependency through `adapter.ts`.
+ */
+export const CHAT_TRANSPORT_SOURCE = "chat" as const;
 import type { ResolvedPrincipal } from "@flow-state-dev/server";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 

@@ -12,14 +12,17 @@
 import type { Chat, Thread, Message } from "chat";
 import type { InboundTransportHost } from "@flow-state-dev/server";
 import { PrincipalResolutionError } from "@flow-state-dev/server";
-import type { ChatAdapterOptions, ChatInboundEvent, ChatEnvelopeMetadata } from "./types";
+import {
+  CHAT_TRANSPORT_SOURCE,
+  type ChatAdapterOptions,
+  type ChatInboundEvent,
+  type ChatEnvelopeMetadata,
+} from "./types";
 import { routeEvent } from "./routing";
 import { resolvePrincipalFromEvent } from "./principal-resolver";
 import { ensureSessionForChat } from "./session-resolver";
 import { setThreadForRequest, clearThreadForRequest } from "./thread-registry";
 import { bridgeStreamToThread } from "./stream-bridge";
-
-const CHAT_TRANSPORT_SOURCE = "chat";
 
 /**
  * Register handlers on the given Chat instance. Each callback maps a
@@ -32,11 +35,8 @@ export function registerEventHandlers(
   host: InboundTransportHost,
   options: ChatAdapterOptions
 ): void {
-  // Attach the bot to dispatchChatEvent's closure so the per-request
-  // registry can hold a reference for utility blocks (e.g. `chat.react`
-  // calls `bot.addReaction(threadId, messageId, emoji)`).
   const dispatch = (event: ChatInboundEvent): Promise<void> =>
-    dispatchChatEvent(host, options, event, bot);
+    dispatchChatEvent(host, options, event);
   const enabled = options.events ?? {};
   const on = (key: keyof typeof enabled): boolean => enabled[key] !== false;
 
@@ -175,8 +175,7 @@ export function registerEventHandlers(
 export async function dispatchChatEvent(
   host: InboundTransportHost,
   options: ChatAdapterOptions,
-  event: ChatInboundEvent,
-  bot: Chat | null = null
+  event: ChatInboundEvent
 ): Promise<void> {
   let route;
   try {
@@ -248,7 +247,7 @@ export async function dispatchChatEvent(
     responseEmitter: streamToThread ? undefined : null,
   });
 
-  setThreadForRequest(handle.requestId, event.thread, event.message, bot);
+  setThreadForRequest(handle.requestId, event.thread, event.message);
   handle.finished.finally(() => clearThreadForRequest(handle.requestId));
 
   if (streamToThread && event.thread !== null) {

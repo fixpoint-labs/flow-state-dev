@@ -9,12 +9,11 @@
  * GC sweep against a hard ceiling so a runaway flow can't grow the map
  * forever.
  */
-import type { Thread, Message, Chat } from "chat";
+import type { Thread, Message } from "chat";
 
 interface Entry {
   thread: Thread | null;
   message: Message | null;
-  bot: Chat | null;
   registeredAt: number;
 }
 
@@ -28,10 +27,9 @@ let lastSweepAt = 0;
 export function setThreadForRequest(
   requestId: string,
   thread: Thread | null,
-  message: Message | null,
-  bot: Chat | null = null
+  message: Message | null
 ): void {
-  registry.set(requestId, { thread, message, bot, registeredAt: Date.now() });
+  registry.set(requestId, { thread, message, registeredAt: Date.now() });
   maybeSweep();
 }
 
@@ -41,10 +39,6 @@ export function getThreadForRequest(requestId: string): Thread | null {
 
 export function getMessageForRequest(requestId: string): Message | null {
   return registry.get(requestId)?.message ?? null;
-}
-
-export function getBotForRequest(requestId: string): Chat | null {
-  return registry.get(requestId)?.bot ?? null;
 }
 
 export function clearThreadForRequest(requestId: string): void {

@@ -5,9 +5,19 @@
  * canonicalizes a thread to a stable cross-platform string (e.g.
  * `"slack:C123:1234567890.123456"`), so we reuse it verbatim. The first
  * inbound event for a thread creates the session; subsequent events on
- * the same thread reuse it. Concurrent first-message races (two replies
- * land at once) are resolved by treating a 409 on `set` as "already
- * created" and proceeding.
+ * the same thread reuse it.
+ *
+ * Concurrency: the write uses `expectedVersion: "any"` (unconditional),
+ * so two near-simultaneous first events for the same thread will both
+ * succeed and the second write wins on the metadata. That's acceptable
+ * here because the metadata fields written (platform / threadId / isDM)
+ * are derived from the same `thread.id`, so the second write produces
+ * identical metadata except possibly `userId` if the two messages came
+ * from different authors. In that case the session ends up bound to the
+ * second author; the runtime's per-request CAS-protected journal updates
+ * keep individual request records correct regardless of which author the
+ * session row settled on. If a stricter "first writer wins" guarantee is
+ * needed later, the store would need to expose a `setIfAbsent` variant.
  */
 import type { ResolvedPrincipal } from "@flow-state-dev/server";
 import type { StoreRegistry } from "@flow-state-dev/server";

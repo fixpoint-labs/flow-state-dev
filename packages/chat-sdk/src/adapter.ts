@@ -24,11 +24,11 @@ import type {
   TransportBindings,
   TransportRoute,
 } from "@flow-state-dev/server";
-import type { ChatAdapterOptions } from "./types";
+import { CHAT_TRANSPORT_SOURCE, type ChatAdapterOptions } from "./types";
 import { registerEventHandlers } from "./event-handlers";
 import { buildOAuthRoutes } from "./oauth/routes";
 
-export const CHAT_TRANSPORT_SOURCE = "chat" as const;
+export { CHAT_TRANSPORT_SOURCE };
 
 /**
  * Build an `InboundTransportAdapter` wrapping a Chat SDK bot. Mount via
@@ -136,15 +136,22 @@ function createLazyBotResolver(
   return async () => {
     if (cached !== null) return cached;
     if (pending !== null) return pending;
-    pending = Promise.resolve(factory()).then((bot) => {
-      cached = bot;
-      if (!handlersRegistered) {
-        registerEventHandlers(bot, host, options);
-        handlersRegistered = true;
-      }
-      pending = null;
-      return bot;
-    });
+    pending = Promise.resolve(factory())
+      .then((bot) => {
+        cached = bot;
+        if (!handlersRegistered) {
+          registerEventHandlers(bot, host, options);
+          handlersRegistered = true;
+        }
+        return bot;
+      })
+      .finally(() => {
+        // Clear regardless of resolve/reject so a transient factory
+        // failure (e.g. a network blip fetching OAuth tokens on cold
+        // start) doesn't leave the resolver returning the same stale
+        // rejected promise forever.
+        pending = null;
+      });
     return pending;
   };
 }

@@ -15,21 +15,39 @@ import { setThreadForRequest, clearThreadForRequest } from "./thread-registry";
 export interface MockChatThread {
   id: string;
   isDM: boolean;
-  adapter: { name: string };
+  /**
+   * Adapter surface used by the utility blocks. `addReaction` is required
+   * because `chatReact` calls `thread.adapter.addReaction(...)` on the
+   * inbound message.
+   */
+  adapter: {
+    name: string;
+    addReaction: (
+      threadId: string,
+      messageId: string,
+      emoji: string
+    ) => Promise<void>;
+  };
   posts: unknown[];
   typings: Array<string | undefined>;
+  reactions: Array<{ threadId: string; messageId: string; emoji: string }>;
   post: (body: unknown) => Promise<{ id: string; edit: (b: unknown) => Promise<void> }>;
   startTyping: (label?: string) => Promise<void>;
   setState: (partial: unknown, opts?: { replace?: boolean }) => Promise<void>;
   getParticipants: () => Promise<unknown[]>;
 }
 
+/**
+ * Mirrors the production `Message` shape the package reads: `id`,
+ * `threadId`, `text`, and `author.userId`. The earlier `author.id` shape
+ * silently masked the principal-resolution branch since production reads
+ * `author.userId`.
+ */
 export interface MockChatMessage {
   id: string;
+  threadId: string;
   text: string;
-  author: { id: string };
-  addReaction: (emoji: string) => Promise<void>;
-  reactions: string[];
+  author: { userId: string };
 }
 
 export function createMockThread(
@@ -37,12 +55,19 @@ export function createMockThread(
 ): MockChatThread {
   const posts: unknown[] = [];
   const typings: Array<string | undefined> = [];
+  const reactions: Array<{ threadId: string; messageId: string; emoji: string }> = [];
   return {
     id: overrides.id ?? "slack:C123:1234567890.123456",
     isDM: overrides.isDM ?? false,
-    adapter: overrides.adapter ?? { name: "slack" },
+    adapter: overrides.adapter ?? {
+      name: "slack",
+      async addReaction(threadId, messageId, emoji) {
+        reactions.push({ threadId, messageId, emoji });
+      },
+    },
     posts,
     typings,
+    reactions,
     async post(body) {
       // Drain async iterables so streaming tests see all chunks.
       if (body !== null && typeof body === "object" && Symbol.asyncIterator in body) {
@@ -73,17 +98,13 @@ export function createMockThread(
 export function createMockMessage(
   overrides: Partial<MockChatMessage> = {}
 ): MockChatMessage {
-  const reactions: string[] = [];
   return {
     id: overrides.id ?? "m_inbound",
+    threadId: overrides.threadId ?? "slack:C123:1234567890.123456",
     text: overrides.text ?? "",
-    author: overrides.author ?? { id: "U_USER" },
-    reactions,
-    async addReaction(emoji) {
-      reactions.push(emoji);
-    },
+    author: overrides.author ?? { userId: "U_USER" },
     ...overrides,
-  } as MockChatMessage;
+  };
 }
 
 /**
