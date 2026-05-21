@@ -36,6 +36,7 @@ import type {
   GeneratorHistoryConfig,
   GeneratorSearchConfig,
   GeneratorSlot,
+  InstructionsSlot,
   ToolsSlot,
   UsesSlot,
   SequencerDefinition,
@@ -46,6 +47,7 @@ import { taskBoard } from "../task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
+  type PlanAndExecuteInput,
   type PlanAndExecuteState,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
@@ -96,9 +98,6 @@ export {
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
-/** Resolvable string — static or computed at runtime from input and context. */
-type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface PlanAndExecuteConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -164,7 +163,7 @@ export interface PlanAndExecuteConfig<
   // -------------------------------------------------------------------------
 
   /** Overall instructions for the pipeline. Composes with executionInstructions / synthesizeInstructions. */
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<PlanAndExecuteInput>;
   /** Context slot applied to all default blocks. */
   context?: GeneratorSlot<any, any>;
   /** History slot applied to default planner and synthesizer. */
@@ -482,7 +481,7 @@ function createDefaultSynthesizer(config: {
   history?: GeneratorHistoryConfig<any, any>;
   tools?: ToolsSlot;
   uses?: UsesSlot;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<any>;
   synthesizeInstructions?: string;
   agentType?: AgentType;
 }) {

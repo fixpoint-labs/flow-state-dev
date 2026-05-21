@@ -19,6 +19,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  InstructionsSlot,
   PromptSlot,
 } from "./generator";
 export type {

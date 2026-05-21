@@ -19,6 +19,7 @@ import type {
   AgentType,
   GeneratorHistoryConfig,
   GeneratorSlot,
+  InstructionsSlot,
   SequencerDefinition,
   UsesSlot,
 } from "@flow-state-dev/core";
@@ -32,6 +33,7 @@ import {
   reviewerVerdictSchema,
   reviewerInputSchema,
   type SubTaskErrorStrategy,
+  type SupervisorInput,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { buildReviewedWorker } from "./blocks/reviewer-check";
@@ -65,10 +67,6 @@ export { createSynthesize } from "./blocks/synthesize";
 export { createLabelFailedReviews } from "./blocks/label-failed-reviews";
 export { legacyWorkerAdapter } from "./blocks/legacy-worker-adapter";
 
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
-
 export interface SupervisorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
 > {
@@ -77,7 +75,7 @@ export interface SupervisorConfig<
   worker?: BlockDefinition<any, any>;
   /** Worker registry — `Record<assignee, BlockDefinition>`. */
   workers?: Record<string, BlockDefinition<any, any>>;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<SupervisorInput>;
   reviewCriteria?: string[];
   /** Per-task retry budget for review rejection. Default 3. */
   maxAttemptsPerTask?: number;
@@ -170,7 +168,7 @@ function buildDefaultSynthesizer(opts: {
   context?: GeneratorSlot<any, any>;
   history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<any>;
   agentType?: AgentType;
 }) {
   const basePrompt = [
