@@ -655,6 +655,64 @@ function asUserMessage(value: unknown): unknown {
   return value;
 }
 
+/**
+ * Whether two values represent the same user-role LLM message. Used at
+ * message-assembly time to avoid double-emitting the current turn's user
+ * input when both `action.userMessage` (via live items in historyValues)
+ * and the generator's `user` slot resolve to identical content.
+ *
+ * Tolerates the two shapes the codebase produces today:
+ *   - { role: "user", content: string }      (asUserMessage; itemToLLMMessages on output_text)
+ *   - { role: "user", content: Array<...> }  (multipart future-proofing)
+ *
+ * If either side is not a recognizable user message, returns false (do not
+ * dedup). Equality on content uses a stable stringified key so the helper
+ * is robust to shape evolution without re-deriving normalization rules
+ * across the two production paths (asUserMessage and itemToLLMMessages).
+ */
+function isEquivalentUserMessage(a: unknown, b: unknown): boolean {
+  if (!isUserRoleMessage(a) || !isUserRoleMessage(b)) return false;
+  return userMessageContentKey(a) === userMessageContentKey(b);
+}
+
+function isUserRoleMessage(value: unknown): value is { role: "user"; content: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { role?: unknown }).role === "user" &&
+    "content" in (value as object)
+  );
+}
+
+function userMessageContentKey(msg: { content: unknown }): string {
+  const c = msg.content;
+  if (typeof c === "string") return c;
+  // Sort object keys recursively so equivalence is independent of key
+  // insertion order across the two producers (asUserMessage and
+  // itemToLLMMessages). Without this, two semantically equal multipart
+  // parts whose keys were inserted in different orders would stringify
+  // differently and dedup would silently fail.
+  try {
+    const serialized = stableStringify(c);
+    return serialized !== undefined ? serialized : String(c);
+  } catch {
+    return String(c);
+  }
+}
+
+function stableStringify(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
+        sorted[k] = (val as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return val;
+  });
+}
+
 async function resolveSlotValues<TInput, TCtx extends BlockContext>(
   slot: GeneratorSlot<TInput, TCtx> | undefined,
   input: TInput,
@@ -1904,10 +1962,23 @@ export function generator<
         ctx
       );
       const systemPrefixCount = systemPrefix.length;
+      // FIX-662: when action.userMessage emits a runtime user item, it lands
+      // in live items and flows through historyValues. If the generator's
+      // `user` slot resolves to equivalent content, drop the leading
+      // userValues entry so the model does not see the user's turn twice.
+      // Anthropic silently merges adjacent same-role messages, which is the
+      // visible symptom this guards against. The drop is on userValues (not
+      // historyValues) because historyValues is the retry/resume contract
+      // surface and live items must remain visible to retried turns.
+      const userMessages = userValues.map(asUserMessage);
+      const dropLeadingUserDuplicate =
+        userMessages.length > 0 &&
+        historyValues.length > 0 &&
+        isEquivalentUserMessage(historyValues[historyValues.length - 1], userMessages[0]);
       const messages: unknown[] = [
         ...systemPrefix,
         ...historyValues,
-        ...userValues.map(asUserMessage)
+        ...(dropLeadingUserDuplicate ? userMessages.slice(1) : userMessages)
       ];
 
       // Build prepareStep callback when prompt, context, or tools contain

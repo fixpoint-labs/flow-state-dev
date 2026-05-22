@@ -160,7 +160,7 @@ What the pieces do:
 
 - **`kind`** is the flow's identifier. The HTTP path includes it (`/api/flows/hello-chat/...`).
 - **`actions`** is the public surface. Each action has an input schema and a block. Clients call actions, not blocks directly.
-- **`userMessage`** tells the framework which part of the input is the human-readable user message. That's what gets persisted into history for `history: true` to read on the next turn.
+- **`userMessage`** tells the framework which part of the input is the human-readable user message. That's what gets persisted into history for `history: true` to read on the next turn. For the generator-side counterpart that resolves this turn's LLM input, see [Generator context > User slot](../advanced/generator-context.md#user-slot) — wiring both to the same source is safe.
 - **`session.stateSchema`** is the typed shape of session state. The framework validates state writes against it.
 - **`defineFlow(...)`** returns a factory. Calling it with no arguments produces the registerable instance. You can also pass `{ id, kind, actions, ... }` overrides for variants.
 

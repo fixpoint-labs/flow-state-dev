@@ -66,7 +66,9 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). To chain multiple blocks together, you'd compose them with a **sequencer**:
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. See [Generator context > User slot](/docs/advanced/generator-context#user-slot) for the interaction.
+
+To chain multiple blocks together, you'd compose them with a **sequencer**:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
