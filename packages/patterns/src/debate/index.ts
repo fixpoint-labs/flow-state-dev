@@ -40,7 +40,7 @@
  *     .map(buildRawOutput)
  *     [.then(synthesizer)]
  */
-import { sequencer, handler, router } from "@flow-state-dev/core";
+import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
@@ -572,11 +572,11 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     return debaters.map((d) => d.name);
   };
 
-  // Per-iteration dispatch by debater name. The forEach factory feeds
-  // each speaker name as the router's input; `router.byName` looks the
-  // name up in `speakerBlocks` and throws (with the registered list)
-  // if the moderator returned an unknown debater.
-  const dispatchByName = router.byName({
+  // Per-iteration dispatch by debater name. The forEach feeds each
+  // speaker name as the router's input; `utility.keyedRouter` looks
+  // the name up in `speakerBlocks` and throws (with the registered
+  // list) if the moderator returned an unknown debater.
+  const dispatchByName = utility.keyedRouter({
     name: `${name}-dispatch-speaker`,
     blocks: speakerBlocks,
     select: (speakerName: string) => speakerName,

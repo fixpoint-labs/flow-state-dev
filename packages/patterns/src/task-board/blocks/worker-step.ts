@@ -20,9 +20,10 @@
  *   We pre-connect each worker with the `Task → TaskWorkerInput`
  *   adaptation (BP-013: pre-connecting at definition time is fine for
  *   purpose-built pattern adapters) and feed the registry to
- *   `router.byName`, which dispatches by `task.assignee`. The workers
- *   themselves keep their generic `TaskWorkerInput` schema and stay
- *   reusable; only their pattern-side registry entry is pre-adapted.
+ *   `utility.keyedRouter`, which dispatches by `task.assignee`. The
+ *   workers themselves keep their generic `TaskWorkerInput` schema
+ *   and stay reusable; only their pattern-side registry entry is
+ *   pre-adapted.
  *
  * Registry-miss errors (assignee absent, or no assignee on the task)
  * throw out of the router. The error propagates up through the
@@ -31,7 +32,7 @@
  * exactly the offending task, never a sibling's concurrently-claimed
  * work.
  */
-import { router } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -160,7 +161,7 @@ export interface BuildWorkerStepOptions {
  * Returns a block that takes a `Task` and produces the worker's
  * output. For uniform workers the result is the worker pre-connected
  * with `Task → TaskWorkerInput`. For registries the result is a
- * `router.byName` over each worker pre-connected with the same
+ * `utility.keyedRouter` over each worker pre-connected with the same
  * adaptation, selecting by `task.assignee`.
  *
  * The output type is `unknown` because worker outputs are
@@ -202,7 +203,7 @@ export function buildWorkerStep(
     );
   }
 
-  return router.byName({
+  return utility.keyedRouter({
     name: `${name}-worker-router`,
     inputSchema: taskSchema,
     outputSchema: z.unknown(),

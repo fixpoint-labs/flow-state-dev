@@ -421,12 +421,12 @@ const modeRouter = router({
 });
 ```
 
-#### `router.byName` — dispatch by string key
+#### `utility.keyedRouter` — dispatch by string key
 
-When the choice is just "pick a block from a `Record` by name", reach for `router.byName`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
+When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
 
 ```ts
-import { router } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
 const specialists = {
   research: researchPipeline,
@@ -434,7 +434,7 @@ const specialists = {
   review: reviewPipeline,
 };
 
-const dispatch = router.byName({
+const dispatch = utility.keyedRouter({
   name: "dispatch",
   inputSchema: controllerOutputSchema,
   blocks: specialists,
@@ -444,7 +444,7 @@ const dispatch = router.byName({
 
 If `select` returns a key that isn't in `blocks`, the router throws with the list of registered keys. Pass `fallback` to route unknown keys to a default block instead.
 
-Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `router.byName`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
+Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `keyedRouter`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
 
 ## The block context
 

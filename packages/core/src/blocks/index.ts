@@ -33,4 +33,4 @@ export type {
   SequencerConfig,
   SequencerDefinition
 } from "./sequencer-methods";
-export type { RouterByNameConfig, RouterConfig } from "./router";
+export type { RouterConfig } from "./router";

@@ -99,6 +99,14 @@ export type {
 } from "./intent-router";
 
 export {
+  keyedRouter
+} from "./keyed-router";
+
+export type {
+  KeyedRouterConfig
+} from "./keyed-router";
+
+export {
   sessionTitleGenerator
 } from "./session-title-generator";
 

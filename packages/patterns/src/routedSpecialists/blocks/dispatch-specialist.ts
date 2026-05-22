@@ -2,9 +2,9 @@
  * Router that dispatches to the specialist named by the controller's
  * decision. Throws when the name is missing — that's a controller bug,
  * not a runtime condition to swallow. The unregistered-name error is
- * raised by `router.byName` itself with the registered key list.
+ * raised by `keyedRouter` itself with the registered key list.
  */
-import { router } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
@@ -12,7 +12,7 @@ export function createDispatchSpecialist(
   name: string,
   specialists: Record<string, BlockDefinition<any, any>>
 ) {
-  return router.byName({
+  return utility.keyedRouter({
     name: `${name}-dispatch`,
     inputSchema: z.object({
       specialist: z.string().nullable(),

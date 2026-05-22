@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handler, router } from "../src";
+import { handler, router, utility } from "../src";
 import { createMockContext, runForTest } from "./helpers";
 describe("router builder", () => {
   it("executes selected route", async () => {
@@ -85,12 +85,12 @@ describe("router builder", () => {
   });
 });
 
-describe("router.byName", () => {
+describe("utility.keyedRouter", () => {
   it("dispatches to the block keyed by select()", async () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
     const beta = handler({ name: "beta", execute: () => "B" });
 
-    const block = router.byName({
+    const block = utility.keyedRouter({
       name: "by-name",
       blocks: { alpha, beta },
       select: (input: { which: string }) => input.which,
@@ -105,7 +105,7 @@ describe("router.byName", () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
     const beta = handler({ name: "beta", execute: () => "B" });
 
-    const block = router.byName({
+    const block = utility.keyedRouter({
       name: "missing-key",
       blocks: { alpha, beta },
       select: (input: { which: string }) => input.which,
@@ -121,7 +121,7 @@ describe("router.byName", () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
     const otherwise = handler({ name: "otherwise", execute: () => "X" });
 
-    const block = router.byName({
+    const block = utility.keyedRouter({
       name: "with-fallback",
       blocks: { alpha },
       fallback: otherwise,
@@ -136,7 +136,7 @@ describe("router.byName", () => {
   it("propagates errors thrown from select() without wrapping", async () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
 
-    const block = router.byName({
+    const block = utility.keyedRouter({
       name: "select-throws",
       blocks: { alpha },
       select: () => {

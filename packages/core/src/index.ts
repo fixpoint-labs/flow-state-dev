@@ -116,7 +116,6 @@ export type {
   InlineTapConfig,
   ParallelStep,
   ParallelStepOutput,
-  RouterByNameConfig,
   RouterConfig,
   SequencerConfig,
   SequencerDefinition
