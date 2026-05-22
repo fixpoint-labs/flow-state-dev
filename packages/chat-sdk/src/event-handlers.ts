@@ -25,6 +25,17 @@ import { setThreadForRequest, clearThreadForRequest } from "./thread-registry";
 import { bridgeStreamToThread } from "./stream-bridge";
 
 /**
+ * Pull a `userId` out of a Chat SDK `Author`-shaped object. Used by the
+ * event-kind handlers that receive a typed `user: Author` field (action,
+ * slashCommand, modalSubmit) — `Author.userId` is the canonical id.
+ */
+function extractAuthorUserId(user: unknown): string | undefined {
+  if (user === null || typeof user !== "object") return undefined;
+  const userId = (user as { userId?: unknown }).userId;
+  return typeof userId === "string" ? userId : undefined;
+}
+
+/**
  * Register handlers on the given Chat instance. Each callback maps a
  * native Chat SDK event into the unified `ChatInboundEvent` and delegates
  * to `dispatchChatEvent`. Idempotency-by-flag is the caller's job — call
@@ -100,6 +111,9 @@ export function registerEventHandlers(
         platform: thread?.adapter.name ?? "unknown",
         actionId: typeof event?.actionId === "string" ? event.actionId : undefined,
         actionValue: event?.value ?? event,
+        ...(extractAuthorUserId(event?.user) !== undefined
+          ? { principalUser: { userId: extractAuthorUserId(event.user)! } }
+          : {}),
         raw: event,
       });
     });
@@ -117,6 +131,9 @@ export function registerEventHandlers(
           name: String(event?.command ?? ""),
           args: String(event?.text ?? ""),
         },
+        ...(extractAuthorUserId(event?.user) !== undefined
+          ? { principalUser: { userId: extractAuthorUserId(event.user)! } }
+          : {}),
         raw: event,
       });
     });
@@ -132,6 +149,9 @@ export function registerEventHandlers(
         platform: thread?.adapter.name ?? "unknown",
         actionId: typeof event?.callbackId === "string" ? event.callbackId : undefined,
         actionValue: event?.values,
+        ...(extractAuthorUserId(event?.user) !== undefined
+          ? { principalUser: { userId: extractAuthorUserId(event.user)! } }
+          : {}),
         raw: event,
       });
     });
@@ -145,6 +165,9 @@ export function registerEventHandlers(
         thread,
         message: null,
         platform: thread?.adapter.name ?? "unknown",
+        ...(typeof event?.userId === "string"
+          ? { principalUser: { userId: event.userId } }
+          : {}),
         raw: event,
       });
     });
@@ -158,6 +181,9 @@ export function registerEventHandlers(
         thread,
         message: null,
         platform: thread?.adapter.name ?? "unknown",
+        ...(typeof event?.userId === "string"
+          ? { principalUser: { userId: event.userId } }
+          : {}),
         raw: event,
       });
     });

@@ -52,6 +52,14 @@ export interface ChatInboundEvent {
   matchedGroups?: RegExpMatchArray;
   actionId?: string;
   actionValue?: unknown;
+  /**
+   * Inbound user identity surfaced by event types that don't carry a
+   * `Message` (slash commands, assistant thread started, member joined,
+   * button actions). Populated by the per-callback handler when the
+   * underlying Chat SDK event exposes a user — the default principal
+   * resolver reads this when `message?.author` is absent.
+   */
+  principalUser?: { userId: string };
   slashCommand?: { name: string; args: string };
   /** Underlying Chat SDK event payload as the handler received it. */
   raw: unknown;

@@ -1,11 +1,18 @@
 /**
  * Default principal resolver for chat events.
  *
- * Maps a Chat SDK author to a stable `${platform}:${author.userId}` userId.
- * Adapter authors can override by supplying `resolvePrincipal` on
- * `ChatAdapterOptions`. Throws `PrincipalResolutionError(401)` only when
- * no usable identity exists — actions and modal submits carry their own
- * `actionValue.user` payload that we accept as a fallback.
+ * Three lookup paths, in priority order:
+ *   1. `message.author.userId` — present for mention / DM / subscribed /
+ *      pattern-match events.
+ *   2. `event.principalUser.userId` — populated by per-callback handlers
+ *      for events that don't carry a `Message` (slash commands, assistant
+ *      thread started, member joined, button actions).
+ *   3. `event.actionValue.user.{userId|id}` — legacy fallback for older
+ *      action-shaped payloads where the user travels inside the value.
+ *
+ * Throws `PrincipalResolutionError(401)` when none of these is available.
+ * Adapter authors with stricter requirements should pass a custom
+ * `resolvePrincipal` to `createChatTransportAdapter`.
  */
 import type { ResolvedPrincipal } from "@flow-state-dev/server";
 import { PrincipalResolutionError } from "@flow-state-dev/server";
@@ -19,13 +26,15 @@ export function resolvePrincipalFromEvent(
   if (author !== undefined && typeof author?.userId === "string") {
     return { userId: `${platform}:${author.userId}` };
   }
-  // Action / modal payloads carry their own user reference.
+  if (typeof event.principalUser?.userId === "string") {
+    return { userId: `${platform}:${event.principalUser.userId}` };
+  }
   const actionUser = extractActionUser(event.actionValue);
   if (actionUser !== undefined) {
     return { userId: `${platform}:${actionUser}` };
   }
   throw new PrincipalResolutionError(
-    "Cannot resolve principal from chat event: no author or action user.",
+    "Cannot resolve principal from chat event: no author, principalUser, or action user.",
     { status: 401 }
   );
 }
@@ -34,6 +43,7 @@ function extractActionUser(actionValue: unknown): string | undefined {
   if (actionValue === null || typeof actionValue !== "object") return undefined;
   const user = (actionValue as { user?: unknown }).user;
   if (user === null || typeof user !== "object") return undefined;
-  const id = (user as { id?: unknown }).id;
-  return typeof id === "string" ? id : undefined;
+  const candidate =
+    (user as { userId?: unknown }).userId ?? (user as { id?: unknown }).id;
+  return typeof candidate === "string" ? candidate : undefined;
 }
