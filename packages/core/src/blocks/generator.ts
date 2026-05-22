@@ -277,6 +277,11 @@ export type GeneratorTool = BlockDefinition<any, any>;
 /** Tools slot accepted by generators and pattern factories — static array or context-aware function. */
 export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorTool[]>);
 
+/** Instructions slot accepted by pattern factories — static string or context-aware function returning a prompt string. */
+export type InstructionsSlot<TInput = unknown> =
+  | string
+  | ((input: TInput, ctx: any) => MaybePromise<string>);
+
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
  */

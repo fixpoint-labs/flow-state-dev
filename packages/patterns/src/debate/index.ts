@@ -44,6 +44,7 @@ import { sequencer, handler } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  InstructionsSlot,
   SequencerDefinition,
   ToolsSlot,
   UsesSlot,
@@ -58,6 +59,7 @@ import {
   debateInputSchema,
   debateStateSchema,
   createDebateTranscript,
+  type DebateInput,
   type DebateModeratorOutput,
   type DebateRawOutput,
   type DebateState,
@@ -96,10 +98,6 @@ export { createSynthesize } from "./blocks/default-synthesizer";
 export { createModerator } from "./blocks/default-moderator";
 export { createInitTranscript } from "./blocks/init-transcript";
 export { createRecordArgument } from "./blocks/record-argument";
-
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
 
 /** A single debater seat. */
 export interface DebaterConfig {
@@ -176,7 +174,7 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   terminateWhen?: (ctx: BlockContext) => boolean;
   outputSchema?: TOutputSchema;
   /** Pattern-level instructions injected into default blocks only. */
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<DebateInput>;
   /** Default model for internal generators. */
   model?: string;
   uses?: UsesSlot;

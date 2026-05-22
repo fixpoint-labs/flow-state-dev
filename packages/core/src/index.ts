@@ -109,6 +109,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  InstructionsSlot,
   PromptSlot,
   HandlerConfig,
   InlineBlockFactory,

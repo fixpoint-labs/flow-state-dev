@@ -26,6 +26,7 @@ import { sequencer, handler } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  InstructionsSlot,
   SequencerDefinition,
   ToolsSlot,
   UsesSlot,
@@ -42,6 +43,7 @@ import {
   createRoundRobinContributions,
   type RoundRobinContributionsState,
   type RoundRobinFinalShape,
+  type RoundRobinInput,
   type RoundRobinRefereeOutput,
   type RoundRobinState,
 } from "./schemas";
@@ -73,10 +75,6 @@ export { createReferee } from "./blocks/default-referee";
 export { createSynthesize } from "./blocks/default-synthesizer";
 export { createInitContributions } from "./blocks/init-contributions";
 export { createRecordContribution } from "./blocks/record-contribution";
-
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
 
 /** A single seat in the round-robin roster. */
 export interface RosterEntry {
@@ -138,7 +136,7 @@ export interface RoundRobinConfig<
   /** Output schema applied to the synthesizer's output. */
   outputSchema?: TOutputSchema;
   /** Pattern-level instructions injected into default blocks only. */
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<RoundRobinInput>;
   /** Default model for internal generators. Default `"intent/chat"`. */
   model?: string;
   /** Capabilities forwarded to default roster agents, referee, synthesizer. */

@@ -18,6 +18,7 @@ import { generator } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  InstructionsSlot,
   ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
@@ -28,10 +29,6 @@ import {
   type DebateContributionEntry,
   type DebateTranscriptState,
 } from "../schemas";
-
-export type JudgeInstructions =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface CreateJudgeOptions {
   name: string;
@@ -48,7 +45,7 @@ export interface CreateJudgeOptions {
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
   tools?: ToolsSlot;
-  instructions?: JudgeInstructions;
+  instructions?: InstructionsSlot;
   agentType?: AgentType;
 }
 

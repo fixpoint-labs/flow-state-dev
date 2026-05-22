@@ -202,6 +202,11 @@ generator({
 
 Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See `docs/architecture/blocks.md` for the full contract.
 
+**Slot types:**
+- `ToolsSlot` — Tools accepted by generators: static array or `(ctx) => tools[]`
+- `UsesSlot` — Capabilities accepted by blocks: static array or `(ctx) => caps[]`
+- `InstructionsSlot<TInput>` — Pattern-level instructions: static string or `(input, ctx) => string | Promise<string>`. Parameterize with the pattern's input type to recover a typed `input` in the callback.
+
 **Type helpers:**
 - `StateOf<T>` — Extract state type from schema or resource
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource

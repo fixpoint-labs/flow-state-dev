@@ -30,7 +30,12 @@ import type {
   BlockDefinition,
   DefinedResource,
 } from "@flow-state-dev/core/types";
-import type { AgentType, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type {
+  AgentType,
+  GeneratorSlot,
+  InstructionsSlot,
+  UsesSlot,
+} from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
@@ -61,11 +66,6 @@ export { createCheckLoop } from "./blocks/check-loop";
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
-/** Resolvable string — static or computed at runtime from input and context. */
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface RoutedSpecialistsConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
