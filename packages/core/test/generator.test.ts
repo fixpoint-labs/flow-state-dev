@@ -1137,6 +1137,156 @@ describe("generator streaming", () => {
   });
 });
 
+describe("generator non-streaming tool emission (FIX-661)", () => {
+  // Inline model literal with `generate()` only and no `stream()` — keeps
+  // `canStream === false` so the non-streaming branch is exercised. Must NOT
+  // use `createMockModelResolver` here: that mock implements `stream()` and
+  // would silently route this test through the streaming branch.
+  it("emits paired in_progress + completed tool_call_progress items from generation.steps", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const block = generator({
+      name: "ns-tool",
+      agentType: "primary",
+      model: "inline-mock",
+      prompt: "p"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "inline-mock",
+        async generate() {
+          return {
+            text: "done",
+            toolCalls: [{ toolCallId: "tc_1", toolName: "search", args: { q: "x" } }],
+            steps: [{
+              toolCalls: [{ toolCallId: "tc_1", toolName: "search", args: { q: "x" } }],
+              toolResults: [{ toolCallId: "tc_1", toolName: "search", result: { hits: 3 } }]
+            }],
+            finishReason: "stop"
+          };
+        }
+        // Deliberately no `stream` method.
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        }
+      }
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const tcpAdds = emitted.filter(
+      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
+    );
+    expect(tcpAdds.length).toBe(2);
+
+    const inProgress = tcpAdds.find(e => e.item.status === "in_progress");
+    expect(inProgress).toBeDefined();
+    expect(inProgress!.item.toolCallId).toBe("tc_1");
+    expect(inProgress!.item.toolName).toBe("search");
+    expect(inProgress!.item.argsDelta).toBe('{"q":"x"}');
+    expect(inProgress!.item.transient).toBe(true);
+
+    const completed = tcpAdds.find(e => e.item.status === "completed");
+    expect(completed).toBeDefined();
+    expect(completed!.item.toolCallId).toBe("tc_1");
+    expect(completed!.item.result).toEqual({ hits: 3 });
+
+    // Both items also get item.done events.
+    const tcpDones = emitted.filter(
+      e => e.type === "item.done" && e.item?.type === "tool_call_progress"
+    );
+    expect(tcpDones.length).toBe(2);
+
+    // Tool-call items emit before the terminal message item.
+    const firstMsgIdx = emitted.findIndex(
+      e => e.type === "item.added" && e.item?.type === "message"
+    );
+    const lastTcpIdx = emitted.map((e, i) => ({ e, i }))
+      .filter(({ e }) => e.type === "item.added" && e.item?.type === "tool_call_progress")
+      .map(({ i }) => i)
+      .pop();
+    expect(firstMsgIdx).toBeGreaterThan(-1);
+    expect(lastTcpIdx).toBeLessThan(firstMsgIdx);
+  });
+
+  it("emits only in_progress items when generation.steps is absent", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const block = generator({
+      name: "ns-tool-no-steps",
+      agentType: "primary",
+      model: "inline-mock",
+      prompt: "p"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "inline-mock",
+        async generate() {
+          return {
+            text: "done",
+            toolCalls: [{ toolCallId: "tc_2", toolName: "search", args: { q: "y" } }],
+            finishReason: "stop"
+          };
+        }
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        }
+      }
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const tcpAdds = emitted.filter(
+      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
+    );
+    expect(tcpAdds.length).toBe(1);
+    expect(tcpAdds[0].item.status).toBe("in_progress");
+    expect(tcpAdds[0].item.toolCallId).toBe("tc_2");
+  });
+
+  it("emits no tool_call_progress items when agentType is unset", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const block = generator({
+      name: "ns-tool-no-identity",
+      model: "inline-mock",
+      prompt: "p"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "inline-mock",
+        async generate() {
+          return {
+            text: "done",
+            toolCalls: [{ toolCallId: "tc_3", toolName: "search", args: {} }],
+            steps: [{
+              toolCalls: [{ toolCallId: "tc_3", toolName: "search", args: {} }],
+              toolResults: [{ toolCallId: "tc_3", toolName: "search", result: {} }]
+            }],
+            finishReason: "stop"
+          };
+        }
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        }
+      }
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const tcpAdds = emitted.filter(
+      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
+    );
+    expect(tcpAdds.length).toBe(0);
+  });
+});
+
 describe("generator — observable model identity (FIX-518)", () => {
   it("stamps `model` on streamed message, reasoning, and tool_call_progress items", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];

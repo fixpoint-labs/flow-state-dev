@@ -2088,6 +2088,87 @@ export function generator<
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
       }
+
+      // FIX-661: emit `tool_call_progress` items for tool calls that happened
+      // inside the model's internal multi-step loop. Streaming providers
+      // produce these via the chunk stream above; non-streaming providers
+      // return them on the generation result and we synthesise the same
+      // items here so observability is independent of transport. Mirrors the
+      // streaming branch's emission shape (lines 1518-1562).
+      //
+      // Ordering caveat: on the streaming branch the interleave is
+      // `tool_call_progress { in_progress }` → `tool_output` (durable, from
+      // `emitToolOutputAround` inside the AI SDK's tool loop) →
+      // `tool_call_progress { completed }`. Here the tool runs *during*
+      // `model.generate()`, so any `tool_output` items have already been
+      // emitted by the time this block runs. Subscribers that key UI state
+      // off the `in_progress` transient must tolerate the durable
+      // `tool_output` arriving first on non-streaming providers.
+      if (agentType !== undefined) {
+        const toolIdentity = ctx._blockIdentity;
+        const toolProvenance = {
+          blockName: toolIdentity?.blockName ?? blockName,
+          blockInstanceId: toolIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: toolIdentity?.parentBlockInstanceId,
+          phase: toolIdentity?.phase ?? ("main" as const)
+        };
+        const toolOwnedBy = toolIdentity?.ownedBy;
+
+        // Prefer per-step pairing when available — preserves call ordering and
+        // matches each call to its result. Fall back to top-level toolCalls
+        // when steps are absent (custom resolvers, older provider shapes); in
+        // that case only `in_progress` items emit (no result to pair).
+        const stepCalls = generation.steps?.flatMap((s) => s.toolCalls ?? []) ?? [];
+        const stepResults = generation.steps?.flatMap((s) => s.toolResults ?? []) ?? [];
+        const sourceCalls = stepCalls.length > 0 ? stepCalls : (generation.toolCalls ?? []);
+        const resultByCallId = new Map(stepResults.map((r) => [r.toolCallId, r] as const));
+
+        for (const call of sourceCalls) {
+          const inProgressItem = {
+            id: `item_toolcall_${call.toolCallId}`,
+            type: "tool_call_progress" as const,
+            status: "in_progress" as const,
+            transient: true,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance: toolProvenance,
+            ts: Date.now(),
+            ownedBy: toolOwnedBy,
+            agentType,
+            agentName,
+            model: nonStreamingIdentity,
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            argsDelta: JSON.stringify(call.args ?? {})
+          };
+          await ctx.response.emit({ type: "item.added", item: inProgressItem });
+          await ctx.response.emit({ type: "item.done", item: inProgressItem });
+
+          const result = resultByCallId.get(call.toolCallId);
+          if (result !== undefined) {
+            const completedItem = {
+              id: `item_toolresult_${call.toolCallId}`,
+              type: "tool_call_progress" as const,
+              status: "completed" as const,
+              transient: true,
+              requestId: ctx.request.identity.id,
+              itemIndex: getEmitterItemCount(ctx.response),
+              provenance: toolProvenance,
+              ts: Date.now(),
+              ownedBy: toolOwnedBy,
+              agentType,
+              agentName,
+              model: nonStreamingIdentity,
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              result: result.result
+            };
+            await ctx.response.emit({ type: "item.added", item: completedItem });
+            await ctx.response.emit({ type: "item.done", item: completedItem });
+          }
+        }
+      }
+
       if (candidate === undefined) {
         throw new Error(`Generator "${blockName}" did not produce output after ${maxSteps} step(s)`);
       }
