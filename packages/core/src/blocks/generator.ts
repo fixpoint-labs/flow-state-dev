@@ -280,7 +280,7 @@ export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorT
 /** Instructions slot accepted by pattern factories — static string or context-aware function returning a prompt string. */
 export type InstructionsSlot<TInput = unknown> =
   | string
-  | ((input: TInput, ctx: any) => string | Promise<string>);
+  | ((input: TInput, ctx: any) => MaybePromise<string>);
 
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
