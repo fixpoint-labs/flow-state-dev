@@ -206,6 +206,6 @@ import { createAppendEntry } from "@flow-state-dev/patterns/eventActors";
 ## See also
 
 - [Routed Specialists](./routed-specialists) — controller-driven sibling pattern.
-- Task Board (`@flow-state-dev/patterns/task-board`) — concurrent drain over a `TaskCollection` with dependency gating.
+- [Task Board](./task-board) — concurrent drain over a `TaskCollection` with dependency gating.
 - [Parallel Tasks](./parallelTasks) — single-pass fan-out when tasks are known upfront.
 - [Supervisor](./supervisor) — fan-out with review loop.

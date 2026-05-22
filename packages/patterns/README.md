@@ -103,7 +103,15 @@ const system = eventActors({
 
 ### Task Board
 
-Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains (or `shouldExit` returns true in `wait` mode).
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
+
+**Termination modes (`onIdle`)**:
+
+- `"complete-or-blocked"` (default, FIX-626): exit on full drain OR when no `in_progress`/`awaiting_review` task is active and no `pending` task has all deps `completed`. Handles the DAG case where an upstream task errors and downstream pendings can never run.
+- `"complete"`: exit only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
+- `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
+
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures"` field so callers can tell a clean drain from a dep-blocked exit without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";

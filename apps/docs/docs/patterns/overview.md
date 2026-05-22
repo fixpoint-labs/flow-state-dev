@@ -95,7 +95,7 @@ More specifically:
 - **Fixed-roster turn-taking with a judge deciding when to stop** → [Round Robin](./round-robin)
 - **Adversarial argumentation with assigned stances and a final judge. An optional moderator can drive non-deterministic dispatch across rounds and signal early termination.** → [Debate](./debate)
 - **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
-- **Concurrent dependency-aware drain over a Task Collection** → Task Board (see `@flow-state-dev/patterns/task-board`)
+- **Concurrent dependency-aware drain over a Task Collection** → [Task Board](./task-board)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 
 The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.

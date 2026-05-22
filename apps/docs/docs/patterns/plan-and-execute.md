@@ -368,6 +368,7 @@ Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have 
 
 ## See also
 
+- [Task Board](./task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
 - [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
 - [Supervisor](./supervisor) — parallel execution with quality review loop
 - [Patterns Overview](./overview) — when to use which pattern

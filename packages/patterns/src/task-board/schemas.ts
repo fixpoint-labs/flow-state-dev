@@ -122,7 +122,7 @@ export const taskWorkerInputSchema = z.object({
 /** Output of `checkBoard` — drives the worker's `loopBack` predicate. */
 export const checkBoardOutputSchema = z.object({
   shouldContinue: z.boolean(),
-  reason: z.enum(["drained", "exit", "claimed", "idle"]),
+  reason: z.enum(["drained", "exit", "claimed", "idle", "blocked"]),
 });
 
 export type CheckBoardOutput = z.infer<typeof checkBoardOutputSchema>;
