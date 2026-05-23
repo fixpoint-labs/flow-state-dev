@@ -59,6 +59,25 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
 };
 
 /**
+ * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
+ * usually a `DOMException`/`Error`, but may be any thrown value, so this
+ * never throws. Used by the FIX-663 abort diagnostics.
+ */
+function serializeAbortReason(reason: unknown): string {
+  if (reason === undefined) {
+    return "undefined";
+  }
+  if (reason instanceof Error) {
+    return `${reason.name}: ${reason.message}`;
+  }
+  try {
+    return String(reason);
+  } catch {
+    return "<unserializable reason>";
+  }
+}
+
+/**
  * Drains the request-scoped background work pool. Emits `backgroundTasks: N`
  * status updates as tasks settle (parity with the legacy per-sequencer
  * auto-await), logs failures via console.error, and emits a final
@@ -70,7 +89,7 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
  */
 async function drainRequestWorkPool(
   ctx: ExecutionContext,
-  signal: AbortSignal
+  signal?: AbortSignal
 ): Promise<void> {
   const pool = getRequestWorkPool(ctx);
   if (pool === undefined) {
@@ -691,6 +710,41 @@ export async function runActionInternal<
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
 
+  // FIX-663: a separate controller for fire-and-forget `.work()` tasks. It
+  // fires ONLY when the abort-registry controller fires (the explicit
+  // `/abort` endpoint / `session.abortRequest()`). Transport-level signals
+  // composed into `composedSignal` via `AbortSignal.any` do NOT propagate
+  // here because we listen on `abortController.signal` directly — so a client
+  // disconnect or SSE close leaves background work to settle.
+  const backgroundController = new AbortController();
+  const fireBackground = (): void => {
+    backgroundController.abort(abortController.signal.reason);
+    logRuntimeEvent(logger, "warn", "[flow-state] [abort] background signal fired", {
+      requestId,
+      reason: serializeAbortReason(abortController.signal.reason)
+    });
+  };
+  // `{ once: true }` so the listener auto-removes after firing, avoiding
+  // listener accumulation per nodejs/node#46525.
+  abortController.signal.addEventListener("abort", () => {
+    // Diagnostic: log every request-signal fire with a stack trace so the
+    // next regression of this shape is debuggable from server logs alone.
+    logRuntimeEvent(logger, "warn", "[flow-state] [abort] request signal fired", {
+      requestId,
+      reason: serializeAbortReason(abortController.signal.reason),
+      stack: new Error("abort fire site").stack
+    });
+    fireBackground();
+  }, { once: true });
+  // Defensive: addEventListener does NOT fire for an already-aborted signal.
+  // Covers the (microsecond) TOCTOU window between registerAbortController
+  // and this listener install. In practice abortController only fires from
+  // the /abort endpoint (a network round-trip), so this branch is exercised
+  // only if registration races abort — but the guard is free.
+  if (abortController.signal.aborted) {
+    fireBackground();
+  }
+
   let ctx: ExecutionContext;
   try {
     ctx = await createExecutionContext({
@@ -704,6 +758,7 @@ export async function runActionInternal<
       metadata: options.metadata,
       input: options.input,
       signal: composedSignal,
+      backgroundSignal: backgroundController.signal,
       modelResolver: options.modelResolver,
       response,
       stores: options.stores,
@@ -818,7 +873,13 @@ export async function runActionInternal<
     // abort/disconnect/error paths below: in-flight tasks see ctx.signal and
     // either short-circuit or run to completion in the void; either way the
     // request must not block on them.
-    await drainRequestWorkPool(ctx, composedSignal);
+    // FIX-663: drain unconditionally on the success path. Background work is
+    // decoupled from the request signal now, so the drain must not early-abort
+    // on a transport-level `composedSignal` fire. If an explicit `/abort`
+    // arrives mid-drain, in-flight tasks self-cancel via their own
+    // `ctx.signal` (the background signal) and settle as rejections — drain
+    // still resolves.
+    await drainRequestWorkPool(ctx);
 
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);

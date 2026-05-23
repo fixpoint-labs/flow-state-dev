@@ -221,6 +221,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
 - Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
+- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See `apps/docs/docs/advanced/sequencer-side-chains.md` for the two-signal cancellation contract.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances

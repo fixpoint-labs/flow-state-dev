@@ -36,6 +36,8 @@ TaskWorkerInput
 
 The pattern composes the unified `taskBoard` substrate. Actor invocations live as `Task` records in a request-scoped `TaskCollection`; the entry log stays in a sibling writable session resource.
 
+Actor handlers dispatched on the background queue survive transport teardown and abort only on explicit cancellation. See [Side Chains: Cancellation signals](../advanced/sequencer-side-chains.md#cancellation-signals--two-of-them).
+
 ## Basic usage
 
 ```ts

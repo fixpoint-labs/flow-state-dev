@@ -151,6 +151,41 @@ pipeline
 - `.waitForWork({ failOnError: true })` — promotes any work failure to terminal request error
 - Work failures are logged and the failed `block_trace` reaches the DevTool's trace channel; `onStepErrored` observers still fire
 
+### Work queue signal lifecycle
+
+Background `.work()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
+
+- `abortController` — the abort-registry controller. Fires on the explicit `/abort` endpoint / `session.abortRequest()` only.
+- `backgroundController` — fires only when `abortController` fires.
+
+```
+runActionInternal
+  abortController        ← registry; fires on /abort only
+  composedSignal = AbortSignal.any([options.signal, abortController.signal])
+                         ← foreground chain; also fires on transport signal
+  backgroundController   ← NEW; listens on abortController.signal ({ once: true })
+                           does NOT see options.signal / composedSignal
+
+  createExecutionContext({ signal: composedSignal,
+                           backgroundSignal: backgroundController.signal })
+    root ctx.signal = composedSignal
+    root ctx._requestBackgroundSignal = backgroundController.signal
+    (re-attached on every child scope in _withExecutionScope)
+
+  sequencer .work(block):
+    taskCtx = { ...ctx, signal: ctx._requestBackgroundSignal }
+    executeBlock(block, input, taskCtx, path, { signalOverride: taskCtx.signal })
+      → _withExecutionScope threads signalOverride to every descendant scope,
+        so the whole background task tree sees the background signal
+```
+
+Wiring details:
+
+- `backgroundController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `backgroundController` because the listener is on `abortController.signal` directly.
+- `_requestBackgroundSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestWorkPool`.
+- The sequencer DSL substitutes `ctx.signal` with `_requestBackgroundSignal` at `.work()` / `.workIf()` / `.forEachBackground()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
+- `drainRequestWorkPool` no longer takes a signal on the success path: it waits unconditionally. The abort/disconnect path skips drain entirely (unchanged). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves.
+
 ## Generator Repair
 
 When generator output doesn't match `outputSchema`, the repair system handles it:
