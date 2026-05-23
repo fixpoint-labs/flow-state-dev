@@ -106,3 +106,27 @@ function eq(a: unknown, b: unknown, depth: number): boolean {
 export function deepEqual(a: unknown, b: unknown): boolean {
   return eq(a, b, 0);
 }
+
+/**
+ * Lenient structural equality for UI-side memoization (e.g. skipping a React
+ * re-render when projected data is unchanged).
+ *
+ * Unlike {@link deepEqual}, this never throws: exotic shapes (Map, Set, Date,
+ * functions) compare by `===` / own-key recursion rather than failing fast.
+ * It is intentionally permissive because the data it compares is arbitrary
+ * client-projected state, not the framework's JSON-shaped persisted state. Use
+ * {@link deepEqual} for the state-write no-op guard; use this for "did this
+ * render input change?" checks where a false negative only costs a re-render.
+ */
+export function looseDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
+    return false;
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => looseDeepEqual(aObj[key], bObj[key]));
+}
