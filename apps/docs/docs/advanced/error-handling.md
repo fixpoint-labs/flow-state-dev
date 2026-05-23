@@ -58,6 +58,22 @@ The runtime auto-populates these. Author-thrown keys are passed through verbatim
 | `issues`    | `OutputValidationError`         | `ZodIssue[]`          |
 | `phase`     | `OutputValidationError`         | `"stream" \| "final"` |
 
+## SequencerOutputSchemaError
+
+A sequencer composes blocks into a chain. When it declares an `outputSchema`, the framework validates the value the sequencer actually returns against that schema at runtime. The check covers every exit path: the natural tail, an `exitIf` early return, and a `rescue` recovery. On a mismatch the sequencer throws `SequencerOutputSchemaError` (also exported from `@flow-state-dev/core`), a `FlowError` subclass with `code: "sequencer_output_schema_error"`.
+
+This is distinct from `OutputValidationError`, which a generator throws when the model's output fails the generator's own `outputSchema`. `SequencerOutputSchemaError` is about the composed output of a whole chain, not one block.
+
+Catch it in a parent sequencer's `.rescue()` like any other typed error:
+
+```ts
+parent.rescue([
+  { when: [SequencerOutputSchemaError], block: recover },
+]);
+```
+
+To catch drift before the flow runs at all, call `.validate()` on the sequencer at build time. It does a conservative structural comparison between the declared schema and the chain's tail and throws `SequencerSchemaMismatchError` on a mismatch. See [Declaring and validating output schemas](../sequencers/overview.md#declaring-and-validating-output-schemas) for the full contract and its limits.
+
 ## Recovering with rescue
 
 To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.

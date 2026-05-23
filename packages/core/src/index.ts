@@ -240,9 +240,16 @@ export type {
 } from "./execution/request-work-pool";
 export { getRequestWorkPool } from "./execution/request-work-pool";
 
-export { FlowError, OutputValidationError } from "./errors";
+export {
+  FlowError,
+  OutputValidationError,
+  SequencerOutputSchemaError,
+  SequencerSchemaMismatchError
+} from "./errors";
 export type {
   FlowErrorOptions,
   FlowErrorScope,
-  OutputValidationDetails
+  OutputValidationDetails,
+  SequencerOutputSchemaErrorDetails,
+  SequencerSchemaMismatchErrorDetails
 } from "./errors";

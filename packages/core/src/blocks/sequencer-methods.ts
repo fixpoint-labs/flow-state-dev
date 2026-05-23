@@ -360,6 +360,22 @@ export interface SequencerDefinition<
     error: Error | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => Error | Promise<Error>)
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
 
+  /**
+   * Build-time conformance check between the sequencer's declared `outputSchema`
+   * (from config) and the chain's tracked schema (inferred from the final step).
+   * Throws `SequencerSchemaMismatchError` when structurally incompatible. No-op
+   * when either schema is undefined.
+   *
+   * Conservative — checks top-level kind, object key sets, array element kinds,
+   * and one level of object-value kinds. Does NOT verify deep schema equivalence,
+   * refinements, brands, or union-variant shapes.
+   *
+   * Returns `void`. Call as a terminal assertion (typically at end of build or
+   * in a setup test) — DSL operations added after `.validate()` are NOT covered
+   * by the check.
+   */
+  validate(): void;
+
   // connectInput — native override returns SequencerDefinition (not a wrapper block)
   connectInput<TFrom>(
     mapper: ConnectorFn<TFrom, TInput>

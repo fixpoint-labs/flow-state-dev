@@ -650,6 +650,6 @@ See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full 
 ## Key rules
 
 - **Let the framework run your blocks** — compose blocks into sequencers, register them as flow actions, or pass them as tools. The framework handles validation, retry, lifecycle, and streaming. Don't call block internals directly.
-- **Schemas are contracts** — `inputSchema` and `outputSchema` are validated at runtime. TypeScript catches mismatches at compile time.
+- **Schemas are contracts** — `inputSchema` and `outputSchema` are validated at runtime. TypeScript catches mismatches at compile time. Sequencers can also declare an `outputSchema` as a runtime contract about their composed output — see [Declaring and validating output schemas](../sequencers/overview.md#declaring-and-validating-output-schemas).
 - **Names must be unique** — within a flow, each block needs a unique `name` for provenance tracking and debugging.
 - **Partial state schemas** — each block declares only the state fields it touches, not the full flow-level schema. This keeps blocks reusable.
