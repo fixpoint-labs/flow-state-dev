@@ -36,6 +36,28 @@ jobs:
       - name: Test
         run: pnpm test
 
+  knip:
+    name: Knip (unused files & broken imports)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Gates on the high-signal categories only (undeclared deps, missing
+      # binaries, unresolved imports). The broader unused-files / unused-exports
+      # analysis is available locally via `pnpm knip` for dead-code hunting.
+      - name: Knip
+        run: pnpm knip:ci
+
   e2e:
     name: Kitchen-sink E2E (Playwright)
     runs-on: ubuntu-latest
