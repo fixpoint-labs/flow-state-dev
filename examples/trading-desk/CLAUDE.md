@@ -20,40 +20,68 @@ src/flows/trading-desk/
   flow.ts                        flow definition (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   agents.ts                      AGENTS map + per-phase memo key registries
-  resources.ts                   memosCollection + thesisSection schema (shared across phases)
-  memo-writer.ts                 markWriting / commitMemo / markError taps (Phase 1)
-  services/
+  resources.ts                   memosCollection + thesisSection + phase2Contributions
+  capability.ts                  the tradingDesk capability — single import for every generator
+  lib/                           app-level helpers and factories (no external IO)
+    helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
+    memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
+    memo-setup.ts                defineMemoSetup — pre-create memo scaffolds per phase
+    approach-generator.ts        createApproachGenerator — Phases 3–5 fast-model preamble
+    format.ts                    shared prompt formatters (memo, debate, contributions)
     cache.ts                     process-wide TTL cache (getOrFetch)
     fixtures.ts                  loadFixture(tool, args)
+    ticker-resolver.ts           pre-flight ticker probe
+    discover.ts                  web-search → DiscoveryPayload shape
+  providers/                     external API clients (stateless, throw on failure)
     finnhub.ts                   Finnhub fetch helpers
     yahoo.ts                     Yahoo Finance v3 fetch helpers
-    format.ts                    shared prompt formatters (memo, debate, contributions)
-    trading-desk-capability.ts   the tradingDesk capability — single import for every generator
+    web.ts                       homepage meta + web-search fallback
+    xai.ts                       Grok (xAI) credentials + model id
   phase-1/
     index.ts                     phase1Pipeline (the sub-sequencer)
-    analysts.ts                  defineAnalyst factory + the four analyst sub-sequencers
-    setup.ts                     setupPhase1Memos (pre-creates memo resources)
+    analyst.ts                   defineAnalyst — per-analyst sub-sequencer factory
+    analysts.ts                  the five analyst sub-sequencers (5 × ~10 lines via defineAnalyst)
+    setup.ts                     setupPhase1Memos (defineMemoSetup)
+    writer.ts                    Phase-1 markWriting / commitMemo / markError (defineMemoWriter)
     prompts.ts                   per-analyst system prompts
-    thesis-schema.ts             Thesis output shape shared with memos
-    resources.ts                 (none yet — phase-1 doesn't add its own resources)
+    thesis-schema.ts             Thesis output shape (shared by all 5 analyst generators + writer)
     tools/                       one file per tool (get_balance_sheet.ts, etc.)
       schemas.ts                 shared zod schemas + ToolName / ToolInput / ToolOutput
       empty-payloads.ts          schema-valid zeros for "unavailable" results
       indicators-math.ts         pure RSI/MACD/ATR/SMA functions
       get_*.ts                   one per tool — mode branch + provider chain
       index.ts                   barrel re-export
-  phase-2/                       (same shape)
-  phase-3/
-  phase-4/
+  phase-2/                       (same shape — setup.ts + writer.ts + generators.ts + round-robin.ts)
+  phase-3/                       (single trader — trader.ts owns its output schema)
+  phase-4/                       (3 personas + risk-assessment consolidator)
+  phase-5/                       (single PM — portfolio-manager.ts owns its output schema)
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
+
+### Conventions enforced by this layout
+
+- **Factories live in `lib/`.** `defineMemoWriter`, `defineMemoSetup`, and
+  `defineAnalyst` (the last one is phase-1-specific, in `phase-1/analyst.ts`)
+  capture the shapes every phase repeats. Each phase's `setup.ts` and
+  `writer.ts` is now ≤ 15 lines + the per-phase commit projections.
+- **Single-consumer output schemas live next to the generator that emits
+  them.** `phase-3/trader.ts` and `phase-5/portfolio-manager.ts` declare
+  their output schemas inline; the writer imports the type back. Multi-
+  consumer schemas (Phase 1's `thesisOutputSchema`, Phase 4's persona +
+  risk-assessment schemas) stay in a `*-schema.ts` / `schemas.ts` file.
+- **`providers/` is for external API clients only.** Stateless,
+  throw-on-failure modules with no caching (callers wrap with
+  `getOrFetch` from `lib/cache.ts`).
+- **`lib/` is for everything that's neither identity (`agents.ts`),
+  contract (`resources.ts`, `state.ts`, `flow-schema.ts`), capability,
+  nor phase code.** Helpers, factories, formatters, stateless utilities.
 
 ## Adding a new generator
 
 **Structured-output agents in Phases 3–5 are wrapped with an approach
 preamble.** Each such agent has a sibling `<agent>ApproachGenerator`
 built via `createApproachGenerator()` in
-`services/approach-generator.ts` and inserted before the structured
+`lib/approach-generator.ts` and inserted before the structured
 generator in its step sequencer. Use the factory — don't hand-roll a
 new `generator({...})` for a preamble.
 
@@ -62,7 +90,7 @@ selection + ticker/date context. The minimum scaffold:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { tradingDesk } from "../services/trading-desk-capability";
+import { tradingDesk } from "../capability";
 
 export const myGenerator = generator({
   name: "my-generator",
@@ -86,7 +114,43 @@ uses: [tradingDesk.presets({
 ```
 
 See the capability's available presets in
-[`services/trading-desk-capability.ts`](src/flows/trading-desk/services/trading-desk-capability.ts).
+[`capability.ts`](src/flows/trading-desk/capability.ts).
+
+### Adding a Phase 1 analyst
+
+Each analyst is one `defineAnalyst({ shortName, tools, generator })` call.
+The factory captures the universal recipe: `markWriting → .map(tickerDate)
+→ .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
+The call site supplies only what varies — the role's tools and its
+synthesis generator. See [`phase-1/analysts.ts`](src/flows/trading-desk/phase-1/analysts.ts)
+for the five existing analysts.
+
+To add a sixth:
+
+1. Add the agent to `AGENTS` and `PHASE_1_MEMO_KEYS` in `agents.ts`.
+2. Add a new `discover_<role>_context.ts` tool if it needs web discovery,
+   plus any role-specific `get_*` tools.
+3. Write the generator (output `thesisOutputSchema`).
+4. Call `defineAnalyst({...})` in `analysts.ts`.
+5. Wire it into `phase-1/index.ts`'s `.parallel({...})`.
+
+### Adding a phase setup or writer
+
+Two factories collapse the per-phase boilerplate:
+
+- `defineMemoSetup({ phaseId, agentTeam, keys, activePhase })` in
+  `lib/memo-setup.ts` — pre-creates the phase's memos in `pending`. The
+  memoStatus seed is derived from `Object.keys(keys)` so adding a new
+  memo to a phase is a one-line edit to `agents.ts`.
+- `defineMemoWriter({ phaseId, agentTeam, keys, errorMessageFallback,
+  errorTextPlaceholder? })` in `lib/memo-writer.ts` — returns
+  `{ markWriting, markError, defineCommit }`. Each phase's `writer.ts`
+  destructures `markWriting` and `markError`, then calls
+  `writer.defineCommit({ shortName, inputSchema, project, afterCommit? })`
+  for each commit handler. `project` returns the patch applied on top of
+  the standard `status: "published" / completedAt / errorMessage: null`
+  fields; `afterCommit` runs any phase-terminal session-state work (Phase
+  5 uses it to flip `runComplete`).
 
 ### The `investigate` preset
 
