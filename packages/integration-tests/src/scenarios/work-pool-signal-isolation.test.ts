@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   runAction,
   abortRequest,
