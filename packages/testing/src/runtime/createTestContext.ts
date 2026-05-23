@@ -1,7 +1,7 @@
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
-import { deepEqual } from "@flow-state-dev/core/utils";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   createExecutionContext,

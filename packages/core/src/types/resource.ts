@@ -8,7 +8,7 @@ import type {
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ResourceCollectionRef } from "./resource-collection";
-import { validateClientProjection } from "../utils/client-projection";
+import { validateClientProjection } from "../helpers/client-projection";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
