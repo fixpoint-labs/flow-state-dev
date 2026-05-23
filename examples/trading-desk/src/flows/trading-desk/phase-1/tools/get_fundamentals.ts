@@ -3,10 +3,10 @@
  * Yahoo `quoteSummary` fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { fetchFinnhubFundamentals, hasFinnhubKey } from "../../services/finnhub";
-import { loadFixture } from "../../services/fixtures";
-import { fetchYahooFundamentals } from "../../services/yahoo";
+import { getOrFetch } from "../../lib/cache";
+import { fetchFinnhubFundamentals, hasFinnhubKey } from "../../providers/finnhub";
+import { loadFixture } from "../../lib/fixtures";
+import { fetchYahooFundamentals } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

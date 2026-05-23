@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { loadFixture } from "../src/flows/trading-desk/services/fixtures";
+import { loadFixture } from "../src/flows/trading-desk/lib/fixtures";
 import { FixtureMissingError } from "../src/flows/trading-desk/phase-1/tools/schemas";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");

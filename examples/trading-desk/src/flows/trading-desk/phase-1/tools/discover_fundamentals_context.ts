@@ -17,9 +17,9 @@
  * the gap honestly.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { discoverWeb, FUNDAMENTALS_QUERY } from "../../services/discover";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { discoverWeb, FUNDAMENTALS_QUERY } from "../../lib/discover";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

@@ -25,7 +25,7 @@ import {
   type AgentName,
 } from "../agents";
 import { commitMemo, markError, markWriting } from "../memo-writer";
-import { tradingDesk } from "../services/trading-desk-capability";
+import { tradingDesk } from "../capability";
 import {
   companyProfilePrompt,
   fundamentalsPrompt,

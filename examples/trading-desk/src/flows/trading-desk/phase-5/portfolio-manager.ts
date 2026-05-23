@@ -15,7 +15,7 @@
 import { generator } from "@flow-state-dev/core";
 import { PHASE_5_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
-import { tradingDesk } from "../services/trading-desk-capability";
+import { tradingDesk } from "../capability";
 import { PORTFOLIO_MANAGER_PROMPT } from "./prompts";
 import { portfolioDecisionOutputSchema } from "./schemas";
 
