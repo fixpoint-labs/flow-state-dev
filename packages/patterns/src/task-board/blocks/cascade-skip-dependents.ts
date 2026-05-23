@@ -2,7 +2,9 @@
  * `cascadeSkipDependents` — after a board drain, transitively cancels
  * any pending task whose deps include an `errored` task.
  *
- * Runs as `.tap()` between `board.block` and `evaluatePlanProgress`.
+ * A task-board substrate building block: consumers `.tap()` it after
+ * `board.block` to fold dep-blocked pendings into terminal `cancelled`
+ * status (plan-and-execute and supervisor both wire it this way).
  * State-mutation only (no output) per BP-012.
  *
  * The handler iterates a fixed-point loop so multi-level dep chains are

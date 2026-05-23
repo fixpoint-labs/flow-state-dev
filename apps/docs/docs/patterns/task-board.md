@@ -137,6 +137,23 @@ Most boards leave `onIdle` alone. Override when:
 - You're modeling a board that legitimately waits on an external pump (use `"complete"`).
 - You're building a session-scoped board that lives across many drains (use `"wait"` + `shouldExit`).
 
+## Cascade-skipping dep-blocked tasks
+
+`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.block`:
+
+```ts
+import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/patterns/task-board";
+
+const board = taskBoard({ name: "research", collection: { backing: "request", collectionId: "research" }, workers });
+const cascadeSkip = createCascadeSkipDependents({ name: "research" });
+
+sequencer({ name: "research" })
+  .then(board.block)
+  .tap(cascadeSkip); // transitively cancels pendings whose deps errored
+```
+
+It walks the dependency graph from every `errored` task, cancelling each pending whose deps include a failed task, and repeats to a fixed point so multi-level chains (`a → b → c`) drain in one pass. Cancelled tasks are stamped with a `"skipped"` label. The `name` must match the board's `collectionId` so both operate on the same collection. `planAndExecute` and `supervisor` wire this in for you.
+
 ## Dispatcher modes
 
 The dispatcher decides which `pending` task gets claimed next. Three built-ins:

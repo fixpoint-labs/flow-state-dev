@@ -156,7 +156,9 @@ The collection then lives on `ctx.request` and survives every block boundary in 
 
 Workers are first-class block compositions, not callbacks. The pattern composes them via `.then(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 
-**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`
+`createCascadeSkipDependents` is a substrate building block consumers `.tap()` after `board.block`: it transitively cancels any pending task whose deps include an `errored` task (stamping a `"skipped"` label), so dep-blocked pendings reach a terminal status instead of lingering. `planAndExecute` and `supervisor` both wire it this way.
+
+**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`, `createCascadeSkipDependents`
 
 ### Round Robin
 

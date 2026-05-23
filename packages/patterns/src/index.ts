@@ -24,7 +24,6 @@ export {
   createLLMEvaluator,
   createCaptureAndPlan,
   createApplyReplan,
-  createCascadeSkipDependents,
   createSynthesize,
   createBuildPlanOutput,
   normalizeOutputStatus,
@@ -134,6 +133,7 @@ export {
   createRecordSuccess,
   createRecordError,
   createCheckBoard,
+  createCascadeSkipDependents,
 } from "./task-board";
 export type {
   TaskBoardConfig,
