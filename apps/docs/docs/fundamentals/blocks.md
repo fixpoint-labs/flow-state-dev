@@ -428,6 +428,31 @@ const modeRouter = router({
 });
 ```
 
+#### `utility.keyedRouter` — dispatch by string key
+
+When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
+
+```ts
+import { utility } from "@flow-state-dev/core";
+
+const specialists = {
+  research: researchPipeline,
+  draft: draftPipeline,
+  review: reviewPipeline,
+};
+
+const dispatch = utility.keyedRouter({
+  name: "dispatch",
+  inputSchema: controllerOutputSchema,
+  blocks: specialists,
+  select: (input) => input.specialist,
+});
+```
+
+If `select` returns a key that isn't in `blocks`, the router throws with the list of registered keys. Pass `fallback` to route unknown keys to a default block instead.
+
+Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `keyedRouter`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
+
 ## The block context
 
 Every block's `execute` function receives a context object with access to scoped state, resources, and framework services:

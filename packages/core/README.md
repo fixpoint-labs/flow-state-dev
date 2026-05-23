@@ -123,6 +123,7 @@ export default defineFlow({
 - `utility.combiner(config)` — Handler factory for deterministic artifact merging via concatenation, deduplication, and structural normalization with default `{ combined, mergeNotes? }` output
 - `utility.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `utility.intentRouter(config)` — Sequencer factory that composes `intentClassifier` + `router` into classification-driven branching with category descriptions, handlers, optional `confidenceThreshold`, and optional fallback routing
+- `utility.keyedRouter(config)` — Router factory for the "pick a block from a `Record<string, Block>` by string key" case. Throws with the registered keys (or routes to `fallback`) when the selected key is unregistered. Input adaptation belongs on the routed blocks via `.connectInput` (BP-013)
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
 Every generator-based utility above accepts an optional `agentType` (`"primary" | "sub" | "trace"`) to control whether output is surfaced to the client/history. `synthesizer` defaults to `"primary"`; all others default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.

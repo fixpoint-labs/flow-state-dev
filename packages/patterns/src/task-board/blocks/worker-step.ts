@@ -17,12 +17,13 @@
  *   to a runtime route choice).
  *
  * - **Worker registry.** The user supplies `Record<assignee, block>`.
- *   We build a `router` whose `routes` are the registered workers and
- *   whose `execute` selects by `task.assignee`, returning
- *   `selected.connectInput(() => packWorkerInput(task))`. The
- *   adaptation lives inside the router's `execute` per BP-013 — the
+ *   We pre-connect each worker with the `Task → TaskWorkerInput`
+ *   adaptation (BP-013: pre-connecting at definition time is fine for
+ *   purpose-built pattern adapters) and feed the registry to
+ *   `utility.keyedRouter`, which dispatches by `task.assignee`. The
  *   workers themselves keep their generic `TaskWorkerInput` schema
- *   and stay reusable.
+ *   and stay reusable; only their pattern-side registry entry is
+ *   pre-adapted.
  *
  * Registry-miss errors (assignee absent, or no assignee on the task)
  * throw out of the router. The error propagates up through the
@@ -31,8 +32,8 @@
  * exactly the offending task, never a sibling's concurrently-claimed
  * work.
  */
-import { router } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { utility } from "@flow-state-dev/core";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   taskSchema,
@@ -160,18 +161,17 @@ export interface BuildWorkerStepOptions {
  * Returns a block that takes a `Task` and produces the worker's
  * output. For uniform workers the result is the worker pre-connected
  * with `Task → TaskWorkerInput`. For registries the result is a
- * router that selects by `task.assignee` and connectInputs the
- * selected block per BP-013.
+ * `utility.keyedRouter` over each worker pre-connected with the same
+ * adaptation, selecting by `task.assignee`.
  *
  * The output type is `unknown` because worker outputs are
  * heterogeneous; consumers that need a typed shape should use the
  * uniform-worker path with a worker that declares its own
- * `outputSchema`. The `routes` array is typed as
- * `BlockDefinition[]` for the same reason — each worker in
- * a registry can declare its own input/output schemas, and the
- * router's static type can't model that union usefully (matches the
- * convention used by `dispatch-specialist` in the blackboard
- * pattern).
+ * `outputSchema`. Registry workers are typed as
+ * `BlockDefinition<any, any>` — each can declare its own
+ * input/output schemas, and the router's static type can't model
+ * that union usefully (matches the convention used by
+ * `dispatch-specialist` in the blackboard pattern).
  */
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
@@ -192,28 +192,29 @@ export function buildWorkerStep(
     );
   }
 
-  const routes = Object.values(workers);
+  // Pre-connect each worker so the router doesn't have to thread the
+  // adaptation through its `select`. The connectInput closure captures
+  // the inbound `task` so dep-output resolution happens at runtime
+  // against the live collection state.
+  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
+  for (const [assignee, worker] of Object.entries(workers)) {
+    connectedWorkers[assignee] = worker.connectInput<Task>((task, ctx) =>
+      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
+    );
+  }
 
-  return router({
+  return utility.keyedRouter({
     name: `${name}-worker-router`,
     inputSchema: taskSchema,
     outputSchema: z.unknown(),
-    routes,
-    execute: (task: Task) => {
+    blocks: connectedWorkers,
+    select: (task: Task) => {
       if (task.assignee === undefined) {
         throw new Error(
           `[task-board] task "${task.id}" has no assignee, but a worker registry was supplied`
         );
       }
-      const selected = workers[task.assignee];
-      if (selected === undefined) {
-        throw new Error(
-          `[task-board] no worker registered under assignee "${task.assignee}" for task "${task.id}"`
-        );
-      }
-      return selected.connectInput((_input, ctx) =>
-        packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
-      );
+      return task.assignee;
     },
   });
 }

@@ -39,7 +39,7 @@ export interface CreateModeratorOptions {
   /**
    * Names of all debaters in the roster. Listed in the moderator prompt
    * so the moderator's `nextSpeakers` choices are constrained to known
-   * names. Out-of-roster picks are rejected by the dispatch factory at
+   * names. Out-of-roster picks are rejected by the dispatch router at
    * runtime.
    */
   rosterNames: string[];
