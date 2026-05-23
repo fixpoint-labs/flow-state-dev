@@ -264,5 +264,11 @@ type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title:
 | `StateOf<T>` | State type from a schema, resource, or scope config |
 | `ContextOf<T, Kind>` | Context handle type for a scope or resource |
 | `ResourceContext<T>` | Resource context type |
+| `BlockDefinition` | The block interface itself — return type of `handler()`, `generator()`, `sequencer()`, and `router()`. Use when an app-level factory needs to accept or return "any block" without restating the framework's generics. |
+| `BlockKind` | `"handler" \| "generator" \| "sequencer" \| "router"` — the discriminant on `block.kind`. |
+| `BlockContext` | The full block-context interface — what `ctx` resolves to inside `execute`. |
+| `BlockResult<TOutput>` | The handler `execute` return-value union. |
+| `SessionScopeHandle<TState>` | The shape of `ctx.session` — typed `state`, `patchState`, `setStateRecord`, etc. `UserScopeHandle`, `OrgScopeHandle`, and `RequestScopeHandle` are siblings for the other scopes. |
+| `ScopeStateOps<TState>` | The state-mutation interface every scope handle exposes (`patchState`, `setState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). |
 
-These all use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately.
+The `*Input` / `*Output` / `StateOf` helpers use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately. The block-shape and scope-handle types are useful when *writing* factories: they let you type "any block" or "a ctx slice with a typed session" structurally, instead of falling back to `any` or hand-rolling `{ session: { patchState: ... } }` shapes.

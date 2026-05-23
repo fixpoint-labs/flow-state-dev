@@ -207,6 +207,12 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource
 - `ResourceContext<T>` — Resource context type
 - `BlockInput<T>` / `BlockOutput<T>` — Infer block I/O types
+- `BlockDefinition` — The fully-typed return interface of `handler()`, `generator()`, `sequencer()`, and `router()`. Generics default to `ZodTypeAny`, so unparameterized `BlockDefinition` is the unconstrained "any block" form — useful when an app-level factory needs to accept or return a block without restating the framework's generics.
+- `BlockKind` — `"handler" | "generator" | "sequencer" | "router"` union — useful when writing dispatchers that switch on `block.kind`.
+- `BlockContext` — The full block-context interface (the type of `ctx` in `execute`). Generic over the four scope-state types, declared resources, sequencer state, and parent input.
+- `BlockResult<TOutput>` — The handler `execute` return-value union.
+- `SessionScopeHandle<TState>` / `UserScopeHandle<TState>` / `OrgScopeHandle<TState>` / `RequestScopeHandle<TState>` — The scope handles `ctx.session` / `ctx.user` / etc. resolve to. Use to type a ctx slice (e.g. `(input, ctx: { session: SessionScopeHandle<MySessionState> }) => …`) instead of hand-rolling a `{ session: { patchState: ... } }` shape.
+- `ScopeStateOps<TState>` — The state-mutation interface every scope handle exposes (`patchState`, `setState`, `setStateRecord`, etc.).
 
 ### Types (`@flow-state-dev/core/types`)
 
