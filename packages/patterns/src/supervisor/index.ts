@@ -25,8 +25,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard } from "../task-board";
-import { createCascadeSkipDependents } from "../plan-and-execute/blocks/cascade-skip-dependents";
+import { taskBoard, createCascadeSkipDependents } from "../task-board";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
