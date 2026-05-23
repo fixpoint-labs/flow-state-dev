@@ -247,7 +247,6 @@ const applyRequestedMode = handler({
 const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
-  outputSchema: z.never(),
 })
   .tapIf(
     (input) => input.thinkingStyle !== "auto",

@@ -1659,6 +1659,20 @@ describe("sequencer builder", () => {
       await expect(runForTest(seq, 1, ctx)).resolves.toBe(42);
     });
 
+    it("runs async refinements in the runtime gate", async () => {
+      const seq = sequencer({
+        name: "rt-async-refine",
+        inputSchema: z.number(),
+        outputSchema: z.string().refine(async (s) => s.length > 3, "too short")
+      }).map((n) => `${n}`);
+
+      const ctx = createMockContext();
+      // "1" has length 1 — the async refine must run and reject (safeParse would skip it).
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow(SequencerOutputSchemaError);
+      // "12345" satisfies the async refine.
+      await expect(runForTest(seq, 12345, ctx)).resolves.toBe("12345");
+    });
+
     // --- Build-time .validate() ---
 
     const strBlock = handler({
@@ -1755,6 +1769,9 @@ describe("sequencer builder", () => {
       }
       expect(caught).toBeInstanceOf(SequencerSchemaMismatchError);
       expect(caught.details.reason).toContain('"a"');
+      // The reported kinds reflect the level of the mismatch, not the top-level object kind.
+      expect(caught.details.declaredKind).toBe("ZodString");
+      expect(caught.details.inferredKind).toBe("ZodNumber");
     });
 
     it(".validate() throws on an array element kind mismatch", () => {
