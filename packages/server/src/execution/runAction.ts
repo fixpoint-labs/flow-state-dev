@@ -718,6 +718,10 @@ export async function runActionInternal<
   // disconnect or SSE close leaves background work to settle.
   const backgroundController = new AbortController();
   const fireBackground = (): void => {
+    // Guard against the TOCTOU window where both the abort listener and the
+    // defensive already-aborted branch below call this: the abort is
+    // idempotent, but skipping here avoids a duplicate diagnostic log.
+    if (backgroundController.signal.aborted) return;
     backgroundController.abort(abortController.signal.reason);
     logRuntimeEvent(logger, "warn", "[flow-state] [abort] background signal fired", {
       requestId,

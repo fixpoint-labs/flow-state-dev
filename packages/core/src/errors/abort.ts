@@ -20,9 +20,11 @@ export function rootCause(err: unknown): unknown {
 }
 
 /**
- * True if the error (or any error in its `cause` chain) looks like an
- * AbortError — by name, DOMException code, or Node's `ABORT_ERR` code.
- * Survives wrappers that lose `e.name` because it inspects the root cause.
+ * True if the **root** error in the `cause` chain looks like an AbortError —
+ * by name, DOMException code, or Node's `ABORT_ERR` code. Calls `rootCause`
+ * first, so a wrapper that loses `e.name` is transparent as long as the
+ * innermost cause is the abort. An `AbortError` that is not at the root of the
+ * chain is not detected.
  */
 export function isAbortLike(err: unknown): boolean {
   const root = rootCause(err);
