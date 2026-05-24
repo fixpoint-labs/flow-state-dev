@@ -406,10 +406,19 @@ export interface BlockContext<
     transient?: boolean;
   };
 
-  /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
+  /**
+   * @internal Runtime hook that executes nested blocks with parent-chain
+   * metadata. The optional `signalOverride` sets the `ctx.signal` of the
+   * child scope (and, transitively, every descendant scope that doesn't
+   * supply its own override). The sequencer DSL threads
+   * `_requestBackgroundSignal` here at `.work()` dispatch so background
+   * task trees see the background signal instead of the request signal.
+   * When omitted, the child inherits the current parent ctx's `signal`.
+   */
   _withExecutionScope?<TValue>(
     parent: ExecutionParent,
-    execute: (ctx: BlockContext) => Promise<TValue>
+    execute: (ctx: BlockContext) => Promise<TValue>,
+    signalOverride?: AbortSignal
   ): Promise<TValue>;
 
   /**
@@ -454,6 +463,20 @@ export interface BlockContext<
    * tests), sequencer DSL falls back to per-sequencer auto-await.
    */
   _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
+
+  /**
+   * @internal Background-work abort signal. Set by the server's request
+   * executor; absent in unit-test contexts. Fires ONLY when the request is
+   * explicitly aborted (e.g. POST `/abort`, `session.abortRequest()`), NOT
+   * on transport-level events like client disconnect, SSE close, or tab
+   * refresh. The sequencer DSL substitutes this for `ctx.signal` when
+   * dispatching `.work()` / `.workIf()` / `.forEachBackground()` tasks so
+   * background generators survive transport teardown.
+   *
+   * In unit-test contexts where this is absent, `.work()` falls back to the
+   * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
+   */
+  _requestBackgroundSignal?: AbortSignal;
 
   /**
    * @internal Per-request single-flight map for cacheable tool calls
