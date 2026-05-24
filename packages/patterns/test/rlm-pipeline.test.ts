@@ -59,6 +59,14 @@ const subQueryMock = mockGenerator({
 });
 
 describe("rlm pipeline", () => {
+  it("declares an output contract that matches its tail", () => {
+    // Build-time guard: the pipeline's declared `outputSchema` must stay
+    // structurally compatible with whatever block terminates the chain.
+    // If the tail is later swapped for a block with a different shape,
+    // `.validate()` throws here instead of failing silently at runtime.
+    expect(() => rlmPipeline.validate()).not.toThrow();
+  });
+
   it("completes a query through the pipeline", async () => {
     rootMock.reset();
     subQueryMock.reset();

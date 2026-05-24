@@ -86,6 +86,7 @@ import {
   taskBoardStateSchema,
   taskBoardWorkerStateSchema,
   taskBoardWorkerBodyStateSchema,
+  claimResultSchema,
   type ClaimResult,
 } from "./schemas";
 import type { Task } from "@flow-state-dev/tasks";
@@ -557,6 +558,12 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     const idleWait = sequencer({
       name: `${name}-worker-${workerId}-idle-wait`,
       inputSchema: z.unknown(),
+      // idleWait is the false-branch sibling of `claimTask`: both feed the
+      // worker's `.thenIf((out: ClaimResult) => ...)` gates below, so its
+      // terminal `.map` must produce a `ClaimResult`. The trailing `.map`
+      // erases the tracked schema (so `.validate()` can't see it), so this
+      // contract is enforced by the sequencer's runtime exit gate.
+      outputSchema: claimResultSchema,
     })
       .tap((_input, ctx) => {
         if (cell.collection === undefined) {
