@@ -3,7 +3,7 @@
  *
  * Each generator streams a short fast-model free-text preview before
  * its structured counterpart runs. See
- * `services/approach-generator.ts` for the shared shape.
+ * `lib/approach-generator.ts` for the shared shape.
  *
  * Capability presets are lean by design — the preamble needs to know
  * what's available to reference, not the full data depth:
@@ -15,8 +15,8 @@
  *     preamble can hint at synthesis across the three personas.
  */
 import { PHASE_4_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../services/trading-desk-capability";
-import { createApproachGenerator } from "../services/approach-generator";
+import { tradingDesk } from "../capability";
+import { createApproachGenerator } from "../lib/approach-generator";
 import {
   AGGRESSIVE_APPROACH_PROMPT,
   CONSERVATIVE_APPROACH_PROMPT,

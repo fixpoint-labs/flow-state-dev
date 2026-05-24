@@ -482,6 +482,34 @@ export interface BlockContext<
 }
 
 /**
+ * A permissive, variance-friendly alias for `BlockContext` — typed where it
+ * matters (the session scope) and permissive everywhere else.
+ *
+ * Use this for helper functions that take a block's `ctx` as a parameter:
+ * the full `BlockContext`'s `TResources` generic is invariant on
+ * `ResourceRegistry`, so a handler whose `ctx.resources` is inferred as
+ * `ResourceRegistry<{ memos: ... }>` can't be assigned to a parameter typed
+ * `BlockContext<unknown, MyState>` (the default `ResourceRegistry<Record<...>>`
+ * isn't a supertype of the narrow inferred form). `LooseBlockContext` sidesteps
+ * the variance trap by leaving `resources` permissive — the helper accepts any
+ * block's ctx, and the call site retains its narrower typing internally.
+ *
+ * When the helper actually needs typed resources, narrow per call site or
+ * declare a stricter ctx shape inline. `LooseBlockContext` is for the
+ * common case where the helper only touches `ctx.session`.
+ */
+export type LooseBlockContext<
+  TSessionState extends object = Record<string, unknown>,
+> = {
+  session: import("./scope").SessionScopeHandle<TSessionState>;
+  user: import("./scope").UserScopeHandle<Record<string, unknown>>;
+  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
+  request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resources: any;
+};
+
+/**
  * Hint communicated from a block's `execute` out to the block_trace emitter
  * (FIX-413). One of:
  * - unset / `kind: "inline"` — wrap the returned output as `{ kind: "inline", value: output }`.

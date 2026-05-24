@@ -3,10 +3,10 @@
  * fallback. Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { fetchFinnhubCandles, hasFinnhubKey } from "../../services/finnhub";
-import { loadFixture } from "../../services/fixtures";
-import { fetchYahooChart } from "../../services/yahoo";
+import { getOrFetch } from "../../lib/cache";
+import { fetchFinnhubCandles, hasFinnhubKey } from "../../providers/finnhub";
+import { loadFixture } from "../../lib/fixtures";
+import { fetchYahooChart } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

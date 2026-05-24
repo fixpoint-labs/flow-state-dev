@@ -18,12 +18,12 @@
 import { generator, handler, providerTool, router } from "@flow-state-dev/core";
 import { xai } from "@ai-sdk/xai";
 import { z } from "zod";
-import { tradingDesk } from "../../services/trading-desk-capability";
-import { loadFixture } from "../../services/fixtures";
+import { tradingDesk } from "../../capability";
+import { loadFixture } from "../../lib/fixtures";
 import {
   XAI_SENTIMENT_MODEL,
   hasXaiKey,
-} from "../../services/xai";
+} from "../../providers/xai";
 import { emptyPayload } from "./empty-payloads";
 import {
   pickMode,

@@ -1,4 +1,21 @@
-export type { BlockCacheableConfig, BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type {
+  BlockCacheableConfig,
+  BlockContext,
+  BlockDefinition,
+  BlockInput,
+  BlockKind,
+  BlockOutput,
+  BlockResult,
+  DeclaredResources,
+  LooseBlockContext,
+} from "./types/block";
+export type {
+  OrgScopeHandle,
+  RequestScopeHandle,
+  SessionScopeHandle,
+  UserScopeHandle,
+} from "./types/scope";
+export type { ScopeStateOps } from "./types/state";
 export type { AgentType, ItemVisibility } from "./items/types";
 export {
   whenAnyItem,

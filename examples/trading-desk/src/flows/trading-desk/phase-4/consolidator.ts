@@ -15,7 +15,7 @@
 import { generator } from "@flow-state-dev/core";
 import { PHASE_4_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
-import { tradingDesk } from "../services/trading-desk-capability";
+import { tradingDesk } from "../capability";
 import { RISK_ASSESSMENT_PROMPT } from "./prompts";
 import { riskAssessmentOutputSchema } from "./schemas";
 

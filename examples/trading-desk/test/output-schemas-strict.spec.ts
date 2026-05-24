@@ -20,13 +20,13 @@ import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
-} from "../src/flows/trading-desk/phase-2/thesis-schemas";
-import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/schemas";
+} from "../src/flows/trading-desk/phase-2/generators";
+import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/trader";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/schemas";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 
 type Issue = { path: string; reason: string };
 

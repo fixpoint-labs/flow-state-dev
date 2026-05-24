@@ -6,9 +6,9 @@
  * See `discover_fundamentals_context.ts` for the discipline.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { discoverWeb, PROFILE_QUERY } from "../../services/discover";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { discoverWeb, PROFILE_QUERY } from "../../lib/discover";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 
