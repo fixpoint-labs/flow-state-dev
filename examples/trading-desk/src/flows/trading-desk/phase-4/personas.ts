@@ -26,7 +26,7 @@ import { sessionStateSchema } from "../state";
 import {
   formatPersonaCritique,
   tradingDesk,
-} from "../services/trading-desk-capability";
+} from "../capability";
 import {
   AGGRESSIVE_PROMPT,
   CONSERVATIVE_PROMPT,

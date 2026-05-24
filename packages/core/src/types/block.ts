@@ -406,10 +406,19 @@ export interface BlockContext<
     transient?: boolean;
   };
 
-  /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
+  /**
+   * @internal Runtime hook that executes nested blocks with parent-chain
+   * metadata. The optional `signalOverride` sets the `ctx.signal` of the
+   * child scope (and, transitively, every descendant scope that doesn't
+   * supply its own override). The sequencer DSL threads
+   * `_requestBackgroundSignal` here at `.work()` dispatch so background
+   * task trees see the background signal instead of the request signal.
+   * When omitted, the child inherits the current parent ctx's `signal`.
+   */
   _withExecutionScope?<TValue>(
     parent: ExecutionParent,
-    execute: (ctx: BlockContext) => Promise<TValue>
+    execute: (ctx: BlockContext) => Promise<TValue>,
+    signalOverride?: AbortSignal
   ): Promise<TValue>;
 
   /**
@@ -456,6 +465,20 @@ export interface BlockContext<
   _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
 
   /**
+   * @internal Background-work abort signal. Set by the server's request
+   * executor; absent in unit-test contexts. Fires ONLY when the request is
+   * explicitly aborted (e.g. POST `/abort`, `session.abortRequest()`), NOT
+   * on transport-level events like client disconnect, SSE close, or tab
+   * refresh. The sequencer DSL substitutes this for `ctx.signal` when
+   * dispatching `.work()` / `.workIf()` / `.forEachBackground()` tasks so
+   * background generators survive transport teardown.
+   *
+   * In unit-test contexts where this is absent, `.work()` falls back to the
+   * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
+   */
+  _requestBackgroundSignal?: AbortSignal;
+
+  /**
    * @internal Per-request single-flight map for cacheable tool calls
    * (FIX-610). Keys are the cache keys produced by `buildCacheKey`; values
    * are the in-flight promises so concurrent calls within the same request
@@ -480,6 +503,34 @@ export interface BlockContext<
     cached: boolean;
   }) => void;
 }
+
+/**
+ * A permissive, variance-friendly alias for `BlockContext` — typed where it
+ * matters (the session scope) and permissive everywhere else.
+ *
+ * Use this for helper functions that take a block's `ctx` as a parameter:
+ * the full `BlockContext`'s `TResources` generic is invariant on
+ * `ResourceRegistry`, so a handler whose `ctx.resources` is inferred as
+ * `ResourceRegistry<{ memos: ... }>` can't be assigned to a parameter typed
+ * `BlockContext<unknown, MyState>` (the default `ResourceRegistry<Record<...>>`
+ * isn't a supertype of the narrow inferred form). `LooseBlockContext` sidesteps
+ * the variance trap by leaving `resources` permissive — the helper accepts any
+ * block's ctx, and the call site retains its narrower typing internally.
+ *
+ * When the helper actually needs typed resources, narrow per call site or
+ * declare a stricter ctx shape inline. `LooseBlockContext` is for the
+ * common case where the helper only touches `ctx.session`.
+ */
+export type LooseBlockContext<
+  TSessionState extends object = Record<string, unknown>,
+> = {
+  session: import("./scope").SessionScopeHandle<TSessionState>;
+  user: import("./scope").UserScopeHandle<Record<string, unknown>>;
+  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
+  request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resources: any;
+};
 
 /**
  * Hint communicated from a block's `execute` out to the block_trace emitter

@@ -522,7 +522,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
         async create(
           key: string | Record<string, string>,
-          initial?: Partial<JsonObject>
+          initial?: Partial<JsonObject>,
+          createOptions?: { replace?: boolean }
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
 
@@ -534,47 +535,72 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           }
 
           const resources = options.readResources();
-          if (storageKey in resources) {
+          const exists = storageKey in resources;
+          const replace = createOptions?.replace === true;
+
+          if (exists && !replace) {
             throw new Error(`Resource instance "${storageKey}" already exists`);
           }
 
-          // Check instance limits
-          const currentCount = countInstances(nsConfig.pattern, resources);
-          if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
-            const eviction = nsConfig.eviction ?? "none";
-            if (eviction === "none") {
-              throw new Error(
-                `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
-              );
+          // Check instance limits ONLY when adding a new instance. The replace
+          // branch reuses an existing storage slot, so it can't push us over
+          // maxInstances.
+          if (!exists) {
+            const currentCount = countInstances(nsConfig.pattern, resources);
+            if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
+              const eviction = nsConfig.eviction ?? "none";
+              if (eviction === "none") {
+                throw new Error(
+                  `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
+                );
+              }
+              // Evict one instance — persists the deletion
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
             }
-            // Evict one instance — persists the deletion
-            await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
           }
 
-          // Validate state via schema — throw on invalid input, never silent fallback
+          // Validate state via schema — throw on invalid input, never silent fallback.
+          // Defaults declared on the schema (e.g. `.nullable().default(null)`,
+          // per BP-023) fill missing fields on both the create and replace
+          // branches, so callers only supply the non-nullable scaffold.
           const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
           if (!parseResult.success) {
             const issue = parseResult.error.issues[0];
             const issuePath = issue === undefined ? "" : issue.path.join(".");
             const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
             const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+            const opLabel = replace && exists ? "create(replace)" : "create";
             throw new Error(
-              `Namespace "${nsConfig.pattern}" create("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              `Namespace "${nsConfig.pattern}" ${opLabel}("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
             );
           }
 
           const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
 
-          const nextResources = { ...resources, [storageKey]: state };
+          // Capture (cloned) prior state for the updated-hook before
+          // persisting. Clone so hook code that caches or mutates `prev`
+          // can't observe stale store internals — matches the defensive
+          // copy on the per-instance `setState`/`patchState` paths.
+          const prevState = exists
+            ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
+            : undefined;
+
+          const nextResources = { ...(options.readResources()), [storageKey]: state };
           await options.persistResources(nextResources);
 
           lruAccess.set(storageKey, Date.now());
 
-          if (nsConfig.onInstanceCreated) {
-            await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+          if (exists) {
+            if (nsConfig.onInstanceUpdated) {
+              await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+          } else {
+            if (nsConfig.onInstanceCreated) {
+              await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "created");
           }
-
-          options.onResourceChanged?.(storageKey, "created");
 
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
@@ -589,6 +615,69 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
+          return nsHandle.create(key, initial);
+        },
+
+        async upsert(
+          key: string | Record<string, string>,
+          update: Partial<JsonObject>,
+          createOnly?: Partial<JsonObject>
+        ): Promise<ResourceRef<JsonObject>> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+
+          // Validate that key matches pattern. We do this here so the
+          // create-branch error (from nsHandle.create) and the patch-branch
+          // path produce equivalent diagnostics.
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
+
+          const resources = options.readResources();
+          const exists = storageKey in resources;
+
+          if (exists) {
+            // Patch branch: merge `update` over existing state, validate the
+            // merged shape explicitly, then persist. We pre-validate (rather
+            // than rely on `persistNamespaceInstanceState`'s safeParse-with-
+            // empty-fallback) so a bad `update` throws loudly — matching the
+            // create branch's behavior. Without this, an invalid `update`
+            // would silently overwrite the resource with `{}` on the patch
+            // branch but throw on the create branch — an asymmetry that
+            // makes caller bugs hard to detect.
+            const rawPrev = resources[storageKey] as JsonObject;
+            const merged = updateObjectState(rawPrev, update);
+            const parseResult = nsConfig.stateSchema.safeParse(merged);
+            if (!parseResult.success) {
+              const issue = parseResult.error.issues[0];
+              const issuePath = issue === undefined ? "" : issue.path.join(".");
+              const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
+              const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+              throw new Error(
+                `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              );
+            }
+            // Clone `prev` before passing it to the hook — matches the
+            // defensive copy `readState()` does on the per-instance
+            // `patchState` path. Hook code that caches or mutates `prev`
+            // shouldn't be able to observe stale store internals.
+            const prev = cloneValue(rawPrev) as JsonObject;
+            await persistNamespaceInstanceState(storageKey, nsConfig, merged);
+            lruAccess.set(storageKey, Date.now());
+            if (nsConfig.onInstanceUpdated) {
+              const next = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
+              await nsConfig.onInstanceUpdated(storageKey, next, prev, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
+
+          // Create branch: delegate to `create`. Merge `update` over
+          // `createOnly` so update wins on overlapping keys (the delta is
+          // the "what I'm trying to express now"; createOnly is the
+          // scaffold that only matters at first creation).
+          const initial = { ...(createOnly ?? {}), ...update };
           return nsHandle.create(key, initial);
         },
 
@@ -3093,7 +3182,13 @@ export async function createExecutionContext<
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
     siblingSearchLimit: number | undefined,
-    scopeEmCtx?: EmissionContext
+    scopeEmCtx?: EmissionContext,
+    // FIX-663: when provided, sets this scope's `ctx.signal` instead of the
+    // closure-captured `options.signal`. `_withExecutionScope` threads the
+    // current parent ctx's signal here so child scopes inherit the parent's
+    // signal (which may be the background signal inside a `.work()` tree)
+    // rather than the root request signal via closure capture.
+    signalOverride?: AbortSignal
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
@@ -3116,7 +3211,7 @@ export async function createExecutionContext<
       org: orgHandle,
       resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
-      signal: options.signal ?? new AbortController().signal,
+      signal: signalOverride ?? options.signal ?? new AbortController().signal,
       resolveModel,
       targets: new Proxy({}, {
         get(_target, prop) {
@@ -3285,7 +3380,7 @@ export async function createExecutionContext<
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -3386,11 +3481,19 @@ export async function createExecutionContext<
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
         };
+        // FIX-663: propagate the signal down the scope chain. An explicit
+        // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
+        // inherit the *current* parent ctx's signal so descendant scopes of
+        // a `.work()` task tree keep seeing the background signal. Reading
+        // `context.signal` (not the closure-captured `options.signal`) is
+        // what makes the override propagate beyond one level.
+        const childSignal = signalOverride ?? context.signal;
         const childContext = createContext(
           childChain,
           childSiblingRegistry,
           childSiblingRegistry.length - 1,
-          childEmCtx
+          childEmCtx,
+          childSignal
         );
 
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
@@ -3408,6 +3511,10 @@ export async function createExecutionContext<
         // so `.work()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-work-pool.ts`.
         (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+        // FIX-663: re-attach the background signal on every scope so nested
+        // `.work()` dispatches can read it (the dispatch site reads
+        // `ctx._requestBackgroundSignal`, not `ctx.signal`).
+        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3656,5 +3763,8 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-663: attach the background signal to the root context. Child scopes
+  // re-attach it in `_withExecutionScope` (alongside the work pool).
+  (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
   return rootContext;
 }

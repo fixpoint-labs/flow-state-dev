@@ -9,8 +9,8 @@
  * don't try to classify "bullish vs. bearish" here.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload } from "./empty-payloads";
 import {
   pickMode,

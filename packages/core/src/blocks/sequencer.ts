@@ -436,7 +436,7 @@ async function executeBlock(
   input: unknown,
   ctx: BlockContext,
   path: string,
-  options?: { phase?: "main" | "work" }
+  options?: { phase?: "main" | "work"; signalOverride?: AbortSignal }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
@@ -542,6 +542,9 @@ async function executeBlock(
   };
 
   if (ctx._withExecutionScope === undefined) {
+    // No server scope hook (unit-test context). `ctx.signal` was already
+    // substituted by the caller's `taskCtx` spread when dispatching `.work()`,
+    // so the override is implicit here. Nothing more to thread.
     return run(ctx);
   }
 
@@ -575,7 +578,10 @@ async function executeBlock(
                   : containerConfig.metadata
             }
     },
-    run
+    run,
+    // FIX-663: thread the background signal override (set at `.work()`
+    // dispatch) into the child scope so the entire descendant tree sees it.
+    options?.signalOverride
   );
 }
 
@@ -642,6 +648,26 @@ function createRuntimeState(): SequencerRuntimeState {
  * absent (unit-test contexts), fall back to the per-sequencer work list so
  * the inner-sequencer auto-await path keeps working unchanged.
  */
+/**
+ * Build the context for a background `.work()` / `.workIf()` /
+ * `.forEachBackground()` task. FIX-663: when the request executor supplied a
+ * `_requestBackgroundSignal`, substitute it for `ctx.signal` so the task tree
+ * survives transport teardown and aborts only on explicit user cancellation.
+ * Returns the parent ctx unchanged in unit-test contexts (no background
+ * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
+ * threaded into `executeBlock` so descendant scopes inherit the same signal.
+ */
+function backgroundTaskCtx(ctx: BlockContext): {
+  taskCtx: BlockContext;
+  signalOverride: AbortSignal | undefined;
+} {
+  const bgSignal = ctx._requestBackgroundSignal;
+  if (bgSignal === undefined) {
+    return { taskCtx: ctx, signalOverride: undefined };
+  }
+  return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
+}
+
 function dispatchWorkTask(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,
@@ -1254,6 +1280,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 
             const concurrency = Math.max(1, options?.concurrency ?? DEFAULT_BACKGROUND_CONCURRENCY);
 
+            // FIX-663: iterations are fire-and-forget, so substitute the
+            // background signal. The per-iteration abort check below and each
+            // executeBlock then break only on explicit user cancellation, not
+            // on transport teardown — consistent with `.work()`.
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+
             // Dispatch all iterations as background work with concurrency limiting.
             // Each iteration's failure is isolated — one failing doesn't stop others
             // or propagate to the parent sequencer.
@@ -1261,7 +1293,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const iterationResults: WorkResult[] = [];
             const worker = async (): Promise<void> => {
               while (nextIndex < items.length) {
-                if (ctx.signal?.aborted) break;
+                if (taskCtx.signal?.aborted) break;
                 const currentIndex = nextIndex;
                 nextIndex += 1;
                 const item = items[currentIndex];
@@ -1279,7 +1311,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                   // position-based default role (work → "trace"). Element is
                   // the iteration's input — stamp it inline (FIX-573 §5).
                   stashInputHint(ctx, { kind: "inline", value: item });
-                  const result = await executeBlock(block, item, ctx, path, { phase: "work" });
+                  const result = await executeBlock(block, item, taskCtx, path, { phase: "work", signalOverride });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -1465,7 +1497,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // see phase === "work" and apply the trace default for emissions.
             // The work block's input is the parent step's output (FIX-573 §5).
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }
@@ -1510,7 +1543,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const path = childBlockPath(ctx, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }

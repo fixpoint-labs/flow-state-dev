@@ -319,3 +319,46 @@ The `concurrency` option (default: 16) limits how many iterations run simultaneo
 ### Cancellation
 
 Parent flow cancellation propagates to in-flight background iterations via the abort signal. The worker loop checks the signal before starting each new iteration.
+
+## Cancellation signals — two of them
+
+Background work and the request lifecycle are decoupled. A request has two abort signals, and `.work()` tasks see only one of them.
+
+- **Transport-level events** — client disconnect, SSE close, tab refresh. These are frequent and expected. They abort the foreground chain (the part still streaming to the client), but they leave background work alone.
+- **Explicit user-requested cancellation** — a POST to the `/abort` endpoint, or `session.abortRequest()`. This aborts both the foreground chain and any in-flight background work.
+
+The reason for the split: aborting all background work on every disconnect would silently drop the things you put on the background queue precisely because they should outlive the response. Memory writes, auto-titles, analytics, perspective observations. A user closing their tab should not lose their conversation's memory.
+
+Inside a `.work()`, `.workIf()`, or `.forEachBackground()` task, `ctx.signal` is the background signal. It fires only on explicit cancellation. This holds all the way down: nested sequencers, `.race()`, and `.waitForCondition()` inside a background task all see the background signal, not the request's transport signal.
+
+### What this means in practice
+
+A memory capture backgrounded with `.work()` survives the user closing their tab:
+
+```ts
+const turn = sequencer({ name: "turn", inputSchema: z.unknown() })
+  .then(respondToUser)        // foreground — aborts if the user clicks stop
+  .work(memory.captureFromItems); // background — completes even if the tab closes
+```
+
+If the user clicks "stop" (an explicit abort), the capture aborts mid-flight and surfaces a failed `block_trace` item carrying the abort cause.
+
+### If you need different behavior
+
+There is no built-in way to make a background task die on client disconnect, because that is rarely what you want. If you need to bound a background task, set a per-block timeout. If you want to react to explicit cancellation inside a long-running task, listen on `ctx.signal` yourself:
+
+```ts
+const longTask = handler({
+  name: "long-task",
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown(),
+  execute: async (input, ctx) => {
+    ctx.signal?.addEventListener("abort", () => {
+      // release resources; the request was explicitly cancelled
+    }, { once: true });
+    // ... long-running work
+  }
+});
+```
+
+The implementation of the two-signal model is described in `docs/architecture/execution-and-errors.md` for maintainers.

@@ -7,10 +7,9 @@
  * resolves `model` from `costPreset` at runtime, so the same instance
  * serves the `fast` and `full` cost presets without separate variants.
  *
- * `phase2Contributions` is created here and registered on the flow's
- * `resources` map so the consolidator generators and the `tradingDesk`
- * capability presets (`p2Contributions`) share one canonical resource
- * across writers and readers.
+ * The shared `phase2Contributions` resource lives in the top-level
+ * `resources.ts` so the round-robin, the post-loop consolidator generators,
+ * and the `tradingDesk` capability all pull from one declaration.
  */
 import { handler } from "@flow-state-dev/core";
 import {
@@ -21,12 +20,9 @@ import {
 import { z } from "zod";
 import { PHASE_2_MEMO_KEYS } from "../agents";
 import { sessionStateSchema, type SessionState } from "../state";
-import { tradingDesk } from "../services/trading-desk-capability";
-import { phase2Contributions } from "./contributions";
+import { tradingDesk } from "../capability";
+import { phase2Contributions } from "../resources";
 import { BEAR_ROLE, BULL_ROLE, ROUND_ROBIN_INSTRUCTIONS } from "./prompts";
-
-// Re-export so existing imports of `./round-robin` keep working.
-export { phase2Contributions };
 
 /**
  * Derives the round-robin's `{ goal }` input from session state. Run

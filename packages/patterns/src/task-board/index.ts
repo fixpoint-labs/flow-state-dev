@@ -158,6 +158,8 @@ export type {
 } from "./blocks/record-result";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
+export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
+export type { CascadeSkipDependentsOptions } from "./blocks/cascade-skip-dependents";
 export {
   createBoardMetaActive,
   createBoardMetaCompleted,

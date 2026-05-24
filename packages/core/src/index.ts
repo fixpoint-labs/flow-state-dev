@@ -1,4 +1,21 @@
-export type { BlockCacheableConfig, BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type {
+  BlockCacheableConfig,
+  BlockContext,
+  BlockDefinition,
+  BlockInput,
+  BlockKind,
+  BlockOutput,
+  BlockResult,
+  DeclaredResources,
+  LooseBlockContext,
+} from "./types/block";
+export type {
+  OrgScopeHandle,
+  RequestScopeHandle,
+  SessionScopeHandle,
+  UserScopeHandle,
+} from "./types/scope";
+export type { ScopeStateOps } from "./types/state";
 export type { AgentType, ItemVisibility } from "./items/types";
 export {
   whenAnyItem,
@@ -240,7 +257,7 @@ export type {
 } from "./execution/request-work-pool";
 export { getRequestWorkPool } from "./execution/request-work-pool";
 
-export { FlowError, OutputValidationError } from "./errors";
+export { FlowError, OutputValidationError, rootCause, isAbortLike } from "./errors";
 export type {
   FlowErrorOptions,
   FlowErrorScope,

@@ -140,24 +140,19 @@ async function seedOne(
 
   const manifestKey = skillManifestKey(skill.name);
   const stateRecord = parsed.state as unknown as Record<string, unknown>;
-  const existingManifest = collection.getOptional(manifestKey);
-  if (existingManifest) {
-    await existingManifest.setState({ ...stateRecord } as never);
-    await existingManifest.writeContent(skill.skillMd);
-  } else {
-    const ref = await collection.create(manifestKey, stateRecord as never);
-    await ref.writeContent(skill.skillMd);
-  }
+  const manifest = await collection.create(
+    manifestKey,
+    stateRecord as never,
+    { replace: true },
+  );
+  await manifest.writeContent(skill.skillMd);
 
   for (const file of skill.files ?? []) {
     const key = skillFileKey(skill.name, file.path);
-    const existingFile = collection.getOptional(key);
-    if (existingFile) {
-      await existingFile.writeContent(file.content);
-    } else {
-      const ref = await collection.create(key);
-      await ref.writeContent(file.content);
-    }
+    // File entries carry their content in `writeContent`; state is unused.
+    // `getOrCreate` makes the ensure-then-write a single call.
+    const ref = await collection.getOrCreate(key);
+    await ref.writeContent(file.content);
   }
 }
 
@@ -178,12 +173,11 @@ async function writeMeta(
   collection: ResourceCollectionRef,
   meta: SkillsCollectionMeta,
 ): Promise<void> {
-  const existing = collection.getOptional(META_KEY);
-  if (existing) {
-    await existing.setState({ seededNames: meta.seededNames });
-  } else {
-    await collection.create(META_KEY, { seededNames: meta.seededNames });
-  }
+  await collection.create(
+    META_KEY,
+    { seededNames: meta.seededNames },
+    { replace: true },
+  );
 }
 
 /** Test-only: clear the seeding sentinel cache. Not exported from the

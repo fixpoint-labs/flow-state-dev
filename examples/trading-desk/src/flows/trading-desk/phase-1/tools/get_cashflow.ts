@@ -4,9 +4,9 @@
  * Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { loadFixture } from "../../services/fixtures";
-import { fetchYahooCashflow } from "../../services/yahoo";
+import { getOrFetch } from "../../lib/cache";
+import { loadFixture } from "../../lib/fixtures";
+import { fetchYahooCashflow } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

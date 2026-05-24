@@ -64,23 +64,18 @@ async function writeSkill(
   const parsed = parseSkillMd(skill.skillMd);
   const manifestKey = skillManifestKey(skill.name);
   const stateRecord = parsed.state as unknown as Record<string, unknown>;
-  const existing = collection.getOptional(manifestKey);
-  if (existing) {
-    await existing.setState({ ...stateRecord } as never);
-    await existing.writeContent(skill.skillMd);
-  } else {
-    const ref = await collection.create(manifestKey, stateRecord as never);
-    await ref.writeContent(skill.skillMd);
-  }
+  const manifest = await collection.create(
+    manifestKey,
+    stateRecord as never,
+    { replace: true },
+  );
+  await manifest.writeContent(skill.skillMd);
 
   for (const file of skill.files ?? []) {
     const key = skillFileKey(skill.name, file.path);
-    const existingFile = collection.getOptional(key);
-    if (existingFile) {
-      await existingFile.writeContent(file.content);
-    } else {
-      const ref = await collection.create(key);
-      await ref.writeContent(file.content);
-    }
+    // File entries carry their content in `writeContent`; state is unused.
+    // `getOrCreate` makes the ensure-then-write a single call.
+    const ref = await collection.getOrCreate(key);
+    await ref.writeContent(file.content);
   }
 }

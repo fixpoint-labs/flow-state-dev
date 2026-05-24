@@ -264,5 +264,74 @@ type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title:
 | `StateOf<T>` | State type from a schema, resource, or scope config |
 | `ContextOf<T, Kind>` | Context handle type for a scope or resource |
 | `ResourceContext<T>` | Resource context type |
+| `BlockDefinition` | The block interface itself — return type of `handler()`, `generator()`, `sequencer()`, and `router()`. Use when an app-level factory needs to accept or return "any block" without restating the framework's generics. |
+| `BlockKind` | `"handler" \| "generator" \| "sequencer" \| "router"` — the discriminant on `block.kind`. |
+| `BlockContext` | The full block-context interface — what `ctx` resolves to inside `execute`. |
+| `BlockResult<TOutput>` | The handler `execute` return-value union. |
+| `SessionScopeHandle<TState>` | The shape of `ctx.session` — typed `state`, `patchState`, `setStateRecord`, etc. `UserScopeHandle`, `OrgScopeHandle`, and `RequestScopeHandle` are siblings for the other scopes. |
+| `ScopeStateOps<TState>` | The state-mutation interface every scope handle exposes (`patchState`, `setState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). |
+| `LooseBlockContext<TSessionState>` | Variance-friendly alias for `BlockContext` — typed on session, permissive on resources. Use for helper functions that take a block's `ctx` as a parameter. |
 
-These all use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately.
+The `*Input` / `*Output` / `StateOf` helpers use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately. The block-shape and scope-handle types are useful when *writing* factories: they let you type "any block" or "a ctx slice with a typed session" structurally, instead of falling back to `any` or hand-rolling `{ session: { patchState: ... } }` shapes.
+
+### When to reach for `LooseBlockContext`
+
+The full `BlockContext<...>` is invariant on its `TResources` parameter. That means a handler whose `ctx.resources` is inferred as the narrow `ResourceRegistry<{ memos: ... }>` (from `resources: memoResources` in the block config) **can't be assigned** to a parameter typed `BlockContext<unknown, MyState>` (whose default `ResourceRegistry<Record<string, AnyResourceRef>>` isn't a supertype of the narrow inferred form).
+
+This bites whenever you pull `ctx` into a helper:
+
+```ts
+// Won't compile — variance trap on TResources
+async function publishMemo(ctx: BlockContext<unknown, MySessionState>, ...) {}
+
+handler({
+  resources: { memos: memosCollection },
+  execute: async (input, ctx) => {
+    await publishMemo(ctx, ...); // Error: TResources mismatch
+  },
+});
+```
+
+`LooseBlockContext<TSessionState>` solves it by leaving `resources` permissive (`any`):
+
+```ts
+import type { LooseBlockContext } from "@flow-state-dev/core";
+
+async function publishMemo(ctx: LooseBlockContext<MySessionState>, ...) {
+  // ctx.session.state is typed Readonly<MySessionState>
+  // ctx.resources is `any` — narrow at the call site if needed
+}
+```
+
+Use `LooseBlockContext` when your helper only touches `ctx.session` (or doesn't care about resource typing). Use a hand-typed slice (`{ session: SessionScopeHandle<MySessionState>; resources: { memos: ... } }`) when the helper needs typed resources.
+
+### Sharing config across handlers with `handler.withDefaults`
+
+When a family of handlers shares config (same `sessionStateSchema`, same declared `resources`, same `outputSchema`), `handler.withDefaults` lets each handler omit the shared fields:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const memoHandler = handler.withDefaults({
+  sessionStateSchema,
+  resources: { memos: memosCollection },
+  outputSchema: z.void(),
+});
+
+export const commitBullMemo = memoHandler({
+  name: "commit-memo-p2-bull",
+  inputSchema: bullThesisSchema,
+  execute: async (thesis, ctx) => {
+    // ctx is typed from the defaults — session.state is MySessionState,
+    // resources.memos is the typed collection ref.
+    await ctx.resources.memos.get("p2/bull").patchState({ ... });
+  },
+});
+```
+
+Per-call overrides win — pass any defaulted field again to replace it (e.g. `outputSchema: z.object({...})` when one handler needs a non-void return).
+
+Defaultable: `sessionStateSchema`, `userStateSchema`, `orgStateSchema`, `requestStateSchema`, `sequencerStateSchema`, `resources`, `outputSchema`, `uses`. Excluded: `name`, `inputSchema`, `execute`, `description` (those vary per block).
+
+This is the framework's "scaffolding-only sharing" tool. For "body sharing" (the same execute body parameterized by identity), write a factory function. For "shared logic called from unique bodies," extract a helper function and use `LooseBlockContext` to type its `ctx` parameter.

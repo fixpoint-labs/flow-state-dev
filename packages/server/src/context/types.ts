@@ -54,6 +54,13 @@ export type CreateExecutionContextOptions<
   metadata?: Record<string, unknown>;
   input?: unknown;
   signal?: AbortSignal;
+  /**
+   * Background-work abort signal (FIX-663). Attached to every context as
+   * `_requestBackgroundSignal` and substituted for `ctx.signal` inside
+   * `.work()` task trees. Fires only on explicit user-requested abort, not
+   * on transport-level teardown. Absent for non-server callers.
+   */
+  backgroundSignal?: AbortSignal;
   response?: ResponseEmitterHandle;
   modelResolver?: ModelResolver;
   stores: StoreRegistry;

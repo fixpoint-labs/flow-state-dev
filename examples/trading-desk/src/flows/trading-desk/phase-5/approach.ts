@@ -3,7 +3,7 @@
  *
  * A fast-model free-text generator that streams the PM's plan in plain
  * English before the structured `portfolioManagerGenerator` runs. See
- * `services/approach-generator.ts` for the shared shape.
+ * `lib/approach-generator.ts` for the shared shape.
  *
  * Capability presets: `tradeProposal`, `riskAssessment`, and
  * `investmentThesis`. The preamble references all three upstream
@@ -12,8 +12,8 @@
  * reads on the `full` preset.
  */
 import { PHASE_5_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../services/trading-desk-capability";
-import { createApproachGenerator } from "../services/approach-generator";
+import { tradingDesk } from "../capability";
+import { createApproachGenerator } from "../lib/approach-generator";
 import { PORTFOLIO_MANAGER_APPROACH_PROMPT } from "./prompts";
 
 export const portfolioManagerApproachGenerator = createApproachGenerator({

@@ -132,7 +132,10 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
 - `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
-  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, `count()`
+  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
+  - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
+  - **`upsert(key, update, createOnly?)`** — patch-or-create. On exists: applies `update` via `patchState` semantics (other fields preserved). On missing: creates with `{ ...createOnly, ...update }` (update wins on overlap). The `createOnly` extras fill fields you only need to supply at creation time. Use for incremental-update paths that need to handle first-touch in a single call.
+  - "If-exists / if-missing" summary: `create` throws / `create({ replace })` replaces / `getOrCreate` returns as-is / `upsert` patches — all four create on missing.
 - `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
 
 **Capabilities:**
@@ -213,6 +216,52 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource
 - `ResourceContext<T>` — Resource context type
 - `BlockInput<T>` / `BlockOutput<T>` — Infer block I/O types
+- `BlockDefinition` — The fully-typed return interface of `handler()`, `generator()`, `sequencer()`, and `router()`. Generics default to `ZodTypeAny`, so unparameterized `BlockDefinition` is the unconstrained "any block" form — useful when an app-level factory needs to accept or return a block without restating the framework's generics.
+- `BlockKind` — `"handler" | "generator" | "sequencer" | "router"` union — useful when writing dispatchers that switch on `block.kind`.
+- `BlockContext` — The full block-context interface (the type of `ctx` in `execute`). Generic over the four scope-state types, declared resources, sequencer state, and parent input.
+- `BlockResult<TOutput>` — The handler `execute` return-value union.
+- `SessionScopeHandle<TState>` / `UserScopeHandle<TState>` / `OrgScopeHandle<TState>` / `RequestScopeHandle<TState>` — The scope handles `ctx.session` / `ctx.user` / etc. resolve to. Use to type a ctx slice (e.g. `(input, ctx: { session: SessionScopeHandle<MySessionState> }) => …`) instead of hand-rolling a `{ session: { patchState: ... } }` shape.
+- `ScopeStateOps<TState>` — The state-mutation interface every scope handle exposes (`patchState`, `setState`, `setStateRecord`, etc.).
+- `LooseBlockContext<TSessionState>` — Variance-friendly alias for `BlockContext`: typed on session scope, permissive on resources. Use for helper functions that take a block's `ctx` as a parameter. The full `BlockContext`'s `TResources` generic is invariant on `ResourceRegistry`, so a handler's narrow inferred `ResourceRegistry<{ memos: ... }>` can't widen to a `BlockContext`'s default. `LooseBlockContext` sidesteps that by leaving `resources` permissive — helpers accept any block's ctx, call sites retain their narrower typing internally.
+
+### `handler.withDefaults({...})`
+
+Partially-applied handler constructor. Bakes in common config so a family
+of sibling handlers can share scaffolding without restating it per call.
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const memoHandler = handler.withDefaults({
+  sessionStateSchema,
+  resources: { memos: memosCollection },
+  outputSchema: z.void(),
+});
+
+export const commitBullMemo = memoHandler({
+  name: "commit-memo-p2-bull",
+  inputSchema: bullThesisSchema,
+  execute: async (thesis, ctx) => {
+    // ctx.session.state is typed from sessionStateSchema
+    // ctx.resources.memos is typed from the resources default
+    await ctx.resources.memos.get("p2/bull").patchState({ ... });
+  },
+});
+
+// Per-call overrides win: pass `outputSchema` again to replace the default.
+export const markError = memoHandler({
+  name: "mark-error",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ status: z.literal("error"), text: z.string() }),
+  execute: async (_, ctx) => ({ status: "error" as const, text: "..." }),
+});
+```
+
+Defaultable fields: `sessionStateSchema`, `userStateSchema`,
+`orgStateSchema`, `requestStateSchema`, `sequencerStateSchema`,
+`resources`, `outputSchema`, `uses`. `name`, `inputSchema`, `execute`, and
+`description` are excluded — those vary per block.
 
 ### Types (`@flow-state-dev/core/types`)
 
