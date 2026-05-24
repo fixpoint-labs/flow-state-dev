@@ -522,7 +522,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
         async create(
           key: string | Record<string, string>,
-          initial?: Partial<JsonObject>
+          initial?: Partial<JsonObject>,
+          createOptions?: { replace?: boolean }
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
 
@@ -534,47 +535,67 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           }
 
           const resources = options.readResources();
-          if (storageKey in resources) {
+          const exists = storageKey in resources;
+          const replace = createOptions?.replace === true;
+
+          if (exists && !replace) {
             throw new Error(`Resource instance "${storageKey}" already exists`);
           }
 
-          // Check instance limits
-          const currentCount = countInstances(nsConfig.pattern, resources);
-          if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
-            const eviction = nsConfig.eviction ?? "none";
-            if (eviction === "none") {
-              throw new Error(
-                `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
-              );
+          // Check instance limits ONLY when adding a new instance. The replace
+          // branch reuses an existing storage slot, so it can't push us over
+          // maxInstances.
+          if (!exists) {
+            const currentCount = countInstances(nsConfig.pattern, resources);
+            if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
+              const eviction = nsConfig.eviction ?? "none";
+              if (eviction === "none") {
+                throw new Error(
+                  `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
+                );
+              }
+              // Evict one instance — persists the deletion
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
             }
-            // Evict one instance — persists the deletion
-            await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
           }
 
-          // Validate state via schema — throw on invalid input, never silent fallback
+          // Validate state via schema — throw on invalid input, never silent fallback.
+          // Defaults declared on the schema (e.g. `.nullable().default(null)`,
+          // per BP-023) fill missing fields on both the create and replace
+          // branches, so callers only supply the non-nullable scaffold.
           const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
           if (!parseResult.success) {
             const issue = parseResult.error.issues[0];
             const issuePath = issue === undefined ? "" : issue.path.join(".");
             const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
             const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+            const opLabel = replace && exists ? "create(replace)" : "create";
             throw new Error(
-              `Namespace "${nsConfig.pattern}" create("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              `Namespace "${nsConfig.pattern}" ${opLabel}("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
             );
           }
 
           const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
 
-          const nextResources = { ...resources, [storageKey]: state };
+          // Capture prior state for the updated-hook + signal before persisting.
+          const prevState = exists ? (resources[storageKey] as JsonObject) : undefined;
+
+          const nextResources = { ...(options.readResources()), [storageKey]: state };
           await options.persistResources(nextResources);
 
           lruAccess.set(storageKey, Date.now());
 
-          if (nsConfig.onInstanceCreated) {
-            await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+          if (exists) {
+            if (nsConfig.onInstanceUpdated) {
+              await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+          } else {
+            if (nsConfig.onInstanceCreated) {
+              await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "created");
           }
-
-          options.onResourceChanged?.(storageKey, "created");
 
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
@@ -589,6 +610,49 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
+          return nsHandle.create(key, initial);
+        },
+
+        async upsert(
+          key: string | Record<string, string>,
+          update: Partial<JsonObject>,
+          createOnly?: Partial<JsonObject>
+        ): Promise<ResourceRef<JsonObject>> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+
+          // Validate that key matches pattern. We do this here so the
+          // create-branch error (from nsHandle.create) and the patch-branch
+          // path produce equivalent diagnostics.
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
+
+          const resources = options.readResources();
+          const exists = storageKey in resources;
+
+          if (exists) {
+            // Patch branch: merge `update` over existing state and persist.
+            // `persistNamespaceInstanceState` runs `safeParse` on the merged
+            // shape, matching `patchState` semantics exactly.
+            const prev = resources[storageKey] as JsonObject;
+            const merged = updateObjectState(prev, update);
+            await persistNamespaceInstanceState(storageKey, nsConfig, merged);
+            lruAccess.set(storageKey, Date.now());
+            if (nsConfig.onInstanceUpdated) {
+              const next = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
+              await nsConfig.onInstanceUpdated(storageKey, next, prev, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
+
+          // Create branch: delegate to `create`. Merge `update` over
+          // `createOnly` so update wins on overlapping keys (the delta is
+          // the "what I'm trying to express now"; createOnly is the
+          // scaffold that only matters at first creation).
+          const initial = { ...(createOnly ?? {}), ...update };
           return nsHandle.create(key, initial);
         },
 

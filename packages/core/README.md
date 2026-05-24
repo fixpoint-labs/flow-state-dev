@@ -131,7 +131,10 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
 - `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
-  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, `count()`
+  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
+  - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
+  - **`upsert(key, update, createOnly?)`** — patch-or-create. On exists: applies `update` via `patchState` semantics (other fields preserved). On missing: creates with `{ ...createOnly, ...update }` (update wins on overlap). The `createOnly` extras fill fields you only need to supply at creation time. Use for incremental-update paths that need to handle first-touch in a single call.
+  - "If-exists / if-missing" summary: `create` throws / `create({ replace })` replaces / `getOrCreate` returns as-is / `upsert` patches — all four create on missing.
 - `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
 
 **Capabilities:**
