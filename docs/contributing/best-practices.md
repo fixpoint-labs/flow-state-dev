@@ -305,6 +305,60 @@ Update policy:
   - Schema-as-source-of-truth: adding a new nullable field to the schema becomes a one-place edit. Without this BP, the list is duplicated across N files (one per phase per layer) and any audit can miss a copy. The trading-desk example carried ~150 lines of duplicated null-field literals across Phase 1–5 setup and writer files before this BP landed.
   - This is the practical answer to "why doesn't the framework provide a `defaultState()` helper?" — it already does, via Zod. The lesson is to encode defaults at the schema layer rather than at the call site.
 
+### BP-024: Factor with helpers when the body varies; factor with factories when it doesn't
+
+- Status: Active
+- Date: 2026-05-23
+- Rule:
+  - When several blocks share **identity-only** parameterization (the body
+    is identical across instances; only some key / name / lookup-target
+    varies), express the pattern as a **factory** that takes the identity
+    and returns the block. Trading-desk examples: `defineMemoStateBlocks`
+    (markWriting / markError factories), `defineMemoSetup`, `defineAnalyst`
+    in Phase 1, `commitPersonaMemo` in Phase 4.
+  - When several blocks share **scaffolding only** (the body is unique per
+    instance — different projection, derivation, side effect), express the
+    pattern as a **helper function** the body calls into, NOT a factory
+    that takes the body as a callback. Trading-desk example: `publishMemo`
+    helper + plain `handler()` calls in Phase 2/3/5's commit handlers,
+    instead of a `defineCommit({ inputSchema, project, afterCommit })`
+    factory.
+  - When several blocks share **config but vary in body and identity**
+    (the common case for sibling handlers in one file or package), express
+    the shared config as `handler.withDefaults({...})` (or eventually
+    `generator.withDefaults`, etc.). Trading-desk example: `memoHandler`
+    — used by every commit handler, by `defineMemoStateBlocks` internals,
+    and by `defineMemoSetup` to skip restating `sessionStateSchema`,
+    `resources: memoResources`, `outputSchema: z.void()`. Per-call
+    overrides are supported (`markError` overrides `outputSchema`).
+- Why:
+  - A factory whose body is a callback `({ inputSchema, project }) => handler(...)`
+    becomes a closure-over-closure: it has to thread the caller's input
+    type back to the call site via generics (`<S extends ZodTypeAny>`,
+    `z.infer<S>`, custom ctx aliases). Every callback parameter the
+    factory accepts adds a type-plumbing line. By the time the factory
+    handles 3–4 deltas, the framework-typing complexity outweighs the
+    duplication the factory was eliminating.
+  - A helper function does none of that: it takes `ctx` as a parameter,
+    returns void or a value, and the caller's plain `handler()` retains
+    its full typing chain. The "shared logic" (resource patch, session
+    mirror, derived fields) is the helper; the "unique logic"
+    (LLM-output projection, derived calls, terminal side effects) stays
+    in the handler body where it reads naturally.
+  - `handler.withDefaults` is the cheap middle ground for "shared
+    scaffolding, varied bodies, varied identities" — no callback
+    threading, no generic plumbing, just a partially-applied constructor.
+  - The cost of choosing wrong: the original `defineMemoWriter` in
+    trading-desk took its body as a callback (`defineCommit({ project,
+    afterCommit })`) and required ~80 lines of `CommitCtx` /
+    `CommitOptions` / `CommitPatch` / generic plumbing to thread types
+    through the closure. Splitting into a state-blocks factory +
+    `publishMemo` helper + plain handlers removed all of that scaffolding
+    while making the per-phase writer files _more_ readable.
+  - When in doubt, ask: **does the per-instance variation live in the
+    callback parameter, or in things known at construction time?** If the
+    former, the right tool is a helper.
+
 ## Template For New Entries
 
 ```md
