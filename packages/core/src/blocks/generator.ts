@@ -70,7 +70,6 @@ import {
   writeToolObservation,
   type ToolCacheStore,
 } from "./internal/cache-tool-call";
-import { isTraceObservabilityEnabled } from "../helpers/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
