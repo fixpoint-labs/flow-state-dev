@@ -6,8 +6,8 @@
  * rates as percentages; the schema is fractions, so we divide by 100.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

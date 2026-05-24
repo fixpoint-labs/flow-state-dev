@@ -179,7 +179,7 @@ Declare `outputSchema` when the composed output is consumed by something that de
 
 Omit it for internal scratch pipelines or background work where nothing downstream reads the typed shape. There the validation is just overhead.
 
-See [`SequencerOutputSchemaError`](/docs/advanced/error-handling#sequenceroutputschemaerror) for the runtime error. Internal contributors: BP-024 covers the judgment call on when to reach for this.
+See [`SequencerOutputSchemaError`](/docs/advanced/error-handling#sequenceroutputschemaerror) for the runtime error. Internal contributors: BP-025 covers the judgment call on when to reach for this.
 
 ## Output flows forward
 

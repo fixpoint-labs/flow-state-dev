@@ -5,9 +5,9 @@
  * short-circuit before fixture branch; live failure stays "unavailable").
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { discoverWeb, SENTIMENT_QUERY } from "../../services/discover";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { discoverWeb, SENTIMENT_QUERY } from "../../lib/discover";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload, skippedDiscoveryPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

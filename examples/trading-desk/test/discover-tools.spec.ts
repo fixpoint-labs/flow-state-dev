@@ -16,7 +16,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { _resetCache } from "../src/flows/trading-desk/services/cache";
+import { _resetCache } from "../src/flows/trading-desk/lib/cache";
 import { discover_fundamentals_context } from "../src/flows/trading-desk/phase-1/tools/discover_fundamentals_context";
 import { discover_sentiment_context } from "../src/flows/trading-desk/phase-1/tools/discover_sentiment_context";
 import { discover_technical_context } from "../src/flows/trading-desk/phase-1/tools/discover_technical_context";

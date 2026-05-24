@@ -75,6 +75,46 @@ execute: async (input, ctx) => {
 
 Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
 
+### `create({ replace })` and `upsert` — handling the exists/missing branches
+
+Two additional operations cover the recurring "is the instance already there?" patterns that show up in setup/reset and incremental-update paths:
+
+```ts
+execute: async (input, ctx) => {
+  const files = ctx.session.resources.files;
+
+  // Replace-or-create: overwrites existing state, creates if missing.
+  // `setState` semantics — Zod `.default(null)` fills nullables, so a
+  // prior published memo's body/headline reset cleanly on re-run.
+  await files.create("readme.md", { language: "markdown" }, { replace: true });
+
+  // Patch-or-create: applies a delta on exists, creates on missing.
+  // 2-arg form — the second arg is patched on exists, used as-is on create.
+  await files.upsert("readme.md", { language: "javascript" });
+
+  // 3-arg form: `createOnly` extras fill fields you only need at first
+  // creation. On exists, only `update` is applied; on missing, the
+  // instance is created with `{ ...createOnly, ...update }` (update wins
+  // on overlapping keys).
+  await files.upsert(
+    "readme.md",
+    { language: "javascript" },          // patch — always applied
+    { metadata: { createdBy: "setup" } } // create-only — only on first touch
+  );
+}
+```
+
+The four "if-exists / if-missing" patterns:
+
+| API | If exists | If missing |
+| --- | --- | --- |
+| `create(k, s)` | throws | creates |
+| `create(k, s, { replace: true })` | replaces (setState, defaults fill) | creates |
+| `getOrCreate(k, init?)` | returns as-is | creates |
+| `upsert(k, update, createOnly?)` | patches | creates with `{ ...createOnly, ...update }` |
+
+Both new operations fire the right lifecycle hooks: `onInstanceUpdated` on the replace/patch branch, `onInstanceCreated` on the create branch. `maxInstances` is only checked when adding a new instance — replacing or patching an existing one never trips the guard.
+
 ### Parameterized patterns
 
 When a pattern has `[name]` segments, pass an object key instead of a string:

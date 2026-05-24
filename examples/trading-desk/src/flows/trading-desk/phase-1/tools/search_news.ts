@@ -3,9 +3,9 @@
  * (14-day window). Fixture: curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { fetchFinnhubCompanyNews, hasFinnhubKey } from "../../services/finnhub";
-import { loadFixture } from "../../services/fixtures";
+import { getOrFetch } from "../../lib/cache";
+import { fetchFinnhubCompanyNews, hasFinnhubKey } from "../../providers/finnhub";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

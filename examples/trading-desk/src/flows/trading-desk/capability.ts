@@ -35,12 +35,11 @@ import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
-} from "../agents";
-import { memosCollection } from "../resources";
-import { phase2Contributions } from "../phase-2/contributions";
-import { formatUserInstructions } from "../special-instructions";
-import { specialInstructionsResource } from "../special-instructions-resource";
-import { sessionStateSchema, type SessionState } from "../state";
+} from "./agents";
+import { memosCollection, phase2Contributions } from "./resources";
+import { formatUserInstructions } from "./special-instructions";
+import { specialInstructionsResource } from "./special-instructions-resource";
+import { sessionStateSchema, type SessionState } from "./state";
 import {
   formatAnalystMemos,
   formatDebate,
@@ -51,10 +50,7 @@ import {
   formatThesisExtensions,
   formatTradeProposalExtensions,
   readContributionsEntries,
-} from "./format";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CtxAny = { session: { state: SessionState }; resources: any };
+} from "./lib/format";
 
 /**
  * Shared no-fabrication rule injected into every generator's prompt via the
@@ -112,7 +108,7 @@ const GROUNDING_CLAUSE = [
   "</grounding>",
 ].join("\n");
 
-function memoState(ctx: CtxAny, collectionKey: string): unknown {
+function memoState(ctx: { resources: any }, collectionKey: string): unknown {
   return ctx.resources.memos?.getOptional(collectionKey)?.state;
 }
 
@@ -382,4 +378,4 @@ export {
   formatThesisExtensions,
   formatTradeProposalExtensions,
   readContributionsEntries,
-} from "./format";
+} from "./lib/format";

@@ -1,25 +1,49 @@
 /**
- * The Phase 3 trader generator.
+ * The Phase 3 trader generator and its output schema.
  *
  * Reads the Phase 2 InvestmentThesis (plus the four analyst memos and the
  * full debate transcript on `full` preset) and writes a typed
  * `TradeProposal`. `agentType: "primary"` so the structured `TxStruct` card
  * renders in the transcript automatically.
  *
- * Capability-driven context. The `tradingDesk` capability provides:
- *   - `investmentThesis` (always on) — InvestmentThesis + extension fields.
- *   - `phase1MemosFull` and `phase2DebateFull` — same content as the
- *     always-on `phase1Memos` / `phase2Debate` presets, but the context
- *     formatters render an empty string when `costPreset !== "full"`.
- *     Listed statically so the resources they declare (memos collection,
- *     `p2Contributions`) flow through without an extra `resources:` slot.
+ * The output schema lives inline here because only one generator emits
+ * the shape; the Phase 3 writer imports the type back from this file to
+ * project the commit. BP-016: every field is required, `metrics` is a
+ * fixed-shape object, `rating` / `direction` / `holdingPeriod` are enums
+ * of literals, and `nullable` is never reached for output fields.
  */
 import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
 import { PHASE_3_MEMO_KEYS } from "../agents";
+import { tradingDesk } from "../capability";
+import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
-import { tradingDesk } from "../services/trading-desk-capability";
-import { tradeProposalOutputSchema } from "./schemas";
 import { TRADER_PROMPT } from "./prompts";
+
+export const tradeProposalOutputSchema = z.object({
+  label: z.string(),
+  headline: z.string(),
+  rating: z.enum(["long", "short", "flat"]),
+  metrics: z.object({
+    direction: z.string(),
+    size: z.string(),
+    stop: z.string(),
+    target: z.string(),
+    conviction: z.string(),
+  }),
+  body: z.array(thesisSection),
+  // Typed extension fields — machine-readable mirror of the display
+  // `metrics` row, consumed by Phase 4 (risk) and Phase 5 (PM).
+  direction: z.enum(["long", "short", "flat"]),
+  sizePct: z.number().min(0).max(10),
+  stopPrice: z.number().positive(),
+  targetPrice: z.number().positive(),
+  holdingPeriod: z.enum(["days", "weeks", "months", "quarters"]),
+  invalidationCriteria: z.array(z.string()),
+  dependsOn: z.array(z.string()),
+});
+
+export type TradeProposalOutput = z.infer<typeof tradeProposalOutputSchema>;
 
 export const traderGenerator = generator({
   name: "trader-generator",

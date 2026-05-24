@@ -43,7 +43,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard } from "../task-board";
+import { taskBoard, createCascadeSkipDependents } from "../task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
@@ -51,7 +51,6 @@ import {
   type PlanAndExecuteState,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
-import { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
 import { createApplyReplan } from "./blocks/apply-replan";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
@@ -88,7 +87,9 @@ export {
 
 export { createCaptureAndPlan } from "./blocks/capture-and-plan";
 export { createApplyReplan } from "./blocks/apply-replan";
-export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
+// Re-exported from the task-board substrate (its true home, FIX-631) to
+// preserve plan-and-execute's public subpath API.
+export { createCascadeSkipDependents } from "../task-board";
 export {
   createSynthesize,
   createBuildPlanOutput,
