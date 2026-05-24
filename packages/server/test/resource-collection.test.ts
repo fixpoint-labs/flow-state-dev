@@ -174,6 +174,242 @@ describe("collection CRUD", () => {
 });
 
 // ---------------------------------------------------------------------------
+// create({ replace })
+// ---------------------------------------------------------------------------
+
+describe("create({ replace })", () => {
+  it("replaces existing state instead of throwing", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "typescript", metadata: { old: true } });
+    const replaced = await ns.create(
+      "a.ts",
+      { language: "python" },
+      { replace: true },
+    );
+    expect(replaced.state.language).toBe("python");
+    // Original metadata is dropped — replace is setState semantics, not merge
+    expect(replaced.state.metadata).toBeUndefined();
+  });
+
+  it("creates if missing — same as create() without the option", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    const ref = await ns.create(
+      "fresh.ts",
+      { language: "typescript" },
+      { replace: true },
+    );
+    expect(ref.state.language).toBe("typescript");
+    expect(ns.count()).toBe(1);
+  });
+
+  it("does not double-count toward maxInstances when replacing", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    // filesCollection has maxInstances: 5
+    for (let i = 0; i < 5; i++) {
+      await ns.create(`f${i}.ts`, { language: "typescript" });
+    }
+    expect(ns.count()).toBe(5);
+
+    // Replace one of them — must not trip the maxInstances guard.
+    await ns.create("f3.ts", { language: "python" }, { replace: true });
+    expect(ns.count()).toBe(5);
+    expect(ns.get("f3.ts").state.language).toBe("python");
+  });
+
+  it("fires onInstanceUpdated on the replace branch", async () => {
+    const created: string[] = [];
+    const updated: Array<{ key: string; prev: unknown; next: unknown }> = [];
+    const hookColl = defineResourceCollection({
+      scope: "session",
+      pattern: "hooked/**",
+      stateSchema: z.object({ value: z.string() }),
+      onInstanceCreated: (key) => {
+        created.push(key);
+      },
+      onInstanceUpdated: (key, next, prev) => {
+        updated.push({ key, prev, next });
+      },
+    });
+
+    const { ctx } = await createCtx({ hooked: hookColl });
+    const ns = ctx.resources.hooked as ResourceCollectionRef<{ value: string }>;
+
+    await ns.create("x", { value: "first" });
+    expect(created).toEqual(["hooked/x"]);
+    expect(updated).toEqual([]);
+
+    await ns.create("x", { value: "second" }, { replace: true });
+    expect(created).toEqual(["hooked/x"]);
+    expect(updated).toHaveLength(1);
+    expect(updated[0].key).toBe("hooked/x");
+    expect((updated[0].next as { value: string }).value).toBe("second");
+    expect((updated[0].prev as { value: string }).value).toBe("first");
+  });
+
+  it("explicit { replace: false } behaves like the default (throws on exists)", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "typescript" });
+    await expect(
+      ns.create("a.ts", { language: "python" }, { replace: false }),
+    ).rejects.toThrow("already exists");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// upsert
+// ---------------------------------------------------------------------------
+
+describe("upsert", () => {
+  it("2-arg form creates when missing", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    const ref = await ns.upsert("new.ts", { language: "typescript" });
+    expect(ref.state.language).toBe("typescript");
+    expect(ns.count()).toBe(1);
+  });
+
+  it("2-arg form patches when exists — preserves untouched fields", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "typescript", metadata: { kept: true } });
+    await ns.upsert("a.ts", { language: "python" });
+    const got = ns.get("a.ts");
+    expect(got.state.language).toBe("python");
+    // metadata was NOT in the update, so it must persist (patch semantics)
+    expect(got.state.metadata).toEqual({ kept: true });
+  });
+
+  it("3-arg form creates with { ...createOnly, ...update } on missing", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.upsert(
+      "new.ts",
+      { language: "typescript" },
+      { metadata: { initOnly: true } },
+    );
+    const ref = ns.get("new.ts");
+    expect(ref.state.language).toBe("typescript");
+    expect(ref.state.metadata).toEqual({ initOnly: true });
+  });
+
+  it("3-arg form: update wins over createOnly on overlapping keys (create branch)", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.upsert(
+      "new.ts",
+      { language: "python" },
+      { language: "typescript", metadata: { kept: true } },
+    );
+    const ref = ns.get("new.ts");
+    expect(ref.state.language).toBe("python");
+    expect(ref.state.metadata).toEqual({ kept: true });
+  });
+
+  it("3-arg form: createOnly is ignored on the patch branch", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "typescript" });
+    await ns.upsert(
+      "a.ts",
+      { language: "python" },
+      { metadata: { shouldNotAppear: true } },
+    );
+    const ref = ns.get("a.ts");
+    expect(ref.state.language).toBe("python");
+    // createOnly was supplied but the resource already existed, so the
+    // extras are not applied — only the update is patched in.
+    expect(ref.state.metadata).toBeUndefined();
+  });
+
+  it("fires onInstanceCreated on create branch, onInstanceUpdated on patch branch", async () => {
+    const created: string[] = [];
+    const updated: string[] = [];
+    const hookColl = defineResourceCollection({
+      scope: "session",
+      pattern: "hooked/**",
+      stateSchema: z.object({ value: z.string() }),
+      onInstanceCreated: (key) => {
+        created.push(key);
+      },
+      onInstanceUpdated: (key) => {
+        updated.push(key);
+      },
+    });
+
+    const { ctx } = await createCtx({ hooked: hookColl });
+    const ns = ctx.resources.hooked as ResourceCollectionRef<{ value: string }>;
+
+    await ns.upsert("k1", { value: "first" });
+    expect(created).toEqual(["hooked/k1"]);
+    expect(updated).toEqual([]);
+
+    await ns.upsert("k1", { value: "second" });
+    expect(created).toEqual(["hooked/k1"]);
+    expect(updated).toEqual(["hooked/k1"]);
+  });
+
+  it("throws on schema-invalid update on the patch branch (symmetric with create)", async () => {
+    // Greptile review: prior to the fix, an invalid update on the patch
+    // branch would silently overwrite the resource with `{}` (the
+    // safeParse-fallback behavior in persistNamespaceInstanceState).
+    // We now pre-validate the merged state so callers get a loud error,
+    // matching create's behavior on bad input.
+    const strictColl = defineResourceCollection({
+      scope: "session",
+      pattern: "strict/**",
+      stateSchema: z.object({ count: z.number().int().nonnegative() }),
+    });
+    const { ctx } = await createCtx({ strict: strictColl });
+    const ns = ctx.resources.strict as ResourceCollectionRef<{ count: number }>;
+
+    await ns.create("k", { count: 1 });
+    // Patch branch with an invalid value → must throw, not silently
+    // overwrite with `{}`.
+    await expect(
+      ns.upsert("k", { count: -5 } as Partial<{ count: number }>),
+    ).rejects.toThrow(/state validation failed/);
+
+    // Resource must remain at its prior valid state — failed patch
+    // must not have written anything.
+    expect(ns.get("k").state.count).toBe(1);
+  });
+
+  it("honors maxInstances on the create branch only", async () => {
+    const { ctx } = await createCtx({ files: filesCollection });
+    const ns = getFilesNs(ctx);
+
+    // Fill to limit
+    for (let i = 0; i < 5; i++) {
+      await ns.upsert(`f${i}.ts`, { language: "typescript" });
+    }
+    expect(ns.count()).toBe(5);
+
+    // Patch existing — must not trip the maxInstances guard.
+    await ns.upsert("f3.ts", { language: "python" });
+    expect(ns.count()).toBe(5);
+
+    // Try to upsert a new key — maxInstances is hit and eviction is "none",
+    // so this throws.
+    await expect(ns.upsert("f5.ts", { language: "ruby" })).rejects.toThrow(
+      "maxInstances",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // State mutations
 // ---------------------------------------------------------------------------
 

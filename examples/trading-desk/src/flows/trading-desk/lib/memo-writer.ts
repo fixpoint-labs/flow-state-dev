@@ -74,31 +74,29 @@ export function defineMemoStateBlocks<Keys extends Record<string, KeyEntry>>(
   type ShortName = keyof Keys & string;
   const { phaseId, agentTeam, keys, errorMessageFallback, errorTextPlaceholder } = config;
 
-  /** Pre-mark a memo as `writing` and stamp `startedAt`. Used as a `.tap`. */
+  /** Pre-mark a memo as `writing` and stamp `startedAt`. Used as a `.tap`.
+   *  Uses `collection.upsert` so the patch-on-exists / create-with-extras-on-
+   *  missing branches collapse into one call: on exists (the common path,
+   *  after setup has run) the small delta is patched in; on missing
+   *  (defensive path, e.g. tests that skip setup) the `createOnly` extras
+   *  supply the phase scaffold the memo needs at first creation. */
   function markWriting(shortName: ShortName) {
     const { collectionKey, agentName } = keys[shortName];
     return memoHandler({
       name: `mark-writing-${phaseId}-${shortName}`,
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const ref = ctx.resources.memos.getOptional(collectionKey);
         const startedAt = new Date().toISOString();
-        if (ref !== undefined) {
-          await ref.patchState({ status: "writing", startedAt, agentName });
-        } else {
-          // Framework parses against memoStateSchema and applies
-          // `.default(null)` to every nullable field — only the scaffold
-          // needs to be supplied here.
-          await ctx.resources.memos.create(collectionKey, {
-            status: "writing",
-            startedAt,
-            agentName,
+        await ctx.resources.memos.upsert(
+          collectionKey,
+          { status: "writing", startedAt, agentName },
+          {
             agentTeam,
             phaseId,
             ticker: ctx.session.state.ticker,
             date: ctx.session.state.date,
-          });
-        }
+          },
+        );
         if (ctx.session.state.memoStatus[shortName] !== "writing") {
           await ctx.session.setStateRecord("memoStatus", shortName, "writing");
         }
