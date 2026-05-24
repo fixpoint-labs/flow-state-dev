@@ -577,8 +577,13 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
           const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
 
-          // Capture prior state for the updated-hook + signal before persisting.
-          const prevState = exists ? (resources[storageKey] as JsonObject) : undefined;
+          // Capture (cloned) prior state for the updated-hook before
+          // persisting. Clone so hook code that caches or mutates `prev`
+          // can't observe stale store internals — matches the defensive
+          // copy on the per-instance `setState`/`patchState` paths.
+          const prevState = exists
+            ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
+            : undefined;
 
           const nextResources = { ...(options.readResources()), [storageKey]: state };
           await options.persistResources(nextResources);
@@ -633,11 +638,31 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           const exists = storageKey in resources;
 
           if (exists) {
-            // Patch branch: merge `update` over existing state and persist.
-            // `persistNamespaceInstanceState` runs `safeParse` on the merged
-            // shape, matching `patchState` semantics exactly.
-            const prev = resources[storageKey] as JsonObject;
-            const merged = updateObjectState(prev, update);
+            // Patch branch: merge `update` over existing state, validate the
+            // merged shape explicitly, then persist. We pre-validate (rather
+            // than rely on `persistNamespaceInstanceState`'s safeParse-with-
+            // empty-fallback) so a bad `update` throws loudly — matching the
+            // create branch's behavior. Without this, an invalid `update`
+            // would silently overwrite the resource with `{}` on the patch
+            // branch but throw on the create branch — an asymmetry that
+            // makes caller bugs hard to detect.
+            const rawPrev = resources[storageKey] as JsonObject;
+            const merged = updateObjectState(rawPrev, update);
+            const parseResult = nsConfig.stateSchema.safeParse(merged);
+            if (!parseResult.success) {
+              const issue = parseResult.error.issues[0];
+              const issuePath = issue === undefined ? "" : issue.path.join(".");
+              const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
+              const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+              throw new Error(
+                `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              );
+            }
+            // Clone `prev` before passing it to the hook — matches the
+            // defensive copy `readState()` does on the per-instance
+            // `patchState` path. Hook code that caches or mutates `prev`
+            // shouldn't be able to observe stale store internals.
+            const prev = cloneValue(rawPrev) as JsonObject;
             await persistNamespaceInstanceState(storageKey, nsConfig, merged);
             lruAccess.set(storageKey, Date.now());
             if (nsConfig.onInstanceUpdated) {

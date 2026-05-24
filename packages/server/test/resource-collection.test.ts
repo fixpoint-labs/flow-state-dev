@@ -361,6 +361,32 @@ describe("upsert", () => {
     expect(updated).toEqual(["hooked/k1"]);
   });
 
+  it("throws on schema-invalid update on the patch branch (symmetric with create)", async () => {
+    // Greptile review: prior to the fix, an invalid update on the patch
+    // branch would silently overwrite the resource with `{}` (the
+    // safeParse-fallback behavior in persistNamespaceInstanceState).
+    // We now pre-validate the merged state so callers get a loud error,
+    // matching create's behavior on bad input.
+    const strictColl = defineResourceCollection({
+      scope: "session",
+      pattern: "strict/**",
+      stateSchema: z.object({ count: z.number().int().nonnegative() }),
+    });
+    const { ctx } = await createCtx({ strict: strictColl });
+    const ns = ctx.resources.strict as ResourceCollectionRef<{ count: number }>;
+
+    await ns.create("k", { count: 1 });
+    // Patch branch with an invalid value → must throw, not silently
+    // overwrite with `{}`.
+    await expect(
+      ns.upsert("k", { count: -5 } as Partial<{ count: number }>),
+    ).rejects.toThrow(/state validation failed/);
+
+    // Resource must remain at its prior valid state — failed patch
+    // must not have written anything.
+    expect(ns.get("k").state.count).toBe(1);
+  });
+
   it("honors maxInstances on the create branch only", async () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
