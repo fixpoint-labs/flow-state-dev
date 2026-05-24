@@ -8,14 +8,17 @@
  * resource, then mirror the seed onto `session.memoStatus` and stamp
  * `activePhase`.
  *
+ * Uses `memoHandler` (from `./memo-writer`) for the shared scaffolding —
+ * setup is a memo-touching block like commits, so the same defaults apply.
+ *
  * The memoStatus seed is derived from the keys registry so adding a new
  * memo to a phase doesn't require touching this file.
  */
-import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { AgentName, AgentTeam } from "../agents";
-import { memoResources, memoStateSchema } from "../resources";
-import { sessionStateSchema, type SessionState } from "../state";
+import { memoStateSchema } from "../resources";
+import type { SessionState } from "../state";
+import { memoHandler } from "./memo-writer";
 
 type KeyEntry = { agentName: AgentName; collectionKey: string };
 
@@ -39,12 +42,9 @@ export function defineMemoSetup<Keys extends Record<string, KeyEntry>>(
   config: MemoSetupConfig<Keys>,
 ) {
   const { phaseId, agentTeam, keys, activePhase } = config;
-  return handler({
+  return memoHandler({
     name: `setup-${phaseId}-memos`,
     inputSchema: z.any(),
-    outputSchema: z.void(),
-    sessionStateSchema,
-    resources: memoResources,
     execute: async (_input, ctx) => {
       const { ticker, date } = ctx.session.state;
       for (const [, mapping] of Object.entries(keys)) {

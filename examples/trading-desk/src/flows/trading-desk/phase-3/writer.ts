@@ -1,30 +1,36 @@
 /**
- * Phase 3 memo state-transition blocks — built via the shared
- * `defineMemoWriter` factory. The trader commit projects the seven Phase 3
- * extension fields onto the memo and derives `conviction` from the LLM's
- * string-typed `metrics.conviction` (the display shape is string-only per
- * the Claude Design handoff; the structured `conviction` 0..1 number is
- * what Phase 5 reads).
+ * Phase 3 memo-writing blocks.
+ *
+ *   - `markWritingP3` / `markErrorP3` — built via `defineMemoStateBlocks`.
+ *   - `commitTraderMemo` — plain handler. Derives `conviction` from the
+ *     LLM's string-typed `metrics.conviction` (the display shape is
+ *     string-only per the Claude Design handoff; the structured 0..1
+ *     number is what Phase 5 reads).
  */
-import { defineMemoWriter } from "../lib/memo-writer";
 import { PHASE_3_MEMO_KEYS } from "../agents";
+import {
+  defineMemoStateBlocks,
+  memoHandler,
+  publishMemo,
+} from "../lib/memo-writer";
 import { tradeProposalOutputSchema } from "./trader";
 
-const writer = defineMemoWriter({
+export const {
+  markWriting: markWritingP3,
+  markError: markErrorP3,
+} = defineMemoStateBlocks({
   phaseId: "p3",
   agentTeam: "trade",
   keys: PHASE_3_MEMO_KEYS,
   errorMessageFallback: "Phase 3 generator failed.",
 });
 
-export const { markWriting: markWritingP3, markError: markErrorP3 } = writer;
-
-export const commitTraderMemo = writer.defineCommit({
-  shortName: "trader",
+export const commitTraderMemo = memoHandler({
+  name: "commit-memo-p3-trader",
   inputSchema: tradeProposalOutputSchema,
-  project: (trade) => {
+  execute: async (trade, ctx) => {
     const convictionNumber = Number.parseFloat(trade.metrics.conviction);
-    return {
+    await publishMemo(ctx, "trader", PHASE_3_MEMO_KEYS.trader.collectionKey, {
       label: trade.label,
       headline: trade.headline,
       rating: trade.rating,
@@ -38,6 +44,6 @@ export const commitTraderMemo = writer.defineCommit({
       holdingPeriod: trade.holdingPeriod,
       invalidationCriteria: trade.invalidationCriteria,
       dependsOn: trade.dependsOn,
-    };
+    });
   },
 });

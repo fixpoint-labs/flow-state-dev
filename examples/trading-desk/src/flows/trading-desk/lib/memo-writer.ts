@@ -1,81 +1,51 @@
 /**
- * `defineMemoWriter` — per-phase factory for the three memo state-transition
- * blocks every phase repeats: `markWriting`, `markError`, and one or more
- * `commit*` handlers.
+ * Primitives for writing to the memos collection. Three pieces:
  *
- * Each phase calls `defineMemoWriter({ phaseId, agentTeam, keys, ... })`
- * once and gets back:
+ *   1. `defineMemoStateBlocks({ phaseId, agentTeam, keys, ... })`
+ *      — factory for the two state-transition blocks every phase needs:
+ *      `markWriting` (pre-mark `writing`, stamp `startedAt`) and `markError`
+ *      (record the rescue, emit `{ status, text }`). These are pure
+ *      identity-parameterized — the body is the same for every short-name,
+ *      so a factory earns its keep here.
  *
- *   - `markWriting(shortName)` — pre-marks a memo `writing`, stamps
- *     `startedAt`, creates the resource scaffold on first touch.
- *   - `markError(shortName)` — flips a memo to `error`, records
- *     `errorMessage`, returns the rescue output (`{ status }` by default,
- *     `{ status, text }` if `errorTextPlaceholder` is configured).
- *   - `defineCommit({ shortName, inputSchema, project, afterCommit })` —
- *     publishes a memo with the projected patch + standard
- *     `status / completedAt / errorMessage` fields, then optionally runs
- *     `afterCommit` for phase-terminal session-state work (e.g. setting
- *     `runComplete` on Phase 5).
+ *   2. `publishMemo(ctx, shortName, collectionKey, patch)`
+ *      — helper that performs the published-memo dual write (resource
+ *      `patchState` + session `memoStatus` mirror) with the standard
+ *      `status / completedAt / errorMessage` fields filled in. Called from
+ *      a plain `handler({...})` execute body — each commit handler is just
+ *      the projection-of-LLM-output into the patch shape.
  *
- * All three blocks dual-write: they patch the memo resource AND mirror
- * the new status onto `session.memoStatus[shortName]` via
- * `setStateRecord` (atomic per-key, safe under parallel writers). The
- * navigator reads the session mirror live; the renderer reads memo
- * state. See `resources.ts` for the canonical `memoStateSchema`.
+ *   3. `memoHandler` — a `handler.withDefaults(...)` instance with
+ *      `sessionStateSchema`, `resources: memoResources`, and
+ *      `outputSchema: z.void()` pre-applied. Commit handlers use this to
+ *      skip restating the same scaffolding three lines per file.
+ *
+ * Note: there is no `defineCommit` factory. Commit handlers vary by
+ * projection (each phase maps LLM output to memo fields differently), so a
+ * factory taking the body as a callback would just be a helper in disguise
+ * — with extra generic plumbing to thread the input schema and ctx type
+ * back to the call site. Plain handlers + `publishMemo` is the cleaner
+ * shape. See `docs/contributing/best-practices.md` (BP-024).
  */
-import { handler, type SessionScopeHandle } from "@flow-state-dev/core";
+import {
+  handler,
+  type LooseBlockContext,
+} from "@flow-state-dev/core";
 import { z } from "zod";
 import type { AgentName, AgentTeam } from "../agents";
 import { memoResources, type MemoState } from "../resources";
 import { sessionStateSchema, type SessionState } from "../state";
 
-/**
- * Ctx shape exposed to commit `project` and `afterCommit` callbacks.
- *
- * `session` uses the framework's `SessionScopeHandle<SessionState>`, so
- * `ctx.session.state` is typed `Readonly<SessionState>` and
- * `ctx.session.patchState(...)` accepts `Partial<SessionState>`.
- *
- * `resources` is kept permissive because different commits read different
- * resource subsets — Phase 5 reads the trader memo to compute
- * `agreesWithTrader`, most commits read nothing extra. Per-phase commits
- * narrow at the call site if they need a specific resource shape.
- *
- * (We don't use the full `BlockContext` here because its `TResources`
- * generic constrains too tightly: the handler infers a narrow
- * `ResourceRegistry<{memos: ...}>` from `resources: memoResources`, which
- * isn't assignable to the wider `BlockContext` resources slot. The
- * `SessionScopeHandle` + permissive resources split is what every
- * commit projection actually uses.)
- */
-type CommitCtx = {
-  session: SessionScopeHandle<SessionState>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  resources: any;
-};
+// ---------------------------------------------------------------------------
+// 1. `defineMemoStateBlocks` factory
+// ---------------------------------------------------------------------------
 
 /** A row of the phase's memo-key registry (shape of every value in
  *  `PHASE_N_MEMO_KEYS`). */
 type KeyEntry = { agentName: AgentName; collectionKey: string };
 
-/** The patch a `defineCommit` projection returns. Status / completedAt /
- *  errorMessage are managed by the factory; everything else is the
- *  caller's responsibility. */
-export type CommitPatch = Omit<
-  Partial<MemoState>,
-  "status" | "completedAt" | "errorMessage"
->;
-
-/** Per-commit options. */
-export interface CommitOptions<I> {
-  /** Runs after the memo has been patched and `session.memoStatus` flipped.
-   *  Used for any phase-terminal session-state work (Phase 5 sets
-   *  `runComplete: true` here). */
-  afterCommit?: (input: I, ctx: CommitCtx) => Promise<void> | void;
-}
-
-/** Memo-writer factory config. */
-export interface MemoWriterConfig<Keys extends Record<string, KeyEntry>> {
+/** Memo-state-blocks factory config. */
+export interface MemoStateBlocksConfig<Keys extends Record<string, KeyEntry>> {
   /** Phase id stamped onto new memo scaffolds (e.g. `"p1"`, `"p2"`). */
   phaseId: string;
   /** Agent team stamped onto new memo scaffolds. Drives the badge color
@@ -87,20 +57,19 @@ export interface MemoWriterConfig<Keys extends Record<string, KeyEntry>> {
   /** Fallback error message when the rescued payload has no readable
    *  error text (e.g. a thrown non-Error value). */
   errorMessageFallback: string;
-  /** When set, the `markError` block returns `{ status, text }` instead of
-   *  `{ status }`. The text comes from this template, called with the
-   *  failing agent's name. Phase 4 personas use this so the rescue output
-   *  has a typed non-empty shape. */
+  /** When set, `markError`'s `text` field is populated with this template.
+   *  Otherwise `text` is the empty string. Phase 4 personas use this so
+   *  rescue output has a non-empty shape. */
   errorTextPlaceholder?: (agentName: AgentName) => string;
 }
 
 /**
- * Build the three memo state-transition block factories for a phase.
- * Destructure the return into top-level exports so call sites read
+ * Build the two memo state-transition factories for a phase. Destructure
+ * the return into top-level exports so call sites read
  * `markWriting("bull")` without a per-call prefix.
  */
-export function defineMemoWriter<Keys extends Record<string, KeyEntry>>(
-  config: MemoWriterConfig<Keys>,
+export function defineMemoStateBlocks<Keys extends Record<string, KeyEntry>>(
+  config: MemoStateBlocksConfig<Keys>,
 ) {
   type ShortName = keyof Keys & string;
   const { phaseId, agentTeam, keys, errorMessageFallback, errorTextPlaceholder } = config;
@@ -108,12 +77,9 @@ export function defineMemoWriter<Keys extends Record<string, KeyEntry>>(
   /** Pre-mark a memo as `writing` and stamp `startedAt`. Used as a `.tap`. */
   function markWriting(shortName: ShortName) {
     const { collectionKey, agentName } = keys[shortName];
-    return handler({
+    return memoHandler({
       name: `mark-writing-${phaseId}-${shortName}`,
       inputSchema: z.unknown(),
-      outputSchema: z.void(),
-      sessionStateSchema,
-      resources: memoResources,
       execute: async (_input, ctx) => {
         const ref = ctx.resources.memos.getOptional(collectionKey);
         const startedAt = new Date().toISOString();
@@ -140,19 +106,17 @@ export function defineMemoWriter<Keys extends Record<string, KeyEntry>>(
     });
   }
 
-  /** Flip a memo to `error` with the rescued error's message. Returns
+  /** Flip a memo to `error` with the rescued error's message. Always returns
    *  `{ status, text }` — `text` is populated from `errorTextPlaceholder`
-   *  when configured (Phase 4 uses this so the rescue output has a typed
-   *  non-empty shape), otherwise an empty string. The unified output shape
-   *  keeps the inferred type stable across phases. */
+   *  when configured (Phase 4 uses this for its persona steps); empty
+   *  string otherwise. The `outputSchema` override demonstrates how
+   *  `memoHandler`'s `z.void()` default can be replaced per-call. */
   function markError(shortName: ShortName) {
     const { collectionKey, agentName } = keys[shortName];
-    return handler({
+    return memoHandler({
       name: `mark-error-${phaseId}-${shortName}`,
       inputSchema: z.object({ error: z.unknown() }).passthrough(),
       outputSchema: z.object({ status: z.literal("error"), text: z.string() }),
-      sessionStateSchema,
-      resources: memoResources,
       execute: async (input, ctx) => {
         const error = (input as { error?: unknown }).error;
         const message =
@@ -180,44 +144,71 @@ export function defineMemoWriter<Keys extends Record<string, KeyEntry>>(
     });
   }
 
-  /** Build a commit handler that publishes a memo with the projected
-   *  patch + standard fields, and optionally runs `afterCommit` for
-   *  phase-terminal session-state work. The commit uses `.get()` (throws)
-   *  rather than `.getOptional()`: by commit time setup + markWriting have
-   *  run, and a missing ref is a real bug we want surfaced into the per-step
-   *  rescue. */
-  function defineCommit<S extends z.ZodTypeAny>(opts: {
-    shortName: ShortName;
-    inputSchema: S;
-    project: (input: z.infer<S>, ctx: CommitCtx) => Promise<CommitPatch> | CommitPatch;
-    afterCommit?: CommitOptions<z.infer<S>>["afterCommit"];
-  }) {
-    const { shortName, inputSchema, project, afterCommit } = opts;
-    const { collectionKey } = keys[shortName];
-    return handler({
-      name: `commit-memo-${phaseId}-${shortName}`,
-      inputSchema,
-      outputSchema: z.void(),
-      sessionStateSchema,
-      resources: memoResources,
-      execute: async (input, ctx) => {
-        const ref = ctx.resources.memos.get(collectionKey);
-        const patch = await project(input as z.infer<S>, ctx as CommitCtx);
-        await ref.patchState({
-          ...patch,
-          status: "published",
-          completedAt: new Date().toISOString(),
-          errorMessage: null,
-        });
-        if (ctx.session.state.memoStatus[shortName] !== "published") {
-          await ctx.session.setStateRecord("memoStatus", shortName, "published");
-        }
-        if (afterCommit) {
-          await afterCommit(input as z.infer<S>, ctx as CommitCtx);
-        }
-      },
-    });
-  }
-
-  return { markWriting, markError, defineCommit };
+  return { markWriting, markError };
 }
+
+// ---------------------------------------------------------------------------
+// 2. `publishMemo` helper + `CommitPatch` type
+// ---------------------------------------------------------------------------
+
+/** The patch a commit handler hands to `publishMemo`. Status / completedAt /
+ *  errorMessage are managed by the helper; everything else is the caller's
+ *  responsibility. */
+export type CommitPatch = Omit<
+  Partial<MemoState>,
+  "status" | "completedAt" | "errorMessage"
+>;
+
+/**
+ * Perform the published-memo dual write: patch the memo resource (with the
+ * standard `status: "published" / completedAt / errorMessage: null` fields
+ * merged onto the caller's `patch`), then mirror the new status onto
+ * `session.memoStatus[shortName]` via `setStateRecord` (atomic per-key,
+ * safe under parallel writers).
+ *
+ * Uses `.get()` (throws) rather than `.getOptional()`: by commit time
+ * setup + markWriting have created/patched the resource, and a missing
+ * ref is a real bug we want surfaced into the per-step rescue.
+ *
+ * `ctx` is typed as `LooseBlockContext<SessionState>` — typed on session
+ * state (so `setStateRecord("memoStatus", ...)` is type-checked) and
+ * permissive on resources (so any caller's narrower inferred ctx assigns
+ * in). The framework's full `BlockContext` doesn't work here because its
+ * `TResources` generic is invariant on `ResourceRegistry`.
+ */
+export async function publishMemo(
+  ctx: LooseBlockContext<SessionState>,
+  shortName: string,
+  collectionKey: string,
+  patch: CommitPatch,
+): Promise<void> {
+  const ref = ctx.resources.memos.get(collectionKey);
+  await ref.patchState({
+    ...patch,
+    status: "published" as const,
+    completedAt: new Date().toISOString(),
+    errorMessage: null,
+  });
+  if (ctx.session.state.memoStatus[shortName] !== "published") {
+    await ctx.session.setStateRecord("memoStatus", shortName, "published");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. `memoHandler` — `handler.withDefaults(...)` for the shared scaffolding
+// ---------------------------------------------------------------------------
+
+/**
+ * `handler()` pre-configured with the three fields every memo-touching
+ * handler in this flow shares: `sessionStateSchema`, `resources:
+ * memoResources`, and `outputSchema: z.void()`. Used by commit handlers,
+ * by `defineMemoStateBlocks` internally, and by `defineMemoSetup`.
+ *
+ * Per-call overrides are supported — `markError` passes a non-void
+ * `outputSchema: z.object({ status, text })` here, and the override wins.
+ */
+export const memoHandler = handler.withDefaults({
+  sessionStateSchema,
+  resources: memoResources,
+  outputSchema: z.void(),
+});

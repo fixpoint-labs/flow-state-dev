@@ -1,64 +1,89 @@
 /**
- * Phase 2 memo state-transition blocks — built via the shared
- * `defineMemoWriter` factory. The three commits differ only in their
- * input schema; the research-manager commit adds the InvestmentThesis
- * extension fields (`stance`, `conviction`, `keyRisks`, …) that Phase 3+
- * read directly off the memo.
+ * Phase 2 memo-writing blocks.
+ *
+ *   - `markWritingP2` / `markErrorP2` — built via `defineMemoStateBlocks`.
+ *   - The three commit handlers (`commitBullMemo`, `commitBearMemo`,
+ *     `commitResearchManagerMemo`) are plain handlers that project their
+ *     LLM output and hand the patch to `publishMemo`. They're not run
+ *     through a factory because each has a different output schema and a
+ *     different projection — the body IS what varies.
  */
-import { defineMemoWriter } from "../lib/memo-writer";
 import { PHASE_2_MEMO_KEYS } from "../agents";
+import {
+  defineMemoStateBlocks,
+  memoHandler,
+  publishMemo,
+} from "../lib/memo-writer";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
 } from "./generators";
 
-const writer = defineMemoWriter({
+export const {
+  markWriting: markWritingP2,
+  markError: markErrorP2,
+} = defineMemoStateBlocks({
   phaseId: "p2",
   agentTeam: "research",
   keys: PHASE_2_MEMO_KEYS,
   errorMessageFallback: "Phase 2 generator failed.",
 });
 
-export const { markWriting: markWritingP2, markError: markErrorP2 } = writer;
-
-export const commitBullMemo = writer.defineCommit({
-  shortName: "bull",
+export const commitBullMemo = memoHandler({
+  name: "commit-memo-p2-bull",
   inputSchema: bullThesisOutputSchema,
-  project: (thesis) => ({
-    label: thesis.label,
-    headline: thesis.headline,
-    rating: thesis.rating,
-    body: thesis.body,
-    metrics: thesis.metrics,
-  }),
+  execute: async (thesis, ctx) => {
+    await publishMemo(ctx, "bull", PHASE_2_MEMO_KEYS.bull.collectionKey, {
+      label: thesis.label,
+      headline: thesis.headline,
+      rating: thesis.rating,
+      body: thesis.body,
+      metrics: thesis.metrics,
+    });
+  },
 });
 
-export const commitBearMemo = writer.defineCommit({
-  shortName: "bear",
+export const commitBearMemo = memoHandler({
+  name: "commit-memo-p2-bear",
   inputSchema: bearThesisOutputSchema,
-  project: (thesis) => ({
-    label: thesis.label,
-    headline: thesis.headline,
-    rating: thesis.rating,
-    body: thesis.body,
-    metrics: thesis.metrics,
-  }),
+  execute: async (thesis, ctx) => {
+    await publishMemo(ctx, "bear", PHASE_2_MEMO_KEYS.bear.collectionKey, {
+      label: thesis.label,
+      headline: thesis.headline,
+      rating: thesis.rating,
+      body: thesis.body,
+      metrics: thesis.metrics,
+    });
+  },
 });
 
-export const commitResearchManagerMemo = writer.defineCommit({
-  shortName: "researchManager",
+/**
+ * Research manager commit. Populates the five InvestmentThesis extension
+ * fields (stance, conviction, keyRisks, keyOpportunities,
+ * unresolvedDisagreements) in addition to the standard `Thesis` shape so
+ * Phase 3+ can read the debate's outcome directly off the memo.
+ */
+export const commitResearchManagerMemo = memoHandler({
+  name: "commit-memo-p2-research-manager",
   inputSchema: investmentThesisOutputSchema,
-  project: (thesis) => ({
-    label: thesis.label,
-    headline: thesis.headline,
-    rating: thesis.rating,
-    body: thesis.body,
-    metrics: thesis.metrics,
-    stance: thesis.stance,
-    conviction: thesis.convictionScore,
-    keyRisks: thesis.keyRisks,
-    keyOpportunities: thesis.keyOpportunities,
-    unresolvedDisagreements: thesis.unresolvedDisagreements,
-  }),
+  execute: async (thesis, ctx) => {
+    await publishMemo(
+      ctx,
+      "researchManager",
+      PHASE_2_MEMO_KEYS.researchManager.collectionKey,
+      {
+        label: thesis.label,
+        headline: thesis.headline,
+        rating: thesis.rating,
+        body: thesis.body,
+        metrics: thesis.metrics,
+        stance: thesis.stance,
+        conviction: thesis.convictionScore,
+        keyRisks: thesis.keyRisks,
+        keyOpportunities: thesis.keyOpportunities,
+        unresolvedDisagreements: thesis.unresolvedDisagreements,
+      },
+    );
+  },
 });

@@ -1,31 +1,39 @@
 /**
- * Phase 4 memo state-transition blocks — built via the shared
- * `defineMemoWriter` factory. Two notable differences from Phase 2 / 3:
+ * Phase 4 memo-writing blocks.
  *
- *   1. `errorTextPlaceholder` is set so `markError` returns
- *      `{ status, text }`. The placeholder isn't consumed by downstream
- *      personas (they read prior critiques from the persona memos which
- *      `markError` flips to `error` with the captured `errorMessage`),
- *      but keeping a typed non-empty rescue output simplifies the
- *      test seam.
+ * Two interesting cases:
  *
- *   2. The three persona commits share a single output schema and a
- *      shared projection — only the short-name differs. The
- *      `commitPersonaMemo` factory captures that.
+ *   - `commitPersonaMemo(shortName)` is a factory because all three
+ *     personas (aggressive, conservative, neutral) share
+ *     `personaCritiqueOutputSchema` and the same projection — only the
+ *     short-name differs. Factory earns its keep here (no per-call body).
  *
- * The `riskAssessment` commit is distinct: its schema and extension
- * fields (`criticalRisks`, `recommendedAdjustments`,
- * `confidenceCalibration`, `calibrationRationale`) are unrelated to the
- * persona shape, so it doesn't fold into `commitPersonaMemo`.
+ *   - `commitRiskAssessmentMemo` is a plain handler. Its output schema
+ *     and extension fields are unrelated to the persona shape, so it
+ *     doesn't fold into the persona factory.
+ *
+ *   - `errorTextPlaceholder` is configured on the state-blocks factory so
+ *     `markErrorP4` returns `{ status, text }` with the failing agent's
+ *     name. The placeholder isn't consumed at runtime by downstream
+ *     personas (they read prior critiques from the persona memos which
+ *     `markErrorP4` flips to `error`), but keeping a typed non-empty
+ *     rescue output simplifies the test seam.
  */
-import { defineMemoWriter } from "../lib/memo-writer";
 import { PHASE_4_MEMO_KEYS } from "../agents";
+import {
+  defineMemoStateBlocks,
+  memoHandler,
+  publishMemo,
+} from "../lib/memo-writer";
 import { personaCritiqueOutputSchema, riskAssessmentOutputSchema } from "./schemas";
 
 /** The three persona memos share a commit shape; `riskAssessment` does not. */
 export type Phase4PersonaShortName = "aggressive" | "conservative" | "neutral";
 
-const writer = defineMemoWriter({
+export const {
+  markWriting: markWritingP4,
+  markError: markErrorP4,
+} = defineMemoStateBlocks({
   phaseId: "p4",
   agentTeam: "risk",
   keys: PHASE_4_MEMO_KEYS,
@@ -33,44 +41,55 @@ const writer = defineMemoWriter({
   errorTextPlaceholder: (agentName) => `(critique unavailable: ${agentName})`,
 });
 
-export const { markWriting: markWritingP4, markError: markErrorP4 } = writer;
-
-/** Commit a persona's critique to its `memos/p4/{persona}-risk` memo.
- *  All three personas share `personaCritiqueOutputSchema` — aggressive and
- *  conservative prompts emit `dismissedRisks: []`, neutral populates it.
- *  This uniformity is what lets the factory be one straight-line projection
- *  instead of a schema-branching switch. */
+/**
+ * Commit a persona's critique to its `memos/p4/{persona}-risk` memo.
+ * Factory pattern: aggressive, conservative, and neutral personas share
+ * `personaCritiqueOutputSchema` (aggressive/conservative emit
+ * `dismissedRisks: []`, neutral populates it) and an identical
+ * projection. The factory captures the shared body; only the short-name
+ * varies per call.
+ */
 export function commitPersonaMemo(shortName: Phase4PersonaShortName) {
-  return writer.defineCommit({
-    shortName,
+  const { collectionKey } = PHASE_4_MEMO_KEYS[shortName];
+  return memoHandler({
+    name: `commit-memo-p4-${shortName}`,
     inputSchema: personaCritiqueOutputSchema,
-    project: (critique) => ({
-      label: critique.label,
-      headline: critique.headline,
-      rating: critique.rating,
-      body: critique.body,
-      metrics: critique.metrics,
-      posture: critique.posture,
-      raisedRisks: critique.raisedRisks,
-      proposedAdjustments: critique.proposedAdjustments,
-      dismissedRisks: critique.dismissedRisks,
-    }),
+    execute: async (critique, ctx) => {
+      await publishMemo(ctx, shortName, collectionKey, {
+        label: critique.label,
+        headline: critique.headline,
+        rating: critique.rating,
+        body: critique.body,
+        metrics: critique.metrics,
+        posture: critique.posture,
+        raisedRisks: critique.raisedRisks,
+        proposedAdjustments: critique.proposedAdjustments,
+        dismissedRisks: critique.dismissedRisks,
+      });
+    },
   });
 }
 
-export const commitRiskAssessmentMemo = writer.defineCommit({
-  shortName: "riskAssessment",
+export const commitRiskAssessmentMemo = memoHandler({
+  name: "commit-memo-p4-risk-assessment",
   inputSchema: riskAssessmentOutputSchema,
-  project: (assessment) => ({
-    label: assessment.label,
-    headline: assessment.headline,
-    rating: assessment.rating,
-    body: assessment.body,
-    metrics: assessment.metrics,
-    criticalRisks: assessment.criticalRisks,
-    dismissedRisks: assessment.dismissedRisks,
-    recommendedAdjustments: assessment.recommendedAdjustments,
-    confidenceCalibration: assessment.confidenceCalibration,
-    calibrationRationale: assessment.calibrationRationale,
-  }),
+  execute: async (assessment, ctx) => {
+    await publishMemo(
+      ctx,
+      "riskAssessment",
+      PHASE_4_MEMO_KEYS.riskAssessment.collectionKey,
+      {
+        label: assessment.label,
+        headline: assessment.headline,
+        rating: assessment.rating,
+        body: assessment.body,
+        metrics: assessment.metrics,
+        criticalRisks: assessment.criticalRisks,
+        dismissedRisks: assessment.dismissedRisks,
+        recommendedAdjustments: assessment.recommendedAdjustments,
+        confidenceCalibration: assessment.confidenceCalibration,
+        calibrationRationale: assessment.calibrationRationale,
+      },
+    );
+  },
 });

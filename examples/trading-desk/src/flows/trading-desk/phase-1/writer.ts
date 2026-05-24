@@ -1,23 +1,30 @@
 /**
- * Phase 1 memo state-transition blocks — `markWriting`, `commitMemo`,
- * `markError`. Built via the shared `defineMemoWriter` factory; this file
- * supplies only what's specific to Phase 1: the keys registry, the agent
- * team, and the commit projection that flattens the LLM's array-of-pairs
- * `metrics` shape (required by OpenAI strict structured outputs) back
- * into the stored `Record<string,string>` shape.
+ * Phase 1 memo-writing blocks.
+ *
+ *   - `markWriting` / `markError` — built via the shared
+ *     `defineMemoStateBlocks` factory (identity-only parameterization).
+ *   - `commitMemo(shortName)` — returns a plain handler whose body calls
+ *     `publishMemo` with the analyst's thesis projected onto the memo's
+ *     extension fields. Phase 1 keeps the factory shape for the commit
+ *     because all five analysts share the same projection (the only
+ *     difference is the memo key the patch goes to). When commits diverge
+ *     per phase (Phase 2's bull/bear/RM, Phase 3's trader, Phase 5's PM),
+ *     they're written as plain handlers — see those files.
  */
-import { defineMemoWriter } from "../lib/memo-writer";
 import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../agents";
+import {
+  defineMemoStateBlocks,
+  memoHandler,
+  publishMemo,
+} from "../lib/memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
 
-const writer = defineMemoWriter({
+export const { markWriting, markError } = defineMemoStateBlocks({
   phaseId: "p1",
   agentTeam: "analyst",
   keys: PHASE_1_MEMO_KEYS,
   errorMessageFallback: "Analyst run failed.",
 });
-
-export const { markWriting, markError } = writer;
 
 /**
  * Commit an analyst's `Thesis` to its memo. The `metrics` array-of-pairs
@@ -26,16 +33,19 @@ export const { markWriting, markError } = writer;
  * the dict.
  */
 export function commitMemo(shortName: Phase1MemoShortName) {
-  return writer.defineCommit({
-    shortName,
+  const { collectionKey } = PHASE_1_MEMO_KEYS[shortName];
+  return memoHandler({
+    name: `commit-memo-p1-${shortName}`,
     inputSchema: thesisOutputSchema,
-    project: (thesis) => ({
-      label: thesis.label,
-      headline: thesis.headline,
-      rating: thesis.rating,
-      body: thesis.body,
-      metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
-      citations: thesis.citations,
-    }),
+    execute: async (thesis, ctx) => {
+      await publishMemo(ctx, shortName, collectionKey, {
+        label: thesis.label,
+        headline: thesis.headline,
+        rating: thesis.rating,
+        body: thesis.body,
+        metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
+        citations: thesis.citations,
+      });
+    },
   });
 }
