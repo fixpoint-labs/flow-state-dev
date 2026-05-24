@@ -2,11 +2,12 @@
  * `defineMemoSetup` — per-phase factory for the `setupPhaseNMemos` handler.
  *
  * Every phase pre-creates its memo resources in `pending` so the navigator
- * can render the slots before any generator runs. The shape is identical
- * across phases — iterate the memo-key registry, parse a scaffold into
- * `memoStateSchema` (Zod fills nullable defaults), create or reset the
- * resource, then mirror the seed onto `session.memoStatus` and stamp
- * `activePhase`.
+ * can render the slots before any generator runs. On re-run with existing
+ * memo state, the resource is replaced entirely so prior `body` /
+ * `headline` / etc. don't bleed through — that's what the
+ * `{ replace: true }` option on `collection.create()` is for. Zod's
+ * `.default(null)` (per BP-023) fills nullable fields on both branches,
+ * so callers supply only the non-nullable scaffold.
  *
  * Uses `memoHandler` (from `./memo-writer`) for the shared scaffolding —
  * setup is a memo-touching block like commits, so the same defaults apply.
@@ -16,7 +17,6 @@
  */
 import { z } from "zod";
 import type { AgentName, AgentTeam } from "../agents";
-import { memoStateSchema } from "../resources";
 import type { SessionState } from "../state";
 import { memoHandler } from "./memo-writer";
 
@@ -33,11 +33,7 @@ export interface MemoSetupConfig<Keys extends Record<string, KeyEntry>> {
   activePhase: SessionState["activePhase"];
 }
 
-/**
- * Build the phase's setup handler. On re-run with existing memo state,
- * `setState(initial)` replaces the memo entirely so prior `body` /
- * `headline` / etc. don't bleed through.
- */
+/** Build the phase's setup handler. */
 export function defineMemoSetup<Keys extends Record<string, KeyEntry>>(
   config: MemoSetupConfig<Keys>,
 ) {
@@ -48,20 +44,18 @@ export function defineMemoSetup<Keys extends Record<string, KeyEntry>>(
     execute: async (_input, ctx) => {
       const { ticker, date } = ctx.session.state;
       for (const [, mapping] of Object.entries(keys)) {
-        const initial = memoStateSchema.parse({
-          status: "pending",
-          agentName: mapping.agentName,
-          agentTeam,
-          phaseId,
-          ticker,
-          date,
-        });
-        const existing = ctx.resources.memos.getOptional(mapping.collectionKey);
-        if (existing === undefined) {
-          await ctx.resources.memos.create(mapping.collectionKey, initial);
-        } else {
-          await existing.setState(initial);
-        }
+        await ctx.resources.memos.create(
+          mapping.collectionKey,
+          {
+            status: "pending",
+            agentName: mapping.agentName,
+            agentTeam,
+            phaseId,
+            ticker,
+            date,
+          },
+          { replace: true },
+        );
       }
       const memoStatusSeed = Object.fromEntries(
         Object.keys(keys).map((shortName) => [shortName, "pending" as const]),
