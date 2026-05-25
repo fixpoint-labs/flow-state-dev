@@ -41,6 +41,8 @@ export type {
   RequestListOptions,
   RequestRecord,
   RequestStatus,
+  PersistErrorHandler,
+  PersistErrorInfo,
   RequestStore,
   SessionListOptions,
   SessionRecord,

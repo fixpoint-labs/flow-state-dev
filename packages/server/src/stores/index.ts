@@ -73,7 +73,7 @@ import {
   createStateContainer,
   MemoryStateContainer
 } from "./state-container";
-import type { StoreRegistry } from "./types";
+import type { PersistErrorHandler, StoreRegistry } from "./types";
 
 export type {
   ActiveRequestEntry,
@@ -85,6 +85,8 @@ export type {
   OrgListOptions,
   OrgRecord,
   OrgStore,
+  PersistErrorHandler,
+  PersistErrorInfo,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -164,6 +166,12 @@ export type FilesystemStoreRegistryOptions = {
    * so the surface here is narrower than `CreateStoreOptions.traceStore`.
    */
   traceStore?: { maxRequests?: number };
+  /**
+   * Fired when any filesystem adapter's background write fails, before the
+   * adapter's safety-net log. The structured channel operators wire to alert
+   * on persistence loss (FIX-406 6B). When unset, failures are still logged.
+   */
+  onPersistError?: PersistErrorHandler;
 };
 
 const DEV_DEFAULT_TRACE_MAX_REQUESTS = 1000;
@@ -208,12 +216,14 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
 export function createFilesystemStores(
   options: FilesystemStoreRegistryOptions
 ): StoreRegistry {
+  const { onPersistError } = options;
   return {
     session: createFilesystemSessionStore({
       rootDir: path.join(options.rootDir, "sessions")
     }),
     request: createFilesystemRequestStore({
-      rootDir: path.join(options.rootDir, "requests")
+      rootDir: path.join(options.rootDir, "requests"),
+      onPersistError
     }),
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
@@ -222,13 +232,15 @@ export function createFilesystemStores(
       rootDir: path.join(options.rootDir, "projects")
     }),
     activeRequests: createFilesystemActiveRequestRegistry({
-      directory: options.rootDir
+      directory: options.rootDir,
+      onPersistError
     }),
     content: createFilesystemContentStore(options.rootDir),
     checkpoints: createFilesystemCheckpointStore(options.rootDir),
     traces: createFilesystemTraceStore({
       rootDir: path.join(options.rootDir, "traces"),
-      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
+      maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
+      onPersistError
     })
   };
 }

@@ -480,3 +480,23 @@ export type StoreRegistry = {
   checkpoints: CheckpointStore;
   traces: TraceStore;
 };
+
+/**
+ * Payload delivered to an `onPersistError` observable when a store adapter's
+ * background write fails. `store` names the adapter ("request", "traces",
+ * "activeRequests"), `id` is the affected record key (typically a requestId),
+ * and `error` is the underlying write failure (FIX-406 6B).
+ */
+export type PersistErrorInfo = {
+  store: string;
+  id: string;
+  error: Error;
+};
+
+/**
+ * Operator-suppliable hook fired on store persistence failures. Configured via
+ * the store factory (e.g. `createFilesystemStores({ onPersistError })`). When
+ * unset, adapters still log the failure — the hook is the structured channel
+ * for alerting, not a replacement for the safety-net log.
+ */
+export type PersistErrorHandler = (info: PersistErrorInfo) => void;
