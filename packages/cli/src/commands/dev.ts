@@ -8,16 +8,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { resolve, extname, join, sep } from "node:path";
 import type { Command } from "commander";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createFilesystemStores,
   createModelResolver,
 } from "@flow-state-dev/server";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
@@ -113,8 +113,11 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
   const registry = createFlowRegistry();
   registry.registerMany(flows as FlowInstance[]);
 
-  // 4. Create stores
-  const stores = createFilesystemStores({ rootDir: ".fsdev/data" });
+  // 4. Create stores. SQLite is the default (FIX-406 6A) — the filesystem
+  // store's O(N²) event persistence can't hold real load. better-sqlite3 won't
+  // create parent dirs, so ensure the data dir exists first.
+  await mkdir(".fsdev/data", { recursive: true });
+  const stores = createSQLiteStores({ filename: ".fsdev/data/fsdev.db" });
 
   // 5. Create model resolver
   let modelResolver: ModelResolver | undefined;
@@ -165,7 +168,7 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     process.stderr.write("\n");
     process.stderr.write(`  Flows:  ${flowNames.join(", ")}\n`);
     process.stderr.write(`  API:    http://localhost:${port}/api/flows\n`);
-    process.stderr.write(`  Data:   .fsdev/data/\n`);
+    process.stderr.write(`  Data:   .fsdev/data/fsdev.db (SQLite)\n`);
     process.stderr.write("\n");
 
     if (options.open !== false) {
@@ -180,6 +183,7 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     shuttingDown = true;
     process.stderr.write("\nShutting down...\n");
     server.close();
+    stores.close();
     process.exit(EXIT_SUCCESS);
   };
   process.on("SIGINT", shutdown);

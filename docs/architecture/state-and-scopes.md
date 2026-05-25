@@ -264,13 +264,22 @@ Internally it is a sequencer with two steps: a generator that produces the title
 
 ## Persistence Adapters
 
-Phase 1 ships two adapters:
+Three adapters ship today:
 
-- **Filesystem** (runtime default): Durable, human-inspectable, CAS via versioning
-- **In-memory** (testing): Fast, isolated, no persistence
+- **In-memory** (zero-config default): Fast, isolated, no persistence. Used when `createFlowApiRouter` is called without a `stores` option, and for tests.
+- **SQLite** (recommended for persistence and production): Durable, single-file, indexed. `createSQLiteStores` lives in `@flow-state-dev/store-sqlite`. This is the default store for `fsdev dev`.
+- **Filesystem** (local development only): Durable and human-inspectable, but its event persistence is O(N²) per request and collapses under real load. Constructing it without `developmentOnly: true` logs a one-time warning steering you to SQLite (FIX-406).
 
 ```ts
-import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/server";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+
+// Recommended for anything that needs to survive a restart:
+const stores = createSQLiteStores({ filename: "./data/app.db" });
+
+// Filesystem is local-dev only; acknowledge it explicitly:
+import { createFilesystemStores } from "@flow-state-dev/server";
+const devStores = createFilesystemStores({ rootDir: "./data", developmentOnly: true });
 ```
 
 ## State Schema Bubbling

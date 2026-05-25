@@ -62,21 +62,38 @@ This exposes all framework endpoints under `/api/flows/`.
 
 ## Store Configuration
 
-### Filesystem Store (Default)
+### In-Memory Store (default)
+
+With no `stores` option, the router uses in-memory stores. They're fast and isolated, but nothing survives a restart. Fine for tests and quick local experiments.
 
 ```ts
 const router = createFlowApiRouter({ registry });
-// Uses filesystem stores by default
+// In-memory by default — ephemeral.
 ```
 
-### In-Memory Store (Testing)
+### SQLite Store (recommended for persistence)
+
+For anything that needs to outlive the process, use SQLite. It's a single file, durable, and holds real load. This is also what `fsdev dev` uses.
 
 ```ts
-import { createInMemoryStores } from "@flow-state-dev/server";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 
 const router = createFlowApiRouter({
   registry,
-  stores: createInMemoryStores(),
+  stores: createSQLiteStores({ filename: "./data/app.db" }),
+});
+```
+
+### Filesystem Store (local development only)
+
+There's also a filesystem store. It's human-inspectable, which is handy when you want to read the JSON on disk. But its per-request event persistence is O(N²) and falls over under real traffic, so it's development-only. Constructing it without `developmentOnly: true` logs a one-time warning.
+
+```ts
+import { createFilesystemStores } from "@flow-state-dev/server";
+
+const router = createFlowApiRouter({
+  registry,
+  stores: createFilesystemStores({ rootDir: "./data", developmentOnly: true }),
 });
 ```
 
