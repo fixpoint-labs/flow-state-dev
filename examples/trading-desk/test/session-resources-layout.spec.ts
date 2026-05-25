@@ -45,6 +45,7 @@ function analystThesis(label: string, headline: string) {
         { h: "Material items", p: null, items: ["Watch item A"] },
       ],
       citations: null,
+      dataQuality: "full" as const,
     },
   };
 }

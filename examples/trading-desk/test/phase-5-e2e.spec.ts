@@ -37,6 +37,7 @@ function analystThesis(label: string, headline: string) {
         { h: "Material items", p: null, items: ["Watch item A", "Watch item B"] },
       ],
       citations: null,
+      dataQuality: "full" as const,
     },
   };
 }
@@ -316,6 +317,10 @@ function makeUpstreamMocks() {
     "technical-analyst-generator": mockGenerator({
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
+    }),
+    "company-profile-analyst-generator": mockGenerator({
+      name: "company-profile-analyst-generator",
+      script: [analystThesis("Company Profile memo", "Identity resolved from provider data.")],
     }),
     "p2-research-debate-roster-bullResearcher": mockGenerator({
       name: "p2-research-debate-roster-bullResearcher",

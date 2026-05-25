@@ -1,0 +1,110 @@
+/**
+ * Wiring tests for the Phase 1 `dataQuality` sentinel (FIX-681).
+ *
+ * The sentinel is an LLM-emitted field on `thesisOutputSchema`; the analyst
+ * generators are mocked in this offline suite, so LLM adherence to the
+ * prompt's classification rule is not unit-testable. What IS testable — and
+ * what these tests guard — is the contract and the plumbing:
+ *
+ *   1. `thesisOutputSchema` requires `dataQuality` and accepts exactly the
+ *      three enum values (fails if the field is dropped or the enum drifts).
+ *   2. `commitMemo` accepts a thesis carrying any of the three values and
+ *      publishes the memo without error (fails if the commit projection
+ *      stops threading the new required field through).
+ *
+ * The downstream consequence of `dataQuality === "unavailable"` (the
+ * "do not synthesize" formatter prefix) is covered in `format-memos.spec.ts`.
+ */
+import { describe, expect, it } from "vitest";
+import { defineFlow } from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
+import { commitMemo } from "../src/flows/trading-desk/phase-1/writer";
+import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
+import { memosCollection } from "../src/flows/trading-desk/resources";
+import { sessionStateSchema } from "../src/flows/trading-desk/state";
+
+const DATA_QUALITY_VALUES = ["full", "partial", "unavailable"] as const;
+
+function thesisWith(dataQuality: (typeof DATA_QUALITY_VALUES)[number]) {
+  return {
+    label: "Fundamentals memo",
+    headline: "Headline.",
+    rating: "neutral" as const,
+    metrics: [
+      { key: "revGrowth", value: "n/a" },
+      { key: "opMargin", value: "n/a" },
+      { key: "fcfConv", value: "n/a" },
+      { key: "forwardPE", value: "n/a" },
+    ],
+    body: [{ h: "Top of book", p: "Body.", items: null }],
+    citations: null,
+    dataQuality,
+  };
+}
+
+describe("thesisOutputSchema dataQuality contract", () => {
+  for (const value of DATA_QUALITY_VALUES) {
+    it(`accepts dataQuality="${value}"`, () => {
+      expect(thesisOutputSchema.parse(thesisWith(value)).dataQuality).toBe(value);
+    });
+  }
+
+  it("rejects a thesis missing dataQuality", () => {
+    const { dataQuality: _omit, ...withoutDataQuality } = thesisWith("full");
+    expect(thesisOutputSchema.safeParse(withoutDataQuality).success).toBe(false);
+  });
+
+  it("rejects an out-of-vocabulary dataQuality value", () => {
+    expect(
+      thesisOutputSchema.safeParse({ ...thesisWith("full"), dataQuality: "degraded" }).success,
+    ).toBe(false);
+  });
+});
+
+const commitBlock = commitMemo("fundamentals");
+
+const fixtureFlow = defineFlow({
+  kind: "trading-desk-data-quality-test",
+  actions: { commit: { block: commitBlock } },
+  session: { stateSchema: sessionStateSchema },
+  resources: { memos: memosCollection },
+})({ id: "test" });
+
+const baseSessionState = {
+  ticker: "NVDA",
+  date: "2026-05-06",
+  costPreset: "fast" as const,
+  dataSource: "fixture" as const,
+  activePhase: "phase-1" as const,
+  memoStatus: { fundamentals: "writing" as const },
+};
+
+const seededResources = {
+  "memos/p1/fundamentals": {
+    status: "writing" as const,
+    agentName: "fundamentalsAnalyst",
+    agentTeam: "analyst" as const,
+    phaseId: "p1",
+    ticker: "NVDA",
+    date: "2026-05-06",
+    startedAt: new Date().toISOString(),
+  },
+};
+
+describe("commitMemo with dataQuality sentinel", () => {
+  for (const value of DATA_QUALITY_VALUES) {
+    it(`publishes a memo carrying dataQuality="${value}"`, async () => {
+      const result = await testBlock(commitBlock, {
+        input: thesisWith(value),
+        flow: fixtureFlow,
+        session: { state: baseSessionState, resources: seededResources },
+      });
+      expect(result.error).toBeNull();
+      const sessionPatches = result.stateChanges.filter((c) => c.scope === "session");
+      const last = sessionPatches[sessionPatches.length - 1].resultingState as {
+        memoStatus: Record<string, string>;
+      };
+      expect(last.memoStatus.fundamentals).toBe("published");
+    });
+  }
+});

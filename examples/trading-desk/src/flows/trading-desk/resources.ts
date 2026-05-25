@@ -70,6 +70,10 @@ export const memoStateSchema = z.object({
    *  cheap preset and on memos that never investigated. Renderer shows a
    *  "Sources" footer when non-empty. */
   citations: z.array(memoCitation).nullable().default(null),
+  /** Phase 1 data-grounding sentinel (FIX-681). Only analyst memos populate
+   *  this; later-phase memos leave it `null`. `"unavailable"` memos are
+   *  flagged by the prompt formatters so downstream agents skip synthesis. */
+  dataQuality: z.enum(["full", "partial", "unavailable"]).nullable().default(null),
   // Phase 2 InvestmentThesis extension. Only the research-manager memo
   // (`memos/p2/research-manager`) populates these; all other memos leave
   // them `null`. Read by Phase 3+ to reason about the debate's outcome.
