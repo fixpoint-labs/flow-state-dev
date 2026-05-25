@@ -3204,6 +3204,7 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,

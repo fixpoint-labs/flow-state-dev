@@ -1,5 +1,5 @@
 import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
-import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
+import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
   MockGeneratorInstance,
@@ -121,6 +121,12 @@ export type TestFlowOptions<TInput = unknown> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /**
+   * Instance-level settings exposed to blocks via `ctx.settings`. Mirrors
+   * `createFlowState({ settings })` so tests can exercise settings-dependent
+   * behavior without standing up a full FlowState.
+   */
+  settings?: FlowStateSettings;
   /**
    * Reuse an existing in-memory store registry instead of creating a fresh
    * one. Lets multiple `testFlow` calls share session, user, org, and

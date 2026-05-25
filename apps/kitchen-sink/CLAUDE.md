@@ -41,9 +41,9 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
 - `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
 - `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
-- `lib/server.ts` — flow registry + API router setup.
+- `lib/flowstate.ts` — `createFlowState` runtime assembly (flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API.
 
-To add a new flow: drop it under `flows/<name>/`, register it in `lib/server.ts`, and mount it from `app/<name>/page.tsx`.
+To add a new flow: drop it under `flows/<name>/`, register it in `lib/flowstate.ts`, and mount it from `app/<name>/page.tsx`.
 
 ## Capabilities
 
@@ -68,6 +68,11 @@ Env vars required at runtime: `CRON_SECRET` (shared bearer between cron
 routes and the dispatch endpoint) and `NEXT_PUBLIC_BASE_URL` (deployment
 URL the shims POST back into). The index lives in Postgres alongside
 the rest of the stores, so `FSD_DB_URL` / `DATABASE_URL` is required too.
+
+Profile selection: `lib/flowstate.ts` declares a `prod` (Postgres) and a
+`dev` (in-memory) store profile, defaulting to `dev`. Production deploys
+**must set `FSD_ENV=prod`** to select the Postgres profile — the scheduler
+index only resolves under `prod`, so without it the cron tick no-ops.
 
 ## UI Components: Upstream-First Convention
 

@@ -26,34 +26,26 @@ The framework's router uses Web standard `Request`/`Response` objects. You bridg
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createModelResolver } from "@flow-state-dev/core/models";
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-  createFilesystemStores,
-} from "@flow-state-dev/server";
+import { createFlowState, filesystemStores } from "@flow-state-dev/server";
 import myFlow from "./flows/my-flow/flow.js";
 
 const port = parseInt(process.env.PORT ?? "3000", 10);
 
-// 1. Register flows
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-// 2. Configure persistence — filesystem works on Railway
-const stores = createFilesystemStores({ rootDir: ".flow-state-data" });
-
-// 3. Create the router
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  modelResolver: createModelResolver(),
+// 1. Describe the runtime. Filesystem persistence works on Railway's
+//    long-lived disk; `primary` is the catch-all state slot.
+const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: filesystemStores({ rootDir: ".flow-state-data" }) } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },
 });
 
-// 4. Start HTTP server
+// 2. Resolve the router once. getRouter() opens stores lazily and is cached.
+const router = await flowstate.getRouter();
+
+// 3. Start HTTP server
 const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
 

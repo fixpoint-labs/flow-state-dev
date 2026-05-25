@@ -15,6 +15,7 @@ export type {
   ConnectorFn,
   DeclaredResourceEntry,
   ExecutionParent,
+  FlowStateSettings,
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,

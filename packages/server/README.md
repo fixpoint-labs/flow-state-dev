@@ -1,21 +1,112 @@
 # @flow-state-dev/server
 
-**The runtime. Register flows, execute actions, stream results — three lines to a complete API.**
+**The runtime. Register flows, execute actions, stream results — one config object to a complete API.**
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import myFlow from "./flows/my-flow";
+
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+Mount it with a platform adapter (`@flow-state-dev/vercel/next` on Vercel, `@flow-state-dev/next` elsewhere):
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+That's a full API with action execution, session management, SSE streaming with resume, and state snapshots.
+
+## createFlowState
+
+`createFlowState(options)` builds the runtime from one declarative object and returns a `FlowState` handle:
+
+- `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
+- `ready(): Promise<void>` — eager warmup, idempotent.
+- `dispose(): Promise<void>` — release pooled resources across every declared store.
+- `activeProfile`, `settings`, `meta` — read-only diagnostics.
+
+Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Stores and capability profiles
+
+`stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
+
+```ts
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
+
+createFlowState({
+  flows: { myFlow },
+  stores: {
+    prod: { primary: vercelPostgresStores() },
+    dev: { primary: inMemoryStores() },
+  },
+  defaultProfile: "dev",
+});
+```
+
+Adapter factories: `inMemoryStores()`, `filesystemStores({ rootDir })` (this package), `postgresStores(options)` (`@flow-state-dev/store-postgres`), `sqliteStores(options)` (`@flow-state-dev/store-sqlite`), `vercelPostgresStores()` (`@flow-state-dev/vercel/store`).
+
+### Profile selection
+
+The active profile resolves on first use, first match wins: `process.env.FSD_ENV` → `defaultProfile` → first declared profile. `NODE_ENV` is intentionally not consulted — an explicit selector keeps a production build from silently pointing at production infrastructure.
+
+### Settings
+
+`settings` is instance-level config blocks read via `ctx.settings`. Type it by declaration-merging into `FlowStateSettings`:
+
+```ts
+declare module "@flow-state-dev/core" {
+  interface FlowStateSettings {
+    sandbox: { type: "local" | "vercel" | "memory" };
+  }
+}
+
+createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  settings: { sandbox: { type: "local" } },
+});
+```
+
+Then read `const s = ctx.settings.sandbox` inside any block.
+
+### Serverless background work
+
+On platforms that freeze the function after the response (Vercel), pass the platform keep-alive primitive at construction so fire-and-forget work isn't killed:
+
+```ts
+import { after } from "next/server";
+
+createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
+```
+
+It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
+
+## Lower-level: registry and router
+
+`createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
 
 ```ts
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import myFlow from "./flows/my-flow";
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
-const router = createFlowApiRouter({ registry });
+const router = createFlowApiRouter({ registry, stores });
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = router;
 ```
-
-That's a full API with action execution, session management, SSE streaming with resume, and state snapshots. Drop it into a Next.js catch-all route and you're done.
 
 ## What this package does
 
