@@ -34,13 +34,7 @@ export const commitBullMemo = memoHandler({
   name: "commit-memo-p2-bull",
   inputSchema: bullThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(ctx, "bull", PHASE_2_MEMO_KEYS.bull.collectionKey, {
-      label: thesis.label,
-      headline: thesis.headline,
-      rating: thesis.rating,
-      body: thesis.body,
-      metrics: thesis.metrics,
-    });
+    await publishMemo(ctx, "bull", PHASE_2_MEMO_KEYS.bull.collectionKey, thesis);
   },
 });
 
@@ -48,13 +42,7 @@ export const commitBearMemo = memoHandler({
   name: "commit-memo-p2-bear",
   inputSchema: bearThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(ctx, "bear", PHASE_2_MEMO_KEYS.bear.collectionKey, {
-      label: thesis.label,
-      headline: thesis.headline,
-      rating: thesis.rating,
-      body: thesis.body,
-      metrics: thesis.metrics,
-    });
+    await publishMemo(ctx, "bear", PHASE_2_MEMO_KEYS.bear.collectionKey, thesis);
   },
 });
 
@@ -68,22 +56,6 @@ export const commitResearchManagerMemo = memoHandler({
   name: "commit-memo-p2-research-manager",
   inputSchema: investmentThesisOutputSchema,
   execute: async (thesis, ctx) => {
-    await publishMemo(
-      ctx,
-      "researchManager",
-      PHASE_2_MEMO_KEYS.researchManager.collectionKey,
-      {
-        label: thesis.label,
-        headline: thesis.headline,
-        rating: thesis.rating,
-        body: thesis.body,
-        metrics: thesis.metrics,
-        stance: thesis.stance,
-        conviction: thesis.convictionScore,
-        keyRisks: thesis.keyRisks,
-        keyOpportunities: thesis.keyOpportunities,
-        unresolvedDisagreements: thesis.unresolvedDisagreements,
-      },
-    );
+    await publishMemo(ctx, "researchManager", PHASE_2_MEMO_KEYS.researchManager.collectionKey, thesis);
   },
 });

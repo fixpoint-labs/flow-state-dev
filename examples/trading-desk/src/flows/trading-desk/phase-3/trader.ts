@@ -54,6 +54,7 @@ export const traderGenerator = generator({
       investmentThesis: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
+      reasoning: true,
     }),
   ],
   prompt: TRADER_PROMPT,

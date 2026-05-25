@@ -41,7 +41,11 @@ const modelResolver = createModelResolver({
   intents: {
     utility: ["vercel/google/gemini-3.1-flash-lite"],
     fast: ["vercel/google/gemini-3.1-flash-lite"],
-    full: ["vercel/anthropic/claude-sonnet-4.6"],
+    'fast-reasoning': ["vercel/xai/grok-4.20-reasoning"],
+    'fast-high-reasoning': ["vercel/openai/gpt-5.4-mini"],
+    full: ["vercel/google/gemini-3.5-flash-lite"],
+    'full-reasoning': ["vercel/google/gemini-3.5-flash"],
+    'full-high-reasoning': ["vercel/google/gemini-3.1-pro-preview"],
   },
 });
 

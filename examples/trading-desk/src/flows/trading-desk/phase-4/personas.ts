@@ -39,12 +39,13 @@ function memoState(ctx: any, collectionKey: string): unknown {
   return ctx.resources.memos?.getOptional(collectionKey)?.state;
 }
 
-const baseUses = [
+const tradingMemos = (reasoning: boolean) => [
   tradingDesk.presets({
     tradeProposal: true,
     investmentThesis: true,
     phase1MemosFull: true,
     phase2DebateFull: true,
+    reasoning: !!reasoning,
   }),
 ] as const;
 
@@ -52,7 +53,7 @@ export const aggressiveRiskGenerator = generator({
   name: "aggressive-risk-generator",
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.aggressive.agentName,
-  uses: baseUses,
+  uses: tradingMemos(false),
   prompt: AGGRESSIVE_PROMPT,
   user:
     "You are the first persona to speak in the round-robin. " +
@@ -65,7 +66,7 @@ export const conservativeRiskGenerator = generator({
   name: "conservative-risk-generator",
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
-  uses: baseUses,
+  uses: tradingMemos(false),
   prompt: CONSERVATIVE_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>
@@ -79,11 +80,14 @@ export const conservativeRiskGenerator = generator({
   outputSchema: personaCritiqueOutputSchema,
 });
 
+// Diverges from `baseUses` to opt into `reasoning` — Neutral filters the
+// other two personas rather than arguing a fixed posture, so the shared
+// array stays default and only this persona gets the upgrade.
 export const neutralRiskGenerator = generator({
   name: "neutral-risk-generator",
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
-  uses: baseUses,
+  uses: tradingMemos(true),
   prompt: NEUTRAL_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>

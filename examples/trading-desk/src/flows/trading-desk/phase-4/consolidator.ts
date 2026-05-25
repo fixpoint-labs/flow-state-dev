@@ -30,6 +30,7 @@ export const riskAssessmentGenerator = generator({
       riskCritiques: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
+      highReasoning: true,
     }),
   ],
   prompt: RISK_ASSESSMENT_PROMPT,

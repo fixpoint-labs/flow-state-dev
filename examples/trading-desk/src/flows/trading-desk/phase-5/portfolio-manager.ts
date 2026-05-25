@@ -70,6 +70,7 @@ export const portfolioManagerGenerator = generator({
       phase1MemosFull: true,
       phase2DebateFull: true,
       riskCritiquesFull: true,
+      highReasoning: true,
     }),
   ],
   prompt: PORTFOLIO_MANAGER_PROMPT,

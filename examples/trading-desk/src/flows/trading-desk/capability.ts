@@ -140,6 +140,20 @@ export const tradingDesk = defineCapability({
       ],
     },
 
+    /** Opt-in model swap to the `-reasoning` intent variant — generators
+     *  that list `tradingDesk.presets({ reasoning: true })` resolve to
+     *  `intent/fast-reasoning` / `intent/full-reasoning` instead of the
+     *  plain `intent/fast` / `intent/full` the `core` preset picks. The
+     *  `server.ts` resolver maps both variants today. Defined immediately
+     *  after `core` so the capability-merge "last-wins" rule on `model:`
+     *  lets this preset override `core` when active. */
+    reasoning: {
+      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}-reasoning`,
+    },
+    highReasoning: {
+      model: (_input, ctx) => `intent/${ctx.session.state.costPreset}-high-reasoning`,
+    },
+
     /** Phase 1 — all four analyst memos (fundamentals, sentiment, news, technical). */
     phase1Memos: {
       resources: { memos: memosCollection },

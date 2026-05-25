@@ -55,17 +55,7 @@ export function commitPersonaMemo(shortName: Phase4PersonaShortName) {
     name: `commit-memo-p4-${shortName}`,
     inputSchema: personaCritiqueOutputSchema,
     execute: async (critique, ctx) => {
-      await publishMemo(ctx, shortName, collectionKey, {
-        label: critique.label,
-        headline: critique.headline,
-        rating: critique.rating,
-        body: critique.body,
-        metrics: critique.metrics,
-        posture: critique.posture,
-        raisedRisks: critique.raisedRisks,
-        proposedAdjustments: critique.proposedAdjustments,
-        dismissedRisks: critique.dismissedRisks,
-      });
+      await publishMemo(ctx, shortName, collectionKey, critique);
     },
   });
 }
@@ -74,22 +64,6 @@ export const commitRiskAssessmentMemo = memoHandler({
   name: "commit-memo-p4-risk-assessment",
   inputSchema: riskAssessmentOutputSchema,
   execute: async (assessment, ctx) => {
-    await publishMemo(
-      ctx,
-      "riskAssessment",
-      PHASE_4_MEMO_KEYS.riskAssessment.collectionKey,
-      {
-        label: assessment.label,
-        headline: assessment.headline,
-        rating: assessment.rating,
-        body: assessment.body,
-        metrics: assessment.metrics,
-        criticalRisks: assessment.criticalRisks,
-        dismissedRisks: assessment.dismissedRisks,
-        recommendedAdjustments: assessment.recommendedAdjustments,
-        confidenceCalibration: assessment.confidenceCalibration,
-        calibrationRationale: assessment.calibrationRationale,
-      },
-    );
+    await publishMemo(ctx, "riskAssessment", PHASE_4_MEMO_KEYS.riskAssessment.collectionKey, assessment);
   },
 });
