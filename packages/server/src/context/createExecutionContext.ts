@@ -3774,5 +3774,9 @@ export async function createExecutionContext<
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
+  // with child scopes — keeps observability gating correct if a sequencer ever
+  // executes directly on the root context.
+  (rootContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
   return rootContext;
 }
