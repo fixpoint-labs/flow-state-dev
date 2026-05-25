@@ -16,7 +16,7 @@
  * aggregator and are returned in the order they were authored, ready to be
  * emitted as their own system messages.
  */
-import { normalizeTagName } from "../utils/string-case";
+import { normalizeTagName } from "../helpers/string-case";
 import { validateTagName } from "../prompt/reserved-tags";
 import type { TagAccumulator, TagAccumulatorValue } from "../prompt/xml";
 import type { BlockContext } from "../types/block";

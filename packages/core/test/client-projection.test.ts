@@ -8,7 +8,7 @@ import { z } from "zod";
 import {
   resolveClientProjection,
   validateClientProjection,
-} from "../src/utils/client-projection";
+} from "../src/helpers/client-projection";
 import { defineResource } from "../src/types/resource";
 import { defineResourceCollection } from "../src/types/resource-collection";
 

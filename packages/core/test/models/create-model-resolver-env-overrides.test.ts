@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
-import { __resetDeprecationWarningsForTests } from "../../src/utils/deprecation.js";
+import { __resetDeprecationWarningsForTests } from "../../src/helpers/deprecation.js";
 
 function mockProvider() {
   return (modelId: string) =>

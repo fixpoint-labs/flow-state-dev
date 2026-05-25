@@ -33,9 +33,9 @@
       "types": "./dist/capability/index.d.ts",
       "default": "./dist/capability/index.js"
     },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "default": "./dist/utils/index.js"
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "default": "./dist/helpers/index.js"
     }
   },
   "license": "MIT",

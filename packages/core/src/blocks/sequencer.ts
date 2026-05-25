@@ -27,9 +27,9 @@ import {
   extendBlockPath,
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
-import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import { isTraceObservabilityEnabled } from "../helpers/trace-observability";
 import { getRequestWorkPool } from "../execution/request-work-pool";
-import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
+import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 

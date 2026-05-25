@@ -172,7 +172,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { validatePattern } from "./collection-patterns";
-import { validateClientProjection } from "../utils/client-projection";
+import { validateClientProjection } from "../helpers/client-projection";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,

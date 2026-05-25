@@ -63,11 +63,11 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
-import { sanitizeToolName } from "@flow-state-dev/core/utils";
+import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
+import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";

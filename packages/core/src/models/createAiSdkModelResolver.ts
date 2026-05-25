@@ -15,7 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
-import { sanitizeToolName } from "../utils/tool-name";
+import { sanitizeToolName } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 

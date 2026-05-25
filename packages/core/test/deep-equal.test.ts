@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deepEqual } from "../src/utils/deep-equal";
+import { deepEqual, looseDeepEqual } from "../src/helpers/deep-equal";
 
 describe("deepEqual", () => {
   it("returns true for equal primitives", () => {
@@ -104,5 +104,26 @@ describe("deepEqual", () => {
     const b: Record<string, unknown> = {};
     b.self = b;
     expect(() => deepEqual(a, b)).toThrow(RangeError);
+  });
+});
+
+describe("looseDeepEqual", () => {
+  it("matches deepEqual on JSON-shaped structural equality", () => {
+    expect(looseDeepEqual({ a: 1, b: [2, 3] }, { b: [2, 3], a: 1 })).toBe(true);
+    expect(looseDeepEqual({ a: { b: 1 } }, { a: { b: 2 } })).toBe(false);
+    expect(looseDeepEqual([1, 2], [1, 2, 3])).toBe(false);
+  });
+
+  it("does not throw on exotic shapes that deepEqual rejects", () => {
+    // The whole point of the loose variant: UI memoization must never crash
+    // a render when projected data contains a non-JSON shape.
+    expect(() => looseDeepEqual(new Map(), new Map())).not.toThrow();
+    expect(() => looseDeepEqual(() => 1, () => 2)).not.toThrow();
+    expect(() => looseDeepEqual(/x/, /y/)).not.toThrow();
+  });
+
+  it("treats reference-equal exotic values as equal", () => {
+    const fn = () => 1;
+    expect(looseDeepEqual(fn, fn)).toBe(true);
   });
 });

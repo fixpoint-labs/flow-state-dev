@@ -594,7 +594,7 @@ describe("defineFlow", () => {
     });
 
     it("normalizes legacy clientData into client.derived and warns once per scope", async () => {
-      const { __resetDeprecationWarningsForTests } = await import("../src/utils/deprecation");
+      const { __resetDeprecationWarningsForTests } = await import("../src/helpers/deprecation");
       __resetDeprecationWarningsForTests();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 

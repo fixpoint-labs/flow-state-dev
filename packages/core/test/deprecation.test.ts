@@ -6,7 +6,7 @@ import {
   __resetDeprecationWarningsForTests,
   warnDeprecated,
   warnOnceDev,
-} from "../src/utils/deprecation";
+} from "../src/helpers/deprecation";
 
 describe("warnDeprecated", () => {
   afterEach(() => {

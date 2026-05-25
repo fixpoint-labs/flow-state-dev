@@ -30,8 +30,8 @@ import type {
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
-import { warnDeprecated } from "../utils/deprecation";
-import { introspectStateKeys } from "../utils/zod-introspect";
+import { warnDeprecated } from "../helpers/deprecation";
+import { introspectStateKeys } from "../helpers/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
 

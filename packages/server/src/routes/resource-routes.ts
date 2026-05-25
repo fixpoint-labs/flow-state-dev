@@ -10,7 +10,7 @@ import type {
   JsonObject,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
-import { resolveClientProjection } from "@flow-state-dev/core/utils";
+import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {

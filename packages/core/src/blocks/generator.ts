@@ -45,7 +45,7 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { sanitizeToolName } from "../utils/tool-name";
+import { sanitizeToolName } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   aggregateContextEntries,
@@ -71,7 +71,6 @@ import {
   writeToolObservation,
   type ToolCacheStore,
 } from "./internal/cache-tool-call";
-import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
