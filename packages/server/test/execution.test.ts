@@ -2419,7 +2419,7 @@ describe("transient block output", () => {
           block: sequencer({
             name: "mixed-sequencer",
             inputSchema: z.object({ value: z.string() }),
-            outputSchema: z.string(),
+            outputSchema: z.object({ value: z.string() }),
             execute: async (input, ctx) => {
               await ctx._withExecutionScope!(
                 { name: "transient-step", kind: "handler", instanceId: "t1" },

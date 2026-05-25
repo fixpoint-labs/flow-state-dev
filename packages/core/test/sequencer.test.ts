@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "../src";
+import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../src";
 import { defineResource } from "../src/types/resource";
 import { createMockContext, runForTest } from "./helpers";
 function addHandler(name: string, delta = 1) {
@@ -1507,6 +1508,308 @@ describe("sequencer builder", () => {
 
       const stepError = emitted.find((e) => e.item.type === "step_error");
       expect(stepError).toBeUndefined();
+    });
+  });
+
+  describe("output schema validation", () => {
+    // --- Runtime gate ---
+
+    it("returns the value when the tail matches the declared schema", async () => {
+      const seq = sequencer({
+        name: "rt-happy",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).map((n) => `v:${n}`);
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 3, ctx)).resolves.toBe("v:3");
+    });
+
+    it("throws SequencerOutputSchemaError when the tail mismatches the declared schema", async () => {
+      const seq = sequencer({
+        name: "rt-mismatch",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).map((n) => n + 1);
+
+      const ctx = createMockContext();
+      const err = await runForTest(seq, 1, ctx).catch((e) => e);
+      expect(err).toBeInstanceOf(SequencerOutputSchemaError);
+      expect(err.code).toBe("sequencer_output_schema_error");
+      expect(err.details.sequencerName).toBe("rt-mismatch");
+      expect(err.details.rawOutput).toBe(2);
+      expect(err.details.issues.length).toBeGreaterThan(0);
+    });
+
+    it("validates the exitIf early-exit value against the declared schema", async () => {
+      const seq = sequencer({
+        name: "rt-exit",
+        inputSchema: z.number(),
+        outputSchema: z.object({ a: z.number() })
+      }).exitIf(() => true);
+
+      const ctx = createMockContext();
+      // exitIf returns the input (a number) before any step shapes it into {a}.
+      const err = await runForTest(seq, 5, ctx).catch((e) => e);
+      expect(err).toBeInstanceOf(SequencerOutputSchemaError);
+      // No step mutated state, so lastStepName stays the initial sentinel.
+      expect(err.details.lastStepName).toBe("__initial__");
+    });
+
+    it("validates the rescue recovery value and attributes the rescue block name", async () => {
+      const failing = handler({
+        name: "failing",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => {
+          throw new Error("boom");
+        }
+      });
+      const rescueNum = handler({
+        name: "rescue-num",
+        inputSchema: z.any(),
+        outputSchema: z.number(),
+        execute: () => 99
+      });
+
+      const seq = sequencer({
+        name: "rt-rescue",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      })
+        .then(failing)
+        .rescue([{ block: rescueNum }]);
+
+      const ctx = createMockContext();
+      const err = await runForTest(seq, 1, ctx).catch((e) => e);
+      expect(err).toBeInstanceOf(SequencerOutputSchemaError);
+      expect(err.details.lastStepName).toBe("rescue-num");
+      expect(err.details.rawOutput).toBe(99);
+    });
+
+    it("incurs no validation when outputSchema is omitted", async () => {
+      const seq = sequencer({ name: "rt-none", inputSchema: z.number() }).map((n) => n + 1);
+      const ctx = createMockContext();
+      // Value passes through untouched — behaviour identical to a schema-less chain.
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(2);
+    });
+
+    it("is rescue-catchable from a parent sequencer via when: [SequencerOutputSchemaError]", async () => {
+      const child = sequencer({
+        name: "child",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).map((n) => n + 1); // number out, fails the string gate
+
+      const fallback = handler({
+        name: "fallback",
+        inputSchema: z.any(),
+        outputSchema: z.string(),
+        execute: () => "recovered"
+      });
+
+      const parent = sequencer({
+        name: "parent",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      })
+        .then(child)
+        .rescue([{ when: [SequencerOutputSchemaError], block: fallback }]);
+
+      const ctx = createMockContext();
+      await expect(runForTest(parent, 1, ctx)).resolves.toBe("recovered");
+    });
+
+    it("re-validates a rescued value against the parent's declared schema", async () => {
+      const child = sequencer({
+        name: "child-bad",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).map((n) => n + 1);
+
+      const badFallback = handler({
+        name: "bad-fallback",
+        inputSchema: z.any(),
+        outputSchema: z.number(),
+        execute: () => 0
+      });
+
+      const parent = sequencer({
+        name: "parent-bad",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      })
+        .then(child)
+        .rescue([{ when: [SequencerOutputSchemaError], block: badFallback }]);
+
+      const ctx = createMockContext();
+      // Rescue catches the child's failure, but the fallback's number output
+      // fails the parent's string gate — the chokepoint fires again.
+      await expect(runForTest(parent, 1, ctx)).rejects.toThrow(SequencerOutputSchemaError);
+    });
+
+    it("returns the post-transform value when the schema uses .transform()", async () => {
+      const seq = sequencer({
+        name: "rt-transform",
+        inputSchema: z.number(),
+        outputSchema: z.string().transform((s) => Number(s))
+      }).map(() => "42");
+
+      const ctx = createMockContext();
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(42);
+    });
+
+    it("runs async refinements in the runtime gate", async () => {
+      const seq = sequencer({
+        name: "rt-async-refine",
+        inputSchema: z.number(),
+        outputSchema: z.string().refine(async (s) => s.length > 3, "too short")
+      }).map((n) => `${n}`);
+
+      const ctx = createMockContext();
+      // "1" has length 1 — the async refine must run and reject (safeParse would skip it).
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow(SequencerOutputSchemaError);
+      // "12345" satisfies the async refine.
+      await expect(runForTest(seq, 12345, ctx)).resolves.toBe("12345");
+    });
+
+    // --- Build-time .validate() ---
+
+    const strBlock = handler({
+      name: "to-str",
+      inputSchema: z.number(),
+      outputSchema: z.string(),
+      execute: (n) => `${n}`
+    });
+
+    it(".validate() passes when declared and inferred schemas match", () => {
+      const seq = sequencer({
+        name: "bt-match",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).then(strBlock);
+      expect(() => seq.validate()).not.toThrow();
+    });
+
+    it(".validate() fast-paths reference-equal schemas", () => {
+      const schema = z.string();
+      const sharedBlock = handler({
+        name: "shared",
+        inputSchema: z.number(),
+        outputSchema: schema,
+        execute: (n) => `${n}`
+      });
+      const seq = sequencer({
+        name: "bt-ref",
+        inputSchema: z.number(),
+        outputSchema: schema
+      }).then(sharedBlock);
+      expect(() => seq.validate()).not.toThrow();
+    });
+
+    it(".validate() throws on a top-level type-name mismatch", () => {
+      const seq = sequencer({
+        name: "bt-kind",
+        inputSchema: z.number(),
+        outputSchema: z.number()
+      }).then(strBlock);
+
+      let caught: any;
+      try {
+        seq.validate();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(SequencerSchemaMismatchError);
+      expect(caught.details.declaredKind).toBe("ZodNumber");
+      expect(caught.details.inferredKind).toBe("ZodString");
+    });
+
+    it(".validate() throws on an object key-set mismatch", () => {
+      const objBlock = handler({
+        name: "obj-ab",
+        inputSchema: z.number(),
+        outputSchema: z.object({ a: z.number(), b: z.number() }),
+        execute: () => ({ a: 1, b: 2 })
+      });
+      const seq = sequencer({
+        name: "bt-keys",
+        inputSchema: z.number(),
+        outputSchema: z.object({ a: z.number() })
+      }).then(objBlock);
+
+      let caught: any;
+      try {
+        seq.validate();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(SequencerSchemaMismatchError);
+      expect(caught.details.reason).toContain("key sets differ");
+    });
+
+    it(".validate() throws on a one-level object value-kind mismatch", () => {
+      const objBlock = handler({
+        name: "obj-a-num",
+        inputSchema: z.number(),
+        outputSchema: z.object({ a: z.number() }),
+        execute: () => ({ a: 1 })
+      });
+      const seq = sequencer({
+        name: "bt-valkind",
+        inputSchema: z.number(),
+        outputSchema: z.object({ a: z.string() })
+      }).then(objBlock);
+
+      let caught: any;
+      try {
+        seq.validate();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(SequencerSchemaMismatchError);
+      expect(caught.details.reason).toContain('"a"');
+      // The reported kinds reflect the level of the mismatch, not the top-level object kind.
+      expect(caught.details.declaredKind).toBe("ZodString");
+      expect(caught.details.inferredKind).toBe("ZodNumber");
+    });
+
+    it(".validate() throws on an array element kind mismatch", () => {
+      const arrBlock = handler({
+        name: "arr-num",
+        inputSchema: z.number(),
+        outputSchema: z.array(z.number()),
+        execute: () => [1]
+      });
+      const seq = sequencer({
+        name: "bt-arr",
+        inputSchema: z.number(),
+        outputSchema: z.array(z.string())
+      }).then(arrBlock);
+
+      let caught: any;
+      try {
+        seq.validate();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(SequencerSchemaMismatchError);
+      expect(caught.details.reason).toContain("array element");
+    });
+
+    it(".validate() no-ops when a schema-erasing op leaves no tracked schema", () => {
+      const seq = sequencer({
+        name: "bt-erased",
+        inputSchema: z.number(),
+        outputSchema: z.string()
+      }).thenAny([strBlock]);
+      // thenAny erases lastOutputSchema → nothing to compare against.
+      expect(() => seq.validate()).not.toThrow();
+    });
+
+    it(".validate() no-ops when no outputSchema is declared", () => {
+      const seq = sequencer({ name: "bt-noschema", inputSchema: z.number() }).then(strBlock);
+      expect(() => seq.validate()).not.toThrow();
     });
   });
 });

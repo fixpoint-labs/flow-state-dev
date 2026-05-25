@@ -359,6 +359,42 @@ Update policy:
     callback parameter, or in things known at construction time?** If the
     former, the right tool is a helper.
 
+### BP-025: Declare and validate sequencer output schemas deliberately
+
+- Status: Active
+- Date: 2026-05-23
+- Rule:
+  - Declare `outputSchema` on a sequencer when its composed output is consumed by something that depends on the shape: a downstream block, a flow action, or a client renderer. The declaration is a runtime contract — the framework validates the actual returned value against it on every exit path (the natural tail, an `exitIf` early return, and a `rescue` recovery).
+  - Call `.validate()` at build/setup time on any sequencer that declares `outputSchema`. It catches structural drift between the declared schema and the chain's inferred tail before the flow runs.
+  - Omit `outputSchema` for internal or ephemeral sequencers — scratch pipelines, background fan-out, anything whose composed output nothing downstream reads by shape. There the validation is pure overhead.
+  - The word "deliberately" is the rule. This is a per-sequencer judgment call, not a blanket requirement that every sequencer carry an `outputSchema`.
+  - Know what `.validate()` does NOT catch: it is a conservative one-level structural check. Deep nested shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail schema is erased by `thenAny` / `race` / `thenAll` / `branch`. The runtime gate still catches actual mismatches in those cases — `.validate()` is the early-warning, not the guarantee.
+- Why:
+  - A sequencer's `outputSchema` validates the composed output of the whole chain, which is distinct from a per-block `outputSchema` (that validates one block's own output). When a downstream consumer depends on the composed shape, an undeclared schema means a drift goes silent until the consumer reads a field that isn't there — far from the cause.
+  - The runtime gate is uniform across exit paths, so an `exitIf` or `rescue` that returns the wrong intermediate shape fails the same way the tail does. Without the declaration, those alternate paths are exactly where a wrong shape slips through unnoticed.
+  - Declaring on internal scratch sequencers is the inverse mistake: it adds a `safeParse` on every run and a maintenance burden for a contract nobody consumes. Reserve the declaration for the boundaries that matter.
+- Example (declare + validate at a real boundary):
+  ```ts
+  const summarize = sequencer({
+    name: "summarize",
+    inputSchema: z.object({ text: z.string() }),
+    outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
+  }).then(summarizeBlock); // tail produces { summary, wordCount }
+
+  summarize.validate(); // build-time drift check; throws SequencerSchemaMismatchError on mismatch
+  // Registered as a flow action whose client renderer reads { summary, wordCount }.
+  ```
+- Counter-example (declaring on an internal scratch pipeline):
+  ```ts
+  // Background fan-out — nothing downstream reads the shape.
+  const warmCache = sequencer({
+    name: "warm-cache",
+    inputSchema: z.object({ keys: z.array(z.string()) }),
+    outputSchema: z.object({ warmed: z.number() }), // overhead: no consumer cares
+  }).forEach((input) => input.keys, fetchAndCache);
+  // Omit outputSchema here. The composed output is discarded.
+  ```
+
 ## Template For New Entries
 
 ```md

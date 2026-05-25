@@ -32,6 +32,8 @@ const processOrder = handler({
 
 You didn't write a single type annotation. The Zod schemas are the single source of truth — they define the runtime validation AND the compile-time types. If you return the wrong shape from `execute`, TypeScript catches it. If you access a state field that doesn't exist, TypeScript catches it.
 
+Sequencers also accept an optional `outputSchema` declaration that the framework enforces at runtime; see [Declaring and validating output schemas](../sequencers/overview.md#declaring-and-validating-output-schemas).
+
 ## Types flow through sequencers
 
 The sequencer DSL tracks types through the chain. Each `.then()` captures the output schema of the current step and threads it as the input type of the next:

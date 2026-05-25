@@ -50,6 +50,18 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
+Sequencers can optionally declare an `outputSchema` as a runtime contract on the composed output of the whole chain — validated on every exit path (tail, `exitIf`, `rescue`). Call `.validate()` at build time to catch structural drift early.
+
+```ts
+const summarize = sequencer({
+  name: "summarize",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
+}).then(summarizeBlock);
+
+summarize.validate(); // throws if the tail shape drifts from the declared schema
+```
+
 **A router that dispatches to different pipelines at runtime:**
 
 ```ts
