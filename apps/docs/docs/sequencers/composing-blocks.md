@@ -253,7 +253,7 @@ For throwing structured errors with machine-readable codes and `details` that su
 
 Rescue catches an error and routes it to a recovery block. Sometimes a later step needs to know that happened: did the block before me throw and get recovered, or did it run cleanly? `ctx.wasRescued(...)` answers that without the recovered value having to carry a marker.
 
-Pass it a block name or a block definition. It returns `true` only when that block ran as a prior step in the current sequencer and a `.rescue()` handler recovered an error it threw. It returns `false` for a clean run, a step that never ran (skipped by `.thenIf`), an unknown name, or a call from outside a sequencer. It never throws.
+Pass it a block name or a block definition — usually a step that wraps a risky operation in its own `.rescue()`. It returns `true` only when that block ran as a prior step in the current sequencer and recovered an error through its own `.rescue()`. It returns `false` for a clean run, a step that never ran (skipped by `.thenIf`), an unknown name, or a call from outside a sequencer. It never throws.
 
 ```ts
 const primarySearch = sequencer({ name: "primary-search", inputSchema: query })

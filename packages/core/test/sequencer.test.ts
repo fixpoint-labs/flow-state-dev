@@ -398,7 +398,7 @@ describe("sequencer builder", () => {
 
     const ctx = createMockContext();
     await runForTest(seq, 1, ctx);
-    expect((ctx as { _didRescue?: boolean })._didRescue).not.toBe(true);
+    expect((ctx as { _didRescue?: boolean })._didRescue).toBeUndefined();
   });
 
   it("supports branch and throws when no branch matches", async () => {

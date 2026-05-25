@@ -217,8 +217,10 @@ export interface BlockContext<
 
   /**
    * Returns whether `target` — a prior block in the current sequencer scope —
-   * threw an error that was recovered by a `.rescue()` handler during its
-   * execution. `target` is a block name or a block definition (resolved via
+   * recovered an error through its own `.rescue()` handler during its
+   * execution. The flag is set on the block that owns the `.rescue()` (e.g. a
+   * sub-sequencer wrapping a risky step), so query that block, not the inner
+   * step that threw. `target` is a block name or definition (resolved via
    * `block.name`).
    *
    * Scope and resolution match `getBlockResult`: only blocks that ran as prior

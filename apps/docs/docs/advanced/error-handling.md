@@ -80,22 +80,32 @@ To handle a failure inline rather than letting it bubble, use the sequencer's `.
 
 ## Querying rescue status
 
-A recovered error is handled: the value continues down the chain with its normal shape, and the rescue is meant to be a side note, not something every later block has to account for. When a downstream block does need to react to it, ask `ctx.wasRescued(target)` instead of inspecting the value.
+A recovered error is handled: the value continues down the chain with its normal shape, and the rescue is meant to be a side note, not something every later block has to account for. When a later block does need to react to it, ask `ctx.wasRescued(target)` instead of inspecting the value.
 
-`target` is a block name or a block definition. Resolution matches `getBlockResult`: it looks at prior steps in the current sequencer run, and under a loop it reads the current iteration. It returns `true` only when that block threw and a `.rescue()` handler recovered the error, and `false` otherwise — a clean run, a skipped step, an unknown name. It never throws.
+`target` is the name or definition of an earlier block in the current sequencer — typically a step that wraps a risky operation in its own `.rescue()`. Resolution matches `getBlockResult`: only prior siblings in the current run are visible, and under a loop the current iteration is read. It returns `true` only when that block recovered an error through its own `.rescue()` during its run, and `false` otherwise — a clean run, a step that never ran, an unknown name, or a call from outside a sequencer. It never throws.
 
 ```ts
+// priceOrder keeps the pipeline alive when the live-rate lookup fails by
+// falling back to a cached rate inside its own rescue.
+const priceOrder = sequencer({ name: "price-order", inputSchema: order })
+  .then(fetchLiveRate)
+  .rescue([{ block: useCachedRate }]);
+
 const enrich = handler({
   name: "enrich",
-  inputSchema: order,
+  inputSchema: pricedOrder,
   outputSchema: enrichedOrder,
   execute: async (input, ctx) => {
-    // The pricing step fell back to a cached rate, so flag the result
-    // for review instead of treating it as authoritative.
-    const degraded = ctx.wasRescued("price-order");
+    // A sibling of priceOrder, so it can tell whether the cached-rate
+    // fallback ran and mark the result instead of trusting it as live.
+    const degraded = ctx.wasRescued(priceOrder);
     return { ...input, pricing: degraded ? "estimated" : "live" };
   },
 });
+
+sequencer({ name: "order-pipeline", inputSchema: order })
+  .then(priceOrder)
+  .then(enrich);
 ```
 
 Reach for this when a decision is transient and tied to one run. If the fact needs to outlive the run, write it to state instead.
