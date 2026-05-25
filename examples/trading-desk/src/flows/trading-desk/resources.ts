@@ -122,6 +122,12 @@ export const memoStateSchema = z.object({
       z.object({
         description: z.string(),
         reason: z.string(),
+        dismissalCategory: z.enum([
+          "already-addressed",
+          "out-of-scope",
+          "no-mechanism",
+          "asymmetric-no-bound",
+        ]),
       }),
     )
     .nullable()

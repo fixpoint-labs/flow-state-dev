@@ -95,8 +95,10 @@ export function formatRiskAssessmentExtensions(memo: any): string {
     for (const d of memo.dismissedRisks as Array<{
       description: string;
       reason: string;
+      dismissalCategory?: string;
     }>) {
-      lines.push(`- ${d.description} — ${d.reason}`);
+      const category = d.dismissalCategory ? ` [${d.dismissalCategory}]` : "";
+      lines.push(`- ${d.description}${category} — ${d.reason}`);
     }
   }
   if (memo.recommendedAdjustments != null) {
