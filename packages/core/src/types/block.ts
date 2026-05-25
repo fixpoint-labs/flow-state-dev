@@ -104,6 +104,12 @@ export interface ResponseEmitterHandle {
    */
   getItems(): readonly OutputItem[];
   /**
+   * O(1) count of items currently tracked by this response. Equivalent to
+   * `getItems().length` but without materializing or ordering the snapshot —
+   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   */
+  getItemCount(): number;
+  /**
    * Subscribe to subsequent item lifecycle transitions on this response.
    * `kind` distinguishes the underlying mutation: `"added"` for a freshly
    * emitted item, `"updated"` for an in-place mutation, `"done"` for a

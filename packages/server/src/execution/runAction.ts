@@ -25,7 +25,7 @@ import { normalizeError } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
-import { getResponseItems } from "./internal/response";
+import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
   emitActionLifecycleSeam,
@@ -299,7 +299,7 @@ async function emitTerminalError(
     type: "error",
     status: "failed",
     requestId: ctx.requestRuntime.requestId,
-    itemIndex: getResponseItems(ctx.response).length,
+    itemIndex: getResponseItemCount(ctx.response),
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: error.message,
@@ -351,7 +351,7 @@ async function emitBudgetWarning(
     status: "completed",
     transient: true,
     requestId: ctx.requestRuntime.requestId,
-    itemIndex: getResponseItems(ctx.response).length,
+    itemIndex: getResponseItemCount(ctx.response),
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message,
@@ -387,7 +387,7 @@ async function emitAbortedMessage(
     type: "status",
     status: "completed",
     requestId: ctx.requestRuntime.requestId,
-    itemIndex: getResponseItems(ctx.response).length,
+    itemIndex: getResponseItemCount(ctx.response),
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: "Request was stopped.",
@@ -689,7 +689,7 @@ export async function runActionInternal<
         status: "completed",
         transient: false,
         requestId,
-        itemIndex: response.getItems().length,
+        itemIndex: getResponseItemCount(response),
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
         content: [{ type: "output_text", text }]
