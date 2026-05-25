@@ -7,11 +7,10 @@ import type {
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
-import { resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
+import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord } from "../stores/types";
-import { cloneValue } from "../utils/clone";
 import { isJsonObject } from "../utils/json-helpers";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";

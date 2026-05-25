@@ -7,6 +7,7 @@
  * live in `packages/core/src/index.ts`.
  */
 
+export { cloneValue } from "./clone";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
 export { warnDeprecated, __resetDeprecationWarningsForTests } from "./deprecation";

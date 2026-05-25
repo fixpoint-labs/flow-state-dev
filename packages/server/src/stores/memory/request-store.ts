@@ -1,3 +1,4 @@
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   ExpectedVersion,
@@ -10,7 +11,6 @@ import type {
 import {
   applyOffsetLimit,
   casWriteToMap,
-  cloneValue,
   incFieldInMap,
   patchFieldInMap,
   pushToArrayInMap
