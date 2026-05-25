@@ -167,6 +167,11 @@ export type CreateFlowRouteHandlersOptions = {
    */
   tracingLevel?: TracingLevel;
   /**
+   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * The extracted value is threaded onto request/session context identities.
+   */
+  tenantIdHeader?: string;
+  /**
    * Resolved debug-endpoint configuration. Threaded into the debug route
    * handlers; consult `resolveDebugConfig` in `debug-routes.ts` for the
    * env-fallback + defaults logic.
@@ -314,7 +319,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           seams,
           bootstrapMetadata,
-          requestContext
+          requestContext,
+          tenantIdHeader: options.tenantIdHeader
         });
       }
 

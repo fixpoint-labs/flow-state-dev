@@ -758,6 +758,7 @@ export async function runActionInternal<
       userId: options.userId,
       sessionId: options.sessionId,
       orgId: options.orgId,
+      tenantId: options.tenantId,
       source,
       metadata: options.metadata,
       input: options.input,

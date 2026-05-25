@@ -2712,7 +2712,8 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        orgId: orgRef.current?.orgId
+        orgId: orgRef.current?.orgId,
+        tenantId: options.tenantId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2731,7 +2732,8 @@ export async function createExecutionContext<
       identity: {
         type: "user" as const,
         id: userRef.current.id,
-        userId: userRef.current.userId
+        userId: userRef.current.userId,
+        tenantId: options.tenantId
       },
       ...userOpsEmitting
     },
@@ -2745,7 +2747,8 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        orgId: sessionRef.current.orgId
+        orgId: sessionRef.current.orgId,
+        tenantId: options.tenantId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2849,7 +2852,8 @@ export async function createExecutionContext<
               type: "org" as const,
               id: orgRef.current.id,
               userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId
+              orgId: orgRef.current.orgId,
+              tenantId: options.tenantId
             },
             ...orgOpsEmitting
           },

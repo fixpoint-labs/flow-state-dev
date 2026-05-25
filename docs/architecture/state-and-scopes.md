@@ -293,6 +293,20 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. Flow-level declarations take priority on dedup; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
 
+## Tenant Identity
+
+Every scope identity (`request`, `session`, `user`, `org`) carries an optional `tenantId`. The HTTP transport reads it from a configurable header — `x-tenant-id` by default, overridable via `createFlowApiRouter({ tenantIdHeader })` — and threads it onto the context, so handlers and middleware can read `ctx.request.identity.tenantId` (or `ctx.session.identity.tenantId`) and branch on it.
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  tenantIdHeader: "x-tenant-id" // default
+});
+```
+
+The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`. Today the value is informational only — it does not yet namespace store keys, so two tenants sharing a session id still share a session record. Tenant-scoped store-key isolation (deriving `${tenantId}:${sessionId}` and threading it through the session, content, and request stores) is tracked separately.
+
 ## Cross-Flow State: Shared vs Isolated
 
 User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.

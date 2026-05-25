@@ -10,6 +10,14 @@ export type ScopeIdentity = {
   id: string;
   userId?: string;
   orgId?: string;
+  /**
+   * Optional tenant the request runs under (FIX-406 6D). Extracted from a
+   * configurable HTTP header (default `x-tenant-id`) and exposed on request,
+   * session, user, and org scope identities so handlers and middleware can
+   * branch on it. Undefined for single-tenant apps. (Tenant-scoped store-key
+   * isolation is a separate, deferred change.)
+   */
+  tenantId?: string;
 };
 
 export type SessionItem = {

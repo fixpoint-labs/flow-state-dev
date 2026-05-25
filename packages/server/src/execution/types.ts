@@ -73,6 +73,7 @@ export type RunActionOptions<
   userId: string;
   sessionId?: string;
   orgId?: string;
+  tenantId?: string;
   requestId?: string;
   /**
    * Inbound transport provenance, propagated to `RequestRecord.source` and

@@ -61,6 +61,14 @@ export type CreateFlowApiRouterOptions = {
    * Recommended: `"normal"` for production servers, `"verbose"` for `fsdev dev`.
    */
   tracingLevel?: TracingLevel;
+  /**
+   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * The extracted value is exposed on request/session/block context identities
+   * (`ctx.request.identity.tenantId`). Optional — single-tenant apps ignore it.
+   * Note: tenant-scoped store-key isolation is a separate, deferred change;
+   * this only threads the axis through context.
+   */
+  tenantIdHeader?: string;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   /**
    * Whether to detect interrupted requests from previous runs on startup.

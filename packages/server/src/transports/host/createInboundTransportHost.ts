@@ -125,6 +125,7 @@ export function createInboundTransportHost(
       sessionId: envelope.sessionId,
       requestId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
+      tenantId: envelope.tenantId,
       source: envelope.source,
       metadata: envelope.metadata,
       signal: envelope.signal,

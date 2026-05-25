@@ -43,6 +43,8 @@ export type CreateExecutionContextOptions<
   userId?: string;
   sessionId?: string;
   orgId?: string;
+  /** Optional tenant the request runs under (FIX-406 6D). */
+  tenantId?: string;
   /**
    * Inbound transport provenance written to the initial `RequestRecord`.
    * Defaults to `"http"` for callers that don't supply one (FIX-438).
