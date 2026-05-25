@@ -2896,7 +2896,17 @@ export async function createExecutionContext<
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
-    result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
+    result: {
+      status: "not_started" | "running" | "completed" | "failed";
+      output?: unknown;
+      error?: Error;
+      /**
+       * Set true when this block threw and a `.rescue()` handler recovered the
+       * error during its run. Stamped from the child context's `_didRescue` in
+       * `_withExecutionScope`'s success branch; read by `wasRescued`.
+       */
+      rescued?: boolean;
+    };
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -3359,6 +3369,27 @@ export async function createExecutionContext<
 
         return { status: "not_started" } as BlockResult<never>;
       },
+      wasRescued: (target) => {
+        const name = typeof target === "string" ? target : target.name;
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name !== name) {
+              continue;
+            }
+            // Most-recent matching sibling wins (per-iteration correct under
+            // `.loopBack`), mirroring `getBlockResult`'s resolution.
+            return sibling.result.rescued === true;
+          }
+        }
+
+        return false;
+      },
       // Populated immediately after this object literal closes so the
       // deprecated aliases share the underlying impls with `ctx.emit.*`
       // and the trace.blockDebug emitter can read this context's
@@ -3524,6 +3555,11 @@ export async function createExecutionContext<
           siblingEntry.result.status = "completed";
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
+          // Carry the child's out-of-band rescue flag onto its sibling entry so
+          // a downstream sibling can read it via `ctx.wasRescued(...)`. Written
+          // by the sequencer runtime's rescue catch (see `_didRescue`).
+          siblingEntry.result.rescued =
+            (childContext as { _didRescue?: boolean })._didRescue === true;
 
           // Harvest the BlockValue hint set by the child's execute (if any)
           // so the block_trace `output` patch carries a ref/structure rather

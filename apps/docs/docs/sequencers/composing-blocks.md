@@ -249,6 +249,26 @@ Handlers are checked in order. The first match runs. If the recovery block succe
 
 For throwing structured errors with machine-readable codes and `details` that surface in the DevTool, see [Error handling](/docs/advanced/error-handling).
 
+### Querying rescue status
+
+Rescue catches an error and routes it to a recovery block. Sometimes a later step needs to know that happened: did the block before me throw and get recovered, or did it run cleanly? `ctx.wasRescued(...)` answers that without the recovered value having to carry a marker.
+
+Pass it a block name or a block definition. It returns `true` only when that block ran as a prior step in the current sequencer and a `.rescue()` handler recovered an error it threw. It returns `false` for a clean run, a step that never ran (skipped by `.thenIf`), an unknown name, or a call from outside a sequencer. It never throws.
+
+```ts
+const primarySearch = sequencer({ name: "primary-search", inputSchema: query })
+  .then(callSearchApi)
+  .rescue([{ block: fallbackSearch }]);
+
+sequencer({ name: "search-pipeline", inputSchema: query })
+  .then(primarySearch)
+  // Ranking assumes fresh API results, so skip it when the fallback ran.
+  .thenIf((results, ctx) => !ctx.wasRescued(primarySearch), rankResults)
+  .then(renderResults);
+```
+
+The status is transient: it lives for the current sequencer run and is resolved by name, the same way `getBlockResult` resolves a prior block. Under a loop it reflects the current iteration, not an earlier one. Reach for it when a downstream step should adapt to a fallback being taken, and you'd otherwise be tempted to thread a flag through state.
+
 ## Putting it together
 
 Here's the pipeline using all six methods:

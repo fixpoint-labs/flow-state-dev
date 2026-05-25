@@ -843,6 +843,139 @@ describe("execution runtime", () => {
     expect(result.output).toEqual({ outputMissing: true, status: "failed", hasError: true });
   });
 
+  it("reports wasRescued=true for a rescued sibling and false otherwise", async () => {
+    const { ctx } = await createRuntimeContext("req_was_rescued");
+
+    const thrower = handler({
+      name: "ws-thrower",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+    const recovery = handler({
+      name: "ws-recovery",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    // A rescued sub-sequencer: its inner throw is recovered, so it completes
+    // and becomes a (rescued) sibling in the outer scope.
+    const dispatch = sequencer({ name: "ws-dispatch", inputSchema: z.number() })
+      .then(thrower)
+      .rescue([{ block: recovery }]);
+
+    const okStep = handler({
+      name: "ws-ok",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value
+    });
+    // A sibling sequencer that completes without ever rescuing.
+    const safe = sequencer({ name: "ws-safe", inputSchema: z.number() }).then(okStep);
+
+    const probe = handler({
+      name: "ws-probe",
+      inputSchema: z.number(),
+      outputSchema: z.object({
+        rescuedByDef: z.boolean(),
+        rescuedByName: z.boolean(),
+        safeRescued: z.boolean(),
+        unknownRescued: z.boolean()
+      }),
+      execute: (_value, stepCtx) => ({
+        rescuedByDef: stepCtx.wasRescued(dispatch),
+        rescuedByName: stepCtx.wasRescued("ws-dispatch"),
+        safeRescued: stepCtx.wasRescued(safe),
+        unknownRescued: stepCtx.wasRescued("does-not-exist")
+      })
+    });
+
+    const flow = sequencer({ name: "ws-outer", inputSchema: z.number() })
+      .then(dispatch)
+      .then(safe)
+      .then(probe);
+
+    const result = await executeBlock({ block: flow, input: 5, ctx });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({
+      rescuedByDef: true,
+      rescuedByName: true,
+      safeRescued: false,
+      unknownRescued: false
+    });
+  });
+
+  it("tracks wasRescued per-iteration under loopBack", async () => {
+    const { ctx } = await createRuntimeContext("req_was_rescued_loop");
+
+    // Throws on its first run only, then succeeds — so the rescue fires in
+    // iteration 0 but not iteration 1.
+    let attempts = 0;
+    const flaky = handler({
+      name: "loop-flaky",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("first-attempt failure");
+        }
+        return attempts;
+      }
+    });
+    const recovery = handler({
+      name: "loop-recovery",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const dispatch = sequencer({ name: "loop-dispatch", inputSchema: z.any() })
+      .then(flaky)
+      .rescue([{ block: recovery }]);
+
+    // Drives exactly two iterations via a closure counter.
+    let loops = 0;
+    const controller = handler({
+      name: "loop-controller",
+      inputSchema: z.any(),
+      outputSchema: z.object({ continue: z.boolean() }),
+      execute: () => {
+        loops += 1;
+        return { continue: loops < 2 };
+      }
+    });
+    // Records this iteration's rescued status as observed by a downstream
+    // sibling of `dispatch`.
+    const observed: boolean[] = [];
+    const probe = handler({
+      name: "loop-probe",
+      inputSchema: z.object({ continue: z.boolean() }),
+      outputSchema: z.object({ continue: z.boolean() }),
+      execute: (input, stepCtx) => {
+        observed.push(stepCtx.wasRescued(dispatch));
+        return input;
+      }
+    });
+
+    const flow = sequencer({ name: "loop-outer", inputSchema: z.any() })
+      .then(dispatch)
+      .then(controller)
+      .then(probe)
+      .loopBack(dispatch.name, {
+        when: (v) => (v as { continue: boolean }).continue,
+        maxIterations: 5
+      });
+
+    const result = await executeBlock({ block: flow, input: {}, ctx });
+
+    expect(result.error).toBeUndefined();
+    // Iteration 0 rescued; iteration 1 ran clean.
+    expect(observed).toEqual([true, false]);
+  });
+
   it("resolves getTarget from sibling registry before ancestors", async () => {
     const { ctx } = await createRuntimeContext("req_targets_siblings");
 

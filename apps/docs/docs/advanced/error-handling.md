@@ -78,6 +78,28 @@ To catch drift before the flow runs at all, call `.validate()` on the sequencer 
 
 To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
 
+## Querying rescue status
+
+A recovered error is handled: the value continues down the chain with its normal shape, and the rescue is meant to be a side note, not something every later block has to account for. When a downstream block does need to react to it, ask `ctx.wasRescued(target)` instead of inspecting the value.
+
+`target` is a block name or a block definition. Resolution matches `getBlockResult`: it looks at prior steps in the current sequencer run, and under a loop it reads the current iteration. It returns `true` only when that block threw and a `.rescue()` handler recovered the error, and `false` otherwise — a clean run, a skipped step, an unknown name. It never throws.
+
+```ts
+const enrich = handler({
+  name: "enrich",
+  inputSchema: order,
+  outputSchema: enrichedOrder,
+  execute: async (input, ctx) => {
+    // The pricing step fell back to a cached rate, so flag the result
+    // for review instead of treating it as authoritative.
+    const degraded = ctx.wasRescued("price-order");
+    return { ...input, pricing: degraded ? "estimated" : "live" };
+  },
+});
+```
+
+Reach for this when a decision is transient and tied to one run. If the fact needs to outlive the run, write it to state instead.
+
 ## What you'll see in DevTool
 
 The failed-block detail panel surfaces the error message at the top, the `code` as a small mono-text badge, a dedicated "Raw output" section when the runtime captured one, a "Validation issues" list when Zod issues are present, and a "Details" JSON panel that always renders any other keys on `error.details`. For tool-invoked blocks that fail, the panel also shows the originating tool call's arguments — see [DevTool overview](/docs/devtool/overview).
