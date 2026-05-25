@@ -12,6 +12,7 @@ import type {
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
@@ -160,6 +161,12 @@ export type CreateFlowRouteHandlersOptions = {
    */
   defaultSseHeartbeatMs?: number;
   /**
+   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded to
+   * the host and onto every block context. Unset → the runtime falls back to
+   * `resolveTracingLevel()` (env / observability default).
+   */
+  tracingLevel?: TracingLevel;
+  /**
    * Resolved debug-endpoint configuration. Threaded into the debug route
    * handlers; consult `resolveDebugConfig` in `debug-routes.ts` for the
    * env-fallback + defaults logic.
@@ -235,7 +242,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     onBackgroundWork: options.onBackgroundWork,
     maxResponseBufferSize: options.maxResponseBufferSize,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    tracingLevel: options.tracingLevel
   });
 
   // Detect interrupted requests from previous runs on startup

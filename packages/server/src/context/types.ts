@@ -5,6 +5,7 @@ import type {
   ModelResolver,
   ResponseEmitterHandle
 } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 
@@ -65,4 +66,10 @@ export type CreateExecutionContextOptions<
   modelResolver?: ModelResolver;
   stores: StoreRegistry;
   logger?: RuntimeLogger;
+  /**
+   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded onto
+   * every block context as `_tracingLevel`. Unset → the runtime falls back to
+   * `resolveTracingLevel()` (env / observability default).
+   */
+  tracingLevel?: TracingLevel;
 };

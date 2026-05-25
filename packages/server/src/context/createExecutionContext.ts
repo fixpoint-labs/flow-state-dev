@@ -67,6 +67,7 @@ import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -3515,6 +3516,9 @@ export async function createExecutionContext<
         // `.work()` dispatches can read it (the dispatch site reads
         // `ctx._requestBackgroundSignal`, not `ctx.signal`).
         (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // FIX-406 6H: propagate the request's tracing level so sequencers in
+        // any nested scope gate observability snapshots consistently.
+        (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.

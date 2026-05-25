@@ -135,6 +135,9 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     // fsdev dev is local-only by definition; opt in to the privileged debug
     // surface so the DevTool's Resources panel can read full server state.
     debugEndpointsEnabled: true,
+    // The DevTool observes per-step state snapshots, so the dev server runs at
+    // the most verbose tracing level (FIX-406 6H).
+    tracingLevel: "verbose",
     onError: (error: Error, context: { method: string; path: string }) => {
       process.stderr.write(`[API error] ${context.method} ${context.path}: ${error.message}\n`);
     },

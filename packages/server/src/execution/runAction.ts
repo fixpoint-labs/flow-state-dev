@@ -766,7 +766,8 @@ export async function runActionInternal<
       modelResolver: options.modelResolver,
       response,
       stores: options.stores,
-      logger
+      logger,
+      tracingLevel: options.tracingLevel
     });
   } catch (setupError) {
     deregisterAbortController(requestId);
