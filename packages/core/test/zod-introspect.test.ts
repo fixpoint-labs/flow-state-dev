@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { introspectStateKeys } from "../src/utils/zod-introspect";
+import { introspectStateKeys } from "../src/helpers/zod-introspect";
 
 describe("introspectStateKeys", () => {
   it("returns the top-level keys for a ZodObject", () => {

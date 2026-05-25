@@ -27,7 +27,7 @@ import {
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
 import { reorderByPreference, normalizePreference } from "./reorderByPreference";
-import { warnOnceDev } from "../utils/deprecation";
+import { warnOnceDev } from "../helpers/deprecation";
 
 // ---------------------------------------------------------------------------
 // Config

@@ -12,7 +12,7 @@
  */
 
 import type { CASOptions, StateContainer } from "@flow-state-dev/core/types";
-import { deepEqual } from "@flow-state-dev/core/utils";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 10;

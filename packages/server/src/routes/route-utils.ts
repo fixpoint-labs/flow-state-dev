@@ -7,7 +7,7 @@ import type {
   ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
-import { resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/utils";
+import { resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord } from "../stores/types";

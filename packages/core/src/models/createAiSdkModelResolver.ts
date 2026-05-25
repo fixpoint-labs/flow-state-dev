@@ -15,7 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
-import { sanitizeToolName } from "../utils/tool-name";
+import { sanitizeToolName } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 
@@ -959,8 +959,17 @@ function createGeneratorModelFromAiSdk(
       try {
         finalResult = (await result) as unknown as Record<string, unknown>;
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`AI SDK stream failed: ${message}`);
+        // FIX-663: preserve the original error as `cause` so the wrap chain
+        // is walkable (via `rootCause`/`isAbortLike`). Previously this threw
+        // a string-concatenated message, which buried the AI Gateway's
+        // doubly-wrapped "Invalid error response format: Gateway request
+        // failed: This operation was aborted" (vercel/ai#9579) as opaque text
+        // with no walkable cause. The clean top-level message keeps the
+        // block-failure surface legible; the cause carries the detail.
+        const cause = err instanceof Error ? err : new Error(String(err));
+        const wrapped = new Error("AI SDK stream failed", { cause });
+        wrapped.name = "ModelStreamError";
+        throw wrapped;
       }
       // Refine identity with the provider-reported model id, when present.
       resolvedIdentity = buildResolvedIdentity(

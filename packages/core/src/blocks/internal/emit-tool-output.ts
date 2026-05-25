@@ -9,7 +9,7 @@
  */
 import type { BlockContext, BlockDefinition } from "../../types/block";
 import type { AgentType, ModelIdentity } from "../../items/types";
-import { sanitizeToolName } from "../../utils/tool-name";
+import { sanitizeToolName } from "../../helpers/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
 

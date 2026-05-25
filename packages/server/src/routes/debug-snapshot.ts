@@ -18,7 +18,7 @@ import type {
   ResourceConfig
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
-import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/core/utils";
+import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import {
   getPersistedData,
   isCollectionConfig,

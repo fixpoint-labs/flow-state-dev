@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { camelToKebab, normalizeTagName } from "../src/utils/string-case";
+import { camelToKebab, normalizeTagName } from "../src/helpers/string-case";
 
 describe("camelToKebab", () => {
   it("converts camelCase to kebab-case", () => {

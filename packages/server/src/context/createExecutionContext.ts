@@ -63,11 +63,11 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
-import { sanitizeToolName } from "@flow-state-dev/core/utils";
+import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
+import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -3182,7 +3182,13 @@ export async function createExecutionContext<
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
     siblingSearchLimit: number | undefined,
-    scopeEmCtx?: EmissionContext
+    scopeEmCtx?: EmissionContext,
+    // FIX-663: when provided, sets this scope's `ctx.signal` instead of the
+    // closure-captured `options.signal`. `_withExecutionScope` threads the
+    // current parent ctx's signal here so child scopes inherit the parent's
+    // signal (which may be the background signal inside a `.work()` tree)
+    // rather than the root request signal via closure capture.
+    signalOverride?: AbortSignal
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
@@ -3205,7 +3211,7 @@ export async function createExecutionContext<
       org: orgHandle,
       resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
-      signal: options.signal ?? new AbortController().signal,
+      signal: signalOverride ?? options.signal ?? new AbortController().signal,
       resolveModel,
       targets: new Proxy({}, {
         get(_target, prop) {
@@ -3374,7 +3380,7 @@ export async function createExecutionContext<
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -3475,11 +3481,19 @@ export async function createExecutionContext<
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
         };
+        // FIX-663: propagate the signal down the scope chain. An explicit
+        // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
+        // inherit the *current* parent ctx's signal so descendant scopes of
+        // a `.work()` task tree keep seeing the background signal. Reading
+        // `context.signal` (not the closure-captured `options.signal`) is
+        // what makes the override propagate beyond one level.
+        const childSignal = signalOverride ?? context.signal;
         const childContext = createContext(
           childChain,
           childSiblingRegistry,
           childSiblingRegistry.length - 1,
-          childEmCtx
+          childEmCtx,
+          childSignal
         );
 
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
@@ -3497,6 +3511,10 @@ export async function createExecutionContext<
         // so `.work()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-work-pool.ts`.
         (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+        // FIX-663: re-attach the background signal on every scope so nested
+        // `.work()` dispatches can read it (the dispatch site reads
+        // `ctx._requestBackgroundSignal`, not `ctx.signal`).
+        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3745,5 +3763,8 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-663: attach the background signal to the root context. Child scopes
+  // re-attach it in `_withExecutionScope` (alongside the work pool).
+  (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
   return rootContext;
 }

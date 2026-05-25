@@ -75,8 +75,8 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
-export { isTraceObservabilityEnabled } from "./utils/trace-observability";
-export { transientSlot } from "./utils/transient-slot";
+export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
+export { transientSlot } from "./helpers/transient-slot";
 export {
   buildBlockInstanceId,
   blockPathBranch,
@@ -261,7 +261,9 @@ export {
   FlowError,
   OutputValidationError,
   SequencerOutputSchemaError,
-  SequencerSchemaMismatchError
+  SequencerSchemaMismatchError,
+  rootCause,
+  isAbortLike
 } from "./errors";
 export type {
   FlowErrorOptions,

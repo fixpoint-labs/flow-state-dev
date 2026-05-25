@@ -14,3 +14,4 @@ export type {
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails
 } from "./sequencer-output-schema-error.js";
+export { rootCause, isAbortLike } from "./abort.js";

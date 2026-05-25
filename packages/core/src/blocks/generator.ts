@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
+import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
 import type {
   BlockCacheableConfig,
@@ -44,7 +45,7 @@ import type {
 
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { sanitizeToolName } from "../utils/tool-name";
+import { sanitizeToolName } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   aggregateContextEntries,
@@ -70,7 +71,6 @@ import {
   writeToolObservation,
   type ToolCacheStore,
 } from "./internal/cache-tool-call";
-import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -1417,6 +1417,27 @@ function buildSourceItem(
  * schema validation runs), but reasoning, messages, tool-call progress,
  * and source items are all suppressed.
  */
+/**
+ * FIX-663: rewrites a rejected model call into a legible failure. When the
+ * error is abort-like and this block's signal aborted (explicit user
+ * cancellation propagated to a background `.work()` task, or a foreground
+ * `/abort`), surface the unwrapped root-cause text instead of the AI
+ * Gateway's doubly-wrapped "Invalid error response format" noise, and log
+ * concisely rather than dumping the wrap chain. The error is still thrown so
+ * the existing `block_trace` failure surface fires unchanged — only its
+ * message gets clearer. Genuine non-abort errors pass through untouched.
+ */
+function surfaceModelCallError(err: unknown, ctx: BlockContext, blockName: string): never {
+  if (isAbortLike(err) && ctx.signal?.aborted) {
+    const root = rootCause(err);
+    const message = root instanceof Error ? root.message : String(root);
+    // eslint-disable-next-line no-console
+    console.warn(`[generator] "${blockName}" model call aborted: ${message}`);
+    throw new Error(message, { cause: err });
+  }
+  throw err;
+}
+
 async function executeStreamingGeneration<TInput, TOutput>(
   model: GeneratorModel,
   messages: unknown[],
@@ -2097,22 +2118,26 @@ export function generator<
       );
 
       if (canStream) {
-        return await executeStreamingGeneration(
-          model,
-          messages,
-          compiledTools,
-          resolvedProviderTools,
-          normalizedConfig,
-          outputSchema,
-          blockName,
-          maxSteps,
-          ctx,
-          agentType,
-          agentName,
-          prepareStepFn,
-          resolvedProviderOpts,
-          resolvedCaching
-        );
+        try {
+          return await executeStreamingGeneration(
+            model,
+            messages,
+            compiledTools,
+            resolvedProviderTools,
+            normalizedConfig,
+            outputSchema,
+            blockName,
+            maxSteps,
+            ctx,
+            agentType,
+            agentName,
+            prepareStepFn,
+            resolvedProviderOpts,
+            resolvedCaching
+          );
+        } catch (err) {
+          surfaceModelCallError(err, ctx, blockName);
+        }
       }
 
       // Prime `_currentModelIdentity` with the requested model id so tools
@@ -2123,18 +2148,23 @@ export function generator<
         actual: model.modelId,
       };
       // Non-streaming: single call, model handles multi-step loop via maxSteps.
-      const generation = await model.generate({
-        messages,
-        tools: compiledTools.length > 0 ? compiledTools : undefined,
-        providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
-        outputSchema,
-        maxTokens: normalizedConfig.maxTokens,
-        signal: ctx.signal,
-        maxSteps,
-        providerOptions: resolvedProviderOpts,
-        caching: resolvedCaching,
-        prepareStep: prepareStepFn
-      });
+      let generation: GeneratorModelResult;
+      try {
+        generation = await model.generate({
+          messages,
+          tools: compiledTools.length > 0 ? compiledTools : undefined,
+          providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
+          outputSchema,
+          maxTokens: normalizedConfig.maxTokens,
+          signal: ctx.signal,
+          maxSteps,
+          providerOptions: resolvedProviderOpts,
+          caching: resolvedCaching,
+          prepareStep: prepareStepFn
+        });
+      } catch (err) {
+        surfaceModelCallError(err, ctx, blockName);
+      }
 
       const candidate = resolveGenerationCandidate(generation);
       const nonStreamingIdentity = generation.resolvedIdentity;

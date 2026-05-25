@@ -10,7 +10,7 @@ export default defineConfig({
       "@flow-state-dev/core/items/internal": resolve(root, "packages/core/src/items/internal.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
       "@flow-state-dev/core/capability": resolve(root, "packages/core/src/capability/index.ts"),
-      "@flow-state-dev/core/utils": resolve(root, "packages/core/src/utils/index.ts"),
+      "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
