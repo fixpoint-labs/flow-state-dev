@@ -106,6 +106,8 @@ export {
   NetworkError,
   RateLimitError,
   TimeoutError,
+  ContextLengthError,
+  ProviderUnavailableError,
   ToolExecutionError,
   ValidationError,
   AmbiguousBlockNameError

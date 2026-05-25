@@ -108,6 +108,41 @@ export class ModelError extends FlowError {
 }
 
 /**
+ * Error for prompts that exceed the model's context window. Not retryable —
+ * resending the same oversized prompt fails identically; the caller must
+ * shrink the input.
+ */
+export class ContextLengthError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "context_length_error",
+        retryable: false
+      })
+    );
+    this.name = "ContextLengthError";
+  }
+}
+
+/**
+ * Error for transient upstream provider outages (5xx responses, gateway
+ * failures). Retryable — the provider is expected to recover.
+ */
+export class ProviderUnavailableError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "provider_unavailable_error",
+        retryable: true
+      })
+    );
+    this.name = "ProviderUnavailableError";
+  }
+}
+
+/**
  * Error for tool failures that are typically not retryable by default.
  */
 export class ToolExecutionError extends FlowError {
