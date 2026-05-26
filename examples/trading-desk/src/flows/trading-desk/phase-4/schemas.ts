@@ -59,6 +59,12 @@ export const personaCritiqueOutputSchema = z.object({
     z.object({
       description: z.string(),
       reason: z.string(),
+      dismissalCategory: z.enum([
+        "already-addressed",
+        "out-of-scope",
+        "no-mechanism",
+        "asymmetric-no-bound",
+      ]),
     }),
   ),
 });
@@ -88,6 +94,12 @@ export const riskAssessmentOutputSchema = z.object({
     z.object({
       description: z.string(),
       reason: z.string(),
+      dismissalCategory: z.enum([
+        "already-addressed",
+        "out-of-scope",
+        "no-mechanism",
+        "asymmetric-no-bound",
+      ]),
     }),
   ),
   // `"unchanged"` is included in each direction enum so the consolidator can

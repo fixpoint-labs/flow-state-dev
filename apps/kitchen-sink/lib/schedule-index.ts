@@ -2,14 +2,14 @@
  * Standalone schedule-index proxy.
  *
  * Sits in its own module to break the cyclic import between
- * `lib/server.ts` (which builds the real `ScheduleIndex` against the pg
- * pool) and `flows/weekly-digest/flow.ts` (which hands the proxy to
- * `defineScheduleCollection`). Both sides import from here; neither
- * imports the other for this binding.
+ * `lib/flowstate.ts` (which installs the real `ScheduleIndex` from
+ * `vercelPostgresStores().scheduleIndex`) and `flows/weekly-digest/flow.ts`
+ * (which hands the proxy to `defineScheduleCollection`). Both sides import
+ * from here; neither imports the other for this binding.
  *
  * Starts as a no-op `ScheduleIndex` so callers can invoke methods
- * before `createStores()` runs without null-checks. `setScheduleIndexImpl`
- * swaps in the real implementation once the pool exists. The no-op
+ * before the active store profile resolves its pool, without null-checks.
+ * `setScheduleIndexImpl` swaps in the real implementation. The no-op
  * default matches `defineScheduleCollection`'s documented "no index →
  * no row mirrored" semantics.
  */
@@ -22,7 +22,7 @@ let impl: ScheduleIndex = {
   async remove() {},
 };
 
-/** Install the backing implementation. Called once by `createStores()`. */
+/** Install the backing implementation. Called once by `lib/flowstate.ts`. */
 export function setScheduleIndexImpl(next: ScheduleIndex): void {
   impl = next;
 }

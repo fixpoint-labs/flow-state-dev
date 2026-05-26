@@ -161,7 +161,15 @@ export const storeContext = handler({
 // generator, which explores the stored context via tools and produces a
 // structured answer.
 
-export const rlmPipeline = sequencer({ name: "rlm-pipeline", inputSchema: rlmQueryInputSchema })
+export const rlmPipeline = sequencer({
+  name: "rlm-pipeline",
+  inputSchema: rlmQueryInputSchema,
+  // The pipeline's public contract is the root generator's structured
+  // answer. Declaring it here enforces the shape at the sequencer's exit
+  // (runtime gate) and lets `.validate()` catch a future tail swap that
+  // would silently change what consumers receive.
+  outputSchema: rlmOutputSchema,
+})
   .then(storeContext)
   .then(rootGenerator);
 

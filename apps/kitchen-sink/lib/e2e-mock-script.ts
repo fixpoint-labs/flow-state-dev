@@ -4,8 +4,8 @@
  *
  * The chat-agent flow runs four generators per turn (skill-classifier,
  * thinking-style-classifier, assistant-generator, auto-title). Each gets
- * its own mock instance below. `policy: "allow"` (set in `lib/server.ts`)
- * catches anything else with a no-op model.
+ * its own mock instance below. `policy: "allow"` (set in
+ * `test/mock-flowstate.ts`) catches anything else with a no-op model.
  *
  * `assistantMock` uses a hand-rolled scenario dispatcher because the
  * built-in `mockGenerator` only supports either plain sequential steps

@@ -147,6 +147,7 @@ export const researchManagerGenerator = generator({
       bullThesis: true,
       bearThesis: true,
       phase2Debate: true,
+      reasoning: true,
     }),
   ],
   prompt: RESEARCH_MANAGER_PROMPT,

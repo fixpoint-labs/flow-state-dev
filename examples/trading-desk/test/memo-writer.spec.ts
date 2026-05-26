@@ -95,6 +95,7 @@ describe("memo-writer taps", () => {
         { h: "Material items", p: null, items: ["Cap-ex ramp"] },
       ],
       citations: null,
+      dataQuality: "full" as const,
     };
     const result = await testBlock(commitBlock, {
       input: thesis,

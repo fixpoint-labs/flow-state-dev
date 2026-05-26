@@ -14,6 +14,7 @@ import type {
   WorkResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
+import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import type { DeclaredResources } from "../types/block";
@@ -698,13 +699,20 @@ function dispatchWorkTask(
   runtime.workTasks.push({ name, promise: wrapped });
 }
 
+/**
+ * Result of running a sequencer's operation chain. Carries the computed value
+ * alongside the last state-mutating step's name, so the output-validation
+ * wrapper can attribute a failure without re-deriving it.
+ */
+type SequencerInnerResult = { value: unknown; lastStepName: string | undefined };
+
 function runSequencerOperations(
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
   durable: boolean,
   stateSchema: ZodTypeAny | undefined
-): (input: unknown, ctx: BlockContext) => Promise<unknown> {
-  return async (input: unknown, ctx: BlockContext): Promise<unknown> => {
+): (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult> {
+  return async (input: unknown, ctx: BlockContext): Promise<SequencerInnerResult> => {
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
     // Running BlockValue descriptor for the sequencer's output (FIX-413).
@@ -809,7 +817,7 @@ function runSequencerOperations(
           (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
         }
 
-        return currentValue;
+        return { value: currentValue, lastStepName };
       } catch (error) {
         const normalizedError = toError(error);
         for (let i = 0; i < rescueHandlers.length; i += 1) {
@@ -827,7 +835,12 @@ function runSequencerOperations(
           if (rescueDescriptor.kind !== "inline") {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
           }
-          return rescued;
+          // Record the recovery out-of-band so a downstream block can ask
+          // `ctx.wasRescued(...)` without the rescued value carrying a marker.
+          // Read post-execution by `_withExecutionScope` to stamp this block's
+          // sibling-registry result.
+          (ctx as { _didRescue?: boolean })._didRescue = true;
+          return { value: rescued, lastStepName: handler.block.config.name ?? "rescue" };
         }
 
         throw normalizedError;
@@ -862,6 +875,118 @@ function runSequencerOperations(
   };
 }
 
+/**
+ * Single-chokepoint runtime gate for a sequencer's declared `outputSchema`.
+ *
+ * Unwraps the inner `{ value, lastStepName }` result unconditionally — every
+ * exit path (natural tail, `exitIf`, `rescue`) flows through here, so the
+ * unwrap must happen even when no schema is declared, or `buildBlock` would
+ * receive the tuple as the block's output. When `outputSchema` is set the
+ * value is validated; on failure a `SequencerOutputSchemaError` is thrown,
+ * on success the (possibly `.transform()`-ed) parsed value is returned.
+ *
+ * Uses `safeParseAsync` — the wrapper is already async, so this costs nothing
+ * extra and correctly runs async refinements (`.refineAsync`, async
+ * `superRefine`) that `safeParse` would silently skip.
+ */
+function wrapWithOutputValidation(
+  inner: (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult>,
+  outputSchema: ZodTypeAny | undefined,
+  sequencerName: string
+): (input: unknown, ctx: BlockContext) => Promise<unknown> {
+  return async (input, ctx) => {
+    const { value, lastStepName } = await inner(input, ctx);
+    if (outputSchema === undefined) {
+      return value;
+    }
+    const result = await outputSchema.safeParseAsync(value);
+    if (result.success) {
+      return result.data;
+    }
+    const issue = result.error.issues[0];
+    const path = issue?.path?.join(".") ?? "";
+    const suffix = path.length > 0 ? ` at "${path}"` : "";
+    const message = issue?.message ?? "schema validation failed";
+    throw new SequencerOutputSchemaError(
+      `Sequencer "${sequencerName}" output validation failed${suffix}: ${message}`,
+      {
+        sequencerName,
+        lastStepName,
+        rawOutput: value,
+        issues: result.error.issues
+      },
+      result.error
+    );
+  };
+}
+
+/** Read a zod schema's discriminating `_def.typeName` (e.g. `"ZodObject"`). */
+function getZodTypeName(schema: ZodTypeAny): string | undefined {
+  return (schema as any)._def?.typeName;
+}
+
+/**
+ * Conservative one-level structural comparison between a sequencer's declared
+ * `outputSchema` and the schema its chain infers. Returns the first
+ * incompatibility (with the specific kinds that differ at the point of the
+ * mismatch), or `null` when structurally compatible.
+ *
+ * `declaredKind`/`inferredKind` report the kinds at the level where the
+ * mismatch was found: the value kinds for an object-value mismatch, the element
+ * kinds for an array mismatch, otherwise the top-level kinds. For a key-set
+ * mismatch the kinds are equal (both objects); `reason` carries the key detail.
+ *
+ * Checks: top-level kind, object key sets, one level of object value kinds, and
+ * array element kind. Deliberately does NOT recurse into nested shapes,
+ * refinements, brands, or union variants — see `.validate()`'s JSDoc.
+ */
+function compareSchemasStructurally(
+  declared: ZodTypeAny,
+  inferred: ZodTypeAny
+): { reason: string; declaredKind: string | undefined; inferredKind: string | undefined } | null {
+  const dKind = getZodTypeName(declared);
+  const iKind = getZodTypeName(inferred);
+  if (dKind !== iKind) {
+    return { reason: `declared ${dKind} but chain produces ${iKind}`, declaredKind: dKind, inferredKind: iKind };
+  }
+  if (dKind === "ZodObject") {
+    const dShape = (declared as any)._def.shape() as Record<string, ZodTypeAny>;
+    const iShape = (inferred as any)._def.shape() as Record<string, ZodTypeAny>;
+    const dKeys = Object.keys(dShape).sort();
+    const iKeys = Object.keys(iShape).sort();
+    if (dKeys.length !== iKeys.length || dKeys.some((k, idx) => k !== iKeys[idx])) {
+      return {
+        reason: `object key sets differ — declared [${dKeys.join(", ")}] vs chain [${iKeys.join(", ")}]`,
+        declaredKind: dKind,
+        inferredKind: iKind
+      };
+    }
+    for (const k of dKeys) {
+      const dvKind = getZodTypeName(dShape[k]);
+      const ivKind = getZodTypeName(iShape[k]);
+      if (dvKind !== ivKind) {
+        return {
+          reason: `object value kind differs at "${k}" — declared ${dvKind} vs chain ${ivKind}`,
+          declaredKind: dvKind,
+          inferredKind: ivKind
+        };
+      }
+    }
+  }
+  if (dKind === "ZodArray") {
+    const dElemKind = getZodTypeName((declared as any)._def.type);
+    const iElemKind = getZodTypeName((inferred as any)._def.type);
+    if (dElemKind !== iElemKind) {
+      return {
+        reason: `array element kind differs — declared ${dElemKind} vs chain ${iElemKind}`,
+        declaredKind: dElemKind,
+        inferredKind: iElemKind
+      };
+    }
+  }
+  return null;
+}
+
 function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | undefined = undefined>(
   config: SequencerConfig<any>,
   operations: SequencerOperation[],
@@ -893,10 +1018,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       container: config.container,
       activeStatusMessage: config.activeStatusMessage
     },
-    execute: runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema) as (
-      input: unknown,
-      ctx: BlockContext
-    ) => Promise<unknown>,
+    execute: wrapWithOutputValidation(
+      runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
+      config.outputSchema,
+      config.name
+    ),
     declaredResources: accumulatedResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
@@ -2185,6 +2311,30 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         accumulatedResources
       );
+    },
+
+    validate() {
+      // No-op when there's nothing to compare: schema-less sequencers, or
+      // chains whose tail erased the tracked schema (thenAny/race/thenAll/branch).
+      if (config.outputSchema === undefined || lastOutputSchema === undefined) {
+        return;
+      }
+      // Same schema instance → trivially compatible.
+      if (config.outputSchema === lastOutputSchema) {
+        return;
+      }
+      const mismatch = compareSchemasStructurally(config.outputSchema, lastOutputSchema);
+      if (mismatch !== null) {
+        throw new SequencerSchemaMismatchError(
+          `Sequencer "${config.name}" .validate() failed: ${mismatch.reason}`,
+          {
+            sequencerName: config.name,
+            declaredKind: mismatch.declaredKind ?? "unknown",
+            inferredKind: mismatch.inferredKind,
+            reason: mismatch.reason
+          }
+        );
+      }
     }
   });
 

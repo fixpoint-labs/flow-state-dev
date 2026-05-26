@@ -173,3 +173,39 @@ export class AmbiguousBlockNameError extends FlowError {
     this.name = "AmbiguousBlockNameError";
   }
 }
+
+/**
+ * Configuration error from `createFlowState` — bad `stores` shape, an
+ * unknown `FSD_ENV` / `defaultProfile` profile, or a profile slot whose
+ * adapter doesn't declare the capability. Never retryable; the process
+ * must be reconfigured and restarted.
+ */
+export class FlowStateConfigError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "flowstate_config_error",
+        retryable: false
+      })
+    );
+    this.name = "FlowStateConfigError";
+  }
+}
+
+/**
+ * Thrown when `getRouter()` / `ready()` is called after `dispose()`. The
+ * instance's pooled resources are gone and unrecoverable.
+ */
+export class FlowStateDisposedError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "flowstate_disposed_error",
+        retryable: false
+      })
+    );
+    this.name = "FlowStateDisposedError";
+  }
+}

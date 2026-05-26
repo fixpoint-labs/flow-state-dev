@@ -132,6 +132,19 @@ pipeline
 - Rescue failure propagates to the next matching handler or bubbles up
 - Rescue boundaries only handle failures from steps **before** them in the sequencer
 
+### Rescue registry (`ctx.wasRescued`)
+
+A downstream block can ask whether a prior block in the same sequencer scope threw and was recovered, via the public `ctx.wasRescued(target)` query (`target` is a block name or definition). This keeps rescue's shape-preserving contract intact — the recovered value carries no marker — while still letting a later step branch on "was this recovered?".
+
+The rescued bit is a transient flag on each block's sibling-result entry, never persisted into snapshots. It is per-iteration correct under `.loopBack` because the descending sibling search consults the **most recent** matching entry, and nested rescues are tracked at the scope where the rescued block ran as a sibling (the scope whose `_withExecutionScope` invoked it).
+
+The write → stamp → read chain:
+1. **Write** — when a `.rescue()` handler recovers an error, `runSequencerOperations`' catch sets `ctx._didRescue = true` on the rescued block's scoped context before returning the recovered value (`packages/core/src/blocks/sequencer.ts`).
+2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/server/src/context/createExecutionContext.ts`).
+3. **Read** — `ctx.wasRescued(target)` resolves `target` by name and returns `result.rescued === true` for the most-recent matching sibling, mirroring `getBlockResult`'s search. Returns `false` for a clean run, a never-dispatched step, an unknown name, or a call outside a sequencer; never throws.
+
+This replaced an earlier `{ __rescued: true }` sentinel value that `routedSpecialists` smuggled through the pipeline to signal recovery.
+
 ## Work Queue
 
 The work queue enables non-aborting side-chain execution:

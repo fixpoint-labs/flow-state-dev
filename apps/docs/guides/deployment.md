@@ -71,23 +71,20 @@ Never commit API keys. Use your platform's secrets management: `.env.local` for 
 
 ## The server entry point
 
-All deployments start the same way: create a registry, register flows, create a router.
+All deployments start the same way: describe the runtime with `createFlowState`, naming your flows, models, and stores.
 
-```ts title="lib/server.ts"
-import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import myFlow from "./flows/my-flow/flow";
 
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-export const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver(),
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
-What changes per platform is how you connect this router to incoming HTTP requests. Next.js uses route handlers. Standalone Node.js uses `http.createServer`. The platform-specific guides cover each approach.
+What changes per platform is how you connect this runtime to incoming HTTP requests, and which store adapter backs `primary`. Next.js uses a platform handler around `flowstate`. Standalone Node.js calls `await flowstate.getRouter()` and uses `http.createServer`. The platform-specific guides cover each approach.
 
 ---
 

@@ -74,6 +74,7 @@ import {
   MemoryStateContainer
 } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
+import type { StoreAdapter } from "./store-adapter";
 
 export type {
   ActiveRequestEntry,
@@ -110,6 +111,13 @@ export {
   resolveOrgStorageKey
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
+
+export type {
+  StoreAdapter,
+  CapabilitySlot,
+  CapabilitySlotMap,
+  StoresConfig
+} from "./store-adapter";
 
 export {
   ConcurrentModificationError,
@@ -270,5 +278,38 @@ export function createFilesystemStores(
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
       onPersistError
     })
+  };
+}
+
+/**
+ * In-memory store adapter for `createFlowState`. Backs the `primary`
+ * capability slot with ephemeral stores — the default for local dev and
+ * tests. Memoizes the registry so repeated resolution returns one instance.
+ */
+export function inMemoryStores(options: CreateStoreOptions = {}): StoreAdapter {
+  let registry: StoreRegistry | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve() {
+      registry ??= createInMemoryStores(options);
+      return Promise.resolve(registry);
+    }
+  };
+}
+
+/**
+ * Filesystem store adapter for `createFlowState`. Backs the `primary`
+ * capability slot with `.fsdev/data`-style on-disk persistence.
+ */
+export function filesystemStores(
+  options: FilesystemStoreRegistryOptions
+): StoreAdapter {
+  let registry: StoreRegistry | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve() {
+      registry ??= createFilesystemStores(options);
+      return Promise.resolve(registry);
+    }
   };
 }

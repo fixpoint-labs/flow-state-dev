@@ -225,11 +225,29 @@ const predictionMarket = z.object({
   slug: z.string(),
 });
 
+/**
+ * Two-tier Polymarket coverage (FIX-681). `tickerMarkets` are the direct
+ * ticker matches that feed the sentiment analyst's numeric aggregates;
+ * `backdropMarkets` are sector/macro markets resolved from the company's
+ * sector, usable only as regime framing (never in numeric aggregates).
+ *
+ * `coverageQuality` is computed deterministically from `tickerMarkets`:
+ *   - `"rich"`   — ≥3 ticker markets AND ≥$100k aggregate liquidity.
+ *   - `"thin"`   — ≥1 ticker market, but below the count or liquidity floor.
+ *   - `"absent"` — 0 ticker markets.
+ * On `"thin"`/`"absent"` the sentiment prompt drops the market-derived
+ * metrics to `"n/a"` rather than manufacturing precision from noise.
+ */
 export const predictionMarketsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  markets: z.array(predictionMarket),
+  tickerMarkets: z.array(predictionMarket),
+  backdropMarkets: z.array(predictionMarket),
+  /** The primary sector/macro theme the backdrop markets were queried for
+   *  (e.g. `"AI capex"`). Empty string when no theme was resolved. */
+  backdropTheme: z.string(),
+  coverageQuality: z.enum(["rich", "thin", "absent"]),
 });
 
 const insiderTransactionItem = z.object({

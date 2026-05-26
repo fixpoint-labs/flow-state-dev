@@ -31,19 +31,8 @@ export const commitTraderMemo = memoHandler({
   execute: async (trade, ctx) => {
     const convictionNumber = Number.parseFloat(trade.metrics.conviction);
     await publishMemo(ctx, "trader", PHASE_3_MEMO_KEYS.trader.collectionKey, {
-      label: trade.label,
-      headline: trade.headline,
-      rating: trade.rating,
-      body: trade.body,
-      metrics: trade.metrics,
-      conviction: Number.isFinite(convictionNumber) ? convictionNumber : null,
-      direction: trade.direction,
-      sizePct: trade.sizePct,
-      stopPrice: trade.stopPrice,
-      targetPrice: trade.targetPrice,
-      holdingPeriod: trade.holdingPeriod,
-      invalidationCriteria: trade.invalidationCriteria,
-      dependsOn: trade.dependsOn,
+      ...trade,
+      conviction: Number.isFinite(convictionNumber) ? convictionNumber : null,      
     });
   },
 });

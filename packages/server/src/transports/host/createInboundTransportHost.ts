@@ -7,6 +7,7 @@
  * `runAction` directly.
  */
 import type {
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   SpeechResolver,
@@ -37,6 +38,8 @@ export type CreateInboundTransportHostOptions = {
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   transcriptionResolver?: TranscriptionResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   middleware?: Middleware[];
   logger?: RuntimeLogger;
   resolvePrincipal: PrincipalResolver;
@@ -71,6 +74,7 @@ export function createInboundTransportHost(
     modelResolver,
     speechResolver,
     transcriptionResolver,
+    settings,
     middleware,
     logger,
     resolvePrincipal,
@@ -131,6 +135,7 @@ export function createInboundTransportHost(
       signal: envelope.signal,
       modelResolver,
       speechResolver,
+      settings,
       middleware,
       stores,
       responseEmitter,

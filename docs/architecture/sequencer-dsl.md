@@ -466,12 +466,49 @@ Nested sequencers bubble their collected resources upward — a sequencer used a
 
 **Conflict detection:** If two child blocks declare different `defineResource()` references for the same resource name in the same scope, the sequencer throws a build-time error. Same reference = no conflict.
 
-## Schema Propagation
+## Schema Propagation and Validation
 
-- `outputSchema` on the sequencer config is a declaration of intent
-- The runtime `outputSchema` always reflects the chain's actual last step
-- `.validate()` throws at build time if declared schema conflicts with actual output
-- `inputSchema` is inferred from the first block when not explicitly set
+Two schemas coexist on a sequencer, and the distinction matters:
+
+- `config.outputSchema` — user-declared. The contract the author asserts the sequencer produces. Optional.
+- `lastOutputSchema` — inferred. The schema tracked from the chain's tail step as the DSL builds the chain. Updated by every schema-bearing op (`then`, `map`, `parallel`, etc.).
+
+`inputSchema` is inferred from the first block when not set explicitly.
+
+### Runtime validation chokepoint
+
+`wrapWithOutputValidation` wraps `runSequencerOperations`. When `config.outputSchema` is declared, the wrapper runs the sequencer's actual return value through `config.outputSchema.safeParse` at a single point before the value leaves the sequencer. Because the wrap is at the sequencer boundary, it covers every exit path uniformly: the natural tail, an `exitIf` early return, and a `rescue` recovery. There is no per-op validation — one gate, all paths.
+
+On `!result.success` the wrapper throws `SequencerOutputSchemaError`. On success it returns `result.data`, so a schema with `.transform()` yields the post-transform value as the sequencer's output. When `config.outputSchema` is undefined the wrapper is a pass-through with zero added cost.
+
+### Build-time `.validate()`
+
+`.validate(): void` does a conservative one-level structural comparison between `config.outputSchema` and `lastOutputSchema`, via `_def.typeName` introspection. It compares:
+
+- Top-level zod kind (`ZodObject` vs `ZodString` vs `ZodArray`, etc.).
+- Object key sets.
+- One level of object value-kinds.
+- Array element kind.
+
+A reference-equality fast path short-circuits when both sides are the same schema instance (trivially compatible). On mismatch it throws `SequencerSchemaMismatchError`. It is a no-op when either schema is undefined.
+
+### Known limitations of `.validate()`
+
+The build-time check trades depth for safety against false negatives in the common case, and it has documented blind spots:
+
+- It does not recurse into nested object shapes, refinements, brands, or union variants.
+- `.transform()` / `.refine()`-wrapped schemas surface as `ZodEffects`, so the comparison stops at that kind. A wrapped declared schema against a plain inferred one (or the reverse) reports a `ZodEffects` kind mismatch rather than comparing the inner shapes.
+- `thenIf` false-path and `branch` non-first-branch outcomes can widen the real runtime shape in ways the tracked `lastOutputSchema` does not reflect, so `.validate()` can produce a false positive (pass when the runtime would differ).
+- `thenAny`, `race`, `thenAll`, and `branch` erase the tracked tail schema (`lastOutputSchema` becomes undefined). After one of these, `.validate()` no-ops. The runtime gate still catches an actual mismatch — the build-time check is the part that goes quiet, not the runtime enforcement.
+
+`.validate()` is terminal (returns `void`, not the sequencer). Ops added after a `.validate()` call are outside that call's coverage.
+
+### Error classes
+
+Both extend `FlowError`, neither is retryable:
+
+- `SequencerOutputSchemaError` — runtime, `code: "sequencer_output_schema_error"`. Thrown by the chokepoint on a `safeParse` failure. Catchable in a parent sequencer's `.rescue([{ when: [SequencerOutputSchemaError], block }])`.
+- `SequencerSchemaMismatchError` — build-time, `code: "sequencer_schema_mismatch"`. Thrown by `.validate()`.
 
 ## Container Config
 

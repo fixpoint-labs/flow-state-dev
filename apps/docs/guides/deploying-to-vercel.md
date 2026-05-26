@@ -28,15 +28,15 @@ pnpm add @flow-state-dev/vercel
 
 ---
 
-## 2. Configure the API routes
+## 2. Configure the API route
 
-You need two route files. The catch-all handles all paths with segments, and a bare sibling handles `/api/flows` itself (Next.js `[...path]` requires at least one segment).
+Mount the `flowstate` handle (from step 4) with `createVercelNextHandler`. One catch-all route file is enough.
 
 ```ts title="app/api/flows/[...path]/route.ts"
-import { createVercelHandler } from "@flow-state-dev/vercel";
-import { router } from "@/lib/server";
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 
 // Next.js reads these statically — must be literal declarations, not re-exports.
 export const runtime = "nodejs";
@@ -44,26 +44,21 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-```ts title="app/api/flows/route.ts"
-import { createVercelBareHandler } from "@flow-state-dev/vercel";
-import { router } from "@/lib/server";
-
-export const { GET, POST } = createVercelBareHandler(router);
-```
-
-`createVercelHandler` takes care of:
+`createVercelNextHandler` takes care of:
 - Unwrapping Next.js 15's async params
 - Adding SSE headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) to prevent Vercel's edge layer from buffering tokens
 - Injecting periodic heartbeat comments to keep long-lived connections alive
 
-If your router setup is async (e.g. Postgres pool creation), pass a factory function:
+Pass the `flowstate` handle, not `flowstate.getRouter()`. The handler resolves the router lazily on the first request, which is how async store init works with no top-level await. `@flow-state-dev/vercel/next` requires Next.js 15+.
 
-```ts
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
-export const { GET, POST } = createVercelBareHandler(getRouter); // in route.ts
+Next.js `[...path]` catch-all requires at least one segment, so add a sibling route for the bare `/api/flows` path (the flow listing endpoint). Use `createVercelBareHandler` from `@flow-state-dev/vercel`, passing the same lazy router:
+
+```ts title="app/api/flows/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+
+export const { GET, POST } = createVercelBareHandler(() => flowstate.getRouter());
 ```
-
-The factory is called once and cached.
 
 ### Route config values
 
@@ -108,24 +103,22 @@ Vercel serverless functions run in ephemeral containers. The filesystem doesn't 
 - **Filesystem store**: don't use it — writes succeed but data disappears on the next invocation
 - **SQLite store**: partially works for short-lived demos (the DB file is ephemeral), but don't rely on it
 
-For production on Vercel, use an external database like Postgres (via `@flow-state-dev/store-postgres`):
+For production on Vercel, use an external database like Postgres. `vercelPostgresStores()` from `@flow-state-dev/vercel/store` returns a store adapter tuned for Vercel and Neon: it bakes in the right pool options, swaps in Neon's WebSocket client for `.neon.tech` URLs, and skips schema init (you run migrations at build, see step 6).
 
-```ts title="lib/server.ts"
+Describe the runtime in `lib/flowstate.ts`. Use a `stores` profile per environment, and select with `FSD_ENV` (step 5):
+
+```ts title="lib/flowstate.ts"
 import { after } from "next/server";
 import { openai } from "@ai-sdk/openai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores,
-  type StoreRegistry,
-} from "@flow-state-dev/server";
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import myFlow from "@/flows/my-flow/flow";
 
 // Pass explicit provider/gateway instances. The model resolver's dynamic
-// require() path doesn't work in bundled Next.js — static imports do.
+// require() path doesn't work in bundled Next.js — static imports do. We pass
+// a pre-built resolver via `modelResolver` instead of the `models` shorthand.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = createModelResolver({
   providers: { openai },
@@ -134,44 +127,30 @@ const modelResolver = createModelResolver({
     : undefined,
 });
 
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-async function createStores(): Promise<StoreRegistry> {
-  const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
-  if (dbUrl) {
-    return createPostgresStores({
-      connectionString: dbUrl,
-      // Schema is initialized at build time (see step 6); skip it on cold starts.
-      skipSchemaInit: !!process.env.VERCEL,
-    });
-  }
-  return createInMemoryStores();
-}
-
-let _router: Promise<ReturnType<typeof createFlowApiRouter>> | null = null;
-
-export function getRouter() {
-  if (!_router) {
-    _router = createStores().then((stores) =>
-      createFlowApiRouter({
-        registry,
-        stores,
-        modelResolver,
-        detectInterruptedOnStartup: false,
-        onBackgroundWork: (promise) => after(() => promise),
-      })
-    );
-  }
-  return _router;
-}
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  modelResolver,
+  stores: {
+    prod: { primary: vercelPostgresStores() },
+    dev: { primary: inMemoryStores() },
+  },
+  defaultProfile: "dev",
+  // Disable a background Postgres query on startup that can exhaust the pool
+  // during serverless cold starts.
+  detectInterruptedOnStartup: false,
+  // Keep the function alive for fire-and-forget action execution.
+  onBackgroundWork: (promise) => after(() => promise),
+});
 ```
 
 **Key points:**
-- **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass providers and gateways as static imports instead.
-- **`detectInterruptedOnStartup: false`**: Disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
-- **`onBackgroundWork` + `after()`**: Keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent.
-- **`skipSchemaInit: !!process.env.VERCEL`**: By default `createPostgresStores` runs ~30 idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements plus an advisory-lock acquisition every time it's called — once per cold start on Vercel. Skipping it requires running migrations as a build step instead (see step 6).
+- **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass a pre-built `modelResolver` with static provider imports instead of the `models` shorthand.
+- **`vercelPostgresStores()`**: backs the `primary` capability slot with Vercel/Neon-tuned Postgres. Connection string defaults to `FSD_DB_URL` then `DATABASE_URL`. Schema init is skipped (run migrations at build, see step 6).
+- **`stores` profiles + `FSD_ENV`**: declare a `prod` and a `dev` profile, then set `FSD_ENV=prod` on Vercel to select it. `NODE_ENV` is not consulted, so a production build can't silently point at production infrastructure.
+- **`detectInterruptedOnStartup: false`**: disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
+- **`onBackgroundWork` + `after()`**: keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent. It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
+
+The `@flow-state-dev/vercel/store` (`vercelPostgresStores`) and `@flow-state-dev/vercel/next` (`createVercelNextHandler`) sub-exports are documented in the [`@flow-state-dev/vercel` README](https://github.com/flow-state-dev/flow-state-dev/tree/main/packages/vercel).
 
 ---
 
@@ -182,9 +161,12 @@ In your Vercel project settings (Settings > Environment Variables), add:
 ```
 AI_GATEWAY_API_KEY=...
 FSD_DB_URL=postgresql://...
+FSD_ENV=prod
 ```
 
 `FSD_DB_URL` is preferred over `DATABASE_URL` to avoid collisions with other services. The store adapter checks both (`FSD_DB_URL` first).
+
+`FSD_ENV` selects the `stores` profile. Set it to `prod` on Vercel so `vercelPostgresStores()` backs the runtime. Without it, the runtime falls back to `defaultProfile` (`dev`, in-memory).
 
 Or whichever provider keys and connection strings your flows need.
 

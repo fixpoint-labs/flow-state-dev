@@ -50,6 +50,20 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
+A later step can check whether an earlier one was recovered with `ctx.wasRescued(blockName | blockDef)` — without the recovered value carrying any marker.
+
+Sequencers can optionally declare an `outputSchema` as a runtime contract on the composed output of the whole chain — validated on every exit path (tail, `exitIf`, `rescue`). Call `.validate()` at build time to catch structural drift early.
+
+```ts
+const summarize = sequencer({
+  name: "summarize",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
+}).then(summarizeBlock);
+
+summarize.validate(); // throws if the tail shape drifts from the declared schema
+```
+
 **A router that dispatches to different pipelines at runtime:**
 
 ```ts
@@ -275,6 +289,14 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.thenAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
+### Helpers (`@flow-state-dev/core/helpers`)
+
+State-shape primitives shared across the framework. All three operate on the same JSON-serializable state trees, so they live together as the single canonical home — no per-package copies.
+
+- **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
+- **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
+- **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
+
 ## Sequencer instance state
 
 A sequencer can declare a `stateSchema` that gives every step in the pipeline a shared, typed state container. State is read via `ctx.sequencer.state` and written via the seven helpers on `ctx.sequencer`: `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `atomicState`.
@@ -321,7 +343,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See `docs/PROMPT_CACHING.md` for the full design, audit, and manual-mode guide.
 
-**Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
+**Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies, and `ctx.wasRescued(name | blockDef)` to ask whether a prior block in the current sequencer scope was recovered by a `.rescue()` handler (transient, per-iteration under loops; returns `false` when not rescued or not found). See [Composing blocks → Querying rescue status](../../apps/docs/docs/sequencers/composing-blocks.md).
 
 **The `client` block is the data policy.** Each scope's `client` block declares what crosses to the browser — `expose` for verbatim fields, `derived` for projections. State, resources, and intermediate values stay server-side unless you opt them in. Security by architecture, not by convention.
 

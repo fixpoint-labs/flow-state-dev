@@ -6,6 +6,7 @@
  * and state-routes.
  */
 import type {
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   SpeechResolver,
@@ -130,6 +131,8 @@ export type CreateFlowRouteHandlersOptions = {
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   transcriptionResolver?: TranscriptionResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
@@ -243,6 +246,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     modelResolver: options.modelResolver,
     speechResolver: options.speechResolver,
     transcriptionResolver: options.transcriptionResolver,
+    settings: options.settings,
     middleware: options.middleware,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     onBackgroundWork: options.onBackgroundWork,

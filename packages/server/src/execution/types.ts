@@ -6,6 +6,7 @@ import type {
   ActionConfig,
   BlockDefinition,
   FlowInstance,
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   RetryPolicy,
@@ -85,6 +86,8 @@ export type RunActionOptions<
   signal?: AbortSignal;
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   stores: StoreRegistry;
   middleware?: Middleware[];
   retry?: RetryPolicy;

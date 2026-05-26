@@ -102,7 +102,7 @@ export function StatusBar({
 
       <span className="ml-auto truncate text-right">
         <strong style={{ color: "var(--c-warn)" }}>Research / demo only.</strong>{" "}
-        Not financial advice. No execution. No P&amp;L. Mirrors upstream{" "}
+        Not financial advice. No execution. Inspired and derived by {" "}
         <span className="font-mono">TauricResearch/TradingAgents</span> positioning.
       </span>
     </footer>

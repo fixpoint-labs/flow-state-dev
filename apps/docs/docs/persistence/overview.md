@@ -4,9 +4,11 @@ sidebar_position: 1
 
 # Persistence
 
-flow-state.dev stores three categories of data: **scope state** (session, user, org), **resources** (content files with metadata), and **items** (the accumulated conversation log). All of this goes through a store abstraction. The server ships with an in-memory store by default. Swap it for a file store or MongoDB when you need data to survive restarts.
+flow-state.dev stores three categories of data: **scope state** (session, user, org), **resources** (content files with metadata), and **items** (the accumulated conversation log). All of this goes through a store abstraction. The server ships with an in-memory store by default. Swap it for the filesystem, SQLite, or Postgres adapter when you need data to survive restarts.
 
 ## Store adapters
+
+You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -14,66 +16,54 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 | **File** | JSON files on disk | Local development with persistence, single-server deployments |
 | **SQLite** | Embedded SQLite database | Single-server deployments wanting concurrency-safe writes |
 | **Postgres** | PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail | Production, multi-instance fleets, serverless with shared Postgres |
-| **MongoDB** | MongoDB collection | Production, multi-server deployments |
 
 ### In-memory (default)
 
 The default. No configuration needed. All state, resources, and items live in memory. Fast, zero dependencies, gone when the process exits.
 
 ```ts
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-const router = createFlowApiRouter({ registry });
-// Uses in-memory stores by default
+const flowstate = createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: inMemoryStores() } },
+});
 ```
 
-### File store
+### Filesystem store
 
 Writes state, resources, and items to JSON files in a directory. Each scope gets its own file. Good for local development when you want data to survive server restarts.
 
 ```ts
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-  createFileStore,
-} from "@flow-state-dev/server";
+import { createFlowState, filesystemStores } from "@flow-state-dev/server";
 
-const store = createFileStore({ directory: "./.flow-state-data" });
-
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-const router = createFlowApiRouter({ registry, store });
+const flowstate = createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: filesystemStores({ rootDir: "./.flow-state-data" }) } },
+});
 ```
 
 The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. The org scope is stored under `projects/` — the directory name predates the scope rename and is preserved for compatibility.
 
-### MongoDB
+### Postgres
 
-For production. Stores state, resources, and items in MongoDB collections with atomic operations.
+For production and multi-instance fleets. Stores state in PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail.
 
 ```ts
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-  createMongoStore,
-} from "@flow-state-dev/server";
+import { createFlowState } from "@flow-state-dev/server";
+import { postgresStores } from "@flow-state-dev/store-postgres";
 
-const store = createMongoStore({
-  uri: process.env.MONGODB_URI!,
-  database: "flow-state",
+const flowstate = createFlowState({
+  flows: { myFlow },
+  stores: {
+    default: {
+      primary: postgresStores({ connectionString: process.env.FSD_DB_URL }),
+    },
+  },
 });
-
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-const router = createFlowApiRouter({ registry, store });
 ```
 
-MongoDB provides the concurrency safety that CAS (Compare-and-Swap) operations rely on. In-memory and file stores serialize writes, which works for single-process development but doesn't scale.
+On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap. Postgres provides the concurrency safety that CAS (Compare-and-Swap) operations rely on. In-memory and filesystem stores serialize writes, which works for single-process development but doesn't scale across instances.
 
 ## What gets persisted
 
@@ -145,7 +135,7 @@ The trading-desk example uses this pattern end-to-end — see the [walkthrough](
 
 ## Choosing a store
 
-- **Developing locally?** Start with in-memory (default). Switch to file store when you want persistence across restarts.
-- **Deploying a single server?** File store works. It's simple and reliable for low-concurrency scenarios.
-- **Production with multiple servers?** Use MongoDB. You need a shared data store with proper concurrency semantics.
-- **Special requirements?** Implement a custom store against the interface.
+- **Developing locally?** Start with in-memory (default). Switch to the filesystem store when you want persistence across restarts.
+- **Deploying a single server?** Filesystem or SQLite works. Both are simple and reliable for low-concurrency scenarios.
+- **Production with multiple servers?** Use Postgres. You need a shared data store with proper concurrency semantics.
+- **Special requirements?** Implement a custom store adapter against the `StoreAdapter` interface.

@@ -27,7 +27,7 @@ import {
 import { system as memorySystem } from "@flow-state-dev/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
-import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
+import { AnalyzerResultSchema, responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
 import {
   updateArtifact,
@@ -247,7 +247,6 @@ const applyRequestedMode = handler({
 const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
-  outputSchema: z.never(),
 })
   .tapIf(
     (input) => input.thinkingStyle !== "auto",
@@ -305,6 +304,11 @@ const applyFeatures = handler({
 const biasAnalyzerAdapter = sequencer({
   name: "bias-adapter",
   inputSchema: z.object({ userInput: z.string(), response: z.string() }),
+  // responseAuditor collects each analyzer's output as an AnalyzerResult.
+  // The terminal `.map` below hand-builds that shape; declaring it here
+  // makes the sequencer's runtime exit gate reject any drift (e.g. a score
+  // outside [0,1], or a renamed field) before it reaches the auditor.
+  outputSchema: AnalyzerResultSchema,
 })
   .map((input: { userInput: string; response: string }) => ({
     userInput: input.userInput,
