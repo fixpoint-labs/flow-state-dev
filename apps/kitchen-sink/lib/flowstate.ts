@@ -26,6 +26,7 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -88,7 +89,11 @@ export const flowstate = createFlowState({
           : inMemoryStores(),
     },
   },
-  defaultProfile: "dev",
+  // Default to the Postgres profile whenever a database URL is configured
+  // (the deployed/Vercel case), so persistence works without a separate
+  // FSD_ENV. Local dev with no DB falls back to in-memory. An explicit
+  // FSD_ENV always overrides this default.
+  defaultProfile: databaseUrl ? "prod" : "dev",
   // Scheduled dispatches are fire-and-forget; keep the serverless function
   // alive until runAction settles so results persist after the 202.
   onBackgroundWork: (promise) => after(() => promise),
