@@ -13,12 +13,15 @@
  * of literals, and `nullable` is never reached for output fields.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_3_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
+import { loadDeskPrompt } from "../lib/prompt";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
-import { TRADER_PROMPT } from "./prompts";
+
+const traderPrompt = loadDeskPrompt("phase-3/prompts/trader.prompt.md");
 
 export const tradeProposalOutputSchema = z.object({
   label: z.string(),
@@ -57,8 +60,7 @@ export const traderGenerator = generator({
       reasoning: true,
     }),
   ],
-  prompt: TRADER_PROMPT,
-  user: "Now write the published TradeProposal.",
+  ...definePromptFile(traderPrompt),
   sessionStateSchema,
   outputSchema: tradeProposalOutputSchema,
 });

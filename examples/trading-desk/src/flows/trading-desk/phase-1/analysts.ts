@@ -18,18 +18,13 @@
  * observability.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { asDataBlock } from "../lib/helpers";
+import { loadDeskPrompt } from "../lib/prompt";
 import { defineAnalyst } from "./analyst";
-import {
-  companyProfilePrompt,
-  fundamentalsPrompt,
-  newsPrompt,
-  sentimentPrompt,
-  technicalPrompt,
-} from "./prompts";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
@@ -52,8 +47,15 @@ import {
 } from "./tools";
 import { toolOutputSchemas } from "./tools/schemas";
 
-const ANALYST_INSTRUCTION =
-  "Synthesize the Thesis from the data provided above. Return the JSON object only.";
+const fundamentalsPrompt = loadDeskPrompt(
+  "phase-1/prompts/fundamentals.prompt.md"
+);
+const technicalPrompt = loadDeskPrompt("phase-1/prompts/technical.prompt.md");
+const newsPrompt = loadDeskPrompt("phase-1/prompts/news.prompt.md");
+const sentimentPrompt = loadDeskPrompt("phase-1/prompts/sentiment.prompt.md");
+const companyProfilePrompt = loadDeskPrompt(
+  "phase-1/prompts/company-profile.prompt.md"
+);
 
 // ---------------------------------------------------------------------------
 // Fundamentals
@@ -71,9 +73,8 @@ const fundamentalsGenerator = generator({
     fundamentals: toolOutputSchemas.get_fundamentals,
     fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
-  prompt: fundamentalsPrompt,
   context: { data: (input) => asDataBlock(input) },
-  user: ANALYST_INSTRUCTION,
+  ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,
 });
 
@@ -105,9 +106,8 @@ const technicalGenerator = generator({
     indicators: toolOutputSchemas.compute_indicators,
     technicalContext: toolOutputSchemas.discover_technical_context,
   }),
-  prompt: technicalPrompt,
   context: { data: (input) => asDataBlock(input) },
-  user: ANALYST_INSTRUCTION,
+  ...definePromptFile(technicalPrompt),
   outputSchema: thesisOutputSchema,
 });
 
@@ -137,12 +137,8 @@ const newsGenerator = generator({
     macro: toolOutputSchemas.get_macro_indicators,
     insiderTransactions: toolOutputSchemas.get_insider_transactions,
   }),
-  prompt: newsPrompt,
   context: { data: (input) => asDataBlock(input) },
-  user:
-    "Pick 2–3 of the most material article URLs from the news data above and " +
-    "call `fetch` to read their bodies, then synthesize the Thesis. Return " +
-    "the JSON object only.",
+  ...definePromptFile(newsPrompt),
   outputSchema: thesisOutputSchema,
 });
 
@@ -171,9 +167,8 @@ const sentimentGenerator = generator({
     predictionMarkets: toolOutputSchemas.get_prediction_markets,
     sentimentContext: toolOutputSchemas.discover_sentiment_context,
   }),
-  prompt: sentimentPrompt,
   context: { data: (input) => asDataBlock(input) },
-  user: ANALYST_INSTRUCTION,
+  ...definePromptFile(sentimentPrompt),
   outputSchema: thesisOutputSchema,
 });
 
@@ -204,9 +199,8 @@ const companyProfileGenerator = generator({
     companyProfile: toolOutputSchemas.get_company_profile,
     profileContext: toolOutputSchemas.discover_profile_context,
   }),
-  prompt: companyProfilePrompt,
   context: { data: (input) => asDataBlock(input) },
-  user: ANALYST_INSTRUCTION,
+  ...definePromptFile(companyProfilePrompt),
   outputSchema: thesisOutputSchema,
 });
 

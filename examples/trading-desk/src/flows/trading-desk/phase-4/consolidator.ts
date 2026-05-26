@@ -13,11 +13,16 @@
  * memo on the right pane is the artifact.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { PHASE_4_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
 import { tradingDesk } from "../capability";
-import { RISK_ASSESSMENT_PROMPT } from "./prompts";
+import { loadDeskPrompt } from "../lib/prompt";
 import { riskAssessmentOutputSchema } from "./schemas";
+
+const riskAssessmentPrompt = loadDeskPrompt(
+  "phase-4/prompts/risk-assessment.prompt.md"
+);
 
 export const riskAssessmentGenerator = generator({
   name: "risk-assessment-generator",
@@ -33,8 +38,7 @@ export const riskAssessmentGenerator = generator({
       highReasoning: true,
     }),
   ],
-  prompt: RISK_ASSESSMENT_PROMPT,
-  user: "Now write the published RiskAssessment.",
+  ...definePromptFile(riskAssessmentPrompt),
   sessionStateSchema,
   outputSchema: riskAssessmentOutputSchema,
 });

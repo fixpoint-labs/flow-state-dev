@@ -297,3 +297,11 @@ Numeric turn limits are cheap and predictable: pick one when the conversation sh
 A turn whose items are entirely sub-agent output, or any other items that don't contribute to LLM history, still counts against `{ turns: N }` but contributes no messages. This keeps the windowing logic at the request level. If sub-agent-heavy turns become common in your flow, prefer a token budget.
 
 Tool-aware compaction (rewriting older tool calls into shorter summaries) and goal-aware pruning (dropping turns that aren't relevant to the current goal) are deliberately not part of this default. They belong to higher-level patterns that layer on top of this windowing primitive.
+
+## Authoring the prompt as an external file
+
+A generator's `prompt` can live in a separate `.md` file instead of inline TypeScript. The body is a LiquidJS template, so it can read the generator's input, the block context, and the resolved config. See [Prompts as Markdown](./generator-prompts-markdown.md) for the full format.
+
+The context model carries over with one addition worth knowing here. By default the framework still appends the aggregated XML context after the rendered system prompt, exactly as described above. If the template includes a `<context>` block, that default append is suppressed and the template owns the context position: it can reorder keys, conditionally include them, or restructure them.
+
+The template reads the aggregated context through `config.context`, a `Record<string, string>` keyed by XML tag name. That map is the post-resolution result of the `context:` slot plus every capability contribution. It is a read surface for rendering, not a second place to author context. You still declare context on the `context:` slot; the template only reads the computed result.

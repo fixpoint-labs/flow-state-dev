@@ -26,6 +26,8 @@ const agent = generator({
 });
 ```
 
+The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](../../apps/docs/docs/advanced/generator-prompts-markdown.md) reference.
+
 **A handler that validates and transforms:**
 
 ```ts
@@ -276,6 +278,10 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 `orgStateSchema`, `requestStateSchema`, `sequencerStateSchema`,
 `resources`, `outputSchema`, `uses`. `name`, `inputSchema`, `execute`, and
 `description` are excluded — those vary per block.
+
+### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/core/prompt-file/node`)
+
+Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
 
 ### Types (`@flow-state-dev/core/types`)
 

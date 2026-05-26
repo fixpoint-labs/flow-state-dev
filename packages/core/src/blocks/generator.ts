@@ -51,7 +51,12 @@ import {
   aggregateContextEntries,
   objectFormHasNestedFunction,
 } from "./context-aggregator";
-import { renderTaggedContext } from "../prompt";
+import { renderTaggedContext, type TagAccumulator } from "../prompt";
+import {
+  getPromptFileBrand,
+  type PromptFileBrand,
+  type PromptFileConfigView,
+} from "../prompt/prompt-file";
 import {
   blockPathTool,
   buildBlockInstanceId,
@@ -612,25 +617,90 @@ function asSystemMessage(value: unknown): unknown {
 }
 
 /**
- * Build the system-message prefix from a resolved prompt and a list of
+ * Post-resolution generator-config values exposed to PromptFile templates as
+ * the `config` render variable. Distinct from `ctx`: this is "what the
+ * generator will run with" (resolved model/tools/caching), not "what the call
+ * brought" (state/resources). The aggregated context tag map is added per
+ * call (it depends on resolved context entries).
+ */
+interface PromptFileConfigMeta {
+  model?: string;
+  intent?: string;
+  tools?: string[];
+  caching?: CachingConfig;
+  maxTokens?: number;
+  temperature?: number;
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * Flatten an aggregated tag tree into the `config.context` map templates read:
+ * each top-level tag name maps to the rendered string the framework would
+ * otherwise have placed inside `<tagName>...</tagName>`.
+ */
+function flattenAggregatedContext(tagged: TagAccumulator): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(tagged)) {
+    const value = tagged[key]!;
+    out[key] = Array.isArray(value)
+      ? value.filter((s) => s.length > 0).join("\n")
+      : renderTaggedContext(value, []);
+  }
+  return out;
+}
+
+/**
+ * Build the system-message prefix from a prompt slot and a list of
  * already-resolved context entries.
  *
- * Aggregates object-form entries under their normalized tag keys, renders
- * the result as a single XML block, and prepends it (with a blank-line
- * separator) to the prompt to form one combined system message. String
- * entries and pre-built `{role, content}` messages are emitted as their
- * own additional system messages, in author order, after the combined one.
+ * Aggregates object-form context entries under their normalized tag keys.
+ * For inline prompts, resolves the prompt as today and renders the aggregated
+ * context as a single XML block appended (blank-line-separated) to the prompt.
  *
- * Returns an empty array when both prompt and context are empty.
+ * For PromptFile prompts (`promptFileBrand` present), renders the `<system>`
+ * template against `{ input, ctx, config }` where `config` carries the resolved
+ * model/tools/caching plus the aggregated context map. When the template
+ * declares a `<context>` block, it owns context rendering: the default XML-tag
+ * append is suppressed and the rendered block is wrapped in `<context>...
+ * </context>`. The `<user>` template, if present, is rendered with the same
+ * scope and returned as `userContent` for the caller to use as the user slot.
+ *
+ * Returns an empty `messages` array when both prompt and context are empty.
  */
 async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
-  promptStr: string,
+  promptValue: PromptSlot<TInput, TCtx>,
+  promptFileBrand: PromptFileBrand | undefined,
   contextValues: unknown[],
   input: TInput,
-  ctx: TCtx
-): Promise<unknown[]> {
+  ctx: TCtx,
+  configMeta: PromptFileConfigMeta
+): Promise<{ messages: unknown[]; userContent: string | undefined; promptText: string }> {
   const aggregated = await aggregateContextEntries(contextValues, input, ctx);
-  const xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+
+  let promptStr: string;
+  let xmlBlock: string;
+  let userContent: string | undefined;
+
+  if (promptFileBrand) {
+    const config: PromptFileConfigView = {
+      ...configMeta,
+      context: flattenAggregatedContext(aggregated.tagged),
+    };
+    const scope = { input, ctx, config };
+    promptStr = await promptFileBrand.renderSystem(scope);
+    if (promptFileBrand.hasContextBlock) {
+      const ctxStr = (await promptFileBrand.renderContext(scope)) ?? "";
+      xmlBlock = `<context>\n${ctxStr}\n</context>`;
+    } else {
+      xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+    }
+    if (promptFileBrand.hasUserBlock) {
+      userContent = await promptFileBrand.renderUser(scope);
+    }
+  } else {
+    promptStr = await resolvePrompt(promptValue, input, ctx);
+    xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+  }
 
   const combinedParts: string[] = [];
   if (promptStr.length > 0) combinedParts.push(promptStr);
@@ -644,7 +714,7 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
   for (const pt of aggregated.passThrough) {
     messages.push(asSystemMessage(pt));
   }
-  return messages;
+  return { messages, userContent, promptText: promptStr };
 }
 
 function asUserMessage(value: unknown): unknown {
@@ -1956,7 +2026,16 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
 
-      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
+      const promptFileBrand = getPromptFileBrand(normalizedConfig.prompt);
+      const configMeta: PromptFileConfigMeta = {
+        model: modelId,
+        intent: promptFileBrand?.frontmatter.intent as string | undefined,
+        tools: toolBlocks.map((t) => t.name),
+        caching: resolvedCaching,
+        maxTokens: normalizedConfig.maxTokens,
+        temperature: promptFileBrand?.frontmatter.temperature as number | undefined,
+        providerOptions: resolvedProviderOpts,
+      };
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1969,19 +2048,32 @@ export function generator<
 
       const historySlot = normalizeHistorySlot(normalizedConfig.history);
       const historyValues = await resolveSlotValues(historySlot, input, ctx);
-      const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)
       // separately so prepareStep can replace it with freshly resolved values.
       // Object-form context entries are aggregated under shared XML tag keys
       // and rendered into a single combined system message alongside the
-      // prompt; string entries follow as their own messages.
-      const systemPrefix: unknown[] = await buildSystemPrefix(
-        prompt,
-        contextValues,
-        input,
-        ctx
-      );
+      // prompt; string entries follow as their own messages. PromptFile
+      // generators render their `<system>`/`<context>`/`<user>` templates here
+      // against the resolved `config` view.
+      const {
+        messages: systemPrefix,
+        userContent: promptFileUserContent,
+        promptText: prompt,
+      } = await buildSystemPrefix(
+          normalizedConfig.prompt,
+          promptFileBrand,
+          contextValues,
+          input,
+          ctx,
+          configMeta
+        );
+
+      // A PromptFile `<user>` block fills the user slot; otherwise resolve the
+      // generator's `user` slot as today.
+      const userValues = promptFileUserContent !== undefined
+        ? [promptFileUserContent]
+        : await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
       const systemPrefixCount = systemPrefix.length;
       // FIX-662: when action.userMessage emits a runtime user item, it lands
       // in live items and flows through historyValues. If the generator's
@@ -2034,17 +2126,18 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);
           }
 
-          const freshSystemPrefix: unknown[] = await buildSystemPrefix(
-            freshPrompt,
+          const { messages: freshSystemPrefix } = await buildSystemPrefix(
+            normalizedConfig.prompt,
+            promptFileBrand,
             freshContext,
             input,
-            ctx
+            ctx,
+            configMeta
           );
 
           // Replace the system prefix with fresh values; keep conversation
@@ -2111,6 +2204,12 @@ export function generator<
               tools: toolBlocks.map((t) => t.name),
               user: debugUserMessages,
               history: historyValues,
+              ...(promptFileBrand
+                ? {
+                    templateSource: promptFileBrand.rawText,
+                    templateFrontmatter: promptFileBrand.frontmatter,
+                  }
+                : {}),
             },
           },
         },

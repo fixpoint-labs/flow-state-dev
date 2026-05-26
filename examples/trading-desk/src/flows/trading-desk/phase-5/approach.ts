@@ -14,13 +14,17 @@
 import { PHASE_5_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { createApproachGenerator } from "../lib/approach-generator";
-import { PORTFOLIO_MANAGER_APPROACH_PROMPT } from "./prompts";
+import { loadDeskPrompt } from "../lib/prompt";
+
+const portfolioManagerApproachPrompt = loadDeskPrompt(
+  "phase-5/prompts/portfolio-manager-approach.prompt.md"
+);
 
 export const portfolioManagerApproachGenerator = createApproachGenerator({
   name: "portfolio-manager-approach-generator",
   agentName: PHASE_5_MEMO_KEYS.portfolioManager.agentName,
   artifactName: "PortfolioDecision",
-  prompt: PORTFOLIO_MANAGER_APPROACH_PROMPT,
+  prompt: portfolioManagerApproachPrompt.prompt,
   uses: [
     tradingDesk.presets({
       tradeProposal: true,

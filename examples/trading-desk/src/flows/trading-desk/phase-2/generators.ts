@@ -17,16 +17,23 @@
  * writer imports the schemas back from here to project its commits.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_2_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
+import { loadDeskPrompt } from "../lib/prompt";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
-import {
-  BEAR_CONSOLIDATION_PROMPT,
-  BULL_CONSOLIDATION_PROMPT,
-  RESEARCH_MANAGER_PROMPT,
-} from "./prompts";
+
+const bullConsolidationPrompt = loadDeskPrompt(
+  "phase-2/prompts/bull-consolidation.prompt.md"
+);
+const bearConsolidationPrompt = loadDeskPrompt(
+  "phase-2/prompts/bear-consolidation.prompt.md"
+);
+const researchManagerPrompt = loadDeskPrompt(
+  "phase-2/prompts/research-manager.prompt.md"
+);
 
 // ---------------------------------------------------------------------------
 // Bull
@@ -59,8 +66,7 @@ export const consolidateBullMemo = generator({
       bearContributions: true,
     }),
   ],
-  prompt: BULL_CONSOLIDATION_PROMPT,
-  user: "Now write the published Bull memo.",
+  ...definePromptFile(bullConsolidationPrompt),
   sessionStateSchema,
   outputSchema: bullThesisOutputSchema,
 });
@@ -96,8 +102,7 @@ export const consolidateBearMemo = generator({
       bearContributions: true,
     }),
   ],
-  prompt: BEAR_CONSOLIDATION_PROMPT,
-  user: "Now write the published Bear memo.",
+  ...definePromptFile(bearConsolidationPrompt),
   sessionStateSchema,
   outputSchema: bearThesisOutputSchema,
 });
@@ -150,11 +155,7 @@ export const researchManagerGenerator = generator({
       reasoning: true,
     }),
   ],
-  prompt: RESEARCH_MANAGER_PROMPT,
-  user:
-    "Synthesize the InvestmentThesis. Enumerate `unresolvedDisagreements` " +
-    "explicitly. Empty is acceptable only if the debate genuinely converged " +
-    'and you justify that in the "Resolution of the debate" body section.',
+  ...definePromptFile(researchManagerPrompt),
   sessionStateSchema,
   outputSchema: investmentThesisOutputSchema,
 });

@@ -56,7 +56,7 @@ const agent = generator({
 
 A generator's input is assembled from four slots, which a developer configures on the block:
 
-- **`prompt`** — the system prose. Static string or a function of input.
+- **`prompt`** — the system prose. Static string or a function of input. You can also author it in a separate `.md` file and load it back in; see [Prompts as Markdown](../advanced/generator-prompts-markdown.md).
 - **`context`** — dynamic per-turn material (documents, retrieved memory, tool descriptions). Array or object form; see [Generator context](../advanced/generator-context.md).
 - **`history`** — prior conversational items, windowed by turn. See above.
 - **`user`** — the current turn's user-role message. See [Generator context > User slot](../advanced/generator-context.md#user-slot) for how it relates to `action.userMessage`.

@@ -182,6 +182,11 @@ export type BlockTraceItem = OutputItemBase & {
     prompt: string;
     user?: unknown[];
     history?: unknown[];
+    /** Raw `.md` source, present when the prompt was authored via a PromptFile
+     * (`definePromptFile`). Absent for inline-string/function prompts. */
+    templateSource?: string;
+    /** Parsed, Zod-validated frontmatter, present for PromptFile prompts. */
+    templateFrontmatter?: Record<string, unknown>;
   };
   modelUsage?: {
     model: string;

@@ -33,6 +33,7 @@
  * to `@flow-state-dev/patterns` waits for a second consumer.
  */
 import { generator, type DefinedCapability } from "@flow-state-dev/core";
+import type { BrandedPromptSlot } from "@flow-state-dev/core/prompt-file";
 import type { AgentName } from "../agents";
 import { sessionStateSchema } from "../state";
 
@@ -45,8 +46,9 @@ export interface ApproachGeneratorConfig {
   /** The noun the user instruction names — e.g. `"TradeProposal"` or
    *  `"Aggressive Risk critique"`. Substituted into the user template. */
   artifactName: string;
-  /** System prompt — per-agent personality / stance / framing. */
-  prompt: string;
+  /** System prompt — per-agent personality / stance / framing. A plain string
+   *  or a PromptFile-sourced prompt (`loadDeskPrompt(...).prompt`). */
+  prompt: string | BrandedPromptSlot;
   /** Capability presets supplying the per-agent context the preview
    *  should reference. Lean by design: only the inputs the preamble
    *  needs to know exist, not the full data depth the structured
