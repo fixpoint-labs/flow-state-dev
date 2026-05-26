@@ -122,7 +122,11 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
   /** Dispose pooled resources across every declared adapter. */
   dispose(): Promise<void>;
 
-  /** The active profile name. Resolved on first `ready()` / `getRouter()`. */
+  /**
+   * The active profile name. Resolved on first `ready()` / `getRouter()`.
+   * Reading it earlier resolves the profile eagerly and throws
+   * `FlowStateConfigError` if `FSD_ENV` names a profile that wasn't declared.
+   */
   readonly activeProfile: string;
 
   /** The settings bag, typed via `TSettings`. Read-only at runtime. */

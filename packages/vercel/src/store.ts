@@ -60,6 +60,9 @@ export function vercelPostgresStores(
   let registry: PostgresStoreRegistry | undefined;
   let realIndex: ScheduleIndex | undefined;
   let building: Promise<PostgresStoreRegistry> | undefined;
+  // Tracked separately from `registry` so a failure between pool creation and
+  // `createPostgresStores` resolving still lets `dispose()` close the pool.
+  let pool: Pool | undefined;
 
   async function build(): Promise<PostgresStoreRegistry> {
     const connectionString =
@@ -86,29 +89,30 @@ export function vercelPostgresStores(
     }
 
     const { default: pg } = await import("pg");
-    const pool: Pool = new pg.Pool(poolConfig);
+    const created = new pg.Pool(poolConfig);
+    pool = created;
     // A pool with no 'error' listener crashes the process on a dead-socket
     // event from an auto-suspended endpoint.
-    pool.on("error", () => {});
+    created.on("error", () => {});
 
     // Same-pool executor so the schedule index shares connections with the
     // stores rather than opening a second pool.
     const executor: QueryExecutor = {
       async query(text: string, values?: unknown[]) {
-        const result = await pool.query(text, values);
+        const result = await created.query(text, values);
         return {
           rows: result.rows as Record<string, unknown>[],
           rowCount: result.rowCount ?? 0
         };
       },
       async beginTx() {
-        return createPgPoolTx(pool);
+        return createPgPoolTx(created);
       }
     };
     realIndex = createPostgresScheduleIndex(executor);
 
     registry = await createPostgresStores({
-      pool,
+      pool: created,
       // Migrations run out-of-band at build (vercel-build), so the runtime
       // pool skips the DDL roundtrips and advisory-lock dance on cold start.
       skipSchemaInit: true,
@@ -134,7 +138,14 @@ export function vercelPostgresStores(
       return building;
     },
     async dispose() {
-      await registry?.close();
+      // `registry.close()` ends the pool for the `{ pool }` shape. If init
+      // failed after the pool was created (registry never assigned), end the
+      // pool directly so the connection isn't leaked.
+      if (registry !== undefined) {
+        await registry.close();
+      } else if (pool !== undefined) {
+        await pool.end();
+      }
     },
     scheduleIndex
   };
