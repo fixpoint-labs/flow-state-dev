@@ -215,6 +215,24 @@ export interface BlockContext<
     block: TBlock
   ): BlockResult<BlockOutput<TBlock>>;
 
+  /**
+   * Returns whether `target` — a prior block in the current sequencer scope —
+   * recovered an error through its own `.rescue()` handler during its
+   * execution. The flag is set on the block that owns the `.rescue()` (e.g. a
+   * sub-sequencer wrapping a risky step), so query that block, not the inner
+   * step that threw. `target` is a block name or definition (resolved via
+   * `block.name`).
+   *
+   * Scope and resolution match `getBlockResult`: only blocks that ran as prior
+   * siblings in the current sequencer run are visible, and under `.loopBack`
+   * the most recent (current-iteration) run of a named block is consulted.
+   *
+   * Returns `false` when the block ran without rescuing, was never dispatched
+   * (e.g. skipped by `.thenIf`), is not found in the current scope, or when
+   * called outside a sequencer. Never throws.
+   */
+  wasRescued(target: string | BlockDefinition<any, any>): boolean;
+
   targets: InferTargetStatesFromSchemas<TTargets>;
 
   /** Capability helper functions, keyed by capability name.
@@ -454,6 +472,14 @@ export interface BlockContext<
    * emissions are visible to the parent that spawned them.
    */
   _outputTracker?: { lastBlockOutputItemId?: string };
+
+  /**
+   * @internal Set by the sequencer runtime when a `.rescue()` handler recovers
+   * a thrown error. Read by `_withExecutionScope` post-execution to stamp the
+   * block's sibling-registry result (`result.rescued`), which `wasRescued`
+   * later consults. Not part of the public API.
+   */
+  _didRescue?: boolean;
 
   /**
    * @internal Per-request background work pool. Set by the server's request

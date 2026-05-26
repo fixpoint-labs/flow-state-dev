@@ -78,6 +78,38 @@ To catch drift before the flow runs at all, call `.validate()` on the sequencer 
 
 To handle a failure inline rather than letting it bubble, use the sequencer's `.rescue()` branch. See [Composing blocks](/docs/sequencers/composing-blocks) for the full DSL. The rescue branch receives the thrown error, so you can read `error.code` to route on the failure category and `error.details` to consume the structured payload.
 
+## Querying rescue status
+
+A recovered error is handled: the value continues down the chain with its normal shape, and the rescue is meant to be a side note, not something every later block has to account for. When a later block does need to react to it, ask `ctx.wasRescued(target)` instead of inspecting the value.
+
+`target` is the name or definition of an earlier block in the current sequencer — typically a step that wraps a risky operation in its own `.rescue()`. Resolution matches `getBlockResult`: only prior siblings in the current run are visible, and under a loop the current iteration is read. It returns `true` only when that block recovered an error through its own `.rescue()` during its run, and `false` otherwise — a clean run, a step that never ran, an unknown name, or a call from outside a sequencer. It never throws.
+
+```ts
+// priceOrder keeps the pipeline alive when the live-rate lookup fails by
+// falling back to a cached rate inside its own rescue.
+const priceOrder = sequencer({ name: "price-order", inputSchema: order })
+  .then(fetchLiveRate)
+  .rescue([{ block: useCachedRate }]);
+
+const enrich = handler({
+  name: "enrich",
+  inputSchema: pricedOrder,
+  outputSchema: enrichedOrder,
+  execute: async (input, ctx) => {
+    // A sibling of priceOrder, so it can tell whether the cached-rate
+    // fallback ran and mark the result instead of trusting it as live.
+    const degraded = ctx.wasRescued(priceOrder);
+    return { ...input, pricing: degraded ? "estimated" : "live" };
+  },
+});
+
+sequencer({ name: "order-pipeline", inputSchema: order })
+  .then(priceOrder)
+  .then(enrich);
+```
+
+Reach for this when a decision is transient and tied to one run. If the fact needs to outlive the run, write it to state instead.
+
 ## What you'll see in DevTool
 
 The failed-block detail panel surfaces the error message at the top, the `code` as a small mono-text badge, a dedicated "Raw output" section when the runtime captured one, a "Validation issues" list when Zod issues are present, and a "Details" JSON panel that always renders any other keys on `error.details`. For tool-invoked blocks that fail, the panel also shows the originating tool call's arguments — see [DevTool overview](/docs/devtool/overview).

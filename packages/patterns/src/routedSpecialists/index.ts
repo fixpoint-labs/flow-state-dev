@@ -440,7 +440,9 @@ export function routedSpecialists<
         const collection = getCollection(ctx, collectionId);
         await collection.fail(state.currentTaskId, message);
       }
-      return { __rescued: true };
+      // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
+      // the value threaded downstream carries no rescue marker.
+      return undefined;
     },
   });
 
@@ -458,19 +460,13 @@ export function routedSpecialists<
   const recordCompletion = handler({
     name: `${name}-record-completion`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
-      const isRescued =
-        typeof input === "object" &&
-        input !== null &&
-        (input as { __rescued?: boolean }).__rescued === true;
-      if (state.currentTaskId !== undefined && !isRescued) {
+      if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
         const collection = getCollection(ctx, collectionId);
         await collection.complete(state.currentTaskId, input);
       }
-      return input;
     },
   });
 

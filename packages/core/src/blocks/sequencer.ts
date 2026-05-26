@@ -824,6 +824,11 @@ function runSequencerOperations(
           if (rescueDescriptor.kind !== "inline") {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
           }
+          // Record the recovery out-of-band so a downstream block can ask
+          // `ctx.wasRescued(...)` without the rescued value carrying a marker.
+          // Read post-execution by `_withExecutionScope` to stamp this block's
+          // sibling-registry result.
+          (ctx as { _didRescue?: boolean })._didRescue = true;
           return { value: rescued, lastStepName: handler.block.config.name ?? "rescue" };
         }
 

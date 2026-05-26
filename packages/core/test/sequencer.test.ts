@@ -361,6 +361,46 @@ describe("sequencer builder", () => {
     await expect(runForTest(seq, 1, ctx)).resolves.toBe("recovered:broken");
   });
 
+  it("sets the internal _didRescue flag on ctx when a rescue handler recovers", async () => {
+    const failing = handler({
+      name: "failing-flag",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("broken");
+      }
+    });
+    const rescueBlock = handler({
+      name: "rescue-flag-handler",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (error: Error) => `recovered:${error.message}`
+    });
+    const seq = sequencer({ name: "rescue-flag-seq", inputSchema: z.number() })
+      .then(failing)
+      .rescue([{ block: rescueBlock }]);
+
+    const ctx = createMockContext();
+    await runForTest(seq, 1, ctx);
+    expect((ctx as { _didRescue?: boolean })._didRescue).toBe(true);
+  });
+
+  it("leaves _didRescue unset when no rescue fires", async () => {
+    const ok = handler({
+      name: "ok-no-rescue",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+    const seq = sequencer({ name: "no-rescue-flag-seq", inputSchema: z.number() })
+      .then(ok)
+      .rescue([{ block: ok }]);
+
+    const ctx = createMockContext();
+    await runForTest(seq, 1, ctx);
+    expect((ctx as { _didRescue?: boolean })._didRescue).toBeUndefined();
+  });
+
   it("supports branch and throws when no branch matches", async () => {
     const small = handler({
       name: "small",
