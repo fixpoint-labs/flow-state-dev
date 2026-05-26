@@ -1,5 +1,1 @@
-The `metrics` object is uniform across all three risk personas with six
-required keys: `stance`, `structuralChange`, `scopeChange`,
-`exitDiscipline`, `stopMechanics`, `followOn`. Fill the keys your
-posture uses with meaningful short strings; fill the rest with "—"
-(em-dash). Do not omit any key.
+The `metrics` object is uniform across all three risk personas with six required keys: `stance`, `structuralChange`, `scopeChange`, `exitDiscipline`, `stopMechanics`, `followOn`. Fill the keys your posture uses with meaningful short strings; fill the rest with "—" (em-dash). Do not omit any key.
