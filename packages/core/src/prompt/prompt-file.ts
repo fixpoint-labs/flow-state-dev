@@ -399,6 +399,15 @@ export function parsePromptFile(
     ? (input: unknown, ctx: BlockContext, config?: PromptFileConfigView) =>
         renderUser({ input, ctx, config: config ?? emptyConfig })
     : undefined;
+  // Brand the user fn too, so the generator can tell a PromptFile-owned `user`
+  // slot from one the author overrode after `...definePromptFile(pf)` — the
+  // override should win (spread precedence), matching `prompt`.
+  if (userFn) {
+    Object.defineProperty(userFn, PROMPT_FILE_BRAND, {
+      value: brand,
+      enumerable: false,
+    });
+  }
 
   return {
     name: frontmatter.name,

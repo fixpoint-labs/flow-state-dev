@@ -662,8 +662,8 @@ function flattenAggregatedContext(tagged: TagAccumulator): Record<string, string
  * model/tools/caching plus the aggregated context map. When the template
  * declares a `<context>` block, it owns context rendering: the default XML-tag
  * append is suppressed and the rendered block is wrapped in `<context>...
- * </context>`. The `<user>` template, if present, is rendered with the same
- * scope and returned as `userContent` for the caller to use as the user slot.
+ * </context>`. The constructed `config` view is returned so the caller can
+ * render a PromptFile `<user>` slot against the same scope.
  *
  * Returns an empty `messages` array when both prompt and context are empty.
  */
@@ -674,18 +674,19 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
   input: TInput,
   ctx: TCtx,
   configMeta: PromptFileConfigMeta
-): Promise<{ messages: unknown[]; userContent: string | undefined; promptText: string }> {
+): Promise<{ messages: unknown[]; configView: PromptFileConfigView | undefined; promptText: string }> {
   const aggregated = await aggregateContextEntries(contextValues, input, ctx);
 
   let promptStr: string;
   let xmlBlock: string;
-  let userContent: string | undefined;
+  let configView: PromptFileConfigView | undefined;
 
   if (promptFileBrand) {
     const config: PromptFileConfigView = {
       ...configMeta,
       context: flattenAggregatedContext(aggregated.tagged),
     };
+    configView = config;
     const scope = { input, ctx, config };
     promptStr = await promptFileBrand.renderSystem(scope);
     if (promptFileBrand.hasContextBlock) {
@@ -693,9 +694,6 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
       xmlBlock = `<context>\n${ctxStr}\n</context>`;
     } else {
       xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
-    }
-    if (promptFileBrand.hasUserBlock) {
-      userContent = await promptFileBrand.renderUser(scope);
     }
   } else {
     promptStr = await resolvePrompt(promptValue, input, ctx);
@@ -714,7 +712,7 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
   for (const pt of aggregated.passThrough) {
     messages.push(asSystemMessage(pt));
   }
-  return { messages, userContent, promptText: promptStr };
+  return { messages, configView, promptText: promptStr };
 }
 
 function asUserMessage(value: unknown): unknown {
@@ -2033,7 +2031,11 @@ export function generator<
         tools: toolBlocks.map((t) => t.name),
         caching: resolvedCaching,
         maxTokens: normalizedConfig.maxTokens,
-        temperature: promptFileBrand?.frontmatter.temperature as number | undefined,
+        // Read from the resolved config (not frontmatter) so a `temperature`
+        // override placed after `...definePromptFile(pf)` wins, matching how
+        // `maxTokens` and `prompt` overrides behave. `temperature` is not a
+        // typed GeneratorConfig field today; `definePromptFile` spreads it in.
+        temperature: (normalizedConfig as { temperature?: number }).temperature,
         providerOptions: resolvedProviderOpts,
       };
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
@@ -2058,7 +2060,7 @@ export function generator<
       // against the resolved `config` view.
       const {
         messages: systemPrefix,
-        userContent: promptFileUserContent,
+        configView,
         promptText: prompt,
       } = await buildSystemPrefix(
           normalizedConfig.prompt,
@@ -2069,10 +2071,16 @@ export function generator<
           configMeta
         );
 
-      // A PromptFile `<user>` block fills the user slot; otherwise resolve the
-      // generator's `user` slot as today.
-      const userValues = promptFileUserContent !== undefined
-        ? [promptFileUserContent]
+      // A PromptFile `<user>` block fills the user slot — but only when the
+      // author left it in place. If `user` was overridden after the spread
+      // (`...definePromptFile(pf), user: "..."`), the override carries no
+      // PromptFile brand, so it resolves through the normal slot path and
+      // wins, consistent with `prompt` spread precedence.
+      const userBrand = getPromptFileBrand(normalizedConfig.user);
+      const userValues = userBrand?.hasUserBlock && configView !== undefined
+        ? [await userBrand.renderUser({ input, ctx, config: configView })].filter(
+            (v): v is string => v != null
+          )
         : await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
       const systemPrefixCount = systemPrefix.length;
       // FIX-662: when action.userMessage emits a runtime user item, it lands

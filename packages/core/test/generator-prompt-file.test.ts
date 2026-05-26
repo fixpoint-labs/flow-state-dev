@@ -124,6 +124,42 @@ describe("PromptFile generator — user block", () => {
     expect(user).toHaveLength(1);
     expect(user[0]!.content).toBe("Assess AAPL.");
   });
+
+  it("lets a user: override after the spread win over the <user> block", async () => {
+    const pf = parsePromptFile(`<system>S</system>\n<user>FROM FILE</user>`);
+    const captured: CapturedCall[] = [];
+    const block = generator({
+      name: "pf-user-override",
+      model: "mock-model",
+      ...definePromptFile(pf),
+      user: "OVERRIDE",
+    });
+    await runForTest(block, {}, withTraceCapture(captured, []));
+
+    const user = messagesByRole(captured[0]!, "user");
+    expect(user).toHaveLength(1);
+    expect(user[0]!.content).toBe("OVERRIDE");
+  });
+});
+
+describe("PromptFile generator — config view reflects overrides", () => {
+  it("exposes a temperature override (not the frontmatter value) as config.temperature", async () => {
+    const pf = parsePromptFile(`---
+temperature: 0.2
+---
+<system>temp={{ config.temperature }}</system>`);
+    const captured: CapturedCall[] = [];
+    const block = generator({
+      name: "pf-temp-override",
+      model: "mock-model",
+      ...definePromptFile(pf),
+      temperature: 0.9,
+    } as Parameters<typeof generator>[0]);
+    await runForTest(block, {}, withTraceCapture(captured, []));
+
+    const content = String(messagesByRole(captured[0]!, "system")[0]!.content);
+    expect(content).toBe("temp=0.9");
+  });
 });
 
 describe("PromptFile generator — trace capture", () => {
