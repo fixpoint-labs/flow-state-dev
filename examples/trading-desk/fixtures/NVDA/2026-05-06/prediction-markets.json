@@ -1,7 +1,9 @@
 {
   "ticker": "NVDA",
   "asOf": "2026-05-06",
-  "markets": [
+  "backdropTheme": "AI capex",
+  "coverageQuality": "rich",
+  "tickerMarkets": [
     {
       "question": "What will NVIDIA (NVDA) hit in May 2026?",
       "eventTitle": "NVIDIA (NVDA) price in May 2026",
@@ -91,6 +93,35 @@
       "liquidityUsd": 198,
       "endDate": "2026-05-14T20:00:00.000Z",
       "slug": "nvda-up-or-down-may-14"
+    }
+  ],
+  "backdropMarkets": [
+    {
+      "question": "Will global AI data-center capex grow more than 30% YoY in 2026?",
+      "eventTitle": "AI capex growth 2026",
+      "yesProbability": 0.78,
+      "volumeUsd": 420000,
+      "liquidityUsd": 240000,
+      "endDate": "2026-12-31T23:59:59.999Z",
+      "slug": "ai-capex-growth-above-30pct-2026"
+    },
+    {
+      "question": "Will a major hyperscaler announce a >$50B data-center buildout in 2026?",
+      "eventTitle": "Hyperscaler data-center buildout 2026",
+      "yesProbability": 0.64,
+      "volumeUsd": 188000,
+      "liquidityUsd": 130000,
+      "endDate": "2026-12-31T23:59:59.999Z",
+      "slug": "hyperscaler-50b-datacenter-2026"
+    },
+    {
+      "question": "Will leading-edge AI chip supply remain constrained through 2026?",
+      "eventTitle": "AI chip supply 2026",
+      "yesProbability": 0.71,
+      "volumeUsd": 96000,
+      "liquidityUsd": 88000,
+      "endDate": "2026-12-31T23:59:59.999Z",
+      "slug": "ai-chip-supply-constrained-2026"
     }
   ]
 }

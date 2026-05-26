@@ -41,6 +41,15 @@ export const thesisOutputSchema = z.object({
    *  when nothing was fetched (cheap preset, no material context found),
    *  or an array when investigation produced citable sources. */
   citations: z.array(citation).nullable(),
+  /** Honest signal about how much real data backed this memo, so downstream
+   *  phases don't synthesize on hollow input (FIX-681). Driven by the
+   *  analyst's `source` fields per the prompt contract:
+   *    - `"full"`        — primary and all secondary sources returned data.
+   *    - `"partial"`     — primary returned data; ≥1 secondary unavailable.
+   *    - `"unavailable"` — the primary data source returned
+   *                        `source: "unavailable"`; the memo is a minimal
+   *                        skeleton and must not be synthesized from. */
+  dataQuality: z.enum(["full", "partial", "unavailable"]),
 });
 
 export type ThesisOutput = z.infer<typeof thesisOutputSchema>;

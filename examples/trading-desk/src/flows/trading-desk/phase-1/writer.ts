@@ -45,6 +45,7 @@ export function commitMemo(shortName: Phase1MemoShortName) {
         body: thesis.body,
         metrics: Object.fromEntries(thesis.metrics.map((m) => [m.key, m.value])),
         citations: thesis.citations,
+        dataQuality: thesis.dataQuality,
       });
     },
   });
