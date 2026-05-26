@@ -72,6 +72,15 @@ describe("resolveProvider", () => {
       expect(result.adapter.name).toBe("perplexity-sonar");
       expect(result.apiKey).toBe("pplx-key");
     });
+
+    it("selects parallel when explicitly requested", () => {
+      process.env.PARALLEL_API_KEY = "parallel-key";
+
+      const result = resolveProvider({ provider: "parallel" });
+
+      expect(result.adapter.name).toBe("parallel");
+      expect(result.apiKey).toBe("parallel-key");
+    });
   });
 
   describe("auto-selection priority", () => {
@@ -121,6 +130,25 @@ describe("resolveProvider", () => {
       expect(result.apiKey).toBe("brave-key");
     });
 
+    it("selects parallel when only the parallel key is available", () => {
+      process.env.PARALLEL_API_KEY = "parallel-key";
+
+      const result = resolveProvider({});
+
+      expect(result.adapter.name).toBe("parallel");
+      expect(result.apiKey).toBe("parallel-key");
+    });
+
+    it("prefers parallel over other providers when multiple keys are set", () => {
+      process.env.PARALLEL_API_KEY = "parallel-key";
+      process.env.TAVILY_API_KEY = "tavily-key";
+
+      const result = resolveProvider({});
+
+      expect(result.adapter.name).toBe("parallel");
+      expect(result.apiKey).toBe("parallel-key");
+    });
+
     it("uses config keys for auto-selection", () => {
       const result = resolveProvider({
         keys: { exa: "config-exa-key" },
@@ -141,6 +169,7 @@ describe("resolveProvider", () => {
       expect(() => resolveProvider({})).toThrow("PERPLEXITY_API_KEY");
       expect(() => resolveProvider({})).toThrow("SERPER_API_KEY");
       expect(() => resolveProvider({})).toThrow("BRAVE_SEARCH_API_KEY");
+      expect(() => resolveProvider({})).toThrow("PARALLEL_API_KEY");
     });
   });
 });

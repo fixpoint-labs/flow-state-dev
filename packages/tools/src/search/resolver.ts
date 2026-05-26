@@ -7,6 +7,7 @@ import { getAdapter } from "./providers";
 import { detectApiKey } from "../_internal/env";
 
 const providerPriority: SearchProviderName[] = [
+  "parallel",
   "tavily",
   "exa",
   "perplexity",
@@ -21,6 +22,7 @@ export const ENV_VAR_MAP: Record<SearchProviderName, string> = {
   perplexity: "PERPLEXITY_API_KEY",
   serper: "SERPER_API_KEY",
   brave: "BRAVE_SEARCH_API_KEY",
+  parallel: "PARALLEL_API_KEY",
   "perplexity-sonar": "PERPLEXITY_API_KEY",
 };
 

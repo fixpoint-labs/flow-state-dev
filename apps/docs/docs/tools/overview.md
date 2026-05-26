@@ -14,7 +14,7 @@ The `@flow-state-dev/tools` package ships four built-in tools:
 
 | Tool | What it does | Always works? |
 |------|-------------|---------------|
-| `tools.search()` | Web search via Tavily, Exa, Serper, or Brave | No — requires at least one search API key |
+| `tools.search()` | Web search via any configured provider | No — requires at least one search API key |
 | `tools.fetch()` | Fetch a single web page as markdown | Yes — built-in fallback always available |
 | `tools.crawl()` | Crawl a website (BFS), returning markdown for each page | Yes — built-in fallback always available |
 | `createBashTool()` | Execute bash commands in a sandboxed workspace with resource sync | Yes — in-memory fallback always available |
@@ -66,6 +66,8 @@ A common workflow the LLM will discover on its own: search for a topic, then fet
 | `EXA_API_KEY` | Exa search |
 | `SERPER_API_KEY` | Serper search |
 | `BRAVE_SEARCH_API_KEY` | Brave search |
+| `PERPLEXITY_API_KEY` | Perplexity search and Sonar grounding |
+| `PARALLEL_API_KEY` | Parallel search |
 | `FIRECRAWL_API_KEY` | Firecrawl fetch + crawl (best quality) |
 | `JINA_API_KEY` | Jina Reader fetch (optional — works without key at 20 RPM) |
 

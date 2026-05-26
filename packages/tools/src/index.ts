@@ -12,6 +12,7 @@ export {
   perplexitySearch,
   serperSearch,
   braveSearch,
+  parallelSearch,
   perplexitySonarSearch,
 } from "./search";
 

@@ -23,6 +23,7 @@ Provider is selected automatically based on available API keys (checked in order
 
 | Provider | Env var | Package | Result type |
 |----------|---------|---------|-------------|
+| Parallel | `PARALLEL_API_KEY` | _(fetch-based, no extra dep)_ | Raw results |
 | Tavily | `TAVILY_API_KEY` | `@tavily/core` (optional peer dep) | Raw results |
 | Exa | `EXA_API_KEY` | `exa-js` (optional peer dep) | Raw results |
 | Perplexity | `PERPLEXITY_API_KEY` | _(fetch-based, no extra dep)_ | Raw results |
@@ -39,6 +40,7 @@ search({
   provider: "tavily",        // override auto-detection
   maxResults: 10,            // default: 5
   searchDepth: "advanced",   // "basic" (default) or "advanced"
+  searchMode: "one-shot",    // provider-specific mode hint (Parallel: default "agentic")
   topic: "news",             // "general" (default) or "news"
   keys: { tavily: "sk-..." }, // explicit keys (default: env vars)
 });
@@ -53,6 +55,7 @@ import {
   perplexitySearch,
   serperSearch,
   braveSearch,
+  parallelSearch,
   perplexitySonarSearch,
 } from "@flow-state-dev/tools/search";
 ```
