@@ -205,7 +205,7 @@ export async function fetchPolymarketTop(
     asOf: input.date,
     tickerMarkets,
     backdropMarkets: merged.slice(0, BACKDROP_TOP_N),
-    backdropTheme: themes[0] ?? "",
+    backdropTheme: themes.join(", "),
     coverageQuality: computeCoverageQuality(tickerMarkets),
   };
 }
