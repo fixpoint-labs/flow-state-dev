@@ -1,10 +1,14 @@
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "../src/types/block";
 import {
+  createPromptLoader,
   loadPromptFile,
   PromptFileLoadError,
 } from "../src/prompt/load-prompt-file.node";
+
+const FIXTURE_DIR = fileURLToPath(new URL("./fixtures/prompts", import.meta.url));
 
 function mockCtx(): BlockContext {
   return { session: { state: { recent_news: [] } }, resources: {} } as unknown as BlockContext;
@@ -42,5 +46,40 @@ describe("loadPromptFile", () => {
     expect(pf.name).toBe("fundamentals-analyst");
     const out = await pf.prompt({ ticker: "msft" }, mockCtx());
     expect(out).toContain("Investigate MSFT");
+  });
+});
+
+describe("createPromptLoader", () => {
+  it("loads prompts relative to the captured base dir, no import.meta.url per call", async () => {
+    const load = createPromptLoader(FIXTURE_DIR);
+    const pf = load("analyst.prompt.md");
+    expect(pf.name).toBe("fundamentals-analyst");
+    const out = await pf.prompt({ ticker: "nvda" }, mockCtx());
+    expect(out).toContain("Investigate NVDA");
+  });
+
+  it("applies a shared partialsDir to every load", async () => {
+    // analyst.prompt.md renders {% render 'shared-output-preamble' %}; point the
+    // partials dir at the fixtures dir explicitly to back it.
+    const load = createPromptLoader(FIXTURE_DIR, { partialsDir: FIXTURE_DIR });
+    const out = await load("analyst.prompt.md").prompt({ ticker: "AMD" }, mockCtx());
+    expect(out).toContain("Always return a single JSON object");
+  });
+
+  it("applies the loader's shared filters, and per-call filters override them", async () => {
+    const load = createPromptLoader(FIXTURE_DIR, {
+      filters: { shout: (v: unknown) => String(v).toUpperCase() },
+    });
+    const shared = await load("filtered.prompt.md").prompt({ word: "buy" }, mockCtx());
+    expect(shared).toBe("BUY");
+
+    const overridden = await load("filtered.prompt.md", {
+      filters: { shout: (v: unknown) => `<<${String(v)}>>` },
+    }).prompt({ word: "buy" }, mockCtx());
+    expect(overridden).toBe("<<buy>>");
+  });
+
+  it("throws when baseDir is not absolute", () => {
+    expect(() => createPromptLoader("relative/dir")).toThrow(TypeError);
   });
 });

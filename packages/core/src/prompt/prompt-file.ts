@@ -454,6 +454,21 @@ export function definePromptFile(promptFile: PromptFile): PromptFileConfig {
   return config;
 }
 
+/**
+ * Narrow an unknown value to a {@link PromptFile}: a parsed-file object whose
+ * `prompt` slot carries the brand. Distinguishes a whole PromptFile passed
+ * directly as a generator's `prompt` (`prompt: pf`) from a bare branded slot
+ * (`prompt: pf.prompt`), a string, a resolver function, or an array.
+ */
+export function isPromptFile(value: unknown): value is PromptFile {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    getPromptFileBrand((value as { prompt?: unknown }).prompt) !== undefined
+  );
+}
+
 /** Read the PromptFile brand off a prompt-slot value, if present. Scans array
  * slots for the first branded entry. Returns `undefined` for inline prompts. */
 export function getPromptFileBrand(value: unknown): PromptFileBrand | undefined {

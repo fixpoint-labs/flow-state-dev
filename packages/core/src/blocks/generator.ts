@@ -53,7 +53,10 @@ import {
 } from "./context-aggregator";
 import { renderTaggedContext, type TagAccumulator } from "../prompt";
 import {
+  definePromptFile,
   getPromptFileBrand,
+  isPromptFile,
+  type PromptFile,
   type PromptFileBrand,
   type PromptFileConfigView,
 } from "../prompt/prompt-file";
@@ -408,7 +411,15 @@ export interface GeneratorConfig<
    * the capability's. Missing on both is a runtime error at construction.
    */
   model?: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
+  /**
+   * Prompt slot. Accepts an inline string, a resolver function, an array of
+   * those, a branded PromptFile slot (`pf.prompt`), or a whole
+   * {@link PromptFile} (`prompt: loadPromptFile(...)`). Passing the PromptFile
+   * directly expands its `user` / `caching` / `maxTokens` / `temperature` /
+   * `name` / `description` into this config — any sibling field set explicitly
+   * here wins, matching `...definePromptFile(pf), <overrides>`.
+   */
+  prompt: PromptSlot<NoInfer<TInput>, TCtx> | PromptFile;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
@@ -1879,6 +1890,23 @@ export function generator<
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
+  // A whole PromptFile passed as `prompt` (`prompt: loadPromptFile(...)`)
+  // expands into the same spreadable fields `definePromptFile` produces. Any
+  // sibling field the author set explicitly wins, matching the spread form
+  // `...definePromptFile(pf), <overrides>`. After this, `prompt` is the bare
+  // branded slot the rest of the generator already understands.
+  if (isPromptFile(config.prompt)) {
+    const expanded = definePromptFile(config.prompt);
+    const target = normalizedConfig as unknown as Record<string, unknown>;
+    const authored = config as unknown as Record<string, unknown>;
+    for (const key of ["name", "description", "user", "caching", "maxTokens", "temperature"] as const) {
+      if (expanded[key] !== undefined && authored[key] === undefined) {
+        target[key] = expanded[key];
+      }
+    }
+    target.prompt = expanded.prompt;
+  }
+
   // -----------------------------------------------------------------------
   // Merge all capability contributions (static + dynamic) into the
   // generator's context and tools slots in a single pass. No layered
@@ -2063,7 +2091,7 @@ export function generator<
         configView,
         promptText: prompt,
       } = await buildSystemPrefix(
-          normalizedConfig.prompt,
+          normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
           promptFileBrand,
           contextValues,
           input,
@@ -2140,7 +2168,7 @@ export function generator<
           }
 
           const { messages: freshSystemPrefix } = await buildSystemPrefix(
-            normalizedConfig.prompt,
+            normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
             promptFileBrand,
             freshContext,
             input,

@@ -3,6 +3,7 @@ import type { BlockContext } from "../src/types/block";
 import {
   definePromptFile,
   getPromptFileBrand,
+  isPromptFile,
   parsePromptFile,
   PromptFileParseError,
   PROMPT_FILE_BRAND,
@@ -19,6 +20,22 @@ function mockCtx(overrides?: Partial<BlockContext>): BlockContext {
 }
 
 const emptyConfig: PromptFileConfigView = { context: {} };
+
+describe("isPromptFile", () => {
+  it("returns true for a parsed PromptFile", () => {
+    expect(isPromptFile(parsePromptFile(`<system>hi</system>`))).toBe(true);
+  });
+
+  it("returns false for a bare branded slot, string, function, and array", () => {
+    const pf = parsePromptFile(`<system>hi</system>`);
+    expect(isPromptFile(pf.prompt)).toBe(false);
+    expect(isPromptFile("inline prompt")).toBe(false);
+    expect(isPromptFile(() => "x")).toBe(false);
+    expect(isPromptFile([pf.prompt])).toBe(false);
+    expect(isPromptFile(null)).toBe(false);
+    expect(isPromptFile({ prompt: "not branded" })).toBe(false);
+  });
+});
 
 describe("parsePromptFile — frontmatter", () => {
   it("parses all known frontmatter fields", () => {

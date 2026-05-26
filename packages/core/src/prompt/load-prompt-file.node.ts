@@ -12,7 +12,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parsePromptFile,
   PromptFileLoadError,
@@ -96,4 +96,66 @@ export function loadPromptFile(
     partials,
     ...(options?.filters !== undefined ? { filters: options.filters } : {}),
   });
+}
+
+/** Options for {@link createPromptLoader}. */
+export interface PromptLoaderOptions {
+  /**
+   * Shared partials directory for every prompt this loader reads. Defaults to
+   * each prompt's own directory (the {@link loadPromptFile} default). Set this
+   * once when many prompts pull from a common `_partials` dir.
+   */
+  partialsDir?: string;
+  /** Liquid filters applied to every prompt this loader reads. */
+  filters?: PromptFileFilters;
+}
+
+/** A loader returned by {@link createPromptLoader}: resolves `relPath` against
+ * the captured base directory and loads the prompt. Per-call `filters` merge
+ * over (and override) the loader's shared filters. */
+export type PromptLoader = (
+  relPath: string,
+  perCallOptions?: { filters?: PromptFileFilters }
+) => PromptFile;
+
+/**
+ * Build a prompt loader anchored at `baseDir`, so call sites drop the
+ * repeated `importerUrl` (`import.meta.url`) argument and shared
+ * `partialsDir` / `filters`:
+ *
+ * ```ts
+ * const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"), {
+ *   partialsDir: path.resolve(process.cwd(), "src/prompts/_partials"),
+ * });
+ * const analyst = load("analyst.prompt.md");
+ * ```
+ *
+ * `baseDir` must be an absolute directory path. `relPath` is joined onto it,
+ * yielding an absolute path — so the resolution never depends on
+ * `import.meta.url`, which bundlers (e.g. Next.js) make unreliable. Anchor at
+ * `process.cwd()` or a path derived from `fileURLToPath(import.meta.url)`.
+ *
+ * @throws {TypeError} when `baseDir` is not absolute.
+ */
+export function createPromptLoader(
+  baseDir: string,
+  options?: PromptLoaderOptions
+): PromptLoader {
+  if (!path.isAbsolute(baseDir)) {
+    throw new TypeError(
+      `createPromptLoader: baseDir must be an absolute path, got "${baseDir}". ` +
+        `Anchor at process.cwd() or fileURLToPath(import.meta.url).`
+    );
+  }
+  const importerUrl = pathToFileURL(baseDir).href;
+  return (relPath, perCallOptions) => {
+    const filters =
+      perCallOptions?.filters !== undefined || options?.filters !== undefined
+        ? { ...options?.filters, ...perCallOptions?.filters }
+        : undefined;
+    return loadPromptFile(path.join(baseDir, relPath), importerUrl, {
+      ...(options?.partialsDir !== undefined ? { partialsDir: options.partialsDir } : {}),
+      ...(filters !== undefined ? { filters } : {}),
+    });
+  };
 }

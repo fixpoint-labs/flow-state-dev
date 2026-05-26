@@ -171,6 +171,24 @@ const pf = loadPromptFile("./analyst.prompt.md", import.meta.url, {
 });
 ```
 
+The second argument is the caller's `import.meta.url`, which `"./analyst.prompt.md"` resolves against. You can also pass an absolute path, in which case `import.meta.url` is ignored — useful under bundlers (Next.js) that make `import.meta.url` unreliable.
+
+When a module loads several prompts from the same place, `createPromptLoader` captures the base directory and shared options once so each call site is just a filename:
+
+```ts
+import path from "node:path";
+import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+
+const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"), {
+  partialsDir: path.resolve(process.cwd(), "src/prompts/_partials"),
+});
+
+const analyst = load("analyst.prompt.md");
+const trader = load("trader.prompt.md", { filters: { format_usd } });
+```
+
+`baseDir` must be absolute; `relPath` joins onto it, so resolution never depends on `import.meta.url`. Per-call `filters` merge over (and override) the loader's shared filters.
+
 Only the `/node` subpath imports `node:fs`. Browser and bundled consumers must not import it. Instead, import the raw text (Vite exposes a file's contents with the `?raw` suffix) and hand it to `parsePromptFile` with an explicit `partials` map:
 
 ```ts
@@ -204,6 +222,20 @@ export const analyst = generator({
   outputSchema: TradeProposalSchema,
 });
 ```
+
+**Or pass the `PromptFile` directly.** If you aren't overriding the file's prompt, hand the whole `PromptFile` to the `prompt` slot and skip the spread:
+
+```ts
+export const analyst = generator({
+  name: "analyst",
+  model: "openai/gpt-5.4-mini",
+  prompt: load("analyst.prompt.md"),
+  tools: [searchTool],
+  outputSchema: TradeProposalSchema,
+});
+```
+
+This expands the same fields `definePromptFile` covers (`user`, `caching`, `maxTokens`, `temperature`, and optionally `name` / `description`). Any sibling field you set explicitly on the generator wins, just like the spread form — so the precedence rules below apply either way.
 
 **Spread precedence.** Whatever comes after the spread overrides what the spread set. An inline `prompt:` written below `...definePromptFile(pf)` wins over the file's prompt.
 

@@ -142,6 +142,88 @@ describe("PromptFile generator — user block", () => {
   });
 });
 
+describe("PromptFile generator — prompt: PromptFile direct form", () => {
+  it("renders <system> when the PromptFile is passed directly (no definePromptFile spread)", async () => {
+    const pf = parsePromptFile(`<system>You investigate {{ input.ticker | upcase }}.</system>`);
+    const captured: CapturedCall[] = [];
+    const block = generator({
+      name: "pf-direct",
+      model: "mock-model",
+      prompt: pf,
+      context: { documents: "doc body" },
+    });
+    await runForTest(block, { ticker: "tsla" }, withTraceCapture(captured, []));
+
+    const sys = messagesByRole(captured[0]!, "system");
+    expect(sys[0]!.content).toBe(
+      "You investigate TSLA.\n\n<documents>\n  doc body\n</documents>"
+    );
+  });
+
+  it("fills the user slot from the file's <user> block", async () => {
+    const pf = parsePromptFile(`<system>S</system>\n<user>Assess {{ input.ticker | upcase }}.</user>`);
+    const captured: CapturedCall[] = [];
+    const block = generator({ name: "pf-direct-user", model: "mock-model", prompt: pf });
+    await runForTest(block, { ticker: "aapl" }, withTraceCapture(captured, []));
+
+    const user = messagesByRole(captured[0]!, "user");
+    expect(user[0]!.content).toBe("Assess AAPL.");
+  });
+
+  it("lets a sibling user: field win over the file's <user> block", async () => {
+    const pf = parsePromptFile(`<system>S</system>\n<user>FROM FILE</user>`);
+    const captured: CapturedCall[] = [];
+    const block = generator({
+      name: "pf-direct-user-override",
+      model: "mock-model",
+      prompt: pf,
+      user: "OVERRIDE",
+    });
+    await runForTest(block, {}, withTraceCapture(captured, []));
+
+    const user = messagesByRole(captured[0]!, "user");
+    expect(user[0]!.content).toBe("OVERRIDE");
+  });
+
+  it("pulls temperature from the file, and a sibling override still wins", async () => {
+    const pf = parsePromptFile(`---
+temperature: 0.2
+---
+<system>temp={{ config.temperature }}</system>`);
+    const captured: CapturedCall[] = [];
+    const fromFile = generator({ name: "pf-direct-temp", model: "mock-model", prompt: pf });
+    await runForTest(fromFile, {}, withTraceCapture(captured, []));
+    expect(String(messagesByRole(captured[0]!, "system")[0]!.content)).toBe("temp=0.2");
+
+    const overridden = generator({
+      name: "pf-direct-temp-override",
+      model: "mock-model",
+      prompt: pf,
+      temperature: 0.9,
+    } as Parameters<typeof generator>[0]);
+    const captured2: CapturedCall[] = [];
+    await runForTest(overridden, {}, withTraceCapture(captured2, []));
+    expect(String(messagesByRole(captured2[0]!, "system")[0]!.content)).toBe("temp=0.9");
+  });
+
+  it("captures template trace fields just like the spread form", async () => {
+    const text = `---
+name: direct-traced
+intent: chat
+---
+<system>S {{ input.x }}</system>`;
+    const pf = parsePromptFile(text);
+    const captured: CapturedCall[] = [];
+    const traces: BlockTraceItem[] = [];
+    const block = generator({ name: "pf-direct-trace", model: "mock-model", prompt: pf });
+    await runForTest(block, { x: 1 }, withTraceCapture(captured, traces));
+
+    const gen = traces.find((t) => t.generator)?.generator;
+    expect(gen?.templateSource).toBe(text);
+    expect(gen?.templateFrontmatter).toMatchObject({ name: "direct-traced", intent: "chat" });
+  });
+});
+
 describe("PromptFile generator — config view reflects overrides", () => {
   it("exposes a temperature override (not the frontmatter value) as config.temperature", async () => {
     const pf = parsePromptFile(`---

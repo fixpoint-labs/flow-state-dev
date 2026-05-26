@@ -72,9 +72,11 @@ export const fundamentalsGenerator = generator({
 });
 ```
 
+If you aren't overriding the prompt, you can skip the spread and pass the `PromptFile` straight to the `prompt` slot — `prompt: pf`. It expands the same fields, and explicit sibling fields still win. Use whichever reads better.
+
 Two things to watch:
 
-- **Spread precedence.** Anything written after `...definePromptFile(pf)` overrides what the spread set. That is the lever for keeping an inline override if you need one.
+- **Spread precedence.** Anything written after `...definePromptFile(pf)` overrides what the spread set. That is the lever for keeping an inline override if you need one. The same precedence holds when you pass the `PromptFile` directly.
 - **The frontmatter `name` footgun.** If the `.md` frontmatter sets `name`, it flows through `definePromptFile`. Spread after the generator's own `name`, it overwrites it. Leave `name` out of frontmatter unless you mean for the file to name the block.
 
 In the browser, `loadPromptFile` is not available, since it reads the file system. Import the raw text instead (Vite exposes file contents with the `?raw` suffix) and hand it to `parsePromptFile` with an explicit `partials` map. The reference page covers this path.
@@ -104,7 +106,7 @@ Synthesize a thesis from the financial data provided.
 
 `{% render %}` runs the partial in an isolated scope, so the partial cannot accidentally read or clobber the caller's variables. That is the safer default. There is also `{% include %}`, which shares the caller's scope; reach for it only when you specifically need that.
 
-The example loads prompts through a small wrapper, `loadDeskPrompt`, that anchors paths at `process.cwd()` and points every `{% render %}` at the shared `_partials` directory. Anchoring at the working directory rather than `import.meta.url` is a deliberate call here, because the Next.js bundler makes `import.meta.url` unreliable for resolving sibling files. If your app bundles prompts, watch for the same issue.
+The example loads prompts through a small wrapper, `loadDeskPrompt`, built on `createPromptLoader` — it anchors paths at `process.cwd()` and points every `{% render %}` at the shared `_partials` directory, so each call site is just a filename. Anchoring at the working directory rather than `import.meta.url` is a deliberate call here, because the Next.js bundler makes `import.meta.url` unreliable for resolving sibling files. If your app bundles prompts, watch for the same issue.
 
 ### Reaching for context override
 

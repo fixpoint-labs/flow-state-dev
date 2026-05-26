@@ -281,7 +281,20 @@ Defaultable fields: `sessionStateSchema`, `userStateSchema`,
 
 ### Prompt files (`@flow-state-dev/core/prompt-file`, `@flow-state-dev/core/prompt-file/node`)
 
-Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
+Author a generator's prompt as a `.md` file. The isomorphic subpath exports `parsePromptFile(text, options?)`, `definePromptFile(pf)`, `isPromptFile(value)`, and the `PromptFile` / `PromptFileConfig` / `PromptFileParseError` / `PromptFileLoadError` types. The Node-only subpath exports `loadPromptFile(specifier, importerUrl, options?)`, which reads the file and auto-registers sibling `.md` files as partials; only this subpath imports `node:fs`, so browser/bundled consumers use `parsePromptFile` with raw text plus an explicit `partials` map.
+
+Two ergonomic shortcuts cut the boilerplate:
+
+- **Pass the `PromptFile` straight to `prompt`** instead of spreading `definePromptFile(pf)`. `generator({ prompt: loadPromptFile(...), model })` expands the file's `user` / `caching` / `maxTokens` / `temperature` / `name` / `description` into the config; any sibling field you set explicitly wins (same precedence as `...definePromptFile(pf), <overrides>`).
+- **`createPromptLoader(baseDir, options?)`** (Node subpath) captures an absolute `baseDir` plus shared `partialsDir` / `filters` once and returns a `load(relPath)` function, so call sites drop the repeated `import.meta.url` argument. Per-call `filters` merge over the loader's shared filters.
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
+
+const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
+const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
+```
 
 ### Types (`@flow-state-dev/core/types`)
 

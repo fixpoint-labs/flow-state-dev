@@ -1,9 +1,9 @@
 /**
  * Trading-desk prompt-file loader.
  *
- * Wraps `@flow-state-dev/core/prompt-file/node`'s `loadPromptFile` so phase
+ * Wraps `@flow-state-dev/core/prompt-file/node`'s `createPromptLoader` so phase
  * prompts authored as `.md` files load consistently across the trading-desk
- * runtimes. Paths are anchored at `process.cwd()` (the trading-desk package
+ * runtimes. The loader is anchored at `process.cwd()` (the trading-desk package
  * dir under Next.js dev/build and vitest alike) rather than `import.meta.url`,
  * which bundling makes unreliable here — see `lib/fixtures.ts` for the same
  * anchoring decision.
@@ -15,13 +15,15 @@
  */
 import path from "node:path";
 import {
-  loadPromptFile,
+  createPromptLoader,
   type LoadPromptFileOptions,
 } from "@flow-state-dev/core/prompt-file/node";
 import type { PromptFile } from "@flow-state-dev/core/prompt-file";
 
 const FLOW_ROOT = path.resolve(process.cwd(), "src/flows/trading-desk");
 const PARTIALS_DIR = path.join(FLOW_ROOT, "prompts", "_partials");
+
+const load = createPromptLoader(FLOW_ROOT, { partialsDir: PARTIALS_DIR });
 
 /**
  * Load a trading-desk `.md` prompt. `relPath` is relative to the
@@ -32,8 +34,5 @@ export function loadDeskPrompt(
   relPath: string,
   options?: Pick<LoadPromptFileOptions, "filters">
 ): PromptFile {
-  return loadPromptFile(path.join(FLOW_ROOT, relPath), import.meta.url, {
-    partialsDir: PARTIALS_DIR,
-    ...(options?.filters !== undefined ? { filters: options.filters } : {}),
-  });
+  return load(relPath, options?.filters !== undefined ? { filters: options.filters } : undefined);
 }
