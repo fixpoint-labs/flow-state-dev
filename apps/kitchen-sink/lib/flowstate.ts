@@ -13,9 +13,10 @@
  * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
  */
 import { after } from "next/server";
+import path from "node:path";
 import { openai } from "@ai-sdk/openai";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, filesystemStores, inMemoryStores } from "@flow-state-dev/server";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
@@ -78,7 +79,14 @@ export const flowstate = createFlowState({
   },
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },
-    dev: { primary: inMemoryStores() },
+    // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
+    // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
+    dev: {
+      primary:
+        process.env.STORE_TYPE === "filesystem"
+          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+          : inMemoryStores(),
+    },
   },
   defaultProfile: "dev",
   // Scheduled dispatches are fire-and-forget; keep the serverless function
