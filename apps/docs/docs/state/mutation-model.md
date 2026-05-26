@@ -6,6 +6,8 @@ sidebar_position: 1
 
 Every scope's state mutators (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of two paths inside the runtime. The right primitive depends on whether anything outside this Node.js process can advance the version underneath you.
 
+Read-only instance config is also available on the context as `ctx.settings` — see [Server Setup → Settings](/docs/server/setup#settings).
+
 ## Two-tier dispatch
 
 ```

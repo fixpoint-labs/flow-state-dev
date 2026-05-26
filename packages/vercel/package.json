@@ -16,6 +16,14 @@
     "./schedules": {
       "types": "./dist/schedules.d.ts",
       "default": "./dist/schedules.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "default": "./dist/store.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "default": "./dist/next.js"
     }
   },
   "license": "MIT",
@@ -26,10 +34,19 @@
     "access": "public"
   },
   "dependencies": {
-    "@flow-state-dev/server": "workspace:*"
+    "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/store-postgres": "workspace:*",
+    "@neondatabase/serverless": "^0.10.4",
+    "pg": "^8.13.0"
   },
   "peerDependencies": {
-    "@flow-state-dev/scheduled": "workspace:*"
+    "@flow-state-dev/scheduled": "workspace:*",
+    "next": ">=15.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@flow-state-dev/scheduled": "workspace:*",

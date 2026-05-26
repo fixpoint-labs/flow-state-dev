@@ -75,24 +75,30 @@ export const chatGen = generator({
 });
 ```
 
-### One server route serves all flows
+### One runtime config, one server route
 
-A single catch-all API route registers all flows and handles routing:
+Describe the runtime once in `lib/flowstate.ts`, then mount it from a single catch-all API route that handles routing for all flows:
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import chatFlow from "@/flows/my-chat/flow";
 import agentFlow from "@/flows/my-agent/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
-registry.register(agentFlow);
+export const flowstate = createFlowState({
+  flows: { chatFlow, agentFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
 
-const router = createFlowApiRouter({ registry });
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 ### Shared blocks across flows

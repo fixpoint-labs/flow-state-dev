@@ -53,17 +53,35 @@ flow-state.dev is written in TypeScript and ships type definitions. For best res
 - TypeScript `^5.7`
 - Enable `strict` mode in your `tsconfig.json`
 
-## Server Framework Compatibility
+## Initialize the server
 
-The server package exposes standard request handlers. The `createFlowApiRouter` returns handlers compatible with:
+Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Keep this in its own file so a route handler (and your tests) can import it.
 
-- **Next.js** App Router (catch-all route)
-- Any framework supporting standard `Request`/`Response` objects
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import myFlow from "@/flows/my-flow/flow";
 
-```ts title="Next.js App Router"
-// app/api/flows/[...path]/route.ts
-const router = createFlowApiRouter({ registry });
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
 ```
+
+`createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Server Setup](/docs/server/setup) for stores, profiles, settings, and error handling.
+
+## Mount the route
+
+A platform adapter turns the `flowstate` handle into HTTP route handlers. The framework uses one catch-all route. For Vercel-hosted Next.js:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+For non-Vercel Next.js deployments, use `createNextHandler` from `@flow-state-dev/next`. Any framework that speaks standard `Request`/`Response` can mount `flowstate.getRouter()` directly.

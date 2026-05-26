@@ -7,6 +7,7 @@ export type {
   BlockOutput,
   BlockResult,
   DeclaredResources,
+  FlowStateSettings,
   LooseBlockContext,
 } from "./types/block";
 export type {

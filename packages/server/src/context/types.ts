@@ -1,6 +1,7 @@
 import type {
   BlockContext,
   FlowInstance,
+  FlowStateSettings,
   JsonObject,
   ModelResolver,
   ResponseEmitterHandle
@@ -63,6 +64,8 @@ export type CreateExecutionContextOptions<
   backgroundSignal?: AbortSignal;
   response?: ResponseEmitterHandle;
   modelResolver?: ModelResolver;
+  /** Instance-level settings exposed on every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   stores: StoreRegistry;
   logger?: RuntimeLogger;
 };

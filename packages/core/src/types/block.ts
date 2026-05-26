@@ -157,6 +157,27 @@ export type BlockResult<TOutput> =
   | { status: "completed"; output: TOutput }
   | { status: "failed"; error: Error };
 
+/**
+ * Instance-level settings, read inside blocks via `ctx.settings`.
+ *
+ * Empty by default and framework-provided — users declaration-merge their
+ * own keys in their project, exactly as Vite's `ImportMetaEnv` works:
+ *
+ * ```ts
+ * declare module "@flow-state-dev/core" {
+ *   interface FlowStateSettings {
+ *     sandbox: { type: "local" | "vercel" | "memory" };
+ *   }
+ * }
+ * ```
+ *
+ * The runtime value is supplied by `createFlowState({ settings })` and threaded
+ * onto every `BlockContext`. The `FlowState<TSettings>` generic and this
+ * interface are kept in sync by the same declaration merge.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface FlowStateSettings {}
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -174,6 +195,12 @@ export interface BlockContext<
   user: UserScopeHandle<TUserState>;
   org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * Instance-level settings declared on `createFlowState({ settings })`.
+   * Read-only. Typed via declaration merging into {@link FlowStateSettings}.
+   */
+  settings: FlowStateSettings;
 
   /**
    * Flat resource registry — every resource declared by this block, the

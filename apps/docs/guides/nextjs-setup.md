@@ -11,7 +11,7 @@ A focused guide on integrating flow-state-dev with a Next.js App Router applicat
 
 ## Prerequisites
 
-- **Next.js 14+** (App Router)
+- **Next.js 15+** (App Router) — required by `@flow-state-dev/next` and `@flow-state-dev/vercel/next`
 - **Node.js 18+** (20+ recommended)
 - **pnpm** or npm/yarn
 
@@ -27,6 +27,15 @@ pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/client @flo
 
 `zod` is a peer dependency. Used for schema validation everywhere. The React package brings in the client automatically, but listing both keeps dependencies explicit.
 
+Add a platform adapter for the route handler. On Vercel:
+```bash
+pnpm add @flow-state-dev/vercel
+```
+On non-Vercel Next.js deployments:
+```bash
+pnpm add @flow-state-dev/next
+```
+
 For development:
 ```bash
 pnpm add -D @flow-state-dev/testing @flow-state-dev/cli
@@ -34,22 +43,46 @@ pnpm add -D @flow-state-dev/testing @flow-state-dev/cli
 
 ---
 
+## Create the FlowState
+
+Describe the runtime once with `createFlowState`. Pass your flows, a model config, and where state lives. Keep it in its own file so the route handler imports a configured instance.
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import chatFlow from "@/flows/hello-chat/flow";
+
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+`stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary`, the catch-all state store. Swap `inMemoryStores()` for a persistent adapter when you're ready. See [Server Setup](/docs/server/setup).
+
 ## Create the API route
 
 The framework expects a single catch-all route. It handles routing internally. You don't create separate routes for actions, streams, or state.
 
+For Vercel-hosted Next.js, use `createVercelNextHandler` from `@flow-state-dev/vercel/next`. It adds Vercel's SSE header shaping:
+
 ```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import chatFlow from "@/flows/hello-chat/flow";
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
 
-const router = createFlowApiRouter({ registry });
+For non-Vercel Next.js deployments (for example Next-on-Cloudflare), use `createNextHandler` from `@flow-state-dev/next` instead:
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createNextHandler } from "@flow-state-dev/next";
+
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 ```
 
 **Why a catch-all?** The framework uses path-based routing: `/api/flows/:kind/actions/:action`, `/api/flows/:kind/requests/:requestId/stream`, etc. A single `[...path]` segment captures the rest of the path. The router parses it and dispatches to the right handler. One file, full API.
@@ -59,7 +92,7 @@ export const DELETE = router.DELETE;
 - GET for SSE streams and state snapshots
 - DELETE for session cleanup
 
-All under `/api/flows/`. Add more flows by registering them in the same registry.
+All under `/api/flows/`. Add more flows by listing them in `flows` on `createFlowState`.
 
 ---
 
@@ -67,18 +100,22 @@ All under `/api/flows/`. Add more flows by registering them in the same registry
 
 Generators specify a model string (e.g. `"openai/gpt-5.4-mini"`). At runtime, the server resolves that to an actual AI SDK model. You need a model resolver.
 
-**Zero-config:** Auto-detects providers from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.):
+You configure models on `createFlowState`. `models.default` is the fallback. The resolver auto-detects providers from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) and auto-wires the Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set.
 
-```ts
-import { createModelResolver } from "@flow-state-dev/core/models";
-
-const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver(),
+```ts title="lib/flowstate.ts"
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+    },
+  },
+  stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
-Model strings use slash format: `"openai/gpt-5.4-mini"`, `"anthropic/claude-sonnet-4-6"`. For gateway routing: `"vercel/openai/gpt-5.4"`.
+Model strings use slash format: `"openai/gpt-5.4-mini"`, `"anthropic/claude-sonnet-4-6"`. For gateway routing: `"vercel/openai/gpt-5.4"`. `intents` maps a named intent to an ordered list of candidate models the resolver tries in turn.
 
 ---
 
@@ -133,6 +170,8 @@ OPENAI_API_KEY=sk-...
 
 If using the default Vercel AI Gateway: `AI_GATEWAY_API_KEY`. For custom resolvers, use whatever your provider expects. Never commit keys. Use `.env.local` for local development.
 
+To pick a store profile per environment, set `FSD_ENV` to the profile name. It wins over `defaultProfile`. `NODE_ENV` is not consulted, so a production build doesn't silently point at production infrastructure. See [Profile selection](/docs/server/setup#profile-selection).
+
 ---
 
 ## Project structure
@@ -144,9 +183,12 @@ app/
   api/
     flows/
       [...path]/
-        route.ts          # Single catch-all
+        route.ts          # Single catch-all (imports lib/flowstate)
   layout.tsx
   page.tsx
+
+lib/
+  flowstate.ts            # createFlowState config
 
 src/
   flows/
@@ -169,9 +211,13 @@ Flows can live under `src/flows/` or `app/flows/`. The CLI and most examples use
 
 Hooks require client components. If you see "useSession can only be used in a Client Component," add `"use client"` at the top of the file. FlowProvider can wrap from a layout; the children that call hooks must be client components.
 
+### Pass the flowstate object, not its router
+
+`createVercelNextHandler(flowstate)` takes the `FlowState` handle, not the resolved router. Don't call `createVercelNextHandler(flowstate.getRouter())`. The handler resolves the router lazily on the first request, which is what lets stores initialize without top-level await.
+
 ### API route exports
 
-The route must export `GET`, `POST`, and `DELETE`. The framework uses all three. If you only export `POST`, streaming and state fetches will fail.
+The route must export `GET`, `POST`, `PATCH`, and `DELETE`. The framework uses all four. If you only export `POST`, streaming and state fetches will fail. The destructuring form (`export const { GET, POST, PATCH, DELETE } = ...`) exports all of them at once.
 
 ### FlowProvider placement
 

@@ -4,7 +4,7 @@
  * Schema auto-initializes on first call.
  */
 
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
 import type { Pool, PoolConfig } from "pg";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
 import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
@@ -210,6 +210,25 @@ export async function createPostgresStores(
     traces: createInMemoryTraceStore(),
     async close() {
       await closePool();
+    }
+  };
+}
+
+/**
+ * Postgres store adapter for `createFlowState`. Backs the `primary`
+ * capability slot. Wraps `createPostgresStores`, memoizing the registry so
+ * lazy resolution opens the pool once, and disposes it via `close()`.
+ */
+export function postgresStores(options: PostgresStoreOptions): StoreAdapter {
+  let registry: PostgresStoreRegistry | undefined;
+  return {
+    capabilities: ["primary"],
+    async resolve() {
+      registry ??= await createPostgresStores(options);
+      return registry;
+    },
+    async dispose() {
+      await registry?.close();
     }
   };
 }

@@ -764,6 +764,7 @@ export async function runActionInternal<
       signal: composedSignal,
       backgroundSignal: backgroundController.signal,
       modelResolver: options.modelResolver,
+      settings: options.settings,
       response,
       stores: options.stores,
       logger
