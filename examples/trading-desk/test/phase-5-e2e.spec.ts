@@ -202,7 +202,11 @@ function neutralCritiqueOutput() {
         invalidation: "tighter" as const,
       },
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
     },
   };
@@ -235,7 +239,11 @@ function riskAssessmentStructuredOutput() {
         },
       ],
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
       recommendedAdjustments: {
         sizing: {
@@ -296,6 +304,19 @@ function portfolioManagerStructuredOutput(
         invalidation: { applied: true, reasoning: "Stop tightening accepted." },
       },
       keyDependencies: ["AI cap-ex cycle length"],
+      asymmetricEdge:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Street underprices the data-center attach rate."
+          : "",
+      nearTermCatalyst:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Q2 print lands in three weeks."
+          : "",
+      invalidationTrigger:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Attach rate flat or down two quarters running."
+          : "",
+      acknowledgedAndDropped: [] as { item: string; reason: string }[],
     },
   };
 }
