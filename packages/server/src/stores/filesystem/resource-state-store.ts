@@ -110,14 +110,8 @@ export class FilesystemResourceStateStore implements ResourceStateStore {
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
-    const dir = this.scopeDir(scopeType, scopeId);
-    try {
-      await rm(dir, { recursive: true, force: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error;
-      }
-    }
+    // `force: true` already treats a missing path as success, so no ENOENT guard.
+    await rm(this.scopeDir(scopeType, scopeId), { recursive: true, force: true });
   }
 }
 
