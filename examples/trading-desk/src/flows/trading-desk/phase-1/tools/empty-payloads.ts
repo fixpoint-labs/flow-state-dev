@@ -114,7 +114,10 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    markets: [],
+    tickerMarkets: [],
+    backdropMarkets: [],
+    backdropTheme: "",
+    coverageQuality: "absent",
   }),
   get_insider_transactions: (i) => ({
     source: "unavailable",

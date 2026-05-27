@@ -31,11 +31,21 @@ export class InMemoryContentStore implements ContentStore {
   }
 
   async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>> {
+    return this.getByPrefix(scopeType, scopeId, "");
+  }
+
+  async getByPrefix(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string
+  ): Promise<Record<string, string>> {
     const prefix = this.prefix(scopeType, scopeId);
     const result: Record<string, string> = {};
     for (const [key, value] of this.data) {
-      if (key.startsWith(prefix)) {
-        result[key.slice(prefix.length)] = value;
+      if (!key.startsWith(prefix)) continue;
+      const resourceKey = key.slice(prefix.length);
+      if (resourceKey.startsWith(keyPrefix)) {
+        result[resourceKey] = value;
       }
     }
     return result;

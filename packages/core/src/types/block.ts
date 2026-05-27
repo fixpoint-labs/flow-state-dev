@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
   AgentType,
@@ -104,6 +105,12 @@ export interface ResponseEmitterHandle {
    */
   getItems(): readonly OutputItem[];
   /**
+   * O(1) count of items currently tracked by this response. Equivalent to
+   * `getItems().length` but without materializing or ordering the snapshot —
+   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   */
+  getItemCount(): number;
+  /**
    * Subscribe to subsequent item lifecycle transitions on this response.
    * `kind` distinguishes the underlying mutation: `"added"` for a freshly
    * emitted item, `"updated"` for an in-place mutation, `"done"` for a
@@ -157,6 +164,27 @@ export type BlockResult<TOutput> =
   | { status: "completed"; output: TOutput }
   | { status: "failed"; error: Error };
 
+/**
+ * Instance-level settings, read inside blocks via `ctx.settings`.
+ *
+ * Empty by default and framework-provided — users declaration-merge their
+ * own keys in their project, exactly as Vite's `ImportMetaEnv` works:
+ *
+ * ```ts
+ * declare module "@flow-state-dev/core" {
+ *   interface FlowStateSettings {
+ *     sandbox: { type: "local" | "vercel" | "memory" };
+ *   }
+ * }
+ * ```
+ *
+ * The runtime value is supplied by `createFlowState({ settings })` and threaded
+ * onto every `BlockContext`. The `FlowState<TSettings>` generic and this
+ * interface are kept in sync by the same declaration merge.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface FlowStateSettings {}
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -174,6 +202,12 @@ export interface BlockContext<
   user: UserScopeHandle<TUserState>;
   org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * Instance-level settings declared on `createFlowState({ settings })`.
+   * Read-only. Typed via declaration merging into {@link FlowStateSettings}.
+   */
+  settings: FlowStateSettings;
 
   /**
    * Flat resource registry — every resource declared by this block, the
@@ -214,6 +248,24 @@ export interface BlockContext<
   getBlockResult<TBlock extends BlockDefinition>(
     block: TBlock
   ): BlockResult<BlockOutput<TBlock>>;
+
+  /**
+   * Returns whether `target` — a prior block in the current sequencer scope —
+   * recovered an error through its own `.rescue()` handler during its
+   * execution. The flag is set on the block that owns the `.rescue()` (e.g. a
+   * sub-sequencer wrapping a risky step), so query that block, not the inner
+   * step that threw. `target` is a block name or definition (resolved via
+   * `block.name`).
+   *
+   * Scope and resolution match `getBlockResult`: only blocks that ran as prior
+   * siblings in the current sequencer run are visible, and under `.loopBack`
+   * the most recent (current-iteration) run of a named block is consulted.
+   *
+   * Returns `false` when the block ran without rescuing, was never dispatched
+   * (e.g. skipped by `.thenIf`), is not found in the current scope, or when
+   * called outside a sequencer. Never throws.
+   */
+  wasRescued(target: string | BlockDefinition<any, any>): boolean;
 
   targets: InferTargetStatesFromSchemas<TTargets>;
 
@@ -456,6 +508,14 @@ export interface BlockContext<
   _outputTracker?: { lastBlockOutputItemId?: string };
 
   /**
+   * @internal Set by the sequencer runtime when a `.rescue()` handler recovers
+   * a thrown error. Read by `_withExecutionScope` post-execution to stamp the
+   * block's sibling-registry result (`result.rescued`), which `wasRescued`
+   * later consults. Not part of the public API.
+   */
+  _didRescue?: boolean;
+
+  /**
    * @internal Per-request background work pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
    * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
@@ -477,6 +537,14 @@ export interface BlockContext<
    * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
    */
   _requestBackgroundSignal?: AbortSignal;
+
+  /**
+   * @internal Effective tracing verbosity for this request (FIX-406 6H).
+   * Set by the runtime from `createFlowApiRouter({ tracingLevel })`; read by
+   * sequencers to gate non-durable observability snapshots. Absent → the
+   * sequencer falls back to `resolveTracingLevel()` (env / observability).
+   */
+  _tracingLevel?: TracingLevel;
 
   /**
    * @internal Per-request single-flight map for cacheable tool calls

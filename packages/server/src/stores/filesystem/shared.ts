@@ -148,7 +148,12 @@ export type CreateFilesystemRecordStoreOptions<
 > = {
   rootDir: string;
   filter?: (record: TRecord, options?: TListOptions) => boolean;
-  sort?: (left: TRecord, right: TRecord) => number;
+  /**
+   * Comparator applied before offset/limit. Receives the list options so a
+   * store can honor a per-call sort key (e.g. `orderBy`). Defaults to
+   * `updatedAt` descending.
+   */
+  sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
 };
 
 /** Per-id serialization so the read-check-write sequence below is atomic within one process. */
@@ -228,7 +233,7 @@ export function createFilesystemRecordStore<
           ? all
           : all.filter((record) => filter(record, listOptions));
 
-      filtered.sort(sort);
+      filtered.sort((left, right) => sort(left, right, listOptions));
       return applyOffsetLimit(filtered, listOptions);
     }
   };

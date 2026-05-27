@@ -104,9 +104,9 @@ The stream carries `item.added`, `content.delta`, `item.done`, and terminal even
 
 ## 8. The server is generated
 
-Register flows. Get a full REST API. No route wiring.
+List your flows in one config object. Get a full REST API. No route wiring.
 
-You create a registry, register your flow instances, and pass the registry to `createFlowApiRouter`. That router exposes POST for actions, GET for streams and state snapshots, DELETE for session cleanup. One catch-all route in Next.js is enough.
+You describe the runtime with `createFlowState`, passing your flows and where state lives, then mount the returned handle with a platform handler. It exposes POST for actions, GET for streams and state snapshots, DELETE for session cleanup. One catch-all route in Next.js is enough.
 
 ## 9. React hooks make it reactive
 

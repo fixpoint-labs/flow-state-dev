@@ -294,8 +294,11 @@ export async function executeRunCommand(
   // 3. Parse input
   const input = parseInputArg({ input: options.input, inputFile: options.inputFile });
 
-  // 4. Set up stores
-  const stores = options.stores ?? createFilesystemStores({ rootDir: ".fsdev/data" });
+  // 4. Set up stores. `fsdev run` is a local one-shot runner, so the
+  // filesystem store is acknowledged development-only (FIX-406 6A).
+  const stores =
+    options.stores ??
+    createFilesystemStores({ rootDir: ".fsdev/data", developmentOnly: true });
 
   // 4b. Parse and apply seed state
   const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;

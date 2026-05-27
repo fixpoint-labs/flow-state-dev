@@ -22,3 +22,21 @@ export function getResponseItems(response: unknown): RuntimeItem[] {
 
   return [];
 }
+
+/**
+ * O(1) count of buffered response items, used to assign the next `itemIndex`.
+ * Prefers the emitter's `getItemCount()` so this stays cheap on the emit hot
+ * path; falls back to materializing items for partial mocks (FIX-406 6G).
+ */
+export function getResponseItemCount(response: unknown): number {
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "getItemCount" in response &&
+    typeof (response as { getItemCount?: unknown }).getItemCount === "function"
+  ) {
+    return (response as { getItemCount: () => number }).getItemCount();
+  }
+
+  return getResponseItems(response).length;
+}

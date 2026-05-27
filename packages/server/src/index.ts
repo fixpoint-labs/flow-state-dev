@@ -23,11 +23,26 @@ export {
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
+  filesystemStores,
+  inMemoryStores,
   resolveOrgStorageKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS
 } from "./stores";
+export type {
+  CapabilitySlot,
+  CapabilitySlotMap,
+  StoreAdapter,
+  StoresConfig
+} from "./stores";
+export { createFlowState } from "./flowstate/createFlowState";
+export type {
+  CreateFlowStateOptions,
+  FlowState,
+  FlowStateModelsConfig,
+  FlowStateVoiceConfig
+} from "./flowstate/types";
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
@@ -41,6 +56,8 @@ export type {
   RequestListOptions,
   RequestRecord,
   RequestStatus,
+  PersistErrorHandler,
+  PersistErrorInfo,
   RequestStore,
   SessionListOptions,
   SessionRecord,
@@ -106,9 +123,13 @@ export {
   NetworkError,
   RateLimitError,
   TimeoutError,
+  ContextLengthError,
+  ProviderUnavailableError,
   ToolExecutionError,
   ValidationError,
-  AmbiguousBlockNameError
+  AmbiguousBlockNameError,
+  FlowStateConfigError,
+  FlowStateDisposedError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
 export {

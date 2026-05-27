@@ -56,6 +56,8 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
 import type {
+  ContentScopeType,
+  ContentStore,
   OrgRecord,
   RequestRecord,
   SessionRecord,
@@ -67,6 +69,7 @@ import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -251,6 +254,60 @@ function normalizeScopeResourceContent(
   }
 
   return normalized;
+}
+
+/**
+ * Load only the content a scope's declared resources reference. Fixed
+ * resources resolve to a single storage key (`content.get`); collections
+ * resolve to their pattern prefix (`content.getByPrefix`, where an empty
+ * prefix loads every instance in the scope). A scope with no declared
+ * resources issues no content read at all. The merged map seeds
+ * `normalizeScopeResourceContent`, so undeclared keys never enter the
+ * execution context.
+ */
+async function loadDeclaredScopeContent(
+  content: ContentStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, string>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, string>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      // A non-empty static prefix targets the collection's `prefix/...`
+      // namespace; an empty prefix (e.g. `[topic]/observations`) loads
+      // every key in the scope.
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(content.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await content.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, string> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (typeof value === "string") seed[key] = value;
+  }
+  return seed;
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -2144,6 +2201,13 @@ export async function createExecutionContext<
       ? resolveOrgStorageKey(optionsOrgId, flow)
       : undefined;
 
+  // Window the cross-turn history load to the most recent N completed
+  // requests (FIX-685). This bounds the store read and the default
+  // generator's in-prompt history regardless of session length; the full
+  // session stays retrievable via the state endpoint. Per-call
+  // history({ limit }) refines within this window — it cannot widen it.
+  const historyWindowTurns = flow.session?.historyWindow?.turns ?? 50;
+
   // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
@@ -2151,14 +2215,25 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    // `items` are read below to reconstruct cross-turn history.
-    stores.request.list({ sessionId, withItems: true })
+    // The N most-recently-started completed requests — `status:"completed"`
+    // excludes the current (in-progress) request and any in-flight siblings;
+    // `orderBy:"startedAtMs"` makes the windowed selection robust to
+    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    stores.request.list({
+      sessionId,
+      status: "completed",
+      limit: historyWindowTurns,
+      orderBy: "startedAtMs",
+      withItems: true
+    })
   ]);
 
-  // Filter to completed prior requests once — reused by both all()/client()
+  // The windowed list already filters to completed requests at the store;
+  // exclude only the current request (defends a retry that reuses an id),
+  // then sort ascending for stable history ordering. Reused by all()/client()
   // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
-    .filter((r) => r.id !== requestId && r.status === "completed")
+    .filter((r) => r.id !== requestId)
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   // Build prior items from completed request records. This replaces the
@@ -2259,13 +2334,17 @@ export async function createExecutionContext<
     await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
-  // Content lives in ContentStore exclusively (FIX-347). Eagerly load all
-  // content for the scopes this execution touches so reads during the run
-  // are synchronous against the in-memory cache.
+  // Content lives in ContentStore exclusively (FIX-347). Load only the
+  // content this flow declares (FIX-685) — fixed resources by key,
+  // collections by pattern prefix — so reads during the run are synchronous
+  // against the in-memory cache without over-fetching the whole scope. The
+  // full-scope view stays available via the state endpoint.
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    stores.content.getAll("session", sessionId),
-    stores.content.getAll("user", userKey),
-    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
+    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredScopeContent(stores.content, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, string>>({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -2710,7 +2789,8 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        orgId: orgRef.current?.orgId
+        orgId: orgRef.current?.orgId,
+        tenantId: options.tenantId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2729,7 +2809,8 @@ export async function createExecutionContext<
       identity: {
         type: "user" as const,
         id: userRef.current.id,
-        userId: userRef.current.userId
+        userId: userRef.current.userId,
+        tenantId: options.tenantId
       },
       ...userOpsEmitting
     },
@@ -2743,7 +2824,8 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        orgId: sessionRef.current.orgId
+        orgId: sessionRef.current.orgId,
+        tenantId: options.tenantId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2847,7 +2929,8 @@ export async function createExecutionContext<
               type: "org" as const,
               id: orgRef.current.id,
               userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId
+              orgId: orgRef.current.orgId,
+              tenantId: options.tenantId
             },
             ...orgOpsEmitting
           },
@@ -2896,7 +2979,17 @@ export async function createExecutionContext<
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
-    result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
+    result: {
+      status: "not_started" | "running" | "completed" | "failed";
+      output?: unknown;
+      error?: Error;
+      /**
+       * Set true when this block threw and a `.rescue()` handler recovered the
+       * error during its run. Stamped from the child context's `_didRescue` in
+       * `_withExecutionScope`'s success branch; read by `wasRescued`.
+       */
+      rescued?: boolean;
+    };
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -3204,6 +3297,7 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
@@ -3358,6 +3452,27 @@ export async function createExecutionContext<
         }
 
         return { status: "not_started" } as BlockResult<never>;
+      },
+      wasRescued: (target) => {
+        const name = typeof target === "string" ? target : target.name;
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name !== name) {
+              continue;
+            }
+            // Most-recent matching sibling wins (per-iteration correct under
+            // `.loopBack`), mirroring `getBlockResult`'s resolution.
+            return sibling.result.rescued === true;
+          }
+        }
+
+        return false;
       },
       // Populated immediately after this object literal closes so the
       // deprecated aliases share the underlying impls with `ctx.emit.*`
@@ -3514,6 +3629,9 @@ export async function createExecutionContext<
         // `.work()` dispatches can read it (the dispatch site reads
         // `ctx._requestBackgroundSignal`, not `ctx.signal`).
         (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // FIX-406 6H: propagate the request's tracing level so sequencers in
+        // any nested scope gate observability snapshots consistently.
+        (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3524,6 +3642,11 @@ export async function createExecutionContext<
           siblingEntry.result.status = "completed";
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
+          // Carry the child's out-of-band rescue flag onto its sibling entry so
+          // a downstream sibling can read it via `ctx.wasRescued(...)`. Written
+          // by the sequencer runtime's rescue catch (see `_didRescue`).
+          siblingEntry.result.rescued =
+            (childContext as { _didRescue?: boolean })._didRescue === true;
 
           // Harvest the BlockValue hint set by the child's execute (if any)
           // so the block_trace `output` patch carries a ref/structure rather
@@ -3765,5 +3888,9 @@ export async function createExecutionContext<
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
+  // with child scopes — keeps observability gating correct if a sequencer ever
+  // executes directly on the root context.
+  (rootContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
   return rootContext;
 }

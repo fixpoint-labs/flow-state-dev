@@ -3,6 +3,7 @@
  */
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
+import { classifyProviderError } from "./classify-provider-error";
 
 export type NormalizeErrorOptions = {
   code?: string;
@@ -58,6 +59,21 @@ export function normalizeError(
   options: NormalizeErrorOptions = {}
 ): FlowError {
   const normalized = toError(error);
+
+  // Classify raw AI SDK provider errors into the typed taxonomy
+  // (RateLimitError, TimeoutError, ...) before the generic path. Skipped when
+  // the caller forces a `code` (explicit intent wins) or the error is already
+  // a FlowError (its own type/code is authoritative).
+  if (options.code === undefined && !(normalized instanceof FlowError)) {
+    const classified = classifyProviderError(normalized, {
+      blockName: options.blockName,
+      blockInstanceId: options.blockInstanceId,
+      scope: options.scope,
+      details: options.details
+    });
+    if (classified !== undefined) return classified;
+  }
+
   const code = options.code ?? inferCode(normalized);
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 

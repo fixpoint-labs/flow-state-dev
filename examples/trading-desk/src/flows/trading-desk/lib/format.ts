@@ -20,11 +20,13 @@ export function formatMemoBlock(label: string, memo: any): string {
   if (memo === undefined || memo === null || memo.headline == null) {
     return `## ${label}\n(no memo available)`;
   }
-  const lines = [
-    `## ${label}`,
-    `Rating: ${memo.rating ?? "—"}`,
-    `Headline: ${memo.headline}`,
-  ];
+  const lines = [`## ${label}`];
+  // Phase 1 data-grounding guard (FIX-681): flag memos whose primary data
+  // source was unavailable so downstream agents skip synthesizing from them.
+  if (memo.dataQuality === "unavailable") {
+    lines.push("(unavailable — do not synthesize from this)");
+  }
+  lines.push(`Rating: ${memo.rating ?? "—"}`, `Headline: ${memo.headline}`);
   if (memo.metrics != null) {
     const metricsLine = Object.entries(memo.metrics as Record<string, string>)
       .map(([k, v]) => `${k}=${v}`)
@@ -95,8 +97,10 @@ export function formatRiskAssessmentExtensions(memo: any): string {
     for (const d of memo.dismissedRisks as Array<{
       description: string;
       reason: string;
+      dismissalCategory?: string;
     }>) {
-      lines.push(`- ${d.description} — ${d.reason}`);
+      const category = d.dismissalCategory ? ` [${d.dismissalCategory}]` : "";
+      lines.push(`- ${d.description}${category} — ${d.reason}`);
     }
   }
   if (memo.recommendedAdjustments != null) {

@@ -149,11 +149,28 @@ export async function handleRequestStream(
   // No record AND no events: 404. The completed-request branch below covers
   // the case where a record was GC'd but events survive.
   if (requestRecord === undefined) {
-    const events = await ctx.stores.request.getEvents(route.requestId);
+    const cursor = resolveRequestReplayCursor({
+      requestId: route.requestId,
+      lastEventId: request.headers.get("last-event-id"),
+      startingAfter: url.searchParams.get("starting_after")
+    });
+    // Read only events past the resume cursor — pre-cursor events are never
+    // pulled from the store.
+    const events = await ctx.stores.request.getEvents(
+      route.requestId,
+      cursor.sequenceNumber
+    );
     if (events.length === 0) {
-      return jsonResponse(404, {
-        error: `Unknown request "${route.requestId}"`
-      });
+      // Without a cursor, an empty read means the request is genuinely
+      // unknown → 404. With a cursor, the resuming client already consumed
+      // the whole log; there's just nothing new, so return an empty 200
+      // rather than a spurious 404.
+      if (cursor.sequenceNumber === undefined) {
+        return jsonResponse(404, {
+          error: `Unknown request "${route.requestId}"`
+        });
+      }
+      return new Response("", { status: 200, headers: SSE_HEADERS });
     }
     let replay = replayRequestEvents({
       requestId: route.requestId,
@@ -172,16 +189,28 @@ export async function handleRequestStream(
     });
   }
 
-  // Terminal request: completed-request flat-string replay (unchanged).
+  // Terminal request: completed-request flat-string replay.
   const session =
     requestRecord.sessionId !== undefined
       ? await ctx.stores.session.get(requestRecord.sessionId)
       : undefined;
 
-  // Prefer persisted canonical event history for cursor-accurate replay.
-  // Fall back to item-based reconstruction if no events have been persisted.
-  let replaySource = await ctx.stores.request.getEvents(route.requestId);
-  if (replaySource.length === 0) {
+  const cursor = resolveRequestReplayCursor({
+    requestId: route.requestId,
+    lastEventId: request.headers.get("last-event-id"),
+    startingAfter: url.searchParams.get("starting_after")
+  });
+
+  // Prefer persisted canonical event history for cursor-accurate replay,
+  // reading only events past the resume cursor. Fall back to item-based
+  // reconstruction only when the *unfiltered* log is empty (no cursor and no
+  // persisted events). A cursor that filters every event means the client
+  // already has the whole stream, so deliver nothing new — never reconstruct.
+  let replaySource = await ctx.stores.request.getEvents(
+    route.requestId,
+    cursor.sequenceNumber
+  );
+  if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
   }
 

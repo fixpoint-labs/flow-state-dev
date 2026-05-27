@@ -71,6 +71,9 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     signal: new AbortController().signal,
     resolveModel,
     getTarget: () => undefined,
+    getBlockOutput: () => undefined,
+    getBlockResult: () => ({ status: "not_started" as const }),
+    wasRescued: () => false,
     targetStateSchemas: {},
     cap: {} as any,
   };

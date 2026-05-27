@@ -54,6 +54,23 @@ export const portfolioDecisionOutputSchema = z.object({
     invalidation: adjustmentDecisionSchema,
   }),
   keyDependencies: z.array(z.string()),
+  // Buy/Overweight decision predicates. Required string fields; empty
+  // string for Hold/Sell/Underweight. The Buy/Overweight non-empty
+  // requirement is enforced by the prompt, not the schema (BP-016 keeps
+  // every field required, so empty string is the optional-when-Hold
+  // pattern rather than `.optional()`).
+  asymmetricEdge: z.string(),
+  nearTermCatalyst: z.string(),
+  invalidationTrigger: z.string(),
+  // Trader dependencies the PM consciously dropped, each with a reason.
+  // The Phase 5 writer cross-checks this against `trader.dependsOn` so a
+  // dropped dependency is acknowledged rather than silently lost.
+  acknowledgedAndDropped: z.array(
+    z.object({
+      item: z.string(),
+      reason: z.string(),
+    }),
+  ),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
