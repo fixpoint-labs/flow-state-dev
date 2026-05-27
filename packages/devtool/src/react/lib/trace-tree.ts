@@ -1,5 +1,5 @@
 import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
-import { parseBlockInstanceId } from "@flow-state-dev/core";
+import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 
