@@ -68,7 +68,9 @@ export const phase2RoundRobin = roundRobin({
   // name, so writes and reads must align.
   accessorKey: "p2Contributions",
   // Capability resolves `model` from `costPreset` at runtime; no
-  // per-variant build-time instances needed.
-  uses: [tradingDesk],
+  // per-variant build-time instances needed. `counterEvidence` adds the
+  // closed-world `find_counter_evidence` tool on the `full` preset only
+  // (FIX-679); the cheap path stays tool-free.
+  uses: [tradingDesk.presets({ counterEvidence: true })],
   instructions: ROUND_ROBIN_INSTRUCTIONS,
 });
