@@ -1,36 +1,57 @@
 /**
- * Tool-result memoization (FIX-610 Wave 1, Layer B).
+ * Tool-result memoization — public surface.
  *
  * `createToolCacheCapability` returns a `DefinedCapability` that, when
  * installed on a block via `uses: [...]`, installs an in-memory cache
  * store and exposes it on the active `BlockContext` so the substrate
  * wrapping in `compileToolsWithExecute` can serve hits and write
- * misses. Bare generators benefit from the same primitive; Task Board
- * auto-installs it when `toolCache` is enabled.
+ * misses. Bare generators benefit from the same primitive; the Task
+ * Board pattern auto-installs it when `toolCache` is enabled.
  *
- * The store lives on `ctx.request.state` under a single namespaced
- * slot. We deliberately do NOT back this with a `defineResource`-based
- * persistent store in v1 — bounding lifetime to the request (or the
- * board run, whichever is shorter) is what makes the correctness story
- * tractable. Persistent backings are a Phase 2 follow-up.
+ * The store lives on a hidden non-enumerable bag attached to
+ * `ctx.request` — NOT on `ctx.request.state` — because the runtime
+ * structured-clones `state` for snapshots and the LRU store's methods
+ * are functions, which would throw `DataCloneError`. The request handle
+ * is shared by reference across every nested ctx, so the bag is visible
+ * from any block that runs in the same request.
+ *
+ * The substrate wrapping at `internal/cache-tool-call.ts` imports the
+ * types defined here so consumer-facing `ToolCacheStore` and the
+ * substrate-internal shape stay unified.
  */
-import { defineCapability } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { defineCapability } from "../capability";
+import type { BlockContext } from "../types/block";
 
 // ---------------------------------------------------------------------------
-// Store shape (mirrors the contract expected by core's cache-tool-call hook)
+// Store shape
 // ---------------------------------------------------------------------------
 
 /** One cached tool-call entry. */
 export interface ToolCacheEntry {
+  /** The tool's resolved output. Cached verbatim. */
   output: unknown;
+  /** Wall-clock millis (`Date.now()`) when the entry was written. */
   storedAt: number;
+  /** Resolved TTL applied to this entry, in ms. `undefined` falls back to the store's default. */
   ttl?: number;
+  /** Name of the tool that produced the entry — used for invalidate-by-prefix. */
   toolName: string;
+  /**
+   * Attribution back to the task whose original call populated this
+   * entry, when the call ran inside a Task Board worker. A later
+   * cache-hit emit uses this to stamp `sourceTask` on its
+   * `tool_output` item.
+   */
   sourceTask?: { collectionId: string; taskId: string };
 }
 
-/** Store accessor surface — matches the shape resolved by core's wrapping. */
+/**
+ * Store accessor surface. The substrate's `compileToolsWithExecute`
+ * (in `generator.ts`) only calls `get` and `set` on the resolved store;
+ * the additional `delete` / `invalidate` / `size` methods exist so
+ * the capability accessor can expose invalidation and stats to
+ * consumer blocks.
+ */
 export interface ToolCacheStore {
   defaultTtl?: number;
   defaultScope?: "run" | "request" | "session";
@@ -167,8 +188,8 @@ const DEFAULT_MAX_ENTRIES = 5000;
 /**
  * Build a tool-cache capability. Each consumer block that installs it
  * (or each board that auto-installs it) gets a request-scoped store
- * exposed on the active context. The substrate's
- * `wrapToolExecuteWithCache` reads through `ctx._resolveToolCacheStore`
+ * exposed on the active context. The substrate's caching path inside
+ * `compileToolsWithExecute` reads through `ctx._resolveToolCacheStore`
  * — that slot is populated for any block that lists the capability in
  * its `uses` chain.
  */
@@ -199,19 +220,12 @@ export function createToolCacheCapability(
 }
 
 /**
- * Pull the store off a hidden bag on the request handle, creating
- * it lazily on first access. Single store per capability name per
+ * Pull the store off a hidden bag on the request handle, creating it
+ * lazily on first access. Single store per capability name per
  * request. Task Board wiring may install additional per-run cleanup
  * around the request-scoped lifetime.
- *
- * The bag lives on `ctx.request` as a non-enumerable property — NOT
- * on `ctx.request.state` — because the runtime structured-clones
- * `state` for snapshots and the LRU store's `get` / `set` / `delete`
- * methods are functions, which would throw `DataCloneError`. The
- * request handle is shared by reference across every nested ctx, so
- * the bag is visible from any block that runs in the same request.
  */
-const STORE_BAG_KEY = "__fsd_fix610_toolCacheStores";
+const STORE_BAG_KEY = "__fsd_toolCacheStores";
 
 function resolveOrCreateStore(
   ctx: BlockContext,
@@ -248,10 +262,11 @@ function installResolverHook(ctx: BlockContext, store: ToolCacheStore): void {
 }
 
 /**
- * Standalone helper for board wiring: bind a cache store onto a
- * context so any cacheable tool that runs under that subtree resolves
- * to it. Used by `taskBoard`'s outer sequencer to scope the store to a
- * single board run.
+ * Bind a cache store onto a context so any cacheable tool that runs
+ * under that subtree resolves to it. Used by `taskBoard`'s outer
+ * sequencer to scope the store to a single board run; consumers can
+ * also call it directly to share a store across blocks without
+ * going through the capability path.
  */
 export function bindToolCacheStore(ctx: BlockContext, store: ToolCacheStore): void {
   installResolverHook(ctx, store);
@@ -269,7 +284,3 @@ export function createInMemoryToolCacheStore(opts: {
     defaultScope: opts.defaultScope ?? "run",
   });
 }
-
-// Re-export the canonicalize helper so consumers writing custom keyFns
-// can opt into the same normalization the substrate uses by default.
-export { canonicalizeToolArgs } from "@flow-state-dev/core";

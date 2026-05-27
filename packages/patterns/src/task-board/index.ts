@@ -344,9 +344,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * — wire-identical to pre-FIX-610 behavior. Pattern factories like
    * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
    *
-   * Typed as `unknown` here to keep `@flow-state-dev/patterns` from
-   * depending on `@flow-state-dev/utilities-task-flow`. The concrete
-   * shape is `TaskFlowPolicy` from that package.
+   * Typed as `unknown` here so consumers of the public
+   * `TaskBoardConfig` don't need to import the policy type until they
+   * actually construct one. The concrete shape is `TaskFlowPolicy`
+   * from `@flow-state-dev/tasks`.
    */
   flowPolicy?: unknown;
 }
