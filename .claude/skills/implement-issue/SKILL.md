@@ -1,6 +1,6 @@
 ---
 name: fsd:implement-issue
-description: Use when implementing a Linear issue. Fetches the issue and spec, creates a fix branch, auto-routes by Linear category (Bug vs Feature/Enhancement) to the right implementation discipline, dispatches sub-agents for complex work, and runs a comprehensive review before presenting results. Handles "Fix bug for FIX-N" and "Implement FEAT-N" the same way — the routing happens inside.
+description: Use when implementing a Linear issue. Fetches the issue and spec, creates a fix branch, auto-routes by Linear category (Bug vs Feature/Enhancement) to the right implementation discipline, dispatches sub-agents for complex work, runs a comprehensive review, opens a PR, and then stays on the PR — acknowledging new review comments with an eyes reaction and responding to every code-related comment with either a fix or a justification. Handles "Fix bug for FIX-N" and "Implement FEAT-N" the same way — the routing happens inside.
 argument-hint: "<Linear issue ID, e.g. FIX-123>"
 ---
 
@@ -18,6 +18,8 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 Both disciplines are embedded into the implementer sub-agent prompt at dispatch time. The implementer doesn't choose — this skill picks based on the label and gives them the right shape.
 
 ## Workflow
+
+**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open PR (`gh pr list --search "FIX-N in:title,body" --state open` or the URL recorded on the Linear issue). If one exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
 
@@ -262,6 +264,113 @@ Once approved:
    - Attach PR URL
    - Final comment with PR link
 
+After the PR is open, the skill's job is not finished — every re-invocation falls into Step 10.
+
+### Step 10: Respond to PR Feedback
+
+Once the PR is open, this skill owns it until it merges. Whenever the skill is re-invoked with PR activity (new comments, new review, change requests), run this loop. The "never leave a code-related comment unresponded to" rule applies across re-invocations: a comment from yesterday is still a new comment if it doesn't yet have an `eyes` reaction from us.
+
+#### 10.1: Enumerate every comment and review on the PR
+
+Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three:
+
+```bash
+# repo identifiers (use jq to extract from the PR URL or run once and cache)
+gh pr view {PR} --json url,headRefName,number,reviewDecision,baseRefName
+
+# 1) inline review comments (attached to specific lines of code)
+gh api repos/{owner}/{repo}/pulls/{PR}/comments
+
+# 2) top-level PR conversation comments
+gh api repos/{owner}/{repo}/issues/{PR}/comments
+
+# 3) review submissions (the wrapper around inline comments + a body)
+gh api repos/{owner}/{repo}/pulls/{PR}/reviews
+```
+
+For each comment, fetch its existing reactions so you can identify which ones you've already processed:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions
+gh api repos/{owner}/{repo}/issues/comments/{comment_id}/reactions
+```
+
+A comment is **new** (unprocessed) if it does not yet have an `eyes` reaction from us (the PR author / the agent's GitHub identity). Ignore comments authored by us — we don't acknowledge our own replies.
+
+#### 10.2: Mark each new comment as seen with an `eyes` reaction
+
+Before deciding what to do about a comment, add the `eyes` (`:eyes:`) reaction. This is a UX signal to the reviewer that the agent is aware of the comment and is processing it — it should appear *before* any reply lands, so the reviewer doesn't refresh and wonder whether the agent is alive.
+
+```bash
+# inline review comment
+gh api -X POST repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions -f content=eyes
+# top-level issue/PR comment
+gh api -X POST repos/{owner}/{repo}/issues/comments/{comment_id}/reactions -f content=eyes
+# review body
+gh api -X POST repos/{owner}/{repo}/pulls/{PR}/reviews/{review_id}/reactions -f content=eyes
+```
+
+React to every new comment first, in a batch, before deciding on actions. The order matters: acknowledge everything, then decide.
+
+#### 10.3: Classify each new comment
+
+For each comment, pick exactly one bucket:
+
+- **Actionable code feedback** — the reviewer is asking for a code change, pointing out a bug, suggesting a refactor in scope, or questioning the correctness of an implementation choice. → *Requires a response, almost always involving a code change.*
+- **Non-actionable code feedback** — the reviewer is asking a clarifying question, expressing a preference you disagree with, suggesting work that's out of scope, or proposing something the spec explicitly excluded. → *Requires a response explaining the decision. No code change.*
+- **Non-code conversation** — acknowledgments ("thanks", "LGTM, merging Monday"), meta-comments about PR process, off-topic chatter. → *No response needed.*
+
+When in doubt between "non-actionable code feedback" and "non-code conversation", treat it as the former. The bar for skipping a response is high — **never leave a code-related comment unresponded to.**
+
+#### 10.4: Take action and reply
+
+Process each comment in its bucket:
+
+**Actionable code feedback (you agree with the change):**
+
+1. Make the change. For non-trivial feedback, follow the same discipline the PR was built under (TDD for features → add the failing test first; diagnose for bugs → reproduce the regression first).
+2. Run the affected package's typecheck and tests:
+   `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
+3. Commit with a message that names the feedback being addressed and references the issue:
+   `fix: address PR review — {short summary} (FIX-N)`
+4. Push to the PR branch: `git push`
+5. Reply on the comment thread describing exactly what changed, with concrete file references (path:line). For inline review comments, post as a threaded reply so the conversation stays attached to the code:
+
+   ```bash
+   gh api -X POST repos/{owner}/{repo}/pulls/{PR}/comments \
+     -f body="Fixed in <sha>: <one-line description of what changed and where>." \
+     -F in_reply_to={comment_id}
+   ```
+
+   For top-level PR conversation, use `gh pr comment {PR} --body "..."`.
+
+**Non-actionable code feedback (no change is the right call):**
+
+1. Reply on the thread explaining the decision. Be direct and concrete. Cite the spec, a BP rule (BP-007–BP-016), an architecture doc, or a scope boundary that justifies it.
+2. If the suggestion is a real follow-up that just isn't this PR's job, offer to file a Linear issue and link it in the reply.
+
+**Non-code conversation:**
+
+Leave it alone. The `eyes` reaction is already there, which is acknowledgment enough.
+
+#### 10.5: Reply style
+
+- Short and concrete. No performative agreement ("Great catch!", "Good point!").
+- Describe *what* changed (or *why* nothing changed), not your reasoning narrative.
+- Reference file paths and commit shas when describing a fix.
+- One reply per comment thread, not a wall of text.
+
+#### 10.6: Continue until merged
+
+After processing the batch:
+
+- If reviews requested changes and you've addressed them all, re-request review:
+  `gh pr edit {PR} --add-reviewer {handle}`
+- If the PR is approved with no open threads, it's ready to merge — but defer the merge decision to the user unless the workflow explicitly allows auto-merge.
+- If new activity arrives later, re-enter at Step 10.1.
+
+The skill exits this loop only when the PR is merged or closed.
+
 ## Guidelines
 
 - **Spec drives everything.** Don't improvise beyond the spec. If the spec is wrong, flag it — don't silently deviate.
@@ -271,3 +380,6 @@ Once approved:
 - **Simplification is not optional.** The simplification review exists because agents tend to over-build. Take its findings seriously.
 - **One shot for simple issues.** Don't spin up sub-agents for a 10-line bug fix. The complexity assessment in Step 4 exists to prevent ceremony overhead on simple work.
 - **Keep Linear updated.** Every state change should be reflected. The whole point is traceability.
+- **Acknowledge before you act.** On every PR re-invocation, react to every new comment with `eyes` *before* deciding what to do with any of them. Reviewers should never wonder whether the agent saw their comment.
+- **Never leave a code-related comment unresponded to.** Every actionable comment gets a code change + reply; every non-actionable code comment gets a reply explaining why no change is being made. Only pure non-code conversation (acknowledgments, scheduling, off-topic) can be left at just the `eyes` reaction.
+- **Replies describe outcomes, not reasoning.** Say what changed and where, or why nothing changed and which rule/spec backs that. No performative agreement.
