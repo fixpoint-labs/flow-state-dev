@@ -43,7 +43,9 @@ describe("setInstructions action", () => {
     // not at the bare `${userId}`.
     const isolated = await stores.user.get(ISOLATED_KEY);
     expect(isolated, `record at ${ISOLATED_KEY}`).toBeDefined();
-    const resources = (isolated?.resources ?? {}) as Record<string, unknown>;
+    // Resource state lives in the ResourceStateStore (FIX-689), keyed by the
+    // (isolated) user record id, not inline on the record.
+    const resources = await stores.resourceState.getAll("user", ISOLATED_KEY);
     const persisted = resources[STORAGE_KEY] as
       | Record<string, string>
       | undefined;
@@ -91,8 +93,8 @@ describe("setInstructions action", () => {
       },
     });
 
-    const isolated = await stores.user.get(ISOLATED_KEY);
-    const persisted = (isolated?.resources ?? {})[STORAGE_KEY] as
+    const resources = await stores.resourceState.getAll("user", ISOLATED_KEY);
+    const persisted = resources[STORAGE_KEY] as
       | Record<string, string>
       | undefined;
     expect(persisted?.global).toBe("v2 global");

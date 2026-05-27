@@ -454,7 +454,7 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | {
           status?: string;
@@ -552,7 +552,7 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.memoStatus?.portfolioManager).toBe("error");
     expect(sessionState.runComplete).toBe(false);
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;
