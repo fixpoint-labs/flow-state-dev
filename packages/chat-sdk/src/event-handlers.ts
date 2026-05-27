@@ -215,9 +215,20 @@ export async function dispatchChatEvent(
 
   if (matched.length > 0) {
     // Broadcast: each matching binding produces an independent dispatch.
-    await Promise.all(
+    // `allSettled` so a downstream throw in one binding (principal rejection,
+    // flow error under streamToThread) neither aborts nor orphans its
+    // siblings — each rejection is observed and logged.
+    const results = await Promise.allSettled(
       matched.map((entry) => runOneSubscription(host, options, event, entry))
     );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        host.logger?.error?.(
+          "@flow-state-dev/chat-sdk: subscription dispatch threw",
+          { err: result.reason }
+        );
+      }
+    }
     return;
   }
 
@@ -282,7 +293,7 @@ async function runOneSubscription(
   let sessionId: string | undefined;
   try {
     sessionId = entry.binding.sessionId !== undefined
-      ? await entry.binding.sessionId(event)
+      ? (await entry.binding.sessionId(event)) ?? event.thread?.id
       : event.thread?.id;
   } catch (err) {
     host.logger?.error?.(

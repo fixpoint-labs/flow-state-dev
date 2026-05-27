@@ -47,11 +47,6 @@ export type {
 } from "./types";
 export { defineChatBinding } from "./define-binding";
 export type { TypedChatEventBinding } from "./define-binding";
-export type {
-  ChatSubscriptionEntry,
-  ChatSubscriptionIndex,
-} from "./subscription-index";
-export { buildChatSubscriptionIndex } from "./subscription-index";
 export { chatCapability } from "./capability";
 export { chatPost } from "./blocks/post";
 export { chatTyping } from "./blocks/typing";

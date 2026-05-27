@@ -161,6 +161,15 @@ describe("dispatchChatEvent — flow-level subscriptions", () => {
     expect(calls[0].sessionId).toBe("custom-session");
   });
 
+  it("falls back to thread id when sessionId returns undefined", async () => {
+    const flows = [
+      flow("support", { mention: { action: "reply", input: () => 1, sessionId: () => undefined } }, false),
+    ];
+    const { host, calls } = makeHost(flows);
+    await dispatchChatEvent(host, baseOptions, mentionEvent(), buildChatSubscriptionIndex(flows));
+    expect(calls[0].sessionId).toBe("thread-1");
+  });
+
   it("falls back to thread id when sessionId throws", async () => {
     const flows = [
       flow("support", { mention: { action: "reply", input: () => 1, sessionId: () => { throw new Error("x"); } } }, false),
