@@ -12,6 +12,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { createInMemoryStores, createFlowRegistry } from "../src";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import {
   handleListCollectionState,
@@ -103,11 +104,14 @@ async function setupCtx(opts: {
     flowKind: "test-flow",
     userId: "user_1",
     state: {},
-    resources,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   await stores.session.set(sessionId, session, "any");
+  // Resource state is canonical in the ResourceStateStore (FIX-689).
+  for (const [key, state] of Object.entries(resources)) {
+    await stores.resourceState.set("session", sessionId, key, state as JsonObject);
+  }
   return { registry, stores, sessionId };
 }
 
@@ -501,17 +505,23 @@ describe("client projection shapes (FIX-580)", () => {
       flowKind: "projection-flow",
       userId: "user_1",
       state: {},
-      resources: {
-        "items/one": { title: "T", body: "B", secret: "S" },
-      },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    return stores.session.set(sessionId, session, "any").then(() => ({
-      registry,
-      stores,
-      sessionId,
-    }));
+    return stores.session
+      .set(sessionId, session, "any")
+      .then(() =>
+        stores.resourceState.set("session", sessionId, "items/one", {
+          title: "T",
+          body: "B",
+          secret: "S",
+        })
+      )
+      .then(() => ({
+        registry,
+        stores,
+        sessionId,
+      }));
   }
 
   it("ships identity state when state.read: true and no projection is set", async () => {

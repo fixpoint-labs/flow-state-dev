@@ -99,8 +99,9 @@ export function findResourceConfig(
 
 /**
  * Read the persisted resource state and content for a given scope of a
- * session. Resource state lives on the scope record; content lives in the
- * ContentStore (FIX-347).
+ * session. Resource state lives in the ResourceStateStore (FIX-689) and
+ * content in the ContentStore (FIX-347) — both keyed per-resource, separate
+ * from the scope record.
  *
  * Returns `undefined` if the session, user record, or org record is
  * missing for the requested scope.
@@ -115,11 +116,11 @@ export async function getPersistedData(
   if (!session) return undefined;
 
   if (scope === "session") {
-    const content = await ctx.stores.content.getAll("session", session.id);
-    return {
-      resources: (session.resources ?? {}) as Record<string, JsonObject>,
-      content
-    };
+    const [resources, content] = await Promise.all([
+      ctx.stores.resourceState.getAll("session", session.id),
+      ctx.stores.content.getAll("session", session.id)
+    ]);
+    return { resources, content };
   }
 
   if (scope === "user") {
@@ -131,11 +132,11 @@ export async function getPersistedData(
       resolveUserStorageKey(session.userId, toIsolationFlow(flow))
     );
     if (!user) return undefined;
-    const content = await ctx.stores.content.getAll("user", user.id);
-    return {
-      resources: (user.resources ?? {}) as Record<string, JsonObject>,
-      content
-    };
+    const [resources, content] = await Promise.all([
+      ctx.stores.resourceState.getAll("user", user.id),
+      ctx.stores.content.getAll("user", user.id)
+    ]);
+    return { resources, content };
   }
 
   // org
@@ -144,11 +145,11 @@ export async function getPersistedData(
     resolveOrgStorageKey(session.orgId, toIsolationFlow(flow))
   );
   if (!org) return undefined;
-  const content = await ctx.stores.content.getAll("org", org.id);
-  return {
-    resources: (org.resources ?? {}) as Record<string, JsonObject>,
-    content
-  };
+  const [resources, content] = await Promise.all([
+    ctx.stores.resourceState.getAll("org", org.id),
+    ctx.stores.content.getAll("org", org.id)
+  ]);
+  return { resources, content };
 }
 
 /**
