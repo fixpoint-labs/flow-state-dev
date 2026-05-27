@@ -237,15 +237,15 @@ defineFlow({ kind: "flow-b", authentication: { resolvePrincipal: sessionResolver
 
 ## Host-level fallback
 
-`createFlowApiRouter` accepts a `resolvePrincipal` option used when an
+`createFlowState` accepts a `resolvePrincipal` option used when an
 inbound flow has no `authentication.resolvePrincipal` of its own:
 
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 
-const router = createFlowApiRouter({
-  registry,
-  stores,
+export const flowstate = createFlowState({
+  flows: { chat: chatFlow },
+  stores: { default: { primary: inMemoryStores() } },
   resolvePrincipal: async (ctx) => readSession(ctx.request)
 });
 ```

@@ -33,11 +33,12 @@ Server:                                Client:
 
 The defaults work for typical Vercel/Next.js deployments — every knob is optional.
 
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 
-const router = createFlowApiRouter({
-  registry,
+export const flowstate = createFlowState({
+  flows: { chat: chatFlow },
+  stores: { default: { primary: inMemoryStores() } },
   // Wire heartbeat cadence applied to every live and GET-attach SSE
   // response. Default 15_000 ms.
   defaultSseHeartbeatMs: 15_000,

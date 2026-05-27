@@ -31,15 +31,28 @@ pnpm add @flow-state-dev/scheduled
 
 ## Mounting the adapter
 
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+The scheduled adapter is just another entry in `adapters` on
+[`createFlowState`](./setup.md), the canonical setup entrypoint:
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  adapters: [createScheduledTransportAdapter()]
+export const flowstate = createFlowState({
+  flows: { billing: billingFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  adapters: [createScheduledTransportAdapter()],
 });
+```
+
+Turn the handle into route handlers with a platform handler — the
+dispatch endpoint mounts under the same router:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 ```
 
 Mounted alongside any other adapters. The HTTP adapter is always

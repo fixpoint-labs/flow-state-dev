@@ -94,6 +94,10 @@ createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
 
 It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
 
+### Connection resilience
+
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](../../apps/docs/docs/server/connection-resilience.md) for tuning.
+
 ## Lower-level: registry and router
 
 `createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
@@ -154,9 +158,10 @@ adapter.
 ## Authentication
 
 Per-flow `defineFlow({ authentication })` and a host-level
-`createFlowApiRouter({ resolvePrincipal })` configure how the framework
-resolves the caller principal for every inbound transport. The framework
-owns the contract; the host owns credential verification.
+`resolvePrincipal` (on `createFlowState`, or `createFlowApiRouter` for the
+lower-level surface) configure how the framework resolves the caller
+principal for every inbound transport. The framework owns the contract; the
+host owns credential verification.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
