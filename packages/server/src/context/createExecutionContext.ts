@@ -2228,10 +2228,12 @@ export async function createExecutionContext<
     })
   ]);
 
-  // Filter to completed prior requests once — reused by both all()/client()
+  // The windowed list already filters to completed requests at the store;
+  // exclude only the current request (defends a retry that reuses an id),
+  // then sort ascending for stable history ordering. Reused by all()/client()
   // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
-    .filter((r) => r.id !== requestId && r.status === "completed")
+    .filter((r) => r.id !== requestId)
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   // Build prior items from completed request records. This replaces the
