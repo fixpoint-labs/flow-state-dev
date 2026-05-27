@@ -40,7 +40,7 @@ search({
   provider: "tavily",        // override auto-detection
   maxResults: 10,            // default: 5
   searchDepth: "advanced",   // "basic" (default) or "advanced"
-  searchMode: "one-shot",    // provider-specific mode hint (Parallel: default "agentic")
+  searchMode: "basic",       // provider-specific mode hint (Parallel: "advanced" (default) or "basic")
   topic: "news",             // "general" (default) or "news"
   keys: { tavily: "sk-..." }, // explicit keys (default: env vars)
 });

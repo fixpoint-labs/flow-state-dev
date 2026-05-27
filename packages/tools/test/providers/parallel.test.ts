@@ -56,7 +56,7 @@ describe("parallelAdapter", () => {
       body: JSON.stringify({
         objective: "parallel query",
         search_queries: ["parallel query"],
-        mode: "agentic",
+        mode: "advanced",
         advanced_settings: {
           max_results: 5,
           excerpt_settings: { max_chars_per_result: 1500 },
@@ -100,7 +100,7 @@ describe("parallelAdapter", () => {
     await parallelAdapter.search("query", {
       maxResults: 5,
       searchDepth: "advanced",
-      searchMode: "one-shot",
+      searchMode: "basic",
       topic: "general",
       apiKey: "test-key",
     });
@@ -111,7 +111,7 @@ describe("parallelAdapter", () => {
         body: JSON.stringify({
           objective: "query",
           search_queries: ["query"],
-          mode: "one-shot",
+          mode: "basic",
           advanced_settings: {
             max_results: 5,
             excerpt_settings: { max_chars_per_result: 6000 },

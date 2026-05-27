@@ -7,8 +7,7 @@
  * dependency — one HTTP POST.
  *
  * Execution mode comes from the shared `searchMode` config hint, defaulting to
- * "agentic" (Parallel's recommended setting for tool-call loops, and what their
- * own AI SDK integration uses).
+ * "advanced". Parallel's /v1/search accepts only "advanced" or "basic".
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";
@@ -29,7 +28,7 @@ export const parallelAdapter: SearchProviderAdapter = {
       body: JSON.stringify({
         objective: query,
         search_queries: [query],
-        mode: options.searchMode ?? "agentic",
+        mode: options.searchMode ?? "advanced",
         advanced_settings: {
           max_results: options.maxResults,
           excerpt_settings: {
