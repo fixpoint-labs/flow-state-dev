@@ -14,6 +14,13 @@ type StatusBarProps = {
   eventCount: number;
   expectedEvents?: number;
   preset: "fast" | "full";
+  /** Phase 6 thesis-audit badge text. `undefined` when no thesis was provided
+   *  for this run (no badge rendered); the alignment verdict once the audit
+   *  publishes; `"pending"` while the run is still in flight. */
+  thesis?: string;
+  /** Soft warning when a thesis was provided but too short to audit, so
+   *  Phase 6 was skipped. Surfaced so the user understands why no audit ran. */
+  thesisWarning?: string;
   /** Number of non-empty special-instruction fields. Surfaces as
    *  `instructions: N active` next to the gear (FIX-603). */
   activeInstructionCount: number;
@@ -37,6 +44,8 @@ export function StatusBar({
   eventCount,
   expectedEvents,
   preset,
+  thesis,
+  thesisWarning,
   activeInstructionCount,
   onOpenSettings,
   settingsDisabled,
@@ -75,6 +84,20 @@ export function StatusBar({
       <span className="text-[color:var(--c-fg-faint)]">·</span>
       <span className="font-mono">preset: {preset}</span>
       <span className="text-[color:var(--c-fg-faint)]">·</span>
+      {thesis !== undefined ? (
+        <>
+          <span className="font-mono">Thesis: {thesis}</span>
+          <span className="text-[color:var(--c-fg-faint)]">·</span>
+        </>
+      ) : null}
+      {thesis === undefined && thesisWarning !== undefined ? (
+        <>
+          <span className="font-mono" style={{ color: "var(--c-warn)" }} title={thesisWarning}>
+            Thesis: skipped
+          </span>
+          <span className="text-[color:var(--c-fg-faint)]">·</span>
+        </>
+      ) : null}
       <button
         type="button"
         onClick={onOpenSettings}

@@ -8,6 +8,7 @@ import {
   useSession,
   useClientData,
   useResource,
+  useResourceCollectionItem,
 } from "@flow-state-dev/react";
 import { TopBar, type CostPreset, type DataSourceMode } from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
@@ -108,12 +109,22 @@ function TradingDeskApp(): ReactElement {
   const [costPreset, setCostPreset] = useState<CostPreset>("fast");
   const [dataSource, setDataSource] = useState<DataSourceMode>("fixture");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  // Optional per-run user thesis. Frozen into session state at `seedSession`
+  // (server-side); editing here after a run starts doesn't touch the running
+  // session. A non-null thesis gates the Phase 6 audit.
+  const [userThesis, setUserThesis] = useState("");
+  const [userThesisRationale, setUserThesisRationale] = useState("");
 
   // Pending dispatch: after `selectSession`/`createSession` updates
   // `activeSessionId`, the next render gives us a `useSession` bound to the
   // resolved id. The effect below fires `sendAction` once that render lands.
   const [pendingDispatch, setPendingDispatch] = useState<
-    { sessionId: string; tuple: AnalyzeTuple } | null
+    {
+      sessionId: string;
+      tuple: AnalyzeTuple;
+      userThesis: string | null;
+      userThesisRationale: string | null;
+    } | null
   >(null);
 
   // Theme toggle — write to <html data-theme> so the OKLCH variables flip.
@@ -126,7 +137,7 @@ function TradingDeskApp(): ReactElement {
   }, [theme]);
 
   const { session: sessionClientData } = useClientData(session, {
-    session: ["costPreset", "memoStatus"],
+    session: ["costPreset", "memoStatus", "userThesis", "userThesisWarning"],
   });
   const liveCostPreset =
     (sessionClientData?.costPreset as CostPreset | undefined) ?? costPreset;
@@ -134,6 +145,30 @@ function TradingDeskApp(): ReactElement {
     (sessionClientData?.memoStatus as
       | Partial<Record<AnyMemoShortName, MemoStatus>>
       | undefined) ?? {};
+  const liveUserThesis =
+    (sessionClientData?.userThesis as string | null | undefined) ?? null;
+  const liveUserThesisWarning =
+    (sessionClientData?.userThesisWarning as string | null | undefined) ?? null;
+
+  // Phase 6 thesis-alignment memo, read for the status-bar badge. The
+  // `alignment` enum is surfaced once the audit publishes.
+  const { item: thesisAlignmentItem } = useResourceCollectionItem(
+    session,
+    "memos",
+    "p6/thesis-alignment",
+  );
+  const thesisAlignment =
+    (thesisAlignmentItem?.clientData as { alignment?: string | null } | null)
+      ?.alignment ?? null;
+
+  // Status-bar badge: only shown when a thesis was provided for this run.
+  // `pending` until the p6 memo publishes, then the alignment verdict.
+  const thesisBadge: string | undefined =
+    liveUserThesis === null
+      ? undefined
+      : memoStatus.thesisAlignment === "published" && thesisAlignment !== null
+        ? thesisAlignment
+        : "pending";
 
   const handleRun = useCallback(async () => {
     const tuple: AnalyzeTuple = { ticker, date, costPreset, dataSource };
@@ -161,8 +196,25 @@ function TradingDeskApp(): ReactElement {
     if (flow.activeSessionId !== targetId) {
       flow.selectSession(targetId);
     }
-    setPendingDispatch({ sessionId: targetId, tuple });
-  }, [ticker, date, costPreset, dataSource, flow, sessionClient]);
+    // Freeze the thesis at click time so later edits don't reach this run.
+    const thesis = userThesis.trim();
+    const rationale = userThesisRationale.trim();
+    setPendingDispatch({
+      sessionId: targetId,
+      tuple,
+      userThesis: thesis.length > 0 ? thesis : null,
+      userThesisRationale: rationale.length > 0 ? rationale : null,
+    });
+  }, [
+    ticker,
+    date,
+    costPreset,
+    dataSource,
+    userThesis,
+    userThesisRationale,
+    flow,
+    sessionClient,
+  ]);
 
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
@@ -171,9 +223,13 @@ function TradingDeskApp(): ReactElement {
   useEffect(() => {
     if (pendingDispatch === null) return;
     if (flow.activeSessionId !== pendingDispatch.sessionId) return;
-    const { tuple } = pendingDispatch;
+    const { tuple, userThesis: ut, userThesisRationale: utr } = pendingDispatch;
     setPendingDispatch(null);
-    void session.sendAction("analyze", tuple);
+    void session.sendAction("analyze", {
+      ...tuple,
+      userThesis: ut,
+      userThesisRationale: utr,
+    });
   }, [pendingDispatch, flow.activeSessionId, session]);
 
   const runState: "idle" | "streaming" | "complete" | "error" =
@@ -210,13 +266,25 @@ function TradingDeskApp(): ReactElement {
         className="grid overflow-hidden"
         style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
       >
-        <ThesesPane session={session} memoStatus={memoStatus} />
+        <ThesesPane
+          session={session}
+          memoStatus={memoStatus}
+          thesisForm={{
+            userThesis,
+            userThesisRationale,
+            onUserThesisChange: setUserThesis,
+            onUserThesisRationaleChange: setUserThesisRationale,
+            disabled: session.isStreaming,
+          }}
+        />
         <TranscriptPane session={session} />
       </main>
       <StatusBar
         state={runState}
         eventCount={session.items.length}
         preset={liveCostPreset}
+        thesis={thesisBadge}
+        thesisWarning={liveUserThesisWarning ?? undefined}
         activeInstructionCount={activeInstructionCount}
         onOpenSettings={() => setInstructionsOpen(true)}
         settingsDisabled={readSessionId === undefined}

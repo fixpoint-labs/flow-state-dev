@@ -42,16 +42,21 @@ export const AGENTS = {
   riskAssessment:      { role: "Risk Assessment",     glyph: "R=", hue: 188, team: "risk" },
   // Phase 5 — portfolio manager
   portfolioManager:    { role: "Portfolio Manager",    glyph: "PM", hue: 298, team: "pm" },
+  // Phase 6 — thesis audit (post-decision). Reuses the `pm` team so the
+  // sidebar renders it in the existing PM color group rather than minting a
+  // new team for a single agent.
+  thesisValidator:     { role: "Thesis Validator",     glyph: "TV", hue: 318, team: "pm" },
 } as const satisfies Record<string, AgentMeta>;
 
 export type AgentName = keyof typeof AGENTS;
 
 /** Phase grouping the sidebar uses to bucket entries (rendered top-down P5 → P1). */
 export const PHASE_GROUPS: ReadonlyArray<{
-  id: "p5" | "p4" | "p3" | "p2" | "p1";
+  id: "p6" | "p5" | "p4" | "p3" | "p2" | "p1";
   label: string;
   agents: ReadonlyArray<AgentName>;
 }> = [
+  { id: "p6", label: "Phase 6 — Thesis Audit", agents: ["thesisValidator"] },
   { id: "p5", label: "Phase 5 — Portfolio Manager", agents: ["portfolioManager"] },
   { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
@@ -184,6 +189,23 @@ export const PHASE_5_MEMO_KEYS = {
 
 export type Phase5MemoShortName = keyof typeof PHASE_5_MEMO_KEYS;
 
+/** Resource storage key for the Phase 6 thesis-alignment memo. Phase 6 is the
+ *  post-decision audit of the user's thesis against the independent pipeline;
+ *  it only runs when a `userThesis` was provided. Same shape as the Phase
+ *  1/2/3/4/5 maps. */
+export const PHASE_6_MEMO_KEYS = {
+  thesisAlignment: {
+    agentName: "thesisValidator",
+    memoKey: "memos/p6/thesis-alignment",
+    collectionKey: "p6/thesis-alignment",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase6MemoShortName = keyof typeof PHASE_6_MEMO_KEYS;
+
 /** Combined memo-key map across all shipped phases. The sidebar iterates
  *  this single table; future phases append their own entries. */
 export const ALL_MEMO_KEYS = {
@@ -192,6 +214,7 @@ export const ALL_MEMO_KEYS = {
   ...PHASE_3_MEMO_KEYS,
   ...PHASE_4_MEMO_KEYS,
   ...PHASE_5_MEMO_KEYS,
+  ...PHASE_6_MEMO_KEYS,
 } as const;
 
 export type AnyMemoShortName = keyof typeof ALL_MEMO_KEYS;

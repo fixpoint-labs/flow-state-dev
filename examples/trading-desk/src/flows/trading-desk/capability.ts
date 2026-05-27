@@ -35,6 +35,7 @@ import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
+  PHASE_5_MEMO_KEYS,
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
 import { formatUserInstructions } from "./special-instructions";
@@ -273,6 +274,42 @@ export const tradingDesk = defineCapability({
             "Neutral Risk critique",
             memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
           ),
+      },
+    },
+
+    /** Phase 5 — portfolio-manager decision memo, for Phase 6 consumption.
+     *  The thesis validator reads the PM's published decision as the
+     *  terminal output of the independent pipeline. Distinct from
+     *  `tradeProposal` (Phase 3) — this is the final arbiter's call. */
+    portfolioDecision: {
+      resources: { memos: memosCollection },
+      context: {
+        portfolioDecision: (_input, ctx) =>
+          formatMemoBlock(
+            "Portfolio decision",
+            memoState(ctx, PHASE_5_MEMO_KEYS.portfolioManager.collectionKey),
+          ),
+      },
+    },
+
+    /** Per-run user thesis context — only the Phase 6 validator opts in.
+     *  CRITICAL: the `core` preset does NOT use this. The pipeline (P1–P5)
+     *  must run blind to the user's thesis so its analysis stays independent;
+     *  the validator audits the user against that independent evidence.
+     *  Uses `<userThesis>` / `<userThesisRationale>` tags — deliberately
+     *  distinct from `core`'s `<userInstructions>` tag, never the same tag
+     *  for both. Returns `null` (not `""`) when a field is empty so the XML
+     *  renderer omits the tag entirely. */
+    userThesis: {
+      context: {
+        userThesis: (_input, ctx) =>
+          ctx.session.state.userThesis
+            ? `<userThesis>\n${ctx.session.state.userThesis}\n</userThesis>`
+            : null,
+        userThesisRationale: (_input, ctx) =>
+          ctx.session.state.userThesisRationale
+            ? `<userThesisRationale>\n${ctx.session.state.userThesisRationale}\n</userThesisRationale>`
+            : null,
       },
     },
 
