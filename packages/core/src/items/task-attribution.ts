@@ -132,6 +132,12 @@ export function itemsForTask(
  * that belong to a task so they render inside the task's `<TaskPlan />`
  * expansion only, not also inline in the thread. Bookend components are
  * excluded — they mount/group the board rather than belonging to a task.
+ *
+ * Unlike the other two helpers, this does NOT gate on a collection's
+ * `task-change` task ids: it is collection-agnostic by design (the chat thread
+ * dedups across every board at once), and any item carrying a `taskId` was
+ * stamped under a real worker scope — which always emits `task-change` events
+ * for the task — so there is no orphaned-`taskId` case to guard against.
  */
 export function collectAttributedItemIds(
   items: readonly OutputItem[],
