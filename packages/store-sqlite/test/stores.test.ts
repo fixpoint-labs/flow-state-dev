@@ -1,13 +1,19 @@
 import { afterEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   OrgRecord,
+  RequestListOptions,
   RequestRecord,
+  RequestStore,
   SessionRecord,
   TraceStore,
   UserRecord
 } from "@flow-state-dev/server";
 import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { initializeSchema } from "../src/schema";
+import { createSQLiteRequestStore } from "../src/request-store";
 
 function now() {
   return Date.now();
@@ -55,6 +61,25 @@ function makeRequestRecord(
     createdAt: ts,
     updatedAt: ts,
     ...overrides
+  };
+}
+
+function makeMessageItem(
+  requestId: string,
+  id: string,
+  itemIndex: number,
+  text: string
+): Record<string, unknown> {
+  return {
+    id,
+    type: "message",
+    status: "done",
+    requestId,
+    itemIndex,
+    provenance: { blockKind: "generator", blockInstanceId: "b1", blockName: "g" },
+    ts: now(),
+    role: "assistant",
+    content: [{ type: "text", text }]
   };
 }
 
@@ -341,9 +366,7 @@ describe("SQLite store adapter", () => {
       const s = freshStores();
       await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
 
-      const items = [
-        { kind: "text" as const, content: "hello", sequenceNumber: 1 }
-      ];
+      const items = [makeMessageItem("req_1", "a", 0, "hello") as unknown as OutputItem];
       s.request.persistItems("req_1", items);
       await s.request.flushItems("req_1");
 
@@ -353,8 +376,376 @@ describe("SQLite store adapter", () => {
       const result = await s.request.get("req_1");
       expect(result!.items).toBeDefined();
       expect(result!.items).toHaveLength(1);
-      expect((result!.items![0] as { content: string }).content).toBe("hello");
+      expect((result!.items![0]!.content as Array<{ text: string }>)[0]!.text).toBe(
+        "hello"
+      );
     });
+  });
+
+  // --- request_items child table (FIX-686) ---
+  //
+  // These tests need raw SQL access to assert the items live in the
+  // `request_items` child table (not the `requests.data` blob). They build a
+  // store directly over an in-memory DB so the same handle can run the store
+  // operations and the verification SELECTs.
+  describe("request_items (FIX-686)", () => {
+    let db: Database.Database;
+
+    afterEach(() => {
+      db?.close();
+    });
+
+    function freshRequestStore(): RequestStore {
+      db = new Database(":memory:");
+      initializeSchema(db);
+      return createSQLiteRequestStore(db);
+    }
+
+    function itemCount(requestId: string): number {
+      const row = db
+        .prepare("SELECT count(*) AS c FROM request_items WHERE request_id = ?")
+        .get(requestId) as { c: number };
+      return row.c;
+    }
+
+    async function seedRequest(store: RequestStore, id: string): Promise<void> {
+      await store.set(id, makeRequestRecord(id, "flow-a", "run", "u"), "any");
+    }
+
+    it("persists items to the child table and reads them back via get", async () => {
+      // Intent: items round-trip through the dedicated table, not the blob.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_rt");
+      store.persistItems("req_rt", [
+        makeMessageItem("req_rt", "a", 0, "x") as unknown as OutputItem,
+        makeMessageItem("req_rt", "b", 1, "y") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_rt");
+
+      expect(itemCount("req_rt")).toBe(2);
+      const got = await store.get("req_rt");
+      expect(got!.items!.map((i) => i.id)).toEqual(["a", "b"]);
+    });
+
+    it("incrementally UPSERTs new items into an existing set", async () => {
+      // Intent: a later snapshot that adds an item appends without losing
+      // the items already persisted.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_inc");
+      const a = makeMessageItem("req_inc", "a", 0, "x") as unknown as OutputItem;
+      const b = makeMessageItem("req_inc", "b", 1, "y") as unknown as OutputItem;
+      store.persistItems("req_inc", [a, b]);
+      await store.flushItems("req_inc");
+
+      const c = makeMessageItem("req_inc", "c", 2, "z") as unknown as OutputItem;
+      store.persistItems("req_inc", [a, b, c]);
+      await store.flushItems("req_inc");
+
+      expect(itemCount("req_inc")).toBe(3);
+      const got = await store.get("req_inc");
+      expect(got!.items!.map((i) => i.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("refines an item in place when the same id is re-emitted with new content", async () => {
+      // Intent: re-emitting an item under the same id overwrites the row and
+      // updates its sequence — no duplicate row.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_ref");
+      const keyed = "item_component:task-board";
+      store.persistItems("req_ref", [
+        makeMessageItem("req_ref", keyed, 5, "v1") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_ref");
+      store.persistItems("req_ref", [
+        makeMessageItem("req_ref", keyed, 12, "v2") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_ref");
+
+      expect(itemCount("req_ref")).toBe(1);
+      const got = await store.get("req_ref");
+      expect((got!.items![0]!.content as Array<{ text: string }>)[0]!.text).toBe(
+        "v2"
+      );
+      const seq = (
+        db
+          .prepare("SELECT sequence FROM request_items WHERE request_id = ?")
+          .get("req_ref") as { sequence: number }
+      ).sequence;
+      expect(seq).toBe(12);
+    });
+
+    it("passing the same item reference twice issues no second write", async () => {
+      // Intent: reference-identity diffing skips unchanged items, so a
+      // re-persist of the same object does not touch the row.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_noop");
+      const item = makeMessageItem("req_noop", "a", 0, "x") as unknown as OutputItem;
+      store.persistItems("req_noop", [item]);
+      await store.flushItems("req_noop");
+
+      const updatedBefore = (
+        db
+          .prepare("SELECT data FROM request_items WHERE request_id = ?")
+          .get("req_noop") as { data: string }
+      ).data;
+
+      // Mutate the row out-of-band; if persistItems wrote again it would
+      // overwrite this marker. A no-op leaves the marker untouched.
+      db.prepare(
+        "UPDATE request_items SET data = ? WHERE request_id = ?"
+      ).run(JSON.stringify({ marker: true }), "req_noop");
+
+      store.persistItems("req_noop", [item]);
+      await store.flushItems("req_noop");
+
+      const after = (
+        db
+          .prepare("SELECT data FROM request_items WHERE request_id = ?")
+          .get("req_noop") as { data: string }
+      ).data;
+      expect(after).toBe(JSON.stringify({ marker: true }));
+      expect(after).not.toBe(updatedBefore);
+    });
+
+    it("coalesces N synchronous persistItems into one write of the latest snapshot", async () => {
+      // Intent: many calls in a synchronous burst collapse to a single
+      // microtask that writes one row per distinct item.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_coal");
+      const items = [
+        makeMessageItem("req_coal", "a", 0, "x") as unknown as OutputItem,
+        makeMessageItem("req_coal", "b", 1, "y") as unknown as OutputItem
+      ];
+      for (let i = 0; i < 1000; i += 1) {
+        store.persistItems("req_coal", items);
+      }
+      await store.flushItems("req_coal");
+      expect(itemCount("req_coal")).toBe(2);
+    });
+
+    it("get falls back to legacy data.items when request_items has no rows", async () => {
+      // Intent: requests persisted before the table existed still read their
+      // items from the JSONB blob.
+      const store = freshRequestStore();
+      const legacyItem = makeMessageItem("legacy_1", "legacy_a", 0, "legacy-x");
+      const record = makeRequestRecord("legacy_1", "flow-a", "run", "u", "sess", {
+        items: [legacyItem as unknown as OutputItem]
+      });
+      // Write the legacy shape directly: items inside data, no child rows.
+      db.prepare(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
+      ).run(
+        "legacy_1",
+        record.flowKind,
+        record.userId,
+        record.sessionId ?? null,
+        record.status,
+        record.version,
+        record.createdAt,
+        record.updatedAt,
+        JSON.stringify(record)
+      );
+
+      const got = await store.get("legacy_1");
+      expect(got!.items).toHaveLength(1);
+      expect(got!.items![0]!.id).toBe("legacy_a");
+    });
+
+    it("merges legacy data.items with request_items rows, table wins on collision", async () => {
+      const store = freshRequestStore();
+      const legacyA = makeMessageItem("merge_1", "shared", 0, "legacy-version");
+      const legacyB = makeMessageItem("merge_1", "legacy-only", 1, "legacy-b");
+      const record = makeRequestRecord("merge_1", "flow-a", "run", "u", "sess", {
+        items: [legacyA as unknown as OutputItem, legacyB as unknown as OutputItem]
+      });
+      db.prepare(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
+      ).run(
+        "merge_1",
+        record.flowKind,
+        record.userId,
+        record.sessionId ?? null,
+        record.status,
+        record.version,
+        record.createdAt,
+        record.updatedAt,
+        JSON.stringify(record)
+      );
+
+      // Table version of `shared` wins; `table-only` is new.
+      store.persistItems("merge_1", [
+        makeMessageItem("merge_1", "shared", 2, "table-version") as unknown as OutputItem,
+        makeMessageItem("merge_1", "table-only", 3, "table-c") as unknown as OutputItem
+      ]);
+      await store.flushItems("merge_1");
+
+      const got = await store.get("merge_1");
+      expect(got!.items).toHaveLength(3);
+      const sharedRow = got!.items!.find((i) => i.id === "shared")!;
+      expect((sharedRow.content as Array<{ text: string }>)[0]!.text).toBe(
+        "table-version"
+      );
+      // Ordered by itemIndex: legacy-only (1), shared (2), table-only (3).
+      expect(got!.items!.map((i) => i.id)).toEqual([
+        "legacy-only",
+        "shared",
+        "table-only"
+      ]);
+    });
+
+    it("set strips items from the requests blob", async () => {
+      const store = freshRequestStore();
+      const record = makeRequestRecord("req_strip", "flow-a", "run", "u");
+      record.items = [
+        makeMessageItem("req_strip", "x", 0, "x") as unknown as OutputItem
+      ];
+      await store.set("req_strip", record, "any");
+
+      const row = db
+        .prepare("SELECT data FROM requests WHERE id = ?")
+        .get("req_strip") as { data: string };
+      expect((JSON.parse(row.data) as { items?: unknown }).items).toBeUndefined();
+    });
+
+    it("terminal set clears the tracking map so a re-persist re-upserts", async () => {
+      // Intent: once a request reaches a terminal status the per-request
+      // reference map is dropped, so a subsequent persist of the same object
+      // still writes (idempotently) rather than being diffed away.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_term");
+      const item = makeMessageItem("req_term", "x", 0, "v1") as unknown as OutputItem;
+      store.persistItems("req_term", [item]);
+      await store.flushItems("req_term");
+
+      await store.set(
+        "req_term",
+        makeRequestRecord("req_term", "flow-a", "run", "u", undefined, {
+          status: "completed",
+          completedAtMs: Date.now()
+        }),
+        "any"
+      );
+
+      // Out-of-band marker; a re-upsert (map cleared) overwrites it.
+      db.prepare(
+        "UPDATE request_items SET data = ? WHERE request_id = ?"
+      ).run(JSON.stringify({ marker: true }), "req_term");
+
+      store.persistItems("req_term", [item]);
+      await store.flushItems("req_term");
+
+      expect(itemCount("req_term")).toBe(1);
+      const after = (
+        db
+          .prepare("SELECT data FROM request_items WHERE request_id = ?")
+          .get("req_term") as { data: string }
+      ).data;
+      expect(after).not.toBe(JSON.stringify({ marker: true }));
+    });
+
+    it("list default returns empty items and does not query request_items", async () => {
+      // Intent: the cheap list path never touches the child table; legacy
+      // blob items are stripped so the payload stays lean.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_l1");
+      store.persistItems("req_l1", [
+        makeMessageItem("req_l1", "a", 0, "x") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_l1");
+
+      // Drop the child table entirely; a default list must still succeed,
+      // proving it issues no SELECT against request_items.
+      db.exec("DROP TABLE request_items");
+      const out = await store.list({ sessionId: undefined });
+      const target = out.find((r) => r.id === "req_l1")!;
+      expect(target.items).toBeUndefined();
+    });
+
+    it("list with withItems:true groups items per record, merging legacy + table", async () => {
+      const store = freshRequestStore();
+      await store.set(
+        "req_l2",
+        makeRequestRecord("req_l2", "flow-a", "run", "u", "sess_L2"),
+        "any"
+      );
+      store.persistItems("req_l2", [
+        makeMessageItem("req_l2", "a", 0, "x") as unknown as OutputItem,
+        makeMessageItem("req_l2", "b", 1, "y") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_l2");
+
+      const out = await store.list({ withItems: true } as RequestListOptions);
+      const target = out.find((r) => r.id === "req_l2")!;
+      expect(target.items!.map((i) => i.id)).toEqual(["a", "b"]);
+    });
+
+    it("delete removes the child rows", async () => {
+      const store = freshRequestStore();
+      await seedRequest(store, "req_del");
+      store.persistItems("req_del", [
+        makeMessageItem("req_del", "x", 0, "x") as unknown as OutputItem
+      ]);
+      // Intentionally do NOT flush — delete must clean up regardless.
+      await store.delete("req_del");
+      expect(itemCount("req_del")).toBe(0);
+      expect(await store.get("req_del")).toBeUndefined();
+    });
+
+    it("rejects items whose id exceeds the length limit before any SQL runs", async () => {
+      // Intent: an overlong id is caught application-side, not surfaced as an
+      // opaque SQLite error. The microtask throws, so we assert via an
+      // unhandledRejection-free synchronous-throw harness: schedule the flush
+      // and capture the error from the microtask directly.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_big");
+      const oversized = "x".repeat(2700);
+
+      const thrown = await new Promise<unknown>((resolve) => {
+        // Run persistItems inside a microtask-error trap: the write microtask
+        // throws synchronously, so we wrap the queue drain in our own
+        // microtask that runs after it and inspect for the row's absence.
+        const original = process.listeners("uncaughtException");
+        const handler = (err: unknown): void => {
+          resolve(err);
+        };
+        process.once("uncaughtException", handler);
+        store.persistItems("req_big", [
+          makeMessageItem("req_big", oversized, 0, "x") as unknown as OutputItem
+        ]);
+        // Give the microtask a chance to throw, then resolve undefined if it
+        // somehow did not.
+        setTimeout(() => {
+          process.removeListener("uncaughtException", handler);
+          for (const l of original) process.on("uncaughtException", l);
+          resolve(undefined);
+        }, 20);
+      });
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toMatch(/exceeds limit/i);
+      // Nothing was written.
+      expect(itemCount("req_big")).toBe(0);
+    });
+
+    it("flushItems is a no-op (synchronous writes already landed)", async () => {
+      // Intent: documents the SQLite contract divergence from Postgres — the
+      // coalescing microtask completes before any awaited flushItems resumes,
+      // so flushItems resolves immediately with the write already durable.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_flush");
+      store.persistItems("req_flush", [
+        makeMessageItem("req_flush", "a", 0, "x") as unknown as OutputItem
+      ]);
+      await store.flushItems("req_flush");
+      expect(itemCount("req_flush")).toBe(1);
+    });
+
+    // NOTE: the Postgres `firstUpsertGate` drain-race test does not apply here.
+    // better-sqlite3 writes are synchronous, so there is no in-flight async
+    // UPSERT for a late persistItems to race against — the coalescing
+    // microtask always observes the latest snapshot before it runs.
   });
 
   // --- Content store (FIX-685) ---

@@ -1,19 +1,60 @@
 /**
  * SQLite RequestStore implementation.
  *
- * Persists request records, coalesced item snapshots, and per-request stream
- * events. Live-tail subscriptions poll the durable event table so the package
- * stays independent of server runtime values.
+ * Two persistence paths layer on top of the generic record store:
+ * - items: microtask-coalesced, last-write-wins. One row per item in
+ *   `request_items`, written via batched UPSERT keyed by
+ *   `(request_id, item_id)`. Because better-sqlite3 is synchronous the
+ *   coalescing microtask writes the latest snapshot in one transaction; no
+ *   drain-loop or in-flight-promise barrier is needed.
+ * - events: per-row INSERT INTO request_events.
+ *
+ * Live-tail subscriptions poll the durable event table so the package stays
+ * independent of server runtime values.
  */
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type {
-  RequestListOptions,
-  RequestRecord,
-  RequestStore,
-  SubscribeToEventsOptions
+import {
+  isTerminalRequestStatus,
+  type ExpectedVersion,
+  type RequestListOptions,
+  type RequestRecord,
+  type RequestStore,
+  type SetResult,
+  type SubscribeToEventsOptions
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
+
+/**
+ * SQLite has no B-tree index row-size limit as tight as Postgres, but we cap
+ * item IDs at the same bound the Postgres adapter uses so a request that
+ * round-trips through either store behaves identically. The error is raised
+ * application-side before any SQL runs.
+ */
+const MAX_ITEM_ID_LENGTH = 2600;
+
+/**
+ * SQLite's compile-time parameter limit (SQLITE_MAX_VARIABLE_NUMBER) is 32766
+ * on modern builds. `list({ withItems: true })` chunks the request-id IN-list
+ * below this so a large page never overflows the bind limit.
+ */
+const SQLITE_MAX_VARIABLE_NUMBER = 32766;
+
+/**
+ * Merge per-row `request_items` with any legacy `data.items` slice that
+ * predates the dedicated-table migration. Table version wins on item-id
+ * collision; output is sorted by `itemIndex`.
+ */
+function mergeLegacyWithTable(
+  fromTable: OutputItem[],
+  legacy: OutputItem[] | undefined
+): OutputItem[] {
+  if (!Array.isArray(legacy) || legacy.length === 0) return fromTable;
+  const seen = new Set(fromTable.map((i) => i.id));
+  const legacyOnly = legacy.filter((i) => !seen.has(i.id));
+  if (legacyOnly.length === 0) return fromTable;
+  return [...fromTable, ...legacyOnly].sort((a, b) => a.itemIndex - b.itemIndex);
+}
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
@@ -179,14 +220,43 @@ export function createSQLiteRequestStore(
       listOptions?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
   });
 
+  /** Set membership marks a request with a queued (synchronous) item flush. */
   const pendingItemWrites = new Set<string>();
   /** Holds the most recent items so the queued write always uses the latest data. */
   const latestItemSnapshots = new Map<string, OutputItem[]>();
+  /**
+   * Per-request map of the item references last persisted to `request_items`.
+   * The emitter swaps the item reference on each item-boundary update, so
+   * reference inequality catches every boundary change while skipping
+   * unchanged items — the diff that makes persistence incremental.
+   */
+  const lastPersistedItems = new Map<string, Map<string, OutputItem>>();
   const pendingEventWrites = new Set<string>();
 
-  const getStmt = db.prepare("SELECT data FROM requests WHERE id = ?");
-  const updateItemsStmt = db.prepare(
-    "UPDATE requests SET data = ?, updated_at = ? WHERE id = ?"
+  const insertItemStmt = db.prepare(
+    "INSERT INTO request_items (request_id, item_id, sequence, item_type, data) " +
+      "VALUES (?, ?, ?, ?, ?) " +
+      "ON CONFLICT (request_id, item_id) DO UPDATE SET " +
+      "sequence = excluded.sequence, item_type = excluded.item_type, data = excluded.data"
+  );
+  const writeItemsBatchTxn = db.transaction(
+    (batch: OutputItem[], requestId: string) => {
+      for (const item of batch) {
+        insertItemStmt.run(
+          requestId,
+          item.id,
+          item.itemIndex,
+          item.type,
+          JSON.stringify(item)
+        );
+      }
+    }
+  );
+  const selectItemsStmt = db.prepare(
+    "SELECT data FROM request_items WHERE request_id = ? ORDER BY sequence ASC"
+  );
+  const deleteItemsStmt = db.prepare(
+    "DELETE FROM request_items WHERE request_id = ?"
   );
 
   const insertEventStmt = db.prepare(
@@ -232,15 +302,98 @@ export function createSQLiteRequestStore(
     return rows.map((row) => JSON.parse(row.event_data) as RequestStreamEvent);
   }
 
+  /** Read all persisted items for a request, ordered by sequence. */
+  function queryItems(requestId: string): OutputItem[] {
+    const rows = selectItemsStmt.all(requestId) as Array<{ data: string }>;
+    return rows.map((r) => JSON.parse(r.data) as OutputItem);
+  }
+
+  /** Forget the per-request item-tracking state (terminal write / delete). */
+  function clearItemMaps(id: string): void {
+    lastPersistedItems.delete(id);
+    latestItemSnapshots.delete(id);
+  }
+
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
-      return withSourceDefault(await base.get(id));
+      const base_ = await base.get(id);
+      if (base_ === undefined) return undefined;
+      const record = withSourceDefault(base_) as RequestRecord;
+      return {
+        ...record,
+        items: mergeLegacyWithTable(queryItems(id), record.items)
+      };
     },
-    set: base.set,
-    delete: base.delete,
+
+    async set(
+      id: string,
+      value: RequestRecord,
+      expectedVersion: ExpectedVersion
+    ): Promise<SetResult<RequestRecord>> {
+      // Items live in `request_items`; keep them out of `requests.data` to
+      // avoid double-storage. better-sqlite3 is synchronous so any queued
+      // item write for this request has already flushed within its
+      // microtask before this async method body runs — no drain needed.
+      const { items: _omitted, ...withoutItems } = value;
+      const result = await base.set(
+        id,
+        withoutItems as RequestRecord,
+        expectedVersion
+      );
+      if (result.ok && isTerminalRequestStatus(value.status)) {
+        clearItemMaps(id);
+      }
+      return result;
+    },
+
+    async delete(id: string): Promise<void> {
+      // Clear the tracking maps FIRST. A `persistItems` microtask queued
+      // before this call drains on the next await below; discarding its
+      // snapshot here makes that microtask a no-op so it can't re-insert
+      // rows after the DELETE. (better-sqlite3 is synchronous, so there is
+      // no in-flight async write to await — only the queued microtask.)
+      clearItemMaps(id);
+      deleteItemsStmt.run(id);
+      await base.delete(id);
+    },
+
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       const records = await base.list(options);
-      return records.map((r) => withSourceDefault(r) as RequestRecord);
+      const withSource = records.map((r) => withSourceDefault(r) as RequestRecord);
+
+      if (options?.withItems !== true) {
+        // Default: do NOT query request_items. Strip any legacy blob items so
+        // list payloads stay lean (callers opt in with `withItems: true`).
+        return withSource.map((r) =>
+          r.items === undefined ? r : { ...r, items: undefined }
+        );
+      }
+
+      if (withSource.length === 0) return withSource;
+
+      const requestIds = withSource.map((r) => r.id);
+      const byRequestId = new Map<string, OutputItem[]>();
+      for (let i = 0; i < requestIds.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
+        const chunk = requestIds.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
+        const placeholders = chunk.map(() => "?").join(", ");
+        const rows = db
+          .prepare(
+            `SELECT request_id, data FROM request_items ` +
+              `WHERE request_id IN (${placeholders}) ` +
+              `ORDER BY request_id, sequence ASC`
+          )
+          .all(...chunk) as Array<{ request_id: string; data: string }>;
+        for (const r of rows) {
+          const list = byRequestId.get(r.request_id) ?? [];
+          list.push(JSON.parse(r.data) as OutputItem);
+          byRequestId.set(r.request_id, list);
+        }
+      }
+
+      return withSource.map((r) => ({
+        ...r,
+        items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
+      }));
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
@@ -257,13 +410,33 @@ export function createSQLiteRequestStore(
         latestItemSnapshots.delete(requestId);
         if (snapshot === undefined) return;
 
-        const row = getStmt.get(requestId) as { data: string } | undefined;
-        if (row !== undefined) {
-          const current = JSON.parse(row.data) as RequestRecord;
-          const updatedAt = Date.now();
-          const updated = { ...current, items: snapshot, updatedAt };
-          updateItemsStmt.run(JSON.stringify(updated), updatedAt, requestId);
+        // Diff against the last persisted references: only items whose
+        // reference changed need an UPSERT. This is what keeps writes
+        // proportional to new/changed items rather than the whole snapshot.
+        const priorById = lastPersistedItems.get(requestId);
+        const delta: OutputItem[] = [];
+        for (const item of snapshot) {
+          if (item.id.length > MAX_ITEM_ID_LENGTH) {
+            throw new Error(
+              `request_items: item.id length ${item.id.length} exceeds limit ` +
+                `${MAX_ITEM_ID_LENGTH}. Item ID prefix: ${item.id.slice(0, 64)}...`
+            );
+          }
+          if (priorById?.get(item.id) !== item) delta.push(item);
         }
+        if (delta.length > 0) {
+          // De-dup by id and sort for deterministic write ordering.
+          const byId = new Map<string, OutputItem>();
+          for (const item of delta) byId.set(item.id, item);
+          const batch = [...byId.values()].sort((a, b) =>
+            a.id.localeCompare(b.id)
+          );
+          writeItemsBatchTxn(batch, requestId);
+        }
+
+        const next = new Map<string, OutputItem>();
+        for (const item of snapshot) next.set(item.id, item);
+        lastPersistedItems.set(requestId, next);
       });
     },
 
