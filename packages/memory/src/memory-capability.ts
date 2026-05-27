@@ -49,6 +49,8 @@ import { resolveStrategy } from './tools/strategies/index.js'
 import { buildRecall } from './internal/recall.js'
 import { resolveHygieneConfig } from './internal/hygiene-config.js'
 import { resolveMemoryConfigs } from './internal/config.js'
+import type { ResolvedMemoryConfigs } from './internal/config.js'
+import type { ResolvedHygieneConfig } from './janitor-blocks.js'
 
 /**
  * Options for `createMemoryCapability`. The subset of `MemorySystemConfig`
@@ -115,17 +117,39 @@ export interface MemoryCapability extends DefinedCapability {
 }
 
 /**
- * Build the composed memory capability for the configured tiers.
+ * The composed capability plus the intermediate values its construction
+ * produced. Returned by `buildMemoryCapability` so `system()` can reuse the
+ * resolved configs, hygiene, and recall helper in a single pass rather than
+ * re-resolving them. Internal to the package — `createMemoryCapability` is the
+ * public entry and returns only `capability`.
+ */
+export interface BuiltMemoryCapability {
+  capability: MemoryCapability
+  /** Resolved tier configs — the same the lifecycle blocks in `system()` need. */
+  resolved: ResolvedMemoryConfigs
+  /** Resolved hygiene config (`false` when disabled). */
+  hygiene: false | ResolvedHygieneConfig
+  /** The standalone cross-store recall helper wired into `fns.recall`. */
+  recall: ReturnType<typeof buildRecall>
+}
+
+/**
+ * Build the composed memory capability and return it alongside the resolved
+ * configs, hygiene, and recall helper produced along the way.
  *
  * Validates tier dependencies (semantic requires episodic, digest requires
  * semantic) and the required `model` up front, then constructs the tier
  * capabilities, the recall tool, and the `defineCapability` with five
  * orthogonal section presets (`digest`, `working`, `semantic`, `episodic`,
  * `recall`; defaults `['digest', 'working', 'recall']`).
+ *
+ * Internal — exported for `system()` so it can reuse the intermediate values
+ * without re-resolving. Not re-exported from the package index; external
+ * callers use `createMemoryCapability`.
  */
-export function createMemoryCapability(
+export function buildMemoryCapability(
   options: CreateMemoryCapabilityOptions,
-): MemoryCapability {
+): BuiltMemoryCapability {
   // Validate: semantic requires episodic
   if (options.semantic && !options.episodic) {
     throw new Error('Semantic memory requires episodic memory to be configured')
@@ -142,8 +166,8 @@ export function createMemoryCapability(
     throw new Error('createMemoryCapability requires a `model` for the recall tool')
   }
 
-  const { resolvedWorking, episodicConfig, semanticConfig, digestConfig } =
-    resolveMemoryConfigs(options)
+  const resolved = resolveMemoryConfigs(options)
+  const { resolvedWorking, episodicConfig, semanticConfig, digestConfig } = resolved
 
   // Resolve hygiene — only the confidence-decay slice is consumed here (recall
   // ranking). Janitor scheduling is acted on by `system()`, not the capability.
@@ -287,10 +311,27 @@ export function createMemoryCapability(
     ...(digestCapability ? { digest: digestCapability } : {}),
   }
 
-  return Object.assign(composedCapability, {
+  const capability = Object.assign(composedCapability, {
     sessionResources,
     userResources,
     tiers,
     recallToolBlock,
   }) as MemoryCapability
+
+  return { capability, resolved, hygiene, recall: recallFn }
+}
+
+/**
+ * Build the composed memory capability for the configured tiers.
+ *
+ * One of two parallel entry points (see `system()`). Returns a
+ * `DefinedCapability` extended with `sessionResources`, `userResources`,
+ * `tiers`, and `recallToolBlock` — install it on a generator with
+ * `uses: [mem]` and register `{ ...mem.sessionResources, ...mem.userResources }`
+ * on the flow.
+ */
+export function createMemoryCapability(
+  options: CreateMemoryCapabilityOptions,
+): MemoryCapability {
+  return buildMemoryCapability(options).capability
 }

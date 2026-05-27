@@ -63,10 +63,7 @@ import {
 import { digestRegenerate } from './digest-blocks.js'
 import { createMemoryContextFormatter } from './formatter.js'
 import { createRecallTool } from './tools/recall-tool.js'
-import { buildRecall } from './internal/recall.js'
-import { resolveHygieneConfig } from './internal/hygiene-config.js'
-import { resolveMemoryConfigs } from './internal/config.js'
-import { createMemoryCapability } from './memory-capability.js'
+import { buildMemoryCapability } from './memory-capability.js'
 import type { BuiltInStrategyName } from './tools/strategies/index.js'
 import type { RetrievalStrategy } from './tools/types.js'
 
@@ -694,7 +691,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // the resource references. system() reuses its resources, tiers, and recall
   // tool below so the same defineResource() references flow everywhere
   // (FIX-435) and `mem.capability === memCap` holds by construction.
-  const memCap = createMemoryCapability({
+  const built = buildMemoryCapability({
     model: config.model,
     working: config.working,
     episodic: config.episodic,
@@ -703,17 +700,13 @@ export function system(config: MemorySystemConfig): MemorySystem {
     tool: config.tool,
     hygiene: config.hygiene,
   })
+  const memCap = built.capability
 
-  // Resolve the tier configs for the lifecycle blocks below — the same shared
-  // resolver the capability used internally, so the results match exactly.
-  const { resolvedWorking, episodicConfig, semanticConfig, digestConfig } =
-    resolveMemoryConfigs(config)
-
-  // Resolve hygiene config (FIX-411). Default-on: omitting the key resolves
-  // to DEFAULT_HYGIENE_CONFIG. `hygiene: true` is identical to omission.
-  // `hygiene: false` disables every branch and skips auto-wiring; the
-  // ranking sites fall back to raw fact.confidence.
-  const hygiene = resolveHygieneConfig(config.hygiene)
+  // Reuse the resolved tier configs, hygiene, and recall helper the capability
+  // already produced — single resolution pass, no drift between the capability
+  // and the lifecycle blocks below.
+  const { resolvedWorking, episodicConfig, semanticConfig, digestConfig } = built.resolved
+  const hygiene = built.hygiene
 
   // Operator-visibility warning: the janitor is being asked to run but
   // there's nothing for it to operate on. Only fires when the caller
@@ -778,13 +771,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? memorySystemPrune(blocksConfig)
     : undefined
 
-  // Standalone recall helper exposed as `mem.recall` (ranking decay derived
-  // from hygiene, matching the capability's internal recall).
-  const recallFn = buildRecall(
-    episodicConfig ? { scope: episodicConfig.scope } : undefined,
-    semanticConfig ? { scope: semanticConfig.scope } : undefined,
-    hygiene,
-  )
+  // Standalone recall helper exposed as `mem.recall` — the same instance the
+  // capability wired into `fns.recall`.
+  const recallFn = built.recall
   // The bundled formatter retains the previous default behaviour (digest +
   // working) for direct consumers of `mem.contextFormatter`. Capability
   // presets register their own per-section entries below so each toggle is
