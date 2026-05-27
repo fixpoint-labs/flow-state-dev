@@ -65,8 +65,9 @@ registered flow once, at mount, via the `start()` hook on
 `start()` hook; documented here as a deliberate departure from the
 per-request-lookup pattern of the sibling adapters.
 
-`start()` runs synchronously. `createFlowApiRouter` invokes it
-fire-and-forget, so only a synchronous throw aborts startup. The adapter
+`start()` runs synchronously. The router (`createFlowApiRouter`, which
+`createFlowState` wraps) invokes it fire-and-forget, so only a synchronous
+throw aborts startup. The adapter
 therefore builds the index and runs its fail-fast check (below) before any
 async work. The index is a snapshot — frozen for the adapter's lifetime;
 hot reload of subscriptions after mount is out of scope.

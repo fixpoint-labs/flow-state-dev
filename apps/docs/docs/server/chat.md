@@ -21,10 +21,10 @@ directly on the flow definition. You read one file to know what fires it.
 pnpm add @flow-state-dev/chat-sdk chat
 ```
 
-```ts
+```ts title="lib/flowstate.ts"
 import { Chat } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import { createChatTransportAdapter } from "@flow-state-dev/chat-sdk";
 
 const bot = new Chat({
@@ -32,11 +32,20 @@ const bot = new Chat({
   adapters: { slack: createSlackAdapter({ token: process.env.SLACK_BOT_TOKEN! }) },
 });
 
-export const { POST, GET } = createFlowApiRouter({
-  registry,
-  stores,
+export const flowstate = createFlowState({
+  flows: { support: supportFlow },
+  stores: { default: inMemoryStores() },
   adapters: [createChatTransportAdapter({ bot })],
 });
+```
+
+`createFlowState` is the canonical entrypoint (see [Server setup](./setup.md)); the chat transport is just another entry in `adapters`. Turn the handle into route handlers with a platform adapter — the chat webhooks mount under the same router:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 ```
 
 The adapter mounts `POST /api/chat/slack` and `GET /api/chat/slack` (the GET

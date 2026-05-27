@@ -17,7 +17,7 @@ pnpm add @flow-state-dev/chat-sdk chat
 ```ts
 import { Chat } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
-import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import { createChatTransportAdapter } from "@flow-state-dev/chat-sdk";
 
 const bot = new Chat({
@@ -27,16 +27,14 @@ const bot = new Chat({
   },
 });
 
-export const { POST, GET } = createFlowApiRouter({
-  registry,
-  stores,
-  adapters: [
-    createChatTransportAdapter({ bot, flowKind: "support" }),
-  ],
+export const flowstate = createFlowState({
+  flows: { support: supportFlow },
+  stores: { default: inMemoryStores() },
+  adapters: [createChatTransportAdapter({ bot, flowKind: "support" })],
 });
 ```
 
-The adapter mounts `POST /api/chat/slack` and `GET /api/chat/slack` (the GET is for platforms that use challenge-response verification). Every inbound message routes to `flowKind: "support"`, action `"chat"`. Flow output streams back to the thread.
+`createFlowState` is the canonical setup entrypoint; turn its handle into route handlers with a platform adapter (e.g. `createVercelNextHandler(flowstate)`). The chat adapter mounts `POST /api/chat/slack` and `GET /api/chat/slack` (the GET is for platforms that use challenge-response verification). With the `flowKind` shown here every inbound message routes to `flowKind: "support"`, action `"chat"` — but the preferred shape is to declare subscriptions on the flow (see below). Flow output streams back to the thread.
 
 ## Options
 
