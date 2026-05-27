@@ -94,6 +94,7 @@ function thesisAlignment(
       "proposedRevision" in overrides
         ? overrides.proposedRevision!
         : "Re-frame around margin durability, not pure growth deceleration.",
+    citations: null,
   };
 }
 

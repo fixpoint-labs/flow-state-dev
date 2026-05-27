@@ -275,8 +275,16 @@ function validatorMock() {
         contradictingEvidence: [{ source: "Risk Assessment", claim: "Cycle risk." }],
         blindSpots: ["Did not mention competition."],
         proposedRevision: "Re-frame around margin durability.",
+        citations: null,
       }),
     ],
+  });
+}
+
+function validatorApproachMock() {
+  return mockGenerator({
+    name: "thesis-validator-approach-generator",
+    script: [{ text: "I'll check the named deals first, then verify margins." }],
   });
 }
 
@@ -306,7 +314,11 @@ describe("Phase 6 gating", () => {
       sessionId,
       stores,
       input: { ...baseInput, userThesis: null },
-      generators: { ...makeUpstreamMocks(), "thesis-validator-generator": validator },
+      generators: {
+        ...makeUpstreamMocks(),
+        "thesis-validator-approach-generator": validatorApproachMock(),
+        "thesis-validator-generator": validator,
+      },
       unmockedGeneratorPolicy: "error",
     });
 
@@ -335,7 +347,11 @@ describe("Phase 6 gating", () => {
         ...baseInput,
         userThesis: "NVDA data-center growth decelerates faster than consensus expects.",
       },
-      generators: { ...makeUpstreamMocks(), "thesis-validator-generator": validator },
+      generators: {
+        ...makeUpstreamMocks(),
+        "thesis-validator-approach-generator": validatorApproachMock(),
+        "thesis-validator-generator": validator,
+      },
       unmockedGeneratorPolicy: "error",
     });
 
@@ -366,7 +382,11 @@ describe("Phase 6 gating", () => {
       sessionId,
       stores,
       input: { ...baseInput, userThesis: "too short" },
-      generators: { ...makeUpstreamMocks(), "thesis-validator-generator": validator },
+      generators: {
+        ...makeUpstreamMocks(),
+        "thesis-validator-approach-generator": validatorApproachMock(),
+        "thesis-validator-generator": validator,
+      },
       unmockedGeneratorPolicy: "error",
     });
 

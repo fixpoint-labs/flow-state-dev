@@ -8,13 +8,15 @@
  * or on an anti-yes-man enforcement throw — same shape as Phase 5's
  * single-step rescue.
  *
- * Unlike Phases 3–5 there is no approach preamble: Phase 6 is an audit, not a
- * decision, and the structured output is the whole deliverable.
+ * Like Phases 3–5, a fast-model approach preamble streams before the
+ * structured generator so the transcript shows a "Phase 6 Approach" beat —
+ * it only appears when Phase 6 runs (a user thesis was provided).
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires.
  */
 import { sequencer } from "@flow-state-dev/core";
+import { thesisValidatorApproachGenerator } from "./approach";
 import { thesisValidatorGenerator } from "./thesis-validator";
 import { setupPhase6Memos } from "./setup";
 import {
@@ -25,6 +27,7 @@ import {
 
 const validatorStep = sequencer({ name: "phase-6-validator-step" })
   .tap(markWritingP6("thesisAlignment"))
+  .then(thesisValidatorApproachGenerator)
   .then(thesisValidatorGenerator)
   .tap(commitThesisAlignmentMemo)
   .rescue([{ block: markErrorP6("thesisAlignment") }]);

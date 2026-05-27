@@ -73,6 +73,7 @@ export const commitThesisAlignmentMemo = memoHandler({
         contradictingEvidence: audit.contradictingEvidence,
         blindSpots: audit.blindSpots,
         proposedRevision: audit.proposedRevision,
+        citations: audit.citations,
       },
     );
   },

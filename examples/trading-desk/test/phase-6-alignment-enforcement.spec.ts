@@ -81,6 +81,7 @@ function alignedAudit(
     contradictingEvidence: overrides.contradictingEvidence ?? [],
     blindSpots: ["Did not mention competitive dynamics."],
     proposedRevision: null,
+    citations: null,
   };
 }
 

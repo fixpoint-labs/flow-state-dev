@@ -25,7 +25,7 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_6_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
-import { thesisSection } from "../resources";
+import { memoCitation, thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
 import { loadPrompt } from "../lib/prompt";
 
@@ -65,6 +65,10 @@ export const thesisAlignmentOutputSchema = z.object({
   blindSpots: z.array(z.string()).min(1),
   // Null only when `alignment === "aligned"`; the writer enforces that pairing.
   proposedRevision: z.string().nullable(),
+  // URLs the validator actually fetched while verifying claims via the
+  // `verify` preset's search/fetch tools. Null when nothing was fetched. The
+  // renderer shows these as a "Sources" footer, same as Phase 1.
+  citations: z.array(memoCitation).nullable(),
 });
 
 export type ThesisAlignmentOutput = z.infer<typeof thesisAlignmentOutputSchema>;
@@ -80,6 +84,7 @@ export const thesisValidatorGenerator = generator({
       riskAssessment: true,
       portfolioDecision: true,
       userThesis: true,
+      verify: true,
       phase1MemosFull: true,
       highReasoning: true,
     }),
