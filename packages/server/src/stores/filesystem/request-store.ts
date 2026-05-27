@@ -15,7 +15,7 @@ import {
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -215,6 +215,44 @@ export class FilesystemRequestStore implements RequestStore {
 
   async delete(id: string): Promise<void> {
     await this.store.delete(id);
+    await this.deleteSidecars(id);
+  }
+
+  /**
+   * Remove the sidecar files the request store writes alongside the primary
+   * record: the NDJSON event log and every runOnce file (legacy single-map and
+   * per-key). Without this, deleting a request orphans those files on disk and
+   * they accumulate for high-churn deployments. The events/legacy-runonce
+   * paths encode the id with `encodeURIComponent`; per-key runOnce files use
+   * `encodeSegment` (which also escapes `:`). Both agree for framework `req_*`
+   * ids; matching both prefixes keeps the sweep correct for any id.
+   */
+  private async deleteSidecars(id: string): Promise<void> {
+    const exact = new Set([
+      path.basename(toEventsPath(this.rootDir, id)),
+      path.basename(toRunOncePath(this.rootDir, id))
+    ]);
+    const runOncePrefixes = [
+      `${encodeURIComponent(id)}.runonce.`,
+      `${encodeSegment(id)}.runonce.`
+    ];
+    let entries: string[];
+    try {
+      entries = await readdir(this.rootDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    await Promise.all(
+      entries.map(async (name) => {
+        const isPerKeyRunOnce =
+          name.endsWith(".json") &&
+          runOncePrefixes.some((prefix) => name.startsWith(prefix));
+        if (exact.has(name) || isPerKeyRunOnce) {
+          await rm(path.join(this.rootDir, name), { force: true });
+        }
+      })
+    );
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {

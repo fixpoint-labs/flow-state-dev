@@ -713,39 +713,23 @@ describe("SQLite store adapter", () => {
       expect(await store.get("req_race")).toBeUndefined();
     });
 
-    it("rejects items whose id exceeds the length limit before any SQL runs", async () => {
-      // Intent: an overlong id is caught application-side, not surfaced as an
-      // opaque SQLite error. The microtask throws, so we assert via an
-      // unhandledRejection-free synchronous-throw harness: schedule the flush
-      // and capture the error from the microtask directly.
+    it("rejects items whose id exceeds the length limit synchronously, before any SQL runs", async () => {
+      // Intent: an overlong id is caught application-side and surfaced to the
+      // caller — NOT thrown from inside the coalescing microtask, where it
+      // would escape as an uncaughtException and crash the process. persistItems
+      // validates up front and throws synchronously, so the caller can handle it.
       const store = freshRequestStore();
       await seedRequest(store, "req_big");
       const oversized = "x".repeat(2700);
 
-      const thrown = await new Promise<unknown>((resolve) => {
-        // Run persistItems inside a microtask-error trap: the write microtask
-        // throws synchronously, so we wrap the queue drain in our own
-        // microtask that runs after it and inspect for the row's absence.
-        const original = process.listeners("uncaughtException");
-        const handler = (err: unknown): void => {
-          resolve(err);
-        };
-        process.once("uncaughtException", handler);
+      expect(() =>
         store.persistItems("req_big", [
           makeMessageItem("req_big", oversized, 0, "x") as unknown as OutputItem
-        ]);
-        // Give the microtask a chance to throw, then resolve undefined if it
-        // somehow did not.
-        setTimeout(() => {
-          process.removeListener("uncaughtException", handler);
-          for (const l of original) process.on("uncaughtException", l);
-          resolve(undefined);
-        }, 20);
-      });
+        ])
+      ).toThrow(/exceeds limit/i);
 
-      expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toMatch(/exceeds limit/i);
-      // Nothing was written.
+      // Nothing was scheduled or written.
+      await store.flushItems("req_big");
       expect(itemCount("req_big")).toBe(0);
     });
 

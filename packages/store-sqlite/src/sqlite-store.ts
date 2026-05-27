@@ -161,6 +161,10 @@ export function createSQLiteRecordStore<
       }
       const newVersion = (expectedVersion === "any" ? row.version : expectedVersion) + 1;
       const record = JSON.parse(row.data) as DeltaRecord;
+      // A legacy record may have been stored without an explicit `state`
+      // object; treat it as empty so the verb upgrades it rather than throwing
+      // (mirrors the filesystem adapter's `current.state ?? {}` guard).
+      if (record.state == null) record.state = {};
       record.state[key] = mutate(record.state[key]);
       record.version = newVersion;
       record.updatedAt = updatedAt;

@@ -13,6 +13,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFilesystemRequestStore } from "../../../src/stores/filesystem/request-store";
 import { toRecordPath } from "../../../src/stores/filesystem/shared";
+import { makeRequestStreamEvent } from "../../../src/testing";
 
 let rootDir: string;
 
@@ -141,6 +142,31 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
     expect(await store.getRunOnceResult("req:1", "scope:foo/bar")).toEqual({
       found: true,
       value: "ok"
+    });
+  });
+
+  it("delete removes every runOnce and events sidecar, leaving no orphans", async () => {
+    // Intent: per-key runOnce files (and the events log) must be swept on
+    // delete, or high-churn deployments accumulate orphaned sidecars forever.
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.setRunOnceResult("req_1", "k1", "a");
+    await store.setRunOnceResult("req_1", "k2", "b");
+    store.persistEvents("req_1", [makeRequestStreamEvent("req_1", 1)]);
+    await store.flushEvents("req_1");
+    // A sibling request must survive the delete untouched.
+    await store.setRunOnceResult("req_2", "k1", "keep");
+
+    expect(
+      (await readdir(rootDir)).some((f) => f.startsWith("req_1"))
+    ).toBe(true);
+
+    await store.delete("req_1");
+
+    const remaining = await readdir(rootDir);
+    expect(remaining.some((f) => f.startsWith("req_1"))).toBe(false);
+    expect(await store.getRunOnceResult("req_2", "k1")).toEqual({
+      found: true,
+      value: "keep"
     });
   });
 });

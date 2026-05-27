@@ -418,6 +418,19 @@ export function createSQLiteRequestStore(
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
+      // Validate synchronously, before scheduling the coalesced write. A throw
+      // from inside the queueMicrotask callback would escape as an
+      // uncaughtException (crashing the process) rather than failing the
+      // caller; validating here surfaces the error to ResponseEmitter cleanly.
+      for (const item of items) {
+        if (item.id.length > MAX_ITEM_ID_LENGTH) {
+          throw new Error(
+            `request_items: item.id length ${item.id.length} exceeds limit ` +
+              `${MAX_ITEM_ID_LENGTH}. Item ID prefix: ${item.id.slice(0, 64)}...`
+          );
+        }
+      }
+
       // Always capture the latest snapshot so the queued write uses the most
       // recent items, even when subsequent calls are coalesced away.
       latestItemSnapshots.set(requestId, [...items]);
@@ -437,12 +450,6 @@ export function createSQLiteRequestStore(
         const priorById = lastPersistedItems.get(requestId);
         const delta: OutputItem[] = [];
         for (const item of snapshot) {
-          if (item.id.length > MAX_ITEM_ID_LENGTH) {
-            throw new Error(
-              `request_items: item.id length ${item.id.length} exceeds limit ` +
-                `${MAX_ITEM_ID_LENGTH}. Item ID prefix: ${item.id.slice(0, 64)}...`
-            );
-          }
           if (priorById?.get(item.id) !== item) delta.push(item);
         }
         if (delta.length > 0) {
