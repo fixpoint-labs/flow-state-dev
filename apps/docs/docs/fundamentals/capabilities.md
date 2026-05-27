@@ -168,6 +168,8 @@ const priceLogger = handler({
 
 The `ticker` and `lastPrice` fields are typed because `marketCapability` declared them. No `sessionStateSchema` on the handler is necessary.
 
+For a fully-bundled multi-tier capability — resources, context, tools, and dependent sub-capabilities behind one `uses:` entry — see [Memory → Overview](../memory/overview).
+
 ### Limits
 
 **Direct only.** If a capability itself `uses` another capability, the inner capability's schema contributions do not flow up to the block that `uses` the outer one. Each capability exposes only what it directly declares. If you need the inner schemas visible to consumers, re-declare them on the outer capability.
