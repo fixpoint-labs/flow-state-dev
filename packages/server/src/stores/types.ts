@@ -92,6 +92,15 @@ export type RequestListOptions = {
   limit?: number;
   offset?: number;
   /**
+   * Sort key for the returned (and limited) set, descending. `"updatedAt"`
+   * (default) preserves prior behavior. `"startedAtMs"` orders by request
+   * start time so a `limit`-windowed read selects the most-recently-started
+   * requests regardless of later out-of-order metadata writes. Adapters that
+   * persist `startedAtMs` only inside the record blob order by the equivalent
+   * `created_at` column (set to `startedAtMs` at creation, never mutated).
+   */
+  orderBy?: "startedAtMs" | "updatedAt";
+  /**
    * If true, populate `record.items` for each returned record. Default
    * false. Adapters that store items separately (Postgres) avoid an
    * extra query per list when this is false; adapters that store items

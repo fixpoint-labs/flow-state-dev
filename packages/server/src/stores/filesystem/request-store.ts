@@ -76,6 +76,10 @@ export class FilesystemRequestStore implements RequestStore {
     this.onPersistError = options.onPersistError;
     this.store = createFilesystemRecordStore<RequestRecord, RequestListOptions>({
       rootDir: options.rootDir,
+      sort: (left, right, listOptions) =>
+        listOptions?.orderBy === "startedAtMs"
+          ? right.startedAtMs - left.startedAtMs
+          : right.updatedAt - left.updatedAt,
       filter: (record, listOptions): boolean => {
         if (
           listOptions?.flowKind !== undefined &&

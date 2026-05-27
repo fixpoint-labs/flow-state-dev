@@ -198,14 +198,15 @@ export async function handleListSessionRequests(
   }
 
   const url = new URL(request.url);
+  // Summary listing — does not request full item logs (FIX-685). Callers
+  // that need a request's items read it directly or via the state endpoint.
   const requests = await ctx.stores.request.list({
     sessionId: route.sessionId,
     status: getString(url.searchParams.get("status")) as
       | "in_progress" | "completed" | "failed" | "incomplete" | "aborted"
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
-    offset: getPositiveInteger(url.searchParams.get("offset")),
-    withItems: true
+    offset: getPositiveInteger(url.searchParams.get("offset"))
   });
 
   return jsonResponse(200, {

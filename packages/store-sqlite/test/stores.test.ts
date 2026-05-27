@@ -261,6 +261,63 @@ describe("SQLite store adapter", () => {
       expect(result[0]!.id).toBe("req_1");
     });
 
+    it("orderBy startedAtMs orders by start time, not last update", async () => {
+      const s = freshStores();
+      // req_old started first, updated last; req_new started last, updated
+      // first. orderBy:startedAtMs returns start order (new, old); the default
+      // updatedAt order returns (old, new).
+      await s.request.set(
+        "req_old",
+        makeRequestRecord("req_old", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 100,
+          createdAt: 100,
+          updatedAt: 999
+        }),
+        "any"
+      );
+      await s.request.set(
+        "req_new",
+        makeRequestRecord("req_new", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 500,
+          createdAt: 500,
+          updatedAt: 200
+        }),
+        "any"
+      );
+
+      const byStarted = await s.request.list({ sessionId: "sess_o", orderBy: "startedAtMs" });
+      expect(byStarted.map((r) => r.id)).toEqual(["req_new", "req_old"]);
+
+      const byUpdated = await s.request.list({ sessionId: "sess_o" });
+      expect(byUpdated.map((r) => r.id)).toEqual(["req_old", "req_new"]);
+    });
+
+    it("orderBy startedAtMs with limit selects the most-recently-started", async () => {
+      const s = freshStores();
+      for (let n = 1; n <= 3; n++) {
+        await s.request.set(
+          `req_${n}`,
+          makeRequestRecord(`req_${n}`, "flow-a", "run", "user_1", "sess_l", {
+            status: "completed",
+            startedAtMs: n * 100,
+            createdAt: n * 100,
+            updatedAt: n * 100
+          }),
+          "any"
+        );
+      }
+
+      const windowed = await s.request.list({
+        sessionId: "sess_l",
+        status: "completed",
+        orderBy: "startedAtMs",
+        limit: 2
+      });
+      expect(windowed.map((r) => r.id)).toEqual(["req_3", "req_2"]);
+    });
+
     it("filters by status interrupted", async () => {
       const s = freshStores();
       await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "interrupted", interruptedAt: Date.now() }), "any");

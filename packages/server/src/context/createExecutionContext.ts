@@ -2201,6 +2201,13 @@ export async function createExecutionContext<
       ? resolveOrgStorageKey(optionsOrgId, flow)
       : undefined;
 
+  // Window the cross-turn history load to the most recent N completed
+  // requests (FIX-685). This bounds the store read and the default
+  // generator's in-prompt history regardless of session length; the full
+  // session stays retrievable via the state endpoint. Per-call
+  // history({ limit }) refines within this window — it cannot widen it.
+  const historyWindowTurns = flow.session?.historyWindow?.turns ?? 50;
+
   // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
@@ -2208,8 +2215,17 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    // `items` are read below to reconstruct cross-turn history.
-    stores.request.list({ sessionId, withItems: true })
+    // The N most-recently-started completed requests — `status:"completed"`
+    // excludes the current (in-progress) request and any in-flight siblings;
+    // `orderBy:"startedAtMs"` makes the windowed selection robust to
+    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    stores.request.list({
+      sessionId,
+      status: "completed",
+      limit: historyWindowTurns,
+      orderBy: "startedAtMs",
+      withItems: true
+    })
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()

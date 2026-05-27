@@ -230,7 +230,11 @@ export class InMemoryRequestStore implements RequestStore {
       return true;
     });
 
-    filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    if (options?.orderBy === "startedAtMs") {
+      filtered.sort((left, right) => right.startedAtMs - left.startedAtMs);
+    } else {
+      filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    }
     return applyOffsetLimit(filtered, options).map((record) =>
       withRequestSourceDefault(cloneValue(record))
     );
