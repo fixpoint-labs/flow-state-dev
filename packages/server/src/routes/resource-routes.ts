@@ -9,7 +9,7 @@ import type {
   CollectionClientConfig,
   JsonObject,
 } from "@flow-state-dev/core/types";
-import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -325,7 +325,12 @@ export async function handleListCollectionState(
     return jsonResponse(400, { error: "offset must be >= 0" });
   }
 
-  const persisted = await ctx.stores.resourceState.getAll("session", session.id);
+  // Read only this collection's keys (its pattern prefix) instead of the whole
+  // scope. An empty prefix (e.g. `[topic]/observations`) falls back to getAll.
+  const keyPrefix = getPatternPrefix(config.pattern);
+  const persisted = keyPrefix
+    ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
+    : await ctx.stores.resourceState.getAll("session", session.id);
   const matchedKeys = Object.keys(persisted)
     .filter((k) => matchesPattern(config.pattern, k))
     .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
