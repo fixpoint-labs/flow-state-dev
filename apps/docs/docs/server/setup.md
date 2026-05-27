@@ -94,12 +94,16 @@ Adapters ship in a few packages:
 | Adapter | Import | Notes |
 |---------|--------|-------|
 | `inMemoryStores()` | `@flow-state-dev/server` | Ephemeral. Default for local dev and tests. |
-| `filesystemStores({ rootDir })` | `@flow-state-dev/server` | On-disk persistence, local development only. Its event log is O(N²); pass `developmentOnly: true` to acknowledge and silence the startup warning. |
+| `filesystemStores({ rootDir })` | `@flow-state-dev/server` | On-disk persistence, local development only. Suitable for single-server dev; persistent across restarts. |
 | `postgresStores(options)` | `@flow-state-dev/store-postgres` | Postgres-backed. |
 | `sqliteStores(options)` | `@flow-state-dev/store-sqlite` | SQLite-backed. Recommended for durable persistence; what `fsdev dev` uses. |
 | `vercelPostgresStores()` | `@flow-state-dev/vercel/store` | Postgres tuned for Vercel/Neon. |
 
 Each adapter declares which slots it can back. The current adapters all back `primary`.
+
+## Persistence cost model
+
+All backed adapters persist items and events incrementally, not by rewriting the full record on every write. SQLite and Postgres write item rows into a child table; the filesystem store appends event lines to an NDJSON file. The filesystem store suits local development on a single machine. For production, reach for SQLite or Postgres, which handle concurrent access and larger logs. See the [SQLite schema-evolution notes](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-sqlite/README.md) and the [persistence overview](/docs/persistence/overview) for the storage model behind each backend.
 
 ## Settings
 

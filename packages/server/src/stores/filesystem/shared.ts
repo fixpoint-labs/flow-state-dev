@@ -83,6 +83,21 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
   }
 }
 
+/**
+ * Sidecar files the request store writes alongside the primary record:
+ * the append-only NDJSON event log (`.events.json`) and runOnce result
+ * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key).
+ * `listRecords` must skip these — they are not record documents and the
+ * NDJSON event log is not even valid standalone JSON.
+ */
+function isSidecarFile(name: string): boolean {
+  return (
+    name.endsWith(".events.json") ||
+    name.endsWith(".runonce.json") ||
+    /\.runonce\..+\.json$/.test(name)
+  );
+}
+
 export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
   await ensureDirectory(rootDir);
 
@@ -90,7 +105,11 @@ export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
   const values: TValue[] = [];
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+    if (
+      !entry.isFile() ||
+      !entry.name.endsWith(".json") ||
+      isSidecarFile(entry.name)
+    ) {
       continue;
     }
 

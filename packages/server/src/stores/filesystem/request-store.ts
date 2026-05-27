@@ -15,7 +15,7 @@ import {
 import { ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { pollEvents } from "../subscribe-helpers";
-import { readFile, writeFile, rename } from "node:fs/promises";
+import { appendFile, readFile, writeFile, rename } from "node:fs/promises";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
@@ -44,6 +44,26 @@ function toRunOncePath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
 }
 
+// Module-scoped so the "warn once per corrupted file" guarantee holds across
+// reads and across store instances within the same process (mirrors the
+// trace store).
+const corruptionWarned = new Set<string>();
+
+/**
+ * Filesystem-backed `RequestStore`.
+ *
+ * The event log is an append-only NDJSON file (`{requestId}.events.json`):
+ * `persistEvents` appends only the new events through a per-request
+ * `SerializedWriteQueue`, so persistence cost is O(new events) rather than
+ * O(total log) per write.
+ *
+ * Multi-process disclaimer: this store assumes a single writer per request.
+ * Ordering and the FIX-399 durability barrier are enforced within one process
+ * by the per-request queue and the per-id write lock. There is NO inter-process
+ * locking — running multiple processes against the same `rootDir` for the same
+ * request is not a supported topology. Use SQLite or Postgres for any
+ * multi-process or production deployment.
+ */
 export class FilesystemRequestStore implements RequestStore {
   private readonly store: FilesystemRecordStore<
     RequestRecord,
@@ -64,6 +84,12 @@ export class FilesystemRequestStore implements RequestStore {
    * propagate persist failures instead of silently swallowing them (FIX-399).
    */
   private readonly lastEventError = new Map<string, Error>();
+  /**
+   * Requests whose event file has had its on-disk format verified (and
+   * migrated from legacy JSON-array to NDJSON if needed) at least once this
+   * process. Migration runs lazily on the first `persistEvents` per request.
+   */
+  private readonly eventsFormatVerified = new Set<string>();
 
   private readonly pollIntervalMs: number;
   private readonly runOnceQueues = new Map<string, SerializedWriteQueue>();
@@ -196,24 +222,42 @@ export class FilesystemRequestStore implements RequestStore {
       await ensureDirectory(this.rootDir);
       const targetPath = toEventsPath(this.rootDir, requestId);
 
-      // Read existing events and append the new ones.
-      let existing: RequestStreamEvent[] = [];
-      try {
-        const raw = await readFile(targetPath, "utf8");
-        existing = JSON.parse(raw) as RequestStreamEvent[];
-      } catch {
-        // File may not exist yet on first write.
+      // First persist this process for this request: migrate a legacy
+      // JSON-array file to NDJSON before appending. Migration/append errors
+      // propagate to the queue's onError (FIX-399) — never swallowed.
+      if (!this.eventsFormatVerified.has(requestId)) {
+        await this.migrateLegacyEventsIfNeeded(targetPath);
+        this.eventsFormatVerified.add(requestId);
       }
 
-      const merged = [...existing, ...newEvents];
-      const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
-        .toString(16)
-        .slice(2)}`;
-
-      const serialized = JSON.stringify(merged);
-      await writeFile(tempPath, serialized, "utf8");
-      await rename(tempPath, targetPath);
+      const lines = newEvents.map((e) => `${JSON.stringify(e)}\n`).join("");
+      await appendFile(targetPath, lines, "utf8");
     });
+  }
+
+  /**
+   * If `targetPath` holds a legacy JSON-array events file (first non-whitespace
+   * byte is `[`), rewrite it as NDJSON via an atomic temp-write + rename so the
+   * subsequent append lands in a uniform format. No-op for missing files or
+   * files already in NDJSON shape. Errors propagate to the caller.
+   */
+  private async migrateLegacyEventsIfNeeded(targetPath: string): Promise<void> {
+    let raw: string;
+    try {
+      raw = await readFile(targetPath, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    const firstNonWhitespace = raw.match(/\S/);
+    if (firstNonWhitespace?.[0] !== "[") return; // already NDJSON or empty
+    const events = JSON.parse(raw) as RequestStreamEvent[];
+    const ndjson = events.map((e) => `${JSON.stringify(e)}\n`).join("");
+    const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+    await writeFile(tempPath, ndjson, "utf8");
+    await rename(tempPath, targetPath);
   }
 
   async flushEvents(requestId: string): Promise<void> {
@@ -233,10 +277,9 @@ export class FilesystemRequestStore implements RequestStore {
     fromSequence?: number
   ): Promise<RequestStreamEvent[]> {
     const filePath = toEventsPath(this.rootDir, requestId);
-    let events: RequestStreamEvent[];
+    let raw: string;
     try {
-      const raw = await readFile(filePath, "utf8");
-      events = JSON.parse(raw) as RequestStreamEvent[];
+      raw = await readFile(filePath, "utf8");
     } catch (error) {
       const maybeError = error as NodeJS.ErrnoException;
       if (maybeError.code === "ENOENT") {
@@ -244,8 +287,36 @@ export class FilesystemRequestStore implements RequestStore {
       }
       throw error;
     }
-    if (fromSequence === undefined) return events;
-    return events.filter((e) => e.sequence_number > fromSequence);
+
+    const matchInclude = (e: RequestStreamEvent): boolean =>
+      fromSequence === undefined || e.sequence_number > fromSequence;
+
+    // Legacy JSON-array format: first non-whitespace byte is `[`.
+    if (raw.match(/\S/)?.[0] === "[") {
+      const events = JSON.parse(raw) as RequestStreamEvent[];
+      return events.filter(matchInclude);
+    }
+
+    // NDJSON: one event per line. Skip blank lines; on a parse failure (e.g. a
+    // torn final append) skip the line and warn once per file. The store is
+    // single-writer per request, so a malformed line is a partial write, not
+    // a sequence the reader can recover.
+    const out: RequestStreamEvent[] = [];
+    for (const line of raw.split("\n")) {
+      if (line.length === 0) continue;
+      try {
+        const event = JSON.parse(line) as RequestStreamEvent;
+        if (matchInclude(event)) out.push(event);
+      } catch {
+        if (!corruptionWarned.has(filePath)) {
+          corruptionWarned.add(filePath);
+          console.warn(
+            `[flow-state] skipping corrupted event line(s) in ${filePath}`
+          );
+        }
+      }
+    }
+    return out;
   }
 
   subscribeToEvents(
