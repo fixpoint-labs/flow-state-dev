@@ -70,6 +70,14 @@ export class FilesystemContentStore implements ContentStore {
   }
 
   async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>> {
+    return this.getByPrefix(scopeType, scopeId, "");
+  }
+
+  async getByPrefix(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string
+  ): Promise<Record<string, string>> {
     const dir = this.scopeDir(scopeType, scopeId);
     const result: Record<string, string> = {};
 
@@ -87,9 +95,13 @@ export class FilesystemContentStore implements ContentStore {
       if (!entry.isFile() || entry.name.startsWith(".")) {
         continue;
       }
+      const resourceKey = decodePath(entry.name);
+      if (!resourceKey.startsWith(keyPrefix)) {
+        continue;
+      }
       const filePath = path.join(dir, entry.name);
       const content = await readFile(filePath, "utf8");
-      result[decodePath(entry.name)] = content;
+      result[resourceKey] = content;
     }
 
     return result;

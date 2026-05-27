@@ -329,6 +329,44 @@ describe("PostgreSQL store adapter", () => {
     });
   });
 
+  // --- Content store (FIX-685) ---
+
+  describe("content store", () => {
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "files/a.ts", "a");
+      await s.content.set("session", "s1", "files/b.ts", "b");
+      await s.content.set("session", "s1", "notes", "n");
+
+      expect(await s.content.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": "a",
+        "files/b.ts": "b"
+      });
+    });
+
+    it("getByPrefix with an empty prefix returns all keys in scope", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "notes", "n");
+      await s.content.set("session", "s1", "files/a.ts", "a");
+
+      expect(await s.content.getByPrefix("session", "s1", "")).toEqual({
+        notes: "n",
+        "files/a.ts": "a"
+      });
+    });
+
+    it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "a_b/1", "match");
+      await s.content.set("session", "s1", "axb/1", "no"); // `_` is a LIKE wildcard
+      await s.content.set("session", "s1", "other", "no");
+
+      expect(await s.content.getByPrefix("session", "s1", "a_b/")).toEqual({
+        "a_b/1": "match"
+      });
+    });
+  });
+
   // --- FIX-657: request_items table ---
 
   describe("request_items (FIX-657)", () => {

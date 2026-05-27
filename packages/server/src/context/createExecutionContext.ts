@@ -56,6 +56,8 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
 import type {
+  ContentScopeType,
+  ContentStore,
   OrgRecord,
   RequestRecord,
   SessionRecord,
@@ -252,6 +254,60 @@ function normalizeScopeResourceContent(
   }
 
   return normalized;
+}
+
+/**
+ * Load only the content a scope's declared resources reference. Fixed
+ * resources resolve to a single storage key (`content.get`); collections
+ * resolve to their pattern prefix (`content.getByPrefix`, where an empty
+ * prefix loads every instance in the scope). A scope with no declared
+ * resources issues no content read at all. The merged map seeds
+ * `normalizeScopeResourceContent`, so undeclared keys never enter the
+ * execution context.
+ */
+async function loadDeclaredScopeContent(
+  content: ContentStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, string>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, string>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      // A non-empty static prefix targets the collection's `prefix/...`
+      // namespace; an empty prefix (e.g. `[topic]/observations`) loads
+      // every key in the scope.
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(content.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await content.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, string> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (typeof value === "string") seed[key] = value;
+  }
+  return seed;
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -2260,13 +2316,17 @@ export async function createExecutionContext<
     await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
-  // Content lives in ContentStore exclusively (FIX-347). Eagerly load all
-  // content for the scopes this execution touches so reads during the run
-  // are synchronous against the in-memory cache.
+  // Content lives in ContentStore exclusively (FIX-347). Load only the
+  // content this flow declares (FIX-685) — fixed resources by key,
+  // collections by pattern prefix — so reads during the run are synchronous
+  // against the in-memory cache without over-fetching the whole scope. The
+  // full-scope view stays available via the state endpoint.
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    stores.content.getAll("session", sessionId),
-    stores.content.getAll("user", userKey),
-    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
+    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredScopeContent(stores.content, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, string>>({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(

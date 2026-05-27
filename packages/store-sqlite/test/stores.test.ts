@@ -300,6 +300,33 @@ describe("SQLite store adapter", () => {
     });
   });
 
+  // --- Content store (FIX-685) ---
+
+  describe("content store", () => {
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = freshStores();
+      await s.content.set("session", "s1", "files/a.ts", "a");
+      await s.content.set("session", "s1", "files/b.ts", "b");
+      await s.content.set("session", "s1", "notes", "n");
+
+      expect(await s.content.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": "a",
+        "files/b.ts": "b"
+      });
+    });
+
+    it("getByPrefix with an empty prefix returns all keys in scope", async () => {
+      const s = freshStores();
+      await s.content.set("session", "s1", "notes", "n");
+      await s.content.set("session", "s1", "files/a.ts", "a");
+
+      expect(await s.content.getByPrefix("session", "s1", "")).toEqual({
+        notes: "n",
+        "files/a.ts": "a"
+      });
+    });
+  });
+
   // --- User Store ---
 
   describe("user store", () => {

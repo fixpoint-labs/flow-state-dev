@@ -408,8 +408,17 @@ export interface ContentStore {
   /** Delete a single resource's content. */
   delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
 
-  /** Read all content for a scope instance. Used during context initialization and state route reads. */
+  /** Read all content for a scope instance. Used during state route reads (full-scope view). */
   getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
+
+  /**
+   * Read every content entry in a scope whose resourceKey starts with
+   * `keyPrefix`. An empty `keyPrefix` returns all keys in the scope
+   * (equivalent to `getAll`). Used during context initialization to load
+   * only the content a flow declares — fixed resources by exact key, and
+   * collections by their pattern prefix.
+   */
+  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
 
   /** Delete all content for a scope instance. Used during scope record deletion. */
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
