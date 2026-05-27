@@ -76,7 +76,11 @@ export default function Page(): ReactElement {
 function TradingDeskApp(): ReactElement {
   // Resolve-or-create runs explicitly inside `handleRun`. Auto-create would
   // race with the lookup and silently create an unkeyed session on first mount.
-  const flow = useFlow({ autoCreateSession: false });
+  // `autoSelectSession: false` keeps the hook from loading the most-recent
+  // session on mount — selection is driven entirely off the input tuple below,
+  // so a tuple with no matching session shows a blank screen (the thesis form)
+  // rather than flashing it and then snapping to the latest run.
+  const flow = useFlow({ autoCreateSession: false, autoSelectSession: false });
   const session = useSession(flow.activeSessionId);
 
   // The settings dialog reads the user-scoped instructions resource via
@@ -170,10 +174,34 @@ function TradingDeskApp(): ReactElement {
         ? thesisAlignment
         : "pending";
 
-  const handleRun = useCallback(async () => {
-    const tuple: AnalyzeTuple = { ticker, date, costPreset, dataSource };
+  // The current input tuple identifies which persisted session this view maps
+  // to. Sessions are keyed by `===` match on all four fields.
+  const tuple = useMemo<AnalyzeTuple>(
+    () => ({ ticker, date, costPreset, dataSource }),
+    [ticker, date, costPreset, dataSource],
+  );
+  const matchedSessionId = useMemo(
+    () => findSessionForTuple(flow.sessions, tuple),
+    [flow.sessions, tuple],
+  );
+  // True when the current inputs map to an existing run (drives the run
+  // button label: "re-run" for an existing session, "Run" for a fresh one).
+  const isExistingSession = matchedSessionId !== undefined;
 
-    let targetId = findSessionForTuple(flow.sessions, tuple);
+  // Drive the active session off the input tuple: a matching session loads,
+  // no match clears selection (blank screen → the thesis form). While a
+  // dispatch handshake is mid-flight we leave selection alone so this doesn't
+  // fight `handleRun`. Effect (not derived state): it syncs an external store
+  // (the flow hook's active-session selection) with the input tuple.
+  useEffect(() => {
+    if (pendingDispatch !== null) return;
+    if (flow.activeSessionId !== matchedSessionId) {
+      flow.selectSession(matchedSessionId);
+    }
+  }, [matchedSessionId, pendingDispatch, flow.activeSessionId, flow.selectSession]);
+
+  const handleRun = useCallback(async () => {
+    let targetId = matchedSessionId;
     if (targetId === undefined) {
       try {
         const created = await sessionClient.createSession({
@@ -206,10 +234,8 @@ function TradingDeskApp(): ReactElement {
       userThesisRationale: rationale.length > 0 ? rationale : null,
     });
   }, [
-    ticker,
-    date,
-    costPreset,
-    dataSource,
+    tuple,
+    matchedSessionId,
     userThesis,
     userThesisRationale,
     flow,
@@ -259,6 +285,7 @@ function TradingDeskApp(): ReactElement {
           void handleRun();
         }}
         isRunning={session.isStreaming}
+        isExistingSession={isExistingSession}
         theme={theme}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
