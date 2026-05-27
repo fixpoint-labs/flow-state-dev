@@ -46,17 +46,17 @@ export type TaskWorkerInput<TIn = unknown> = {
   feedback?: string;
   metadata?: Record<string, unknown>;
   /**
-   * Selected observations from prior tasks in this board run (FIX-610
-   * Layer A). Populated when the Task Board's `flowPolicy` returns a
-   * non-empty selection for this task. Workers may read either the
-   * raw `observations` list or the pre-rendered `narrative` when the
+   * Selected observations from prior tasks in this board run.
+   * Populated when the Task Board's `flowPolicy` returns a non-empty
+   * selection for this task. Workers may read either the raw
+   * `observations` list or the pre-rendered `narrative` when the
    * policy supplied one. Absent when no policy is configured or when
    * the policy selected nothing.
    *
-   * Typed loosely as `unknown` at this layer so `@flow-state-dev/tasks`
-   * doesn't depend on `@flow-state-dev/utilities-task-flow`. The
-   * concrete shape is `TaskPriorWork` (exported from
-   * `@flow-state-dev/utilities-task-flow`).
+   * Typed loosely as `unknown` here so workers that don't reach for
+   * prior work don't pick up a transitive type dep. The concrete
+   * shape is `TaskPriorWork`, also exported from this package
+   * (`@flow-state-dev/tasks`).
    */
   priorWork?: unknown;
 };

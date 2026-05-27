@@ -7,7 +7,7 @@ sidebar_label: "Flow policy"
 
 Flow policy controls what a freshly dispatched Task Board worker knows about work that already happened in the same run. It also enables tool-result memoization so identical tool calls across tasks don't pay the same cost twice.
 
-Both layers ship in `@flow-state-dev/utilities-task-flow` and are wired automatically by `taskBoard` (and by the patterns built on it) when you set the relevant config.
+The flow-policy layer (observation ledger, `TaskFlowPolicy`, built-in policies) lives in `@flow-state-dev/tasks`. The tool-cache primitive (`createToolCacheCapability`, in-memory store) lives in `@flow-state-dev/core`. Both are wired automatically by `taskBoard` (and by the patterns built on it) when you set the relevant config.
 
 ## What it solves
 
@@ -52,7 +52,7 @@ Identical in-flight calls within the same request coalesce into one execution. E
 
 ## Built-in policies
 
-All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/utilities-task-flow`. The default for every Task Board topology is `flowPolicy.declaredDepsOnly()`.
+All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/tasks`. The default for every Task Board topology is `flowPolicy.declaredDepsOnly()`.
 
 | Policy | What it selects |
 |---|---|
@@ -68,7 +68,7 @@ The common pick for plan-and-execute-shaped work is recent trajectory:
 
 ```ts
 import { taskBoard } from "@flow-state-dev/patterns";
-import { flowPolicy } from "@flow-state-dev/utilities-task-flow";
+import { flowPolicy } from "@flow-state-dev/tasks";
 
 const board = taskBoard({
   name: "research",
@@ -83,7 +83,7 @@ Both layers are board-level config. Setting either is enough; you can mix and ma
 
 ```ts
 import { taskBoard } from "@flow-state-dev/patterns";
-import { flowPolicy } from "@flow-state-dev/utilities-task-flow";
+import { flowPolicy } from "@flow-state-dev/tasks";
 
 const board = taskBoard({
   name: "research",
@@ -159,7 +159,7 @@ Cross-task observation flow (Layer A) does not require cacheable tools to be use
 `flowPolicy.custom` takes a `select` function with the same signature the built-ins implement:
 
 ```ts
-import { flowPolicy, type TaskFlowPolicy } from "@flow-state-dev/utilities-task-flow";
+import { flowPolicy, type TaskFlowPolicy } from "@flow-state-dev/tasks";
 
 const policy: TaskFlowPolicy = flowPolicy.custom(({ task, ledger, collection }) => {
   // Surface observations from declared deps, but also include any

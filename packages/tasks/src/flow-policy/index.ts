@@ -1,7 +1,7 @@
 /**
- * Task flow policy (FIX-610 Wave 2, Layer A).
+ * Task flow policy.
  *
- * The substrate maintains an *observation ledger* for each Task Board
+ * The Task Board substrate maintains an *observation ledger* for each
  * run: an append-only list of every tool call (and its result/error)
  * any worker made during the run. Before dispatching a task, the board
  * consults the configured `TaskFlowPolicy` to pick which observations
@@ -11,8 +11,8 @@
  *
  * 1. **Ledger** — `createObservationLedger` (in-memory store +
  *    `ObservationLedgerView`) and `createObservationLedgerCapability`
- *    for installing as a capability on standalone generators. The board
- *    wires its own per-run ledger directly via the bind helpers.
+ *    for installing as a capability on standalone generators. The
+ *    board wires its own per-run ledger directly via the bind helpers.
  *
  * 2. **Policies** — `flowPolicy.none()`, `declaredDepsOnly()`,
  *    `ancestors()`, `recentTrajectory()`, `allCompleted()`, `compact()`,
@@ -21,7 +21,8 @@
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { Task, TaskCollectionRef } from "@flow-state-dev/tasks";
+import type { Task } from "../schema/task";
+import type { TaskCollectionRef } from "../collection/types";
 
 // ---------------------------------------------------------------------------
 // Observation
@@ -219,7 +220,7 @@ export function createObservationLedgerCapability(
 // for snapshots). The request handle is shared by reference across
 // every nested ctx, so a bag attached here is reachable from any
 // block executing in the request.
-const LEDGER_BAG_KEY = "__fsd_fix610_observationLedgers";
+const LEDGER_BAG_KEY = "__fsd_observationLedgers";
 
 function resolveOrCreateLedger(
   ctx: BlockContext,

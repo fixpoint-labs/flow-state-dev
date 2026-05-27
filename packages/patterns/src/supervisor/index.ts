@@ -14,7 +14,7 @@
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/utilities-task-flow";
+import { flowPolicy } from "@flow-state-dev/tasks";
 import type {
   AgentType,
   GeneratorHistoryConfig,

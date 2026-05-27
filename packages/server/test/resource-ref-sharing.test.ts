@@ -106,12 +106,13 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
     await ctx.resources.alias.setState({ value: "world" });
     expect((ctx.resources.primary.state as { value: string }).value).toBe("world");
 
-    // The session record should hold exactly one slot for this resource.
-    const session = await stores.session.get("sess_aliases");
-    const persisted = (session?.resources ?? {}) as Record<string, unknown>;
+    // Resource state lives in the ResourceStateStore (FIX-689); aliases dedup
+    // to exactly one storage slot holding the latest written value.
+    const persisted = await stores.resourceState.getAll("session", "sess_aliases");
     const matching = Object.keys(persisted).filter(
       (k) => k === "primary" || k === "alias"
     );
     expect(matching).toHaveLength(1);
+    expect((persisted[matching[0]!] as { value: string }).value).toBe("world");
   });
 });

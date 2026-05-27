@@ -184,6 +184,14 @@ const myHandler = handler({
 
 Forwarding is direct-only: inner capabilities used by `myCap` do not propagate to `myHandler`. Dynamic `uses` entries (functions) contribute at runtime but not to types.
 
+**Tool-result memoization:**
+- `createToolCacheCapability(options?)` — Capability that installs a per-request LRU store on the active context so any tool block declaring `cacheable` serves identical calls from cache. Errors are never cached; identical in-flight calls in the same request coalesce.
+- `createInMemoryToolCacheStore(options?)` — Standalone store factory for advanced wiring (e.g. binding a per-board run-scoped store directly).
+- `bindToolCacheStore(ctx, store)` — Attach a store to a context without going through the capability path.
+- `canonicalizeToolArgs(value)` — Deterministic JSON canonicalizer for custom `keyFn`s that want the substrate's default normalization.
+- Types: `ToolCacheStore`, `ToolCacheEntry`, `ToolCacheAccessor`, `CreateToolCacheCapabilityOptions`.
+- See [Flow policy](https://flow-state.dev/docs/patterns/flow-policy) for the full guide, including when to mark a tool cacheable and how Task Board auto-installs the capability.
+
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
 - `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.

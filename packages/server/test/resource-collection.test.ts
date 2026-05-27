@@ -610,12 +610,11 @@ describe("maxInstances with eviction: lru", () => {
     expect(ns.getOptional("a.ts")).toBeUndefined();
     expect(ns.getOptional("d.ts")).toBeDefined();
 
-    // Verify persistence — check the store directly
-    const session = await stores.session.get("sess_1");
-    expect(session).toBeDefined();
-    expect(session!.resources).toBeDefined();
-    expect((session!.resources as any)["lrufiles/a.ts"]).toBeUndefined();
-    expect((session!.resources as any)["lrufiles/d.ts"]).toBeDefined();
+    // Verify persistence — collection-instance state lives in the
+    // ResourceStateStore (FIX-689), not inline in the scope record.
+    const persisted = await stores.resourceState.getAll("session", "sess_1");
+    expect(persisted["lrufiles/a.ts"]).toBeUndefined();
+    expect(persisted["lrufiles/d.ts"]).toBeDefined();
   });
 });
 
@@ -766,10 +765,100 @@ describe("flat storage model", () => {
     await ns.create("readme.md", { language: "markdown" });
     await ns.create("src/utils.ts", { language: "typescript" });
 
-    const session = await stores.session.get("sess_1");
-    const resources = session!.resources as Record<string, any>;
+    // Collection-instance state is keyed flatly by path-based storage key in
+    // the ResourceStateStore (FIX-689), not inline in the scope record.
+    const resources = await stores.resourceState.getAll("session", "sess_1");
 
     expect(resources["files/readme.md"]).toEqual({ language: "markdown" });
     expect(resources["files/src/utils.ts"]).toEqual({ language: "typescript" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-key write routing (FIX-689): the headline behaviour — a collection
+// mutation writes only its own key to the ResourceStateStore and never
+// rewrites the whole scope record.
+// ---------------------------------------------------------------------------
+
+describe("per-key state write routing", () => {
+  function spyStores() {
+    const stores = createInMemoryStores();
+    const stateSetKeys: string[] = [];
+    const stateDeleteKeys: string[] = [];
+    let sessionSetCount = 0;
+
+    const realStateSet = stores.resourceState.set.bind(stores.resourceState);
+    stores.resourceState.set = async (scope, id, key, value) => {
+      stateSetKeys.push(key);
+      return realStateSet(scope, id, key, value);
+    };
+    const realStateDelete = stores.resourceState.delete.bind(stores.resourceState);
+    stores.resourceState.delete = async (scope, id, key) => {
+      stateDeleteKeys.push(key);
+      return realStateDelete(scope, id, key);
+    };
+    const realSessionSet = stores.session.set.bind(stores.session);
+    stores.session.set = async (...args) => {
+      sessionSetCount += 1;
+      return realSessionSet(...args);
+    };
+
+    return { stores, stateSetKeys, stateDeleteKeys, get sessionSetCount() { return sessionSetCount; } };
+  }
+
+  async function ctxWith(stores: ReturnType<typeof createInMemoryStores>) {
+    const flow = makeFlow({ files: filesCollection });
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_1",
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores,
+    });
+    return ctx;
+  }
+
+  it("create writes exactly one resourceState key and never the scope record", async () => {
+    const spy = spyStores();
+    const ctx = await ctxWith(spy.stores);
+    const ns = getFilesNs(ctx);
+
+    // Context setup legitimately persists the scope record once; measure that
+    // the mutation itself adds zero further scope-record writes.
+    const sessionSetsBefore = spy.sessionSetCount;
+    await ns.create("a.ts", { language: "a" });
+
+    expect(spy.stateSetKeys).toEqual(["files/a.ts"]);
+    expect(spy.sessionSetCount).toBe(sessionSetsBefore);
+  });
+
+  it("patchState on one instance writes only that instance's key", async () => {
+    const spy = spyStores();
+    const ctx = await ctxWith(spy.stores);
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "a" });
+    await ns.create("b.ts", { language: "b" });
+    spy.stateSetKeys.length = 0;
+    const sessionSetsBefore = spy.sessionSetCount;
+
+    await ns.get("a.ts").patchState({ language: "typescript" });
+
+    expect(spy.stateSetKeys).toEqual(["files/a.ts"]);
+    expect(spy.sessionSetCount).toBe(sessionSetsBefore);
+  });
+
+  it("delete routes a single resourceState.delete and never the scope record", async () => {
+    const spy = spyStores();
+    const ctx = await ctxWith(spy.stores);
+    const ns = getFilesNs(ctx);
+
+    await ns.create("a.ts", { language: "a" });
+    const sessionSetsBefore = spy.sessionSetCount;
+    await ns.delete("a.ts");
+
+    expect(spy.stateDeleteKeys).toEqual(["files/a.ts"]);
+    expect(spy.sessionSetCount).toBe(sessionSetsBefore);
   });
 });

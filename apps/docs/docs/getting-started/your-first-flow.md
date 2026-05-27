@@ -166,6 +166,8 @@ What the pieces do:
 
 That's the whole flow.
 
+For agents that need to remember things across turns, see [Memory → Overview](../memory/overview) — one capability adds a `<memory>` context block and a recall tool to a generator.
+
 ## Step 5. Mount it and render it
 
 The server side is a config object plus a single route. Describe the runtime with `createFlowState`:

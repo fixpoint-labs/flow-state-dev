@@ -94,6 +94,10 @@ createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
 
 It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
 
+### Connection resilience
+
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](../../apps/docs/docs/server/connection-resilience.md) for tuning.
+
 ## Lower-level: registry and router
 
 `createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
@@ -154,9 +158,10 @@ adapter.
 ## Authentication
 
 Per-flow `defineFlow({ authentication })` and a host-level
-`createFlowApiRouter({ resolvePrincipal })` configure how the framework
-resolves the caller principal for every inbound transport. The framework
-owns the contract; the host owns credential verification.
+`resolvePrincipal` (on `createFlowState`, or `createFlowApiRouter` for the
+lower-level surface) configure how the framework resolves the caller
+principal for every inbound transport. The framework owns the contract; the
+host owns credential verification.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -300,6 +305,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `createInMemoryStores` — Fast, ephemeral stores for testing
 - `createFilesystemStores` — Persistent stores for development and production
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
+- `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - Scope store factories and CAS/state ops
 
 **Streaming:**
@@ -347,7 +353,11 @@ Per-request loading is scoped to the resources a flow declares: the execution co
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
 ```ts
-import { createInMemoryContentStore, createInMemoryCheckpointStore } from "@flow-state-dev/server";
+import {
+  createInMemoryContentStore,
+  createInMemoryResourceStateStore,
+  createInMemoryCheckpointStore
+} from "@flow-state-dev/server";
 
 const stores: StoreRegistry = {
   session: mySessionStore,
@@ -356,6 +366,7 @@ const stores: StoreRegistry = {
   org: myOrgStore,
   activeRequests: myActiveRequestRegistry,
   content: createInMemoryContentStore(),
+  resourceState: createInMemoryResourceStateStore(),
   checkpoints: createInMemoryCheckpointStore(),
 };
 ```
@@ -363,6 +374,23 @@ const stores: StoreRegistry = {
 Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
 
 **Migrating from inline `resourceContent`:** Earlier versions stored content inline on `SessionRecord`/`UserRecord`/`OrgRecord` as a `resourceContent: Record<string, string>` field. That field has been removed. Operators with content already persisted inline must copy it into `ContentStore` before upgrading — for each scope record, walk its old `resourceContent` map and call `stores.content.set(scopeType, scopeId, key, value)` per entry. After the migration the field is silently dropped on the next record write.
+
+## ResourceStateStore
+
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`.
+
+```ts
+interface ResourceStateStore {
+  get(scopeType, scopeId, resourceKey): Promise<JsonObject | undefined>;
+  set(scopeType, scopeId, resourceKey, state): Promise<void>;
+  delete(scopeType, scopeId, resourceKey): Promise<void>;
+  getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  deleteAll(scopeType, scopeId): Promise<void>;
+}
+```
+
+The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
 
 ## CheckpointStore
 

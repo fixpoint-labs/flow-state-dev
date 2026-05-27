@@ -14,6 +14,10 @@ import {
   FilesystemContentStore
 } from "./filesystem/content-store";
 import {
+  createFilesystemResourceStateStore,
+  FilesystemResourceStateStore
+} from "./filesystem/resource-state-store";
+import {
   createFilesystemProjectStore,
   FilesystemProjectStore
 } from "./filesystem/org-store";
@@ -46,6 +50,10 @@ import {
   createInMemoryContentStore,
   InMemoryContentStore
 } from "./memory/content-store";
+import {
+  createInMemoryResourceStateStore,
+  InMemoryResourceStateStore
+} from "./memory/resource-state-store";
 import {
   createInMemoryProjectStore,
   InMemoryProjectStore
@@ -82,6 +90,7 @@ export type {
   CheckpointStore,
   ContentScopeType,
   ContentStore,
+  ResourceStateStore,
   ExpectedVersion,
   OrgListOptions,
   OrgRecord,
@@ -127,6 +136,7 @@ export {
   createFilesystemActiveRequestRegistry,
   createFilesystemCheckpointStore,
   createFilesystemContentStore,
+  createFilesystemResourceStateStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
@@ -135,6 +145,7 @@ export {
   createInMemoryActiveRequestRegistry,
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
+  createInMemoryResourceStateStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
@@ -143,6 +154,7 @@ export {
   FilesystemActiveRequestRegistry,
   FilesystemCheckpointStore,
   FilesystemContentStore,
+  FilesystemResourceStateStore,
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
@@ -151,6 +163,7 @@ export {
   InMemoryActiveRequestRegistry,
   InMemoryCheckpointStore,
   InMemoryContentStore,
+  InMemoryResourceStateStore,
   InMemoryProjectStore,
   InMemoryRequestStore,
   InMemorySessionStore,
@@ -222,6 +235,7 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
     org: createInMemoryProjectStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
+    resourceState: createInMemoryResourceStateStore(),
     checkpoints: createInMemoryCheckpointStore(),
     traces: createInMemoryTraceStore({
       ...options.traceStore,
@@ -272,6 +286,7 @@ export function createFilesystemStores(
       onPersistError
     }),
     content: createFilesystemContentStore(options.rootDir),
+    resourceState: createFilesystemResourceStateStore(options.rootDir),
     checkpoints: createFilesystemCheckpointStore(options.rootDir),
     traces: createFilesystemTraceStore({
       rootDir: path.join(options.rootDir, "traces"),

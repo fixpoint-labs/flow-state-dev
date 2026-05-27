@@ -227,6 +227,17 @@ export type {
 } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
+// Layer 3: Composed memory capability factory
+// ---------------------------------------------------------------------------
+
+export { createMemoryCapability } from './memory-capability.js'
+export type {
+  CreateMemoryCapabilityOptions,
+  MemoryCapability,
+  MemoryCapabilityResources,
+} from './memory-capability.js'
+
+// ---------------------------------------------------------------------------
 // Layer 3: Agent-invocable recall tool (FIX-409)
 // ---------------------------------------------------------------------------
 

@@ -235,7 +235,7 @@ describe("Phase 3 end-to-end", () => {
       ?.memoStatus ?? {};
     expect(memoStatus.trader).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as
       | {
           status?: string;
@@ -319,7 +319,7 @@ describe("Phase 3 end-to-end", () => {
     expect(memoStatus.researchManager).toBe("published");
     expect(memoStatus.trader).toBe("error");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

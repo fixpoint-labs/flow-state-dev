@@ -181,19 +181,31 @@ async function seedStores(options: {
 }): Promise<void> {
   const now = nowMs();
 
+  // Resource state lives in the ResourceStateStore (FIX-689), keyed per-resource
+  // and separate from the scope record. Seed it there so the execution context
+  // (which loads state from the store, not the record) sees the seeded values.
+  const seedResourceState = async (
+    scopeType: "session" | "user" | "org",
+    scopeId: string,
+    resources: Record<string, unknown> | undefined
+  ): Promise<void> => {
+    if (resources === undefined) return;
+    const normalized = toJsonObjectRecord(cloneRecord(resources));
+    for (const [key, value] of Object.entries(normalized)) {
+      await options.stores.resourceState.set(scopeType, scopeId, key, value);
+    }
+  };
+
   if (options.seed.user !== undefined) {
     await options.stores.user.set(options.userId, {
       id: options.userId,
       userId: options.userId,
       state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
-      resources:
-        options.seed.user.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
     }, "any");
+    await seedResourceState("user", options.userId, options.seed.user.resources);
   }
 
   if (options.orgId !== undefined) {
@@ -202,14 +214,11 @@ async function seedStores(options: {
       orgId: options.orgId,
       userId: options.userId,
       state: toJsonObject(cloneRecord(options.seed.org?.state ?? {})),
-      resources:
-        options.seed.org?.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
     }, "any");
+    await seedResourceState("org", options.orgId, options.seed.org?.resources);
   }
 
   if (options.sessionId !== undefined) {
@@ -221,15 +230,12 @@ async function seedStores(options: {
       metadata: undefined,
       latestRequestId: undefined,
       state: toJsonObject(cloneRecord(options.seed.session?.state ?? {})),
-      resources:
-        options.seed.session?.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now,
       journal: []
     }, "any");
+    await seedResourceState("session", options.sessionId, options.seed.session?.resources);
   }
 
   if (options.seed.request !== undefined) {

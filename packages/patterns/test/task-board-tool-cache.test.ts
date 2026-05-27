@@ -13,15 +13,15 @@
  * scope without needing the AI SDK loop in this test.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import {
+  handler,
+  canonicalizeToolArgs,
+  type ToolCacheStore,
+} from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import type { TaskWorker } from "@flow-state-dev/tasks";
-import {
-  canonicalizeToolArgs,
-  type ToolCacheStore,
-} from "@flow-state-dev/utilities-task-flow";
 
 import { taskBoard, taskWorkerInputSchema } from "../src/task-board";
 

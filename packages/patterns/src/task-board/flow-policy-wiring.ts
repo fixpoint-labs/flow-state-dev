@@ -14,26 +14,29 @@
  * threw partway through would leak its run-scoped cache entries until
  * the per-request store fell off (still bounded, but ugly).
  *
- * The wiring deliberately imports from
- * `@flow-state-dev/utilities-task-flow` here rather than re-exporting
- * — keeping the dep one-way means `packages/patterns` is the only
- * consumer of the new package, and existing patterns continue to
- * compile without it on their classpath.
+ * The tool-cache primitive (in-memory store + capability) lives in
+ * `@flow-state-dev/core` next to the substrate wrapping that consumes
+ * it. The observation ledger + flow-policy selectors live in
+ * `@flow-state-dev/tasks` — both shape `TaskWorkerInput.priorWork`,
+ * which is a tasks-package concept.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import { handler } from "@flow-state-dev/core";
+import {
+  handler,
+  createInMemoryToolCacheStore,
+  type ToolCacheStore,
+} from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef } from "@flow-state-dev/tasks";
 import {
-  createInMemoryToolCacheStore,
   createObservationLedger,
   flowPolicy as builtinFlowPolicy,
   type ObservationLedger,
   type ObservationLedgerView,
+  type Task,
+  type TaskCollectionRef,
   type TaskFlowPolicy,
-  type ToolCacheStore,
-} from "@flow-state-dev/utilities-task-flow";
+} from "@flow-state-dev/tasks";
 import type { TaskBoardToolCacheConfig } from "./index";
 
 /**

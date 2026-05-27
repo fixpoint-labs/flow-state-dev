@@ -12,12 +12,14 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { createInMemoryStores, createFlowRegistry } from "../src";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import {
   handleListCollectionState,
   handleGetCollectionItemState,
   handleGetResourceManifest
 } from "../src/routes/resource-routes";
+import { handleDeleteSession } from "../src/routes/session-routes";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 
 // ---------------------------------------------------------------------------
@@ -103,17 +105,49 @@ async function setupCtx(opts: {
     flowKind: "test-flow",
     userId: "user_1",
     state: {},
-    resources,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   await stores.session.set(sessionId, session, "any");
+  // Resource state is canonical in the ResourceStateStore (FIX-689).
+  for (const [key, state] of Object.entries(resources)) {
+    await stores.resourceState.set("session", sessionId, key, state as JsonObject);
+  }
   return { registry, stores, sessionId };
 }
 
 function makeReq(url: string, method = "GET"): Request {
   return new Request(url, { method });
 }
+
+// ---------------------------------------------------------------------------
+// delete_session cascade (FIX-689): resource state must be cleaned up too
+// ---------------------------------------------------------------------------
+
+describe("handleDeleteSession resource-state cleanup", () => {
+  it("deletes the session's resource state, not just its content", async () => {
+    const { registry, stores, sessionId } = await setupCtx({
+      artifacts: { "doc.md": { title: "Doc" } },
+    });
+    await stores.content.set("session", sessionId, "artifacts/doc.md", "body");
+
+    // Sanity: both stores hold the instance before delete.
+    expect(Object.keys(await stores.resourceState.getAll("session", sessionId))).toContain(
+      "artifacts/doc.md"
+    );
+
+    const res = await handleDeleteSession(
+      makeReq(`http://x/api/flows/sessions/${sessionId}`, "DELETE"),
+      { kind: "delete_session", sessionId },
+      { registry, stores }
+    );
+    expect(res.status).toBe(204);
+
+    // No orphaned state (or content) rows remain.
+    expect(await stores.resourceState.getAll("session", sessionId)).toEqual({});
+    expect(await stores.content.getAll("session", sessionId)).toEqual({});
+  });
+});
 
 // ---------------------------------------------------------------------------
 // list_collection_state
@@ -501,17 +535,23 @@ describe("client projection shapes (FIX-580)", () => {
       flowKind: "projection-flow",
       userId: "user_1",
       state: {},
-      resources: {
-        "items/one": { title: "T", body: "B", secret: "S" },
-      },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    return stores.session.set(sessionId, session, "any").then(() => ({
-      registry,
-      stores,
-      sessionId,
-    }));
+    return stores.session
+      .set(sessionId, session, "any")
+      .then(() =>
+        stores.resourceState.set("session", sessionId, "items/one", {
+          title: "T",
+          body: "B",
+          secret: "S",
+        })
+      )
+      .then(() => ({
+        registry,
+        stores,
+        sessionId,
+      }));
   }
 
   it("ships identity state when state.read: true and no projection is set", async () => {

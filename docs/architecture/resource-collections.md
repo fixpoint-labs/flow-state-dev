@@ -155,7 +155,7 @@ Hook context (`CollectionHookContext`) provides `log(message)` and `scopeType`. 
 
 ## Storage model
 
-Collection instances are stored in the same flat `resources` map as static resources. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. No schema changes to scope records are required. This means collection instances are subject to the same persistence and CAS semantics as static resources.
+Collection instances and single resources share one flat keyspace for state. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. Resource state — single and collection-instance alike — is persisted per-resource in the keyed `ResourceStateStore`, separate from the scope record (see [State Storage](./resources-and-client-data.md#state-storage)). The in-execution view is still a flat map, so accessors are unchanged; the difference is that a write to one instance touches only that instance's key instead of rewriting the whole scope record.
 
 ## Block declarations
 

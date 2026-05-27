@@ -203,6 +203,7 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
     content: partial?.content ?? fallback.content,
+    resourceState: partial?.resourceState ?? fallback.resourceState,
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces
   };

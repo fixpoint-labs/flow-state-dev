@@ -43,7 +43,7 @@ const richTextComponentFlow = defineFlow({
   // scope routes them to the right storage layer. Spreading mem.userResources
   // registers `episodicMemory` and `semanticMemory` at user scope so the
   // personalize generator's memory capability has user-store backing.
-  resources: { ...(mem.userResources ?? {}) },
+  resources: { ...mem.userResources },
 });
 
 const flow = richTextComponentFlow({ id: "default" });

@@ -221,7 +221,7 @@ describe("Phase 2 end-to-end", () => {
     expect(memoStatus.bear).toBe("published");
     expect(memoStatus.researchManager).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const rmMemo = memoResources["memos/p2/research-manager"] as
       | { status?: string; unresolvedDisagreements?: string[] | null }
       | undefined;
@@ -286,7 +286,7 @@ describe("Phase 2 end-to-end", () => {
     expect(memoStatus.bear).toBe("published");
     expect(memoStatus.researchManager).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const bullMemo = memoResources["memos/p2/bull"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

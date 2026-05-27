@@ -152,6 +152,7 @@ export const researchManagerGenerator = generator({
       bullThesis: true,
       bearThesis: true,
       phase2Debate: true,
+      citationIntegrity: true,
       reasoning: true,
     }),
   ],

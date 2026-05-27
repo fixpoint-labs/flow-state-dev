@@ -115,11 +115,18 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
-  // Resource content is canonical in ContentStore (FIX-347).
+  // Resource content is canonical in ContentStore (FIX-347); resource state is
+  // canonical in ResourceStateStore (FIX-689). Both are keyed per-resource,
+  // separate from the scope record.
   const [sessionContent, userContent, orgContent] = await Promise.all([
     ctx.stores.content.getAll("session", session.id),
     user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
     org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
+  ]);
+  const [sessionState, userState, orgState] = await Promise.all([
+    ctx.stores.resourceState.getAll("session", session.id),
+    user !== undefined ? ctx.stores.resourceState.getAll("user", user.id) : Promise.resolve({}),
+    org !== undefined ? ctx.stores.resourceState.getAll("org", org.id) : Promise.resolve({})
   ]);
 
   // FIX-435: partition the flat flow.resources map back into per-scope
@@ -137,17 +144,17 @@ export async function handleGetSessionState(
 
   const sessionResources = createScopeResources({
     configs: sessionConfigs,
-    persisted: session.resources as Record<string, unknown> | undefined,
+    persisted: sessionState,
     persistedContent: sessionContent
   });
   const userResources = createScopeResources({
     configs: userConfigs,
-    persisted: user?.resources as Record<string, unknown> | undefined,
+    persisted: userState,
     persistedContent: userContent
   });
   const orgResources = createScopeResources({
     configs: orgConfigs,
-    persisted: org?.resources as Record<string, unknown> | undefined,
+    persisted: orgState,
     persistedContent: orgContent
   });
 
@@ -179,17 +186,17 @@ export async function handleGetSessionState(
   const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
       configs: sessionConfigs,
-      persisted: session.resources as Record<string, unknown> | undefined,
+      persisted: sessionState,
       persistedContent: sessionContent,
     }),
     buildResourceSnapshot({
       configs: userConfigs,
-      persisted: user?.resources as Record<string, unknown> | undefined,
+      persisted: userState,
       persistedContent: userContent,
     }),
     buildResourceSnapshot({
       configs: orgConfigs,
-      persisted: org?.resources as Record<string, unknown> | undefined,
+      persisted: orgState,
       persistedContent: orgContent,
     }),
   ]);

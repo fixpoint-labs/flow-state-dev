@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
+import { generator } from '@flow-state-dev/core'
 import { workingMemoryStateSchema } from '../src/working-memory.js'
 import type { WorkingMemoryState } from '../src/working-memory.js'
 import { episodicMemoryStateSchema } from '../src/episodic-memory.js'
@@ -15,6 +16,7 @@ import {
   semanticMemoryCapability,
 } from '../src/capabilities.js'
 import { system } from '../src/memory-system.js'
+import { createMemoryCapability } from '../src/memory-capability.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers — mock resource refs that simulate the runtime context
@@ -702,6 +704,231 @@ describe('memory/capabilities', () => {
       expect(cap.resources).toBeDefined()
       expect(cap.resources!.semanticMemory).toBeDefined()
       expect((cap.resources!.semanticMemory as any).scope).toBe('org')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Composed memory capability factory — createMemoryCapability (FIX-647)
+  // ---------------------------------------------------------------------------
+
+  describe('createMemoryCapability', () => {
+    it('returns a defineCapability-branded object named "memory"', () => {
+      const cap = createMemoryCapability({ model: 'intent/utility', working: true })
+      expect(cap.__brand).toBe('Capability')
+      expect(cap.name).toBe('memory')
+    })
+
+    it('sessionResources holds workingMemory + memorySystem; userResources empty for working-only', () => {
+      const cap = createMemoryCapability({ model: 'intent/utility', working: true })
+      expect(cap.sessionResources.workingMemory).toBeDefined()
+      expect(cap.sessionResources.memorySystem).toBeDefined()
+      expect(Object.keys(cap.userResources)).toHaveLength(0)
+    })
+
+    it('userResources gains a tier resource only when that tier is configured', () => {
+      const epOnly = createMemoryCapability({ model: 'intent/utility', working: true, episodic: true })
+      expect(epOnly.userResources.episodicMemory).toBeDefined()
+      expect(epOnly.userResources.semanticMemory).toBeUndefined()
+      expect(epOnly.userResources.digestMemory).toBeUndefined()
+
+      const full = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        digest: true,
+      })
+      expect(full.userResources.episodicMemory).toBeDefined()
+      expect(full.userResources.semanticMemory).toBeDefined()
+      expect(full.userResources.digestMemory).toBeDefined()
+    })
+
+    it('tiers.working is always defined; other tiers present only when configured', () => {
+      const wmOnly = createMemoryCapability({ model: 'intent/utility', working: true })
+      expect(wmOnly.tiers.working).toBeDefined()
+      expect(wmOnly.tiers.episodic).toBeUndefined()
+      expect(wmOnly.tiers.semantic).toBeUndefined()
+      expect(wmOnly.tiers.digest).toBeUndefined()
+
+      const full = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        digest: true,
+      })
+      expect(full.tiers.working.name).toBe('workingMemory')
+      expect(full.tiers.episodic!.name).toBe('episodicMemory')
+      expect(full.tiers.semantic!.name).toBe('semanticMemory')
+      expect(full.tiers.digest!.name).toBe('digestMemory')
+    })
+
+    it('attaches the SAME resource reference on userResources and the owning tier (FIX-435)', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        digest: true,
+      })
+      // The resource the caller registers must be the exact reference the tier
+      // capability owns — divergent refs would conflict at mergeResourcesInto.
+      expect(cap.sessionResources.workingMemory)
+        .toBe(cap.tiers.working.resources!.workingMemory)
+      expect(cap.userResources.episodicMemory)
+        .toBe(cap.tiers.episodic!.resources!.episodicMemory)
+      expect(cap.userResources.semanticMemory)
+        .toBe(cap.tiers.semantic!.resources!.semanticMemory)
+      expect(cap.userResources.digestMemory)
+        .toBe(cap.tiers.digest!.resources!.digestMemory)
+      // The tier capabilities the composed capability uses are the same refs.
+      expect(cap.uses).toContain(cap.tiers.working)
+      expect(cap.uses).toContain(cap.tiers.episodic)
+    })
+
+    it('declares the five orthogonal presets with the standard default-on set', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        digest: true,
+      })
+      const defs = cap.__presetDefs!
+      expect(Object.keys(defs).filter((k) => k !== 'default').sort())
+        .toEqual(['digest', 'episodic', 'recall', 'semantic', 'working'])
+      expect(defs.default).toEqual(['digest', 'working', 'recall'])
+    })
+
+    it('digest/semantic/episodic presets are empty no-ops when their tier is absent', () => {
+      const cap = createMemoryCapability({ model: 'intent/utility', working: true })
+      const defs = cap.__presetDefs as Record<string, { context?: unknown; tools?: unknown }>
+      expect(defs.digest.context).toBeUndefined()
+      expect(defs.semantic.context).toBeUndefined()
+      expect(defs.episodic.context).toBeUndefined()
+      // working always carries a context entry
+      expect(defs.working.context).toBeDefined()
+    })
+
+    it('recall preset tools slot is a thunk returning the recallToolBlock', () => {
+      const cap = createMemoryCapability({ model: 'intent/utility', working: true, episodic: true })
+      const recallPreset = cap.__presetDefs!.recall as { tools: () => unknown[] }
+      expect(typeof recallPreset.tools).toBe('function')
+      const tools = recallPreset.tools()
+      expect(tools).toHaveLength(1)
+      expect(tools[0]).toBe(cap.recallToolBlock)
+    })
+
+    it('fns.recall returns [] for an empty store and ranked items when data exists', () => {
+      const cap = createMemoryCapability({ model: 'intent/utility', working: true })
+
+      const emptyFns = cap.fns!(mockCtx({}) as any)
+      expect(emptyFns.recall()).toEqual([])
+
+      const wmRef = createMockWmRef({
+        entries: [{
+          id: 'wm_1', content: 'User likes pizza', salience: 0.8, pinned: false,
+          addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8,
+          durability: 'session', category: 'preference',
+        }],
+      })
+      const fns = cap.fns!(mockCtx({ wm: wmRef }) as any)
+      const results = fns.recall()
+      expect(results[0].content).toBe('User likes pizza')
+      expect(results[0].source).toBe('working')
+    })
+
+    it('throws on invalid tier dependencies and missing model', () => {
+      expect(() => createMemoryCapability({ model: 'm', working: true, semantic: true }))
+        .toThrow(/Semantic memory requires episodic/)
+      expect(() => createMemoryCapability({ model: 'm', working: true, episodic: true, digest: true }))
+        .toThrow(/Digest requires semantic/)
+      expect(() => createMemoryCapability({ working: true } as any))
+        .toThrow(/requires a `model`/)
+    })
+
+    it('hygiene: false ranks semantic facts by raw confidence (no decay)', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        hygiene: false,
+      })
+      const now = Date.now()
+      const oldIso = new Date(now - 1000 * 60 * 60 * 24 * 365).toISOString() // a year ago
+      const nowIso = new Date(now).toISOString()
+      const semRef = createMockSemRef({
+        facts: [
+          { id: 'sf_old', subject: 'user', content: 'fact OLD', confidence: 0.9, category: 'identity', reinforcementCount: 1, sourceEpisodeIds: [], extractedAt: oldIso, lastReinforced: oldIso },
+          { id: 'sf_new', subject: 'user', content: 'fact NEW', confidence: 0.8, category: 'identity', reinforcementCount: 1, sourceEpisodeIds: [], extractedAt: nowIso, lastReinforced: nowIso },
+        ],
+      })
+      const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
+      const results = fns.recall().filter((r) => r.source === 'semantic')
+      // No decay: the higher raw-confidence fact (OLD, 0.9) ranks first despite age.
+      expect(results[0].id).toBe('sf_old')
+    })
+
+    it('hygiene confidenceDecay ranks a fresh fact above an aged one of equal raw confidence', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+        hygiene: { confidenceDecay: { halfLife: 1 } },
+      })
+      const now = Date.now()
+      const oldIso = new Date(now - 1000 * 60 * 60 * 24 * 30).toISOString() // 30 days ago (30 half-lives)
+      const nowIso = new Date(now).toISOString()
+      const semRef = createMockSemRef({
+        facts: [
+          { id: 'sf_aged', subject: 'user', content: 'fact aged', confidence: 0.9, category: 'identity', reinforcementCount: 1, sourceEpisodeIds: [], extractedAt: oldIso, lastReinforced: oldIso },
+          { id: 'sf_fresh', subject: 'user', content: 'fact fresh', confidence: 0.9, category: 'identity', reinforcementCount: 1, sourceEpisodeIds: [], extractedAt: nowIso, lastReinforced: nowIso },
+        ],
+      })
+      const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
+      const results = fns.recall().filter((r) => r.source === 'semantic')
+      expect(results[0].id).toBe('sf_fresh')
+    })
+
+    it('system() reuses the factory: capability identity and shared resource refs', () => {
+      const mem = system({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+      // The capability surface system() exposes uses the factory's resources.
+      expect(mem.sessionResources.workingMemory)
+        .toBe(mem.workingMemoryCapability.resources!.workingMemory)
+      expect(mem.userResources.episodicMemory)
+        .toBe(mem.episodicMemoryCapability!.resources!.episodicMemory)
+      expect(mem.userResources.semanticMemory)
+        .toBe(mem.semanticMemoryCapability!.resources!.semanticMemory)
+    })
+
+    it('AC3: a generator wired with uses:[createMemoryCapability(...)] gains memory resources + recall tool', () => {
+      const cap = createMemoryCapability({
+        model: 'intent/utility',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+      const gen = generator({
+        name: 'reader',
+        model: 'intent/utility',
+        prompt: 'You are helpful.',
+        uses: [cap],
+      })
+      // Resources installed through `uses` — no manual plumbing.
+      expect(gen.declaredResources?.workingMemory).toBe(cap.sessionResources.workingMemory)
+      expect(gen.declaredResources?.memorySystem).toBe(cap.sessionResources.memorySystem)
+      expect(gen.declaredResources?.episodicMemory).toBe(cap.userResources.episodicMemory)
+      expect(gen.declaredResources?.semanticMemory).toBe(cap.userResources.semanticMemory)
+      // Recall tool reachable via the recall preset (default-on).
+      const recallTools = (cap.__presetDefs!.recall as { tools: () => unknown[] }).tools()
+      expect(recallTools[0]).toBe(cap.recallToolBlock)
     })
   })
 })

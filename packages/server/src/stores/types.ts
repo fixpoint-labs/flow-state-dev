@@ -434,6 +434,48 @@ export interface ContentStore {
 }
 
 /**
+ * Separates resource state persistence from scope record persistence.
+ *
+ * State is addressed by (scopeType, scopeId, resourceKey) — the same scheme as
+ * `ContentStore`, and covers both single-resource and collection-instance
+ * state uniformly. Each resource's state is a `JsonObject` written under its
+ * own key, so a mutation to one resource never rewrites the whole scope
+ * record. This is the state-layer twin of `ContentStore` (FIX-689): content
+ * bodies and state metadata follow the same keyed storage pattern, but live in
+ * separate stores because their payload types and lifecycles are independent
+ * (a resource can carry state with no content body, and vice versa).
+ *
+ * Concurrency: plain per-key last-write-wins (no CAS), matching `ContentStore`.
+ * Per-resource keying structurally removes the whole-map clobber hazard that
+ * a shared inline `resources` map had.
+ */
+export interface ResourceStateStore {
+  /** Read a single resource's state, or `undefined` if none is stored. */
+  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<JsonObject | undefined>;
+
+  /** Write a single resource's state. Creates or overwrites. */
+  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void>;
+
+  /** Delete a single resource's state. */
+  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+
+  /** Read all state for a scope instance. Used by full-scope reads (`/state`, debug snapshot). */
+  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, JsonObject>>;
+
+  /**
+   * Read every state entry in a scope whose resourceKey starts with
+   * `keyPrefix`. An empty `keyPrefix` returns all keys in the scope
+   * (equivalent to `getAll`). Used during context initialization to load only
+   * the state a flow declares — fixed resources by exact key, collections by
+   * their pattern prefix.
+   */
+  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, JsonObject>>;
+
+  /** Delete all state for a scope instance. Used during scope record deletion. */
+  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+}
+
+/**
  * Durable sequencer checkpoint store (FIX-401).
  *
  * Latest-only persistence: identity is `(requestId, blockInstanceId)`. Each
@@ -495,6 +537,7 @@ export type StoreRegistry = {
   org: OrgStore;
   activeRequests: ActiveRequestRegistry;
   content: ContentStore;
+  resourceState: ResourceStateStore;
   checkpoints: CheckpointStore;
   traces: TraceStore;
 };

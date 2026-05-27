@@ -183,8 +183,12 @@ describe("session resources are persisted after analyze run", () => {
     expect(result.status).toBe("completed");
     expect(result.error).toBeUndefined();
 
-    const session = await stores.session.get(sessionId);
-    const resources = (session?.resources ?? {}) as Record<string, unknown>;
+    // Collection-instance and single-resource state live in the
+    // ResourceStateStore (FIX-689), keyed per-resource, not inline on the record.
+    const resources = (await stores.resourceState.getAll("session", sessionId)) as Record<
+      string,
+      unknown
+    >;
 
     // The eight memo collection instances each live at their own storage key.
     const memoKeys = [

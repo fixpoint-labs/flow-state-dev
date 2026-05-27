@@ -137,6 +137,20 @@ const RESOURCE_CONTENT_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id)"
 ];
 
+const RESOURCE_STATE_TABLE = `
+CREATE TABLE IF NOT EXISTS resource_state (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  state         JSONB NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, resource_key)
+);
+`;
+
+const RESOURCE_STATE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
+];
+
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
   request_id      TEXT NOT NULL,
@@ -296,6 +310,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ORGS_TABLE,
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
+      RESOURCE_STATE_TABLE,
       REQUEST_EVENTS_TABLE,
       REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
@@ -309,6 +324,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ORGS_INDEXES,
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
+      ...RESOURCE_STATE_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
       ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,

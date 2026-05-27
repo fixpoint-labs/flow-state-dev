@@ -1,7 +1,6 @@
 /**
  * Unit tests for the in-memory tool cache store and the
- * `canonicalizeToolArgs` helper re-exported from
- * `@flow-state-dev/utilities-task-flow` (FIX-610 Wave 1, Layer B).
+ * `canonicalizeToolArgs` helper.
  */
 import { describe, expect, it } from "vitest";
 import {

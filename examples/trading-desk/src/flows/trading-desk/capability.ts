@@ -34,6 +34,7 @@ import {
   fetch as createFetchTool,
   search as createSearchTool,
 } from "@flow-state-dev/tools";
+import { find_counter_evidence } from "./phase-2/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
@@ -46,6 +47,7 @@ import { specialInstructionsResource } from "./special-instructions-resource";
 import { sessionStateSchema, type SessionState } from "./state";
 import {
   formatAnalystMemos,
+  formatCitationIntegrity,
   formatDebate,
   formatMemoBlock,
   formatPersonaCritique,
@@ -364,6 +366,18 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Phase 2 — citation-integrity report (FIX-679), read from session
+     *  state where `validateCitations` wrote it (not from a memo). Injected
+     *  into the Research Manager prompt so it can discount unverified
+     *  citations during synthesis. Renders `""` (tag suppressed) when no
+     *  tagged contributions were checked. */
+    citationIntegrity: {
+      context: {
+        citationIntegrity: (_input, ctx) =>
+          formatCitationIntegrity(ctx.session.state.citationIntegrity),
+      },
+    },
+
     /** Phase 2 — full bull/bear debate transcript. */
     phase2Debate: {
       resources: { p2Contributions: phase2Contributions },
@@ -392,6 +406,21 @@ export const tradingDesk = defineCapability({
         investigation: (_input, ctx) =>
           ctx.session.state.costPreset === "full" ? INVESTIGATION_CLAUSE : null,
       },
+    },
+
+    /**
+     * Phase 2 — closed-world counter-evidence tool for Bull/Bear (FIX-679).
+     * Exposes `find_counter_evidence` only on `costPreset === "full"` so the
+     * cheap path runs no extra search. The hard cap of 1 call per debater
+     * per round is enforced by `ROUND_ROBIN_INSTRUCTIONS`, not tool-level
+     * state — the prompt is the cheapest place to bound a closed-world,
+     * side-effect-free lookup. Resources are declared statically so the
+     * tool's `ctx.resources.memos` / `p2Contributions` resolve at runtime.
+     */
+    counterEvidence: {
+      resources: { memos: memosCollection, p2Contributions: phase2Contributions },
+      tools: (ctx) =>
+        ctx.session.state.costPreset === "full" ? [find_counter_evidence] : [],
     },
 
     // ────────────────────────────────────────────────────────────────────
@@ -472,6 +501,7 @@ export const tradingDesk = defineCapability({
  *  when they're using the capability. */
 export {
   formatAnalystMemos,
+  formatCitationIntegrity,
   formatDebate,
   formatMemoBlock,
   formatPersonaCritique,

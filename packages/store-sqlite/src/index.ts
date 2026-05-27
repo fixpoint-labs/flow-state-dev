@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
 import { InMemoryContentStore } from "./content-store";
+import { InMemoryResourceStateStore } from "./resource-state-store";
 import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
 import {
@@ -63,6 +64,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     org: createSQLiteOrgStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
+    resourceState: new InMemoryResourceStateStore(),
     checkpoints: createSQLiteCheckpointStore(db),
     traces: createSQLiteTraceStore(db, {
       ...options.traceStore,

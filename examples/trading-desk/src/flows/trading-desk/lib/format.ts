@@ -12,6 +12,7 @@ import type {
   RoundRobinContributionsState,
 } from "@flow-state-dev/patterns/round-robin";
 import { AGENTS, PHASE_1_MEMO_KEYS } from "../agents";
+import type { CitationIntegrity } from "../resources";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -245,6 +246,51 @@ export function formatDebate(entries: RoundRobinContributionEntry[]): string {
       const role =
         AGENTS[entry.agentName as keyof typeof AGENTS]?.role ?? entry.agentName;
       lines.push(`**${role}:** ${entry.text}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Flatten an analyst memo's structured body into one string per section
+ *  (heading + paragraph + list items). Shared by the Phase 2 citation
+ *  auditor (which joins the sections and substring-checks quotes against
+ *  them) and `find_counter_evidence` (which treats each section as a search
+ *  candidate). Returns `[]` when the memo has no body. */
+export function memoSectionTexts(state: unknown): string[] {
+  const body = (
+    state as
+      | { body?: Array<{ h: string; p: string | null; items: string[] | null }> }
+      | undefined
+  )?.body;
+  if (!Array.isArray(body)) return [];
+  return body.map((s) => [s.h, s.p ?? "", ...(s.items ?? [])].join(" "));
+}
+
+/** Collapse internal whitespace runs to single spaces and trim. Used so
+ *  substring/quote matching isn't defeated by formatting differences
+ *  between a memo's stored body and a re-typed quote. */
+export function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** Render the Phase 2 citation-integrity report (FIX-679) for the Research
+ *  Manager's prompt. Returns `""` when no report exists (so the context tag
+ *  is suppressed) and a terse summary otherwise — the invalid-tag list is
+ *  the load-bearing part: it tells the RM which attributed claims failed
+ *  verbatim verification and should be discounted in synthesis. */
+export function formatCitationIntegrity(
+  report: CitationIntegrity | null | undefined,
+): string {
+  if (report == null || report.tagsChecked === 0) return "";
+  const lines = [
+    `${report.tagsValid}/${report.tagsChecked} memo citations verified verbatim.`,
+  ];
+  if (report.invalidTags.length > 0) {
+    lines.push(
+      "Unverified citations (quote not found in the named memo — discount these claims):",
+    );
+    for (const t of report.invalidTags) {
+      lines.push(`- ${t.contribution} cited [memo:${t.tag}] "${t.attemptedQuote}"`);
     }
   }
   return lines.join("\n");

@@ -212,6 +212,8 @@ uses: [storageCapability("session")]
 
 One trade-off: parameterization propagates. If a capability depends on a parameterized capability, it either hardcodes the choice or becomes parameterized itself. This is the right behavior — the parameter represents a real decision that someone has to make — but it can surprise people the first time they hit a three-level chain.
 
+See [`@flow-state-dev/memory`](../memory/overview) for a production-grade factory-shaped capability with presets, attached resources, and dependent tiers — `createMemoryCapability(options)` is exactly this pattern at scale.
+
 ## ctx.cap
 
 Helper functions live at `ctx.cap.{capabilityName}`. Each capability's `fns(ctx)` factory is called once per block execution and the result is cached.

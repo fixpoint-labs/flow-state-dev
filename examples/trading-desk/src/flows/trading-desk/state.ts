@@ -31,6 +31,7 @@
  * reset to `null` by `seedSession` at the start of each run.
  */
 import { z } from "zod";
+import { citationIntegritySchema } from "./resources";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -67,6 +68,7 @@ export const sessionStateSchema = z.object({
   // short to audit meaningfully (< 20 chars). Not a halt — a sub-threshold
   // thesis is treated as no thesis and Phase 6 is skipped.
   userThesisWarning: z.string().nullable().default(null),
+  citationIntegrity: citationIntegritySchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

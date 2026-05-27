@@ -329,7 +329,8 @@ describe("Phase 6 gating", () => {
     const session = await stores.session.get(sessionId);
     const state = (session?.state ?? {}) as SessionStateShape;
     expect(state.memoStatus?.thesisAlignment).toBeUndefined();
-    expect((session?.resources ?? {})["memos/p6/thesis-alignment"]).toBeUndefined();
+    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    expect(resourceState["memos/p6/thesis-alignment"]).toBeUndefined();
   });
 
   it("usable userThesis → Phase 6 runs and publishes the audit", async () => {
@@ -363,7 +364,8 @@ describe("Phase 6 gating", () => {
     const state = (session?.state ?? {}) as SessionStateShape;
     expect(state.memoStatus?.thesisAlignment).toBe("published");
 
-    const memo = (session?.resources ?? {})["memos/p6/thesis-alignment"] as
+    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    const memo = resourceState["memos/p6/thesis-alignment"] as
       | { status?: string; alignment?: string | null }
       | undefined;
     expect(memo?.status).toBe("published");

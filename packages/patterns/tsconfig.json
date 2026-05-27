@@ -9,7 +9,6 @@
   "references": [
     { "path": "../core" },
     { "path": "../tasks" },
-    { "path": "../skills" },
-    { "path": "../utilities-task-flow" }
+    { "path": "../skills" }
   ]
 }

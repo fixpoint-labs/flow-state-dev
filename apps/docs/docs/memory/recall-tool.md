@@ -6,7 +6,7 @@ sidebar_position: 3
 
 `memory/recall` is the agent-invocable side of the memory system. The auto-injected `<memory>` context handles the always-on view. The recall tool is what the model reaches for when that view isn't enough, and it wants to go searching for a past episode or semantic fact tied to what the user just asked.
 
-The tool installs as part of `mem.capability` by default. If you want context-only memory, turn it off with `mem.capability.presets({ recall: false })`.
+The tool installs as part of `mem.capability` by default. If you want context-only memory, turn it off with `mem.capability.presets({ recall: false })`. The same tool is installed by the `recall` preset on the capability returned by [`createMemoryCapability`](./configuration#creatememorycapability-options), so a read-only flow gets it without `system()`.
 
 ## Default behavior
 
