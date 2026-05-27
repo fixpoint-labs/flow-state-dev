@@ -217,8 +217,11 @@ class InternalFlowState<TSettings extends object>
       detectInterruptedOnStartup: this.#options.detectInterruptedOnStartup,
       middleware: this.#options.middleware,
       adapters: this.#options.adapters,
+      resolvePrincipal: this.#options.resolvePrincipal,
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
-      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs
+      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
+      staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
+      staleSweepThresholdMs: this.#options.staleSweepThresholdMs
     });
   }
 }

@@ -104,8 +104,20 @@ export interface CreateFlowStateOptions<
   /** Forwarded to `createFlowApiRouter` for power users (custom transports). */
   middleware?: CreateFlowApiRouterOptions["middleware"];
   adapters?: CreateFlowApiRouterOptions["adapters"];
+
+  /**
+   * Host-level fallback principal resolver, used when an inbound flow has no
+   * `authentication.resolvePrincipal` of its own. Per-flow auth always wins.
+   */
+  resolvePrincipal?: CreateFlowApiRouterOptions["resolvePrincipal"];
+
   debugEndpointsEnabled?: boolean;
   defaultSseHeartbeatMs?: number;
+
+  /** Stale-request sweeper cadence (ms). 0 disables. Default 30000. */
+  staleSweepIntervalMs?: number;
+  /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
+  staleSweepThresholdMs?: number;
 }
 
 /**
