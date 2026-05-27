@@ -94,9 +94,9 @@ Adapters ship in a few packages:
 | Adapter | Import | Notes |
 |---------|--------|-------|
 | `inMemoryStores()` | `@flow-state-dev/server` | Ephemeral. Default for local dev and tests. |
-| `filesystemStores({ rootDir })` | `@flow-state-dev/server` | On-disk persistence. |
+| `filesystemStores({ rootDir })` | `@flow-state-dev/server` | On-disk persistence, local development only. Its event log is O(N²); pass `developmentOnly: true` to acknowledge and silence the startup warning. |
 | `postgresStores(options)` | `@flow-state-dev/store-postgres` | Postgres-backed. |
-| `sqliteStores(options)` | `@flow-state-dev/store-sqlite` | SQLite-backed. |
+| `sqliteStores(options)` | `@flow-state-dev/store-sqlite` | SQLite-backed. Recommended for durable persistence; what `fsdev dev` uses. |
 | `vercelPostgresStores()` | `@flow-state-dev/vercel/store` | Postgres tuned for Vercel/Neon. |
 
 Each adapter declares which slots it can back. The current adapters all back `primary`.

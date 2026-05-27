@@ -1,6 +1,10 @@
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import type { ActiveRequestEntry, ActiveRequestRegistry } from "../types";
+import type {
+  ActiveRequestEntry,
+  ActiveRequestRegistry,
+  PersistErrorHandler
+} from "../types";
 import { withActiveRequestSourceDefault } from "../shared";
 import { atomicWriteFile } from "../../utils/atomic-write";
 import {
@@ -20,6 +24,10 @@ export type FilesystemActiveRequestRegistryOptions = {
   filename?: string;
   /** fsync before rename. Default: true */
   fsync?: boolean;
+  /**
+   * Fired on a registry write failure before the safety-net log (FIX-406 6B).
+   */
+  onPersistError?: PersistErrorHandler;
 };
 
 export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
@@ -35,9 +43,11 @@ export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
       options.filename ?? "active-requests.json"
     );
     this.fsync = options.fsync ?? true;
+    const onPersistError = options.onPersistError;
     this.writeQueue = createSerializedWriteQueue({
       label: "active-request-registry",
       onError: (err) => {
+        onPersistError?.({ store: "activeRequests", id: this.filePath, error: err });
         console.error("[flow-state] active request registry write failed", err);
       }
     });

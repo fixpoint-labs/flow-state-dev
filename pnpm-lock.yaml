@@ -467,6 +467,9 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

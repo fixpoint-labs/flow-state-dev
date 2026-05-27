@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
   AgentType,
@@ -103,6 +104,12 @@ export interface ResponseEmitterHandle {
    * over already-flushed items before subscribing for future ones.
    */
   getItems(): readonly OutputItem[];
+  /**
+   * O(1) count of items currently tracked by this response. Equivalent to
+   * `getItems().length` but without materializing or ordering the snapshot —
+   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   */
+  getItemCount(): number;
   /**
    * Subscribe to subsequent item lifecycle transitions on this response.
    * `kind` distinguishes the underlying mutation: `"added"` for a freshly
@@ -530,6 +537,14 @@ export interface BlockContext<
    * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
    */
   _requestBackgroundSignal?: AbortSignal;
+
+  /**
+   * @internal Effective tracing verbosity for this request (FIX-406 6H).
+   * Set by the runtime from `createFlowApiRouter({ tracingLevel })`; read by
+   * sequencers to gate non-durable observability snapshots. Absent → the
+   * sequencer falls back to `resolveTracingLevel()` (env / observability).
+   */
+  _tracingLevel?: TracingLevel;
 
   /**
    * @internal Per-request single-flight map for cacheable tool calls

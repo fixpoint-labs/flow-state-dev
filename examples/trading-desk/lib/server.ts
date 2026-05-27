@@ -55,7 +55,7 @@ registry.register(tradingDeskFlow);
 export const router = createFlowApiRouter({
   registry,
   modelResolver,
-  stores: createFilesystemStores({ rootDir: dataDir }),
+  stores: createFilesystemStores({ rootDir: dataDir, developmentOnly: true }),
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

@@ -17,12 +17,16 @@ import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
 } from "../../utils/serialized-write-queue";
-import type { TraceEvent, TraceStore } from "../types";
+import type { PersistErrorHandler, TraceEvent, TraceStore } from "../types";
 import { atomicWrite, ensureDirectory } from "./shared";
 
 export type FilesystemTraceStoreOptions = {
   rootDir: string;
   maxRequests?: number;
+  /**
+   * Fired on a background write failure before the safety-net log (FIX-406 6B).
+   */
+  onPersistError?: PersistErrorHandler;
 };
 
 const DEFAULT_MAX_REQUESTS = 50;
@@ -56,10 +60,12 @@ export class FilesystemTraceStore implements TraceStore {
   private rosterLock: Promise<unknown> = Promise.resolve();
   private rosterReady: Promise<void> | undefined;
   private dirReady: Promise<void> | undefined;
+  private readonly onPersistError?: PersistErrorHandler;
 
   constructor(options: FilesystemTraceStoreOptions) {
     this.rootDir = options.rootDir;
     this.maxRequests = options.maxRequests ?? DEFAULT_MAX_REQUESTS;
+    this.onPersistError = options.onPersistError;
   }
 
   appendEvent(requestId: string, event: TraceEvent): Promise<void> {
@@ -153,6 +159,7 @@ export class FilesystemTraceStore implements TraceStore {
         // Backstop for callers that never await `appendEvent`. The primary
         // error channel is the `inflight` promise rejection.
         onError: (err) => {
+          this.onPersistError?.({ store: "traces", id: requestId, error: err });
           console.error(
             `[flow-state] trace event persistence failed for ${requestId}`,
             err

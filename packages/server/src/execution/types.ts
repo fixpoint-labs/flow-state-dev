@@ -12,6 +12,7 @@ import type {
   RetryPolicy,
   SpeechResolver
 } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
@@ -73,6 +74,7 @@ export type RunActionOptions<
   userId: string;
   sessionId?: string;
   orgId?: string;
+  tenantId?: string;
   requestId?: string;
   /**
    * Inbound transport provenance, propagated to `RequestRecord.source` and
@@ -91,6 +93,8 @@ export type RunActionOptions<
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
   logger?: RuntimeLogger;
+  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
+  tracingLevel?: TracingLevel;
 };
 
 export type RunActionResolved<

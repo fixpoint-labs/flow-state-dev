@@ -77,6 +77,8 @@ export type {
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
+export { resolveTracingLevel } from "./helpers/tracing-level";
+export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
 export {
   buildBlockInstanceId,

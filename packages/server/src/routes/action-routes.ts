@@ -29,9 +29,13 @@ type ActionRunInput = {
   sessionId?: string;
   requestId: string;
   orgId?: string;
+  tenantId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 };
+
+/** Default HTTP header carrying the tenant id (FIX-406 6D). */
+const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
 
 type ActionRouteContext = {
   host: InboundTransportHost;
@@ -41,6 +45,8 @@ type ActionRouteContext = {
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
+  /** Header carrying the tenant id; defaults to `x-tenant-id` (FIX-406 6D). */
+  tenantIdHeader?: string;
 };
 
 export async function handleExecuteAction(
@@ -58,6 +64,9 @@ export async function handleExecuteAction(
   const body = await parseJsonBody(request);
   const sessionId = route.sessionId ?? getString(body.sessionId);
   const metadata = asObject(body.metadata);
+  // FIX-406 6D: optional tenant id from a configurable header.
+  const tenantId =
+    request.headers.get(ctx.tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER) ?? undefined;
 
   // Build principal-resolution context. The body is exposed under
   // `metadata.body` so the default body-userId resolver can read it
@@ -97,6 +106,7 @@ export async function handleExecuteAction(
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
     orgId: getString(body.orgId) ?? principal.orgId,
+    tenantId,
     metadata: {
       ...ctx.bootstrapMetadata,
       ...(metadata ?? {})
@@ -152,6 +162,7 @@ export async function handleExecuteAction(
       sessionId: resolvedActionInput.sessionId,
       requestId: resolvedActionInput.requestId,
       orgId: resolvedActionInput.orgId,
+      tenantId: resolvedActionInput.tenantId,
       principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
       metadata: resolvedActionInput.metadata,
       signal: resolvedActionInput.signal

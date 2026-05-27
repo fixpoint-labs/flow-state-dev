@@ -1,6 +1,7 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   ExpectedVersion,
+  PersistErrorHandler,
   RequestListOptions,
   RequestRecord,
   RequestStore,
@@ -28,6 +29,11 @@ export type FilesystemRequestStoreOptions = {
    * Poll interval for `subscribeToEvents` in milliseconds. Default 100ms.
    */
   subscribePollIntervalMs?: number;
+  /**
+   * Fired on a background write failure before the safety-net log, so
+   * operators can alert on persistence loss (FIX-406 6B).
+   */
+  onPersistError?: PersistErrorHandler;
 };
 
 function toEventsPath(rootDir: string, requestId: string): string {
@@ -61,11 +67,13 @@ export class FilesystemRequestStore implements RequestStore {
 
   private readonly pollIntervalMs: number;
   private readonly runOnceQueues = new Map<string, SerializedWriteQueue>();
+  private readonly onPersistError?: PersistErrorHandler;
 
   constructor(options: FilesystemRequestStoreOptions) {
     this.rootDir = options.rootDir;
     this.pollIntervalMs =
       options.subscribePollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.onPersistError = options.onPersistError;
     this.store = createFilesystemRecordStore<RequestRecord, RequestListOptions>({
       rootDir: options.rootDir,
       filter: (record, listOptions): boolean => {
@@ -314,6 +322,7 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-runonce:${requestId}`,
         onError: (err) => {
+          this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] runOnce persistence failed for ${requestId}`,
             err
@@ -332,10 +341,10 @@ export class FilesystemRequestStore implements RequestStore {
         label: `request-events:${requestId}`,
         onError: (err) => {
           // Capture so flushEvents can re-throw to the emitter (FIX-399).
-          // Still log here for ops visibility — the emitter's onPersistError
-          // hook is the structured propagation channel; this is the safety net
-          // for callers that haven't wired the hook.
+          // Fire the structured observable (FIX-406 6B) before the safety-net
+          // log so operators can alert on persistence loss.
           this.lastEventError.set(requestId, err);
+          this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] event persistence failed for ${requestId}`,
             err
@@ -353,6 +362,7 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-items:${requestId}`,
         onError: (err) => {
+          this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] item persistence failed for ${requestId}`,
             err

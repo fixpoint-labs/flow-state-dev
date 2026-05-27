@@ -67,6 +67,7 @@ import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -2710,7 +2711,8 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        orgId: orgRef.current?.orgId
+        orgId: orgRef.current?.orgId,
+        tenantId: options.tenantId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2729,7 +2731,8 @@ export async function createExecutionContext<
       identity: {
         type: "user" as const,
         id: userRef.current.id,
-        userId: userRef.current.userId
+        userId: userRef.current.userId,
+        tenantId: options.tenantId
       },
       ...userOpsEmitting
     },
@@ -2743,7 +2746,8 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        orgId: sessionRef.current.orgId
+        orgId: sessionRef.current.orgId,
+        tenantId: options.tenantId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2847,7 +2851,8 @@ export async function createExecutionContext<
               type: "org" as const,
               id: orgRef.current.id,
               userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId
+              orgId: orgRef.current.orgId,
+              tenantId: options.tenantId
             },
             ...orgOpsEmitting
           },
@@ -3546,6 +3551,9 @@ export async function createExecutionContext<
         // `.work()` dispatches can read it (the dispatch site reads
         // `ctx._requestBackgroundSignal`, not `ctx.signal`).
         (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // FIX-406 6H: propagate the request's tracing level so sequencers in
+        // any nested scope gate observability snapshots consistently.
+        (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3802,5 +3810,9 @@ export async function createExecutionContext<
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
+  // with child scopes — keeps observability gating correct if a sequencer ever
+  // executes directly on the root context.
+  (rootContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
   return rootContext;
 }

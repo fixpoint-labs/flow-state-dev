@@ -658,19 +658,24 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Returns current tracked items sorted chronologically (ts, then itemIndex tiebreaker).
+   * Returns current tracked items in stream (insertion) order.
+   *
+   * The backing `Map` preserves first-insert order and re-`set`s (item.done /
+   * item.updated) keep an item's original slot, so iteration order already
+   * matches the emission sequence that `itemIndex` encodes. No read-time sort
+   * (FIX-406 6G) — the previous `Array.from(...).sort()` ran on every emit via
+   * `getItemCount`'s former `getItems().length`, compounding to O(N² log N).
    */
   getItems(): OutputItem[] {
-    const items = Array.from(this.itemsById.values());
-    items.sort((left, right) => {
-      const tsDiff = left.ts - right.ts;
-      if (tsDiff !== 0) {
-        return tsDiff;
-      }
+    return Array.from(this.itemsById.values());
+  }
 
-      return left.itemIndex - right.itemIndex;
-    });
-    return items;
+  /**
+   * O(1) count of tracked items. Used on the per-emit hot path to assign the
+   * next `itemIndex` without materializing or ordering the items snapshot.
+   */
+  getItemCount(): number {
+    return this.itemsById.size;
   }
 
   /**
