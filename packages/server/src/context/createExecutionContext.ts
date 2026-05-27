@@ -58,6 +58,7 @@ import type { TraceStore } from "../stores/types";
 import type {
   ContentScopeType,
   ContentStore,
+  ResourceStateStore,
   OrgRecord,
   RequestRecord,
   SessionRecord,
@@ -306,6 +307,58 @@ async function loadDeclaredScopeContent(
   }
   for (const [key, value] of fixedResults) {
     if (typeof value === "string") seed[key] = value;
+  }
+  return seed;
+}
+
+/**
+ * Load only the state a scope's declared resources reference (FIX-689), the
+ * state-layer twin of `loadDeclaredScopeContent`. Fixed resources resolve to a
+ * single storage key (`resourceState.get`); collections resolve to their
+ * pattern prefix (`resourceState.getByPrefix`, where an empty prefix loads
+ * every instance in the scope). A scope with no declared resources issues no
+ * state read at all. The merged map seeds `normalizeScopeResources`, which
+ * fills declared single-resource defaults and preserves loaded collection
+ * instances — so undeclared keys never enter the execution context.
+ */
+async function loadDeclaredResourceState(
+  resourceState: ResourceStateStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, JsonObject>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, JsonObject>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await resourceState.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, JsonObject> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (value !== undefined) seed[key] = value;
   }
   return seed;
 }
@@ -2369,6 +2422,26 @@ export async function createExecutionContext<
     resolvedOrgId !== undefined ? orgContentFromStore : undefined
   );
 
+  // Resource state lives in ResourceStateStore exclusively (FIX-689), the
+  // state-layer twin of the content load above. Load only the state this flow
+  // declares — single resources by key, collections by pattern prefix — into
+  // per-scope caches; in-execution reads/writes hit the cache and persist
+  // per-key, never rewriting the whole scope record.
+  const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
+    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredResourceState(stores.resourceState, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredResourceState(stores.resourceState, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, JsonObject>>({})
+  ]);
+
+  const initialSessionState = normalizeScopeResources(sessionResourceConfigs, sessionStateFromStore);
+  const initialUserState = normalizeScopeResources(userResourceConfigs, userStateFromStore);
+  const initialOrgState = normalizeScopeResources(
+    orgResourceConfigs,
+    resolvedOrgId !== undefined ? orgStateFromStore : undefined
+  );
+
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
     requestRecord = {
@@ -2412,11 +2485,20 @@ export async function createExecutionContext<
     current: orgRecord
   };
 
+  // State refs: eagerly loaded from ResourceStateStore at initialization
+  // (FIX-689), mirroring the content refs below. All reads during execution
+  // use the in-memory cache (synchronous); writes update the cache and persist
+  // to ResourceStateStore (async, per-key). The scope record's `.resources`
+  // field is no longer read or written by this path.
+  const sessionStateRef = { current: initialSessionState };
+  const userStateRef = { current: initialUserState };
+  const orgStateRef = { current: initialOrgState };
+
+  // Return a shallow copy so callers (e.g. evictInstance) that mutate the
+  // returned map in place don't corrupt the cache before persistResources can
+  // diff next-vs-previous to derive per-key writes/deletes.
   const readSessionResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      sessionResourceConfigs,
-      sessionRef.current.resources as Record<string, unknown> | undefined
-    );
+    ({ ...sessionStateRef.current });
 
   // Content refs: eagerly loaded from ContentStore at initialization.
   // All reads during execution use the in-memory cache (synchronous).
@@ -2429,19 +2511,13 @@ export async function createExecutionContext<
     sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      userResourceConfigs,
-      userRef.current.resources as Record<string, unknown> | undefined
-    );
+    ({ ...userStateRef.current });
 
   const readUserResourceContent = (): Record<string, string> =>
     userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      orgResourceConfigs,
-      orgRef.current?.resources as Record<string, unknown> | undefined
-    );
+    ({ ...orgStateRef.current });
 
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
@@ -2449,16 +2525,21 @@ export async function createExecutionContext<
   const persistSessionResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    sessionRef.current = {
-      ...sessionRef.current,
-      resources: normalizeScopeResources(sessionResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Resource metadata writes are outside the state CAS path today
-    // (see FIX-347 for splitting resources from scope records). Use "any"
-    // to preserve current last-write-wins behavior for the resources field
-    // until that split lands.
-    await stores.session.set(sessionRef.current.id, sessionRef.current, "any");
+    const normalized = normalizeScopeResources(sessionResourceConfigs, next);
+    const previous = sessionStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("session", sessionId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("session", sessionId, key);
+      }
+    }
+
+    sessionStateRef.current = normalized;
   };
 
   const persistSessionResourceContent = async (
@@ -2484,13 +2565,21 @@ export async function createExecutionContext<
   const persistUserResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    userRef.current = {
-      ...userRef.current,
-      resources: normalizeScopeResources(userResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Last-write-wins for resources; see persistSessionResources comment.
-    await stores.user.set(userRef.current.id, userRef.current, "any");
+    const normalized = normalizeScopeResources(userResourceConfigs, next);
+    const previous = userStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("user", userKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("user", userKey, key);
+      }
+    }
+
+    userStateRef.current = normalized;
   };
 
   const persistUserResourceContent = async (
@@ -2516,18 +2605,25 @@ export async function createExecutionContext<
   const persistProjectResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    const current = orgRef.current;
-    if (current === undefined) {
+    if (resolvedOrgKey === undefined) {
       return;
     }
 
-    orgRef.current = {
-      ...current,
-      resources: normalizeScopeResources(orgResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Last-write-wins for resources; see persistSessionResources comment.
-    await stores.org.set(orgRef.current.id, orgRef.current, "any");
+    const normalized = normalizeScopeResources(orgResourceConfigs, next);
+    const previous = orgStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("org", resolvedOrgKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("org", resolvedOrgKey, key);
+      }
+    }
+
+    orgStateRef.current = normalized;
   };
 
   const persistProjectResourceContent = async (
