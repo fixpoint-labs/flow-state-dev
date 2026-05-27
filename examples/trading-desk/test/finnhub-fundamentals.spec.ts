@@ -64,4 +64,24 @@ describe("fetchFinnhubFundamentals P/E mapping", () => {
     expect(out.forwardPE).toBeNull();
     expect(out.trailingPE).toBe(47.2);
   });
+
+  it("returns null trailingPE when metric.peTTM is absent", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: { forwardPE: 19.5 /* no peTTM */ },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "BX", date: "2026-05-06" });
+    expect(out.forwardPE).toBe(19.5);
+    expect(out.trailingPE).toBeNull();
+  });
+
+  it("maps a zero P/E to null, consistent with the Yahoo adapter", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: { forwardPE: 0, peTTM: 0 },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "BX", date: "2026-05-06" });
+    expect(out.forwardPE).toBeNull();
+    expect(out.trailingPE).toBeNull();
+  });
 });

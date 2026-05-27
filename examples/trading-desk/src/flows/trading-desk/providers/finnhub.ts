@@ -115,9 +115,11 @@ export async function fetchFinnhubFundamentals(
   // Normalize to fractions to match the Yahoo + fixture shape (0.253).
   const pct = (v: number | undefined) => (typeof v === "number" ? v / 100 : 0);
   // P/E fields are nullable in the schema: null is the honest signal that the
-  // metric is unavailable, never a backward-looking substitute (FIX-692).
+  // metric is unavailable, never a backward-looking substitute (FIX-692). A
+  // zero P/E is non-physical for a going concern, so it maps to null too —
+  // matching the Yahoo adapter's nullableNumberFrom.
   const num = (v: number | undefined): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
+    typeof v === "number" && Number.isFinite(v) && v !== 0 ? v : null;
   return {
     source: "finnhub",
     ticker: input.ticker,
