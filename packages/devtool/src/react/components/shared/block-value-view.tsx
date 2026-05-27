@@ -26,7 +26,8 @@ type BlockValueViewProps = {
   className?: string;
 };
 
-function isInternalBlockValue(v: unknown): v is BlockValueInternal<unknown> {
+/** Narrows an unknown payload to a `BlockValue` (inline / ref / structure). */
+export function isInternalBlockValue(v: unknown): v is BlockValueInternal<unknown> {
   if (typeof v !== "object" || v === null) return false;
   const kind = (v as { kind?: unknown }).kind;
   return kind === "inline" || kind === "ref" || kind === "structure";

@@ -76,6 +76,8 @@ Pick a block from the tree and the detail panel opens with two symmetric section
 
 Blocks that are still running show their live status. A `block_trace` row appears as soon as the block starts, with input filled in and output empty. As patches arrive — connector input, generator bundle, model usage — the panel updates in place. The Output section becomes live once the block returns.
 
+A block that runs more than once gets one row per execution, not a single row with everything stacked underneath. This shows up most in loops: a Plan & Execute or supervisor pattern drains its task list through one worker that runs the executor once per task. Each pass is a distinct row, tagged with an `iter N` label so you can tell the iterations apart, and each row carries a compact preview of the input it received and the output it produced. Tool calls cluster under the iteration that actually issued them, so you can read per-task behavior at a glance instead of untangling a merged list.
+
 For generator blocks, the panel also shows what the model actually saw on that turn: the resolved system prompt, the user-slot messages for this turn, and the conversation history that came in alongside them. Tools and the resolved model identifier appear in the same panel. This is observability data — gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in development) — so you can leave it on while iterating and switch it off in production.
 
 ### Error details

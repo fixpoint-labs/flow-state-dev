@@ -211,6 +211,8 @@ pipeline
   });
 ```
 
+Steps re-executed by a `loopBack` jump receive a `loop[N]` path segment, so the re-run child blocks get distinct `blockInstanceId`s per iteration (mirroring the `iter[N]` segment `doUntil`/`doWhile` give their bodies). The looping sequencer's own identity is stable. Generation 0 — the first pass and anything after the loop exits — is segment-free, so non-looping code is unchanged. This is what lets the DevTool render one row per iteration instead of collapsing a drained task list onto a single executor row.
+
 ### `work(block)` — Background Work
 
 Queue non-aborting side-chain execution. The main pipeline continues immediately.

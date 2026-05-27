@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem, ItemLookup } from "@flow-state-dev/core/items";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";
@@ -9,6 +10,8 @@ import { StatusBadge } from "../shared/status-badge";
 import { KindIndicator } from "../shared/kind-indicator";
 import { useSelection } from "../../context/selection-context";
 import { useDebug } from "../../context/debug-context";
+import { useTraceLookup } from "../../context/trace-context";
+import { isInternalBlockValue } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
 import { cn } from "../../lib/utils";
 
@@ -282,6 +285,14 @@ function TraceNodeView({
           )}
           {node.blockKind && <KindIndicator kind={node.blockKind} />}
           <span className="text-xs text-slate-300">{node.blockName}</span>
+          {node.iterationIndex !== undefined && (
+            <span
+              className="text-[10px] font-mono text-sky-400/80 px-1 rounded border border-sky-800/40"
+              title={`loopBack iteration ${node.iterationIndex}`}
+            >
+              iter {node.iterationIndex}
+            </span>
+          )}
           {node.phase === "work" && <BackgroundBadge />}
           {traceError && (
             <span
@@ -325,6 +336,7 @@ function TraceNodeView({
             </span>
           )}
         </div>
+        <BlockIOPreview node={node} depth={depth} />
         {isExpanded &&
           visibleChildren.map((child) => (
             <TraceNodeView
@@ -377,6 +389,73 @@ function BackgroundBadge() {
       BG
     </span>
   );
+}
+
+/**
+ * Compact, single-line input→output summary rendered under a block row, so
+ * per-iteration I/O is visible without selecting each block (FIX-643). Refs are
+ * resolved through the trace lookup; values are truncated, with the full text
+ * on hover. Renders nothing when the block has neither input nor output.
+ */
+function BlockIOPreview({ node, depth }: { node: TraceNode; depth: number }) {
+  const { getItem } = useTraceLookup();
+  const trace = node.traceItem?.type === "block_trace" ? (node.traceItem as BlockTraceItem) : undefined;
+
+  const preview = useMemo(() => {
+    if (!trace) return undefined;
+    // Empty/whitespace-only values normalise to undefined so the row doesn't
+    // render a dangling `in`/`out` label with no text.
+    const input = trace.input?.source !== undefined
+      ? compactValuePreview(trace.input.source, getItem) || undefined
+      : undefined;
+    const output = trace.output !== undefined
+      ? compactValuePreview(trace.output, getItem) || undefined
+      : undefined;
+    if (input === undefined && output === undefined) return undefined;
+    return { input, output };
+  }, [trace, getItem]);
+
+  if (!preview) return null;
+
+  return (
+    <div
+      className="flex items-center gap-2 text-[10px] font-mono text-slate-500 truncate"
+      style={{ paddingLeft: `${depth * 16 + 30}px` }}
+    >
+      {preview.input !== undefined && (
+        <span className="truncate" title={preview.input}>
+          <span className="text-slate-600">in</span> {preview.input}
+        </span>
+      )}
+      {preview.output !== undefined && (
+        <span className="truncate" title={preview.output}>
+          <span className="text-slate-600">out</span> {preview.output}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Resolves a BlockValue to a short, single-line string for inline previews. */
+function compactValuePreview(
+  value: unknown,
+  getItem: (id: string) => DevtoolItem | undefined
+): string {
+  const resolved = isInternalBlockValue(value)
+    ? resolveBlockValueInternal(value, getItem as ItemLookup)
+    : value;
+  let text: string;
+  if (typeof resolved === "string") {
+    text = resolved;
+  } else {
+    try {
+      text = JSON.stringify(resolved) ?? String(resolved);
+    } catch {
+      text = String(resolved);
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
 function getItemIcon(type: string): string {

@@ -13,6 +13,11 @@ import type {
 
 export type { BlockValueInternal } from "./types";
 export { refBlockValue, resolveBlockValueInternal } from "./resolve-value";
+// Re-exported here so browser bundles (e.g. the DevTool) can parse a
+// blockInstanceId's structural path without importing the root barrel, which
+// drags in non-browser-safe modules. `block-instance-id` is a pure,
+// dependency-free string helper.
+export { parseBlockInstanceId } from "../blocks/internal/block-instance-id";
 
 /**
  * Runtime item union. Public `OutputItem` is the 10 client-visible types;

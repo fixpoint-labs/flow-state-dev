@@ -420,4 +420,49 @@ describe("buildTraceTree", () => {
     expect(innerBlock?.stateSnapshots).toHaveLength(1);
     expect(innerBlock?.stateSnapshots![0].state).toEqual({ value: "hello" });
   });
+
+  it("renders loopBack re-executions as distinct iteration-labeled rows (FIX-643)", () => {
+    // A loopBack worker drains 3 tasks: the same executor body runs 3 times,
+    // each pass carrying a distinct loop[N] path segment. Each iteration issues
+    // its own tool call, which must cluster under that iteration's row.
+    const items = [
+      makeItem({ id: "m0", type: "message", provenance: makeProvenance("executor", "req-1:root/then[0]:0") }),
+      makeItem({ id: "t0", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/then[0]:0") }),
+      makeItem({ id: "m1", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[1]/then[0]:0") }),
+      makeItem({ id: "t1", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[1]/then[0]:0") }),
+      makeItem({ id: "m2", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[2]/then[0]:0") }),
+      makeItem({ id: "t2", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[2]/then[0]:0") }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const blocks = tree[0].children.filter((n) => n.type === "block");
+
+    // Three distinct executor rows, not one collapsed row.
+    expect(blocks).toHaveLength(3);
+    expect(blocks.every((b) => b.blockName === "executor")).toBe(true);
+
+    const iterIndices = blocks.map((b) => b.iterationIndex).sort();
+    expect(iterIndices).toEqual([0, 1, 2]);
+
+    // Each iteration's tool call clusters under that iteration's row.
+    for (const block of blocks) {
+      const toolItems = block.children.filter((c) => c.item?.type === "tool_output");
+      expect(toolItems).toHaveLength(1);
+    }
+  });
+
+  it("does not label distinct same-name siblings that are not loop iterations (FIX-643)", () => {
+    // Two separate `.then(foo)` steps share a name but neither is a loopBack
+    // re-execution — they must stay unlabeled.
+    const items = [
+      makeItem({ id: "a", type: "message", provenance: makeProvenance("foo", "req-1:root/then[0]:0") }),
+      makeItem({ id: "b", type: "message", provenance: makeProvenance("foo", "req-1:root/then[1]:0") }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const blocks = tree[0].children.filter((n) => n.type === "block");
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks.every((b) => b.iterationIndex === undefined)).toBe(true);
+  });
 });

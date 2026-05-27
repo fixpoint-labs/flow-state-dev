@@ -1,6 +1,22 @@
 import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
+
+/**
+ * Extracts the `loopBack` generation from a deterministic blockInstanceId.
+ * Steps re-executed after a `loopBack` jump carry a `loop[N]` path segment
+ * (FIX-643); the generation is the last such segment (nearest enclosing loop).
+ * Returns undefined for first-pass / non-looped blocks (no `loop[N]` segment).
+ */
+function loopGenerationFromInstanceId(instanceId: string): number | undefined {
+  const parsed = parseBlockInstanceId(instanceId);
+  if (!parsed) return undefined;
+  const matches = [...parsed.path.matchAll(/loop\[(\d+)\]/g)];
+  if (matches.length === 0) return undefined;
+  const generation = Number(matches[matches.length - 1][1]);
+  return Number.isInteger(generation) ? generation : undefined;
+}
 
 /** A single snapshot in a sequencer's state timeline. */
 export type StateSnapshot = {
@@ -33,6 +49,19 @@ export type TraceNode = {
    * distinct from main-chain steps.
    */
   phase?: "main" | "work";
+  /**
+   * `loopBack` generation parsed from the block's `loop[N]` path segment
+   * (FIX-643). Undefined for first-pass / non-looped blocks. Internal — the
+   * display index is `iterationIndex`, set only when a labeled sibling exists.
+   */
+  loopGeneration?: number;
+  /**
+   * Iteration index to display as `[iter N]`. Set during tree assembly only
+   * when this block shares a name+parent with at least one block carrying a
+   * `loop[N]` segment, so non-looped same-name siblings stay unlabeled and the
+   * first pass of a loop reads `[iter 0]`.
+   */
+  iterationIndex?: number;
   item?: DevtoolItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
   traceItem?: DevtoolItem;
@@ -74,6 +103,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           blockInstanceId: prov.blockInstanceId,
           blockStatus: "in_progress",
           phase: prov.phase,
+          loopGeneration: loopGenerationFromInstanceId(prov.blockInstanceId),
           children: [],
           isExpanded: isLast,
         };
@@ -185,6 +215,18 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
     }
 
+    // Assign per-iteration display labels (FIX-643). A loopBack worker drains
+    // each task as a re-execution of the same body, so the same-name executor
+    // appears once per task as a sibling under the same parent. Label such a
+    // group `[iter N]` only when at least one member carries a `loop[N]`
+    // segment, so genuinely distinct same-name siblings (e.g. two separate
+    // `.then(foo)` steps) stay unlabeled and the loop's first pass reads
+    // `[iter 0]`.
+    assignIterationLabels(rootBlocks);
+    for (const blockNode of blockMap.values()) {
+      assignIterationLabels(blockNode.children);
+    }
+
     // Fall back to timestamp-based duration when lifecycle metadata is not available.
     for (const blockNode of blockMap.values()) {
       if (blockNode.blockDuration !== undefined) {
@@ -221,6 +263,33 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       isExpanded: isLast,
     };
   });
+}
+
+/**
+ * Sets `iterationIndex` on same-name sibling block nodes when at least one of
+ * them is a `loopBack` re-execution (FIX-643). The first pass has no `loop[N]`
+ * segment, so its generation reads as 0. Siblings that share a name but have no
+ * looped member are left unlabeled.
+ */
+function assignIterationLabels(siblings: TraceNode[]): void {
+  const groups = new Map<string, TraceNode[]>();
+  for (const node of siblings) {
+    if (node.type !== "block" || node.blockName === undefined) continue;
+    const group = groups.get(node.blockName);
+    if (group) {
+      group.push(node);
+    } else {
+      groups.set(node.blockName, [node]);
+    }
+  }
+
+  for (const group of groups.values()) {
+    const hasLoopedMember = group.some((n) => n.loopGeneration !== undefined);
+    if (!hasLoopedMember) continue;
+    for (const node of group) {
+      node.iterationIndex = node.loopGeneration ?? 0;
+    }
+  }
 }
 
 function inferBlockKind(item: DevtoolItem): string | undefined {
