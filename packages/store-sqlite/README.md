@@ -75,6 +75,12 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 
 This adapter fully supports the interrupted request recovery feature (FIX-294). The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
 
+## Schema evolution
+
+The store auto-applies schema changes on connection open via `initializeSchema`. No manual migration step.
+
+The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
+
 ## Individual Store Constructors
 
 For advanced use cases, individual store constructors are also exported:

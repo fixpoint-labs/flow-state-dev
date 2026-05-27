@@ -1,3 +1,15 @@
+/**
+ * Generic SQLite record store abstraction.
+ *
+ * All four record stores (session, request, user, org) build on this base
+ * with store-specific column mappings and filter builders. It also implements
+ * the FIX-405 delta verbs (`patchField` / `incField` / `pushToArray`): each
+ * verb mutates only the targeted `state.<field>` inside a `db.transaction`,
+ * keeping `version` / `updatedAt` in lockstep with their mirrored top-level
+ * entries in `data`. Unlike the Postgres adapter (JSONB operators), SQLite
+ * parses the blob, mutates it in JS, and rewrites it — correct and simple for
+ * the depth-1 paths the contract allows in v1.
+ */
 import type Database from "better-sqlite3";
 import type { ExpectedVersion, SetResult } from "@flow-state-dev/server";
 
@@ -23,6 +35,30 @@ export type SQLiteRecordStore<TRecord, TListOptions> = {
     id: string,
     value: TRecord,
     expectedVersion: ExpectedVersion
+  ): Promise<SetResult<TRecord>>;
+  /** Replace a single depth-1 `state.<field>` (FIX-405 delta verb). */
+  patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+  /** Add `delta` to a numeric depth-1 `state.<field>` (missing/non-numeric → 0). */
+  incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+  /** Append `values` to an array depth-1 `state.<field>` (missing/non-array → replace). */
+  pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
   ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
@@ -62,6 +98,80 @@ export function createSQLiteRecordStore<
   const casInsertStmt = db.prepare(casInsertSQL);
   const getStmt = db.prepare(getSQL);
   const deleteStmt = db.prepare(deleteSQL);
+
+  // Delta-verb statements: read the blob + version together (so the CAS check
+  // and the JS-side mutation see the same row), then rewrite only `data`,
+  // `version`, and `updated_at`. Indexed scalar columns are not touched —
+  // delta verbs mutate state fields, never the indexed access paths.
+  const selectDeltaStmt = db.prepare(
+    `SELECT data, version FROM ${tableName} WHERE id = ?`
+  );
+  const updateDeltaStmt = db.prepare(
+    `UPDATE ${tableName} SET data = ?, version = ?, updated_at = ? WHERE id = ?`
+  );
+
+  /** Internal shape the delta mutators read/write inside the parsed blob. */
+  type DeltaRecord = {
+    state: Record<string, unknown>;
+    version: number;
+    updatedAt: number;
+    [k: string]: unknown;
+  };
+
+  /**
+   * Shared CAS-predicated delta mutation. Reads the row, enforces the
+   * expected version, applies `mutate` to the targeted state field, and
+   * rewrites the blob with the bumped version + updatedAt — all inside one
+   * synchronous transaction. Returns a conflict (with the current value/
+   * version) on a stale expectedVersion or a missing record.
+   */
+  function runDelta(
+    id: string,
+    path: string[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number,
+    mutate: (current: unknown) => unknown
+  ): SetResult<TRecord> {
+    if (path.length !== 1) {
+      throw new Error(
+        `sqlite delta verbs only support depth-1 paths in v1; got [${path.join(", ")}]`
+      );
+    }
+    const key = path[0]!;
+    return db.transaction((): SetResult<TRecord> => {
+      const row = selectDeltaStmt.get(id) as
+        | { data: string; version: number }
+        | undefined;
+      if (row === undefined) {
+        // Missing record: `currentVersion` is 0, matching the full-record
+        // `set` conflict path so the CAS layer can retry with a fresh write.
+        return {
+          ok: false,
+          conflict: { currentValue: undefined, currentVersion: 0 }
+        };
+      }
+      if (expectedVersion !== "any" && row.version !== expectedVersion) {
+        return {
+          ok: false,
+          conflict: {
+            currentValue: JSON.parse(row.data) as TRecord,
+            currentVersion: row.version
+          }
+        };
+      }
+      const newVersion = (expectedVersion === "any" ? row.version : expectedVersion) + 1;
+      const record = JSON.parse(row.data) as DeltaRecord;
+      // A legacy record may have been stored without an explicit `state`
+      // object; treat it as empty so the verb upgrades it rather than throwing
+      // (mirrors the filesystem adapter's `current.state ?? {}` guard).
+      if (record.state == null) record.state = {};
+      record.state[key] = mutate(record.state[key]);
+      record.version = newVersion;
+      record.updatedAt = updatedAt;
+      updateDeltaStmt.run(JSON.stringify(record), newVersion, updatedAt, id);
+      return { ok: true, version: newVersion };
+    })();
+  }
 
   return {
     async get(id: string): Promise<TRecord | undefined> {
@@ -118,6 +228,44 @@ export function createSQLiteRecordStore<
 
       // expectedVersion > 0 and no row matched → conflict.
       return loadConflict<TRecord>(getStmt, id);
+    },
+
+    async patchField(
+      id: string,
+      path: string[],
+      value: unknown,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      return runDelta(id, path, expectedVersion, updatedAt, () => value);
+    },
+
+    async incField(
+      id: string,
+      path: string[],
+      delta: number,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      // Treat a missing or non-numeric existing value as 0, mirroring the
+      // in-memory adapter's `typeof === "number"` baseline.
+      return runDelta(id, path, expectedVersion, updatedAt, (current) =>
+        (typeof current === "number" ? current : 0) + delta
+      );
+    },
+
+    async pushToArray(
+      id: string,
+      path: string[],
+      values: unknown[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      // Append when the existing value is an array; otherwise replace with
+      // the pushed values (missing/non-array slot).
+      return runDelta(id, path, expectedVersion, updatedAt, (current) =>
+        Array.isArray(current) ? [...current, ...values] : [...values]
+      );
     },
 
     async delete(id: string): Promise<void> {

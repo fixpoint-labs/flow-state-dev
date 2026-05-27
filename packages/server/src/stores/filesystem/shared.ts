@@ -83,14 +83,43 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
   }
 }
 
-export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
+/**
+ * Sidecar files the request store writes alongside the primary record:
+ * the append-only NDJSON event log (`.events.json`) and runOnce result
+ * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key).
+ * `listRecords` must skip these — they are not record documents and the
+ * NDJSON event log is not even valid standalone JSON.
+ *
+ * This suffix match is a heuristic: `encodeURIComponent` does not escape `.`,
+ * so an arbitrary record id ending in `.events`/`.runonce` would collide. It
+ * is therefore opt-in (`skipSidecars`) and used only by the request store,
+ * whose ids are framework-generated (`req_*`) and never carry those suffixes.
+ * Scope stores (session/user/org) live in sidecar-free directories and must
+ * not enable it, or a caller-supplied id could be silently dropped.
+ */
+function isSidecarFile(name: string): boolean {
+  return (
+    name.endsWith(".events.json") ||
+    name.endsWith(".runonce.json") ||
+    /\.runonce\..+\.json$/.test(name)
+  );
+}
+
+export async function listRecords<TValue>(
+  rootDir: string,
+  skipSidecars = false
+): Promise<TValue[]> {
   await ensureDirectory(rootDir);
 
   const entries = await readdir(rootDir, { withFileTypes: true });
   const values: TValue[] = [];
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+    if (
+      !entry.isFile() ||
+      !entry.name.endsWith(".json") ||
+      (skipSidecars && isSidecarFile(entry.name))
+    ) {
       continue;
     }
 
@@ -111,7 +140,17 @@ type RecordWithIdentity = {
   id: string;
   updatedAt: number;
   version: number;
+  state?: Record<string, unknown>;
 };
+
+/**
+ * Mutator for `casUpdate`: receives the current record and returns the next
+ * record body MINUS the `version`/`updatedAt` fields, which `casUpdate`
+ * stamps. Keeps the version-bump logic in one place so callers can't drift.
+ */
+export type CasUpdateMutator<TRecord> = (
+  current: TRecord
+) => Omit<TRecord, "version" | "updatedAt">;
 
 export type FilesystemRecordStore<
   TRecord extends RecordWithIdentity,
@@ -138,6 +177,42 @@ export type FilesystemRecordStore<
     id: string,
     merge: (current: TRecord) => TRecord
   ): Promise<TRecord | undefined>;
+  /**
+   * Version-predicated read-modify-write under the per-id lock. Unlike
+   * `update` (which always writes), `casUpdate` aborts with a conflict when
+   * the record is missing or its version doesn't match `expectedVersion`
+   * (unless `"any"`). Returns the standard `SetResult`. Backs the delta verbs.
+   */
+  casUpdate<T extends TRecord>(
+    id: string,
+    expectedVersion: ExpectedVersion,
+    mutate: CasUpdateMutator<TRecord>,
+    updatedAt: number
+  ): Promise<SetResult<T>>;
+  /** Replace a single depth-1 field inside the record's `state` slice (CAS). */
+  patchField<T extends TRecord>(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<T>>;
+  /** Add `delta` to a depth-1 numeric `state` field; missing/non-numeric → 0 (CAS). */
+  incField<T extends TRecord>(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<T>>;
+  /** Append to a depth-1 `state` array; missing/non-array → replace (CAS). */
+  pushToArray<T extends TRecord>(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<T>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
@@ -154,6 +229,12 @@ export type CreateFilesystemRecordStoreOptions<
    * `updatedAt` descending.
    */
   sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
+  /**
+   * Skip `.events.json`/`.runonce.*.json` sidecar files in `list`. Only the
+   * request store (which co-locates sidecars with records and uses
+   * framework-generated `req_*` ids) should enable this; see `isSidecarFile`.
+   */
+  skipSidecars?: boolean;
 };
 
 /** Per-id serialization so the read-check-write sequence below is atomic within one process. */
@@ -181,9 +262,10 @@ export function createFilesystemRecordStore<
   const { rootDir } = options;
   const filter = options.filter;
   const sort = options.sort ?? sortByUpdatedAtDesc;
+  const skipSidecars = options.skipSidecars ?? false;
   const withLock = createWriteLock();
 
-  return {
+  const record: FilesystemRecordStore<TRecord, TListOptions> = {
     get: async (id: string): Promise<TRecord | undefined> =>
       readRecord<TRecord>(rootDir, id),
 
@@ -222,19 +304,131 @@ export function createFilesystemRecordStore<
         return next;
       }),
 
+    casUpdate: <T extends TRecord>(
+      id: string,
+      expectedVersion: ExpectedVersion,
+      mutate: CasUpdateMutator<TRecord>,
+      updatedAt: number
+    ): Promise<SetResult<T>> =>
+      withLock(id, async () => {
+        const current = await readRecord<TRecord>(rootDir, id);
+        if (current === undefined) {
+          return {
+            ok: false,
+            conflict: { currentValue: undefined, currentVersion: 0 }
+          };
+        }
+        if (expectedVersion !== "any" && current.version !== expectedVersion) {
+          return {
+            ok: false,
+            conflict: { currentValue: current as T, currentVersion: current.version }
+          };
+        }
+        const newVersion =
+          (expectedVersion === "any" ? current.version : expectedVersion) + 1;
+        const partialNext = mutate(current);
+        const nextRecord = {
+          ...partialNext,
+          version: newVersion,
+          updatedAt
+        } as TRecord;
+        await writeRecord(rootDir, id, nextRecord);
+        return { ok: true, version: newVersion };
+      }),
+
+    patchField: <T extends TRecord>(
+      id: string,
+      path: string[],
+      value: unknown,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<T>> => {
+      assertDepthOne(path, "patchField");
+      return record.casUpdate<T>(
+        id,
+        expectedVersion,
+        (current) => ({
+          ...current,
+          state: { ...(current.state ?? {}), [path[0]]: value }
+        }),
+        updatedAt
+      );
+    },
+
+    incField: <T extends TRecord>(
+      id: string,
+      path: string[],
+      delta: number,
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<T>> => {
+      assertDepthOne(path, "incField");
+      return record.casUpdate<T>(
+        id,
+        expectedVersion,
+        (current) => {
+          const existing = current.state?.[path[0]];
+          const baseline = typeof existing === "number" ? existing : 0;
+          return {
+            ...current,
+            state: { ...(current.state ?? {}), [path[0]]: baseline + delta }
+          };
+        },
+        updatedAt
+      );
+    },
+
+    pushToArray: <T extends TRecord>(
+      id: string,
+      path: string[],
+      values: unknown[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<T>> => {
+      assertDepthOne(path, "pushToArray");
+      return record.casUpdate<T>(
+        id,
+        expectedVersion,
+        (current) => {
+          const existing = current.state?.[path[0]];
+          const baseline = Array.isArray(existing) ? existing : [];
+          return {
+            ...current,
+            state: { ...(current.state ?? {}), [path[0]]: [...baseline, ...values] }
+          };
+        },
+        updatedAt
+      );
+    },
+
     delete: async (id: string): Promise<void> => {
       await deleteRecord(rootDir, id);
     },
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {
-      const all = await listRecords<TRecord>(rootDir);
+      const all = await listRecords<TRecord>(rootDir, skipSidecars);
       const filtered =
         filter === undefined
           ? all
-          : all.filter((record) => filter(record, listOptions));
+          : all.filter((entry) => filter(entry, listOptions));
 
       filtered.sort((left, right) => sort(left, right, listOptions));
       return applyOffsetLimit(filtered, listOptions);
     }
   };
+
+  return record;
+}
+
+/**
+ * Delta verbs operate on a single depth-1 key inside `state`. Deeper paths
+ * are pre-routed to `set` by the CAS persist layer; a direct adapter caller
+ * passing a deep path is a bug we surface rather than silently mis-apply.
+ */
+function assertDepthOne(path: string[], verb: string): void {
+  if (path.length !== 1) {
+    throw new Error(
+      `${verb} only supports depth-1 paths in v1; received path of length ${path.length}`
+    );
+  }
 }

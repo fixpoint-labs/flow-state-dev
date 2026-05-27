@@ -87,11 +87,11 @@ The store interface is pluggable. If you need Redis, an alternative SQL backend,
 - SQLite and the filesystem store poll `getEvents(requestId, fromSequence)`.
 - Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
 
-### Postgres: items storage
+### Incremental items storage
 
-The Postgres adapter stores items in a dedicated `request_items` table, one row per item, rather than inside the request record's JSONB column. The change avoids a TOAST write-amplification pathology on long-running requests under serverless-throttled autovacuum. The framework surface is unchanged — the same `RequestStore.persistItems` and `get` shape — but two operator-visible consequences are worth knowing:
+Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. The change avoids a write-amplification pathology on long-running requests (on Postgres, a TOAST rewrite under serverless-throttled autovacuum). The framework surface is unchanged — the same `RequestStore.persistItems` and `get` shape — but two operator-visible consequences are worth knowing. See [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
 
-- `RequestStore.list()` no longer populates `record.items` by default on Postgres. Pass `withItems: true` to opt in.
+- `RequestStore.list()` no longer populates `record.items` by default on any adapter; pass `withItems: true` to opt in.
 - Upgrade is lazy (no offline backfill), but the deploy is **forward-only**. Validate in staging before rolling out.
 
 See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-postgres/README.md#items-storage) for the schema, the optional storage-reclamation steps (`pg_repack`), and the rollback constraints.

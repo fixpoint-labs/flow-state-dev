@@ -113,6 +113,26 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   }
 }
 
+// FIX-686: per-row item store for incremental persistence. Identity is
+// (request_id, item_id); the write path upserts only the items whose
+// reference changed since the last flush instead of rewriting the whole
+// `requests.data` blob on every item boundary. `data` carries the full
+// OutputItem JSON so the schema can evolve without ALTER TABLE; `sequence`
+// mirrors `itemIndex` for ordered reads. Legacy items written to
+// `requests.data` before this table existed are read via fallback.
+const REQUEST_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS request_items (
+  request_id  TEXT    NOT NULL,
+  item_id     TEXT    NOT NULL,
+  sequence    INTEGER NOT NULL,
+  item_type   TEXT    NOT NULL,
+  data        TEXT    NOT NULL,
+  PRIMARY KEY (request_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_request_items_request_sequence
+  ON request_items(request_id, sequence);
+`;
+
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
   request_id      TEXT NOT NULL,
@@ -283,6 +303,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(USERS_TABLE);
   db.exec(ORGS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
+  db.exec(REQUEST_ITEMS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
   db.exec(REQUEST_RUNONCE_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
