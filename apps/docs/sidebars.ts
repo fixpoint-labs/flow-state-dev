@@ -208,6 +208,7 @@ const sidebars: SidebarsConfig = {
         "advanced/capabilities-authoring",
         "advanced/flow-isolation",
         "advanced/generator-context",
+        "advanced/generator-prompts-markdown",
         "advanced/error-handling",
         "advanced/idempotency",
         "advanced/voice",

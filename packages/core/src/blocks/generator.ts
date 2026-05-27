@@ -51,7 +51,15 @@ import {
   aggregateContextEntries,
   objectFormHasNestedFunction,
 } from "./context-aggregator";
-import { renderTaggedContext } from "../prompt";
+import { renderTaggedContext, type TagAccumulator } from "../prompt";
+import {
+  definePromptFile,
+  getPromptFileBrand,
+  isPromptFile,
+  type PromptFile,
+  type PromptFileBrand,
+  type PromptFileConfigView,
+} from "../prompt/prompt-file";
 import {
   blockPathTool,
   buildBlockInstanceId,
@@ -403,7 +411,15 @@ export interface GeneratorConfig<
    * the capability's. Missing on both is a runtime error at construction.
    */
   model?: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
+  /**
+   * Prompt slot. Accepts an inline string, a resolver function, an array of
+   * those, a branded PromptFile slot (`pf.prompt`), or a whole
+   * {@link PromptFile} (`prompt: loadPromptFile(...)`). Passing the PromptFile
+   * directly expands its `user` / `caching` / `maxTokens` / `temperature` /
+   * `name` / `description` into this config — any sibling field set explicitly
+   * here wins, matching `...definePromptFile(pf), <overrides>`.
+   */
+  prompt: PromptSlot<NoInfer<TInput>, TCtx> | PromptFile;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
@@ -612,25 +628,88 @@ function asSystemMessage(value: unknown): unknown {
 }
 
 /**
- * Build the system-message prefix from a resolved prompt and a list of
+ * Post-resolution generator-config values exposed to PromptFile templates as
+ * the `config` render variable. Distinct from `ctx`: this is "what the
+ * generator will run with" (resolved model/tools/caching), not "what the call
+ * brought" (state/resources). The aggregated context tag map is added per
+ * call (it depends on resolved context entries).
+ */
+interface PromptFileConfigMeta {
+  model?: string;
+  intent?: string;
+  tools?: string[];
+  caching?: CachingConfig;
+  maxTokens?: number;
+  temperature?: number;
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * Flatten an aggregated tag tree into the `config.context` map templates read:
+ * each top-level tag name maps to the rendered string the framework would
+ * otherwise have placed inside `<tagName>...</tagName>`.
+ */
+function flattenAggregatedContext(tagged: TagAccumulator): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(tagged)) {
+    const value = tagged[key]!;
+    out[key] = Array.isArray(value)
+      ? value.filter((s) => s.length > 0).join("\n")
+      : renderTaggedContext(value, []);
+  }
+  return out;
+}
+
+/**
+ * Build the system-message prefix from a prompt slot and a list of
  * already-resolved context entries.
  *
- * Aggregates object-form entries under their normalized tag keys, renders
- * the result as a single XML block, and prepends it (with a blank-line
- * separator) to the prompt to form one combined system message. String
- * entries and pre-built `{role, content}` messages are emitted as their
- * own additional system messages, in author order, after the combined one.
+ * Aggregates object-form context entries under their normalized tag keys.
+ * For inline prompts, resolves the prompt as today and renders the aggregated
+ * context as a single XML block appended (blank-line-separated) to the prompt.
  *
- * Returns an empty array when both prompt and context are empty.
+ * For PromptFile prompts (`promptFileBrand` present), renders the `<system>`
+ * template against `{ input, ctx, config }` where `config` carries the resolved
+ * model/tools/caching plus the aggregated context map. When the template
+ * declares a `<context>` block, it owns context rendering: the default XML-tag
+ * append is suppressed and the rendered block is wrapped in `<context>...
+ * </context>`. The constructed `config` view is returned so the caller can
+ * render a PromptFile `<user>` slot against the same scope.
+ *
+ * Returns an empty `messages` array when both prompt and context are empty.
  */
 async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
-  promptStr: string,
+  promptValue: PromptSlot<TInput, TCtx>,
+  promptFileBrand: PromptFileBrand | undefined,
   contextValues: unknown[],
   input: TInput,
-  ctx: TCtx
-): Promise<unknown[]> {
+  ctx: TCtx,
+  configMeta: PromptFileConfigMeta
+): Promise<{ messages: unknown[]; configView: PromptFileConfigView | undefined; promptText: string }> {
   const aggregated = await aggregateContextEntries(contextValues, input, ctx);
-  const xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+
+  let promptStr: string;
+  let xmlBlock: string;
+  let configView: PromptFileConfigView | undefined;
+
+  if (promptFileBrand) {
+    const config: PromptFileConfigView = {
+      ...configMeta,
+      context: flattenAggregatedContext(aggregated.tagged),
+    };
+    configView = config;
+    const scope = { input, ctx, config };
+    promptStr = await promptFileBrand.renderSystem(scope);
+    if (promptFileBrand.hasContextBlock) {
+      const ctxStr = (await promptFileBrand.renderContext(scope)) ?? "";
+      xmlBlock = `<context>\n${ctxStr}\n</context>`;
+    } else {
+      xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+    }
+  } else {
+    promptStr = await resolvePrompt(promptValue, input, ctx);
+    xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+  }
 
   const combinedParts: string[] = [];
   if (promptStr.length > 0) combinedParts.push(promptStr);
@@ -644,7 +723,7 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
   for (const pt of aggregated.passThrough) {
     messages.push(asSystemMessage(pt));
   }
-  return messages;
+  return { messages, configView, promptText: promptStr };
 }
 
 function asUserMessage(value: unknown): unknown {
@@ -1820,6 +1899,23 @@ export function generator<
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
+  // A whole PromptFile passed as `prompt` (`prompt: loadPromptFile(...)`)
+  // expands into the same spreadable fields `definePromptFile` produces. Any
+  // sibling field the author set explicitly wins, matching the spread form
+  // `...definePromptFile(pf), <overrides>`. After this, `prompt` is the bare
+  // branded slot the rest of the generator already understands.
+  if (isPromptFile(config.prompt)) {
+    const expanded = definePromptFile(config.prompt);
+    const target = normalizedConfig as unknown as Record<string, unknown>;
+    const authored = config as unknown as Record<string, unknown>;
+    for (const key of ["name", "description", "user", "caching", "maxTokens", "temperature"] as const) {
+      if (expanded[key] !== undefined && authored[key] === undefined) {
+        target[key] = expanded[key];
+      }
+    }
+    target.prompt = expanded.prompt;
+  }
+
   // -----------------------------------------------------------------------
   // Merge all capability contributions (static + dynamic) into the
   // generator's context and tools slots in a single pass. No layered
@@ -1965,7 +2061,20 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
 
-      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
+      const promptFileBrand = getPromptFileBrand(normalizedConfig.prompt);
+      const configMeta: PromptFileConfigMeta = {
+        model: modelId,
+        intent: promptFileBrand?.frontmatter.intent as string | undefined,
+        tools: toolBlocks.map((t) => t.name),
+        caching: resolvedCaching,
+        maxTokens: normalizedConfig.maxTokens,
+        // Read from the resolved config (not frontmatter) so a `temperature`
+        // override placed after `...definePromptFile(pf)` wins, matching how
+        // `maxTokens` and `prompt` overrides behave. `temperature` is not a
+        // typed GeneratorConfig field today; `definePromptFile` spreads it in.
+        temperature: (normalizedConfig as { temperature?: number }).temperature,
+        providerOptions: resolvedProviderOpts,
+      };
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1978,19 +2087,38 @@ export function generator<
 
       const historySlot = normalizeHistorySlot(normalizedConfig.history);
       const historyValues = await resolveSlotValues(historySlot, input, ctx);
-      const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)
       // separately so prepareStep can replace it with freshly resolved values.
       // Object-form context entries are aggregated under shared XML tag keys
       // and rendered into a single combined system message alongside the
-      // prompt; string entries follow as their own messages.
-      const systemPrefix: unknown[] = await buildSystemPrefix(
-        prompt,
-        contextValues,
-        input,
-        ctx
-      );
+      // prompt; string entries follow as their own messages. PromptFile
+      // generators render their `<system>`/`<context>`/`<user>` templates here
+      // against the resolved `config` view.
+      const {
+        messages: systemPrefix,
+        configView,
+        promptText: prompt,
+      } = await buildSystemPrefix(
+          normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
+          promptFileBrand,
+          contextValues,
+          input,
+          ctx,
+          configMeta
+        );
+
+      // A PromptFile `<user>` block fills the user slot — but only when the
+      // author left it in place. If `user` was overridden after the spread
+      // (`...definePromptFile(pf), user: "..."`), the override carries no
+      // PromptFile brand, so it resolves through the normal slot path and
+      // wins, consistent with `prompt` spread precedence.
+      const userBrand = getPromptFileBrand(normalizedConfig.user);
+      const userValues = userBrand?.hasUserBlock && configView !== undefined
+        ? [await userBrand.renderUser({ input, ctx, config: configView })].filter(
+            (v): v is string => v != null
+          )
+        : await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
       const systemPrefixCount = systemPrefix.length;
       // FIX-662: when action.userMessage emits a runtime user item, it lands
       // in live items and flows through historyValues. If the generator's
@@ -2043,17 +2171,18 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);
           }
 
-          const freshSystemPrefix: unknown[] = await buildSystemPrefix(
-            freshPrompt,
+          const { messages: freshSystemPrefix } = await buildSystemPrefix(
+            normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
+            promptFileBrand,
             freshContext,
             input,
-            ctx
+            ctx,
+            configMeta
           );
 
           // Replace the system prefix with fresh values; keep conversation
@@ -2120,6 +2249,12 @@ export function generator<
               tools: toolBlocks.map((t) => t.name),
               user: debugUserMessages,
               history: historyValues,
+              ...(promptFileBrand
+                ? {
+                    templateSource: promptFileBrand.rawText,
+                    templateFrontmatter: promptFileBrand.frontmatter,
+                  }
+                : {}),
             },
           },
         },

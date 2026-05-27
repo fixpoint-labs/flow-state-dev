@@ -20,12 +20,17 @@
  * add hallucination surface for fields we can compute deterministically.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_5_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
-import { PORTFOLIO_MANAGER_PROMPT } from "./prompts";
+import { loadPrompt } from "../lib/prompt";
+
+const portfolioManagerPrompt = loadPrompt(
+  "phase-5/prompts/portfolio-manager.prompt.md"
+);
 
 const adjustmentDecisionSchema = z.object({
   applied: z.boolean(),
@@ -90,8 +95,7 @@ export const portfolioManagerGenerator = generator({
       highReasoning: true,
     }),
   ],
-  prompt: PORTFOLIO_MANAGER_PROMPT,
-  user: "Now write the published PortfolioDecision.",
+  ...definePromptFile(portfolioManagerPrompt),
   sessionStateSchema,
   outputSchema: portfolioDecisionOutputSchema,
 });

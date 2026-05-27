@@ -17,12 +17,7 @@
 import { PHASE_4_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { createApproachGenerator } from "../lib/approach-generator";
-import {
-  AGGRESSIVE_APPROACH_PROMPT,
-  CONSERVATIVE_APPROACH_PROMPT,
-  NEUTRAL_APPROACH_PROMPT,
-  RISK_ASSESSMENT_APPROACH_PROMPT,
-} from "./prompts";
+import { loadPrompt } from "../lib/prompt";
 
 const personaUses = [
   tradingDesk.presets({ tradeProposal: true, investmentThesis: true }),
@@ -32,7 +27,7 @@ export const aggressiveApproachGenerator = createApproachGenerator({
   name: "aggressive-approach-generator",
   agentName: PHASE_4_MEMO_KEYS.aggressive.agentName,
   artifactName: "Aggressive Risk critique",
-  prompt: AGGRESSIVE_APPROACH_PROMPT,
+  prompt: loadPrompt("phase-4/prompts/aggressive-approach.prompt.md").prompt,
   uses: personaUses,
 });
 
@@ -40,7 +35,8 @@ export const conservativeApproachGenerator = createApproachGenerator({
   name: "conservative-approach-generator",
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
   artifactName: "Conservative Risk critique",
-  prompt: CONSERVATIVE_APPROACH_PROMPT,
+  prompt: loadPrompt("phase-4/prompts/conservative-approach.prompt.md")
+    .prompt,
   uses: personaUses,
 });
 
@@ -48,7 +44,7 @@ export const neutralApproachGenerator = createApproachGenerator({
   name: "neutral-approach-generator",
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
   artifactName: "Neutral Risk critique",
-  prompt: NEUTRAL_APPROACH_PROMPT,
+  prompt: loadPrompt("phase-4/prompts/neutral-approach.prompt.md").prompt,
   uses: personaUses,
 });
 
@@ -56,7 +52,8 @@ export const riskAssessmentApproachGenerator = createApproachGenerator({
   name: "risk-assessment-approach-generator",
   agentName: PHASE_4_MEMO_KEYS.riskAssessment.agentName,
   artifactName: "Risk Assessment",
-  prompt: RISK_ASSESSMENT_APPROACH_PROMPT,
+  prompt: loadPrompt("phase-4/prompts/risk-assessment-approach.prompt.md")
+    .prompt,
   uses: [
     tradingDesk.presets({ tradeProposal: true, riskCritiques: true }),
   ],

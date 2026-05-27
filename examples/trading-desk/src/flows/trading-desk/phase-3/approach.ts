@@ -13,12 +13,12 @@
 import { PHASE_3_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { createApproachGenerator } from "../lib/approach-generator";
-import { TRADER_APPROACH_PROMPT } from "./prompts";
+import { loadPrompt } from "../lib/prompt";
 
 export const traderApproachGenerator = createApproachGenerator({
   name: "trader-approach-generator",
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   artifactName: "TradeProposal",
-  prompt: TRADER_APPROACH_PROMPT,
+  prompt: loadPrompt("phase-3/prompts/trader-approach.prompt.md").prompt,
   uses: [tradingDesk.presets({ investmentThesis: true })],
 });

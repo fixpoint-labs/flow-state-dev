@@ -23,6 +23,9 @@ type BlockDebugPayload = {
   history?: unknown[];
   connectedInput?: unknown;
   modelOutput?: string;
+  // Raw `.md` template source when the prompt was authored via a PromptFile.
+  // Lets the inspector show the source alongside the rendered prompt.
+  templateSource?: string;
 };
 import type { DevtoolItem } from "../../lib/item-types";
 import { Button } from "../ui/button";
@@ -146,6 +149,17 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         <CollapsibleSection title="Prompt" defaultOpen>
           <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
             {prompt}
+          </pre>
+        </CollapsibleSection>
+      )}
+
+      {/* Template source — the .md file the rendered prompt came from, so you
+          can see why it rendered the way it did. Only present for PromptFile
+          generators. */}
+      {debugPayload?.templateSource && (
+        <CollapsibleSection title="Template Source" defaultOpen={false}>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {debugPayload.templateSource}
           </pre>
         </CollapsibleSection>
       )}

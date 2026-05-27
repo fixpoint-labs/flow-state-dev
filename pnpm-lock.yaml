@@ -514,6 +514,12 @@ importers:
       cron-parser:
         specifier: ^5.0.0
         version: 5.5.0
+      gray-matter:
+        specifier: ^4.0.3
+        version: 4.0.3
+      liquidjs:
+        specifier: ^10.21.0
+        version: 10.27.0
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -7807,6 +7813,11 @@ packages:
 
   linkify-it@3.0.3:
     resolution: {integrity: sha512-ynTsyrFSdE5oZ/O9GEf00kPngmOfVwazR5GKDq6EYfhlpFug3J2zybX56a2PRRpc9P+FuSoGNAwjlbDs9jJBPQ==}
+
+  liquidjs@10.27.0:
+    resolution: {integrity: sha512-tw/OA59K7aIBlMKIrKlumr37fiZUheShVHXY8cVctWisgY1p9mc5hreOvlreoS0wTiwlWk14Ya7305c2a/Cg5w==}
+    engines: {node: '>=16'}
+    hasBin: true
 
   loader-runner@4.3.1:
     resolution: {integrity: sha512-IWqP2SCPhyVFTBtRcgMHdzlf9ul25NwaFx4wCEH/KjAXuuHY4yNjvPXsBokp8jCB936PyWRaPKUNh8NvylLp2Q==}
@@ -18663,6 +18674,10 @@ snapshots:
   linkify-it@3.0.3:
     dependencies:
       uc.micro: 1.0.6
+
+  liquidjs@10.27.0:
+    dependencies:
+      commander: 10.0.1
 
   loader-runner@4.3.1: {}
 

@@ -3,6 +3,8 @@
  * `markErrorP4`, and the four commit handlers flip `session.memoStatus`
  * and patch the resources with the right extension fields.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
@@ -18,10 +20,15 @@ import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
-import {
-  NEUTRAL_PROMPT,
-  RISK_ASSESSMENT_PROMPT,
-} from "../src/flows/trading-desk/phase-4/prompts";
+
+// The phase-4 prompts now live as `.md` files; read them raw to assert their
+// prose names every dismissal category (parity with the prior string-export).
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/phase-4/prompts");
+const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
+const RISK_ASSESSMENT_PROMPT = readFileSync(
+  path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),
+  "utf8"
+);
 
 const DISMISSAL_CATEGORIES = [
   "already-addressed",

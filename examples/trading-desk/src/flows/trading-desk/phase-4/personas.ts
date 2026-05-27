@@ -21,18 +21,21 @@
  * pane is the persona's structured artifact.
  */
 import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { PHASE_4_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
 import {
   formatPersonaCritique,
   tradingDesk,
 } from "../capability";
-import {
-  AGGRESSIVE_PROMPT,
-  CONSERVATIVE_PROMPT,
-  NEUTRAL_PROMPT,
-} from "./prompts";
+import { loadPrompt } from "../lib/prompt";
 import { personaCritiqueOutputSchema } from "./schemas";
+
+const aggressivePrompt = loadPrompt("phase-4/prompts/aggressive.prompt.md");
+const conservativePrompt = loadPrompt(
+  "phase-4/prompts/conservative.prompt.md"
+);
+const neutralPrompt = loadPrompt("phase-4/prompts/neutral.prompt.md");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function memoState(ctx: any, collectionKey: string): unknown {
@@ -54,10 +57,7 @@ export const aggressiveRiskGenerator = generator({
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.aggressive.agentName,
   uses: tradingMemos(false),
-  prompt: AGGRESSIVE_PROMPT,
-  user:
-    "You are the first persona to speak in the round-robin. " +
-    "Now write the published Aggressive Risk critique.",
+  ...definePromptFile(aggressivePrompt),
   sessionStateSchema,
   outputSchema: personaCritiqueOutputSchema,
 });
@@ -67,7 +67,6 @@ export const conservativeRiskGenerator = generator({
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
   uses: tradingMemos(false),
-  prompt: CONSERVATIVE_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>
       formatPersonaCritique(
@@ -75,7 +74,7 @@ export const conservativeRiskGenerator = generator({
         memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
       ),
   },
-  user: "Now write the published Conservative Risk critique.",
+  ...definePromptFile(conservativePrompt),
   sessionStateSchema,
   outputSchema: personaCritiqueOutputSchema,
 });
@@ -88,7 +87,6 @@ export const neutralRiskGenerator = generator({
   agentType: "sub",
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
   uses: tradingMemos(true),
-  prompt: NEUTRAL_PROMPT,
   context: {
     aggressiveCritique: (_input, ctx) =>
       formatPersonaCritique(
@@ -101,10 +99,7 @@ export const neutralRiskGenerator = generator({
         memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
       ),
   },
-  user:
-    "Now write the published Neutral Risk critique. Remember: your job is " +
-    "to filter, not to win. Populate `dismissedRisks` with the load-bearing " +
-    "call on what does not warrant action.",
+  ...definePromptFile(neutralPrompt),
   sessionStateSchema,
   outputSchema: personaCritiqueOutputSchema,
 });
