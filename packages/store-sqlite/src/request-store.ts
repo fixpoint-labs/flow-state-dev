@@ -14,14 +14,14 @@
  */
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
-import {
-  isTerminalRequestStatus,
-  type ExpectedVersion,
-  type RequestListOptions,
-  type RequestRecord,
-  type RequestStore,
-  type SetResult,
-  type SubscribeToEventsOptions
+import type {
+  ExpectedVersion,
+  RequestListOptions,
+  RequestRecord,
+  RequestStatus,
+  RequestStore,
+  SetResult,
+  SubscribeToEventsOptions
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
@@ -32,6 +32,23 @@ import { createSQLiteRecordStore } from "./sqlite-store";
  * application-side before any SQL runs.
  */
 const MAX_ITEM_ID_LENGTH = 2600;
+
+/**
+ * Whether a request status is past the in-flight phase. Mirrors the server
+ * helper of the same name, defined locally so this package keeps a TYPE-ONLY
+ * dependency on `@flow-state-dev/server` (enforced by
+ * `scripts/validate-package-boundaries.mjs`); importing the runtime helper
+ * would couple the SQLite store to server runtime values.
+ */
+function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "incomplete" ||
+    status === "interrupted" ||
+    status === "aborted"
+  );
+}
 
 /**
  * SQLite's compile-time parameter limit (SQLITE_MAX_VARIABLE_NUMBER) is 32766
