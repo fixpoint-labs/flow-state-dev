@@ -98,7 +98,9 @@ export async function fetchYahooFundamentals(
     ticker: input.ticker,
     asOf: input.date,
     marketCap: numberFrom(detail.marketCap),
-    forwardPE: numberFrom(stats.forwardPE) || numberFrom(detail.forwardPE),
+    forwardPE:
+      nullableNumberFrom(stats.forwardPE) ?? nullableNumberFrom(detail.forwardPE),
+    trailingPE: nullableNumberFrom(detail.trailingPE),
     priceToSales: numberFrom(detail.priceToSalesTrailing12Months),
     returnOnEquity: numberFrom(fin.returnOnEquity),
     operatingMargin: numberFrom(fin.operatingMargins),
@@ -248,6 +250,14 @@ function numberFrom(raw: unknown): number {
   }
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** Nullable variant of `numberFrom` for P/E fields: a zero or missing P/E is
+ *  non-physical for a going concern, so it maps to `null` rather than `0`.
+ *  Don't generalize to ROE/margins — there `0` is a real value (FIX-692). */
+function nullableNumberFrom(raw: unknown): number | null {
+  const n = numberFrom(raw);
+  return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
 /** Statement period end-date — Yahoo emits a Date or `{ raw: epochSeconds }`. */

@@ -98,8 +98,8 @@ export async function fetchFinnhubFundamentals(
   type Profile = { marketCapitalization?: number };
   type Metric = {
     metric?: {
+      forwardPE?: number;
       peTTM?: number;
-      peNormalizedAnnual?: number;
       psTTM?: number;
       roeTTM?: number;
       operatingMarginTTM?: number;
@@ -114,13 +114,18 @@ export async function fetchFinnhubFundamentals(
   // Finnhub returns ratios as percentages for margins/ROE (e.g. 25.3 = 25.3%).
   // Normalize to fractions to match the Yahoo + fixture shape (0.253).
   const pct = (v: number | undefined) => (typeof v === "number" ? v / 100 : 0);
+  // P/E fields are nullable in the schema: null is the honest signal that the
+  // metric is unavailable, never a backward-looking substitute (FIX-692).
+  const num = (v: number | undefined): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
   return {
     source: "finnhub",
     ticker: input.ticker,
     asOf: input.date,
     // Profile gives market cap in $M; canonicalize to absolute USD.
     marketCap: (profile.marketCapitalization ?? 0) * 1_000_000,
-    forwardPE: m.peNormalizedAnnual ?? m.peTTM ?? 0,
+    forwardPE: num(m.forwardPE),
+    trailingPE: num(m.peTTM),
     priceToSales: m.psTTM ?? 0,
     returnOnEquity: pct(m.roeTTM),
     operatingMargin: pct(m.operatingMarginTTM),
