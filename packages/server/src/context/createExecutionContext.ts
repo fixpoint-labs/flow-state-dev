@@ -951,9 +951,12 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
-  // Remove from in-memory map and persist the deletion
-  delete resources[evictKey];
-  await persistResources({ ...resources });
+  // Persist the deletion without mutating the caller's map — persistResources
+  // diffs next-vs-cache to derive the per-key delete, so the cache must still
+  // hold evictKey when it runs.
+  const next = { ...resources };
+  delete next[evictKey];
+  await persistResources(next);
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {
@@ -2494,11 +2497,8 @@ export async function createExecutionContext<
   const userStateRef = { current: initialUserState };
   const orgStateRef = { current: initialOrgState };
 
-  // Return a shallow copy so callers (e.g. evictInstance) that mutate the
-  // returned map in place don't corrupt the cache before persistResources can
-  // diff next-vs-previous to derive per-key writes/deletes.
   const readSessionResources = (): Record<string, JsonObject> =>
-    ({ ...sessionStateRef.current });
+    sessionStateRef.current;
 
   // Content refs: eagerly loaded from ContentStore at initialization.
   // All reads during execution use the in-memory cache (synchronous).
@@ -2511,13 +2511,13 @@ export async function createExecutionContext<
     sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
-    ({ ...userStateRef.current });
+    userStateRef.current;
 
   const readUserResourceContent = (): Record<string, string> =>
     userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
-    ({ ...orgStateRef.current });
+    orgStateRef.current;
 
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
