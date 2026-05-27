@@ -168,6 +168,11 @@ export type SessionRequestSummary = {
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
+  /**
+   * Item log. Not populated by the `GET /sessions/:id/requests` list
+   * endpoint, which returns summaries only — read a single request's items
+   * via the state endpoint. Present on responses that carry full records.
+   */
   items?: OutputItem[];
   createdAt: number;
   updatedAt: number;

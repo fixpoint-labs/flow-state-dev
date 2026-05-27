@@ -285,6 +285,63 @@ describe("PostgreSQL store adapter", () => {
       expect(await s.request.list({ userId: "user_1" })).toHaveLength(1);
     });
 
+    it("orderBy startedAtMs orders by start time, not last update", async () => {
+      const s = await freshStores();
+      // req_old started first but was updated last; req_new started last but
+      // updated first. orderBy:startedAtMs must return start order (new, old);
+      // the default updatedAt order returns (old, new).
+      await s.request.set(
+        "req_old",
+        makeRequestRecord("req_old", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 100,
+          createdAt: 100,
+          updatedAt: 999
+        }),
+        "any"
+      );
+      await s.request.set(
+        "req_new",
+        makeRequestRecord("req_new", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 500,
+          createdAt: 500,
+          updatedAt: 200
+        }),
+        "any"
+      );
+
+      const byStarted = await s.request.list({ sessionId: "sess_o", orderBy: "startedAtMs" });
+      expect(byStarted.map((r) => r.id)).toEqual(["req_new", "req_old"]);
+
+      const byUpdated = await s.request.list({ sessionId: "sess_o" });
+      expect(byUpdated.map((r) => r.id)).toEqual(["req_old", "req_new"]);
+    });
+
+    it("orderBy startedAtMs with limit selects the most-recently-started", async () => {
+      const s = await freshStores();
+      for (let n = 1; n <= 3; n++) {
+        await s.request.set(
+          `req_${n}`,
+          makeRequestRecord(`req_${n}`, "flow-a", "run", "user_1", "sess_l", {
+            status: "completed",
+            startedAtMs: n * 100,
+            createdAt: n * 100,
+            updatedAt: n * 100
+          }),
+          "any"
+        );
+      }
+
+      const windowed = await s.request.list({
+        sessionId: "sess_l",
+        status: "completed",
+        orderBy: "startedAtMs",
+        limit: 2
+      });
+      expect(windowed.map((r) => r.id)).toEqual(["req_3", "req_2"]);
+    });
+
     it("filters by status", async () => {
       const s = await freshStores();
       await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "completed" }), "any");
@@ -326,6 +383,44 @@ describe("PostgreSQL store adapter", () => {
       expect(result!.items).toBeDefined();
       expect(result!.items).toHaveLength(1);
       expect(result!.items![0]!.id).toBe("msg_1");
+    });
+  });
+
+  // --- Content store (FIX-685) ---
+
+  describe("content store", () => {
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "files/a.ts", "a");
+      await s.content.set("session", "s1", "files/b.ts", "b");
+      await s.content.set("session", "s1", "notes", "n");
+
+      expect(await s.content.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": "a",
+        "files/b.ts": "b"
+      });
+    });
+
+    it("getByPrefix with an empty prefix returns all keys in scope", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "notes", "n");
+      await s.content.set("session", "s1", "files/a.ts", "a");
+
+      expect(await s.content.getByPrefix("session", "s1", "")).toEqual({
+        notes: "n",
+        "files/a.ts": "a"
+      });
+    });
+
+    it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "a_b/1", "match");
+      await s.content.set("session", "s1", "axb/1", "no"); // `_` is a LIKE wildcard
+      await s.content.set("session", "s1", "other", "no");
+
+      expect(await s.content.getByPrefix("session", "s1", "a_b/")).toEqual({
+        "a_b/1": "match"
+      });
     });
   });
 

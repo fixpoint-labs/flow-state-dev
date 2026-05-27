@@ -171,7 +171,12 @@ export function createSQLiteRequestStore(
       }
 
       return { clause: parts.join(" AND "), params };
-    }
+    },
+    // `started_at` is not a column — startedAtMs lives in the record blob and
+    // equals `created_at` (set together at creation, never mutated). Order by
+    // created_at to honor `orderBy: "startedAtMs"`.
+    resolveOrderBy: (listOptions) =>
+      listOptions?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
   });
 
   const pendingItemWrites = new Set<string>();

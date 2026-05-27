@@ -235,6 +235,15 @@ export type SessionConfig = {
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
+  /**
+   * Bounds the cross-turn history loaded per request to the most recent
+   * `turns` completed requests (default 50). This caps the store read and
+   * the default generator's in-prompt history; the full session stays
+   * retrievable via the state endpoint. Per-call `history({ limit })`
+   * refines within this window — it cannot widen it. Use a positive
+   * integer; `0` or negative disables cross-turn history entirely.
+   */
+  historyWindow?: { turns: number };
 };
 
 export type RequestConfig = {
