@@ -194,6 +194,17 @@ export interface PlanAndExecuteConfig<
 // Default replanner
 // ---------------------------------------------------------------------------
 
+/** Output schema for the default replanner generator — the new tasks to add. */
+export const replannerOutputSchema = z.object({
+  tasks: z.array(
+    z.object({
+      id: z.string(),
+      goal: z.string(),
+      deps: z.array(z.string()).default([]),
+    }),
+  ),
+});
+
 function createDefaultReplanner(config: {
   name: string;
   model?: string;
@@ -210,15 +221,7 @@ function createDefaultReplanner(config: {
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
-    outputSchema: z.object({
-      tasks: z.array(
-        z.object({
-          id: z.string(),
-          goal: z.string(),
-          deps: z.array(z.string()).default([]),
-        }),
-      ),
-    }),
+    outputSchema: replannerOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     search: true,
     prompt: [
@@ -245,6 +248,21 @@ function createDefaultReplanner(config: {
 // ---------------------------------------------------------------------------
 // Default executor + legacy worker adapter
 // ---------------------------------------------------------------------------
+
+/** Output schema for the default executor generator — a task finding. */
+export const executorOutputSchema = z.object({
+  summary: z.string(),
+  success: z.boolean(),
+  reason: z.string().default(""),
+  sources: z
+    .array(
+      z.object({
+        title: z.string().default(""),
+        url: z.string(),
+      }),
+    )
+    .default([]),
+});
 
 /**
  * Build the default executor — a research generator returning
@@ -275,19 +293,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       goal: z.string(),
       dependencyResults: z.record(z.unknown()).optional(),
     }),
-    outputSchema: z.object({
-      summary: z.string(),
-      success: z.boolean(),
-      reason: z.string().default(""),
-      sources: z
-        .array(
-          z.object({
-            title: z.string().default(""),
-            url: z.string(),
-          }),
-        )
-        .default([]),
-    }),
+    outputSchema: executorOutputSchema,
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
