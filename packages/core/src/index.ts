@@ -170,6 +170,9 @@ export type {
 } from "./types/schedules";
 
 export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedules";
+
+export type { ChatConfig, ChatEventBinding } from "./types/chat";
+export { validateChatConfig } from "./types/chat";
 export type {
   TokenCounter,
 } from "./types/tokens";

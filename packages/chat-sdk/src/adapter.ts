@@ -27,6 +27,11 @@ import type {
 import { CHAT_TRANSPORT_SOURCE, type ChatAdapterOptions } from "./types";
 import { registerEventHandlers } from "./event-handlers";
 import { buildOAuthRoutes } from "./oauth/routes";
+import {
+  buildChatSubscriptionIndex,
+  hasChatSubscriptions,
+  type ChatSubscriptionIndex,
+} from "./subscription-index";
 
 export { CHAT_TRANSPORT_SOURCE };
 
@@ -37,11 +42,6 @@ export { CHAT_TRANSPORT_SOURCE };
 export function createChatTransportAdapter(
   options: ChatAdapterOptions
 ): InboundTransportAdapter {
-  if (options.flowKind === undefined && options.route === undefined) {
-    throw new Error(
-      "@flow-state-dev/chat-sdk: ChatAdapterOptions requires either `flowKind` or `route`."
-    );
-  }
   const prefix = normalizePrefix(options.routePrefix ?? "/api/chat");
 
   return {
@@ -49,9 +49,15 @@ export function createChatTransportAdapter(
     createBindings(host: InboundTransportHost): TransportBindings {
       const routes: TransportRoute[] = [];
 
+      // Snapshot holder populated synchronously by `start()`. Event handlers
+      // registered now (eager) or on first request (lazy) read it through
+      // the accessor, so the index is in place before any event fires.
+      let index: ChatSubscriptionIndex = { byEventKey: new Map() };
+      const getIndex = (): ChatSubscriptionIndex => index;
+
       if (typeof options.bot !== "function") {
         const bot = options.bot;
-        registerEventHandlers(bot, host, options);
+        registerEventHandlers(bot, host, options, getIndex);
         for (const platform of platformNames(bot)) {
           routes.push(...platformRoutes(prefix, platform, () => bot));
         }
@@ -59,7 +65,7 @@ export function createChatTransportAdapter(
           routes.push(...buildOAuthRoutes(bot, prefix, options.mountOAuthRoutes));
         }
       } else {
-        const ensureBot = createLazyBotResolver(options.bot, host, options);
+        const ensureBot = createLazyBotResolver(options.bot, host, options, getIndex);
         // Wildcard fallback. The Chat SDK validates the platform name
         // against `bot.webhooks` once resolved.
         routes.push({
@@ -84,7 +90,27 @@ export function createChatTransportAdapter(
         );
       }
 
-      return { routes };
+      return {
+        routes,
+        // Build the subscription index by walking the registry once, and
+        // fail fast when no routing is configured anywhere. Runs
+        // synchronously: `createFlowApiRouter` invokes `start()`
+        // fire-and-forget, so only a synchronous throw aborts startup.
+        start(): void {
+          index = buildChatSubscriptionIndex(host.registry.list());
+          if (
+            options.flowKind === undefined &&
+            options.route === undefined &&
+            !hasChatSubscriptions(index)
+          ) {
+            throw new Error(
+              "@flow-state-dev/chat-sdk: no chat routing configured. Declare " +
+                "`chat.on` on at least one flow, or pass `flowKind` or `route` to " +
+                "createChatTransportAdapter (CHAT_ADAPTER_NO_ROUTING)."
+            );
+          }
+        },
+      };
     },
   };
 }
@@ -128,7 +154,8 @@ function platformRoutes(
 function createLazyBotResolver(
   factory: () => Chat | Promise<Chat>,
   host: InboundTransportHost,
-  options: ChatAdapterOptions
+  options: ChatAdapterOptions,
+  getIndex: () => ChatSubscriptionIndex
 ): () => Promise<Chat> {
   let cached: Chat | null = null;
   let pending: Promise<Chat> | null = null;
@@ -140,7 +167,7 @@ function createLazyBotResolver(
       .then((bot) => {
         cached = bot;
         if (!handlersRegistered) {
-          registerEventHandlers(bot, host, options);
+          registerEventHandlers(bot, host, options, getIndex);
           handlersRegistered = true;
         }
         return bot;

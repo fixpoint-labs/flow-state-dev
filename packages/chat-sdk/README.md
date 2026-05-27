@@ -43,16 +43,59 @@ The adapter mounts `POST /api/chat/slack` and `GET /api/chat/slack` (the GET is 
 | Option | Default | Notes |
 | --- | --- | --- |
 | `bot` | required | `Chat` instance or thunk returning one. Thunk form defers construction until first request. |
-| `flowKind` | — | Static routing. Required unless `route` is supplied. |
+| `flowKind` | — | Adapter-mount static routing. Optional once flows declare `chat.on` (see below). |
 | `action` | `"chat"` | Action name used with `flowKind`. |
-| `route` | — | `(event) => { flowKind, action, input, sessionId?, skip? }`. Overrides `flowKind`. |
-| `streamToThread` | `true` | Pipe flow output to the thread. Per-flow override via `flowOverrides`. |
+| `route` | — | `(event) => { flowKind, action, input, sessionId?, skip? }`. Adapter-mount escape hatch. |
+| `streamToThread` | `true` | Pipe flow output to the thread. Per-flow override via `chat.streamToThread`, then `flowOverrides`. |
 | `itemToChunk` | — | `(event) => string \| null \| undefined`. Custom stream rendering; fall through with `undefined`. |
 | `routePrefix` | `"/api/chat"` | Mount prefix. |
 | `mountOAuthRoutes` | `false` | When `true`, mounts `GET ${prefix}/:platform/oauth/callback` for adapters that expose `handleOAuthCallback`. |
 | `resolvePrincipal` | `${platform}:${author.id}` | Override identity derivation. Throw `PrincipalResolutionError` to reject. |
 | `events` | all on | Per-callback opt-outs. |
 | `flowOverrides` | — | `Record<flowKind, { streamToThread? }>`. Per-flow config. |
+
+## Declaring subscriptions on the flow
+
+A flow can declare which inbound chat events trigger which of its actions directly on its definition. The adapter discovers these at mount by walking the flow registry, so a multi-flow chat agent reads top to bottom — triggers and handlers sit together, and adding a flow needs no adapter-config edit.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { defineChatBinding } from "@flow-state-dev/chat-sdk";
+
+const supportFlow = defineFlow({
+  kind: "support",
+  actions: { reply: { block: replyBlock }, escalate: { block: escalateBlock } },
+  chat: {
+    on: {
+      // event-kind key → which action fires and how the event maps to input
+      mention: defineChatBinding({
+        action: "reply",
+        input: (event) => ({ text: event.message?.text ?? "" }),
+      }),
+      reaction: defineChatBinding({
+        action: "escalate",
+        when: (event) => event.platform === "slack",
+        input: (event) => ({ emoji: event.actionValue }),
+      }),
+    },
+  },
+});
+```
+
+With every flow declaring its own subscriptions, the mount is a one-liner — no `flowKind` or `route`:
+
+```ts
+createChatTransportAdapter({ bot });
+```
+
+- **Keys** match `ChatInboundEvent.kind` exactly (`"mention"`, `"directMessage"`, `"reaction"`, `"slashCommand"`, …). The vocabulary is uniform across platforms, so a `mention` binding fires on every platform the bot serves. Narrow to one with `when: (e) => e.platform === "slack"`.
+- **`input`** maps the event to the action input (may be async). **`sessionId`** overrides the default thread-id derivation (may be async). **`when`** is a synchronous predicate; a falsy result skips the binding.
+- **`defineChatBinding<T>()`** is a typing convenience — it gives `event` a `ChatInboundEvent` type. Plain object literals work too; `event` is then `unknown`.
+- Validation runs at `defineFlow`: a binding naming an action the flow doesn't declare throws at registration.
+
+**Fan-out is broadcast.** Two flows subscribing to the same event both run, independently. **Precedence is total**: when any flow-level binding matches an event, the adapter-mount `route()`/`flowKind` is not consulted; it fires only as a fallback when nothing matched. That lets a host migrate one flow at a time.
+
+If no flow declares `chat.on` and neither `flowKind` nor `route` is passed, the adapter throws at startup rather than silently dropping every event.
 
 ## Session / thread mapping
 
@@ -109,6 +152,5 @@ cleanup();
 
 ## Deviations from the original spec
 
-- **Per-flow config lives on the adapter** (`flowOverrides`), not via module augmentation of `FlowDefinition`. `FlowDefinition` is a type alias in `@flow-state-dev/core`, not an interface, so module augmentation isn't available.
 - **OAuth callback** is duck-typed against `adapter.handleOAuthCallback` because the Chat SDK doesn't yet expose it on the base `Adapter` type — only Slack-style adapters surface one in 4.29.0.
 - **Cross-thread sends** are not supported in this release (Chat SDK 4.29.0 has no `chat.getThread({ ... })`); utility blocks operate on the inbound thread only.

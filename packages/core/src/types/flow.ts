@@ -14,6 +14,7 @@ import type {
   ResourceCollectionRef
 } from "./resource-collection";
 import type { SchedulesConfig } from "./schedules";
+import type { ChatConfig } from "./chat";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
@@ -366,6 +367,13 @@ export type FlowDefinition<
   mcp?: McpConfig;
 
   /**
+   * Per-flow chat-transport subscriptions. When set, the
+   * `@flow-state-dev/chat-sdk` adapter discovers these declarations at
+   * mount and dispatches matching inbound chat events to the named actions.
+   */
+  chat?: ChatConfig;
+
+  /**
    * Per-flow scheduled-action config. When set, the
    * `@flow-state-dev/scheduled` adapter mounts
    * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
@@ -414,6 +422,7 @@ export type FlowInstanceOptions<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -451,6 +460,7 @@ export type FlowInstance<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -483,6 +493,7 @@ export type FlowType<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;

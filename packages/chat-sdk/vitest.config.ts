@@ -13,6 +13,7 @@ export default defineConfig({
       "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
+      "@flow-state-dev/testing/conformance": resolve(root, "packages/testing/src/transports/conformance.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
       "@flow-state-dev/server": resolve(root, "packages/server/src/index.ts"),
       "@flow-state-dev/chat-sdk": resolve(root, "packages/chat-sdk/src/index.ts"),
