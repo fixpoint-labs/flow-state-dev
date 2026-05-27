@@ -337,9 +337,12 @@ interface ContentStore {
   set(scopeType, scopeId, resourceKey, content): Promise<void>;
   delete(scopeType, scopeId, resourceKey): Promise<void>;
   getAll(scopeType, scopeId): Promise<Record<string, string>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, string>>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
+
+Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
 
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
