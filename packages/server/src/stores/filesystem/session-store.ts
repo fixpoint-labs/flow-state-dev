@@ -55,6 +55,12 @@ export class FilesystemSessionStore implements SessionStore {
     return this.store.set(id, value, expectedVersion);
   }
 
+  /**
+   * Delta verbs (`patchField`/`incField`/`pushToArray`) delegate to the shared
+   * CAS record store, which mutates one depth-1 `state` field in place under
+   * the per-id lock instead of rewriting the whole record. Per-verb semantics
+   * are documented on `FilesystemRecordStore`.
+   */
   async patchField(
     id: string,
     path: string[],

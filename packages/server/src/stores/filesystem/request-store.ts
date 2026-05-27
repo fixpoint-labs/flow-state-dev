@@ -12,10 +12,10 @@ import {
   createFilesystemRecordStore,
   type FilesystemRecordStore
 } from "./shared";
-import { ensureDirectory, toRecordPath } from "./shared";
+import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readFile, writeFile, rename } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -126,6 +126,7 @@ export class FilesystemRequestStore implements RequestStore {
     this.onPersistError = options.onPersistError;
     this.store = createFilesystemRecordStore<RequestRecord, RequestListOptions>({
       rootDir: options.rootDir,
+      skipSidecars: true,
       sort: (left, right, listOptions) =>
         listOptions?.orderBy === "startedAtMs"
           ? right.startedAtMs - left.startedAtMs
@@ -176,6 +177,12 @@ export class FilesystemRequestStore implements RequestStore {
     return this.store.set(id, value, expectedVersion);
   }
 
+  /**
+   * Delta verbs (`patchField`/`incField`/`pushToArray`) delegate to the shared
+   * CAS record store, which mutates one depth-1 `state` field in place under
+   * the per-id lock instead of rewriting the whole record. Per-verb semantics
+   * are documented on `FilesystemRecordStore`.
+   */
   async patchField(
     id: string,
     path: string[],
@@ -307,11 +314,7 @@ export class FilesystemRequestStore implements RequestStore {
     if (firstNonWhitespace?.[0] !== "[") return; // already NDJSON or empty
     const events = JSON.parse(raw) as RequestStreamEvent[];
     const ndjson = events.map((e) => `${JSON.stringify(e)}\n`).join("");
-    const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2)}`;
-    await writeFile(tempPath, ndjson, "utf8");
-    await rename(tempPath, targetPath);
+    await atomicWrite(targetPath, ndjson);
   }
 
   async flushEvents(requestId: string): Promise<void> {
@@ -426,11 +429,7 @@ export class FilesystemRequestStore implements RequestStore {
     try {
       await ensureDirectory(this.rootDir);
       const targetPath = toRunOnceKeyPath(this.rootDir, requestId, key);
-      const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
-        .toString(16)
-        .slice(2)}`;
-      await writeFile(tempPath, JSON.stringify(value), "utf8");
-      await rename(tempPath, targetPath);
+      await atomicWrite(targetPath, JSON.stringify(value));
     } catch (error) {
       this.onPersistError?.({
         store: "request",

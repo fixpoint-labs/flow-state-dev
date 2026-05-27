@@ -161,6 +161,21 @@ describe("Filesystem adapter — delta verbs", () => {
     });
   });
 
+  describe("list does not drop sidecar-suffixed ids (FIX-686)", () => {
+    it("returns a scope record whose id collides with a sidecar suffix", async () => {
+      // Intent: the request store skips `.events.json`/`.runonce.*.json`
+      // sidecar files in its directory, but scope stores (session/user/org)
+      // hold no sidecars and must never apply that skip — `encodeURIComponent`
+      // leaves `.` intact, so a caller id like `tenant.events` would otherwise
+      // be silently dropped from list().
+      const store = createFilesystemSessionStore({ rootDir });
+      await seed(store, "tenant.events", { count: 1 });
+      await seed(store, "acct.runonce.daily", { count: 2 });
+      const ids = (await store.list()).map((r) => r.id).sort();
+      expect(ids).toEqual(["acct.runonce.daily", "tenant.events"]);
+    });
+  });
+
   describe("non-state field preservation", () => {
     it("delta verbs preserve top-level record fields", async () => {
       const store = createFilesystemSessionStore({ rootDir });

@@ -693,6 +693,26 @@ describe("SQLite store adapter", () => {
       expect(await store.get("req_del")).toBeUndefined();
     });
 
+    it("delete is not undone by a persistItems microtask queued just before it", async () => {
+      // Intent: persistItems queues a coalescing microtask that drains on the
+      // next await. delete() awaits base.delete internally, so a naive
+      // implementation that cleared the tracking maps AFTER that await would
+      // let the queued microtask re-INSERT the rows the DELETE just removed.
+      // delete must discard the pending snapshot first, leaving zero rows.
+      const store = freshRequestStore();
+      await seedRequest(store, "req_race");
+      store.persistItems("req_race", [
+        makeMessageItem("req_race", "x", 0, "x") as unknown as OutputItem
+      ]);
+      // No flush/await between persistItems and delete: the microtask is still
+      // pending when delete runs and would drain during delete's internal await.
+      await store.delete("req_race");
+      // Let any stray microtask run, then confirm nothing was resurrected.
+      await Promise.resolve();
+      expect(itemCount("req_race")).toBe(0);
+      expect(await store.get("req_race")).toBeUndefined();
+    });
+
     it("rejects items whose id exceeds the length limit before any SQL runs", async () => {
       // Intent: an overlong id is caught application-side, not surfaced as an
       // opaque SQLite error. The microtask throws, so we assert via an

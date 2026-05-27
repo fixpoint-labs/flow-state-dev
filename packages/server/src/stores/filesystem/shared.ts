@@ -89,6 +89,13 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
  * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key).
  * `listRecords` must skip these — they are not record documents and the
  * NDJSON event log is not even valid standalone JSON.
+ *
+ * This suffix match is a heuristic: `encodeURIComponent` does not escape `.`,
+ * so an arbitrary record id ending in `.events`/`.runonce` would collide. It
+ * is therefore opt-in (`skipSidecars`) and used only by the request store,
+ * whose ids are framework-generated (`req_*`) and never carry those suffixes.
+ * Scope stores (session/user/org) live in sidecar-free directories and must
+ * not enable it, or a caller-supplied id could be silently dropped.
  */
 function isSidecarFile(name: string): boolean {
   return (
@@ -98,7 +105,10 @@ function isSidecarFile(name: string): boolean {
   );
 }
 
-export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
+export async function listRecords<TValue>(
+  rootDir: string,
+  skipSidecars = false
+): Promise<TValue[]> {
   await ensureDirectory(rootDir);
 
   const entries = await readdir(rootDir, { withFileTypes: true });
@@ -108,7 +118,7 @@ export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
     if (
       !entry.isFile() ||
       !entry.name.endsWith(".json") ||
-      isSidecarFile(entry.name)
+      (skipSidecars && isSidecarFile(entry.name))
     ) {
       continue;
     }
@@ -219,6 +229,12 @@ export type CreateFilesystemRecordStoreOptions<
    * `updatedAt` descending.
    */
   sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
+  /**
+   * Skip `.events.json`/`.runonce.*.json` sidecar files in `list`. Only the
+   * request store (which co-locates sidecars with records and uses
+   * framework-generated `req_*` ids) should enable this; see `isSidecarFile`.
+   */
+  skipSidecars?: boolean;
 };
 
 /** Per-id serialization so the read-check-write sequence below is atomic within one process. */
@@ -246,6 +262,7 @@ export function createFilesystemRecordStore<
   const { rootDir } = options;
   const filter = options.filter;
   const sort = options.sort ?? sortByUpdatedAtDesc;
+  const skipSidecars = options.skipSidecars ?? false;
   const withLock = createWriteLock();
 
   const record: FilesystemRecordStore<TRecord, TListOptions> = {
@@ -389,7 +406,7 @@ export function createFilesystemRecordStore<
     },
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {
-      const all = await listRecords<TRecord>(rootDir);
+      const all = await listRecords<TRecord>(rootDir, skipSidecars);
       const filtered =
         filter === undefined
           ? all
