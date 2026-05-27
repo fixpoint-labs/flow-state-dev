@@ -163,15 +163,24 @@ export interface ChatEnvelopeMetadata {
   authorId?: string;
   isDM: boolean;
   eventKind: ChatInboundEvent["kind"];
+  /**
+   * The `chat.on` key that matched, when the request was dispatched via a
+   * flow-level subscription (FIX-667). Absent for adapter-routed requests.
+   * Surfaced in the devtool so "why did this flow fire?" is answerable
+   * without reading the host source.
+   */
+  subscriptionKey?: string;
 }
 
 /**
- * Per-flow chat configuration. The spec proposed module-augmenting
- * `FlowDefinition`, but that's a `type` alias (not an interface) in
- * `@flow-state-dev/core/types`, so augmentation isn't available. Instead,
- * hosts pass per-flow overrides on the adapter via
- * `ChatAdapterOptions.flowOverrides`, keyed by flow kind. Functionally
- * equivalent; located on the adapter instead of the flow definition.
+ * Per-flow chat override carried on the adapter mount, keyed by flow kind.
+ *
+ * As of FIX-667 the primary place to declare per-flow chat behavior is the
+ * flow definition itself (`chat: { streamToThread, on }` in core). This
+ * adapter-mount override is retained for FIX-638 hosts and is consulted
+ * only when the flow's own `chat.streamToThread` is unset — see the
+ * precedence chain in `shouldStreamToThread`. Flagged for follow-up
+ * deprecation once hosts migrate to the flow-level field.
  */
 export interface ChatFlowOverride {
   streamToThread?: boolean;

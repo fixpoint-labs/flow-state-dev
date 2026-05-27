@@ -23,6 +23,10 @@ import { resolvePrincipalFromEvent } from "./principal-resolver";
 import { ensureSessionForChat } from "./session-resolver";
 import { setThreadForRequest, clearThreadForRequest } from "./thread-registry";
 import { bridgeStreamToThread } from "./stream-bridge";
+import type {
+  ChatSubscriptionIndex,
+  ChatSubscriptionEntry,
+} from "./subscription-index";
 
 /**
  * Pull a `userId` out of a Chat SDK `Author`-shaped object. Used by the
@@ -44,10 +48,11 @@ function extractAuthorUserId(user: unknown): string | undefined {
 export function registerEventHandlers(
   bot: Chat,
   host: InboundTransportHost,
-  options: ChatAdapterOptions
+  options: ChatAdapterOptions,
+  getIndex: () => ChatSubscriptionIndex
 ): void {
   const dispatch = (event: ChatInboundEvent): Promise<void> =>
-    dispatchChatEvent(host, options, event);
+    dispatchChatEvent(host, options, event, getIndex());
   const enabled = options.events ?? {};
   const on = (key: keyof typeof enabled): boolean => enabled[key] !== false;
 
@@ -191,14 +196,127 @@ export function registerEventHandlers(
 }
 
 /**
- * Single dispatch path shared by every event registration.
+ * Entry point shared by every event registration.
  *
- * Resolves routing → ensures session → resolves principal → constructs
- * envelope → calls `host.dispatch`. On `streamToThread`, wires the
- * runtime's response emitter into `thread.post` via the stream bridge.
- * Always observes both the post and dispatch promises so neither leaks.
+ * Flow-level subscriptions take total precedence: when any flow declares a
+ * `chat.on` binding matching `event.kind` (and its `when` predicate passes),
+ * those bindings fire — broadcast, each as its own dispatch — and the
+ * adapter-mount `route()`/`flowKind` path is NOT consulted. Only when no
+ * flow-level binding matches does dispatch fall back to the FIX-638
+ * adapter-routing path. This lets a host migrate one flow at a time.
  */
 export async function dispatchChatEvent(
+  host: InboundTransportHost,
+  options: ChatAdapterOptions,
+  event: ChatInboundEvent,
+  index: ChatSubscriptionIndex
+): Promise<void> {
+  const matched = matchSubscriptions(host, event, index);
+
+  if (matched.length > 0) {
+    // Broadcast: each matching binding produces an independent dispatch.
+    // `allSettled` so a downstream throw in one binding (principal rejection,
+    // flow error under streamToThread) neither aborts nor orphans its
+    // siblings — each rejection is observed and logged.
+    const results = await Promise.allSettled(
+      matched.map((entry) => runOneSubscription(host, options, event, entry))
+    );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        host.logger?.error?.(
+          "@flow-state-dev/chat-sdk: subscription dispatch threw",
+          { err: result.reason }
+        );
+      }
+    }
+    return;
+  }
+
+  await dispatchViaAdapterRouting(host, options, event);
+}
+
+/**
+ * Evaluate every binding subscribed to `event.kind`, keeping those whose
+ * `when` predicate is absent or returns truthy. A `when` that throws is
+ * treated as no-match (logged), never aborting the other bindings.
+ */
+function matchSubscriptions(
+  host: InboundTransportHost,
+  event: ChatInboundEvent,
+  index: ChatSubscriptionIndex
+): ChatSubscriptionEntry[] {
+  const candidates = index.byEventKey.get(event.kind) ?? [];
+  const matched: ChatSubscriptionEntry[] = [];
+  for (const entry of candidates) {
+    const when = entry.binding.when;
+    if (when === undefined) {
+      matched.push(entry);
+      continue;
+    }
+    try {
+      if (when(event)) matched.push(entry);
+    } catch (err) {
+      host.logger?.error?.(
+        "@flow-state-dev/chat-sdk: chat binding `when` threw — treating as no match",
+        { code: "CHAT_BINDING_WHEN_THROWS", flowKind: entry.flowKind, eventKey: entry.eventKey, err }
+      );
+    }
+  }
+  return matched;
+}
+
+/**
+ * Dispatch one flow-level subscription. Resolves `input` and `sessionId`
+ * (both may be async; `sessionId` falls back to the thread id on
+ * absence/throw), then hands off to the shared executor. A throwing
+ * `input` skips only this binding — other matched bindings still run.
+ */
+async function runOneSubscription(
+  host: InboundTransportHost,
+  options: ChatAdapterOptions,
+  event: ChatInboundEvent,
+  entry: ChatSubscriptionEntry
+): Promise<void> {
+  let input: unknown;
+  try {
+    input = await entry.binding.input(event);
+  } catch (err) {
+    host.logger?.error?.("@flow-state-dev/chat-sdk: chat binding `input` threw", {
+      code: "CHAT_BINDING_INPUT_THROWS",
+      flowKind: entry.flowKind,
+      eventKey: entry.eventKey,
+      err,
+    });
+    return;
+  }
+
+  let sessionId: string | undefined;
+  try {
+    sessionId = entry.binding.sessionId !== undefined
+      ? (await entry.binding.sessionId(event)) ?? event.thread?.id
+      : event.thread?.id;
+  } catch (err) {
+    host.logger?.error?.(
+      "@flow-state-dev/chat-sdk: chat binding `sessionId` threw — falling back to thread id",
+      { code: "CHAT_BINDING_SESSION_THROWS", flowKind: entry.flowKind, eventKey: entry.eventKey, err }
+    );
+    sessionId = event.thread?.id;
+  }
+
+  await executeDispatch(host, options, event, {
+    flowKind: entry.flowKind,
+    action: entry.binding.action,
+    input,
+    sessionId,
+    subscriptionKey: entry.eventKey,
+  });
+}
+
+/**
+ * FIX-638 adapter-routing fallback. Resolves the flow + action via the
+ * adapter-mount `route()`/`flowKind` and hands off to the shared executor.
+ */
+async function dispatchViaAdapterRouting(
   host: InboundTransportHost,
   options: ChatAdapterOptions,
   event: ChatInboundEvent
@@ -212,7 +330,38 @@ export async function dispatchChatEvent(
   }
   if (route.skip === true) return;
 
-  const sessionId = route.sessionId ?? event.thread?.id;
+  await executeDispatch(host, options, event, {
+    flowKind: route.flowKind,
+    action: route.action,
+    input: route.input,
+    sessionId: route.sessionId ?? event.thread?.id,
+  });
+}
+
+/** Resolved routing decision handed to `executeDispatch`. */
+type ResolvedDispatch = {
+  flowKind: string;
+  action: string;
+  input: unknown;
+  sessionId: string | undefined;
+  /** `chat.on` key that matched, when dispatched via a flow-level subscription. */
+  subscriptionKey?: string;
+};
+
+/**
+ * Shared tail of the dispatch path: resolve principal → ensure session →
+ * construct envelope → call `host.dispatch`. On `streamToThread`, wire the
+ * runtime's response emitter into `thread.post` via the stream bridge.
+ * Always observes both the post and dispatch promises so neither leaks.
+ */
+async function executeDispatch(
+  host: InboundTransportHost,
+  options: ChatAdapterOptions,
+  event: ChatInboundEvent,
+  resolved: ResolvedDispatch
+): Promise<void> {
+  const { flowKind, action, input, sessionId, subscriptionKey } = resolved;
+
   if (sessionId === undefined) {
     host.logger?.warn?.("@flow-state-dev/chat-sdk: event has no thread id; skipping", {
       kind: event.kind,
@@ -239,14 +388,12 @@ export async function dispatchChatEvent(
   await ensureSessionForChat({
     stores: host.stores,
     sessionId,
-    flowKind: route.flowKind,
+    flowKind,
     principal,
     event,
   });
 
-  const flowOverride = options.flowOverrides?.[route.flowKind];
-  const streamToThread =
-    flowOverride?.streamToThread ?? options.streamToThread ?? true;
+  const streamToThread = shouldStreamToThread(host, options, flowKind);
 
   const metadata: ChatEnvelopeMetadata = {
     platform: event.platform,
@@ -260,13 +407,14 @@ export async function dispatchChatEvent(
       : {}),
     isDM: event.thread?.isDM ?? false,
     eventKind: event.kind,
+    ...(subscriptionKey !== undefined ? { subscriptionKey } : {}),
   };
 
   const handle = host.dispatch({
     source: CHAT_TRANSPORT_SOURCE,
-    flowKind: route.flowKind,
-    action: route.action,
-    input: route.input,
+    flowKind,
+    action,
+    input,
     sessionId,
     principal,
     metadata: metadata as unknown as Record<string, unknown>,
@@ -292,4 +440,20 @@ export async function dispatchChatEvent(
   } else {
     await handle.finished;
   }
+}
+
+/**
+ * Resolve the effective `streamToThread` for a flow, in precedence order:
+ * the flow's own `chat.streamToThread`, then the adapter-mount
+ * `flowOverrides[flowKind].streamToThread`, then the adapter-level
+ * `streamToThread`, defaulting to `true`.
+ */
+function shouldStreamToThread(
+  host: InboundTransportHost,
+  options: ChatAdapterOptions,
+  flowKind: string
+): boolean {
+  const flowLevel = host.registry.get(flowKind)?.chat?.streamToThread;
+  const flowOverride = options.flowOverrides?.[flowKind]?.streamToThread;
+  return flowLevel ?? flowOverride ?? options.streamToThread ?? true;
 }

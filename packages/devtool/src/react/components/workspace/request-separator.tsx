@@ -53,7 +53,8 @@ const SOURCE_LABELS: Record<string, { label: string; className: string }> = {
   mcp: { label: "MCP", className: "border-purple-700 text-purple-300" },
   webhook: { label: "Webhook", className: "border-amber-700 text-amber-300" },
   scheduled: { label: "Scheduled", className: "border-cyan-700 text-cyan-300" },
-  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" }
+  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" },
+  chat: { label: "Chat", className: "border-emerald-700 text-emerald-300" }
 };
 
 function formatDuration(ms?: number, isActive?: boolean): string {

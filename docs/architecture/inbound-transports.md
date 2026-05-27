@@ -70,7 +70,7 @@ interface InboundRequestEnvelope {
 `source` is provenance — first-class on `RequestRecord` and
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
-`scheduled`, `notification`. Custom transports pick their own.
+`scheduled`, `notification`, `chat`. Custom transports pick their own.
 
 ### The host
 

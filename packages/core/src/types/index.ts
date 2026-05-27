@@ -74,6 +74,10 @@ export type {
 
 export { validateScheduleConfig, validateSchedulesConfig } from "./schedules";
 
+export type { ChatConfig, ChatEventBinding } from "./chat";
+
+export { validateChatConfig } from "./chat";
+
 export type {
   SpeechModel,
   SpeechResolver,
