@@ -39,13 +39,13 @@ const modelResolver = createModelResolver({
     : undefined,
   defaultModel: "vercel/google/gemini-3.1-flash-lite",
   intents: {
-    utility: ["vercel/google/gemini-3.1-flash-lite"],
-    fast: ["vercel/google/gemini-3.1-flash-lite"],
-    'fast-reasoning': ["vercel/xai/grok-4.20-reasoning"],
-    'fast-high-reasoning': ["vercel/openai/gpt-5.4-mini"],
-    full: ["vercel/google/gemini-3.5-flash-lite"],
-    'full-reasoning': ["vercel/google/gemini-3.5-flash"],
-    'full-high-reasoning': ["vercel/google/gemini-3.1-pro-preview"],
+    utility: ["vercel/google/gemini-3.1-flash-lite", "vercel/openai/gpt-5.4-nano"],
+    fast: ["vercel/google/gemini-3.1-flash-lite", "vercel/openai/gpt-5.4-nano"],
+    'fast-reasoning': ["vercel/xai/grok-4.3", "vercel/openai/gpt-5.4-mini"],
+    'fast-high-reasoning': ["vercel/gemini-3.5-flash", "vercel/openai/gpt-5.4-mini"],
+    full: ["vercel/google/gemini-3.5-flash-lite", "vercel/openai/gpt-5.4-nano"],
+    'full-reasoning': ["vercel/google/gemini-3.5-flash", "vercel/openai/gpt-5.4-mini"],
+    'full-high-reasoning': ["vercel/google/gemini-3.1-pro-preview", "vercel/openai/gpt-5.5"],
   },
 });
 
