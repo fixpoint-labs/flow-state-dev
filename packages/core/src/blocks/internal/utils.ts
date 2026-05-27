@@ -43,12 +43,15 @@ export function withTimeout<TValue>(
  * Used by block code in this package to assign sequential `itemIndex` values
  * to newly emitted items.
  *
- * Tolerates partially-implemented mocks (test fixtures that supply only
- * `emit`) by returning 0 when `getItems` is missing. Production responses
- * always provide it via `ResponseEmitterHandle`.
+ * Prefers the O(1) `getItemCount()` so this stays cheap on the per-emit hot
+ * path (FIX-406 6G). Tolerates partially-implemented mocks (test fixtures
+ * that supply only `emit`/`getItems`) by falling back to `getItems().length`,
+ * then to 0 when neither is present. Production responses always provide
+ * `getItemCount` via `ResponseEmitterHandle`.
  */
 export function getEmitterItemCount(response: ResponseEmitterHandle | undefined): number {
   if (response === undefined) return 0;
+  if (typeof response.getItemCount === "function") return response.getItemCount();
   if (typeof response.getItems !== "function") return 0;
   return response.getItems().length;
 }

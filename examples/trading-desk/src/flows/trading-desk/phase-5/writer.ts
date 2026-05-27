@@ -66,8 +66,27 @@ export const commitPortfolioManagerMemo = memoHandler({
     const traderMemo = ctx.resources.memos.getOptional(
       PHASE_3_MEMO_KEYS.trader.collectionKey,
     );
-    const traderDirection = (traderMemo?.state as { direction?: string | null } | undefined)
-      ?.direction;
+    const traderState = traderMemo?.state as
+      | { direction?: string | null; dependsOn?: string[] | null }
+      | undefined;
+    const traderDirection = traderState?.direction;
+
+    // Lineage enforcement: every dependency the trader named must be
+    // carried forward in `keyDependencies` or consciously dropped in
+    // `acknowledgedAndDropped`. The prompt asks for this, but only the
+    // writer can guarantee it — an orphaned dependency means the PM
+    // silently lost a contestable judgment. Throwing here triggers the
+    // `markErrorP5` rescue, which flips the memo to `error`.
+    const traderDeps = traderState?.dependsOn ?? [];
+    const dropped = decision.acknowledgedAndDropped.map((d) => d.item);
+    const orphaned = traderDeps.filter(
+      (d) => !decision.keyDependencies.includes(d) && !dropped.includes(d),
+    );
+    if (orphaned.length > 0) {
+      throw new Error(
+        `lineage-violation: PM dropped trader dependencies without acknowledgment: ${orphaned.join(", ")}`,
+      );
+    }
     const agreesWithTrader =
       traderDirection === "long" || traderDirection === "short" || traderDirection === "flat"
         ? directionFromRating(decision.finalRating) === traderDirection

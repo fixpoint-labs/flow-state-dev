@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
   AgentType,
@@ -104,6 +105,12 @@ export interface ResponseEmitterHandle {
    */
   getItems(): readonly OutputItem[];
   /**
+   * O(1) count of items currently tracked by this response. Equivalent to
+   * `getItems().length` but without materializing or ordering the snapshot —
+   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   */
+  getItemCount(): number;
+  /**
    * Subscribe to subsequent item lifecycle transitions on this response.
    * `kind` distinguishes the underlying mutation: `"added"` for a freshly
    * emitted item, `"updated"` for an in-place mutation, `"done"` for a
@@ -157,6 +164,27 @@ export type BlockResult<TOutput> =
   | { status: "completed"; output: TOutput }
   | { status: "failed"; error: Error };
 
+/**
+ * Instance-level settings, read inside blocks via `ctx.settings`.
+ *
+ * Empty by default and framework-provided — users declaration-merge their
+ * own keys in their project, exactly as Vite's `ImportMetaEnv` works:
+ *
+ * ```ts
+ * declare module "@flow-state-dev/core" {
+ *   interface FlowStateSettings {
+ *     sandbox: { type: "local" | "vercel" | "memory" };
+ *   }
+ * }
+ * ```
+ *
+ * The runtime value is supplied by `createFlowState({ settings })` and threaded
+ * onto every `BlockContext`. The `FlowState<TSettings>` generic and this
+ * interface are kept in sync by the same declaration merge.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface FlowStateSettings {}
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -174,6 +202,12 @@ export interface BlockContext<
   user: UserScopeHandle<TUserState>;
   org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * Instance-level settings declared on `createFlowState({ settings })`.
+   * Read-only. Typed via declaration merging into {@link FlowStateSettings}.
+   */
+  settings: FlowStateSettings;
 
   /**
    * Flat resource registry — every resource declared by this block, the
@@ -405,6 +439,12 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
+    /**
+     * Id of the active task for this scope, resolved from the nearest
+     * enclosing scope marked via `_markTaskScope`. Stamped onto every item
+     * this scope emits as `OutputItem.taskId`.
+     */
+    taskId?: string;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
     phase?: "main" | "work";
     /**
@@ -438,6 +478,18 @@ export interface BlockContext<
     execute: (ctx: BlockContext) => Promise<TValue>,
     signalOverride?: AbortSignal
   ): Promise<TValue>;
+
+  /**
+   * @internal Mark the nearest enclosing sequencer scope as belonging to a
+   * task. Every item emitted by this scope and its descendants (constructed
+   * after the mark) inherits the task id as `OutputItem.taskId`. The
+   * task-board worker body calls this once per claimed task so a worker's
+   * emissions attribute to the task it is running — correct under concurrent
+   * fan-out and across sequential `loopBack` turns, where execution paths
+   * collide but each turn is a fresh scope. Pass `null` to clear. No-op when
+   * the runtime does not provide it (mock contexts).
+   */
+  _markTaskScope?(taskId: string | null): void;
 
   /**
    * @internal Read the current value of the request-scoped status slot.
@@ -503,6 +555,14 @@ export interface BlockContext<
    * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
    */
   _requestBackgroundSignal?: AbortSignal;
+
+  /**
+   * @internal Effective tracing verbosity for this request (FIX-406 6H).
+   * Set by the runtime from `createFlowApiRouter({ tracingLevel })`; read by
+   * sequencers to gate non-durable observability snapshots. Absent → the
+   * sequencer falls back to `resolveTracingLevel()` (env / observability).
+   */
+  _tracingLevel?: TracingLevel;
 
   /**
    * @internal Per-request single-flight map for cacheable tool calls

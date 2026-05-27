@@ -30,7 +30,7 @@ const packageRules = {
     deny: new Set(["client", "react"])
   },
   cli: {
-    allow: new Set(["core", "server", "testing"]),
+    allow: new Set(["core", "server", "testing", "store-sqlite"]),
     typeOnly: new Set([])
   },
   "store-sqlite": {

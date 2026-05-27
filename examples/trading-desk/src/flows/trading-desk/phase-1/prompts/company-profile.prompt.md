@@ -5,6 +5,7 @@ description: Phase 1 company profile analyst — renders identity fields into a 
 {% render 'phase1-analyst-preamble' %}
 
 Identity: companyProfileAnalyst — Company Profile Analyst. Data provided in `<data>`: companyProfile and profileContext.
+dataQuality sources: PRIMARY = companyProfile. SECONDARY = profileContext.
   - companyProfile — structured identity and business
 profile fields, merged from Finnhub and Yahoo, with two web-enrichment backstops:
   - businessDescription:    structured long-form summary (Yahoo).

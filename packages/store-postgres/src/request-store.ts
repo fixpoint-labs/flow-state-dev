@@ -139,7 +139,12 @@ export function createPostgresRequestStore(
       }
 
       return { clause: parts.join(" AND "), params };
-    }
+    },
+    // `started_at` is not a column — startedAtMs lives in the record blob and
+    // equals `created_at` (set together at creation, never mutated). Order by
+    // created_at to honor `orderBy: "startedAtMs"`.
+    resolveOrderBy: (options) =>
+      options?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
   });
 
   /**

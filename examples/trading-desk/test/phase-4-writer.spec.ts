@@ -3,6 +3,8 @@
  * `markErrorP4`, and the four commit handlers flip `session.memoStatus`
  * and patch the resources with the right extension fields.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
@@ -14,6 +16,26 @@ import {
 } from "../src/flows/trading-desk/phase-4/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import {
+  personaCritiqueOutputSchema,
+  riskAssessmentOutputSchema,
+} from "../src/flows/trading-desk/phase-4/schemas";
+
+// The phase-4 prompts now live as `.md` files; read them raw to assert their
+// prose names every dismissal category (parity with the prior string-export).
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/phase-4/prompts");
+const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
+const RISK_ASSESSMENT_PROMPT = readFileSync(
+  path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),
+  "utf8"
+);
+
+const DISMISSAL_CATEGORIES = [
+  "already-addressed",
+  "out-of-scope",
+  "no-mechanism",
+  "asymmetric-no-bound",
+] as const;
 
 const writeAggressive = markWritingP4("aggressive");
 const errorAggressive = markErrorP4("aggressive");
@@ -160,6 +182,7 @@ const neutralCritique = {
     {
       description: "Generic 'earnings drawdown' risk",
       reason: "Trade exits before earnings.",
+      dismissalCategory: "out-of-scope" as const,
     },
   ],
 };
@@ -192,6 +215,7 @@ const riskAssessment = {
     {
       description: "Generic 'earnings drawdown' risk",
       reason: "Trade exits before earnings.",
+      dismissalCategory: "out-of-scope" as const,
     },
   ],
   recommendedAdjustments: {
@@ -316,6 +340,60 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.riskAssessment).toBe(
       "published",
     );
+  });
+
+  for (const category of DISMISSAL_CATEGORIES) {
+    it(`persona schema round-trips dismissalCategory "${category}"`, () => {
+      const parsed = personaCritiqueOutputSchema.safeParse({
+        ...neutralCritique,
+        dismissedRisks: [
+          {
+            description: "A dismissed risk",
+            reason: "Reason for dismissal.",
+            dismissalCategory: category,
+          },
+        ],
+      });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.dismissedRisks[0].dismissalCategory).toBe(category);
+      }
+    });
+
+    it(`risk-assessment schema round-trips dismissalCategory "${category}"`, () => {
+      const parsed = riskAssessmentOutputSchema.safeParse({
+        ...riskAssessment,
+        dismissedRisks: [
+          {
+            description: "A dismissed risk",
+            reason: "Reason for dismissal.",
+            dismissalCategory: category,
+          },
+        ],
+      });
+      expect(parsed.success).toBe(true);
+    });
+  }
+
+  it("persona schema rejects an unknown dismissalCategory", () => {
+    const parsed = personaCritiqueOutputSchema.safeParse({
+      ...neutralCritique,
+      dismissedRisks: [
+        {
+          description: "A dismissed risk",
+          reason: "Reason.",
+          dismissalCategory: "made-up",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("neutral and risk-assessment prompts name every dismissalCategory", () => {
+    for (const category of DISMISSAL_CATEGORIES) {
+      expect(NEUTRAL_PROMPT).toContain(category);
+      expect(RISK_ASSESSMENT_PROMPT).toContain(category);
+    }
   });
 
   it("markErrorP4 flips memo to error and returns a text placeholder", async () => {

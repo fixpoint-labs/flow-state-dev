@@ -1,10 +1,13 @@
 /**
- * Tests for FIX-480 §3.1 — `extractTaskItems` / `extractTaskItemWindows`.
+ * Tests for `extractTaskItems` / `extractTaskItemWindows` (FIX-480, reworked
+ * for FIX-658).
  *
- * The substrate utility is the lifted-from-renderer windowing algorithm.
- * Tests cover the boundary cases the spec calls out (single-task happy
- * path, parallel claims, retries without terminal close, abandoned tasks,
- * cross-collection isolation, bookend exclusion).
+ * Since FIX-658 these delegate to the shared `@flow-state-dev/core/items`
+ * attribution algorithm, which keys off the emit-time `taskId` stamped on each
+ * item (not timestamp windows). The fixtures stamp `taskId` the way the
+ * runtime does. Cases cover the boundary conditions the substrate cares about:
+ * single-task happy path, the concurrent-overlap bug, retries, abandoned
+ * tasks, cross-collection isolation, and bookend exclusion.
  */
 import { describe, expect, it } from "vitest";
 import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";
@@ -64,7 +67,7 @@ function taskBoardMeta(args: { collectionId: string; ts: number }): ComponentIte
   };
 }
 
-function message(args: { ts: number; text: string }): MessageItem {
+function message(args: { ts: number; text: string; taskId?: string }): MessageItem {
   return {
     id: nextId("item_msg"),
     type: "message",
@@ -78,11 +81,12 @@ function message(args: { ts: number; text: string }): MessageItem {
       phase: "main",
     },
     ts: args.ts,
+    taskId: args.taskId,
     content: [{ type: "output_text", text: args.text }],
   };
 }
 
-function sourceItem(args: { ts: number; url: string; title?: string }): SourceItem {
+function sourceItem(args: { ts: number; url: string; title?: string; taskId?: string }): SourceItem {
   return {
     id: nextId("item_source"),
     type: "source",
@@ -95,6 +99,7 @@ function sourceItem(args: { ts: number; url: string; title?: string }): SourceIt
       phase: "main",
     },
     ts: args.ts,
+    taskId: args.taskId,
     sourceType: "url",
     sourceId: nextId("src"),
     url: args.url,
@@ -103,14 +108,14 @@ function sourceItem(args: { ts: number; url: string; title?: string }): SourceIt
 }
 
 describe("extractTaskItems / extractTaskItemWindows", () => {
-  it("single-task happy path: returns items between claim and terminal", () => {
+  it("single-task happy path: returns items emitted under the task", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "added", ts: 100 }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 200 }),
-      message({ ts: 250, text: "working" }),
-      sourceItem({ ts: 260, url: "https://example.com", title: "Example" }),
+      message({ ts: 250, text: "working", taskId: "t1" }),
+      sourceItem({ ts: 260, url: "https://example.com", title: "Example", taskId: "t1" }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 300 }),
-      message({ ts: 400, text: "after-window" }),
+      message({ ts: 400, text: "after, outside any task" }),
     ];
 
     const out = extractTaskItems(items, "c1", "t1");
@@ -131,7 +136,7 @@ describe("extractTaskItems / extractTaskItemWindows", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
       taskBoardMeta({ collectionId: "c1", ts: 150 }),
-      message({ ts: 200, text: "real work" }),
+      message({ ts: 200, text: "real work", taskId: "t1" }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 300 }),
     ];
 
@@ -140,16 +145,17 @@ describe("extractTaskItems / extractTaskItemWindows", () => {
     expect(out[0].type).toBe("message");
   });
 
-  it("excludes task-change for nested collections inside the window", () => {
-    // A worker spawns a nested taskBoard. Its `task-change` events should
-    // be skipped — they're substrate scaffolding, not worker emissions.
+  it("excludes nested-collection task-change items", () => {
+    // A worker spawns a nested taskBoard. Its `task-change` events are
+    // bookends — skipped — and its work items carry the inner task id, so
+    // they don't attribute to the outer task.
     const items: OutputItem[] = [
       taskChange({ collectionId: "outer", taskId: "t1", kind: "claimed", ts: 100 }),
-      message({ ts: 150, text: "outer work" }),
+      message({ ts: 150, text: "outer work", taskId: "t1" }),
       taskChange({ collectionId: "inner", taskId: "n1", kind: "added", ts: 160 }),
       taskChange({ collectionId: "inner", taskId: "n1", kind: "claimed", ts: 170 }),
       taskChange({ collectionId: "inner", taskId: "n1", kind: "completed", ts: 180 }),
-      message({ ts: 200, text: "more outer work" }),
+      message({ ts: 200, text: "more outer work", taskId: "t1" }),
       taskChange({ collectionId: "outer", taskId: "t1", kind: "completed", ts: 300 }),
     ];
 
@@ -158,13 +164,13 @@ describe("extractTaskItems / extractTaskItemWindows", () => {
     expect(out.every((i) => i.type === "message")).toBe(true);
   });
 
-  it("retries do not reset the window — first-claim-wins, all attempts included", () => {
+  it("retries union all attempts under the same task", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
-      message({ ts: 110, text: "attempt 1" }),
+      message({ ts: 110, text: "attempt 1", taskId: "t1" }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "retried", ts: 120 }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 200 }),
-      message({ ts: 210, text: "attempt 2" }),
+      message({ ts: 210, text: "attempt 2", taskId: "t1" }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 300 }),
     ];
 
@@ -177,54 +183,71 @@ describe("extractTaskItems / extractTaskItemWindows", () => {
     ]);
   });
 
-  it("abandoned/in-flight (no terminal): returns all items after claim", () => {
+  it("abandoned/in-flight (no terminal): returns all items stamped for the task", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
-      message({ ts: 150, text: "still running" }),
-      message({ ts: 999, text: "still running later" }),
+      message({ ts: 150, text: "still running", taskId: "t1" }),
+      message({ ts: 999, text: "still running later", taskId: "t1" }),
     ];
 
     const out = extractTaskItems(items, "c1", "t1");
     expect(out).toHaveLength(2);
   });
 
+  it("concurrent overlap: a sibling's items do not bleed into the queueing task", () => {
+    // The FIX-658 bug. `t1` is still running (window open) when `t2` runs to
+    // completion inside it. Timestamp windowing put `t2`'s message in `t1`'s
+    // bucket; emit-time `taskId` keeps them disjoint.
+    const items: OutputItem[] = [
+      taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
+      message({ ts: 110, text: "t1 work", taskId: "t1" }),
+      taskChange({ collectionId: "c1", taskId: "t2", kind: "claimed", ts: 120 }),
+      message({ ts: 130, text: "t2 work", taskId: "t2" }),
+      taskChange({ collectionId: "c1", taskId: "t2", kind: "completed", ts: 140 }),
+      message({ ts: 150, text: "t1 more work", taskId: "t1" }),
+      taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 160 }),
+    ];
+
+    expect((extractTaskItems(items, "c1", "t1") as MessageItem[]).map((m) => m.content[0])).toEqual([
+      { type: "output_text", text: "t1 work" },
+      { type: "output_text", text: "t1 more work" },
+    ]);
+    expect((extractTaskItems(items, "c1", "t2") as MessageItem[]).map((m) => m.content[0])).toEqual([
+      { type: "output_text", text: "t2 work" },
+    ]);
+  });
+
   it("cross-collection isolation — different collectionIds do not bleed", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "a", taskId: "t1", kind: "claimed", ts: 100 }),
-      message({ ts: 150, text: "a-work" }),
-      taskChange({ collectionId: "b", taskId: "t1", kind: "claimed", ts: 200 }),
-      message({ ts: 250, text: "b-work" }),
+      message({ ts: 150, text: "a-work", taskId: "t1" }),
+      taskChange({ collectionId: "b", taskId: "t2", kind: "claimed", ts: 200 }),
+      message({ ts: 250, text: "b-work", taskId: "t2" }),
       taskChange({ collectionId: "a", taskId: "t1", kind: "completed", ts: 300 }),
-      taskChange({ collectionId: "b", taskId: "t1", kind: "completed", ts: 350 }),
+      taskChange({ collectionId: "b", taskId: "t2", kind: "completed", ts: 350 }),
     ];
 
-    const aOut = extractTaskItems(items, "a", "t1");
-    const bOut = extractTaskItems(items, "b", "t1");
-
-    // `a` window is 100..300 — picks up both messages chronologically.
-    // `b` window is 200..350 — picks up the b-work message only.
-    expect(aOut.map((i) => (i as MessageItem).content[0])).toEqual([
+    expect((extractTaskItems(items, "a", "t1") as MessageItem[]).map((m) => m.content[0])).toEqual([
       { type: "output_text", text: "a-work" },
-      { type: "output_text", text: "b-work" },
     ]);
-    expect(bOut.map((i) => (i as MessageItem).content[0])).toEqual([
+    expect((extractTaskItems(items, "b", "t2") as MessageItem[]).map((m) => m.content[0])).toEqual([
       { type: "output_text", text: "b-work" },
     ]);
   });
 
-  it("extractTaskItemWindows assigns each item to first matching task only (no duplication)", () => {
+  it("extractTaskItemWindows: each item attributes to exactly one task (no duplication)", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
       taskChange({ collectionId: "c1", taskId: "t2", kind: "claimed", ts: 150 }),
-      // This message falls in BOTH windows; the per-stream function should
-      // assign it to the FIRST matching task only.
-      message({ ts: 175, text: "shared-time-window" }),
+      message({ ts: 175, text: "t1-only", taskId: "t1" }),
       taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 300 }),
       taskChange({ collectionId: "c1", taskId: "t2", kind: "completed", ts: 400 }),
     ];
 
     const map = extractTaskItemWindows(items, "c1");
     const total = [...map.values()].reduce((acc, b) => acc + b.length, 0);
-    expect(total).toBe(1); // exactly one assignment, never duplicated
+    expect(total).toBe(1);
+    expect(map.get("t1")).toHaveLength(1);
+    expect(map.get("t2")).toBeUndefined();
   });
 });

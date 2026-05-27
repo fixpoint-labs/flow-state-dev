@@ -168,23 +168,30 @@ That's the whole flow.
 
 ## Step 5. Mount it and render it
 
-The server side is a single route:
+The server side is a config object plus a single route. Describe the runtime with `createFlowState`:
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import chatFlow from "@/flows/hello-chat/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
-
-const router = createFlowApiRouter({ registry });
-
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
 ```
 
-`createFlowApiRouter` returns standard `GET`/`POST`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. The default store is the filesystem — fine for development. See [Server Setup](/docs/server/setup) for swapping in SQLite or in-memory.
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Server Setup](/docs/server/setup) for swapping in SQLite or Postgres.
 
 The React side uses three pieces from `@flow-state-dev/react`:
 

@@ -205,6 +205,7 @@ export async function testFlow<TInput = unknown>(
       models: options.models,
       policy: options.unmockedGeneratorPolicy
     }),
+    settings: options.settings,
     stores
   });
 

@@ -5,6 +5,7 @@ import {
   exaSearch,
   serperSearch,
   braveSearch,
+  parallelSearch,
   perplexitySearch,
   perplexitySonarSearch,
 } from "../src/search";
@@ -65,6 +66,14 @@ vi.mock("../src/search/providers", () => {
     })),
   };
 
+  const mockParallelAdapter = {
+    name: "parallel" as const,
+    search: vi.fn(async () => ({
+      ...mockSearchOutput,
+      results: mockSearchOutput.results.map((r) => ({ ...r, source: "parallel" as const })),
+    })),
+  };
+
   const mockPerplexitySonarAdapter = {
     name: "perplexity-sonar" as const,
     search: vi.fn(async () => ({
@@ -81,6 +90,7 @@ vi.mock("../src/search/providers", () => {
         case "exa": return mockExaAdapter;
         case "serper": return mockSerperAdapter;
         case "brave": return mockBraveAdapter;
+        case "parallel": return mockParallelAdapter;
         case "perplexity": return mockPerplexityAdapter;
         case "perplexity-sonar": return mockPerplexitySonarAdapter;
         default: return mockAdapter;
@@ -90,6 +100,7 @@ vi.mock("../src/search/providers", () => {
     exaAdapter: mockExaAdapter,
     serperAdapter: mockSerperAdapter,
     braveAdapter: mockBraveAdapter,
+    parallelAdapter: mockParallelAdapter,
     perplexityAdapter: mockPerplexityAdapter,
     perplexitySonarAdapter: mockPerplexitySonarAdapter,
   };
@@ -104,6 +115,7 @@ describe("search tool factory", () => {
     delete process.env.PERPLEXITY_API_KEY;
     delete process.env.SERPER_API_KEY;
     delete process.env.BRAVE_SEARCH_API_KEY;
+    delete process.env.PARALLEL_API_KEY;
   });
 
   afterEach(() => {
@@ -170,6 +182,7 @@ describe("direct provider search factories", () => {
     delete process.env.PERPLEXITY_API_KEY;
     delete process.env.SERPER_API_KEY;
     delete process.env.BRAVE_SEARCH_API_KEY;
+    delete process.env.PARALLEL_API_KEY;
   });
 
   afterEach(() => {
@@ -225,6 +238,15 @@ describe("direct provider search factories", () => {
       {} as any
     );
     expect(result.results[0].source).toBe("perplexity-sonar");
+  });
+
+  it("parallelSearch creates a tool locked to parallel", async () => {
+    const tool = parallelSearch({ keys: { parallel: "key" } });
+    const result = await runForTest(tool,
+      { query: "test", maxResults: 5, topic: "general" },
+      {} as any
+    );
+    expect(result.results[0].source).toBe("parallel");
   });
 
   it("throws when locked provider has no key", async () => {

@@ -1472,6 +1472,7 @@ function buildSourceItem(
     provenance,
     ts: Date.now(),
     ownedBy: ctx._blockIdentity?.ownedBy,
+    taskId: ctx._blockIdentity?.taskId,
     agentType,
     agentName,
     sourceType: "url" as const,
@@ -1544,6 +1545,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     phase: identity?.phase ?? ("main" as const)
   };
   const ownedBy = identity?.ownedBy;
+  const taskId = identity?.taskId;
   let reasoningAccumulated = "";
   // Resolved model identity stamped on each emitted item and propagated to
   // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
@@ -1594,6 +1596,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1634,6 +1637,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1654,6 +1658,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1691,6 +1696,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           provenance,
           ts: Date.now(),
           ownedBy,
+          taskId,
           agentType,
           agentName,
           model: resolvedIdentity,
@@ -1714,6 +1720,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           provenance,
           ts: Date.now(),
           ownedBy,
+          taskId,
           agentType,
           agentName,
           model: resolvedIdentity,
@@ -1758,6 +1765,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        taskId,
         agentType,
         agentName,
         model: resolvedIdentity,
@@ -1777,6 +1785,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        taskId,
         agentType,
         agentName,
         model: resolvedIdentity,
@@ -2354,6 +2363,7 @@ export function generator<
           phase: toolIdentity?.phase ?? ("main" as const)
         };
         const toolOwnedBy = toolIdentity?.ownedBy;
+        const toolTaskId = toolIdentity?.taskId;
 
         // Prefer per-step pairing when available — preserves call ordering and
         // matches each call to its result. Fall back to top-level toolCalls
@@ -2375,6 +2385,7 @@ export function generator<
             provenance: toolProvenance,
             ts: Date.now(),
             ownedBy: toolOwnedBy,
+            taskId: toolTaskId,
             agentType,
             agentName,
             model: nonStreamingIdentity,
@@ -2397,6 +2408,7 @@ export function generator<
               provenance: toolProvenance,
               ts: Date.now(),
               ownedBy: toolOwnedBy,
+              taskId: toolTaskId,
               agentType,
               agentName,
               model: nonStreamingIdentity,
@@ -2442,6 +2454,7 @@ export function generator<
           phase: outputIdentity?.phase ?? ("main" as const)
         };
         const nsOwnedBy = outputIdentity?.ownedBy;
+        const nsTaskId = outputIdentity?.taskId;
         const messageItem = {
           id: itemId,
           type: "message" as const,
@@ -2453,6 +2466,7 @@ export function generator<
           provenance,
           ts: Date.now(),
           ownedBy: nsOwnedBy,
+          taskId: nsTaskId,
           agentType,
           agentName,
           model: nonStreamingIdentity,

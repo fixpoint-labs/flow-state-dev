@@ -37,6 +37,7 @@ function analystThesis(label: string, headline: string) {
         { h: "Material items", p: null, items: ["Watch item A", "Watch item B"] },
       ],
       citations: null,
+      dataQuality: "full" as const,
     },
   };
 }
@@ -201,7 +202,11 @@ function neutralCritiqueOutput() {
         invalidation: "tighter" as const,
       },
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
     },
   };
@@ -234,7 +239,11 @@ function riskAssessmentStructuredOutput() {
         },
       ],
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
       recommendedAdjustments: {
         sizing: {
@@ -295,6 +304,19 @@ function portfolioManagerStructuredOutput(
         invalidation: { applied: true, reasoning: "Stop tightening accepted." },
       },
       keyDependencies: ["AI cap-ex cycle length"],
+      asymmetricEdge:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Street underprices the data-center attach rate."
+          : "",
+      nearTermCatalyst:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Q2 print lands in three weeks."
+          : "",
+      invalidationTrigger:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Attach rate flat or down two quarters running."
+          : "",
+      acknowledgedAndDropped: [] as { item: string; reason: string }[],
     },
   };
 }
@@ -316,6 +338,10 @@ function makeUpstreamMocks() {
     "technical-analyst-generator": mockGenerator({
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
+    }),
+    "company-profile-analyst-generator": mockGenerator({
+      name: "company-profile-analyst-generator",
+      script: [analystThesis("Company Profile memo", "Identity resolved from provider data.")],
     }),
     "p2-research-debate-roster-bullResearcher": mockGenerator({
       name: "p2-research-debate-roster-bullResearcher",

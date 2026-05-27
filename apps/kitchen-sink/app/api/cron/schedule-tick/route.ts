@@ -3,10 +3,10 @@
  * due rows from the shared `ScheduleIndex` and fans them out to the
  * framework's dispatch endpoint with bounded concurrency.
  *
- * `getRouter()` is awaited on every request because the ScheduleIndex
- * implementation is installed lazily inside `createStores()` (it needs
- * the same pg pool the stores use). On a cold lambda where this route
- * is the first request to hit the box, the impl is uninitialised and
+ * `flowstate.ready()` is awaited on every request because the ScheduleIndex
+ * implementation is installed lazily when the active profile resolves its
+ * pool (the index shares the stores' pg pool). On a cold lambda where this
+ * route is the first request to hit the box, the impl is uninitialised and
  * `claimDue` would no-op — so we force initialisation before delegating.
  *
  * Logs one line on entry and one line per dispatched row so operators
@@ -17,7 +17,7 @@
  */
 import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
 import { scheduleIndex } from "@/lib/schedule-index";
-import { getRouter } from "@/lib/server";
+import { flowstate } from "@/lib/flowstate";
 
 const handler = createScheduleTickHandler({
   flowKind: "weekly-digest",
@@ -32,7 +32,7 @@ const handler = createScheduleTickHandler({
 export async function GET(req: Request): Promise<Response> {
   const startedAt = Date.now();
   console.log("[schedule-tick] tick fired");
-  await getRouter();
+  await flowstate.ready();
   const res = await handler(req);
   console.log(
     `[schedule-tick] completed status=${res.status} duration=${Date.now() - startedAt}ms`,

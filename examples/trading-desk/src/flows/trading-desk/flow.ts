@@ -98,7 +98,7 @@ const checkTickerResolvable = handler({
  * patches `stoppedReason: "phase-1-no-data"` so the following `.exitIf`
  * bails before phases 2–5 synthesize on no data.
  */
-const checkPhase1HasData = handler({
+export const checkPhase1HasData = handler({
   name: "check-phase-1-has-data",
   inputSchema: z.unknown(),
   outputSchema: z.void(),
@@ -121,9 +121,50 @@ const checkPhase1HasData = handler({
 });
 
 /**
- * The `analyze` pipeline. Two `.tap` + `.exitIf` pairs implement
- * defense-in-depth against degenerate inputs and upstream data failure
- * (see the `checkTickerResolvable` / `checkPhase1HasData` doc comments).
+ * Post-Phase-1 primary-analyst check. `fundamentals` and `companyProfile`
+ * are the only non-substitutable analysts — the debate (Phase 2) and every
+ * downstream phase reason from the company's identity and its financials, so
+ * a missing one can't be papered over by the four other memos. If either
+ * errored, patch `stoppedReason: "phase-1-missing-primary"` so the following
+ * `.exitIf` halts before synthesis. This fires on the realistic partial
+ * failure (one provider rate-limited) that `checkPhase1HasData`'s all-error
+ * condition would miss.
+ */
+export const checkPhase1HasFundamentalsAndProfile = handler({
+  name: "check-phase-1-has-fundamentals-and-profile",
+  inputSchema: z.unknown(),
+  outputSchema: z.void(),
+  sessionStateSchema,
+  resources: memoResources,
+  execute: async (_input, ctx) => {
+    const erroredAt = (collectionKey: string) =>
+      ctx.resources.memos.getOptional(collectionKey)?.state.status === "error";
+    const fundamentalsErrored = erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
+    const profileErrored = erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
+    if (!fundamentalsErrored && !profileErrored) return;
+    const which = [
+      fundamentalsErrored && "fundamentals",
+      profileErrored && "companyProfile",
+    ]
+      .filter(Boolean)
+      .join(" + ");
+    await ctx.session.patchState({
+      stoppedReason: "phase-1-missing-primary",
+      stoppedMessage:
+        `Non-substitutable Phase 1 analyst failed (${which}) for ` +
+        `${ctx.session.state.ticker}. Halting before synthesis.`,
+      runComplete: true,
+    });
+  },
+});
+
+/**
+ * The `analyze` pipeline. Three `.tap` + `.exitIf` pairs implement
+ * defense-in-depth against degenerate inputs and upstream data failure (see
+ * the `checkTickerResolvable` / `checkPhase1HasFundamentalsAndProfile` /
+ * `checkPhase1HasData` doc comments). The primary-analyst guard runs before
+ * the all-error backstop: a partial failure that loses a non-substitutable
+ * analyst halts even when the other four succeeded.
  */
 const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
@@ -133,6 +174,8 @@ const analyzePipeline = sequencer({
   .tap(checkTickerResolvable)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase1Pipeline)
+  .tap(checkPhase1HasFundamentalsAndProfile)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase2Pipeline)

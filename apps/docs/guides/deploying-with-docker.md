@@ -83,32 +83,25 @@ Use the same standalone server pattern from the [Railway guide](/guides/deployin
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createModelResolver } from "@flow-state-dev/core/models";
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-} from "@flow-state-dev/server";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createFlowState } from "@flow-state-dev/server";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import myFlow from "./flows/my-flow/flow.js";
 
 const port = parseInt(process.env.PORT ?? "3000", 10);
 
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-// SQLite on a Docker volume — survives container restarts and image updates
-const stores = createSQLiteStores({
-  filename: "/data/flows.db",
-});
-
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  modelResolver: createModelResolver(),
+// SQLite on a Docker volume — survives container restarts and image updates.
+// `primary` is the catch-all state slot.
+const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: sqliteStores({ filename: "/data/flows.db" }) } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },
 });
+
+// Resolve the router once. getRouter() opens the SQLite connection lazily.
+const router = await flowstate.getRouter();
 
 const server = createServer(async (req, res) => {
   const url = req.url ?? "/";

@@ -9,6 +9,12 @@ export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
   toRow: (record: TRecord) => unknown[];
   /** Build WHERE clause fragments from list options */
   toWhere: (options?: TListOptions) => { clause: string; params: unknown[] };
+  /**
+   * Resolve the ORDER BY clause (column + direction) from list options.
+   * Defaults to `updated_at DESC`. Must return a trusted, non-parameterized
+   * SQL fragment.
+   */
+  resolveOrderBy?: (options?: TListOptions) => string;
 };
 
 export type SQLiteRecordStore<TRecord, TListOptions> = {
@@ -29,7 +35,7 @@ export function createSQLiteRecordStore<
   db: Database.Database,
   config: SQLiteRecordStoreConfig<TRecord, TListOptions>
 ): SQLiteRecordStore<TRecord, TListOptions> {
-  const { tableName, columns, toRow, toWhere } = config;
+  const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];
   const placeholders = allColumns.map(() => "?").join(", ");
@@ -125,7 +131,7 @@ export function createSQLiteRecordStore<
       if (clause.length > 0) {
         sql += ` WHERE ${clause}`;
       }
-      sql += ` ORDER BY updated_at DESC`;
+      sql += ` ORDER BY ${resolveOrderBy?.(options) ?? "updated_at DESC"}`;
 
       const offset = Math.max(0, options?.offset ?? 0);
       const limit = options?.limit;

@@ -56,6 +56,8 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
 import type {
+  ContentScopeType,
+  ContentStore,
   OrgRecord,
   RequestRecord,
   SessionRecord,
@@ -67,6 +69,7 @@ import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -251,6 +254,60 @@ function normalizeScopeResourceContent(
   }
 
   return normalized;
+}
+
+/**
+ * Load only the content a scope's declared resources reference. Fixed
+ * resources resolve to a single storage key (`content.get`); collections
+ * resolve to their pattern prefix (`content.getByPrefix`, where an empty
+ * prefix loads every instance in the scope). A scope with no declared
+ * resources issues no content read at all. The merged map seeds
+ * `normalizeScopeResourceContent`, so undeclared keys never enter the
+ * execution context.
+ */
+async function loadDeclaredScopeContent(
+  content: ContentStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, string>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, string>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      // A non-empty static prefix targets the collection's `prefix/...`
+      // namespace; an empty prefix (e.g. `[topic]/observations`) loads
+      // every key in the scope.
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(content.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await content.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, string> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (typeof value === "string") seed[key] = value;
+  }
+  return seed;
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -1367,6 +1424,12 @@ type EmissionContext = {
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
   /**
+   * Task attribution (FIX-658) — id of the task this scope is running, inherited
+   * from the nearest enclosing scope marked via `ctx._markTaskScope`. Stamped
+   * onto every item this scope emits.
+   */
+  taskId?: string;
+  /**
    * Agent identity that scope-emitted items inherit. Set by the owning
    * generator; undefined at the root (runtime-level emissions carry no
    * identity). Callers may override per-emission via options.
@@ -1405,6 +1468,7 @@ function createEmitMessage(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
@@ -1462,6 +1526,7 @@ function createEmitComponent(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       component,
@@ -1931,6 +1996,7 @@ function createEmitStatus(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       message: slot.message,
       blocked: options?.blocked,
       backgroundTasks: options?.backgroundTasks
@@ -2144,6 +2210,13 @@ export async function createExecutionContext<
       ? resolveOrgStorageKey(optionsOrgId, flow)
       : undefined;
 
+  // Window the cross-turn history load to the most recent N completed
+  // requests (FIX-685). This bounds the store read and the default
+  // generator's in-prompt history regardless of session length; the full
+  // session stays retrievable via the state endpoint. Per-call
+  // history({ limit }) refines within this window — it cannot widen it.
+  const historyWindowTurns = flow.session?.historyWindow?.turns ?? 50;
+
   // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
@@ -2151,14 +2224,25 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    // `items` are read below to reconstruct cross-turn history.
-    stores.request.list({ sessionId, withItems: true })
+    // The N most-recently-started completed requests — `status:"completed"`
+    // excludes the current (in-progress) request and any in-flight siblings;
+    // `orderBy:"startedAtMs"` makes the windowed selection robust to
+    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    stores.request.list({
+      sessionId,
+      status: "completed",
+      limit: historyWindowTurns,
+      orderBy: "startedAtMs",
+      withItems: true
+    })
   ]);
 
-  // Filter to completed prior requests once — reused by both all()/client()
+  // The windowed list already filters to completed requests at the store;
+  // exclude only the current request (defends a retry that reuses an id),
+  // then sort ascending for stable history ordering. Reused by all()/client()
   // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
-    .filter((r) => r.id !== requestId && r.status === "completed")
+    .filter((r) => r.id !== requestId)
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   // Build prior items from completed request records. This replaces the
@@ -2259,13 +2343,17 @@ export async function createExecutionContext<
     await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
-  // Content lives in ContentStore exclusively (FIX-347). Eagerly load all
-  // content for the scopes this execution touches so reads during the run
-  // are synchronous against the in-memory cache.
+  // Content lives in ContentStore exclusively (FIX-347). Load only the
+  // content this flow declares (FIX-685) — fixed resources by key,
+  // collections by pattern prefix — so reads during the run are synchronous
+  // against the in-memory cache without over-fetching the whole scope. The
+  // full-scope view stays available via the state endpoint.
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    stores.content.getAll("session", sessionId),
-    stores.content.getAll("user", userKey),
-    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
+    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredScopeContent(stores.content, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, string>>({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -2710,7 +2798,8 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        orgId: orgRef.current?.orgId
+        orgId: orgRef.current?.orgId,
+        tenantId: options.tenantId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2729,7 +2818,8 @@ export async function createExecutionContext<
       identity: {
         type: "user" as const,
         id: userRef.current.id,
-        userId: userRef.current.userId
+        userId: userRef.current.userId,
+        tenantId: options.tenantId
       },
       ...userOpsEmitting
     },
@@ -2743,7 +2833,8 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        orgId: sessionRef.current.orgId
+        orgId: sessionRef.current.orgId,
+        tenantId: options.tenantId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2847,7 +2938,8 @@ export async function createExecutionContext<
               type: "org" as const,
               id: orgRef.current.id,
               userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId
+              orgId: orgRef.current.orgId,
+              tenantId: options.tenantId
             },
             ...orgOpsEmitting
           },
@@ -2892,6 +2984,14 @@ export async function createExecutionContext<
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
     result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
     previous?: ExecutionParentNode;
+    /**
+     * Task id marked on this scope via `ctx._markTaskScope`. Descendant scopes
+     * walk `previous` to find the nearest marked ancestor and inherit it as
+     * `emCtx.taskId` / `_blockIdentity.taskId`, which emit sites stamp onto
+     * items. Mutable: a worker body marks its enclosing sequencer node at
+     * runtime, before constructing the child scopes that do the work.
+     */
+    scopeTaskId?: string;
   };
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
@@ -3214,6 +3314,7 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
@@ -3407,6 +3508,26 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
+      // as running `taskId`. The task-board worker body calls this once per
+      // claimed task; child scopes constructed afterward inherit it (see the
+      // `scopeTaskId` walk in `_withExecutionScope`). Writing to the shared
+      // node object means a later sibling step sees the mark even though the
+      // marking step has already returned. Each `.loopBack` turn runs in a
+      // fresh node, so sequential tasks of one worker stay separated even when
+      // their execution paths are identical.
+      _markTaskScope: (taskId: string | null): void => {
+        for (
+          let node: ExecutionParentNode | undefined = parentChain;
+          node !== undefined;
+          node = node.previous
+        ) {
+          if (node.parent.kind === "sequencer") {
+            node.scopeTaskId = taskId ?? undefined;
+            return;
+          }
+        }
+      },
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
@@ -3465,6 +3586,7 @@ export async function createExecutionContext<
               },
               ts: containerStartedAt,
               ownedBy: activeEmCtx.ownedBy,
+              taskId: activeEmCtx.taskId,
               blockName: resolvedParent.name,
               component: resolvedParent.container.component,
               label: resolvedParent.container.label,
@@ -3491,6 +3613,19 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        // Task attribution (FIX-658): inherit the nearest enclosing scope's
+        // marked task id. Resolved at construction — a worker body marks its
+        // enclosing sequencer node before constructing the steps that emit, so
+        // those steps' chains see the mark here. Re-resolved per scope (not
+        // copied from the parent emCtx) because the mark lands after the
+        // parent scope's emCtx was built.
+        let resolvedTaskId: string | undefined;
+        for (let node: ExecutionParentNode | undefined = childChain; node !== undefined; node = node.previous) {
+          if (node.scopeTaskId !== undefined) {
+            resolvedTaskId = node.scopeTaskId;
+            break;
+          }
+        }
         const childPhase = resolvedParent.phase ?? "main";
         // Each scope starts with no identity. Generators that declare an
         // `agentType` stamp it directly on the items they emit; other
@@ -3510,6 +3645,7 @@ export async function createExecutionContext<
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
+          taskId: resolvedTaskId,
         };
         // FIX-663: propagate the signal down the scope chain. An explicit
         // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
@@ -3532,6 +3668,7 @@ export async function createExecutionContext<
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
+          taskId: childEmCtx.taskId,
           phase: resolvedParent.phase ?? "main",
           blockPath: resolvedParent.path,
           transient: resolvedParent.transient
@@ -3545,6 +3682,9 @@ export async function createExecutionContext<
         // `.work()` dispatches can read it (the dispatch site reads
         // `ctx._requestBackgroundSignal`, not `ctx.signal`).
         (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // FIX-406 6H: propagate the request's tracing level so sequencers in
+        // any nested scope gate observability snapshots consistently.
+        (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3801,5 +3941,9 @@ export async function createExecutionContext<
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
   (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
+  // with child scopes — keeps observability gating correct if a sequencer ever
+  // executes directly on the root context.
+  (rootContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
   return rootContext;
 }

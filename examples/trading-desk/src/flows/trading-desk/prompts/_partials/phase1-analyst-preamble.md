@@ -13,5 +13,23 @@ Your output schema is enforced by the framework. Return a single JSON object wit
               other to `null`.
   - citations: `null` when you fetched no URLs (cheap run, or your <data>
               already answered the question), or an array of `{url, title}`
-              for every URL you actually fetched and relied on. The key is
-              required; omitting it is a schema violation.
+              for every URL you actually fetched via the `fetch` tool. The
+              key is required; omitting it is a schema violation.
+              Pre-attached search snippets in <data> (e.g. `searchSnippets`,
+              discovery `items`) are NOT citations — they are data. Only
+              post-hoc URLs you fetched yourself belong in `citations`.
+  - dataQuality: exactly one of `full | partial | unavailable`, reporting
+              how much real data backed this memo. Set it from the `source`
+              fields of the data you were given, per the rule below.
+
+dataQuality rule (be honest — downstream agents trust this signal):
+  - `"full"`        when your PRIMARY data source returned real data AND
+                     every SECONDARY source did too.
+  - `"partial"`     when your PRIMARY returned data but one or more
+                     SECONDARY sources came back `source: "unavailable"`.
+  - `"unavailable"` when your PRIMARY data source returned
+                     `source: "unavailable"`. In this case emit a minimal
+                     memo that states the data was unavailable and give a
+                     neutral rating — do not synthesize a thesis from
+                     nothing. Your role's primary vs. secondary sources are
+                     named in the role-specific section below.

@@ -268,7 +268,23 @@ generator({
 });
 ```
 
-Omitting `history` skips history assembly entirely. `history: true` includes every prior conversational item in the session, unbounded.
+Omitting `history` skips history assembly entirely. `history: true` includes every prior conversational item the framework loaded for this turn, which the flow-level window below bounds.
+
+### Flow-level history bounds
+
+The per-call `history` limit refines what one generator sees. It can only narrow the set the framework already loaded, and that set is itself capped by a flow-level window:
+
+```ts
+defineFlow({
+  kind: "chat",
+  session: { historyWindow: { turns: 50 } },
+  // ...actions
+});
+```
+
+`session.historyWindow.turns` (default 50) caps how many prior completed turns the execution context loads per request. The load is bounded at the store query, so per-turn cost stays flat as a session grows instead of climbing with its length. A no-arg `history()`, or `history: true`, sees at most `historyWindow.turns` turns rather than the entire session.
+
+The window and the per-call limit compose: the window is the ceiling, the per-call limit narrows within it. `history: { limit: { turns: 8 } }` gives at most 8 turns, and raising it past the window does not widen what was loaded. Raise `historyWindow.turns` for a flow whose generators routinely need more history than the default. The full session stays retrievable through the [state endpoint](../fundamentals/state-and-scopes.md).
 
 ### Numeric limit
 

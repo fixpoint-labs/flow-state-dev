@@ -22,7 +22,17 @@ Populate `metrics` with: `calibration` (the calibration verdict as a string), `s
 
 Populate `criticalRisks` — the small set (typically 1-4) of risks that Phase 5 must weigh. Each entry attributes to either `aggressive` or `conservative` (neutral does not raise risks; it filters them). Severity is `high` / `medium` / `low`.
 
-Populate `dismissedRisks` — risks that surfaced in any persona memo that you judge non-load-bearing. Each entry has a one-sentence `reason`. You may extend or contract neutral's `dismissedRisks` list.
+Populate `dismissedRisks` — risks that surfaced in any persona memo that you judge non-load-bearing. Each entry has a one-sentence `reason` and a `dismissalCategory` chosen by the SHAPE of the dismissal:
+  - `already-addressed`: covered by an existing field in the trader's
+    proposal (e.g. the named `invalidationCriteria` already captures it).
+  - `out-of-scope`: outside the trade's `holdingPeriod` or scope (e.g.
+    earnings risk on a days-hold trade that exits before earnings).
+  - `no-mechanism`: a risk named without a concrete mechanism — a
+    hand-wave.
+  - `asymmetric-no-bound`: an upside/downside argument asserted without
+    bounded reasoning (e.g. "demands 3% sizing" with no asymmetry
+    numbers).
+You may extend or contract neutral's `dismissedRisks` list.
 
 Populate `recommendedAdjustments` — three required levers (sizing, holdingPeriod, invalidation). Each carries:
   - `direction`: one of `larger` / `smaller` / `unchanged` (for sizing),

@@ -546,7 +546,10 @@ describe("supervisor per-task review", () => {
       {
         decision: "needs-revision",
         feedback: "tighten the second paragraph",
-        criteria: { clarity: 0.6, correctness: 0.9 },
+        criteria: [
+          { name: "clarity", score: 0.6 },
+          { name: "correctness", score: 0.9 },
+        ],
       },
       { decision: "approve", feedback: "good now" },
     ]);

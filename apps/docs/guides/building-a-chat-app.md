@@ -133,20 +133,27 @@ export default chatFlow({ id: "default" });
 
 ## 3. Set up the server
 
-Register the flow. Get a complete REST API.
+List the flow in one config object. Get a complete REST API.
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import chatFlow from "@/flows/hello-chat/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
 
-const router = createFlowApiRouter({ registry });
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 **What you get:** Action execution, session management, SSE streaming with resume, and state snapshots. No route wiring.
@@ -156,7 +163,7 @@ export const DELETE = router.DELETE;
 - `GET /api/flows/hello-chat/requests/:requestId/stream` — SSE stream for that request
 - `GET /api/flows/sessions/:sessionId/state` — State snapshot (clientData)
 
-The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You can add a custom model resolver, store adapters, or middleware by passing options to `createFlowApiRouter`. See [Server Setup](/docs/server/setup) for details.
+The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Server Setup](/docs/server/setup) for details.
 
 ---
 

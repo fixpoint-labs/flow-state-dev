@@ -208,6 +208,9 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.2.4)
+      exa-js:
+        specifier: ^2.13.0
+        version: 2.13.0(ws@8.19.0)
       https-proxy-agent:
         specifier: ^8.0.0
         version: 8.0.0
@@ -387,6 +390,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      exa-js:
+        specifier: ^2.13.0
+        version: 2.13.0(ws@8.19.0)
       lucide-react:
         specifier: ^0.575.0
         version: 0.575.0(react@19.2.4)
@@ -467,6 +473,9 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
@@ -669,6 +678,25 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  packages/next:
+    dependencies:
+      '@flow-state-dev/server':
+        specifier: workspace:*
+        version: link:../server
+      next:
+        specifier: '>=15.0.0'
+        version: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.59.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+    devDependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/patterns:
     dependencies:
@@ -1080,6 +1108,18 @@ importers:
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
+      '@flow-state-dev/store-postgres':
+        specifier: workspace:*
+        version: link:../store-postgres
+      '@neondatabase/serverless':
+        specifier: ^0.10.4
+        version: 0.10.4
+      next:
+        specifier: '>=15.0.0'
+        version: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.59.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      pg:
+        specifier: ^8.13.0
+        version: 8.20.0
     devDependencies:
       '@flow-state-dev/scheduled':
         specifier: workspace:*
@@ -6702,6 +6742,9 @@ packages:
 
   exa-js@1.10.2:
     resolution: {integrity: sha512-nObBipoXKL5uL6Dc8Q3c9GA4xEfunQMdGGqtcCkQSNilzR6AExyVkBxTdpWqC20jKa3/dvXu6otXQLaRyZNqGw==}
+
+  exa-js@2.13.0:
+    resolution: {integrity: sha512-G6BCMCMWdqVKKaKkNxHB5R/7xoT8JXVkdZ1nfaBejlMH90T95rlmEYdu2WJI2ZKEIm755vFLlNSobgVNPJCbYg==}
 
   execa@5.1.1:
     resolution: {integrity: sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg==}
@@ -17392,6 +17435,17 @@ snapshots:
   eventsource-parser@3.0.8: {}
 
   exa-js@1.10.2(ws@8.19.0):
+    dependencies:
+      cross-fetch: 4.1.0
+      dotenv: 16.4.7
+      openai: 5.23.2(ws@8.19.0)(zod@3.25.76)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.1(zod@3.25.76)
+    transitivePeerDependencies:
+      - encoding
+      - ws
+
+  exa-js@2.13.0(ws@8.19.0):
     dependencies:
       cross-fetch: 4.1.0
       dotenv: 16.4.7

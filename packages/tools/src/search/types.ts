@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // --- Provider enum ---
 
-export const searchProviders = ["tavily", "exa", "perplexity", "serper", "brave", "perplexity-sonar"] as const;
+export const searchProviders = ["tavily", "exa", "perplexity", "serper", "brave", "parallel", "perplexity-sonar"] as const;
 export type SearchProviderName = (typeof searchProviders)[number];
 
 // --- Normalized output ---
@@ -52,6 +52,13 @@ export interface SearchConfig {
   maxResults?: number;
   /** Search depth. 'basic' is faster/cheaper, 'advanced' returns full content. Default: 'basic'. */
   searchDepth?: "basic" | "advanced";
+  /**
+   * Provider-agnostic execution-mode hint. Each provider interprets it on its
+   * own terms; providers that have no mode concept ignore it. Currently only
+   * the Parallel adapter reads it (mapping to its `mode` request field,
+   * defaulting to "agentic").
+   */
+  searchMode?: string;
   /** Topic filter. Default: 'general'. */
   topic?: "general" | "news";
   /** Explicit API keys. If omitted, auto-detect from env vars. */
@@ -68,6 +75,8 @@ export interface SearchProviderAdapter {
       maxResults: number;
       searchDepth: "basic" | "advanced";
       topic: "general" | "news";
+      /** Provider-agnostic mode hint from `SearchConfig.searchMode`. Undefined when unset. */
+      searchMode?: string;
       apiKey: string;
     }
   ): Promise<SearchOutput>;

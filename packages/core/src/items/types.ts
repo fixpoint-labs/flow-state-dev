@@ -67,6 +67,16 @@ export type OutputItemBase = {
    *  `blockInstanceId` of the sequencer/router that declared the container. */
   ownedBy?: string;
   /**
+   * Id of the task this item was emitted under, when produced inside a worker
+   * scope that marked its active task via `ctx._markTaskScope` (the task-board
+   * worker body does this per claimed task). Captured at emit time from the
+   * nearest enclosing marked scope, so concurrent sibling workers and
+   * sequential turns of one worker attribute correctly even when their
+   * execution paths collide. Undefined for items emitted outside any task
+   * scope. Read by the task-attribution helpers in `@flow-state-dev/core/items`.
+   */
+  taskId?: string;
+  /**
    * Identity of the generator that produced this item. Governs visibility
    * via `resolveItemVisibility()` for conversational item types
    * (`message`, `reasoning`, `tool_output`). Structural items

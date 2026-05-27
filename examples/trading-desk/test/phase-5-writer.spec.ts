@@ -13,6 +13,7 @@ import {
   markErrorP5,
   markWritingP5,
 } from "../src/flows/trading-desk/phase-5/writer";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
@@ -132,6 +133,19 @@ function portfolioDecision(
       invalidation: { applied: true, reasoning: "Stop level holds." },
     },
     keyDependencies: ["AI cap-ex cycle length"],
+    asymmetricEdge:
+      finalRating === "Buy" || finalRating === "Overweight"
+        ? "Street underprices the data-center attach rate."
+        : "",
+    nearTermCatalyst:
+      finalRating === "Buy" || finalRating === "Overweight"
+        ? "Q2 print lands in three weeks."
+        : "",
+    invalidationTrigger:
+      finalRating === "Buy" || finalRating === "Overweight"
+        ? "Attach rate flat or down two quarters running."
+        : "",
+    acknowledgedAndDropped: [] as { item: string; reason: string }[],
   };
 }
 
@@ -176,6 +190,44 @@ describe("Phase 5 writer taps", () => {
   // the only way to inspect committed collection-item state. `testBlock`
   // captures `ctx.session.*` mutations in `stateChanges` but does NOT
   // surface `ctx.resources.<accessor>.<ref>.patchState(...)` calls.
+
+  it("schema accepts empty asymmetricEdge when finalRating is Hold", () => {
+    const parsed = portfolioDecisionOutputSchema.safeParse(
+      portfolioDecision("Hold"),
+    );
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.asymmetricEdge).toBe("");
+      expect(parsed.data.nearTermCatalyst).toBe("");
+      expect(parsed.data.invalidationTrigger).toBe("");
+    }
+  });
+
+  it("schema accepts non-empty asymmetricEdge when finalRating is Buy", () => {
+    const parsed = portfolioDecisionOutputSchema.safeParse(
+      portfolioDecision("Buy"),
+    );
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.asymmetricEdge.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("schema round-trips acknowledgedAndDropped entries", () => {
+    const decision = {
+      ...portfolioDecision("Hold"),
+      acknowledgedAndDropped: [
+        { item: "China export-control resolution", reason: "Out of horizon." },
+      ],
+    };
+    const parsed = portfolioDecisionOutputSchema.safeParse(decision);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.acknowledgedAndDropped).toEqual([
+        { item: "China export-control resolution", reason: "Out of horizon." },
+      ]);
+    }
+  });
 
   it("markErrorP5 flips portfolioManager to error and leaves runComplete false", async () => {
     const result = await testBlock(errorPm, {

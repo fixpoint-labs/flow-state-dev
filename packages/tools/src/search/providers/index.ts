@@ -4,6 +4,7 @@ import { exaAdapter } from "./exa";
 import { perplexityAdapter } from "./perplexity";
 import { serperAdapter } from "./serper";
 import { braveAdapter } from "./brave";
+import { parallelAdapter } from "./parallel";
 import { perplexitySonarAdapter } from "./perplexity-sonar";
 
 const adapterRegistry: Record<SearchProviderName, SearchProviderAdapter> = {
@@ -12,6 +13,7 @@ const adapterRegistry: Record<SearchProviderName, SearchProviderAdapter> = {
   perplexity: perplexityAdapter,
   serper: serperAdapter,
   brave: braveAdapter,
+  parallel: parallelAdapter,
   "perplexity-sonar": perplexitySonarAdapter,
 };
 
@@ -25,5 +27,6 @@ export {
   perplexityAdapter,
   serperAdapter,
   braveAdapter,
+  parallelAdapter,
   perplexitySonarAdapter,
 };

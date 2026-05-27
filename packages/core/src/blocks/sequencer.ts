@@ -28,7 +28,7 @@ import {
   extendBlockPath,
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
-import { isTraceObservabilityEnabled } from "../helpers/trace-observability";
+import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level";
 import { getRequestWorkPool } from "../execution/request-work-pool";
 import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 
@@ -291,10 +291,10 @@ type GeneratorModelUsageMeta = {
  * idle steps from cutting needless events. The first call (`lastStateJson`
  * undefined) always emits so the durability writer sees a baseline frame.
  *
- * Non-durable sequencers gate on `isTraceObservabilityEnabled()` — there's
- * no consumer for the snapshot in production unless the operator opted in.
- * Durable sequencers always emit because the snapshot drives the persistence
- * write; gating on observability would silently break checkpointing.
+ * Non-durable sequencers gate on the effective `tracingLevel` (FIX-406 6H) —
+ * there's no consumer for the snapshot in production unless the operator opted
+ * in. Durable sequencers always emit because the snapshot drives the
+ * persistence write; gating it would silently break checkpointing.
  *
  * `terminal: true` signals the final emission for this sequencer's run
  * (success / error / cancellation). The durability hook treats terminal
@@ -310,9 +310,20 @@ async function emitStateSnapshot(
   stateSchema: ZodTypeAny | undefined,
   terminal: boolean = false
 ): Promise<string | undefined> {
-  // Non-durable snapshots are stream-only and gated on the observability
-  // flag. Durable snapshots must always emit — they're the persistence path.
-  if (!durable && !isTraceObservabilityEnabled()) return lastStateJson;
+  // Non-durable snapshots are observability-only and gated by tracingLevel
+  // (FIX-406 6H). Durable snapshots must always emit — they're the crash-resume
+  // checkpoint path, independent of tracing verbosity.
+  //   - minimal: suppress all observability snapshots
+  //   - normal:  block boundaries only (initial + terminal), skip per-step
+  //   - verbose: emit everything
+  if (!durable) {
+    const level = resolveTracingLevel(
+      (ctx as { _tracingLevel?: TracingLevel })._tracingLevel
+    );
+    if (level === "minimal") return lastStateJson;
+    const isPerStep = !terminal && stepIndex >= 0;
+    if (level === "normal" && isPerStep) return lastStateJson;
+  }
 
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;

@@ -9,7 +9,9 @@ import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
 import {
   TASK_BOARD_META_COMPONENT,
   TASK_CHANGE_COMPONENT,
+  collectTaskOwnedItemIds,
   discoverCollections,
+  extractTaskItemWindows,
   extractTaskPlanState,
   groupTasksByAssignee,
   groupTasksByStatus,
@@ -346,5 +348,68 @@ describe("humanizeStatus", () => {
     ["", ""],
   ])("normalizes %s → %s", (input, expected) => {
     expect(humanizeStatus(input)).toBe(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractTaskItemWindows / collectTaskOwnedItemIds (FIX-658)
+// ---------------------------------------------------------------------------
+
+function makeWorkMessage(text: string, taskId?: string): OutputItem {
+  return {
+    id: `item_msg_${nextItemIndex++}`,
+    type: "message",
+    role: "assistant",
+    status: "completed",
+    requestId: "req_test",
+    itemIndex: nextItemIndex,
+    provenance: { blockName: "worker", blockInstanceId: "worker", phase: "main" },
+    ts: nextTs++,
+    taskId,
+    content: [{ type: "output_text", text }],
+  } as OutputItem;
+}
+
+describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
+  it("attributes a concurrent sibling's items to itself, not the queueing task", () => {
+    resetItemCounters();
+    const disc = makeTask({ id: "discoverer" });
+    const anl = makeTask({ id: "analyzer" });
+    const items: OutputItem[] = [
+      makeTaskChange("c", disc, { kind: "claimed" }),
+      makeWorkMessage("discoverer work", "discoverer"),
+      makeTaskChange("c", anl, { kind: "claimed" }),
+      makeWorkMessage("analyzer work", "analyzer"),
+      makeWorkMessage("discoverer more", "discoverer"),
+      makeTaskChange("c", anl, { kind: "completed" }),
+      makeTaskChange("c", disc, { kind: "completed" }),
+    ];
+
+    const windows = extractTaskItemWindows(items, "c");
+    expect(windows.get("discoverer")).toHaveLength(2);
+    expect(windows.get("analyzer")).toHaveLength(1);
+
+    // Buckets are disjoint — no item appears under two tasks.
+    const all = [...windows.values()].flat().map((i) => i.id);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("collectTaskOwnedItemIds returns task-owned ids and excludes bookends + unattributed", () => {
+    resetItemCounters();
+    const t = makeTask({ id: "t1" });
+    const owned = makeWorkMessage("owned", "t1");
+    const orphan = makeWorkMessage("orphan"); // no taskId
+    const items: OutputItem[] = [
+      makeTaskChange("c", t, { kind: "claimed" }),
+      owned,
+      orphan,
+      makeTaskChange("c", t, { kind: "completed" }),
+    ];
+
+    const ids = collectTaskOwnedItemIds(items);
+    expect(ids.has(owned.id)).toBe(true);
+    expect(ids.has(orphan.id)).toBe(false);
+    // Bookend task-change items are never owned.
+    expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
   });
 });
