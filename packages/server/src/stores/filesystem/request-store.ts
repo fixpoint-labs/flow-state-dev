@@ -16,6 +16,7 @@ import { ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { pollEvents } from "../subscribe-helpers";
 import { appendFile, readFile, writeFile, rename } from "node:fs/promises";
+import path from "node:path";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
@@ -42,6 +43,30 @@ function toEventsPath(rootDir: string, requestId: string): string {
 
 function toRunOncePath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
+}
+
+/**
+ * Encode a path segment, hardening `:` (legal on POSIX but reserved on
+ * Windows/NTFS) so request ids and keys containing `:` stay portable.
+ */
+function encodeSegment(segment: string): string {
+  return encodeURIComponent(segment).replace(/:/g, "%3A");
+}
+
+/**
+ * Per-key runOnce result file path:
+ * `{rootDir}/<enc(requestId)>.runonce.<enc(key)>.json`. One file per
+ * (requestId, key) so persisting one key never rewrites another's bytes.
+ */
+function toRunOnceKeyPath(
+  rootDir: string,
+  requestId: string,
+  key: string
+): string {
+  return path.join(
+    rootDir,
+    `${encodeSegment(requestId)}.runonce.${encodeSegment(key)}.json`
+  );
 }
 
 // Module-scoped so the "warn once per corrupted file" guarantee holds across
@@ -92,7 +117,6 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly eventsFormatVerified = new Set<string>();
 
   private readonly pollIntervalMs: number;
-  private readonly runOnceQueues = new Map<string, SerializedWriteQueue>();
   private readonly onPersistError?: PersistErrorHandler;
 
   constructor(options: FilesystemRequestStoreOptions) {
@@ -150,6 +174,36 @@ export class FilesystemRequestStore implements RequestStore {
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
     return this.store.set(id, value, expectedVersion);
+  }
+
+  async patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.patchField(id, path, value, expectedVersion, updatedAt);
+  }
+
+  async incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.incField(id, path, delta, expectedVersion, updatedAt);
+  }
+
+  async pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.pushToArray(id, path, values, expectedVersion, updatedAt);
   }
 
   async delete(id: string): Promise<void> {
@@ -335,14 +389,26 @@ export class FilesystemRequestStore implements RequestStore {
     requestId: string,
     key: string
   ): Promise<{ found: boolean; value?: unknown }> {
-    const filePath = toRunOncePath(this.rootDir, requestId);
+    // Per-key file is the source of truth post-upgrade.
+    const keyPath = toRunOnceKeyPath(this.rootDir, requestId, key);
+    try {
+      const raw = await readFile(keyPath, "utf8");
+      return { found: true, value: JSON.parse(raw) as unknown };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    // Lazy fallback: a legacy single-map file written by an older version.
+    // Legacy files are read-only after upgrade — never rewritten.
+    const legacyPath = toRunOncePath(this.rootDir, requestId);
     let map: Record<string, unknown>;
     try {
-      const raw = await readFile(filePath, "utf8");
+      const raw = await readFile(legacyPath, "utf8");
       map = JSON.parse(raw) as Record<string, unknown>;
     } catch (error) {
-      const maybeError = error as NodeJS.ErrnoException;
-      if (maybeError.code === "ENOENT") return { found: false };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { found: false };
+      }
       throw error;
     }
     if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
@@ -354,59 +420,25 @@ export class FilesystemRequestStore implements RequestStore {
     key: string,
     value: unknown
   ): Promise<void> {
-    // Serialize per-request file writes so concurrent runOnce calls don't
-    // clobber each other's partial maps. Drain to expose write errors to
-    // the caller.
-    const queue = this.getOrCreateRunOnceQueue(requestId);
-    let resolve: () => void;
-    let reject: (err: Error) => void;
-    const done = new Promise<void>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    queue.enqueue(async () => {
-      try {
-        await ensureDirectory(this.rootDir);
-        const targetPath = toRunOncePath(this.rootDir, requestId);
-        let map: Record<string, unknown> = {};
-        try {
-          const raw = await readFile(targetPath, "utf8");
-          map = JSON.parse(raw) as Record<string, unknown>;
-        } catch (error) {
-          const maybeError = error as NodeJS.ErrnoException;
-          if (maybeError.code !== "ENOENT") throw error;
-        }
-        map[key] = value;
-        const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
-          .toString(16)
-          .slice(2)}`;
-        await writeFile(tempPath, JSON.stringify(map), "utf8");
-        await rename(tempPath, targetPath);
-        resolve();
-      } catch (err) {
-        reject(err as Error);
-        throw err;
-      }
-    });
-    await done;
-  }
-
-  private getOrCreateRunOnceQueue(requestId: string): SerializedWriteQueue {
-    let queue = this.runOnceQueues.get(requestId);
-    if (queue === undefined) {
-      queue = createSerializedWriteQueue({
-        label: `request-runonce:${requestId}`,
-        onError: (err) => {
-          this.onPersistError?.({ store: "request", id: requestId, error: err });
-          console.error(
-            `[flow-state] runOnce persistence failed for ${requestId}`,
-            err
-          );
-        }
+    // One file per (requestId, key): no read-merge-write, so concurrent writes
+    // to different keys never collide and persisting one key doesn't rewrite
+    // another. Atomic temp-write + rename guards against torn files.
+    try {
+      await ensureDirectory(this.rootDir);
+      const targetPath = toRunOnceKeyPath(this.rootDir, requestId, key);
+      const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
+      await writeFile(tempPath, JSON.stringify(value), "utf8");
+      await rename(tempPath, targetPath);
+    } catch (error) {
+      this.onPersistError?.({
+        store: "request",
+        id: requestId,
+        error: error as Error
       });
-      this.runOnceQueues.set(requestId, queue);
+      throw error;
     }
-    return queue;
   }
 
   private getOrCreateEventWriteQueue(requestId: string): SerializedWriteQueue {
