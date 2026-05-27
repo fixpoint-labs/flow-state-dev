@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "../src";
+import type { BlockContext } from "../src/types/block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../src";
 import { defineResource } from "../src/types/resource";
 import { createMockContext, runForTest } from "./helpers";
@@ -92,6 +93,44 @@ describe("sequencer builder", () => {
 
     const ctx = createMockContext();
     await expect(runForTest(seq, 0, ctx)).resolves.toBe(3);
+  });
+
+  it("gives loopBack re-executions distinct child blockInstanceIds per iteration (FIX-643)", async () => {
+    const inc = addHandler("inc", 1);
+    const seq = sequencer({ name: "loop-id", inputSchema: z.number() })
+      .then(inc)
+      .loopBack("inc", {
+        when: (value) => (value as number) < 3,
+        maxIterations: 5
+      });
+
+    const capturedIncIds: string[] = [];
+    const ctx = createMockContext();
+    (ctx as any)._withExecutionScope = async (
+      parent: { name: string; instanceId: string; path: string },
+      execute: (c: BlockContext) => Promise<unknown>
+    ) => {
+      if (parent.name === "inc") {
+        capturedIncIds.push(parent.instanceId);
+      }
+      const childCtx = {
+        ...ctx,
+        _blockIdentity: { blockName: parent.name, blockInstanceId: parent.instanceId, blockPath: parent.path }
+      } as BlockContext;
+      return execute(childCtx);
+    };
+
+    await expect(runForTest(seq, 0, ctx)).resolves.toBe(3);
+
+    // The executor body runs 3 times (0→1→2→3). Each re-execution after a
+    // loopBack jump must get a distinct identity so the DevTool renders one
+    // row per iteration instead of collapsing them.
+    expect(capturedIncIds).toHaveLength(3);
+    expect(new Set(capturedIncIds).size).toBe(3);
+    // Generation 0 (first pass) is segment-free; later passes carry loop[N].
+    expect(capturedIncIds[0]).not.toContain("loop[");
+    expect(capturedIncIds[1]).toContain("loop[1]");
+    expect(capturedIncIds[2]).toContain("loop[2]");
   });
 
   it("supports work and waitForWork", async () => {

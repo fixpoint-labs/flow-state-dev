@@ -86,6 +86,13 @@ describe("plan-and-execute", () => {
     const executorOutputs = findBlockOutputs(result.items, "pae-test-executor");
     expect(executorOutputs).toHaveLength(3);
 
+    // FIX-643: the board drains all three tasks through one worker via
+    // loopBack. Each re-execution must carry a distinct blockInstanceId so the
+    // DevTool renders one row per task instead of collapsing them. Before the
+    // loop[N] path fix these three ids collided.
+    const executorIds = new Set(executorOutputs.map((item) => item.blockInstanceId));
+    expect(executorIds.size).toBe(3);
+
     const assistant = findMessage(result.items, "assistant");
     expect(assistant).toBeDefined();
     expect(messageText(assistant!)).toBe("Did A, B, and C.");

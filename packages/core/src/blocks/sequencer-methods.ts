@@ -460,4 +460,12 @@ export type SequencerRuntimeState = {
    * single ref.
    */
   lastChildInputHint?: import("../items/types").BlockValueInternal<unknown>;
+  /**
+   * Active `loopBack` generation for child path construction (FIX-643). 0
+   * (the default) on the first pass and after a loop exits, so child paths are
+   * unchanged for non-looping code. Each `loopBack` jump bumps it to the
+   * loop's incremented `loopCounts` value, so steps re-executed in pass N get a
+   * `loop[N]` parent-path prefix and a distinct `blockInstanceId` per iteration.
+   */
+  activeLoopGeneration: number;
 };

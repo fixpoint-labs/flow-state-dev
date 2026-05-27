@@ -84,6 +84,7 @@ export {
   buildBlockInstanceId,
   blockPathBranch,
   blockPathIteration,
+  blockPathLoop,
   blockPathRescue,
   blockPathSegment,
   blockPathTool,

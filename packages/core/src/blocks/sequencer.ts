@@ -22,6 +22,7 @@ import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./
 import {
   blockPathBranch,
   blockPathIteration,
+  blockPathLoop,
   blockPathRescue,
   blockPathSegment,
   buildBlockInstanceId,
@@ -429,14 +430,24 @@ function currentPath(ctx: BlockContext): string {
  * Builds the child path for a block invoked by a sequencer operation.
  * The op segment identifies the structural position; an optional iteration
  * segment distinguishes individual iterations of an iterative op.
+ *
+ * When a `loopBack` jump is active (`runtime.activeLoopGeneration > 0`), a
+ * `loop[N]` segment is inserted *before* the op segment so the whole
+ * re-executed pass groups under one iteration scope and each pass yields a
+ * distinct `blockInstanceId` (FIX-643). Generation 0 inserts nothing.
  */
 function childBlockPath(
   ctx: BlockContext,
+  runtime: SequencerRuntimeState,
   op: string,
   stepIndex: number,
   iteration?: number
 ): string {
-  let path = extendBlockPath(currentPath(ctx), blockPathSegment(op, stepIndex));
+  let path = currentPath(ctx);
+  if (runtime.activeLoopGeneration > 0) {
+    path = extendBlockPath(path, blockPathLoop(runtime.activeLoopGeneration));
+  }
+  path = extendBlockPath(path, blockPathSegment(op, stepIndex));
   if (iteration !== undefined) {
     path = extendBlockPath(path, blockPathIteration(iteration));
   }
@@ -650,7 +661,8 @@ function createRuntimeState(): SequencerRuntimeState {
     stateVersion: 0,
     scopeId: `seq_scope_${sequencerScopeCounter}`,
     lastChildPath: undefined,
-    lastChildInputHint: undefined
+    lastChildInputHint: undefined,
+    activeLoopGeneration: 0
   };
 }
 
@@ -1089,7 +1101,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           {
             name: block.name,
             run: async (value, ctx, runtime, stepIndex) => {
-              const path = childBlockPath(ctx, "then", stepIndex);
+              const path = childBlockPath(ctx, runtime, "then", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, value, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1113,7 +1125,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-            const path = childBlockPath(ctx, "then", stepIndex);
+            const path = childBlockPath(ctx, runtime, "then", stepIndex);
             prepareSequentialChild(ctx, runtime, path);
             const output = await executeBlock(block, nextInput, ctx, path);
             return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1147,7 +1159,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                   return { value };
                 }
 
-                const path = childBlockPath(ctx, "thenIf", stepIndex);
+                const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
                 prepareSequentialChild(ctx, runtime, path);
                 const output = await executeBlock(block, value, ctx, path);
                 return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1181,7 +1193,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const path = childBlockPath(ctx, "thenIf", stepIndex);
+              const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, nextInput, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1232,7 +1244,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: "parallel",
           run: async (value, ctx, runtime, stepIndex) => {
             const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
-            const parallelPath = childBlockPath(ctx, "parallel", stepIndex);
+            const parallelPath = childBlockPath(ctx, runtime, "parallel", stepIndex);
             const branchPaths: string[] = [];
             // Each branch sees the same upstream input — capture the shared
             // hint once before dispatching so every branch stamps the same
@@ -1342,7 +1354,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                   ? blockOrFactory(item, index, ctx)
                   : (blockOrFactory as BlockDefinition<any, any>);
 
-              const path = childBlockPath(ctx, "forEach", stepIndex, index);
+              const path = childBlockPath(ctx, runtime, "forEach", stepIndex, index);
               iterationPaths[index] = path;
               // Each iteration's child sees the element inline (FIX-573 §5).
               stashInputHint(ctx, { kind: "inline", value: item });
@@ -1441,7 +1453,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                     : (blockOrFactory as BlockDefinition<any, any>);
 
                 const iterName = `${block.name}[${currentIndex}]`;
-                const path = childBlockPath(ctx, "forEachBackground", stepIndex, currentIndex);
+                const path = childBlockPath(ctx, runtime, "forEachBackground", stepIndex, currentIndex);
                 try {
                   // Background iterations run in the "work" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
@@ -1505,7 +1517,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             let pendingHint: BlockValueInternal<unknown> = sequentialInputHint(ctx, runtime);
 
             while (true) {
-              const path = childBlockPath(ctx, "doUntil", stepIndex, iteration);
+              const path = childBlockPath(ctx, runtime, "doUntil", stepIndex, iteration);
               stashInputHint(ctx, pendingHint);
               const output = await executeBlock(block, nextInput, ctx, path);
               const done = await condition(output as TNext, ctx);
@@ -1549,7 +1561,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let iteration = 0;
-            let lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+            let lastPath = childBlockPath(ctx, runtime, "doWhile", stepIndex, iteration);
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             let output = await executeBlock(block, nextInput, ctx, lastPath);
             let guard = 0;
@@ -1563,7 +1575,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               iteration += 1;
               nextInput = output;
               const prevPath = lastPath;
-              lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+              lastPath = childBlockPath(ctx, runtime, "doWhile", stepIndex, iteration);
               stashInputHint(ctx, inputDescriptorFromPrevPath(ctx, prevPath));
               output = await executeBlock(block, nextInput, ctx, lastPath);
             }
@@ -1594,16 +1606,23 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           run: async (value, ctx, runtime, stepIndex) => {
             const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
             if (!shouldLoop) {
+              // Loop exits: steps after this op run unsegmented (FIX-643).
+              runtime.activeLoopGeneration = 0;
               return { value };
             }
 
             const key = `${targetStepName}:${stepIndex}`;
             const currentCount = runtime.loopCounts.get(key) ?? 0;
             if (currentCount >= options.maxIterations) {
+              runtime.activeLoopGeneration = 0;
               return { value };
             }
 
-            runtime.loopCounts.set(key, currentCount + 1);
+            // The upcoming re-execution is generation `currentCount + 1`; carry
+            // it on runtime so re-run children get a distinct `loop[N]` prefix.
+            const nextGeneration = currentCount + 1;
+            runtime.loopCounts.set(key, nextGeneration);
+            runtime.activeLoopGeneration = nextGeneration;
             return { value, jumpTo: targetStepName };
           }
         },
@@ -1629,7 +1648,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const path = childBlockPath(ctx, "work", stepIndex);
+            const path = childBlockPath(ctx, runtime, "work", stepIndex);
             // work() dispatches run in the "work" phase so nested generators
             // see phase === "work" and apply the trace default for emissions.
             // The work block's input is the parent step's output (FIX-573 §5).
@@ -1677,7 +1696,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const path = childBlockPath(ctx, "workIf", stepIndex);
+            const path = childBlockPath(ctx, runtime, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
@@ -1764,7 +1783,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           {
             name: `tap:${block.name}`,
             run: async (value, ctx, runtime, stepIndex) => {
-              const path = childBlockPath(ctx, "tap", stepIndex);
+              const path = childBlockPath(ctx, runtime, "tap", stepIndex);
               // .tap is a side-effect — its child sees the upstream sequencer
               // value, but the sequencer's running output is unchanged. Stash
               // the hint without rewriting `lastChildPath`/`lastChildInputHint`
@@ -1795,7 +1814,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         {
           name: "tap",
           run: async (value, ctx, runtime, stepIndex) => {
-            const path = childBlockPath(ctx, "tap", stepIndex);
+            const path = childBlockPath(ctx, runtime, "tap", stepIndex);
             const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
@@ -1847,7 +1866,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               return { value };
             }
 
-            const path = childBlockPath(ctx, "tapIf", stepIndex);
+            const path = childBlockPath(ctx, runtime, "tapIf", stepIndex);
             const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
@@ -1906,7 +1925,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         {
           name: "branch",
           run: async (value, ctx, runtime, stepIndex) => {
-            const basePath = childBlockPath(ctx, "branch", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "branch", stepIndex);
             const branchHint = sequentialInputHint(ctx, runtime);
             for (const key of Object.keys(branches) as Array<keyof TBranches>) {
               const [connector, condition, block] = branches[key];
@@ -1948,7 +1967,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         {
           name: "thenAll",
           run: async (value, ctx, runtime, stepIndex) => {
-            const basePath = childBlockPath(ctx, "thenAll", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "thenAll", stepIndex);
             const branchPaths: string[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
             const outputs = await mapWithConcurrency(
@@ -2009,7 +2028,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             // Try each block sequentially; return the first that succeeds.
-            const basePath = childBlockPath(ctx, "thenAny", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "thenAny", stepIndex);
             const errors: Error[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
 
@@ -2049,7 +2068,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               throw new Error("race called with no blocks");
             }
 
-            const basePath = childBlockPath(ctx, "race", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "race", stepIndex);
             const branchInputHint = sequentialInputHint(ctx, runtime);
 
             if (blocks.length === 1) {
