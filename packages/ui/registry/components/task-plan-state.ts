@@ -22,6 +22,10 @@
  * independent of the JSX wrapper. No React imports here.
  */
 import type { OutputItem, ComponentItem } from "@flow-state-dev/core/items";
+import {
+  attributeItemsToTasks,
+  collectAttributedItemIds,
+} from "@flow-state-dev/core/items";
 
 // ---------------------------------------------------------------------------
 // Substrate-mirrored types
@@ -208,77 +212,24 @@ export function scopeItemsToLatestCollectionRequest(
 // ---------------------------------------------------------------------------
 
 /**
- * Return the set of `item.id` values that fall inside any task-board's
- * per-task execution window in `items` — across every `collectionId`
- * present.
+ * Return the set of `item.id` values that belong to any task-board task in
+ * `items` — across every `collectionId` present.
  *
  * Items belonging to a task should render inside that task's expansion
  * in `<TaskPlan />`, not also inline in the chat thread. The chat-level
  * `<RequestGroupRenderer>` uses this set to skip them so the user sees
  * each tool call / message / reasoning event exactly once.
  *
- * `task-change` items themselves are not added to the set — they drive
- * the renderer's status grouping. `task-board-meta` items are not added
- * either — they're the entry point that mounts `<TaskPlan />` at the
- * chat position.
- *
- * Windows use `item.ts` (timestamp), not `item.itemIndex`. itemIndex is
- * not monotonic across emit batches — multiple items can share an
- * index, and AI-SDK-driven `tool_output` emissions sometimes
- * land after the worker's terminal `task-change` in itemIndex order
- * but inside it chronologically. Timestamps are monotonic per emitter
- * and reliably bracket the worker's actual work.
+ * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
+ * (FIX-658), which keys off the emit-time `taskId` stamped on each item, so
+ * this set agrees with the substrate's `task.items()` by construction.
+ * `task-change` and `task-board-meta` items are excluded — they drive status
+ * grouping / mount `<TaskPlan />`, they don't belong to a task.
  */
 export function collectTaskOwnedItemIds(
   items: ReadonlyArray<OutputItem>,
 ): Set<string> {
-  const owned = new Set<string>();
-
-  type WindowKey = string;
-  const startTs = new Map<WindowKey, number>();
-  const endTs = new Map<WindowKey, number>();
-
-  for (const item of items) {
-    if (!isComponentItem(item)) continue;
-    if (item.component !== TASK_CHANGE_COMPONENT) continue;
-    const data = item.data as TaskChangeData;
-    const collectionId = data.collectionId;
-    const taskId = data.taskId;
-    if (collectionId === undefined || taskId === undefined) continue;
-    const key = `${collectionId}/${taskId}`;
-
-    if (data.kind === "claimed" && !startTs.has(key)) {
-      startTs.set(key, item.ts);
-    } else if (
-      data.kind === "completed" ||
-      data.kind === "errored" ||
-      data.kind === "cancelled"
-    ) {
-      endTs.set(key, item.ts);
-    }
-  }
-
-  if (startTs.size === 0) return owned;
-
-  for (const item of items) {
-    if (isComponentItem(item)) {
-      if (
-        item.component === TASK_CHANGE_COMPONENT ||
-        item.component === TASK_BOARD_META_COMPONENT
-      ) {
-        continue;
-      }
-    }
-    for (const [key, start] of startTs) {
-      if (item.ts < start) continue;
-      const end = endTs.get(key);
-      if (end !== undefined && item.ts > end) continue;
-      owned.add(item.id);
-      break;
-    }
-  }
-
-  return owned;
+  return collectAttributedItemIds(items);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,77 +237,21 @@ export function collectTaskOwnedItemIds(
 // ---------------------------------------------------------------------------
 
 /**
- * Walks the item stream and returns, per task id, the items emitted
- * during that task's execution window.
+ * Returns, per task id, the items emitted under that task in `collectionId`,
+ * driving each task's expansion in `<TaskPlan />`.
  *
- * Window boundaries:
- *   - start: the `task-change` with `kind: "claimed"` for that task id
- *     (when the task transitions to `in_progress`)
- *   - end: the next terminal `task-change` for that id (`completed`,
- *     `errored`, or `cancelled`). `retried` does NOT close the window —
- *     subsequent attempts append to the same task's windowed items so
- *     consumers see the full attempt history.
- *
- * Items emitted before the first claim (e.g. seed-time `added` events)
- * are not part of any task's window. The bookend `task-change` items
- * themselves are excluded — they're consumed by `<TaskPlan />` to drive
- * the status grouping, not by the per-task expansion.
- *
- * `task-board-meta` items are also excluded so the per-task expansion
- * does not recursively re-render the entire `<TaskPlan />` (that
- * component is the registry renderer for `task-board-meta`).
+ * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
+ * (FIX-658): attribution is by the emit-time `taskId` stamped on each item,
+ * so each item lands in exactly one task's bucket — even when sibling workers
+ * run concurrently or one worker runs several tasks in sequence. Bookend
+ * `task-change` / `task-board-meta` items are excluded. This returns the same
+ * buckets as the substrate's `task.items()`.
  */
 export function extractTaskItemWindows(
   items: ReadonlyArray<OutputItem>,
   collectionId: string,
 ): Map<string, OutputItem[]> {
-  const windows = new Map<string, OutputItem[]>();
-  const startTs = new Map<string, number>();
-  const endTs = new Map<string, number>();
-
-  for (const item of items) {
-    if (!isComponentItem(item)) continue;
-    if (item.component !== TASK_CHANGE_COMPONENT) continue;
-    const data = item.data as TaskChangeData;
-    if (data.collectionId !== collectionId) continue;
-    if (data.taskId === undefined) continue;
-
-    if (data.kind === "claimed" && !startTs.has(data.taskId)) {
-      startTs.set(data.taskId, item.ts);
-    } else if (
-      data.kind === "completed" ||
-      data.kind === "errored" ||
-      data.kind === "cancelled"
-    ) {
-      endTs.set(data.taskId, item.ts);
-    }
-  }
-
-  if (startTs.size === 0) return windows;
-
-  for (const item of items) {
-    if (isComponentItem(item)) {
-      if (
-        item.component === TASK_CHANGE_COMPONENT ||
-        item.component === TASK_BOARD_META_COMPONENT
-      ) {
-        continue;
-      }
-    }
-    for (const [taskId, start] of startTs) {
-      if (item.ts < start) continue;
-      const end = endTs.get(taskId);
-      if (end !== undefined && item.ts > end) continue;
-      let bucket = windows.get(taskId);
-      if (bucket === undefined) {
-        bucket = [];
-        windows.set(taskId, bucket);
-      }
-      bucket.push(item);
-    }
-  }
-
-  return windows;
+  return attributeItemsToTasks(items, collectionId);
 }
 
 // ---------------------------------------------------------------------------

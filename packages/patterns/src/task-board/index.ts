@@ -534,6 +534,13 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   })
     .tap(async (task: Task, ctx) => {
       await ctx.sequencer!.patchState({ currentTaskId: task.id });
+      // FIX-658: mark this worker-body scope so every item the worker emits
+      // (messages, tool calls, sources, reasoning) is stamped with the task
+      // id at emit time. This makes per-task attribution correct under
+      // concurrent fan-out — a sibling worker's items no longer fall inside
+      // this task's render window — and across sequential `loopBack` turns,
+      // where the execution path repeats but each turn is a fresh scope.
+      ctx._markTaskScope?.(task.id);
       // FIX-610: also stamp the active task id onto the shared
       // run-state bag so any cacheable tool the worker invokes attributes
       // cache writes to this task (later hits get `sourceTask`).

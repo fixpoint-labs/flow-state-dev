@@ -439,6 +439,12 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
+    /**
+     * Id of the active task for this scope, resolved from the nearest
+     * enclosing scope marked via `_markTaskScope`. Stamped onto every item
+     * this scope emits as `OutputItem.taskId`.
+     */
+    taskId?: string;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
     phase?: "main" | "work";
     /**
@@ -472,6 +478,18 @@ export interface BlockContext<
     execute: (ctx: BlockContext) => Promise<TValue>,
     signalOverride?: AbortSignal
   ): Promise<TValue>;
+
+  /**
+   * @internal Mark the nearest enclosing sequencer scope as belonging to a
+   * task. Every item emitted by this scope and its descendants (constructed
+   * after the mark) inherits the task id as `OutputItem.taskId`. The
+   * task-board worker body calls this once per claimed task so a worker's
+   * emissions attribute to the task it is running — correct under concurrent
+   * fan-out and across sequential `loopBack` turns, where execution paths
+   * collide but each turn is a fresh scope. Pass `null` to clear. No-op when
+   * the runtime does not provide it (mock contexts).
+   */
+  _markTaskScope?(taskId: string | null): void;
 
   /**
    * @internal Read the current value of the request-scoped status slot.

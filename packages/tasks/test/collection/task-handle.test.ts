@@ -49,7 +49,7 @@ function taskChange(args: {
   };
 }
 
-function message(args: { ts: number; text: string }): MessageItem {
+function message(args: { ts: number; text: string; taskId?: string }): MessageItem {
   return {
     id: nextId("m"),
     type: "message",
@@ -59,6 +59,7 @@ function message(args: { ts: number; text: string }): MessageItem {
     itemIndex: 0,
     provenance: { blockName: "w", blockInstanceId: "w#1", phase: "main" },
     ts: args.ts,
+    taskId: args.taskId,
     content: [{ type: "output_text", text: args.text }],
   };
 }
@@ -118,11 +119,13 @@ for (const { name, build } of factories) {
       await collection.addTask({ id: "t1", goal: "g" });
 
       // Synthesize the substrate's task-change events directly into the log.
-      // Real lifecycle events are emitted via ctx.emitComponent, but here
-      // we mock the log to assert windowing.
+      // Real lifecycle events are emitted via ctx.emitComponent, and worker
+      // items carry the emit-time `taskId` stamp; here we mock the log to
+      // assert attribution. An item with no `taskId` was emitted outside any
+      // task scope and is excluded.
       itemLog.push(
         taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
-        message({ ts: 150, text: "in-window" }),
+        message({ ts: 150, text: "in-window", taskId: "t1" }),
         taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 200 }),
         message({ ts: 250, text: "after-window" }),
       );
@@ -145,10 +148,10 @@ for (const { name, build } of factories) {
 
       itemLog.push(
         taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
-        message({ ts: 110, text: "t1-emit" }),
+        message({ ts: 110, text: "t1-emit", taskId: "t1" }),
         taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 120 }),
         taskChange({ collectionId: "c1", taskId: "t2", kind: "claimed", ts: 200 }),
-        message({ ts: 210, text: "t2-emit" }),
+        message({ ts: 210, text: "t2-emit", taskId: "t2" }),
         taskChange({ collectionId: "c1", taskId: "t2", kind: "completed", ts: 220 }),
       );
 
@@ -173,7 +176,7 @@ for (const { name, build } of factories) {
       expect(earlyItems).toEqual([]);
 
       itemLog.push(
-        message({ ts: 150, text: "later" }),
+        message({ ts: 150, text: "later", taskId: "t1" }),
         taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 200 }),
       );
       const lateItems = collection.get("t1")!.items();

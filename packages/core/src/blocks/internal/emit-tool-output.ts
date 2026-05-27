@@ -85,6 +85,7 @@ export async function emitToolOutputAround(
     },
     ts: Date.now(),
     ownedBy: parentIdentity?.ownedBy,
+    ...(parentIdentity?.taskId !== undefined ? { taskId: parentIdentity.taskId } : {}),
     ...(attribution.agentType !== undefined ? { agentType: attribution.agentType } : {}),
     ...(attribution.agentName !== undefined ? { agentName: attribution.agentName } : {}),
     ...(attribution.model !== undefined ? { model: attribution.model } : {}),
