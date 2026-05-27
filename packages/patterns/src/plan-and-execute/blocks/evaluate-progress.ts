@@ -52,7 +52,7 @@ const llmEvaluatorTaskSchema = z.object({
   deps: z.array(z.string()).optional(),
 });
 
-const llmEvaluatorOutputSchema = z.object({
+export const llmEvaluatorOutputSchema = z.object({
   decision: z.enum(["continue", "replan", "complete"]),
   reasoning: z.string(),
   tasks: z.array(llmEvaluatorTaskSchema).optional(),

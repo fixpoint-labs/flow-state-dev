@@ -56,7 +56,12 @@ export type SupervisorState = z.infer<typeof supervisorStateSchema>;
 export const reviewerVerdictSchema = z.object({
   decision: z.enum(["approve", "reject", "needs-revision"]),
   feedback: z.string().optional(),
-  criteria: z.record(z.string(), z.unknown()).optional(),
+  // Per-criterion scores when the reviewer scored against a rubric. Array of
+  // { name, score } pairs rather than a keyed map: a `z.record` here is not
+  // OpenAI strict-mode compatible as a generator output (BP-016).
+  criteria: z
+    .array(z.object({ name: z.string(), score: z.number() }))
+    .optional(),
   reasoning: z.string().optional(),
 });
 

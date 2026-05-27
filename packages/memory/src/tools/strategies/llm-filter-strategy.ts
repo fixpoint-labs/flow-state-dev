@@ -316,7 +316,7 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
 // ---------------------------------------------------------------------------
 
 /** Output schema for the LLM filter call — ordered list of selected IDs. */
-const filterOutputSchema = z.object({
+export const filterOutputSchema = z.object({
   selectedIds: z.array(z.string()),
 })
 
