@@ -32,6 +32,7 @@ import {
   phase2RoundRobin,
 } from "./round-robin";
 import { setupPhase2Memos } from "./setup";
+import { validateCitations } from "./validate-citations";
 import {
   commitBearMemo,
   commitBullMemo,
@@ -69,6 +70,7 @@ export const phase2Pipeline = sequencer({
   .tap(setupPhase2Memos)
   .then(deriveDebateGoal)
   .then(phase2RoundRobin)
+  .tap(validateCitations)
   .then(bullStep)
   .then(bearStep)
   .then(researchManagerStep);
