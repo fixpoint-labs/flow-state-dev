@@ -335,7 +335,6 @@ export function routedSpecialists<
   const initWorkspace = handler({
     name: `${name}-init`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { workspace: workspaceResource },
     execute: async (input, ctx) => {
       if (config.initialState) {
@@ -347,7 +346,6 @@ export function routedSpecialists<
           initial as Parameters<typeof ctx.resources.workspace.setState>[0]
         );
       }
-      return input;
     },
   });
 
@@ -374,7 +372,6 @@ export function routedSpecialists<
   const recordIteration = handler({
     name: `${name}-record-iteration`,
     inputSchema: controllerOutputSchema,
-    outputSchema: controllerOutputSchema,
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
@@ -418,8 +415,6 @@ export function routedSpecialists<
           `[routedSpecialists:${name}] invoking specialist: ${input.specialist}`
         );
       }
-
-      return input;
     },
   });
 
@@ -474,10 +469,9 @@ export function routedSpecialists<
   const emitSnapshot = handler({
     name: `${name}-snapshot`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { workspace: workspaceResource },
     sequencerStateSchema: routedSpecialistsControlSchema,
-    execute: async (input, ctx) => {
+    execute: async (_input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
       ctx.emitComponent(
@@ -490,7 +484,6 @@ export function routedSpecialists<
         } as unknown as Record<string, unknown>,
         { key: name }
       );
-      return input;
     },
   });
 
@@ -519,9 +512,9 @@ export function routedSpecialists<
     stateSchema: routedSpecialistsControlSchema,
     container: { component: "routedSpecialists" },
   })
-    .then(initWorkspace)
+    .tap(initWorkspace)
     .then(controller)
-    .then(recordIteration)
+    .tap(recordIteration)
     .thenIf((r: ControllerOutput) => !r.done, dispatch)
     .tap(recordCompletion)
     .tap(emitSnapshot)
