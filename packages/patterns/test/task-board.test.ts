@@ -20,9 +20,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
+  extractTaskItemWindows,
   fifoDispatcher,
   getOrCreateTaskCollection,
   type TaskWorker,
@@ -1407,4 +1409,114 @@ describe("taskBoard - seed idempotency", () => {
   // block above. The sequencer-backed default still creates fresh
   // state per invocation by design; consumers that need re-entry opt
   // into `collection: { backing: "request", ... }`.
+});
+
+// ---------------------------------------------------------------------------
+// Item attribution under concurrency (FIX-658)
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - item attribution (FIX-658)", () => {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  function messagesFor(map: Map<string, OutputItem[]>, taskId: string): string[] {
+    return (map.get(taskId) ?? [])
+      .filter((i) => i.type === "message")
+      .map((i) => {
+        const c = (i as { content?: Array<{ text?: string }> }).content?.[0];
+        return c?.text ?? "";
+      });
+  }
+
+  it("a sibling spawned mid-run attributes its items to itself, not the queueing task", async () => {
+    // discoverer emits, spawns analyzer, then blocks until analyzer has
+    // emitted — forcing the analyzer's whole lifecycle to overlap the
+    // discoverer's still-open window. The timestamp model put the analyzer's
+    // message inside the discoverer's bucket; emit-time taskId keeps them
+    // disjoint.
+    const analyzerEmitted = deferred();
+    const worker = handler({
+      name: "worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ack: z.string() }),
+      execute: async (input, ctx) => {
+        if (input.goal === "discoverer") {
+          ctx.emit.message("discoverer step 1");
+          const collection = getOrCreateTaskCollection({
+            ctx,
+            backing: "sequencer",
+            collectionId: "fanout",
+            sequencer: ctx.getTarget("fanout")!,
+          });
+          await collection.addTask({ id: "analyzer", goal: "analyzer" });
+          await analyzerEmitted.promise;
+          ctx.emit.message("discoverer step 2");
+        } else {
+          ctx.emit.message("analyzer step 1");
+          analyzerEmitted.resolve();
+        }
+        return { ack: input.goal };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "fanout",
+      collection: { collectionId: "fanout" },
+      concurrency: 2,
+      dispatcher: "fifo",
+      workers: worker,
+      initialTasks: [{ id: "discoverer", goal: "discoverer" }],
+      idlePollMs: 5,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    const windows = extractTaskItemWindows(result.items as OutputItem[], "fanout");
+    expect(messagesFor(windows, "discoverer")).toEqual([
+      "discoverer step 1",
+      "discoverer step 2",
+    ]);
+    expect(messagesFor(windows, "analyzer")).toEqual(["analyzer step 1"]);
+  });
+
+  it("sequential tasks on one worker attribute to their own task", async () => {
+    // One worker (concurrency 1) runs t1 then t2. Their execution paths are
+    // identical (loopBack reuses the path); only the emit-time taskId stamp
+    // separates them.
+    const worker = handler({
+      name: "worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ack: z.string() }),
+      execute: async (input, ctx) => {
+        ctx.emit.message(`work:${input.goal}`);
+        return { ack: input.goal };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "seq",
+      collection: { collectionId: "seq" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: worker,
+      initialTasks: [
+        { id: "t1", goal: "t1" },
+        { id: "t2", goal: "t2" },
+      ],
+      idlePollMs: 5,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    const windows = extractTaskItemWindows(result.items as OutputItem[], "seq");
+    expect(messagesFor(windows, "t1")).toEqual(["work:t1"]);
+    expect(messagesFor(windows, "t2")).toEqual(["work:t2"]);
+  });
 });

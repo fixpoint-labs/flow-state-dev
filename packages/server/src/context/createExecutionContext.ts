@@ -1424,6 +1424,12 @@ type EmissionContext = {
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
   /**
+   * Task attribution (FIX-658) — id of the task this scope is running, inherited
+   * from the nearest enclosing scope marked via `ctx._markTaskScope`. Stamped
+   * onto every item this scope emits.
+   */
+  taskId?: string;
+  /**
    * Agent identity that scope-emitted items inherit. Set by the owning
    * generator; undefined at the root (runtime-level emissions carry no
    * identity). Callers may override per-emission via options.
@@ -1462,6 +1468,7 @@ function createEmitMessage(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
@@ -1519,6 +1526,7 @@ function createEmitComponent(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       component,
@@ -1988,6 +1996,7 @@ function createEmitStatus(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       message: slot.message,
       blocked: options?.blocked,
       backgroundTasks: options?.backgroundTasks
@@ -2975,6 +2984,14 @@ export async function createExecutionContext<
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
     result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
     previous?: ExecutionParentNode;
+    /**
+     * Task id marked on this scope via `ctx._markTaskScope`. Descendant scopes
+     * walk `previous` to find the nearest marked ancestor and inherit it as
+     * `emCtx.taskId` / `_blockIdentity.taskId`, which emit sites stamp onto
+     * items. Mutable: a worker body marks its enclosing sequencer node at
+     * runtime, before constructing the child scopes that do the work.
+     */
+    scopeTaskId?: string;
   };
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
@@ -3491,6 +3508,26 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
+      // as running `taskId`. The task-board worker body calls this once per
+      // claimed task; child scopes constructed afterward inherit it (see the
+      // `scopeTaskId` walk in `_withExecutionScope`). Writing to the shared
+      // node object means a later sibling step sees the mark even though the
+      // marking step has already returned. Each `.loopBack` turn runs in a
+      // fresh node, so sequential tasks of one worker stay separated even when
+      // their execution paths are identical.
+      _markTaskScope: (taskId: string | null): void => {
+        for (
+          let node: ExecutionParentNode | undefined = parentChain;
+          node !== undefined;
+          node = node.previous
+        ) {
+          if (node.parent.kind === "sequencer") {
+            node.scopeTaskId = taskId ?? undefined;
+            return;
+          }
+        }
+      },
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
@@ -3549,6 +3586,7 @@ export async function createExecutionContext<
               },
               ts: containerStartedAt,
               ownedBy: activeEmCtx.ownedBy,
+              taskId: activeEmCtx.taskId,
               blockName: resolvedParent.name,
               component: resolvedParent.container.component,
               label: resolvedParent.container.label,
@@ -3575,6 +3613,19 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        // Task attribution (FIX-658): inherit the nearest enclosing scope's
+        // marked task id. Resolved at construction — a worker body marks its
+        // enclosing sequencer node before constructing the steps that emit, so
+        // those steps' chains see the mark here. Re-resolved per scope (not
+        // copied from the parent emCtx) because the mark lands after the
+        // parent scope's emCtx was built.
+        let resolvedTaskId: string | undefined;
+        for (let node: ExecutionParentNode | undefined = childChain; node !== undefined; node = node.previous) {
+          if (node.scopeTaskId !== undefined) {
+            resolvedTaskId = node.scopeTaskId;
+            break;
+          }
+        }
         const childPhase = resolvedParent.phase ?? "main";
         // Each scope starts with no identity. Generators that declare an
         // `agentType` stamp it directly on the items they emit; other
@@ -3594,6 +3645,7 @@ export async function createExecutionContext<
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
+          taskId: resolvedTaskId,
         };
         // FIX-663: propagate the signal down the scope chain. An explicit
         // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
@@ -3616,6 +3668,7 @@ export async function createExecutionContext<
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
+          taskId: childEmCtx.taskId,
           phase: resolvedParent.phase ?? "main",
           blockPath: resolvedParent.path,
           transient: resolvedParent.transient
