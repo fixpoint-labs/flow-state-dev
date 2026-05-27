@@ -24,7 +24,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void> {
       await executor.query(
         `INSERT INTO resource_state (scope_type, scope_id, resource_key, state)
-         VALUES ($1, $2, $3, $4)
+         VALUES ($1, $2, $3, $4::jsonb)
          ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET state = EXCLUDED.state`,
         [scopeType, scopeId, resourceKey, JSON.stringify(state)]
       );
