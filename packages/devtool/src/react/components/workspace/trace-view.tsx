@@ -403,11 +403,13 @@ function BlockIOPreview({ node, depth }: { node: TraceNode; depth: number }) {
 
   const preview = useMemo(() => {
     if (!trace) return undefined;
+    // Empty/whitespace-only values normalise to undefined so the row doesn't
+    // render a dangling `in`/`out` label with no text.
     const input = trace.input?.source !== undefined
-      ? compactValuePreview(trace.input.source, getItem)
+      ? compactValuePreview(trace.input.source, getItem) || undefined
       : undefined;
     const output = trace.output !== undefined
-      ? compactValuePreview(trace.output, getItem)
+      ? compactValuePreview(trace.output, getItem) || undefined
       : undefined;
     if (input === undefined && output === undefined) return undefined;
     return { input, output };
