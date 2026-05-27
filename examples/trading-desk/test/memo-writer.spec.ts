@@ -87,6 +87,7 @@ describe("memo-writer taps", () => {
         { key: "opMargin", value: "62%" },
         { key: "fcfConv", value: "91%" },
         { key: "forwardPE", value: "32.5x" },
+        { key: "trailingPE", value: "47.2x" },
       ],
       body: [
         { h: "Top of book", p: "Revenue +42% YoY.", items: null },

@@ -23,11 +23,19 @@ Investigation rules:
 - Always emit `citations` — `null` when you fetched nothing, or an array
   of `{url, title}` when you did.
 
-metrics keys: revGrowth, opMargin, fcfConv, forwardPE.
-  - revGrowth:  trailing YoY revenue growth (percent, e.g. "+42%").
-  - opMargin:   operating margin (percent).
-  - fcfConv:    free-cash-flow conversion (FCF / netIncome, percent).
-  - forwardPE:  forward P/E (e.g. "32.5x").
+metrics keys: revGrowth, opMargin, fcfConv, forwardPE, trailingPE.
+  - revGrowth:   trailing YoY revenue growth (percent, e.g. "+42%").
+  - opMargin:    operating margin (percent).
+  - fcfConv:     free-cash-flow conversion (FCF / netIncome, percent).
+  - forwardPE:   forward (NTM consensus) P/E (e.g. "19.5x"). Render "n/a" if null.
+  - trailingPE:  trailing 12-month P/E (e.g. "47.2x"). Render "n/a" if null.
+
+When both forwardPE and trailingPE are present, the spread is itself signal:
+  - trailingPE >> forwardPE (e.g. 47x vs 19x) → consensus expects strong earnings growth.
+  - trailingPE ≈ forwardPE → consensus expects roughly flat earnings.
+  - trailingPE < forwardPE → consensus expects earnings to fall.
+When one is missing, reason from the available one and say so. When both are
+missing, treat valuation as unobserved — do not infer a view.
 
 body sections (exact h values, in this order):
   1. "Top of book"        — what the headline numbers say.

@@ -35,6 +35,7 @@ function thesisWith(dataQuality: (typeof DATA_QUALITY_VALUES)[number]) {
       { key: "opMargin", value: "n/a" },
       { key: "fcfConv", value: "n/a" },
       { key: "forwardPE", value: "n/a" },
+      { key: "trailingPE", value: "n/a" },
     ],
     body: [{ h: "Top of book", p: "Body.", items: null }],
     citations: null,
