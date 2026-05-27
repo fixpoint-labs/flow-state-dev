@@ -18,6 +18,8 @@ const PARALLEL_SEARCH_ENDPOINT = "https://api.parallel.ai/v1/search";
 export const parallelAdapter: SearchProviderAdapter = {
   name: "parallel",
   async search(query, options): Promise<SearchOutput> {
+    // `options.topic` is intentionally not forwarded: Parallel's /v1/search has
+    // no topic/category filter. The objective string is the only intent channel.
     const response = await globalThis.fetch(PARALLEL_SEARCH_ENDPOINT, {
       method: "POST",
       headers: {
