@@ -344,12 +344,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * — wire-identical to pre-FIX-610 behavior. Pattern factories like
    * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
    *
-   * Typed as `unknown` here so consumers of the public
-   * `TaskBoardConfig` don't need to import the policy type until they
-   * actually construct one. The concrete shape is `TaskFlowPolicy`
-   * from `@flow-state-dev/tasks`.
+   * Per-board flow policy. Decides which prior-task observations a
+   * soon-to-dispatch worker sees on `TaskWorkerInput.priorWork`.
+   * Default: `flowPolicy.declaredDepsOnly()`. Pattern factories like
+   * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
    */
-  flowPolicy?: unknown;
+  flowPolicy?: import("@flow-state-dev/tasks").TaskFlowPolicy;
 }
 
 /**
