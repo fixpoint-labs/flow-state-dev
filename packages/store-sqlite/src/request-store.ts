@@ -346,6 +346,10 @@ export function createSQLiteRequestStore(
       return result;
     },
 
+    patchField: base.patchField,
+    incField: base.incField,
+    pushToArray: base.pushToArray,
+
     async delete(id: string): Promise<void> {
       // Clear the tracking maps FIRST. A `persistItems` microtask queued
       // before this call drains on the next await below; discarding its
