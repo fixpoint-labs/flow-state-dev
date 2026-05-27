@@ -56,9 +56,11 @@ describe("parallelAdapter", () => {
       body: JSON.stringify({
         objective: "parallel query",
         search_queries: ["parallel query"],
-        max_results: 5,
-        max_chars_per_result: 1500,
         mode: "agentic",
+        advanced_settings: {
+          max_results: 5,
+          excerpt_settings: { max_chars_per_result: 1500 },
+        },
       }),
     });
   });
@@ -109,9 +111,11 @@ describe("parallelAdapter", () => {
         body: JSON.stringify({
           objective: "query",
           search_queries: ["query"],
-          max_results: 5,
-          max_chars_per_result: 6000,
           mode: "one-shot",
+          advanced_settings: {
+            max_results: 5,
+            excerpt_settings: { max_chars_per_result: 6000 },
+          },
         }),
       })
     );

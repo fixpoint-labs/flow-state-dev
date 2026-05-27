@@ -29,10 +29,15 @@ export const parallelAdapter: SearchProviderAdapter = {
       body: JSON.stringify({
         objective: query,
         search_queries: [query],
-        max_results: options.maxResults,
-        // Parallel truncates softly; size the response off the shared depth knob.
-        max_chars_per_result: options.searchDepth === "advanced" ? 6000 : 1500,
         mode: options.searchMode ?? "agentic",
+        advanced_settings: {
+          max_results: options.maxResults,
+          excerpt_settings: {
+            // Parallel truncates softly; size the response off the shared depth knob.
+            max_chars_per_result:
+              options.searchDepth === "advanced" ? 6000 : 1500,
+          },
+        },
       }),
     });
 
