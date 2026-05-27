@@ -166,13 +166,16 @@ function TradingDeskApp(): ReactElement {
       ?.alignment ?? null;
 
   // Status-bar badge: only shown when a thesis was provided for this run.
-  // `pending` until the p6 memo publishes, then the alignment verdict.
+  // `pending` while in flight, the alignment verdict once published, and
+  // `error` if the Phase 6 audit failed (so it doesn't read "pending" forever).
   const thesisBadge: string | undefined =
     liveUserThesis === null
       ? undefined
       : memoStatus.thesisAlignment === "published" && thesisAlignment !== null
         ? thesisAlignment
-        : "pending";
+        : memoStatus.thesisAlignment === "error"
+          ? "error"
+          : "pending";
 
   // The current input tuple identifies which persisted session this view maps
   // to. Sessions are keyed by `===` match on all four fields.
