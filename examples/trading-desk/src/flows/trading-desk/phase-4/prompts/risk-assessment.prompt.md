@@ -37,35 +37,6 @@ Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `u
 {% render 'shared-output-preamble' %}
 </system>
 
-<context>
-{%- comment -%}
-  Author-owned context ordering. The consolidator reads the three persona
-  critiques first (they are the primary input it filters), then the trade
-  proposal and thesis it weighs against, then the full-preset-only analyst
-  memos and debate transcript as supporting depth. Identity tags
-  (ticker/date/userInstructions) lead so the model anchors before reading
-  the critiques.
-
-  Rendered by iterating the aggregated `config.context` map in this author-
-  chosen order. A direct `config.context.<tag>` lookup throws under Liquid
-  strictVariables when the tag is absent (a different `uses` set, or a
-  `*Full` preset off the `full` cost path), so we match by iterating the
-  map and emit only tags that are present and non-empty. The shared
-  grounding clause is a positional context string, so the framework still
-  appends it as its own system message independent of this block.
-{%- endcomment -%}
-{%- assign order = "ticker,date,userInstructions,aggressiveCritique,conservativeCritique,neutralCritique,tradeProposal,tradeProposalFields,investmentThesis,investmentThesisFields,phase1Memos,phase2Debate" | split: "," -%}
-{%- for name in order -%}
-  {%- for pair in config.context -%}
-    {%- if pair[0] == name and pair[1] != "" -%}
-<{{ name }}>
-{{ pair[1] }}
-</{{ name }}>
-{% endif -%}
-  {%- endfor -%}
-{%- endfor -%}
-</context>
-
 <user>
 Now write the published RiskAssessment.
 </user>

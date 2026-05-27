@@ -21,17 +21,17 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_2_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
 
-const bullConsolidationPrompt = loadDeskPrompt(
+const bullConsolidationPrompt = loadPrompt(
   "phase-2/prompts/bull-consolidation.prompt.md"
 );
-const bearConsolidationPrompt = loadDeskPrompt(
+const bearConsolidationPrompt = loadPrompt(
   "phase-2/prompts/bear-consolidation.prompt.md"
 );
-const researchManagerPrompt = loadDeskPrompt(
+const researchManagerPrompt = loadPrompt(
   "phase-2/prompts/research-manager.prompt.md"
 );
 

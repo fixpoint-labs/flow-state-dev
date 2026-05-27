@@ -5,7 +5,7 @@
  * injected into Round Robin's default roster agent. The pattern handles
  * the rest of the prompt (prior contributions, round number, goal). The
  * consolidation + research-manager system prompts now live as `.md`
- * prompt files under `phase-2/prompts/`, loaded via `loadDeskPrompt`.
+ * prompt files under `phase-2/prompts/`, loaded via `loadPrompt`.
  */
 
 /** Bull researcher's role inside the Round Robin loop. */

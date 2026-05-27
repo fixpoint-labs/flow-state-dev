@@ -28,14 +28,14 @@ import {
   formatPersonaCritique,
   tradingDesk,
 } from "../capability";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 import { personaCritiqueOutputSchema } from "./schemas";
 
-const aggressivePrompt = loadDeskPrompt("phase-4/prompts/aggressive.prompt.md");
-const conservativePrompt = loadDeskPrompt(
+const aggressivePrompt = loadPrompt("phase-4/prompts/aggressive.prompt.md");
+const conservativePrompt = loadPrompt(
   "phase-4/prompts/conservative.prompt.md"
 );
-const neutralPrompt = loadDeskPrompt("phase-4/prompts/neutral.prompt.md");
+const neutralPrompt = loadPrompt("phase-4/prompts/neutral.prompt.md");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function memoState(ctx: any, collectionKey: string): unknown {

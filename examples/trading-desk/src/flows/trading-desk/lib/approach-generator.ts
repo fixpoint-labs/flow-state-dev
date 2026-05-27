@@ -47,7 +47,7 @@ export interface ApproachGeneratorConfig {
    *  `"Aggressive Risk critique"`. Substituted into the user template. */
   artifactName: string;
   /** System prompt — per-agent personality / stance / framing. A plain string
-   *  or a PromptFile-sourced prompt (`loadDeskPrompt(...).prompt`). */
+   *  or a PromptFile-sourced prompt (`loadPrompt(...).prompt`). */
   prompt: string | BrandedPromptSlot;
   /** Capability presets supplying the per-agent context the preview
    *  should reference. Lean by design: only the inputs the preamble

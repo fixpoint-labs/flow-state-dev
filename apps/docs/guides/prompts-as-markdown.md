@@ -106,7 +106,7 @@ Synthesize a thesis from the financial data provided.
 
 `{% render %}` runs the partial in an isolated scope, so the partial cannot accidentally read or clobber the caller's variables. That is the safer default. There is also `{% include %}`, which shares the caller's scope; reach for it only when you specifically need that.
 
-The example loads prompts through a small wrapper, `loadDeskPrompt`, built on `createPromptLoader` — it anchors paths at `process.cwd()` and points every `{% render %}` at the shared `_partials` directory, so each call site is just a filename. Anchoring at the working directory rather than `import.meta.url` is a deliberate call here, because the Next.js bundler makes `import.meta.url` unreliable for resolving sibling files. If your app bundles prompts, watch for the same issue.
+The example builds its loader once with `createPromptLoader` and exports it as `loadPrompt` — it anchors paths at `process.cwd()` and points every `{% render %}` at the shared `_partials` directory, so each call site is just a filename. Anchoring at the working directory rather than `import.meta.url` is a deliberate call here, because the Next.js bundler makes `import.meta.url` unreliable for resolving sibling files. If your app bundles prompts, watch for the same issue.
 
 ### Reaching for context override
 

@@ -17,10 +17,10 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { PHASE_4_MEMO_KEYS } from "../agents";
 import { sessionStateSchema } from "../state";
 import { tradingDesk } from "../capability";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 import { riskAssessmentOutputSchema } from "./schemas";
 
-const riskAssessmentPrompt = loadDeskPrompt(
+const riskAssessmentPrompt = loadPrompt(
   "phase-4/prompts/risk-assessment.prompt.md"
 );
 

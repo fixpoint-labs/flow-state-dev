@@ -14,9 +14,9 @@
 import { PHASE_5_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { createApproachGenerator } from "../lib/approach-generator";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 
-const portfolioManagerApproachPrompt = loadDeskPrompt(
+const portfolioManagerApproachPrompt = loadPrompt(
   "phase-5/prompts/portfolio-manager-approach.prompt.md"
 );
 

@@ -26,9 +26,9 @@ import { PHASE_5_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 
-const portfolioManagerPrompt = loadDeskPrompt(
+const portfolioManagerPrompt = loadPrompt(
   "phase-5/prompts/portfolio-manager.prompt.md"
 );
 

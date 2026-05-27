@@ -23,7 +23,7 @@ import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { asDataBlock } from "../lib/helpers";
-import { loadDeskPrompt } from "../lib/prompt";
+import { loadPrompt } from "../lib/prompt";
 import { defineAnalyst } from "./analyst";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
@@ -47,13 +47,13 @@ import {
 } from "./tools";
 import { toolOutputSchemas } from "./tools/schemas";
 
-const fundamentalsPrompt = loadDeskPrompt(
+const fundamentalsPrompt = loadPrompt(
   "phase-1/prompts/fundamentals.prompt.md"
 );
-const technicalPrompt = loadDeskPrompt("phase-1/prompts/technical.prompt.md");
-const newsPrompt = loadDeskPrompt("phase-1/prompts/news.prompt.md");
-const sentimentPrompt = loadDeskPrompt("phase-1/prompts/sentiment.prompt.md");
-const companyProfilePrompt = loadDeskPrompt(
+const technicalPrompt = loadPrompt("phase-1/prompts/technical.prompt.md");
+const newsPrompt = loadPrompt("phase-1/prompts/news.prompt.md");
+const sentimentPrompt = loadPrompt("phase-1/prompts/sentiment.prompt.md");
+const companyProfilePrompt = loadPrompt(
   "phase-1/prompts/company-profile.prompt.md"
 );
 
