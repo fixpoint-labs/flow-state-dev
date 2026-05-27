@@ -57,7 +57,6 @@
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/skills": "workspace:*",
     "@flow-state-dev/tasks": "workspace:*",
-    "@flow-state-dev/utilities-task-flow": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

@@ -93,3 +93,22 @@ export {
   type DispatchAndExecuteOptions,
   type DispatchAndExecuteResult,
 } from "./helpers/dispatch-and-execute";
+
+// Flow policy — observation ledger + per-task selection policies that
+// shape `TaskWorkerInput.priorWork` for Task Board worker dispatches.
+export {
+  bindObservationLedger,
+  createObservationLedger,
+  createObservationLedgerCapability,
+  flowPolicy,
+  formatPriorWork,
+} from "./flow-policy";
+export type {
+  CreateObservationLedgerCapabilityOptions,
+  Observation,
+  ObservationLedger,
+  ObservationLedgerAccessor,
+  ObservationLedgerView,
+  TaskFlowPolicy,
+  TaskPriorWork,
+} from "./flow-policy";

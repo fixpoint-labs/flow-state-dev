@@ -1,17 +1,18 @@
 /**
  * Unit tests for the built-in `flowPolicy.*` selectors and the
- * observation ledger they read from (FIX-610 Wave 2, Layer A).
+ * observation ledger they read from.
  *
  * Policies operate on a `ObservationLedgerView`, an optional
  * `TaskCollectionRef` and a `Task`. We build all three by hand here so
  * the tests don't drag the Task Board substrate in.
  */
 import { describe, expect, it } from "vitest";
-import type { Task, TaskCollectionRef } from "@flow-state-dev/tasks";
 import {
   createObservationLedger,
   flowPolicy,
   type Observation,
+  type Task,
+  type TaskCollectionRef,
 } from "../src/index";
 
 // ---------------------------------------------------------------------------

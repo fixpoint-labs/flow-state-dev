@@ -42,6 +42,17 @@ export type {
 
 export { defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
+export {
+  bindToolCacheStore,
+  createInMemoryToolCacheStore,
+  createToolCacheCapability,
+} from "./blocks/tool-cache";
+export type {
+  CreateToolCacheCapabilityOptions,
+  ToolCacheAccessor,
+  ToolCacheEntry,
+  ToolCacheStore,
+} from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,

@@ -1,13 +1,13 @@
 /**
  * Tool-call memoization wrapping (FIX-610 Wave 1).
  *
- * `wrapToolExecuteWithCache` composes around the original
- * `compileToolsWithExecute` `execute` closure, intercepting calls on
- * tools whose `BlockConfig.cacheable` is set. Cache hits emit a
- * `tool_output` item carrying `cached: true` (and `sourceTask` when the
- * hit crossed a task boundary). Misses run the original closure and
- * write to the cache afterward unless the call threw or `cacheIf`
- * returned false.
+ * `compileToolsWithExecute` (in `../generator.ts`) wraps each tool's
+ * `execute` closure with the caching path defined in this module,
+ * intercepting calls on tools whose `BlockConfig.cacheable` is set.
+ * Cache hits emit a `tool_output` item carrying `cached: true` (and
+ * `sourceTask` when the hit crossed a task boundary). Misses run the
+ * original closure and write to the cache afterward unless the call
+ * threw or `cacheIf` returned false.
  *
  * The cache itself is a `Map<string, CacheEntry>` resolved per-call
  * from the active `BlockContext` via `resolveToolCacheStore`. The
@@ -21,41 +21,13 @@
  * each execute; last writer wins for the cache entry.
  */
 import type { BlockContext, BlockCacheableConfig } from "../../types/block";
+import type { ToolCacheEntry, ToolCacheStore } from "../tool-cache";
 
-/** One cached entry. Stored in the resolved tool-cache store. */
-export interface ToolCacheEntry {
-  /** The tool's resolved output. Cached verbatim — consumer reads the same value the upstream produced. */
-  output: unknown;
-  /** Wall-clock millis (`Date.now()`) when the entry was written. */
-  storedAt: number;
-  /** Resolved TTL applied to this entry, in ms. `undefined` = no expiry beyond the store's default. */
-  ttl?: number;
-  /** Name of the tool that produced the entry — used for invalidate-by-prefix. */
-  toolName: string;
-  /**
-   * Attribution back to the task whose original call populated this
-   * entry, when the call ran inside a Task Board worker. A later
-   * cache-hit emit uses this to stamp `sourceTask` on its `tool_output`
-   * item.
-   */
-  sourceTask?: { collectionId: string; taskId: string };
-}
-
-/**
- * Store accessor surfaced by the active `BlockContext` when a cache is
- * available (Task Board with `toolCache` enabled, or a generator that
- * uses `createToolCacheCapability` directly). Returning `undefined`
- * means no cache is installed and the wrapper degrades to a no-op
- * passthrough.
- */
-export interface ToolCacheStore {
-  /** Default TTL applied to entries that don't specify one. */
-  defaultTtl?: number;
-  /** Default scope for entries that don't specify one. */
-  defaultScope?: "run" | "request" | "session";
-  get(key: string): ToolCacheEntry | undefined;
-  set(key: string, entry: ToolCacheEntry): void;
-}
+// Re-export the public types so existing internal consumers
+// (`generator.ts`, etc.) keep their import paths stable. The shapes
+// themselves live in `../tool-cache` where the in-memory implementation
+// also lives.
+export type { ToolCacheEntry, ToolCacheStore } from "../tool-cache";
 
 /**
  * Resolution hook installed by Task Board / capability code on
