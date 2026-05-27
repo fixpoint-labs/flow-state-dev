@@ -142,6 +142,22 @@ describe("find_counter_evidence", () => {
     expect(matches).toEqual([]);
   });
 
+  it("still matches a verbatim hit when the claim is all stopwords (empty token set)", async () => {
+    // Regression: the verbatim bonus must be non-zero even when every claim
+    // word is filtered out as a stopword/short token, otherwise a direct hit
+    // scores 0 and is dropped.
+    const claim = "is not in it or by"; // 18 chars, all stopwords
+    const result = await run({
+      claim,
+      opposingMemo: "fundamentals",
+      memoParagraph: `The risk is not in it or by itself material.`,
+    });
+    expect(result.error).toBeNull();
+    const matches = (result.output as { matches: Array<{ source: string }> }).matches;
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches[0].source).toBe("memo:fundamentals");
+  });
+
   it("rejects a claim shorter than the schema minimum", async () => {
     const result = await testBlock(find_counter_evidence, {
       input: { claim: "short", opposingMemo: "fundamentals" },

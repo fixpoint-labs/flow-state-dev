@@ -51,14 +51,17 @@ function tokenize(text: string): string[] {
 type Candidate = { source: string; text: string };
 
 /** Score a candidate by distinct claim-keyword overlap, with a strong bonus
- *  when the candidate contains the claim verbatim. Zero means no match. */
+ *  when the candidate contains the claim verbatim. The verbatim bonus is
+ *  `claimTokens.size + 1` so a verbatim hit always scores ≥1 even when the
+ *  claim is entirely stopwords/short tokens (empty token set). Zero means no
+ *  match. */
 function score(candidate: string, claimTokens: Set<string>, claim: string): number {
   const lower = candidate.toLowerCase();
   let overlap = 0;
   for (const token of claimTokens) {
     if (lower.includes(token)) overlap++;
   }
-  if (lower.includes(claim.toLowerCase())) overlap += claimTokens.size;
+  if (lower.includes(claim.toLowerCase())) overlap += claimTokens.size + 1;
   return overlap;
 }
 
@@ -72,7 +75,7 @@ export const find_counter_evidence = handler({
   description:
     "Closed-world search for evidence against a specific claim. Searches the " +
     "named analyst memo and the current Phase 2 debate transcript only. Does " +
-    "NOT access the open web. Returns up to 3 supporting excerpts.",
+    "NOT access the open web. Returns up to 3 counter-evidence excerpts.",
   inputSchema: z.object({
     claim: z.string().min(10),
     opposingMemo: z.enum(ANALYST_KEYS),
