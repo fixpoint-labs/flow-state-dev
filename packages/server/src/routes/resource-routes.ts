@@ -9,7 +9,7 @@ import type {
   CollectionClientConfig,
   JsonObject,
 } from "@flow-state-dev/core/types";
-import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -170,38 +170,28 @@ export async function handleCreateCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  const existing = (session.resources as Record<string, unknown> | undefined)?.[storageKey];
+  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
   if (existing !== undefined) {
     return jsonResponse(409, { error: `Item "${topic}" already exists` });
   }
 
   // Seed default state from schema
   const defaultState = config.stateSchema.safeParse({});
-  const initialState = defaultState.success && isJsonObject(defaultState.data) ? defaultState.data : {};
-
-  const resources = { ...(session.resources ?? {}) } as Record<string, unknown>;
-  resources[storageKey] = initialState;
+  const initialState: JsonObject =
+    defaultState.success && isJsonObject(defaultState.data) ? defaultState.data : {};
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
-  // Write content before the session record. A failed session.set then leaves
-  // orphaned content under a key that doesn't yet exist in `resources`, so a
-  // client retry can re-create the item (the same content key is harmlessly
-  // overwritten). Writing the record first would commit the resource entry
-  // and let a content failure trip the 409 guard on retry, with no recovery.
+  // Write content before the state key. A failed state write then leaves
+  // orphaned content under a key whose state doesn't yet exist, so a client
+  // retry can re-create the item (the same content key is harmlessly
+  // overwritten). Writing the state entry first would commit the resource and
+  // let a content failure trip the 409 guard on retry, with no recovery.
   if (content !== undefined) {
-    await ctx.stores.content.set("session", route.sessionId, storageKey, content);
+    await ctx.stores.content.set("session", session.id, storageKey, content);
   }
 
-  await ctx.stores.session.set(
-    route.sessionId,
-    {
-      ...session,
-      resources: resources as Record<string, JsonObject>,
-      updatedAt: Date.now()
-    },
-    "any"
-  );
+  await ctx.stores.resourceState.set("session", session.id, storageKey, initialState);
 
   return jsonResponse(201, { topic: topic.trim() });
 }
@@ -250,13 +240,13 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  const existing = (session.resources as Record<string, unknown> | undefined)?.[storageKey];
+  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
   // Write to ContentStore (the canonical content location during execution).
-  await ctx.stores.content.set("session", route.sessionId, storageKey, content);
+  await ctx.stores.content.set("session", session.id, storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -335,7 +325,12 @@ export async function handleListCollectionState(
     return jsonResponse(400, { error: "offset must be >= 0" });
   }
 
-  const persisted = (session.resources ?? {}) as Record<string, unknown>;
+  // Read only this collection's keys (its pattern prefix) instead of the whole
+  // scope. An empty prefix (e.g. `[topic]/observations`) falls back to getAll.
+  const keyPrefix = getPatternPrefix(config.pattern);
+  const persisted = keyPrefix
+    ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
+    : await ctx.stores.resourceState.getAll("session", session.id);
   const matchedKeys = Object.keys(persisted)
     .filter((k) => matchesPattern(config.pattern, k))
     .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
@@ -413,8 +408,7 @@ export async function handleGetCollectionItemState(
     }
   }
 
-  const persisted = (session.resources ?? {}) as Record<string, unknown>;
-  const value = persisted[storageKey];
+  const value = await ctx.stores.resourceState.get("session", session.id, storageKey);
   if (value === undefined) {
     // 200 + null body: the topic isn't present, but the collection itself is
     // readable. Distinguishes "no such item" from "no permission" or "no
@@ -562,21 +556,9 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  const resources = { ...(session.resources ?? {}) } as Record<string, unknown>;
-
-  delete resources[storageKey];
-
   await Promise.all([
-    ctx.stores.session.set(
-      route.sessionId,
-      {
-        ...session,
-        resources: resources as Record<string, JsonObject>,
-        updatedAt: Date.now()
-      },
-      "any"
-    ),
-    ctx.stores.content.delete("session", route.sessionId, storageKey),
+    ctx.stores.resourceState.delete("session", session.id, storageKey),
+    ctx.stores.content.delete("session", session.id, storageKey),
   ]);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });

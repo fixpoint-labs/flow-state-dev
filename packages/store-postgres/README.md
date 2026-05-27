@@ -128,6 +128,8 @@ The schema uses:
 | `users` | `id` | User-scoped state and resources |
 | `projects` | `id` | Project-scoped state and resources |
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
+| `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
+| `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 

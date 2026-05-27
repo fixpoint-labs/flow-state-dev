@@ -779,6 +779,36 @@ describe("SQLite store adapter", () => {
     });
   });
 
+  describe("resource state store", () => {
+    it("set then get round-trips JSON state", async () => {
+      const s = freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
+        language: "ts",
+        lines: 10
+      });
+    });
+
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
+      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+
+      expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": { v: 1 },
+        "files/b.ts": { v: 2 }
+      });
+    });
+
+    it("delete removes a single key", async () => {
+      const s = freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
+      await s.resourceState.delete("session", "s1", "files/a.ts");
+      expect(await s.resourceState.get("session", "s1", "files/a.ts")).toBeUndefined();
+    });
+  });
+
   // --- User Store ---
 
   describe("user store", () => {

@@ -424,6 +424,49 @@ describe("PostgreSQL store adapter", () => {
     });
   });
 
+  describe("resource state store", () => {
+    it("set then get round-trips JSONB state", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
+        language: "ts",
+        lines: 10
+      });
+    });
+
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
+      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+
+      expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": { v: 1 },
+        "files/b.ts": { v: 2 }
+      });
+    });
+
+    it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "a_b/1", { v: "match" });
+      await s.resourceState.set("session", "s1", "axb/1", { v: "no" });
+      await s.resourceState.set("session", "s1", "other", { v: "no" });
+
+      expect(await s.resourceState.getByPrefix("session", "s1", "a_b/")).toEqual({
+        "a_b/1": { v: "match" }
+      });
+    });
+
+    it("set overwrites and delete removes a single key", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "k", { v: 1 });
+      await s.resourceState.set("session", "s1", "k", { v: 2 });
+      expect(await s.resourceState.get("session", "s1", "k")).toEqual({ v: 2 });
+      await s.resourceState.delete("session", "s1", "k");
+      expect(await s.resourceState.get("session", "s1", "k")).toBeUndefined();
+    });
+  });
+
   // --- FIX-657: request_items table ---
 
   describe("request_items (FIX-657)", () => {

@@ -102,6 +102,20 @@ Resource content is persisted separately from scope record metadata via `Content
 
 See the [server README](../../packages/server/README.md) for `ContentStore` interface details and custom adapter instructions.
 
+### State Storage
+
+Resource *state* (the structured `JsonObject` each resource carries, as opposed to its content body) is persisted the same way content is: per-resource in a dedicated `ResourceStateStore`, keyed by `(scopeType, scopeId, resourceKey)`, separate from the scope record. This covers both single resources and collection instances under one store.
+
+The two stores are parallel but independent — a resource can have state with no content body, and vice versa — so they keep distinct payload types (`JsonObject` for state, `string` for content) and distinct adapters.
+
+The lifecycle mirrors content exactly:
+
+1. **Execution context** — declared resource state is eagerly loaded from `ResourceStateStore` into an in-memory cache at context creation. Reads during block execution are synchronous against the cache.
+2. **State writes persist per-key.** A mutation to one resource writes only that resource's key via `ResourceStateStore.set` — it never loads or rewrites the whole scope record. This removes the write amplification a collection of N instances previously paid (the whole `resources` map was rewritten on every single-instance change).
+3. **State routes / debug snapshot** — read resource state fresh from `ResourceStateStore`.
+
+The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
+
 ### Accessing Resources
 
 Resources are accessed through the flat `ctx.resources` registry — the resource's intrinsic `scope` routes reads and writes to the right storage layer.
