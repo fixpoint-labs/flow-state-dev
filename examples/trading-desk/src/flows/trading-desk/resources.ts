@@ -46,6 +46,27 @@ export const memoCitation = z.object({
 
 export type MemoCitation = z.infer<typeof memoCitation>;
 
+/** Phase 2 citation-integrity report (FIX-679). Produced deterministically
+ *  by `validateCitations` after the bull/bear debate, not by any LLM:
+ *  every `[memo:X "quote"]` tag in every debate contribution is substring-
+ *  checked against the named analyst memo. `invalidTags` lists the tags
+ *  whose quote did not appear verbatim. Persisted on the research-manager
+ *  memo and mirrored on session state so the RM generator's context
+ *  formatter can render it. */
+export const citationIntegritySchema = z.object({
+  tagsChecked: z.number(),
+  tagsValid: z.number(),
+  invalidTags: z.array(
+    z.object({
+      contribution: z.string(),
+      tag: z.string(),
+      attemptedQuote: z.string(),
+    }),
+  ),
+});
+
+export type CitationIntegrity = z.infer<typeof citationIntegritySchema>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -82,6 +103,11 @@ export const memoStateSchema = z.object({
   keyRisks: z.array(z.string()).nullable().default(null),
   keyOpportunities: z.array(z.string()).nullable().default(null),
   unresolvedDisagreements: z.array(z.string()).nullable().default(null),
+  // Phase 2 citation-integrity report (FIX-679). Only the research-manager
+  // memo populates this, projected from session state by the writer (the
+  // LLM never emits it). Null on every other memo and on runs that produced
+  // no tagged contributions.
+  citationIntegrity: citationIntegritySchema.nullable().default(null),
   // Phase 3 TradeProposal extension. Only the trader memo
   // (`memos/p3/trader`) populates these; all other memos leave them `null`.
   // Read by Phase 4+ to reason about the proposed trade.
