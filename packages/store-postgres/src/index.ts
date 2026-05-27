@@ -14,6 +14,7 @@ import { createPostgresUserStore } from "./user-store";
 import { createPostgresOrgStore } from "./org-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
+import { createPostgresResourceStateStore } from "./resource-state-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/server";
 import { createPgPoolTx } from "./tx";
@@ -187,6 +188,7 @@ export async function createPostgresStores(
       org: createPostgresOrgStore(executor),
       activeRequests: createPostgresActiveRequestRegistry(executor),
       content: createPostgresContentStore(executor),
+      resourceState: createPostgresResourceStateStore(executor),
       checkpoints: createPostgresCheckpointStore(executor),
       traces: createInMemoryTraceStore(),
       async close() {
@@ -206,6 +208,7 @@ export async function createPostgresStores(
     org: createPostgresOrgStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),
     content: createPostgresContentStore(executor),
+    resourceState: createPostgresResourceStateStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),
     traces: createInMemoryTraceStore(),
     async close() {
@@ -240,6 +243,7 @@ export {
   createPostgresOrgStore,
   createPostgresActiveRequestRegistry,
   createPostgresContentStore,
+  createPostgresResourceStateStore,
   createPostgresCheckpointStore
 };
 
