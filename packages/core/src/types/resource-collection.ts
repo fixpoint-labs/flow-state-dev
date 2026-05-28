@@ -69,6 +69,21 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   prefetchWindow?: number;
 
+  /**
+   * Controls how instances load into the execution context at request start.
+   * Distinct from `prefetchWindow` (which shapes the client SSE snapshot).
+   * - 'eager' (default): all matching instances loaded via getByPrefix at scope startup (current behavior).
+   * - 'lazy': nothing preloaded; get/getOptional/list/scan fetch from the store on demand.
+   * - 'partial': eagerly load the `recentLimit` lexicographically-highest keys (descending); the rest lazy.
+   *   Pair with a sortable key naming convention for "most-recent N" semantics.
+   */
+  prefetchMode?: 'eager' | 'lazy' | 'partial';
+  /**
+   * For `prefetchMode: 'partial'` only — number of lex-descending keys to load eagerly at scope startup.
+   * Required when prefetchMode === 'partial'; ignored otherwise.
+   */
+  recentLimit?: number;
+
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;
   /** Fires when a specific instance's state is updated. */
@@ -105,11 +120,11 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** Scope this collection is registered in. */
   scope: ScopeType;
 
-  /** Get an existing instance. Throws if not found. */
-  get(key: string | Record<string, string>): ResourceRef<TState>;
+  /** Get an existing instance. Throws if not found. Async to support lazy/partial prefetch modes. */
+  get(key: string | Record<string, string>): Promise<ResourceRef<TState>>;
 
-  /** Get an existing instance, or undefined if not found. */
-  getOptional(key: string | Record<string, string>): ResourceRef<TState> | undefined;
+  /** Get an existing instance, or undefined if not found. Async to support lazy/partial prefetch modes. */
+  getOptional(key: string | Record<string, string>): Promise<ResourceRef<TState> | undefined>;
 
   /**
    * Create a new instance.
@@ -154,14 +169,27 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
     createOnly?: Partial<TState>
   ): Promise<ResourceRef<TState>>;
 
-  /** List all instances, optionally filtered by prefix. */
-  list(prefix?: string): ResourceRef<TState>[];
+  /**
+   * One page of instance refs. End of pages ⇔ nextCursor === undefined.
+   * An empty items array with a defined nextCursor is legitimate (a prefix filter
+   * eliminated this page) — keep paging until nextCursor is undefined.
+   *
+   * `limit` defaults to 50 and is clamped to [1, 1000] by the server accessor.
+   * `cursor` is the opaque last-seen storage key from a prior page's `nextCursor`.
+   */
+  list(opts?: { limit?: number; cursor?: string; prefix?: string }): Promise<{ items: ResourceRef<TState>[]; nextCursor?: string }>;
+
+  /**
+   * Auto-paging async iterator over all instance refs (lex-ascending).
+   * Supports cancellation via AbortSignal — the next yield throws if aborted.
+   */
+  scan(opts?: { prefix?: string; signal?: AbortSignal; pageSize?: number }): AsyncIterableIterator<ResourceRef<TState>>;
 
   /** Delete an instance. No-op if the instance does not exist. */
   delete(key: string | Record<string, string>): Promise<void>;
 
-  /** Current instance count. */
-  count(): number;
+  /** Current instance count. Async to support lazy/partial prefetch modes. */
+  count(): Promise<number>;
 
   /** The collection's config. */
   config: Readonly<ResourceCollectionConfig>;
@@ -212,6 +240,45 @@ export function defineResourceCollection<
       // eslint-disable-next-line no-console
       console.warn(
         `defineResourceCollection(): prefetchWindow=${config.prefetchWindow} is large; prefetched items inflate every snapshot. Consider lazy reads via the list endpoint instead.`
+      );
+    }
+  }
+
+  if (
+    config.prefetchMode !== undefined &&
+    config.prefetchMode !== "eager" &&
+    config.prefetchMode !== "lazy" &&
+    config.prefetchMode !== "partial"
+  ) {
+    throw new Error(
+      `defineResourceCollection() prefetchMode must be "eager", "lazy", or "partial" (got ${JSON.stringify(config.prefetchMode)})`
+    );
+  }
+
+  if (config.prefetchMode === "partial") {
+    if (
+      config.recentLimit === undefined ||
+      !Number.isInteger(config.recentLimit) ||
+      config.recentLimit < 1
+    ) {
+      throw new Error(
+        `defineResourceCollection() prefetchMode:"partial" requires recentLimit to be a positive integer (got ${JSON.stringify(config.recentLimit)})`
+      );
+    }
+    if (config.recentLimit > 10_000) {
+      throw new Error(
+        `defineResourceCollection() recentLimit must not exceed 10000 (got ${config.recentLimit})`
+      );
+    }
+    if (config.maxInstances !== undefined && config.recentLimit > config.maxInstances) {
+      throw new Error(
+        `defineResourceCollection() recentLimit (${config.recentLimit}) must not exceed maxInstances (${config.maxInstances})`
+      );
+    }
+    if (config.recentLimit > 1_000) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `defineResourceCollection(): recentLimit=${config.recentLimit} is large; eagerly loading that many instances at scope startup inflates request latency and memory. Consider a smaller window with lazy reads.`
       );
     }
   }

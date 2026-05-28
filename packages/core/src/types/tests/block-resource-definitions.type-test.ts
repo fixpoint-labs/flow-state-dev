@@ -8,6 +8,9 @@ import { handler } from "../../blocks/handler";
 import { generator } from "../../blocks/generator";
 import { router } from "../../blocks/router";
 import { defineResource } from "../resource";
+import type { ResourceRef } from "../resource";
+import { defineResourceCollection } from "../resource-collection";
+import type { ResourceCollectionRef } from "../resource-collection";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends
@@ -45,7 +48,7 @@ const persistObs = handler({
     observations: observationsResource
   },
   execute: async (input, ctx) => {
-    const entries = ctx.resources.observations.state.entries;
+    const entries = (await ctx.resources.observations.state()).entries;
     const first = entries[0];
     void first?.text;
     void first?.score;
@@ -68,10 +71,10 @@ const multiScopeBlock = handler({
     artifacts: artifactsResource
   },
   execute: async (_input, ctx) => {
-    const obs = ctx.resources.observations.state.entries;
+    const obs = (await ctx.resources.observations.state()).entries;
     void obs;
 
-    const arts = ctx.resources.artifacts.state;
+    const arts = await ctx.resources.artifacts.state();
     const firstId = arts.order[0];
     void firstId;
 
@@ -90,13 +93,13 @@ const gen = generator({
     observations: observationsResource
   },
   model: "demo-model",
-  prompt: (_input, ctx) => {
-    const entries = ctx.resources.observations.state.entries;
+  prompt: async (_input, ctx) => {
+    const entries = (await ctx.resources.observations.state()).entries;
     return `You have ${entries.length} observations`;
   },
   context: [
-    (_input, ctx) => {
-      const entries = ctx.resources.observations.state.entries;
+    async (_input, ctx) => {
+      const entries = (await ctx.resources.observations.state()).entries;
       return entries.map((e: { text: string; score: number }) => e.text).join(", ");
     }
   ],
@@ -128,12 +131,65 @@ const routerWithResources = router({
     observations: observationsResource
   },
   routes: [routeA, routeB],
-  execute: (_input, ctx) => {
-    const count = ctx.resources.observations.state.entries.length;
+  execute: async (_input, ctx) => {
+    const count = (await ctx.resources.observations.state()).entries.length;
     return count > 0 ? routeA : routeB;
   }
 });
 void routerWithResources;
+
+// ── ResourceRef / ResourceCollectionRef async accessor surface (FIX-688) ──
+
+const filesCollection = defineResourceCollection({
+  pattern: "files/**",
+  scope: "session",
+  stateSchema: z.object({ language: z.string() })
+});
+void filesCollection;
+
+// A standalone ref's `state()` is an async method returning Readonly<TState>.
+type FileState = { language: string };
+type RefStateReturn = ReturnType<ResourceRef<FileState>["state"]>;
+type _RefStateIsPromise = Assert<Equals<RefStateReturn, Promise<Readonly<FileState>>>>;
+
+// The collection ref's accessors are fully async (FIX-688).
+declare const coll: ResourceCollectionRef<FileState>;
+
+type CollGetReturn = ReturnType<typeof coll.get>;
+type _CollGetIsPromise = Assert<Equals<CollGetReturn, Promise<ResourceRef<FileState>>>>;
+
+type CollGetOptionalReturn = ReturnType<typeof coll.getOptional>;
+type _CollGetOptionalIsPromise = Assert<
+  Equals<CollGetOptionalReturn, Promise<ResourceRef<FileState> | undefined>>
+>;
+
+type CollCountReturn = ReturnType<typeof coll.count>;
+type _CollCountIsPromise = Assert<Equals<CollCountReturn, Promise<number>>>;
+
+type CollListReturn = ReturnType<typeof coll.list>;
+type _CollListIsPagedPromise = Assert<
+  Equals<
+    CollListReturn,
+    Promise<{ items: ResourceRef<FileState>[]; nextCursor?: string }>
+  >
+>;
+
+type CollScanReturn = ReturnType<typeof coll.scan>;
+type _CollScanIsAsyncIterator = Assert<
+  Equals<CollScanReturn, AsyncIterableIterator<ResourceRef<FileState>>>
+>;
+
+// list() accepts the paging opts shape; scan() accepts an AbortSignal.
+async function _exerciseCollSurface(): Promise<void> {
+  const page = await coll.list({ limit: 10, cursor: "files/a", prefix: "files/" });
+  void page.items;
+  void page.nextCursor;
+  const ac = new AbortController();
+  for await (const ref of coll.scan({ prefix: "files/", signal: ac.signal, pageSize: 25 })) {
+    void (await ref.state()).language;
+  }
+}
+void _exerciseCollSurface;
 
 // ── BlockDefinition.declaredResources type check ──────────────────────
 

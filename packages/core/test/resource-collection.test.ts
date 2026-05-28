@@ -202,6 +202,147 @@ describe("defineResourceCollection", () => {
     }
   });
 
+  it("accepts prefetchMode: 'eager' | 'lazy'", () => {
+    expect(defineResourceCollection({
+      pattern: "files/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      prefetchMode: "eager",
+    }).prefetchMode).toBe("eager");
+    expect(defineResourceCollection({
+      pattern: "files/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      prefetchMode: "lazy",
+    }).prefetchMode).toBe("lazy");
+  });
+
+  it("rejects an unknown prefetchMode value", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        // @ts-expect-error: unknown prefetchMode value
+        prefetchMode: "bogus",
+      })
+    ).toThrow("prefetchMode");
+  });
+
+  it("accepts prefetchMode: 'partial' with a valid recentLimit", () => {
+    const coll = defineResourceCollection({
+      pattern: "files/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      prefetchMode: "partial",
+      recentLimit: 20,
+    });
+    expect(coll.prefetchMode).toBe("partial");
+    expect(coll.recentLimit).toBe(20);
+  });
+
+  it("rejects prefetchMode: 'partial' without recentLimit", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+      })
+    ).toThrow("recentLimit");
+  });
+
+  it("rejects prefetchMode: 'partial' with a non-positive recentLimit", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 0,
+      })
+    ).toThrow("recentLimit");
+  });
+
+  it("rejects prefetchMode: 'partial' with a non-integer recentLimit", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 1.5,
+      })
+    ).toThrow("recentLimit");
+  });
+
+  it("rejects recentLimit above the 10_000 hard max", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 10_001,
+      })
+    ).toThrow("recentLimit");
+  });
+
+  it("warns (does not throw) when recentLimit exceeds 1_000", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const coll = defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 2_000,
+      });
+      expect(coll.recentLimit).toBe(2_000);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]?.[0]).toContain("recentLimit=2000");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects recentLimit greater than maxInstances", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 100,
+        maxInstances: 50,
+      })
+    ).toThrow("recentLimit");
+  });
+
+  it("allows recentLimit equal to maxInstances", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        prefetchMode: "partial",
+        recentLimit: 50,
+        maxInstances: 50,
+      })
+    ).not.toThrow();
+  });
+
+  it("ignores recentLimit (no throw) when prefetchMode is not 'partial'", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        stateSchema: z.object({}),
+        recentLimit: 20,
+      })
+    ).not.toThrow();
+  });
+
   it("accepts client.state.read on collection client config", () => {
     const coll = defineResourceCollection({
       pattern: "files/*",

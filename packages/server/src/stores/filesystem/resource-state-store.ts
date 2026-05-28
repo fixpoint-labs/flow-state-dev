@@ -13,6 +13,7 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { JsonObject } from "@flow-state-dev/core/types";
+import { pageEntries } from "../shared";
 import type { ContentScopeType, ResourceStateStore } from "../types";
 
 function encodePath(value: string): string {
@@ -107,6 +108,18 @@ export class FilesystemResourceStateStore implements ResourceStateStore {
     }
 
     return result;
+  }
+
+  async getByPrefixPaged(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: JsonObject }>; nextCursor?: string }> {
+    const matches = Object.entries(await this.getByPrefix(scopeType, scopeId, keyPrefix)).map(
+      ([key, value]) => ({ key, value })
+    );
+    return pageEntries(matches, opts);
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {

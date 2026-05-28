@@ -13,6 +13,7 @@ import {
   createInMemoryContentStore,
   createFilesystemContentStore
 } from "../src";
+import { createContentStoreConformanceTests } from "../src/testing";
 
 function runContentStoreTests(
   name: string,
@@ -203,4 +204,25 @@ runContentStoreTests("FilesystemContentStore", async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   };
+});
+
+// Shared getByPrefixPaged conformance — each suite tracks its own temp dir
+// so the filesystem backend cleans up per-test.
+const fsConformanceRootDirs: string[] = [];
+createContentStoreConformanceTests({
+  name: "InMemoryContentStore",
+  createStore: () => createInMemoryContentStore()
+});
+createContentStoreConformanceTests({
+  name: "FilesystemContentStore",
+  createStore: async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-content-store-paged-"));
+    fsConformanceRootDirs.push(rootDir);
+    return createFilesystemContentStore(rootDir);
+  },
+  cleanup: async () => {
+    for (const dir of fsConformanceRootDirs.splice(0)) {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
 });

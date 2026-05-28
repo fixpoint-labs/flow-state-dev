@@ -5,6 +5,7 @@
  * Suitable for development, testing, and single-process deployments where
  * content does not need to survive process restarts.
  */
+import { pageEntries } from "../shared";
 import type { ContentScopeType, ContentStore } from "../types";
 
 export class InMemoryContentStore implements ContentStore {
@@ -49,6 +50,24 @@ export class InMemoryContentStore implements ContentStore {
       }
     }
     return result;
+  }
+
+  async getByPrefixPaged(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: string }>; nextCursor?: string }> {
+    const prefix = this.prefix(scopeType, scopeId);
+    const matches: Array<{ key: string; value: string }> = [];
+    for (const [key, value] of this.data) {
+      if (!key.startsWith(prefix)) continue;
+      const resourceKey = key.slice(prefix.length);
+      if (resourceKey.startsWith(keyPrefix)) {
+        matches.push({ key: resourceKey, value });
+      }
+    }
+    return pageEntries(matches, opts);
   }
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {

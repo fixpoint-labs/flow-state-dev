@@ -10,7 +10,12 @@ import type {
   TraceStore,
   UserRecord
 } from "@flow-state-dev/server";
-import { createTraceStoreConformanceTests } from "@flow-state-dev/server/testing";
+import {
+  createContentStoreConformanceTests,
+  createResourceStateStoreConformanceTests,
+  createTraceStoreConformanceTests
+} from "@flow-state-dev/server/testing";
+import type { ContentStore, ResourceStateStore } from "@flow-state-dev/server";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteRequestStore } from "../src/request-store";
@@ -1232,5 +1237,36 @@ createTraceStoreConformanceTests({
   cleanup: (store) => {
     sqliteStoreHandles.get(store)?.close();
     sqliteStoreHandles.delete(store);
+  }
+});
+
+// getByPrefixPaged conformance for the SQLite package's content and
+// resource-state stores. They are in-memory today (FIX-687 will make them
+// durable); the shared suite locks the paging contract regardless.
+const sqliteContentHandles = new WeakMap<ContentStore, SQLiteStoreRegistry>();
+createContentStoreConformanceTests({
+  name: "SQLiteContentStore",
+  createStore: () => {
+    const handle = createSQLiteStores({ filename: ":memory:" });
+    sqliteContentHandles.set(handle.content, handle);
+    return handle.content;
+  },
+  cleanup: (store) => {
+    sqliteContentHandles.get(store)?.close();
+    sqliteContentHandles.delete(store);
+  }
+});
+
+const sqliteResourceStateHandles = new WeakMap<ResourceStateStore, SQLiteStoreRegistry>();
+createResourceStateStoreConformanceTests({
+  name: "SQLiteResourceStateStore",
+  createStore: () => {
+    const handle = createSQLiteStores({ filename: ":memory:" });
+    sqliteResourceStateHandles.set(handle.resourceState, handle);
+    return handle.resourceState;
+  },
+  cleanup: (store) => {
+    sqliteResourceStateHandles.get(store)?.close();
+    sqliteResourceStateHandles.delete(store);
   }
 });

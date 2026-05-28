@@ -15,3 +15,11 @@ export {
   makeRequestCompletedEvent,
   type CreateRequestStoreConformanceTestsOptions
 } from "./stores/testing/request-store-conformance";
+export {
+  createContentStoreConformanceTests,
+  type CreateContentStoreConformanceTestsOptions
+} from "./stores/testing/content-store-conformance";
+export {
+  createResourceStateStoreConformanceTests,
+  type CreateResourceStateStoreConformanceTestsOptions
+} from "./stores/testing/resource-state-store-conformance";

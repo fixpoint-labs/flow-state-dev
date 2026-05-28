@@ -69,6 +69,45 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       return entries;
     },
 
+    async getByPrefixPaged(
+      scopeType: ContentScopeType,
+      scopeId: string,
+      keyPrefix: string,
+      opts: { limit: number; after?: string; order?: "asc" | "desc" }
+    ): Promise<{ items: Array<{ key: string; value: JsonObject }>; nextCursor?: string }> {
+      // Indexed keyset read: the same `LEFT(resource_key, char_length($3)) = $3`
+      // prefix predicate as getByPrefix, plus an exclusive keyset bound on
+      // resource_key and an explicit order. `after` is omitted on the first
+      // page, so the bound predicate is dropped entirely.
+      const order = opts.order ?? "asc";
+      const params: unknown[] = [scopeType, scopeId, keyPrefix];
+      let boundClause = "";
+      if (opts.after !== undefined) {
+        params.push(opts.after);
+        boundClause = ` AND resource_key ${order === "asc" ? ">" : "<"} $${params.length}`;
+      }
+      params.push(Math.max(0, opts.limit));
+      const limitParam = params.length;
+      const result = await executor.query(
+        "SELECT resource_key, state FROM resource_state " +
+          "WHERE scope_type = $1 AND scope_id = $2 AND LEFT(resource_key, char_length($3)) = $3" +
+          boundClause +
+          ` ORDER BY resource_key ${order === "asc" ? "ASC" : "DESC"} LIMIT $${limitParam}`,
+        params
+      );
+      const items = result.rows.map((row) => ({
+        key: row.resource_key as string,
+        value: row.state as JsonObject
+      }));
+      // Uniform keyset rule across all adapters: a full page (rows === limit)
+      // implies there may be more; a short/empty page signals the end.
+      const nextCursor =
+        items.length === opts.limit && opts.limit > 0
+          ? items[items.length - 1]!.key
+          : undefined;
+      return { items, nextCursor };
+    },
+
     async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
       await executor.query(
         "DELETE FROM resource_state WHERE scope_type = $1 AND scope_id = $2",

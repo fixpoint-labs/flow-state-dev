@@ -15,6 +15,7 @@ import {
   createInMemoryResourceStateStore,
   createFilesystemResourceStateStore
 } from "../src";
+import { createResourceStateStoreConformanceTests } from "../src/testing";
 
 function runResourceStateStoreTests(
   name: string,
@@ -195,4 +196,25 @@ runResourceStateStoreTests("FilesystemResourceStateStore", async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   };
+});
+
+// Shared getByPrefixPaged conformance — each suite tracks its own temp dir
+// so the filesystem backend cleans up per-test.
+const fsConformanceRootDirs: string[] = [];
+createResourceStateStoreConformanceTests({
+  name: "InMemoryResourceStateStore",
+  createStore: () => createInMemoryResourceStateStore()
+});
+createResourceStateStoreConformanceTests({
+  name: "FilesystemResourceStateStore",
+  createStore: async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-resource-state-store-paged-"));
+    fsConformanceRootDirs.push(rootDir);
+    return createFilesystemResourceStateStore(rootDir);
+  },
+  cleanup: async () => {
+    for (const dir of fsConformanceRootDirs.splice(0)) {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
 });

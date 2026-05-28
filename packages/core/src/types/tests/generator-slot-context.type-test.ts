@@ -20,9 +20,9 @@ const generatorContextTypeSmoke = generator({
   model: (_input, ctx) => ctx.user.state.preferredModel ?? "demo-model",
   prompt: "type smoke",
   context: [
-    (input, ctx) => {
+    async (input, ctx) => {
       const message: string = input.message;
-      const artifacts = ctx.resources.get("artifacts").state;
+      const artifacts = await ctx.resources.get("artifacts").state();
       const firstId = artifacts.order[0];
       const firstTitle = firstId === undefined ? undefined : artifacts.byId[firstId]?.title;
       return `${message}:${firstTitle ?? "none"}`;

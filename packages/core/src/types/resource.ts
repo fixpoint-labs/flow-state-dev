@@ -152,6 +152,13 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   metadata?: Record<string, unknown>;
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
+  /**
+   * Single-resource prefetch mode (see ResourceCollectionConfig.prefetchMode for collections).
+   * - 'eager' (default): state loaded at scope startup.
+   * - 'lazy': state fetched on first state() call, then cached for the rest of the request.
+   * 'partial' is NOT valid on a single resource and is rejected by defineResource().
+   */
+  prefetchMode?: 'eager' | 'lazy';
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -186,7 +193,12 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
    */
   name: string;
   scope: ScopeType;
-  state: Readonly<TState>;
+  /**
+   * Read the current state. For 'eager' resources resolves from the in-memory
+   * cache populated at scope load; for 'lazy' resources may issue a one-time
+   * store read on first call (cached thereafter for the request).
+   */
+  state(): Promise<Readonly<TState>>;
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
@@ -260,6 +272,15 @@ export function defineResource<
   if (config.flowIsolation === true && config.scope === "session") {
     throw new Error(
       `defineResource() rejects flowIsolation:true on session-scoped resources — sessions are intrinsically flow-bound`
+    );
+  }
+
+  if (config.prefetchMode !== undefined && config.prefetchMode !== "eager" && config.prefetchMode !== "lazy") {
+    const got = (config.prefetchMode as string) === "partial"
+      ? `"partial" is only meaningful for collections (it selects the N most-recent instances); a single resource has just one state`
+      : `${JSON.stringify(config.prefetchMode)} is not a valid value`;
+    throw new Error(
+      `defineResource() prefetchMode must be "eager" or "lazy" — ${got}`
     );
   }
 

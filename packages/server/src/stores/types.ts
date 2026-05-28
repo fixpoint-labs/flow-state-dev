@@ -429,6 +429,25 @@ export interface ContentStore {
    */
   getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
 
+  /**
+   * Paginated variant of getByPrefix. Returns up to `limit` entries whose key
+   * starts with `keyPrefix`, in `order` (default 'asc'), with key strictly
+   * greater than (asc) or strictly less than (desc) `after` when `after` is set.
+   *
+   * nextCursor === undefined ⇔ end of pages. An empty `items` with a defined
+   * nextCursor is a legitimate intermediate state (a prefix filter emptied this
+   * page) — callers keep paging until nextCursor is undefined.
+   *
+   * The cursor is the raw last-yielded key. Adapters MUST return it unchanged;
+   * callers treat it as opaque.
+   */
+  getByPrefixPaged(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: string }>; nextCursor?: string }>;
+
   /** Delete all content for a scope instance. Used during scope record deletion. */
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
 }
@@ -470,6 +489,25 @@ export interface ResourceStateStore {
    * their pattern prefix.
    */
   getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, JsonObject>>;
+
+  /**
+   * Paginated variant of getByPrefix. Returns up to `limit` entries whose key
+   * starts with `keyPrefix`, in `order` (default 'asc'), with key strictly
+   * greater than (asc) or strictly less than (desc) `after` when `after` is set.
+   *
+   * nextCursor === undefined ⇔ end of pages. An empty `items` with a defined
+   * nextCursor is a legitimate intermediate state (a prefix filter emptied this
+   * page) — callers keep paging until nextCursor is undefined.
+   *
+   * The cursor is the raw last-yielded key. Adapters MUST return it unchanged;
+   * callers treat it as opaque.
+   */
+  getByPrefixPaged(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: JsonObject }>; nextCursor?: string }>;
 
   /** Delete all state for a scope instance. Used during scope record deletion. */
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
