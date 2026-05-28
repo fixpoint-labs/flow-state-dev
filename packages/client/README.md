@@ -115,7 +115,7 @@ const { newRequestId } = await recovery.retry({
 
 ### Resource client methods (collections)
 
-- `listCollectionItems(sessionId, ref, { limit?, offset?, topicPrefix? })` → `CollectionListPage`
+- `listCollectionItems(sessionId, ref, { limit?, cursor?, topicPrefix? })` → `CollectionListPage` (keyset-paginated; pass the prior page's `pagination.nextCursor` as `cursor`, stop when it is `null`)
 - `getCollectionItemState(sessionId, ref, topic)` → `CollectionItemState | null`
 - `getResourceManifest(sessionId)` → `ResourceManifest`
 

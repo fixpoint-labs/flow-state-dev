@@ -75,7 +75,7 @@ export interface RoutedSpecialistsConfig<
 
   /**
    * Shared workspace resource — created via `createWorkspace(stateSchema)`.
-   * Specialists read state via `ctx.resources.workspace.state` and contribute
+   * Specialists read state via `ctx.resources.workspace.state()` and contribute
    * by patching it.
    */
   workspace: DefinedResource;
