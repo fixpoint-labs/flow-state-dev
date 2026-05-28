@@ -48,7 +48,7 @@ const persistObs = handler({
     observations: observationsResource
   },
   execute: async (input, ctx) => {
-    const entries = (await ctx.resources.observations.state()).entries;
+    const entries = (ctx.resources.observations.state).entries;
     const first = entries[0];
     void first?.text;
     void first?.score;
@@ -71,10 +71,10 @@ const multiScopeBlock = handler({
     artifacts: artifactsResource
   },
   execute: async (_input, ctx) => {
-    const obs = (await ctx.resources.observations.state()).entries;
+    const obs = (ctx.resources.observations.state).entries;
     void obs;
 
-    const arts = await ctx.resources.artifacts.state();
+    const arts = ctx.resources.artifacts.state;
     const firstId = arts.order[0];
     void firstId;
 
@@ -94,12 +94,12 @@ const gen = generator({
   },
   model: "demo-model",
   prompt: async (_input, ctx) => {
-    const entries = (await ctx.resources.observations.state()).entries;
+    const entries = (ctx.resources.observations.state).entries;
     return `You have ${entries.length} observations`;
   },
   context: [
     async (_input, ctx) => {
-      const entries = (await ctx.resources.observations.state()).entries;
+      const entries = (ctx.resources.observations.state).entries;
       return entries.map((e: { text: string; score: number }) => e.text).join(", ");
     }
   ],
@@ -132,7 +132,7 @@ const routerWithResources = router({
   },
   routes: [routeA, routeB],
   execute: async (_input, ctx) => {
-    const count = (await ctx.resources.observations.state()).entries.length;
+    const count = (ctx.resources.observations.state).entries.length;
     return count > 0 ? routeA : routeB;
   }
 });
@@ -147,10 +147,11 @@ const filesCollection = defineResourceCollection({
 });
 void filesCollection;
 
-// A standalone ref's `state()` is an async method returning Readonly<TState>.
+// A ref's `state` is a synchronous property of Readonly<TState> (FIX-688): the
+// ref is only handed out after its state is loaded, so reads need no await.
 type FileState = { language: string };
-type RefStateReturn = ReturnType<ResourceRef<FileState>["state"]>;
-type _RefStateIsPromise = Assert<Equals<RefStateReturn, Promise<Readonly<FileState>>>>;
+type RefState = ResourceRef<FileState>["state"];
+type _RefStateIsSync = Assert<Equals<RefState, Readonly<FileState>>>;
 
 // The collection ref's accessors are fully async (FIX-688).
 declare const coll: ResourceCollectionRef<FileState>;
@@ -186,7 +187,7 @@ async function _exerciseCollSurface(): Promise<void> {
   void page.nextCursor;
   const ac = new AbortController();
   for await (const ref of coll.scan({ prefix: "files/", signal: ac.signal, pageSize: 25 })) {
-    void (await ref.state()).language;
+    void (ref.state).language;
   }
 }
 void _exerciseCollSurface;

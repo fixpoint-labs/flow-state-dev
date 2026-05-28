@@ -64,7 +64,7 @@ function createMockCollection(
   const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> => ({
     name: entry.name,
     scope: "session",
-    state: vi.fn(async () => entry.state),
+    get state() { return entry.state; },
     patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
       entry.state = { ...entry.state, ...updates };
     }),
@@ -1135,7 +1135,7 @@ describe("createBashBlocks", () => {
 
     expect(await artifacts.count()).toBe(1);
     expect(await skills.count()).toBe(1);
-    expect((await (await artifacts.getOptional("new-doc.md"))?.state())?.path).toBe("new-doc.md");
+    expect((await (await artifacts.getOptional("new-doc.md"))?.state)?.path).toBe("new-doc.md");
     expect(await skills.getOptional("draft/SKILL.md")).toBeDefined();
   });
 

@@ -47,7 +47,7 @@ function createMockRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (updates) => {
       state = { ...state, ...updates } as WorkingMemoryState
     },
@@ -209,7 +209,7 @@ describe('memory/workingMemory', () => {
       expect(result.salience).toBe(0.7) // initial salience = importance
       expect(result.pinned).toBe(false)
       expect(result.addedAtTurn).toBe(0)
-      expect((await ref.state()).entries).toHaveLength(1)
+      expect((ref.state).entries).toHaveLength(1)
     })
 
     it('generates a short random id when not provided', async () => {
@@ -232,7 +232,7 @@ describe('memory/workingMemory', () => {
         metadata: { source: 'user', tags: ['important'] },
       })
       expect(result.metadata).toEqual({ source: 'user', tags: ['important'] })
-      expect((await ref.state()).entries[0].metadata).toEqual({ source: 'user', tags: ['important'] })
+      expect((ref.state).entries[0].metadata).toEqual({ source: 'user', tags: ['important'] })
     })
 
     it('evicts lowest-salience non-pinned entry at capacity', async () => {
@@ -245,8 +245,8 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      expect((await ref.state()).entries).toHaveLength(2)
-      const ids = (await ref.state()).entries.map((e) => e.id)
+      expect((ref.state).entries).toHaveLength(2)
+      const ids = (ref.state).entries.map((e) => e.id)
       expect(ids).not.toContain('low')
       expect(ids).toContain('high')
     })
@@ -261,7 +261,7 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      expect((await ref.state()).entries).toHaveLength(3)
+      expect((ref.state).entries).toHaveLength(3)
     })
 
     it('evicts first entry on salience tie (stable)', async () => {
@@ -274,7 +274,7 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      const ids = (await ref.state()).entries.map((e) => e.id)
+      const ids = (ref.state).entries.map((e) => e.id)
       expect(ids).not.toContain('first') // first in array is evicted
       expect(ids).toContain('second')
     })
@@ -293,8 +293,8 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'e1')
 
       expect(result).toBe(true)
-      expect((await ref.state()).entries).toHaveLength(1)
-      expect((await ref.state()).entries[0].id).toBe('e2')
+      expect((ref.state).entries).toHaveLength(1)
+      expect((ref.state).entries[0].id).toBe('e2')
     })
 
     it('removes pinned entry (overrides pin)', async () => {
@@ -305,7 +305,7 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'pinned')
 
       expect(result).toBe(true)
-      expect((await ref.state()).entries).toHaveLength(0)
+      expect((ref.state).entries).toHaveLength(0)
     })
 
     it('returns false for non-existent id', async () => {
@@ -313,7 +313,7 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'missing')
 
       expect(result).toBe(false)
-      expect((await ref.state()).entries).toHaveLength(1)
+      expect((ref.state).entries).toHaveLength(1)
     })
   })
 
@@ -327,7 +327,7 @@ describe('memory/workingMemory', () => {
       const result = await pin(ref, 'e1')
 
       expect(result).toBe(true)
-      expect((await ref.state()).entries[0].pinned).toBe(true)
+      expect((ref.state).entries[0].pinned).toBe(true)
     })
 
     it('returns true for already-pinned entry', async () => {
@@ -347,7 +347,7 @@ describe('memory/workingMemory', () => {
 
       const result = await pin(ref, 'e3', { maxPinnedSlots: 2 })
       expect(result).toBe(false)
-      expect((await ref.state()).entries[2].pinned).toBe(false)
+      expect((ref.state).entries[2].pinned).toBe(false)
     })
 
     it('returns false for non-existent id', async () => {
@@ -363,7 +363,7 @@ describe('memory/workingMemory', () => {
       const result = await unpin(ref, 'e1')
 
       expect(result).toBe(true)
-      expect((await ref.state()).entries[0].pinned).toBe(false)
+      expect((ref.state).entries[0].pinned).toBe(false)
     })
 
     it('returns true for already-unpinned entry', async () => {
@@ -393,9 +393,9 @@ describe('memory/workingMemory', () => {
       const result = await refresh(ref, 'e1')
 
       expect(result).toBe(true)
-      expect((await ref.state()).entries[0].lastAccessedAtTurn).toBe(5)
+      expect((ref.state).entries[0].lastAccessedAtTurn).toBe(5)
       // salience should be recomputed: importance * decay(0) = 0.8 * 1.0
-      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.8, 3)
+      expect((ref.state).entries[0].salience).toBeCloseTo(0.8, 3)
     })
 
     it('boosts salience of a decayed entry back to importance', async () => {
@@ -412,8 +412,8 @@ describe('memory/workingMemory', () => {
       await refresh(ref, 'e1')
 
       // After refresh: lastAccessedAtTurn = 10, elapsed = 0, salience = 0.8 * 1.0
-      expect((await ref.state()).entries[0].lastAccessedAtTurn).toBe(10)
-      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.8, 3)
+      expect((ref.state).entries[0].lastAccessedAtTurn).toBe(10)
+      expect((ref.state).entries[0].salience).toBeCloseTo(0.8, 3)
     })
 
     it('returns false for non-existent id (no-op)', async () => {
@@ -431,7 +431,7 @@ describe('memory/workingMemory', () => {
     it('increments currentTurn by 1', async () => {
       const ref = createMockRef({ currentTurn: 3 })
       await advance(ref)
-      expect((await ref.state()).currentTurn).toBe(4)
+      expect((ref.state).currentTurn).toBe(4)
     })
 
     it('recomputes salience for all entries', async () => {
@@ -445,14 +445,14 @@ describe('memory/workingMemory', () => {
       await advance(ref)
 
       // After advance: currentTurn=1, elapsed=1, salience = 1.0 * (1+1)^(-0.5) ≈ 0.7071
-      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.7071, 3)
+      expect((ref.state).entries[0].salience).toBeCloseTo(0.7071, 3)
     })
 
     it('handles empty entries (increments turn only)', async () => {
       const ref = createMockRef({ currentTurn: 0 })
       await advance(ref)
-      expect((await ref.state()).currentTurn).toBe(1)
-      expect((await ref.state()).entries).toHaveLength(0)
+      expect((ref.state).currentTurn).toBe(1)
+      expect((ref.state).entries).toHaveLength(0)
     })
 
     it('cumulative decay over multiple advances', async () => {
@@ -469,9 +469,9 @@ describe('memory/workingMemory', () => {
       await advance(ref)
       await advance(ref)
 
-      expect((await ref.state()).currentTurn).toBe(4)
+      expect((ref.state).currentTurn).toBe(4)
       // salience = 0.8 * (1+4)^(-0.5) = 0.8 * 5^(-0.5) ≈ 0.8 * 0.4472 ≈ 0.3578
-      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.3578, 3)
+      expect((ref.state).entries[0].salience).toBeCloseTo(0.3578, 3)
     })
 
     it('decayed entry eventually loses to newer entry at eviction', async () => {
@@ -492,7 +492,7 @@ describe('memory/workingMemory', () => {
       // Now add a new entry at capacity 2 — old should be evicted
       await add(ref, { content: 'newcomer', importance: 0.5 }, { capacity: 2 })
 
-      const ids = (await ref.state()).entries.map((e) => e.id)
+      const ids = (ref.state).entries.map((e) => e.id)
       expect(ids).not.toContain('old')
       expect(ids).toContain('recent')
     })
@@ -782,9 +782,9 @@ describe('memory/workingMemory', () => {
       ])
 
       expect(result).toHaveLength(2)
-      expect((await ref.state()).entries).toHaveLength(2)
-      expect((await ref.state()).entries[0].content).toBe('User wants REST API')
-      expect((await ref.state()).entries[1].content).toBe('Using TypeScript')
+      expect((ref.state).entries).toHaveLength(2)
+      expect((ref.state).entries[0].content).toBe('User wants REST API')
+      expect((ref.state).entries[1].content).toBe('Using TypeScript')
     })
 
     it('handles replaces by evicting old entry before adding', async () => {
@@ -796,8 +796,8 @@ describe('memory/workingMemory', () => {
         { content: 'Build a REST API', importance: 0.8, replaces: 'old-goal' },
       ])
 
-      expect((await ref.state()).entries).toHaveLength(1)
-      expect((await ref.state()).entries[0].content).toBe('Build a REST API')
+      expect((ref.state).entries).toHaveLength(1)
+      expect((ref.state).entries[0].content).toBe('Build a REST API')
     })
 
     it('ignores replaces for non-existent IDs (no-op eviction)', async () => {
@@ -807,8 +807,8 @@ describe('memory/workingMemory', () => {
         { content: 'New memory', importance: 0.5, replaces: 'nonexistent' },
       ])
 
-      expect((await ref.state()).entries).toHaveLength(1)
-      expect((await ref.state()).entries[0].content).toBe('New memory')
+      expect((ref.state).entries).toHaveLength(1)
+      expect((ref.state).entries[0].content).toBe('New memory')
     })
 
     it('handles empty observations array', async () => {
@@ -816,7 +816,7 @@ describe('memory/workingMemory', () => {
       const result = await runRemember(ref, [])
 
       expect(result).toHaveLength(0)
-      expect((await ref.state()).entries).toHaveLength(0)
+      expect((ref.state).entries).toHaveLength(0)
     })
 
     it('respects pinned flag from observations', async () => {
@@ -826,7 +826,7 @@ describe('memory/workingMemory', () => {
         { content: 'Critical goal', importance: 0.9, pinned: true },
       ])
 
-      expect((await ref.state()).entries[0].pinned).toBe(true)
+      expect((ref.state).entries[0].pinned).toBe(true)
     })
 
     it('defaults pinned to false when not specified', async () => {
@@ -836,7 +836,7 @@ describe('memory/workingMemory', () => {
         { content: 'Regular fact', importance: 0.5 },
       ])
 
-      expect((await ref.state()).entries[0].pinned).toBe(false)
+      expect((ref.state).entries[0].pinned).toBe(false)
     })
 
     it('respects capacity config for eviction', async () => {
@@ -851,8 +851,8 @@ describe('memory/workingMemory', () => {
         { content: 'New memory', importance: 0.5 },
       ], { capacity: 2 })
 
-      expect((await ref.state()).entries).toHaveLength(2)
-      const ids = (await ref.state()).entries.map((e) => e.id)
+      expect((ref.state).entries).toHaveLength(2)
+      const ids = (ref.state).entries.map((e) => e.id)
       expect(ids).not.toContain('low')
       expect(ids).toContain('high')
     })

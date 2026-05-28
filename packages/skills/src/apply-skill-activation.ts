@@ -63,7 +63,7 @@ export function createApplySkillActivation(options: ApplySkillActivationOptions 
         skills.map(async (s) => {
           const manifest = await collection?.getOptional(skillManifestKey(s.name));
           const mode =
-            ((await manifest?.state()) as SkillState | undefined)?.contextMode ??
+            ((manifest?.state) as SkillState | undefined)?.contextMode ??
             "inline";
           return {
             name: s.name,

@@ -109,7 +109,7 @@ export async function add(
   config?: WorkingMemoryHelperConfig,
 ): Promise<WorkingMemoryEntry> {
   const resolved = resolveConfig(config)
-  const state = await ref.state()
+  const state = ref.state
 
   const newEntry: WorkingMemoryEntry = {
     id: entry.id ?? `wm_${shortId()}`,
@@ -283,7 +283,7 @@ export async function advance(
  * Ties are broken by array position (stable sort).
  */
 export async function items(ref: WmRef): Promise<WorkingMemoryEntry[]> {
-  const state = await ref.state()
+  const state = ref.state
   return [...state.entries].sort((a, b) => b.salience - a.salience)
 }
 

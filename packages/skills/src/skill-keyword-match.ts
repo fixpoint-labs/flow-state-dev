@@ -58,7 +58,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
           const skillName = segments[segments.length - 2]!;
           if (seen.has(skillName)) continue;
           seen.add(skillName);
-          const state = (await ref.state()) as unknown as SkillState;
+          const state = (ref.state) as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           if (!state.keywords || state.keywords.length === 0) continue;
           if (state.keywords.some((kw) => lowered.includes(kw))) {

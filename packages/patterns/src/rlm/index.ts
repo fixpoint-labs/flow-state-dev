@@ -44,7 +44,7 @@ export const subQueryGenerator = generator({
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
   model: async (_input, ctx) =>
-    (await ctx.resources.context?.state())?.metadata?.model ?? "gpt-4o-mini",
+    (ctx.resources.context?.state)?.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -83,7 +83,7 @@ export const subQueryGenerator = generator({
 export const rootGenerator = generator({
   name: "rlm-root",
   model: async (_input, ctx) =>
-    (await ctx.resources.context?.state())?.metadata?.model ?? "gpt-4o-mini",
+    (ctx.resources.context?.state)?.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string()
@@ -109,7 +109,7 @@ export const rootGenerator = generator({
   context: {
     'source-document': async (_input, ctx) => {
       const contextHandle = ctx.resources.context;
-      const state = await contextHandle?.state();
+      const state = contextHandle?.state;
       const text = state?.text ?? "";
       const meta = state?.metadata;
       return [

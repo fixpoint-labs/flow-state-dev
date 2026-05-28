@@ -153,7 +153,7 @@ const GROUNDING_CLAUSE = [
 
 async function memoState(ctx: { resources: any }, collectionKey: string): Promise<unknown> {
   const ref = await ctx.resources.memos?.getOptional(collectionKey);
-  return ref ? await ref.state() : undefined;
+  return ref ? ref.state : undefined;
 }
 
 export const tradingDesk = defineCapability({
@@ -176,7 +176,7 @@ export const tradingDesk = defineCapability({
           date: (_input, ctx) => ctx.session.state.date,
           userInstructions: async (_input, ctx) =>
             formatUserInstructions(
-              await ctx.resources.specialInstructions?.state(),
+              ctx.resources.specialInstructions?.state,
               ctx.session.state.activePhase,
             ),
         },

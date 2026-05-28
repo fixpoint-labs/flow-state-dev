@@ -125,7 +125,7 @@ export const checkPhase1HasData = handler({
     const statuses = await Promise.all(
       Object.values(PHASE_1_MEMO_KEYS).map(async (m) => {
         const ref = await ctx.resources.memos.getOptional(m.collectionKey);
-        return ref ? (await ref.state()).status : undefined;
+        return ref ? (ref.state).status : undefined;
       }),
     );
     const allErrored = statuses.every((status) => status === "error");
@@ -160,7 +160,7 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
   execute: async (_input, ctx) => {
     const erroredAt = async (collectionKey: string) => {
       const ref = await ctx.resources.memos.getOptional(collectionKey);
-      return ref ? (await ref.state()).status === "error" : false;
+      return ref ? (ref.state).status === "error" : false;
     };
     const fundamentalsErrored = await erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
     const profileErrored = await erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);

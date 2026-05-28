@@ -47,12 +47,12 @@ export const validateCitations = handler({
     const memos: Record<string, string> = {};
     for (const [shortName, info] of Object.entries(PHASE_1_MEMO_KEYS)) {
       const ref = await ctx.resources.memos.getOptional(info.collectionKey);
-      const state = ref ? await ref.state() : undefined;
+      const state = ref ? ref.state : undefined;
       memos[shortName] = normalizeWhitespace(memoSectionTexts(state).join(" "));
     }
 
     const entries: RoundRobinContributionEntry[] =
-      (await ctx.resources.p2Contributions.state()).entries ?? [];
+      (ctx.resources.p2Contributions.state).entries ?? [];
 
     const invalidTags: Array<{
       contribution: string;

@@ -40,7 +40,7 @@ function makeDebater(
     },
     execute: async (_input, ctx) => {
       const round = (ctx.sequencer!.state as { round: number }).round;
-      const trans = (await (ctx.resources as any).transcript?.state()) ??
+      const trans = (await (ctx.resources as any).transcript?.state) ??
         (ctx.session?.resources as any)?.transcript ??
         { entries: [] };
       const priors = (trans.entries ?? []).length;

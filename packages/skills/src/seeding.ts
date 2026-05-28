@@ -115,7 +115,7 @@ async function needsResed(
   // A missing manifest on an already-seeded skill means the user
   // deleted it deliberately — preserve that decision, do not re-seed.
   if (!ref) return false;
-  const persisted = (await ref.state()) as Record<string, unknown> | undefined;
+  const persisted = (ref.state) as Record<string, unknown> | undefined;
   if (!persisted) return false;
   if (parsed.state.contextMode !== undefined && persisted.contextMode !== parsed.state.contextMode) {
     return true;
@@ -161,7 +161,7 @@ async function loadMeta(
 ): Promise<SkillsCollectionMeta> {
   const ref = await collection.getOptional(META_KEY);
   if (!ref) return { seededNames: [] };
-  const state = (await ref.state()) as Record<string, unknown>;
+  const state = (ref.state) as Record<string, unknown>;
   const seeded = state.seededNames;
   if (Array.isArray(seeded)) {
     return { seededNames: seeded.filter((s): s is string => typeof s === "string") };

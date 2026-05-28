@@ -48,7 +48,7 @@ export class FileSync {
         const content = await entry.readContent();
         if (content === null) continue;
 
-        const state = await entry.state();
+        const state = entry.state;
         const fullPath = path.join(this.options.destination, state.path);
         await this.sandbox.writeFile(fullPath, content);
       }
@@ -79,7 +79,7 @@ export class FileSync {
       if (!owner) continue;
 
       const existing = await owner.collection.getOptional(file.path);
-      const existingHash = existing ? (await existing.state()).hash : undefined;
+      const existingHash = existing ? (existing.state).hash : undefined;
 
       if (!existing || this.options.syncMode === "full" || existingHash !== file.hash) {
         const ref = await owner.collection.getOrCreate(file.path, {
@@ -89,7 +89,7 @@ export class FileSync {
         });
 
         // Update state if the hash changed
-        if ((await ref.state()).hash !== file.hash) {
+        if ((ref.state).hash !== file.hash) {
           await ref.patchState({
             hash: file.hash,
             updatedAt: new Date().toISOString(),
@@ -104,7 +104,7 @@ export class FileSync {
     // Remove entries for files deleted from the sandbox
     for (const collection of Object.values(this.collections)) {
       for await (const entry of collection.scan()) {
-        const entryPath = (await entry.state()).path;
+        const entryPath = (entry.state).path;
         if (!currentPaths.has(entryPath)) {
           await collection.delete(entryPath);
         }

@@ -66,7 +66,7 @@ export const commitPortfolioManagerMemo = memoHandler({
     const traderMemo = await ctx.resources.memos.getOptional(
       PHASE_3_MEMO_KEYS.trader.collectionKey,
     );
-    const traderState = (traderMemo ? await traderMemo.state() : undefined) as
+    const traderState = (traderMemo ? traderMemo.state : undefined) as
       | { direction?: string | null; dependsOn?: string[] | null }
       | undefined;
     const traderDirection = traderState?.direction;

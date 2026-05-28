@@ -27,7 +27,7 @@ export const peek = handler({
   resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const text = (await ctx.resources.context?.state())?.text ?? "";
+    const text = (ctx.resources.context?.state)?.text ?? "";
     const start = Math.max(0, input.start);
     const end = Math.min(text.length, start + input.length);
     return {

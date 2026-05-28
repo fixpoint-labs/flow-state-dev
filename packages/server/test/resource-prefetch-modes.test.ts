@@ -99,7 +99,7 @@ describe("FIX-688 prefetch modes — collections", () => {
     // After startup, reading a preloaded instance must not touch the store.
     spy.reset();
     const ref = await ns.get("a.ts");
-    expect((await ref.state()).language).toBe("ts");
+    expect((ref.state).language).toBe("ts");
     expect(spy.getCount).toBe(0);
   });
 
@@ -123,7 +123,7 @@ describe("FIX-688 prefetch modes — collections", () => {
 
     spy.reset();
     const ref = await ns.get("a.ts");
-    expect((await ref.state()).language).toBe("ts");
+    expect((ref.state).language).toBe("ts");
     expect(spy.getCount).toBe(1);
 
     // Second access is served from the seeded cache — no further store read.
@@ -181,7 +181,7 @@ describe("FIX-688 freshness, single-flight, redundancy", () => {
     await (await ns.get("a.ts")).setState({ language: "py" });
     // WHY: a write-through mutation must be visible to a later read in the same
     // request without re-fetching a stale store snapshot.
-    expect((await (await ns.get("a.ts")).state()).language).toBe("py");
+    expect((await (await ns.get("a.ts")).state).language).toBe("py");
   });
 
   it("concurrent get() of the same missing key issues exactly one store read (single-flight)", async () => {
@@ -200,8 +200,8 @@ describe("FIX-688 freshness, single-flight, redundancy", () => {
     // WHY: two handlers racing on the same uncached key must coalesce into one
     // store read, not stampede the store.
     const [r1, r2] = await Promise.all([ns.get("a.ts"), ns.get("a.ts")]);
-    expect((await r1.state()).language).toBe("ts");
-    expect((await r2.state()).language).toBe("ts");
+    expect((r1.state).language).toBe("ts");
+    expect((r2.state).language).toBe("ts");
     expect(spy.getKeys.filter((k) => k === "files/a.ts")).toHaveLength(1);
   });
 
@@ -249,7 +249,7 @@ describe("FIX-688 freshness, single-flight, redundancy", () => {
     await spy.stores.resourceState.set("session", "sess_1", "files/a.ts", { language: "ts" });
     spy.reset();
     const ref = await ns.get("a.ts");
-    expect((await ref.state()).language).toBe("ts");
+    expect((ref.state).language).toBe("ts");
     expect(spy.getCount).toBe(1);
   });
 });
@@ -354,8 +354,12 @@ describe("FIX-688 list / scan / count pagination", () => {
   });
 });
 
-describe("FIX-688 single resource lazy mode", () => {
-  it("lazy single resource defers its load until the first state() read", async () => {
+describe("FIX-688 single resource prefetch", () => {
+  it("declared single resource is preloaded at startup so ref.state is synchronous", async () => {
+    // A declared single resource is always preloaded before the block runs —
+    // declaring it is a statement of need — so `ref.state` is a sync property.
+    // `prefetchMode: 'lazy'` is a no-op for declared single resources today;
+    // only collections genuinely defer per-instance loads.
     const lazyDoc = defineResource({
       scope: "session",
       stateSchema: z.object({ body: z.string().default("") }),
@@ -377,17 +381,14 @@ describe("FIX-688 single resource lazy mode", () => {
       stores: spy.stores,
     });
 
-    // No preload of the lazy single resource at startup.
+    // Preloaded exactly once at startup.
     const startupGets = spy.getKeys.filter((k) => k === "lazyDoc").length;
-    expect(startupGets).toBe(0);
+    expect(startupGets).toBe(1);
 
-    // First read loads it; second read is cached.
-    const ref = ctx.resources.lazyDoc as { state: () => Promise<JsonObject> };
+    // Reads are synchronous against the cache — no further store reads.
+    const ref = ctx.resources.lazyDoc as { state: Readonly<JsonObject> };
     spy.reset();
-    expect((await ref.state()).body).toBe("hi");
-    expect(spy.getKeys.filter((k) => k === "lazyDoc")).toHaveLength(1);
-    spy.reset();
-    await ref.state();
+    expect(ref.state.body).toBe("hi");
     expect(spy.getCount).toBe(0);
   });
 });

@@ -154,9 +154,14 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   client?: ResourceClientConfig<TState>;
   /**
    * Single-resource prefetch mode (see ResourceCollectionConfig.prefetchMode for collections).
-   * - 'eager' (default): state loaded at scope startup.
-   * - 'lazy': state fetched on first state() call, then cached for the rest of the request.
-   * 'partial' is NOT valid on a single resource and is rejected by defineResource().
+   * Accepts 'eager' (default) or 'lazy'; 'partial' is rejected by defineResource().
+   *
+   * A declared single resource is always preloaded at scope startup so its
+   * `ref.state` is a synchronous property — declaring the resource is a
+   * statement of need, so the framework loads it before the block runs.
+   * 'lazy' is therefore a no-op for declared single resources today; it is
+   * retained for API symmetry with collections (where lazy genuinely defers
+   * per-instance loads). Use a lazy *collection* if you need on-demand loading.
    */
   prefetchMode?: 'eager' | 'lazy';
 };
@@ -194,11 +199,12 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   name: string;
   scope: ScopeType;
   /**
-   * Read the current state. For 'eager' resources resolves from the in-memory
-   * cache populated at scope load; for 'lazy' resources may issue a one-time
-   * store read on first call (cached thereafter for the request).
+   * The current state. A synchronous snapshot read from the in-request cache:
+   * the ref is only handed out after its state is loaded (eager resources at
+   * scope startup; collection instances when fetched via get/getOptional/
+   * list/scan). Reflects in-request mutations made through this ref.
    */
-  state(): Promise<Readonly<TState>>;
+  state: Readonly<TState>;
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;

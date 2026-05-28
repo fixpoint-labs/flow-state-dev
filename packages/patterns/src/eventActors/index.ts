@@ -311,7 +311,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         for (const entry of entries) {
           // Append entry to the workspace resource (dedup on type+topic).
           const wsState =
-            (await workspaceRef.state()) as EventActorsWorkspaceState;
+            (workspaceRef.state) as EventActorsWorkspaceState;
           const entryType = entry.type;
           const entryTopic = entry.topic;
           const isDuplicate = wsState.entries.some(

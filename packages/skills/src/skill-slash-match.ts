@@ -56,7 +56,7 @@ export function createSkillSlashMatch(opts: SlashMatchOptions) {
       const manifest = await collection.getOptional(skillManifestKey(skillName));
       if (!manifest) return { matched: false };
 
-      const state = (await manifest.state()) as unknown as SkillState;
+      const state = (manifest.state) as unknown as SkillState;
       if (state.disableModelInvocation) return { matched: false };
 
       await ctx.sequencer!.patchState({

@@ -28,7 +28,7 @@ function createMockEpRef(
   return {
     name: 'episodicMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (updates) => {
       state = { ...state, ...updates } as EpisodicMemoryState
     },
@@ -164,8 +164,8 @@ describe('memory/episodicMemory', () => {
       expect(result.significance).toBe(0.8)
       expect(result.consolidated).toBe(false)
       expect(result.encodedAt).toBeDefined()
-      expect((await ref.state()).episodes).toHaveLength(1)
-      expect((await ref.state()).totalEncoded).toBe(1)
+      expect((ref.state).episodes).toHaveLength(1)
+      expect((ref.state).totalEncoded).toBe(1)
     })
 
     it('increments totalEncoded on each encode', async () => {
@@ -187,8 +187,8 @@ describe('memory/episodicMemory', () => {
         context: { sessionId: 'sess-1' },
       }, 200)
 
-      expect((await ref.state()).totalEncoded).toBe(2)
-      expect((await ref.state()).episodes).toHaveLength(2)
+      expect((ref.state).totalEncoded).toBe(2)
+      expect((ref.state).episodes).toHaveLength(2)
     })
 
     it('evicts oldest consolidated episode when at maxEpisodes', async () => {
@@ -208,8 +208,8 @@ describe('memory/episodicMemory', () => {
         context: { sessionId: 'sess-1' },
       }, 2)
 
-      expect((await ref.state()).episodes).toHaveLength(2)
-      const ids = (await ref.state()).episodes.map((e) => e.id)
+      expect((ref.state).episodes).toHaveLength(2)
+      const ids = (ref.state).episodes.map((e) => e.id)
       expect(ids).not.toContain('old-consolidated')
       expect(ids).toContain('recent-unconsolidated')
     })
@@ -231,8 +231,8 @@ describe('memory/episodicMemory', () => {
         context: { sessionId: 'sess-1' },
       }, 2)
 
-      expect((await ref.state()).episodes).toHaveLength(2)
-      const ids = (await ref.state()).episodes.map((e) => e.id)
+      expect((ref.state).episodes).toHaveLength(2)
+      const ids = (ref.state).episodes.map((e) => e.id)
       expect(ids).not.toContain('oldest')
       expect(ids).toContain('newer')
     })
@@ -251,8 +251,8 @@ describe('memory/episodicMemory', () => {
         context: { sessionId: 'sess-1' },
       }, 1)
 
-      expect((await ref.state()).episodes).toHaveLength(1)
-      expect((await ref.state()).episodes[0].content).toBe('Replacement')
+      expect((ref.state).episodes).toHaveLength(1)
+      expect((ref.state).episodes[0].content).toBe('Replacement')
     })
   })
 
@@ -319,9 +319,9 @@ describe('memory/episodicMemory', () => {
 
       await markConsolidated(ref, ['ep1', 'ep3'])
 
-      expect((await ref.state()).episodes[0].consolidated).toBe(true)
-      expect((await ref.state()).episodes[1].consolidated).toBe(false)
-      expect((await ref.state()).episodes[2].consolidated).toBe(true)
+      expect((ref.state).episodes[0].consolidated).toBe(true)
+      expect((ref.state).episodes[1].consolidated).toBe(false)
+      expect((ref.state).episodes[2].consolidated).toBe(true)
     })
 
     it('is a no-op for non-existent IDs', async () => {
@@ -331,7 +331,7 @@ describe('memory/episodicMemory', () => {
 
       await markConsolidated(ref, ['nonexistent'])
 
-      expect((await ref.state()).episodes[0].consolidated).toBe(false)
+      expect((ref.state).episodes[0].consolidated).toBe(false)
     })
 
     it('is a no-op for already-consolidated episodes', async () => {
@@ -341,7 +341,7 @@ describe('memory/episodicMemory', () => {
 
       await markConsolidated(ref, ['ep1'])
 
-      expect((await ref.state()).episodes[0].consolidated).toBe(true)
+      expect((ref.state).episodes[0].consolidated).toBe(true)
     })
 
     it('is a no-op for empty ID list', async () => {
@@ -351,7 +351,7 @@ describe('memory/episodicMemory', () => {
 
       await markConsolidated(ref, [])
 
-      expect((await ref.state()).episodes[0].consolidated).toBe(false)
+      expect((ref.state).episodes[0].consolidated).toBe(false)
     })
   })
 })

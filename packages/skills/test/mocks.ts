@@ -24,7 +24,7 @@ export function createMockSkillsCollection(
   const makeRef = (entry: MockEntry): ResourceRef => ({
     name: entry.name,
     scope: "org" as const,
-    state: vi.fn(async () => entry.state) as never,
+    get state() { return entry.state as never; },
     patchState: vi.fn(async (updates: Record<string, unknown>) => {
       entry.state = { ...entry.state, ...updates };
     }) as never,

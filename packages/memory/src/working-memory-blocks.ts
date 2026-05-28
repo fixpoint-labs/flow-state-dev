@@ -200,7 +200,7 @@ export function workingMemorySnapshot() {
     resources: { workingMemory: workingMemoryResource },
     execute: async (_input, ctx) => {
       const ref = ctx.resources.get('workingMemory')
-      const state = await ref.state()
+      const state = ref.state
       return {
         entries: await items(ref),
         currentTurn: state.currentTurn,

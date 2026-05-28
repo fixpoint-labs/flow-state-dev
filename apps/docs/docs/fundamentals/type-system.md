@@ -114,7 +114,7 @@ const docReader = handler({
   }),
   execute: async (input, ctx) => {
     // ctx.session.resources.documents — fully typed; state() is async
-    const docs = await ctx.session.resources.documents.state();
+    const docs = ctx.session.resources.documents.state;
     const doc = docs.byId["doc-1"];
     return doc.content; // string
   },
@@ -192,8 +192,8 @@ const myFlow = defineFlow({
       derived: {
         summary: async (ctx) => {
           // ctx.state — typed as { mode: string; count: number }
-          // ctx.resources.docs.state() — async; resolves Record<string, Doc>
-          const docs = await ctx.resources.docs.state();
+          // ctx.resources.docs.state — sync property; typed Record<string, Doc>
+          const docs = ctx.resources.docs.state;
           return { mode: ctx.state.mode, docCount: Object.keys(docs.byId).length };
         },
       },

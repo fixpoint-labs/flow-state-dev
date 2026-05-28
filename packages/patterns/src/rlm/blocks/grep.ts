@@ -33,7 +33,7 @@ export const grep = handler({
   resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const text = (await ctx.resources.context?.state())?.text ?? "";
+    const text = (ctx.resources.context?.state)?.text ?? "";
 
     let regex: RegExp;
     try {

@@ -76,9 +76,9 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `await ref.state()`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+Each returned `ResourceRef` supports the same operations as a static resource: `ref.state` (a synchronous property), `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
 
-The collection's read accessors are async: `get`, `getOptional`, `list`, `scan`, and `count` all return promises or async iterators. That's what lets a collection load instances on demand instead of all at once. Inside a handler the per-resource handler context (`ctx.state`) stays synchronous — only this standalone accessor surface is async.
+The collection's read accessors are async: `get`, `getOptional`, `list`, `scan`, and `count` all return promises or async iterators. That's what lets a collection load instances on demand instead of all at once. The ref you get back already has its state loaded, so `ref.state` is a plain synchronous property — you only await the lookup, not the read.
 
 #### Paginating with `list` and `scan`
 

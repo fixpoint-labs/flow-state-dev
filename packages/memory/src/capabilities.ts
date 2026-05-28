@@ -218,9 +218,9 @@ export function createDigestMemoryCapability(config?: DigestMemoryCapabilityConf
       const ref = ctx.resources.digestMemory as MemResourceRef<DigestMemoryState>
       return {
         /** Get the current digest, or undefined if never generated. */
-        get: async () => (await ref.state()).digest,
+        get: async () => (ref.state).digest,
         /** Get just the digest narrative content, or undefined. */
-        content: async () => (await ref.state()).digest?.content,
+        content: async () => (ref.state).digest?.content,
       }
     },
   })

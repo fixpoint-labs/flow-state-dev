@@ -26,7 +26,7 @@
  * given task.
  *
  * Sync-query snapshot: the underlying `ResourceCollectionRef` accessors
- * are async (`await ref.state()`, `await coll.get()`, `coll.scan()`), but
+ * are async (`ref.state`, `await coll.get()`, `coll.scan()`), but
  * `TaskCollectionRef`'s query surface (`get`/`list`/`count`) is sync —
  * patterns wire it into synchronous `loopBack`/eligibility predicates. To
  * bridge the two, this backing keeps an in-memory `Map<id, Task>` snapshot
@@ -82,7 +82,7 @@ export interface ResourceBackedOptions {
 async function readTaskState<TInput, TOutput>(
   ref: ResourceRef<JsonObject>
 ): Promise<Task<TInput, TOutput>> {
-  return (await ref.state()) as unknown as Task<TInput, TOutput>;
+  return (ref.state) as unknown as Task<TInput, TOutput>;
 }
 
 /** Create a `TaskCollectionRef` backed by a parameterized resource collection. */

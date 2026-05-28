@@ -35,7 +35,7 @@ export const artifactListContext = async (_input: unknown, ctx: BlockContext): P
   }>;
   const lines: string[] = [];
   for await (const ref of artifacts.scan()) {
-    const state = await ref.state();
+    const state = ref.state;
     const id = ref.name.replace("artifacts/", "");
     const title = state.title ?? "Untitled";
     const summary = state.summary ? ` — ${state.summary}` : "";

@@ -112,7 +112,7 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       name: key,
       scope: "session",
       config: { scope: "session" } as ResourceRef<TState>["config"],
-      async state() {
+      get state() {
         return (instances.get(key) ?? ({} as TState)) as Readonly<TState>;
       },
       async patchState(updates: Partial<TState>) {

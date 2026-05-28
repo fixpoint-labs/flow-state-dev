@@ -97,7 +97,7 @@ export function buildActiveSkillsContext(
         arguments: entry.input,
         skillDir: path.posix.join("/workspace", opts.mountPath, entry.name),
       });
-      const state = (await manifest.state()) as unknown as SkillState;
+      const state = (manifest.state) as unknown as SkillState;
       const restriction = state.allowedTools && state.allowedTools.length > 0
         ? `\n(While this skill is active, only these tools are available: ${state.allowedTools.join(", ")}.)`
         : "";

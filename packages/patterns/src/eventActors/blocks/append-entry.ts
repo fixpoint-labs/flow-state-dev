@@ -35,7 +35,7 @@ export function createAppendEntry(
     },
     execute: async (entry, ctx) => {
       const state = (await (ctx.resources as Record<string, any>)[resourceKey]
-        .state()) as EventActorsWorkspaceState;
+        .state) as EventActorsWorkspaceState;
 
       const entryType = (entry as Record<string, unknown>).type ?? "unknown";
       const entryTopic = (entry as Record<string, unknown>).topic ?? "";

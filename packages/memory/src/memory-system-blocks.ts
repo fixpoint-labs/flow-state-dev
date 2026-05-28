@@ -310,7 +310,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // findBestOverlap. The observer's job is pure extraction from new conversation items.
   async function buildContext(_input: unknown, ctx: { session?: any; resources: any }): Promise<string | undefined> {
     const sysRef = ctx.resources.memorySystem
-    const sysState = await sysRef.state()
+    const sysState = sysRef.state
 
     // Get items from session
     if (config.source) {
@@ -451,7 +451,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           ) {
             await encode(epRef, {
               content: item.content,
-              occurredAtTurn: (await wmRef.state()).currentTurn,
+              occurredAtTurn: (wmRef.state).currentTurn,
               significance: item.importance,
               category: item.category,
               durability: item.durability,
@@ -561,15 +561,15 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
       if (hasSemantic) return
 
       // Legacy behavior (no semantic): check trigger and reset counters here
-      const sysState = await sysRef.state()
-      const turnsSinceConsolidation = (await wmRef.state()).currentTurn - sysState.lastConsolidationTurn
+      const sysState = sysRef.state
+      const turnsSinceConsolidation = (wmRef.state).currentTurn - sysState.lastConsolidationTurn
 
       if (
         turnsSinceConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.minInterval &&
         (sysState.episodicWritesSinceLastConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold ||
           sysState.evictedPersistentSinceLastConsolidation > 0)
       ) {
-        const currentTurn = (await wmRef.state()).currentTurn
+        const currentTurn = (wmRef.state).currentTurn
         await sysRef.updateState((s: any) => ({
           ...s,
           episodicWritesSinceLastConsolidation: 0,
@@ -636,13 +636,13 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     execute: async (_input, ctx) => {
       const sysRef = ctx.resources.memorySystem
       const wmRef = ctx.resources.workingMemory
-      const sysState = await sysRef.state()
+      const sysState = sysRef.state
 
       const minInterval = config.semantic?.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval
       const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold
       const onEviction = config.semantic?.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction
 
-      const turnsSinceConsolidation = (await wmRef.state()).currentTurn - sysState.lastConsolidationTurn
+      const turnsSinceConsolidation = (wmRef.state).currentTurn - sysState.lastConsolidationTurn
 
       const triggered = turnsSinceConsolidation >= minInterval &&
         (sysState.episodicWritesSinceLastConsolidation >= episodicThreshold ||
@@ -656,7 +656,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
       const semRef = ctx.resources.semanticMemory as any
 
       const unconsolidated = epRef
-        ? (await epRef.state()).episodes.filter((e: any) => !e.consolidated)
+        ? (epRef.state).episodes.filter((e: any) => !e.consolidated)
         : []
 
       const existingFacts = semRef ? await allFacts(semRef) : []
@@ -904,7 +904,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       }))
 
       // Reset memory system consolidation counters
-      const currentTurn = (await wmRef.state()).currentTurn
+      const currentTurn = (wmRef.state).currentTurn
       await sysRef.updateState((s: any) => ({
         ...s,
         episodicWritesSinceLastConsolidation: 0,

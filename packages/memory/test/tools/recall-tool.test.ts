@@ -56,7 +56,7 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
   return {
     name: 'workingMemory',
     scope: 'session',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -71,7 +71,7 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
   return {
     name: 'episodicMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -91,7 +91,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
   return {
     name: 'semanticMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -235,10 +235,10 @@ function makeStubStrategy(opts: StubOptions = {}): {
     const sem = ctx.resources?.semanticMemory
     const ep = ctx.resources?.episodicMemory
     if (sem) {
-      for (const f of (await sem.state()).facts as SemanticFact[]) items.push(semanticToMemoryItem(f))
+      for (const f of (sem.state).facts as SemanticFact[]) items.push(semanticToMemoryItem(f))
     }
     if (ep) {
-      for (const e of (await ep.state()).episodes as Episode[]) items.push(episodeToMemoryItem(e))
+      for (const e of (ep.state).episodes as Episode[]) items.push(episodeToMemoryItem(e))
     }
     return items
   })

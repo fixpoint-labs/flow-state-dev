@@ -253,7 +253,7 @@ export function system(
     return {
       observations: obsRef ? await perspectiveObservations(obsRef) : [],
       positions: posRef ? await perspectivePositions(posRef) : [],
-      turnCounter: obsRef ? (await obsRef.state()).turnCounter : 0,
+      turnCounter: obsRef ? (obsRef.state).turnCounter : 0,
     }
   }
 

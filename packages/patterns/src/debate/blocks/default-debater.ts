@@ -111,7 +111,7 @@ export function createDebater(opts: CreateDebaterOptions) {
     user: async (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as DebateState;
       const transcriptState = (await ctx.resources.transcript
-        ?.state()) as DebateTranscriptState | undefined;
+        ?.state) as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
       const priorBlock =
         entries.length > 0

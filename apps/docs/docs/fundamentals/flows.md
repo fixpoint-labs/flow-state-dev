@@ -120,7 +120,7 @@ session: {
 
   client: {
     derived: {
-      activePlan: async (ctx) => (await ctx.resources.plan?.state()) ?? null,
+      activePlan: async (ctx) => (ctx.resources.plan?.state) ?? null,
     },
   },
 },

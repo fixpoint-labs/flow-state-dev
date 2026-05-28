@@ -365,10 +365,10 @@ async function loadDeclaredResourceState(
       } else {
         collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
       }
-    } else if ((config as ResourceConfig).prefetchMode === "lazy") {
-      // Single-resource lazy: skip preload; state() fetches on first call.
-      continue;
     } else {
+      // Declared single resources always preload (regardless of prefetchMode)
+      // so `ref.state` can be a synchronous property — declaring the resource
+      // is a statement of need, so it loads before the block runs.
       fixedKeys.add(storageKeys[accessor]!);
     }
   }
@@ -595,10 +595,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       name: storageKey,
       scope: options.scope,
       config: nsConfig as unknown as ResourceConfig,
-      // Async per the FIX-688 contract. The instance ref is only handed out
-      // after its state was seeded into the cache (via get/getOptional/list/
-      // scan/create), so this resolves synchronously against the cache.
-      async state(): Promise<Readonly<JsonObject>> {
+      // Synchronous property: the instance ref is only handed out after its
+      // state was seeded into the cache (via get/getOptional/list/scan/create),
+      // so the getter resolves against the cache. Reflects in-request mutations.
+      get state(): Readonly<JsonObject> {
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
@@ -1112,46 +1112,18 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           normalizeResourceDefault(config)
       );
 
-    // FIX-688: single-resource lazy mode. `loadDeclaredResourceState` skips the
-    // preload for `prefetchMode: 'lazy'`, so the cache has no entry until the
-    // first read. `ensureLoaded` fetches once from the store and seeds the
-    // cache (non-persisting), single-flighted so concurrent reads share it.
-    // Eager resources never hit this (the cache is already populated).
-    const isLazy = config.prefetchMode === "lazy";
-    let lazyInflight: Promise<void> | undefined;
-    const ensureLoaded = async (): Promise<void> => {
-      if (!isLazy || options.loader === undefined) return;
-      if (storageKey in options.readResources()) return;
-      if (lazyInflight !== undefined) return lazyInflight;
-      const loader = options.loader;
-      lazyInflight = (async () => {
-        if (storageKey in options.readResources()) return;
-        const value = await loader.resourceState.get(
-          loader.scopeType,
-          loader.scopeId,
-          storageKey
-        );
-        if (value !== undefined) {
-          options.seedResources({ [storageKey]: value });
-        }
-      })();
-      try {
-        await lazyInflight;
-      } finally {
-        lazyInflight = undefined;
-      }
-    };
-
+    // Declared single resources are always preloaded at scope startup
+    // (`loadDeclaredResourceState`), so the cache is populated before any block
+    // runs and `state` can be a synchronous property. See ResourceConfig
+    // `prefetchMode` — 'lazy' is a no-op for declared single resources.
     handles[resourceName] = {
       name: storageKey,
       scope: options.scope,
       config,
-      async state(): Promise<Readonly<JsonObject>> {
-        await ensureLoaded();
+      get state(): Readonly<JsonObject> {
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
-        await ensureLoaded();
         await persistResourceState(
           storageKey,
           config,
@@ -1166,7 +1138,6 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
-        await ensureLoaded();
         const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
       },
@@ -1184,7 +1155,6 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return raw;
         }
 
-        await ensureLoaded();
         return await config.render(raw, readState());
       },
       async writeContent(content: string): Promise<void> {

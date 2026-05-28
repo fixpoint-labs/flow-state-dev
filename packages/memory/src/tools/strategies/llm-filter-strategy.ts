@@ -197,12 +197,12 @@ async function readStores(ctx: any): Promise<{
 
   try {
     const epRef = ctx.resources?.episodicMemory
-    if (epRef) episodic = (await epRef.state()).episodes ?? []
+    if (epRef) episodic = (epRef.state).episodes ?? []
   } catch { /* not installed */ }
 
   try {
     const wmRef = ctx.resources?.workingMemory
-    if (wmRef) currentTurn = (await wmRef.state()).currentTurn ?? 0
+    if (wmRef) currentTurn = (wmRef.state).currentTurn ?? 0
   } catch { /* not installed */ }
 
   return { semantic, episodic, currentTurn }

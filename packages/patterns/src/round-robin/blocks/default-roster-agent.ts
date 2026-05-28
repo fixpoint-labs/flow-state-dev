@@ -123,7 +123,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
       const state = ctx.sequencer!.state;
       // TODO: computed-key resource accessor — see round-robin follow-up
       const contribState = (await (ctx.resources as any)[accessor]
-        ?.state()) as RoundRobinContributionsState | undefined;
+        ?.state) as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];
       const priorBlock =
         entries.length > 0

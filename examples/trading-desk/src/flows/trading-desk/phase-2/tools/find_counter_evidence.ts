@@ -97,14 +97,14 @@ export const find_counter_evidence = handler({
     const memoRef = await ctx.resources.memos.getOptional(
       PHASE_1_MEMO_KEYS[input.opposingMemo].collectionKey,
     );
-    const memoState = memoRef ? await memoRef.state() : undefined;
+    const memoState = memoRef ? memoRef.state : undefined;
     for (const text of memoSectionTexts(memoState)) {
       candidates.push({ source: `memo:${input.opposingMemo}`, text });
     }
 
     // 2. Prior debate contributions, one candidate per turn.
     const entries: RoundRobinContributionEntry[] =
-      (await ctx.resources.p2Contributions.state()).entries ?? [];
+      (ctx.resources.p2Contributions.state).entries ?? [];
     for (const entry of entries) {
       candidates.push({
         source: `contribution:${entry.agentName}:r${entry.round}`,

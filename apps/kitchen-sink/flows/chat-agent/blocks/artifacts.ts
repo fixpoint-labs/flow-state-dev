@@ -71,7 +71,7 @@ const artifactListContext = async (_input: unknown, ctx: any): Promise<string> =
   }>;
   const lines: string[] = [];
   for await (const ref of artifacts.scan()) {
-    const state = await ref.state();
+    const state = ref.state;
     const id = ref.name.replace("artifacts/", "");
     const title = state.title ?? "Untitled";
     const summary = state.summary ? ` — ${state.summary}` : "";
@@ -120,7 +120,7 @@ export const readArtifact = handler({
       return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
     }
 
-    const state = await ref.state();
+    const state = ref.state;
     return {
       id: input.artifactId,
       title: state.title,

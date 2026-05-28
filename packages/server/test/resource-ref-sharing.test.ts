@@ -32,7 +32,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       name: "reader",
       resources: { b: sharedRef },
       execute: async (_input, ctx) => {
-        return { seen: ((await ctx.resources.b.state()) as { count: number }).count };
+        return { seen: ((ctx.resources.b.state) as { count: number }).count };
       }
     });
 
@@ -66,7 +66,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       stores
     });
 
-    expect(((await readCtx.resources.b.state()) as { count: number }).count).toBe(7);
+    expect(((readCtx.resources.b.state) as { count: number }).count).toBe(7);
   });
 
   it("aliases on different accessors converge on one persisted slot", async () => {
@@ -101,10 +101,10 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
     });
 
     await ctx.resources.primary.setState({ value: "hello" });
-    expect(((await ctx.resources.alias.state()) as { value: string }).value).toBe("hello");
+    expect(((ctx.resources.alias.state) as { value: string }).value).toBe("hello");
 
     await ctx.resources.alias.setState({ value: "world" });
-    expect(((await ctx.resources.primary.state()) as { value: string }).value).toBe("world");
+    expect(((ctx.resources.primary.state) as { value: string }).value).toBe("world");
 
     // Resource state lives in the ResourceStateStore (FIX-689); aliases dedup
     // to exactly one storage slot holding the latest written value.

@@ -193,13 +193,13 @@ export function formatPersonaCritique(label: string, memo: any): string {
 
 /** Render the four Phase 1 analyst memos as a compact block. */
 export async function formatAnalystMemos(memos: {
-  getOptional: (k: string) => Promise<{ state: () => Promise<any> } | undefined>;
+  getOptional: (k: string) => Promise<{ state: any } | undefined>;
 }): Promise<string> {
   const blocks: string[] = [];
   for (const [, mapping] of Object.entries(PHASE_1_MEMO_KEYS)) {
     const ref = await memos.getOptional(mapping.collectionKey);
     const role = AGENTS[mapping.agentName].role;
-    blocks.push(formatMemoBlock(`${role}`, ref ? await ref.state() : undefined));
+    blocks.push(formatMemoBlock(`${role}`, ref ? ref.state : undefined));
   }
   return blocks.join("\n\n");
 }
@@ -303,7 +303,7 @@ export async function readContributionsEntries(
   resourceName: string,
 ): Promise<RoundRobinContributionEntry[]> {
   const ref = ctx.resources?.[resourceName];
-  const state = (ref ? await ref.state() : undefined) as
+  const state = (ref ? ref.state : undefined) as
     | RoundRobinContributionsState
     | undefined;
   return state?.entries ?? [];

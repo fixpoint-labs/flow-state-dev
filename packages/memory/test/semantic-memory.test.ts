@@ -32,7 +32,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -212,8 +212,8 @@ describe('memory/semanticMemory', () => {
       expect(result.subject).toBe('user')
       expect(result.reinforcementCount).toBe(1)
       expect(result.extractedAt).toBeDefined()
-      expect((await ref.state()).facts).toHaveLength(1)
-      expect((await ref.state()).totalExtracted).toBe(1)
+      expect((ref.state).facts).toHaveLength(1)
+      expect((ref.state).totalExtracted).toBe(1)
     })
 
     it('accepts custom subject', async () => {
@@ -246,8 +246,8 @@ describe('memory/semanticMemory', () => {
         sourceEpisodeIds: [],
       })
 
-      expect((await ref.state()).totalExtracted).toBe(2)
-      expect((await ref.state()).facts).toHaveLength(2)
+      expect((ref.state).totalExtracted).toBe(2)
+      expect((ref.state).facts).toHaveLength(2)
     })
   })
 
@@ -346,7 +346,7 @@ describe('memory/semanticMemory', () => {
       })
 
       await reinforce(ref, 'sf_abc123', [])
-      expect((await ref.state()).facts[0].reinforcementCount).toBe(2)
+      expect((ref.state).facts[0].reinforcementCount).toBe(2)
     })
 
     it('merges sourceEpisodeIds', async () => {
@@ -397,8 +397,8 @@ describe('memory/semanticMemory', () => {
       })
 
       await removeFact(ref, 'sf_remove')
-      expect((await ref.state()).facts).toHaveLength(1)
-      expect((await ref.state()).facts[0].id).toBe('sf_keep')
+      expect((ref.state).facts).toHaveLength(1)
+      expect((ref.state).facts[0].id).toBe('sf_keep')
     })
 
     it('is a no-op for non-existent ID', async () => {
@@ -407,7 +407,7 @@ describe('memory/semanticMemory', () => {
       })
 
       await removeFact(ref, 'sf_nonexistent')
-      expect((await ref.state()).facts).toHaveLength(1)
+      expect((ref.state).facts).toHaveLength(1)
     })
   })
 

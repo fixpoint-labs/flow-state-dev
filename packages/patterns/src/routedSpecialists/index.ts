@@ -75,7 +75,7 @@ export interface RoutedSpecialistsConfig<
 
   /**
    * Shared workspace resource — created via `createWorkspace(stateSchema)`.
-   * Specialists read state via `ctx.resources.workspace.state()` and contribute
+   * Specialists read state via `ctx.resources.workspace.state` and contribute
    * by patching it.
    */
   workspace: DefinedResource;
@@ -239,7 +239,7 @@ function buildDefaultController(config: {
         .join("\n");
     },
     user: async (_input, ctx) => {
-      const state = await ctx.resources.workspace?.state();
+      const state = ctx.resources.workspace?.state;
       return `Current workspace state:\n${JSON.stringify(state, null, 2)}`;
     },
   });
@@ -472,7 +472,7 @@ export function routedSpecialists<
     resources: { workspace: workspaceResource },
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (_input, ctx) => {
-      const workspaceState = await ctx.resources.workspace.state();
+      const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
       ctx.emitComponent(
         "routedSpecialists",
@@ -524,7 +524,7 @@ export function routedSpecialists<
       maxIterations,
     })
     .map(async (_value: unknown, ctx: any) => {
-      const workspaceState = await ctx.resources.workspace.state();
+      const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
       const collection = getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });

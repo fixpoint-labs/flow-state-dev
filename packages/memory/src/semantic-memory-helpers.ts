@@ -128,7 +128,7 @@ export async function removeFact(ref: SemRef, factId: string): Promise<void> {
  * When `subject` is provided, returns only facts about that subject.
  */
 export async function allFacts(ref: SemRef, subject?: string): Promise<SemanticFact[]> {
-  let facts = [...(await ref.state()).facts]
+  let facts = [...(ref.state).facts]
   if (subject != null) {
     facts = facts.filter((f) => f.subject === subject)
   }

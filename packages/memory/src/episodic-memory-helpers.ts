@@ -64,7 +64,7 @@ export async function encode(
  * Optionally limit the number of results.
  */
 export async function recent(ref: EpRef, limit?: number): Promise<Episode[]> {
-  const sorted = [...(await ref.state()).episodes].sort(
+  const sorted = [...(ref.state).episodes].sort(
     (a, b) => b.occurredAtTurn - a.occurredAtTurn,
   )
   return limit != null ? sorted.slice(0, limit) : sorted

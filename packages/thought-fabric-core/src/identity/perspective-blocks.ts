@@ -451,7 +451,7 @@ export function perspectiveSnapshot(config: PerspectivePositionBlockConfig) {
       return {
         observations: await perspectiveObservations(obsRef),
         positions: await perspectivePositions(posRef),
-        turnCounter: (await obsRef.state()).turnCounter,
+        turnCounter: (obsRef.state).turnCounter,
       }
     },
   })

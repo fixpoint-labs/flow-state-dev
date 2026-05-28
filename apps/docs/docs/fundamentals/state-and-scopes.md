@@ -192,7 +192,7 @@ session: {
     expose: ["messageCount"],
     derived: {
       artifactsList: async (ctx) => {
-        const artifacts = await ctx.resources.artifacts?.state();
+        const artifacts = ctx.resources.artifacts?.state;
         return artifacts?.order.map(id => ({
           id,
           title: artifacts.byId[id]?.title ?? "Untitled",

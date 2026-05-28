@@ -318,7 +318,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .map(async (_value: unknown, ctx: any) => {
       const state = ctx.sequencer!.state;
       const contribState = (await ctx.resources?.[accessorKey]
-        ?.state()) as RoundRobinContributionsState | undefined;
+        ?.state) as RoundRobinContributionsState | undefined;
       const final: RoundRobinFinalShape = {
         rounds: state.round,
         contributions: contribState?.entries ?? [],

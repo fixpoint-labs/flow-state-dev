@@ -200,7 +200,7 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
       }
 
       const signature = await computeSourceSignature(semRef, epRef)
-      const stored = (digestRef ? (await digestRef.state()).digest : undefined) as Digest | undefined
+      const stored = (digestRef ? (digestRef.state).digest : undefined) as Digest | undefined
 
       const force = !!input?.force
       const stale =
@@ -326,7 +326,7 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
       const signature = semRef
         ? await computeSourceSignature(semRef, epRef)
         : { semanticFactCount: 0, semanticReinforcementSum: 0, episodeCount: 0 }
-      const currentTurn = wmRef ? ((await wmRef.state()).currentTurn ?? 0) : 0
+      const currentTurn = wmRef ? ((wmRef.state).currentTurn ?? 0) : 0
 
       const next: Digest = {
         content,

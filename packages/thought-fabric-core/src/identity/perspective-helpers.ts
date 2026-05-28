@@ -213,7 +213,7 @@ export async function addPerspectiveObservation(
   ref: PerspectiveObservationsRef,
   input: AddPerspectiveObservationInput,
 ): Promise<PerspectiveObservation> {
-  const state = await ref.state()
+  const state = ref.state
 
   const observation: PerspectiveObservation = {
     id: `pobs_${shortId()}`,
@@ -264,7 +264,7 @@ export async function perspectiveObservations(
   ref: PerspectiveObservationsRef,
   category?: string,
 ): Promise<PerspectiveObservation[]> {
-  const all = (await ref.state()).observations
+  const all = (ref.state).observations
   return category === undefined ? [...all] : all.filter((o) => o.category === category)
 }
 
@@ -290,7 +290,7 @@ export async function advancePerspectiveObservations(
  * string when there are no observations.
  */
 export async function formatPerspectiveObservations(ref: PerspectiveObservationsRef): Promise<string> {
-  const observations = (await ref.state()).observations
+  const observations = (ref.state).observations
   if (observations.length === 0) return ''
 
   const lines: string[] = ['## Observations recorded so far']
@@ -333,8 +333,8 @@ export async function addPerspectivePosition(
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<PerspectivePosition> {
   const addedAt = observationsRef
-    ? (await observationsRef.state()).turnCounter
-    : (await ref.state()).positions.length
+    ? (observationsRef.state).turnCounter
+    : (ref.state).positions.length
 
   const position: PerspectivePosition = {
     id: `ppos_${shortId()}`,
@@ -367,7 +367,7 @@ export async function challengePerspectivePosition(
   evidence: string,
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<boolean> {
-  const addedAt = observationsRef ? (await observationsRef.state()).turnCounter : 0
+  const addedAt = observationsRef ? (observationsRef.state).turnCounter : 0
   let challenged = false
 
   await ref.updateState((s) => {
@@ -410,7 +410,7 @@ export async function removePerspectivePosition(
 
 /** Read all positions in insertion order. */
 export async function perspectivePositions(ref: PerspectivePositionsRef): Promise<PerspectivePosition[]> {
-  return [...(await ref.state()).positions]
+  return [...(ref.state).positions]
 }
 
 /**
@@ -419,7 +419,7 @@ export async function perspectivePositions(ref: PerspectivePositionsRef): Promis
  * positions.
  */
 export async function formatPerspectivePositions(ref: PerspectivePositionsRef): Promise<string> {
-  const positions = (await ref.state()).positions
+  const positions = (ref.state).positions
   if (positions.length === 0) return ''
 
   const lines: string[] = ['## Positions taken']

@@ -64,7 +64,7 @@ execute: async (input, ctx) => {
   const rendered = await artifact.readContent();   // "# My Document\n\nDraft content..."
 
   // Read structured metadata
-  const { title, status, tags } = await artifact.state();
+  const { title, status, tags } = artifact.state;
 }
 ```
 

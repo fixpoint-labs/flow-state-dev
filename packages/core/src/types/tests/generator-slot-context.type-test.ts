@@ -22,7 +22,7 @@ const generatorContextTypeSmoke = generator({
   context: [
     async (input, ctx) => {
       const message: string = input.message;
-      const artifacts = await ctx.resources.get("artifacts").state();
+      const artifacts = await ctx.resources.get("artifacts").state;
       const firstId = artifacts.order[0];
       const firstTitle = firstId === undefined ? undefined : artifacts.byId[firstId]?.title;
       return `${message}:${firstTitle ?? "none"}`;

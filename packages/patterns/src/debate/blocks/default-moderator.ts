@@ -139,7 +139,7 @@ export function createModerator(opts: CreateModeratorOptions) {
     user: async (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as DebateState;
       const transcriptState = (await ctx.resources.transcript
-        ?.state()) as DebateTranscriptState | undefined;
+        ?.state) as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
       const byRound = new Map<number, typeof entries>();
       for (const e of entries) {

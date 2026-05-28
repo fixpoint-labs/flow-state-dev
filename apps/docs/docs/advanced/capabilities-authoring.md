@@ -31,13 +31,13 @@ const notesCapability = defineCapability({
 
   fns: (ctx) => ({
     add: async (text: string) => {
-      const entries = (await ctx.session.resources.notes.state()).entries;
+      const entries = (ctx.session.resources.notes.state).entries;
       await ctx.session.resources.notes.patchState({
         entries: [...entries, { text, createdAt: Date.now() }],
       });
       await ctx.session.incState({ noteCount: 1 });
     },
-    list: async () => (await ctx.session.resources.notes.state()).entries,
+    list: async () => (ctx.session.resources.notes.state).entries,
   }),
 });
 ```

@@ -54,7 +54,7 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
   return {
     name: 'workingMemory',
     scope: 'session',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -75,7 +75,7 @@ function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<
   return {
     name: 'memorySystem',
     scope: 'session',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as MemorySystemState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -95,7 +95,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
   return {
     name: 'semanticMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -110,7 +110,7 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
   return {
     name: 'episodicMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -125,7 +125,7 @@ function createMockDigestRef(initial?: Partial<DigestMemoryState>): ResourceHand
   return {
     name: 'digestMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as DigestMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -509,14 +509,14 @@ describe('memory/digest', () => {
       const out = await runForTest(block, 'NEW DIGEST' as any, ctx) as any
 
       expect(out.persisted).toBe(true)
-      expect((await digestRef.state()).digest?.content).toBe('NEW DIGEST')
-      expect((await digestRef.state()).digest?.generatedAtTurn).toBe(9)
-      expect((await digestRef.state()).digest?.sourceSignature).toEqual({
+      expect((digestRef.state).digest?.content).toBe('NEW DIGEST')
+      expect((digestRef.state).digest?.generatedAtTurn).toBe(9)
+      expect((digestRef.state).digest?.sourceSignature).toEqual({
         semanticFactCount: 2,
         semanticReinforcementSum: 3,
         episodeCount: 1,
       })
-      expect((await digestRef.state()).totalGenerated).toBe(1)
+      expect((digestRef.state).totalGenerated).toBe(1)
     })
 
     it('does not increment totalGenerated on empty content', async () => {
@@ -534,7 +534,7 @@ describe('memory/digest', () => {
       } as any
       const out = await runForTest(block, '' as any, ctx) as any
       expect(out.persisted).toBe(false)
-      expect((await digestRef.state()).totalGenerated).toBe(0)
+      expect((digestRef.state).totalGenerated).toBe(0)
     })
   })
 

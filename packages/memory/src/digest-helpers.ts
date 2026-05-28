@@ -25,7 +25,7 @@ export async function computeSourceSignature(
   semRef: SemRef,
   epRef?: EpRef,
 ): Promise<DigestSourceSignature> {
-  const facts = (await semRef.state()).facts
+  const facts = (semRef.state).facts
   const semanticReinforcementSum = facts.reduce(
     (sum, f) => sum + f.reinforcementCount,
     0,
@@ -33,7 +33,7 @@ export async function computeSourceSignature(
   return {
     semanticFactCount: facts.length,
     semanticReinforcementSum,
-    episodeCount: epRef ? (await epRef.state()).episodes.length : 0,
+    episodeCount: epRef ? (epRef.state).episodes.length : 0,
   }
 }
 
@@ -48,7 +48,7 @@ export async function isStale(
   semRef: SemRef,
   epRef?: EpRef,
 ): Promise<boolean> {
-  const current = (await ref.state()).digest
+  const current = (ref.state).digest
   if (!current) return true
   const fresh = await computeSourceSignature(semRef, epRef)
   return (

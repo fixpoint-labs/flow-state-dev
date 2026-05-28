@@ -42,10 +42,10 @@ function ctxWithThesis() {
     resources: {
       // formatAnalystMemos / memoState call getOptional (async); undefined is fine.
       memos: { getOptional: async () => undefined },
-      // readContributionsEntries reads async .state().
-      p2Contributions: { state: async () => ({ entries: [] }) },
-      // formatUserInstructions reads async .state(); undefined → "".
-      specialInstructions: { state: async () => undefined },
+      // readContributionsEntries reads async .state.
+      p2Contributions: { get state() { return { entries: [] }; } },
+      // formatUserInstructions reads async .state; undefined → "".
+      specialInstructions: { get state() { return undefined; } },
     },
   };
 }

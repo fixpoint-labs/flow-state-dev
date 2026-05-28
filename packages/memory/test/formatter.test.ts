@@ -44,7 +44,7 @@ function createMockWmRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -61,7 +61,7 @@ function createMockDigestRef(
   return {
     name: 'digestMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as DigestMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -83,7 +83,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -104,7 +104,7 @@ function createMockEpRef(
   return {
     name: 'episodicMemory',
     scope: 'user',
-    state: async () => state,
+    get state() { return state; },
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },

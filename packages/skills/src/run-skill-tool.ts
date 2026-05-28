@@ -130,7 +130,7 @@ export async function listEnabledSkills(
     // The collection holds a mix of SKILL.md manifests and supporting files.
     // Manifests have keys ending in `/SKILL.md` once stripped of the prefix.
     if (!ref.name.endsWith("/SKILL.md")) continue;
-    const state = (await ref.state()) as unknown as SkillState;
+    const state = (ref.state) as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     // Extract skill name from the storage key — strip prefix and `/SKILL.md`.
     const segments = ref.name.split("/");
@@ -244,7 +244,7 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
         );
       }
 
-      const state = (await manifest.state()) as unknown as SkillState;
+      const state = (manifest.state) as unknown as SkillState;
       if (state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be invoked by the agent`,

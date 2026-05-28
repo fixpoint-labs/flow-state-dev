@@ -88,7 +88,7 @@ export function resourceTools() {
     execute: async (input, ctx) => {
       const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       const handle = await nsRef.get(key);
-      return { path: input.path, state: (await handle.state()) as Record<string, unknown> };
+      return { path: input.path, state: (handle.state) as Record<string, unknown> };
     },
   });
 
@@ -148,7 +148,7 @@ export function resourceTools() {
         for await (const instance of ns.ref.scan({ prefix: input.prefix })) {
           resources.push({
             path: instance.name,
-            state: (await instance.state()) as Record<string, unknown>,
+            state: (instance.state) as Record<string, unknown>,
           });
         }
       }

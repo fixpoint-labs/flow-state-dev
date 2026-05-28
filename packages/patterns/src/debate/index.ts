@@ -372,7 +372,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const buildRawOutput = async (value: unknown, ctx: any): Promise<DebateRawOutput> => {
     const state = ctx.sequencer!.state as DebateState;
     const transcriptState = (await ctx.resources?.transcript
-      ?.state()) as DebateTranscriptState | undefined;
+      ?.state) as DebateTranscriptState | undefined;
     return {
       rounds: state.round,
       question: state.question,

@@ -68,7 +68,7 @@ export async function createBashTool(
   // 1. Resolve or create sandbox
   const existingId =
     persist && bashSession
-      ? (await bashSession.state()).sandboxId || undefined
+      ? (bashSession.state).sandboxId || undefined
       : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
 
@@ -86,7 +86,7 @@ export async function createBashTool(
   const allFiles: string[] = [];
   for (const c of Object.values<ResourceCollectionRef<FileEntryState>>(collections)) {
     for await (const ref of c.scan()) {
-      allFiles.push((await ref.state()).path);
+      allFiles.push((ref.state).path);
     }
   }
   const fileList = allFiles.join("\n");

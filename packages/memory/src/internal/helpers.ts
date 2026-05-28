@@ -12,12 +12,12 @@
  * Minimal structural view of a `ResourceRef` as used by the memory helpers.
  *
  * `@flow-state-dev/core` does not re-export `ResourceRef`, so we mirror just
- * the async accessor surface the helpers touch: `state()` (now an async
- * method) and `updateState()`. Structurally assignable from the real
- * `ResourceRef` handed out by `ctx.resources`.
+ * the accessor surface the helpers touch: `state` (a synchronous property)
+ * and `updateState()`. Structurally assignable from the real `ResourceRef`
+ * handed out by `ctx.resources`.
  */
 export type MemResourceRef<TState> = {
-  state(): Promise<Readonly<TState>>
+  state: Readonly<TState>
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>
 }
 

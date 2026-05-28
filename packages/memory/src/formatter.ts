@@ -95,7 +95,7 @@ export function createDigestEntry(): (
     let digestText = ''
     try {
       const digestRef = ctx.resources?.digestMemory
-      const stored = (digestRef ? (await digestRef.state()).digest : undefined) as Digest | undefined
+      const stored = (digestRef ? (digestRef.state).digest : undefined) as Digest | undefined
       digestText = stored?.content?.trim() ?? ''
     } catch {
       // Digest resource not available in this scope; treat as absent.

@@ -40,7 +40,7 @@ const neutralPrompt = loadPrompt("phase-4/prompts/neutral.prompt.md");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function memoState(ctx: any, collectionKey: string): Promise<unknown> {
   const ref = await ctx.resources.memos?.getOptional(collectionKey);
-  return ref ? await ref.state() : undefined;
+  return ref ? ref.state : undefined;
 }
 
 const tradingMemos = (reasoning: boolean) => [

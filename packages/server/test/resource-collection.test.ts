@@ -84,11 +84,11 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.create("readme.md", { language: "markdown" });
-    expect((await ref.state()).language).toBe("markdown");
+    expect((ref.state).language).toBe("markdown");
     expect(ref.name).toBe("files/readme.md");
 
     const got = await ns.get("readme.md");
-    expect((await got.state()).language).toBe("markdown");
+    expect((got.state).language).toBe("markdown");
   });
 
   it("create() throws on duplicate key", async () => {
@@ -116,7 +116,7 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.getOrCreate("new.ts", { language: "typescript" });
-    expect((await ref.state()).language).toBe("typescript");
+    expect((ref.state).language).toBe("typescript");
     expect(await ns.count()).toBe(1);
   });
 
@@ -126,7 +126,7 @@ describe("collection CRUD", () => {
 
     await ns.create("exist.ts", { language: "typescript" });
     const ref = await ns.getOrCreate("exist.ts", { language: "DIFFERENT" });
-    expect((await ref.state()).language).toBe("typescript"); // original value
+    expect((ref.state).language).toBe("typescript"); // original value
     expect(await ns.count()).toBe(1);
   });
 
@@ -168,7 +168,7 @@ describe("collection CRUD", () => {
     await ns.create("src/utils/helpers.ts", { language: "typescript" });
     const ref = await ns.get("src/utils/helpers.ts");
     expect(ref.name).toBe("files/src/utils/helpers.ts");
-    expect((await ref.state()).language).toBe("typescript");
+    expect((ref.state).language).toBe("typescript");
   });
 });
 
@@ -187,9 +187,9 @@ describe("create({ replace })", () => {
       { language: "python" },
       { replace: true },
     );
-    expect((await replaced.state()).language).toBe("python");
+    expect((replaced.state).language).toBe("python");
     // Original metadata is dropped — replace is setState semantics, not merge
-    expect((await replaced.state()).metadata).toBeUndefined();
+    expect((replaced.state).metadata).toBeUndefined();
   });
 
   it("creates if missing — same as create() without the option", async () => {
@@ -201,7 +201,7 @@ describe("create({ replace })", () => {
       { language: "typescript" },
       { replace: true },
     );
-    expect((await ref.state()).language).toBe("typescript");
+    expect((ref.state).language).toBe("typescript");
     expect(await ns.count()).toBe(1);
   });
 
@@ -218,7 +218,7 @@ describe("create({ replace })", () => {
     // Replace one of them — must not trip the maxInstances guard.
     await ns.create("f3.ts", { language: "python" }, { replace: true });
     expect(await ns.count()).toBe(5);
-    expect((await (await ns.get("f3.ts")).state()).language).toBe("python");
+    expect((await (await ns.get("f3.ts")).state).language).toBe("python");
   });
 
   it("fires onInstanceUpdated on the replace branch", async () => {
@@ -272,7 +272,7 @@ describe("upsert", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.upsert("new.ts", { language: "typescript" });
-    expect((await ref.state()).language).toBe("typescript");
+    expect((ref.state).language).toBe("typescript");
     expect(await ns.count()).toBe(1);
   });
 
@@ -283,9 +283,9 @@ describe("upsert", () => {
     await ns.create("a.ts", { language: "typescript", metadata: { kept: true } });
     await ns.upsert("a.ts", { language: "python" });
     const got = await ns.get("a.ts");
-    expect((await got.state()).language).toBe("python");
+    expect((got.state).language).toBe("python");
     // metadata was NOT in the update, so it must persist (patch semantics)
-    expect((await got.state()).metadata).toEqual({ kept: true });
+    expect((got.state).metadata).toEqual({ kept: true });
   });
 
   it("3-arg form creates with { ...createOnly, ...update } on missing", async () => {
@@ -298,8 +298,8 @@ describe("upsert", () => {
       { metadata: { initOnly: true } },
     );
     const ref = await ns.get("new.ts");
-    expect((await ref.state()).language).toBe("typescript");
-    expect((await ref.state()).metadata).toEqual({ initOnly: true });
+    expect((ref.state).language).toBe("typescript");
+    expect((ref.state).metadata).toEqual({ initOnly: true });
   });
 
   it("3-arg form: update wins over createOnly on overlapping keys (create branch)", async () => {
@@ -312,8 +312,8 @@ describe("upsert", () => {
       { language: "typescript", metadata: { kept: true } },
     );
     const ref = await ns.get("new.ts");
-    expect((await ref.state()).language).toBe("python");
-    expect((await ref.state()).metadata).toEqual({ kept: true });
+    expect((ref.state).language).toBe("python");
+    expect((ref.state).metadata).toEqual({ kept: true });
   });
 
   it("3-arg form: createOnly is ignored on the patch branch", async () => {
@@ -327,10 +327,10 @@ describe("upsert", () => {
       { metadata: { shouldNotAppear: true } },
     );
     const ref = await ns.get("a.ts");
-    expect((await ref.state()).language).toBe("python");
+    expect((ref.state).language).toBe("python");
     // createOnly was supplied but the resource already existed, so the
     // extras are not applied — only the update is patched in.
-    expect((await ref.state()).metadata).toBeUndefined();
+    expect((ref.state).metadata).toBeUndefined();
   });
 
   it("fires onInstanceCreated on create branch, onInstanceUpdated on patch branch", async () => {
@@ -383,7 +383,7 @@ describe("upsert", () => {
 
     // Resource must remain at its prior valid state — failed patch
     // must not have written anything.
-    expect((await (await ns.get("k")).state()).count).toBe(1);
+    expect((await (await ns.get("k")).state).count).toBe(1);
   });
 
   it("honors maxInstances on the create branch only", async () => {
@@ -422,7 +422,7 @@ describe("collection instance state mutations", () => {
     await ref.patchState({ language: "javascript" });
 
     const updated = await ns.get("a.ts");
-    expect((await updated.state()).language).toBe("javascript");
+    expect((updated.state).language).toBe("javascript");
   });
 
   it("setState replaces entire state", async () => {
@@ -434,7 +434,7 @@ describe("collection instance state mutations", () => {
     await ref.setState({ language: "python" } as any);
 
     const updated = await ns.get("a.ts");
-    expect((await updated.state()).language).toBe("python");
+    expect((updated.state).language).toBe("python");
   });
 
   it("updateState uses functional updater", async () => {
@@ -446,7 +446,7 @@ describe("collection instance state mutations", () => {
     await ref.updateState((s) => ({ ...s, language: s.language + "!" }));
 
     const updated = await ns.get("a.ts");
-    expect((await updated.state()).language).toBe("typescript!");
+    expect((updated.state).language).toBe("typescript!");
   });
 });
 
@@ -554,7 +554,7 @@ describe("parameterized collection", () => {
 
     await ns.create({ topic: "react" }, { entries: ["first"] });
     const ref = await ns.get({ topic: "react" });
-    expect((await ref.state()).entries).toEqual(["first"]);
+    expect((ref.state).entries).toEqual(["first"]);
     expect(ref.name).toBe("react/observations");
   });
 

@@ -72,7 +72,7 @@ async function listSkillsForPrompt(
     const skillName = segments[segments.length - 2]!;
     if (seen.has(skillName)) continue;
     seen.add(skillName);
-    const state = (await ref.state()) as unknown as SkillState;
+    const state = (ref.state) as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     let desc = state.description ?? "";
     if (state.whenToUse) desc = `${desc}\n${state.whenToUse}`;
@@ -134,7 +134,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
           const segments = ref.name.split("/");
           if (segments.length < 2) continue;
           const skillName = segments[segments.length - 2]!;
-          const state = (await ref.state()) as unknown as SkillState;
+          const state = (ref.state) as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           validNames.add(skillName);
         }
