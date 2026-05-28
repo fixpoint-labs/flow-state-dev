@@ -30,12 +30,16 @@
  *      shape lets resources flow through and keeps the call site flat.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import { fetch as createFetchTool } from "@flow-state-dev/tools";
+import {
+  fetch as createFetchTool,
+  search as createSearchTool,
+} from "@flow-state-dev/tools";
 import { find_counter_evidence } from "./phase-2/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
+  PHASE_5_MEMO_KEYS,
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
 import { formatUserInstructions } from "./special-instructions";
@@ -91,11 +95,48 @@ const INVESTIGATION_CLAUSE = [
   "</investigation>",
 ].join("\n");
 
-/** Shared `fetch` tool instance used by the `investigate` preset. One
- *  instance reused across all generators that opt in — the tool is
- *  stateless and the framework binds per-call agentType / agentName from
+/** Shared `fetch` tool instance used by the `investigate` and `verify`
+ *  presets. One instance reused across all generators that opt in — the tool
+ *  is stateless and the framework binds per-call agentType / agentName from
  *  the generator that consumed it. */
 const fetchArticle = createFetchTool();
+
+/** Shared `search` tool instance for the `verify` preset (Phase 6). Auto-
+ *  detects the best available web-search provider from env. */
+const searchWeb = createSearchTool();
+
+/**
+ * Codifies the verification contract for the Phase 6 `verify` preset. Paired
+ * with the `search` + `fetch` tools. The thesis validator's job is to test
+ * claims against reality, so — unlike `investigate` — this is NOT cost-gated:
+ * verification is the agent's entire purpose and there is exactly one such
+ * agent per run (only when a user thesis was provided, an explicit opt-in).
+ *
+ * The clause also tells the validator to recognize when its own research came
+ * up short and to treat that as a blind spot rather than asserting an
+ * unverified verdict.
+ */
+const VERIFICATION_CLAUSE = [
+  "<verification>",
+  "You have `search` and `fetch` tools. Use them to independently verify the",
+  "user's thesis and the pipeline's findings — do not rely on your own",
+  "training knowledge alone.",
+  "",
+  "- When the user's thesis or a memo names a specific, checkable claim (a",
+  "  deal, acquisition, partnership, number, event, or date), search for it",
+  "  before judging it supported or contradicted. If an analyst memo reports",
+  "  it found no coverage of a claim, search yourself before concluding the",
+  "  claim is false — absence in one analyst's feed is not disproof.",
+  "- Fetch the most material 1-3 URLs when a search snippet is not enough.",
+  "  Add every URL you actually fetched to the `citations` array with its",
+  "  title. Do not cite URLs you did not fetch.",
+  "- If your searches are inconclusive — no authoritative source, conflicting",
+  "  reports, or you have run out of useful queries — say so explicitly in the",
+  "  body and record it as a blind spot. An honest \"could not confirm X\" is",
+  "  worth more than a confident guess. Do not upgrade `alignmentConfidence`",
+  "  for a claim you could not verify.",
+  "</verification>",
+].join("\n");
 
 const GROUNDING_CLAUSE = [
   "<grounding>",
@@ -275,6 +316,53 @@ export const tradingDesk = defineCapability({
             "Neutral Risk critique",
             memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
           ),
+      },
+    },
+
+    /** Phase 5 — portfolio-manager decision memo, for Phase 6 consumption.
+     *  The thesis validator reads the PM's published decision as the
+     *  terminal output of the independent pipeline. Distinct from
+     *  `tradeProposal` (Phase 3) — this is the final arbiter's call. */
+    portfolioDecision: {
+      resources: { memos: memosCollection },
+      context: {
+        portfolioDecision: (_input, ctx) =>
+          formatMemoBlock(
+            "Portfolio decision",
+            memoState(ctx, PHASE_5_MEMO_KEYS.portfolioManager.collectionKey),
+          ),
+      },
+    },
+
+    /** Per-run user thesis context — only the Phase 6 validator opts in.
+     *  CRITICAL: the `core` preset does NOT use this. The pipeline (P1–P5)
+     *  must run blind to the user's thesis so its analysis stays independent;
+     *  the validator audits the user against that independent evidence.
+     *  Uses `<userThesis>` / `<userThesisRationale>` tags — deliberately
+     *  distinct from `core`'s `<userInstructions>` tag, never the same tag
+     *  for both. Returns `null` (not `""`) when a field is empty so the XML
+     *  renderer omits the tag entirely. */
+    userThesis: {
+      context: {
+        userThesis: (_input, ctx) =>
+          ctx.session.state.userThesis
+            ? `<userThesis>\n${ctx.session.state.userThesis}\n</userThesis>`
+            : null,
+        userThesisRationale: (_input, ctx) =>
+          ctx.session.state.userThesisRationale
+            ? `<userThesisRationale>\n${ctx.session.state.userThesisRationale}\n</userThesisRationale>`
+            : null,
+      },
+    },
+
+    /** Phase 6 — web search + fetch for the thesis validator, plus the
+     *  verification contract clause. Not cost-gated (see `VERIFICATION_CLAUSE`):
+     *  the validator's job is to verify claims, and it only runs on an
+     *  explicit user-thesis opt-in. */
+    verify: {
+      tools: () => [searchWeb, fetchArticle],
+      context: {
+        verification: () => VERIFICATION_CLAUSE,
       },
     },
 

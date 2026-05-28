@@ -39,7 +39,15 @@ export const sessionStateSchema = z.object({
   costPreset: z.enum(["fast", "full"]).default("fast"),
   dataSource: z.enum(["fixture", "live"]).default("fixture"),
   activePhase: z
-    .enum(["idle", "phase-1", "phase-2", "phase-3", "phase-4", "phase-5"])
+    .enum([
+      "idle",
+      "phase-1",
+      "phase-2",
+      "phase-3",
+      "phase-4",
+      "phase-5",
+      "phase-6",
+    ])
     .default("idle"),
   maxDebateRounds: z.number().int().min(1).max(2).default(1),
   memoStatus: z
@@ -51,6 +59,15 @@ export const sessionStateSchema = z.object({
     .nullable()
     .default(null),
   stoppedMessage: z.string().nullable().default(null),
+  // Per-run user thesis, frozen at `seedSession`. The pipeline runs blind to
+  // these — only the Phase 6 validator reads them via the `userThesis`
+  // capability preset. A non-null `userThesis` gates the Phase 6 audit.
+  userThesis: z.string().max(1500).nullable().default(null),
+  userThesisRationale: z.string().max(1500).nullable().default(null),
+  // Soft pre-flight warning surfaced when a thesis was provided but is too
+  // short to audit meaningfully (< 20 chars). Not a halt — a sub-threshold
+  // thesis is treated as no thesis and Phase 6 is skipped.
+  userThesisWarning: z.string().nullable().default(null),
   citationIntegrity: citationIntegritySchema.nullable().default(null),
 });
 

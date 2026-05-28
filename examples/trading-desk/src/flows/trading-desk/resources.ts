@@ -234,6 +234,26 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   agreesWithTrader: z.boolean().nullable().default(null),
+  // Phase 6 ThesisAlignment extension. Only the thesisValidator memo
+  // (`memos/p6/thesis-alignment`) populates these; all other memos leave
+  // them `null`. The validator audits the user's per-run thesis against the
+  // independent pipeline's findings. `proposedRevision` is null only when
+  // `alignment === "aligned"`.
+  alignment: z
+    .enum(["aligned", "partially-aligned", "contradicted", "orthogonal"])
+    .nullable()
+    .default(null),
+  alignmentConfidence: z.number().min(0).max(1).nullable().default(null),
+  supportingEvidence: z
+    .array(z.object({ source: z.string(), claim: z.string() }))
+    .nullable()
+    .default(null),
+  contradictingEvidence: z
+    .array(z.object({ source: z.string(), claim: z.string() }))
+    .nullable()
+    .default(null),
+  blindSpots: z.array(z.string()).nullable().default(null),
+  proposedRevision: z.string().nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

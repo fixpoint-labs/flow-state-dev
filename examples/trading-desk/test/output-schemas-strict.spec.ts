@@ -27,6 +27,7 @@ import {
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
+import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
 
 type Issue = { path: string; reason: string };
 
@@ -123,6 +124,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
+  ["Phase 6 thesisAlignmentOutputSchema", thesisAlignmentOutputSchema],
 ];
 
 describe("Generator output schemas are OpenAI strict-mode compatible", () => {

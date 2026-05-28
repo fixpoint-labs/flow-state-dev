@@ -19,6 +19,13 @@ export type UseFlowOptions = {
   userId?: string;
   baseUrl?: string;
   autoCreateSession?: boolean;
+  /**
+   * When `true` (the default), the mount fetch selects the most-recent
+   * session if none is active yet. Pass `false` when the consumer drives
+   * selection itself (e.g. keying the active session off input metadata) so
+   * the hook doesn't auto-load a session the consumer didn't ask for.
+   */
+  autoSelectSession?: boolean;
 };
 
 /**
@@ -37,7 +44,9 @@ export type UseFlowResult = {
   ensureSession: (
     metadata?: Record<string, unknown>
   ) => Promise<SessionDetail>;
-  selectSession: (sessionId: string) => void;
+  /** Set the active session, or pass `undefined` to clear it (no session
+   *  shown). */
+  selectSession: (sessionId: string | undefined) => void;
   /** Re-fetch the session list (e.g. after metadata changes). */
   refreshSessions: () => Promise<void>;
 };
@@ -114,7 +123,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     [sessions, sessionClient, createSession]
   );
 
-  const selectSession = useCallback((sessionId: string) => {
+  const selectSession = useCallback((sessionId: string | undefined) => {
     setActiveSessionId(sessionId);
   }, []);
 
@@ -147,7 +156,9 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
         setSessions(nextSessions);
 
         if (nextSessions.length > 0) {
-          setActiveSessionId((prev) => prev ?? nextSessions[0]!.id);
+          if (options.autoSelectSession !== false) {
+            setActiveSessionId((prev) => prev ?? nextSessions[0]!.id);
+          }
         } else if (options.autoCreateSession && flowKind?.trim()) {
           const created = await sessionClient.createSession({
             flowKind,
@@ -173,7 +184,14 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     return () => {
       cancelled = true;
     };
-  }, [client, sessionClient, flowKind, userId, options.autoCreateSession]);
+  }, [
+    client,
+    sessionClient,
+    flowKind,
+    userId,
+    options.autoCreateSession,
+    options.autoSelectSession,
+  ]);
 
   return {
     flowKind,
