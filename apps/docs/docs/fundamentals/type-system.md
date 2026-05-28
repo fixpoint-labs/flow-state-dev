@@ -113,7 +113,7 @@ const docReader = handler({
     }),
   }),
   execute: async (input, ctx) => {
-    // ctx.session.resources.documents — fully typed; state() is async
+    // ctx.session.resources.documents — fully typed; state is a sync property
     const docs = ctx.session.resources.documents.state;
     const doc = docs.byId["doc-1"];
     return doc.content; // string

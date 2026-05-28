@@ -168,7 +168,7 @@ session: {
     },
   },
   clientData: {
-    activePlan: async (ctx) => (await ctx.resources.plan?.state())?.steps ?? [],
+    activePlan: async (ctx) => (ctx.resources.plan?.state)?.steps ?? [],
     messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 },

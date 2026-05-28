@@ -94,7 +94,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `await ref.state()`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+Each returned `ResourceRef` supports the same operations as a static resource: `ref.state` (a synchronous property), `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
 
 The accessor methods that read from a collection are async: `get`, `getOptional`, `list`, `scan`, and `count` all return promises (or async iterators). This is what lets a collection load lazily — a `get` on a non-prefetched instance issues a store read on demand. Inside a handler, the per-resource handler context (`ctx.state`) stays synchronous; only the standalone `ResourceRef`/`ResourceCollectionRef` accessor surface is async.
 

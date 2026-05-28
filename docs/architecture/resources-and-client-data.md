@@ -114,7 +114,7 @@ The lifecycle mirrors content exactly:
 2. **State writes persist per-key.** A mutation to one resource writes only that resource's key via `ResourceStateStore.set` — it never loads or rewrites the whole scope record. This removes the write amplification a collection of N instances previously paid (the whole `resources` map was rewritten on every single-instance change).
 3. **State routes / debug snapshot** — read resource state fresh from `ResourceStateStore`.
 
-The resource accessor handle's read surface is async to support lazy loading: `await ref.state()`, `await coll.get(key)`, `await coll.count()`, and the cursor-paginated `await coll.list({ ... })` / `coll.scan({ ... })`. Write helpers (`patchState`, `setState`, `updateState`, content reads/writes) were already async. The handler-facing per-resource context (`ctx.state`) and the scope-state handles (`ctx.session.state`, `ctx.user.state`, `ctx.org.state`) stay synchronous.
+A collection's lookup accessors are async to support lazy loading: `await coll.get(key)`, `await coll.count()`, and the cursor-paginated `await coll.list({ ... })` / `coll.scan({ ... })`. The `ResourceRef` they return already has its state loaded, so `ref.state` is a synchronous property — you await the lookup, not the read. Write helpers (`patchState`, `setState`, `updateState`, content reads/writes) are async. The handler-facing per-resource context (`ctx.state`) and the scope-state handles (`ctx.session.state`, `ctx.user.state`, `ctx.org.state`) stay synchronous.
 
 ### Accessing Resources
 
@@ -122,9 +122,9 @@ Resources are accessed through the flat `ctx.resources` registry — the resourc
 
 ```ts
 // Read resource state — same shape regardless of scope.
-// `state()` is async on the resource accessor handle.
+// `state` is a synchronous property on the resource accessor handle.
 const plan = ctx.resources.plan;
-const steps = (await plan.state()).steps;
+const steps = plan.state.steps;
 
 // Mutate resource state
 await plan.patchState({ status: "active" });
@@ -232,7 +232,7 @@ Client data entries are derived views — computed from state and resources with
 ```ts
 session: {
   clientData: {
-    activePlan: async (ctx) => (await ctx.resources.plan?.state())?.steps ?? [],
+    activePlan: async (ctx) => (ctx.resources.plan?.state)?.steps ?? [],
     messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 }
@@ -265,7 +265,7 @@ defineFlow({
   session: {
     clientData: {
       artifactsList: async (ctx) => {
-        const artifacts = await ctx.resources.artifacts?.state();
+        const artifacts = ctx.resources.artifacts?.state;
         return artifacts?.order.map(id => ({
           id,
           title: artifacts.byId[id]?.title ?? "Untitled",
