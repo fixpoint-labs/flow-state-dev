@@ -24,6 +24,17 @@
  * state's persistence pipeline, so the second worker reads the now-
  * `in_progress` task and skips it. Result: at most one worker claims any
  * given task.
+ *
+ * Sync-query snapshot: the underlying `ResourceCollectionRef` accessors
+ * are async (`await ref.state()`, `await coll.get()`, `coll.scan()`), but
+ * `TaskCollectionRef`'s query surface (`get`/`list`/`count`) is sync —
+ * patterns wire it into synchronous `loopBack`/eligibility predicates. To
+ * bridge the two, this backing keeps an in-memory `Map<id, Task>` snapshot
+ * and refreshes it from the store at the end of every async mutation
+ * (`addTask`, `claim`, transitions, `reclaim`). Sync queries read the
+ * snapshot; await any mutation first to observe its effect. Live reads
+ * inside `claim`/`fail`/`reclaim` still hit the store directly so CAS
+ * re-checks and retry decisions see the freshest committed state.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -67,10 +78,11 @@ export interface ResourceBackedOptions {
   now?: () => number;
 }
 
-function readTaskState<TInput, TOutput>(
+/** Read a single ref's live state from the store. */
+async function readTaskState<TInput, TOutput>(
   ref: ResourceRef<JsonObject>
-): Task<TInput, TOutput> {
-  return ref.state as unknown as Task<TInput, TOutput>;
+): Promise<Task<TInput, TOutput>> {
+  return (await ref.state()) as unknown as Task<TInput, TOutput>;
 }
 
 /** Create a `TaskCollectionRef` backed by a parameterized resource collection. */
@@ -99,10 +111,22 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     });
   }
 
+  // Synchronous read view of the collection. Rebuilt from the store after
+  // every mutation so sync `get`/`list`/`count` (awaited-after-mutation in
+  // patterns) see fresh data. Keyed by task id.
+  const snapshot = new Map<string, Task<TInput, TOutput>>();
+
+  /** Rebuild the snapshot by scanning the live collection. */
+  async function refresh(): Promise<void> {
+    snapshot.clear();
+    for await (const ref of options.collection.scan()) {
+      const task = await readTaskState<TInput, TOutput>(ref);
+      snapshot.set(task.id, task);
+    }
+  }
+
   function listAll(): Task<TInput, TOutput>[] {
-    return options.collection
-      .list()
-      .map((ref) => readTaskState<TInput, TOutput>(ref));
+    return [...snapshot.values()];
   }
 
   async function transitionRef(
@@ -112,7 +136,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     flags?: { allowTerminalNoop?: boolean }
   ): Promise<void> {
-    const ref = options.collection.getOptional(id);
+    const ref = await options.collection.getOptional(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
@@ -132,6 +156,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       return next as unknown as JsonObject;
     });
 
+    await refresh();
     if (nextTask !== undefined) {
       emit(kind, nextTask, prevStatus);
     }
@@ -142,7 +167,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined
   ): Promise<void> {
-    const ref = options.collection.getOptional(id);
+    const ref = await options.collection.getOptional(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
@@ -158,6 +183,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       return next as unknown as JsonObject;
     });
 
+    await refresh();
     if (nextTask !== undefined) {
       emit(kind, nextTask);
     }
@@ -169,6 +195,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     async addTask(init) {
       const task = buildInitialTask<TInput, TOutput>(init, now());
       await options.collection.create(task.id, task as unknown as JsonObject);
+      snapshot.set(task.id, task);
       emit("added", task);
       return task;
     },
@@ -178,6 +205,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       for (const init of inits) {
         const task = buildInitialTask<TInput, TOutput>(init, now());
         await options.collection.create(task.id, task as unknown as JsonObject);
+        snapshot.set(task.id, task);
         created.push(task);
         emit("added", task);
       }
@@ -185,12 +213,14 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     },
 
     async claim(_workerId, claimOptions) {
-      // Live lookup so eligibility re-checks see the freshest dep state
-      // even when concurrent workers complete dependencies mid-scan.
-      const lookup = (id: string): Task | undefined => {
-        const r = options.collection.getOptional(id);
-        return r === undefined ? undefined : (readTaskState(r) as Task);
-      };
+      // Refresh the snapshot so the candidate scan and dep lookups see the
+      // freshest committed state — concurrent workers may have completed
+      // dependencies since the last mutation.
+      await refresh();
+      // Sync dep lookup against the just-refreshed snapshot. The CAS
+      // re-check inside `updateState` below still arbitrates on live state.
+      const lookup = (id: string): Task | undefined =>
+        snapshot.get(id) as Task | undefined;
       const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
       const order = claimOptions?.order ?? defaultOrder;
       const candidates = listAll().filter(eligibility).slice().sort(order);
@@ -198,7 +228,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
 
       for (const candidate of candidates) {
-        const candidateRef = options.collection.getOptional(candidate.id);
+        const candidateRef = await options.collection.getOptional(candidate.id);
         if (candidateRef === undefined) continue;
 
         let claimed: Task<TInput, TOutput> | undefined;
@@ -216,6 +246,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
         });
 
         if (claimed !== undefined) {
+          await refresh();
           emit("claimed", claimed, prevStatus);
           return claimed;
         }
@@ -239,9 +270,9 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       // the error as `feedback` for the next attempt. The next claim
       // will increment `attempts` again. Hard-fail (no budget left, or
       // no budget set) goes terminal.
-      const candidateRef = options.collection.getOptional(id);
+      const candidateRef = await options.collection.getOptional(id);
       if (candidateRef !== undefined) {
-        const current = readTaskState<TInput, TOutput>(candidateRef);
+        const current = await readTaskState<TInput, TOutput>(candidateRef);
         if (shouldRetryOnFail(current as Task)) {
           await transitionRef(id, "pending", "retried", () => ({
             feedback: error,
@@ -300,8 +331,8 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       const at = nowOverride ?? now();
       const reclaimed: Task<TInput, TOutput>[] = [];
 
-      for (const taskRef of options.collection.list()) {
-        const task = readTaskState<TInput, TOutput>(taskRef);
+      for await (const taskRef of options.collection.scan()) {
+        const task = await readTaskState<TInput, TOutput>(taskRef);
         if (
           task.status !== "in_progress" ||
           task.leaseUntil === undefined ||
@@ -335,6 +366,12 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
 
         if (next !== undefined) {
           reclaimed.push(next);
+        }
+      }
+
+      if (reclaimed.length > 0) {
+        await refresh();
+        for (const next of reclaimed) {
           emit("resumed", next, "in_progress");
         }
       }
@@ -378,10 +415,8 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     },
 
     get(id) {
-      const taskRef = options.collection.getOptional(id);
-      return taskRef === undefined
-        ? undefined
-        : wrap(readTaskState<TInput, TOutput>(taskRef));
+      const task = snapshot.get(id);
+      return task === undefined ? undefined : wrap(task);
     },
 
     list(filter?: TaskFilter) {

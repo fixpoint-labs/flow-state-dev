@@ -20,29 +20,43 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("listCollectionItems", () => {
-  it("builds the URL with offset/limit/topicPrefix and parses the response", async () => {
+  it("builds the URL with cursor/limit/topicPrefix and parses the response", async () => {
     const page: CollectionListPage = {
-      items: [{ topic: "artifacts/a.md", clientData: { title: "A" } }],
-      pagination: { offset: 0, limit: 50, total: 1, hasMore: false, nextOffset: 1 }
+      items: [{ topic: "a.md", storageKey: "artifacts/a.md", clientData: { title: "A" } }],
+      pagination: { limit: 50, nextCursor: "artifacts/a.md" }
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
     const client = createResourceClient({ fetcher });
 
     const result = await client.listCollectionItems("sess_1", "artifacts", {
       limit: 50,
-      offset: 0,
+      cursor: "artifacts/prev.md",
       topicPrefix: "artifacts/a"
     });
     expect(result).toEqual(page);
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "/api/flows/sessions/sess_1/resources/artifacts?limit=50&offset=0&topicPrefix=artifacts%2Fa"
+      "/api/flows/sessions/sess_1/resources/artifacts?limit=50&cursor=artifacts%2Fprev.md&topicPrefix=artifacts%2Fa"
+    );
+  });
+
+  it("omits the cursor param when cursor is null", async () => {
+    const page: CollectionListPage = {
+      items: [],
+      pagination: { limit: 50, nextCursor: null }
+    };
+    const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
+    const client = createResourceClient({ fetcher });
+
+    await client.listCollectionItems("sess_1", "artifacts", { limit: 50, cursor: null });
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/resources/artifacts?limit=50"
     );
   });
 
   it("omits query string when no options are passed", async () => {
     const page: CollectionListPage = {
       items: [],
-      pagination: { offset: 0, limit: 50, total: 0, hasMore: false, nextOffset: 0 }
+      pagination: { limit: 50, nextCursor: null }
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
     const client = createResourceClient({ fetcher });

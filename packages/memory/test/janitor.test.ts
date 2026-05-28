@@ -62,7 +62,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -83,7 +83,7 @@ function createMockEpRef(
   return {
     name: 'episodicMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -104,7 +104,7 @@ function createMockWmRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -127,7 +127,7 @@ function createMockSysRef(
   return {
     name: 'memorySystem',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as MemorySystemState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -151,7 +151,7 @@ function createMockJanitorRef(
   return {
     name: 'janitor',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as JanitorState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -283,7 +283,7 @@ describe('memory/janitor — cullByEffectiveConfidence', () => {
     const now = Date.parse('2026-01-01T00:00:00.000Z') + 200 * DAY
     const culled = await cullByEffectiveConfidence(ref, now, 30, 0.1)
     expect(culled).toEqual(['sf1'])
-    expect(ref.state.facts).toEqual([])
+    expect((await ref.state()).facts).toEqual([])
   })
 
   it('keeps facts at or above the floor', async () => {
@@ -296,7 +296,7 @@ describe('memory/janitor — cullByEffectiveConfidence', () => {
     const now = Date.parse('2026-01-01T00:00:00.000Z') + 100 * DAY
     const culled = await cullByEffectiveConfidence(ref, now, 180, 0.1)
     expect(culled).toEqual([])
-    expect(ref.state.facts).toHaveLength(1)
+    expect((await ref.state()).facts).toHaveLength(1)
   })
 
   it('returns culled IDs and leaves survivors in place', async () => {
@@ -314,7 +314,7 @@ describe('memory/janitor — cullByEffectiveConfidence', () => {
     const now = Date.parse('2026-06-01T00:00:00.000Z')
     const culled = await cullByEffectiveConfidence(ref, now, 30, 0.1)
     expect(culled).toEqual(['ancient'])
-    expect(ref.state.facts.map((f) => f.id)).toEqual(['fresh'])
+    expect((await ref.state()).facts.map((f) => f.id)).toEqual(['fresh'])
   })
 })
 
@@ -332,7 +332,7 @@ describe('memory/janitor — cullByTTL', () => {
       operator: 'OR',
     })
     expect(culled).toEqual(['ep1'])
-    expect(ref.state.episodes).toEqual([])
+    expect((await ref.state()).episodes).toEqual([])
   })
 
   it('culls persistent episodes past the wall-time threshold (operator OR)', async () => {
@@ -368,7 +368,7 @@ describe('memory/janitor — cullByTTL', () => {
       operator: 'AND',
     })
     expect(culled).toEqual([])
-    expect(ref.state.episodes).toHaveLength(1)
+    expect((await ref.state()).episodes).toHaveLength(1)
   })
 
   it('never culls permanent episodes', async () => {
@@ -385,7 +385,7 @@ describe('memory/janitor — cullByTTL', () => {
       operator: 'OR',
     })
     expect(culled).toEqual([])
-    expect(ref.state.episodes).toHaveLength(1)
+    expect((await ref.state()).episodes).toHaveLength(1)
   })
 })
 
@@ -405,7 +405,7 @@ describe('memory/janitor — markStale', () => {
     const now = Date.parse('2026-01-01T00:00:00.000Z')
     const marked = await markStale(ref, now, 180)
     expect(marked).toEqual(['ep1'])
-    expect(ref.state.episodes[0].stale).toBe(true)
+    expect((await ref.state()).episodes[0].stale).toBe(true)
   })
 
   it('leaves persistent episodes untouched', async () => {
@@ -417,7 +417,7 @@ describe('memory/janitor — markStale', () => {
     const ref = createMockEpRef({ episodes: [ep], totalEncoded: 1 })
     const marked = await markStale(ref, Date.parse('2026-01-01T00:00:00.000Z'), 180)
     expect(marked).toEqual([])
-    expect(ref.state.episodes[0].stale).toBe(false)
+    expect((await ref.state()).episodes[0].stale).toBe(false)
   })
 
   it('is idempotent — already-stale episodes are not re-marked', async () => {
@@ -515,23 +515,23 @@ describe('memory/janitor — memorySystemJanitor block', () => {
       currentTurn: 1001,
     })
 
-    expect(semRef.state.facts.map((f) => f.id)).toEqual(['fresh'])
+    expect((await semRef.state()).facts.map((f) => f.id)).toEqual(['fresh'])
     // oldPersistent culled; oldPermanent kept; recentPersistent kept
-    expect(epRef.state.episodes.map((e) => e.id).sort()).toEqual(['oldperm', 'recp'])
-    expect(epRef.state.episodes.find((e) => e.id === 'oldperm')!.stale).toBe(true)
-    expect(janRef.state.totalRuns).toBe(1)
-    expect(janRef.state.lastCulledFactIds).toEqual(['decayed'])
-    expect(janRef.state.lastCulledEpisodeIds).toEqual(['oldp'])
-    expect(janRef.state.lastMarkedStaleEpisodeIds).toEqual(['oldperm'])
-    expect(janRef.state.lastRunAt).toBeDefined()
-    expect(janRef.state.lastRunTurn).toBe(1001)
+    expect((await epRef.state()).episodes.map((e) => e.id).sort()).toEqual(['oldperm', 'recp'])
+    expect((await epRef.state()).episodes.find((e) => e.id === 'oldperm')!.stale).toBe(true)
+    expect((await janRef.state()).totalRuns).toBe(1)
+    expect((await janRef.state()).lastCulledFactIds).toEqual(['decayed'])
+    expect((await janRef.state()).lastCulledEpisodeIds).toEqual(['oldp'])
+    expect((await janRef.state()).lastMarkedStaleEpisodeIds).toEqual(['oldperm'])
+    expect((await janRef.state()).lastRunAt).toBeDefined()
+    expect((await janRef.state()).lastRunTurn).toBe(1001)
   })
 
   it('is a no-op when both stores are empty', async () => {
     const { janRef } = await runJanitor()
-    expect(janRef.state.totalRuns).toBe(1)
-    expect(janRef.state.lastCulledFactIds).toEqual([])
-    expect(janRef.state.lastCulledEpisodeIds).toEqual([])
+    expect((await janRef.state()).totalRuns).toBe(1)
+    expect((await janRef.state()).lastCulledFactIds).toEqual([])
+    expect((await janRef.state()).lastCulledEpisodeIds).toEqual([])
   })
 
   it('skips the semantic branch when confidenceDecay is false', async () => {
@@ -542,8 +542,8 @@ describe('memory/janitor — memorySystemJanitor block', () => {
     })
     const cfg = { ...baseConfig, hygiene: { ...baseConfig.hygiene, confidenceDecay: false } }
     const { semRef, janRef } = await runJanitor({ facts: [decayed], config: cfg })
-    expect(semRef.state.facts).toHaveLength(1)
-    expect(janRef.state.lastCulledFactIds).toEqual([])
+    expect((await semRef.state()).facts).toHaveLength(1)
+    expect((await janRef.state()).lastCulledFactIds).toEqual([])
   })
 
   it('skips the episodic branch when episodicTTL is false', async () => {
@@ -554,8 +554,8 @@ describe('memory/janitor — memorySystemJanitor block', () => {
     })
     const cfg = { ...baseConfig, hygiene: { ...baseConfig.hygiene, episodicTTL: false } }
     const { epRef, janRef } = await runJanitor({ episodes: [oldp], config: cfg })
-    expect(epRef.state.episodes).toHaveLength(1)
-    expect(janRef.state.lastCulledEpisodeIds).toEqual([])
+    expect((await epRef.state()).episodes).toHaveLength(1)
+    expect((await janRef.state()).lastCulledEpisodeIds).toEqual([])
   })
 })
 
@@ -676,7 +676,7 @@ describe('memory/janitor — ranking sites use effectiveConfidence', () => {
     expect(freshScore).toBeGreaterThan(oldScore)
   })
 
-  it('createRecall ranks fresh facts higher than ancient facts of the same raw confidence (hygiene on)', () => {
+  it('createRecall ranks fresh facts higher than ancient facts of the same raw confidence (hygiene on)', async () => {
     const mem = system({
       model: 'gpt-test',
       working: true,
@@ -698,13 +698,13 @@ describe('memory/janitor — ranking sites use effectiveConfidence', () => {
     })
     const semRef = createMockSemRef({ facts: [old, fresh], totalExtracted: 2 })
     const ctx = { resources: createMockResources({ semanticMemory: semRef, workingMemory: createMockWmRef() }) }
-    const results = mem.recall(ctx)
+    const results = await mem.recall(ctx)
     const freshResult = results.find((r) => r.id === 'fresh')!
     const oldResult = results.find((r) => r.id === 'old')!
     expect(freshResult.relevance).toBeGreaterThan(oldResult.relevance)
   })
 
-  it('createRecall uses raw confidence when hygiene is false (pre-FIX-411 ordering)', () => {
+  it('createRecall uses raw confidence when hygiene is false (pre-FIX-411 ordering)', async () => {
     const mem = system({
       model: 'gpt-test',
       working: true,
@@ -726,7 +726,7 @@ describe('memory/janitor — ranking sites use effectiveConfidence', () => {
     })
     const semRef = createMockSemRef({ facts: [old, fresh], totalExtracted: 2 })
     const ctx = { resources: createMockResources({ semanticMemory: semRef, workingMemory: createMockWmRef() }) }
-    const results = mem.recall(ctx)
+    const results = await mem.recall(ctx)
     const freshResult = results.find((r) => r.id === 'fresh')!
     const oldResult = results.find((r) => r.id === 'old')!
     expect(freshResult.relevance).toBe(oldResult.relevance)

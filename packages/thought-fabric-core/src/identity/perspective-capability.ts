@@ -22,7 +22,8 @@
  */
 
 import { defineCapability } from '@flow-state-dev/core'
-import type { DefinedResource, ResourceContext } from '@flow-state-dev/core'
+import type { DefinedResource } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 
 import type {
   PerspectiveInstance,
@@ -79,11 +80,11 @@ export interface PerspectiveCapabilityConfig {
 // Internal: resource ref lookup
 // ---------------------------------------------------------------------------
 
-function getPositionsRef(ctx: any): ResourceContext<PerspectivePositionsState> {
+function getPositionsRef(ctx: any): ResourceRef<PerspectivePositionsState> {
   return ctx.resources.perspectivePositions ?? ctx.resources.get?.('perspectivePositions')
 }
 
-function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsState> {
+function getObservationsRef(ctx: any): ResourceRef<PerspectiveObservationsState> {
   return ctx.resources.perspectiveObservations ?? ctx.resources.get?.('perspectiveObservations')
 }
 

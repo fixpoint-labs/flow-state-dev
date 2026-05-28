@@ -36,7 +36,8 @@ export type CollectionActions = {
 /** Options accepted by `list()` and the convenience list hook. */
 export type CollectionListOptions = {
   limit?: number;
-  offset?: number;
+  /** Opaque cursor from a prior page's `pagination.nextCursor`. */
+  cursor?: string | null;
   topicPrefix?: string;
 };
 
@@ -220,7 +221,7 @@ export function useResourceCollection(
       if (!sessionId) {
         return {
           items: [],
-          pagination: { offset: 0, limit: 0, total: 0, hasMore: false, nextOffset: 0 }
+          pagination: { limit: 0, nextCursor: null }
         };
       }
       const key = cacheKey(options);

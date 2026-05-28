@@ -154,7 +154,7 @@ describe("handleDeleteSession resource-state cleanup", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleListCollectionState", () => {
-  it("returns paginated items in lex order with total/hasMore/nextOffset", async () => {
+  it("returns the first page in lex order with limit/nextCursor", async () => {
     const ctx = await setupCtx({
       artifacts: {
         "z.md": { title: "Z" },
@@ -179,22 +179,19 @@ describe("handleListCollectionState", () => {
     ]);
     expect(body.items[0].clientData).toEqual({ title: "A" });
     expect(body.pagination).toEqual({
-      offset: 0,
       limit: 2,
-      total: 3,
-      hasMore: true,
-      nextOffset: 2,
+      nextCursor: "artifacts/m.md",
     });
   });
 
-  it("paginates the second page", async () => {
+  it("paginates the second page via cursor", async () => {
     const ctx = await setupCtx({
       artifacts: {
         "a.md": {}, "b.md": {}, "c.md": {}, "d.md": {},
       },
     });
     const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=2&offset=2"),
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=2&cursor=artifacts%2Fb.md"),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
@@ -203,8 +200,8 @@ describe("handleListCollectionState", () => {
       "c.md",
       "d.md",
     ]);
-    expect(body.pagination.hasMore).toBe(false);
-    expect(body.pagination.nextOffset).toBe(4);
+    // A full page (limit=2) yields a non-null cursor; the next page is empty.
+    expect(body.pagination.nextCursor).toBe("artifacts/d.md");
   });
 
   it("filters by topicPrefix", async () => {
@@ -223,19 +220,19 @@ describe("handleListCollectionState", () => {
       "alpha-1",
       "alpha-2",
     ]);
-    expect(body.pagination.total).toBe(2);
+    expect(body.pagination.nextCursor).toBe(null);
   });
 
-  it("returns empty page when offset >= total", async () => {
+  it("returns empty page with null cursor when cursor is past the end", async () => {
     const ctx = await setupCtx({ artifacts: { "a": {} } });
     const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?offset=10"),
+      makeReq("http://localhost/sessions/sess_1/resources/artifacts?cursor=artifacts%2Fz"),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
     const body = await res.json();
     expect(body.items).toEqual([]);
-    expect(body.pagination.hasMore).toBe(false);
+    expect(body.pagination.nextCursor).toBe(null);
   });
 
   it("returns 403 when client.state.read is not true", async () => {
@@ -298,17 +295,7 @@ describe("handleListCollectionState", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for negative offset", async () => {
-    const ctx = await setupCtx();
-    const res = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?offset=-1"),
-      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
-      { registry: ctx.registry, stores: ctx.stores }
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("paginates a 60-item collection with limit=20", async () => {
+  it("paginates a 60-item collection with limit=20 via cursor", async () => {
     const artifacts: Record<string, { title?: string }> = {};
     for (let i = 0; i < 60; i++) {
       artifacts[`item-${String(i).padStart(3, "0")}`] = { title: `Item ${i}` };
@@ -322,12 +309,15 @@ describe("handleListCollectionState", () => {
     );
     const body1 = await page1.json();
     expect(body1.items).toHaveLength(20);
-    expect(body1.pagination).toEqual({
-      offset: 0, limit: 20, total: 60, hasMore: true, nextOffset: 20
-    });
+    expect(body1.pagination.limit).toBe(20);
+    expect(body1.pagination.nextCursor).toBe("artifacts/item-019");
 
     const page2 = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=20"),
+      makeReq(
+        `http://localhost/sessions/sess_1/resources/artifacts?limit=20&cursor=${encodeURIComponent(
+          body1.pagination.nextCursor
+        )}`
+      ),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
@@ -335,19 +325,38 @@ describe("handleListCollectionState", () => {
     expect(body2.items).toHaveLength(20);
     expect(body2.items[0].topic).toBe("item-020");
     expect(body2.items[0].storageKey).toBe("artifacts/item-020");
-    expect(body2.pagination.nextOffset).toBe(40);
+    expect(body2.pagination.nextCursor).toBe("artifacts/item-039");
 
     const page3 = await handleListCollectionState(
-      makeReq("http://localhost/sessions/sess_1/resources/artifacts?limit=20&offset=40"),
+      makeReq(
+        `http://localhost/sessions/sess_1/resources/artifacts?limit=20&cursor=${encodeURIComponent(
+          body2.pagination.nextCursor
+        )}`
+      ),
       { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
       { registry: ctx.registry, stores: ctx.stores }
     );
     const body3 = await page3.json();
     expect(body3.items).toHaveLength(20);
-    expect(body3.pagination.hasMore).toBe(false);
+    // The store yields a full page, so it returns a non-null cursor even though
+    // no rows remain — callers keep paging until an empty page with null cursor.
+    expect(body3.pagination.nextCursor).toBe("artifacts/item-059");
+
+    const page4 = await handleListCollectionState(
+      makeReq(
+        `http://localhost/sessions/sess_1/resources/artifacts?limit=20&cursor=${encodeURIComponent(
+          body3.pagination.nextCursor
+        )}`
+      ),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "artifacts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body4 = await page4.json();
+    expect(body4.items).toEqual([]);
+    expect(body4.pagination.nextCursor).toBe(null);
   });
 
-  it("returns total: 0 / items: [] for empty collection", async () => {
+  it("returns null cursor / items: [] for empty collection", async () => {
     const ctx = await setupCtx();
     const res = await handleListCollectionState(
       makeReq("http://localhost/sessions/sess_1/resources/artifacts"),
@@ -356,7 +365,7 @@ describe("handleListCollectionState", () => {
     );
     const body = await res.json();
     expect(body.items).toEqual([]);
-    expect(body.pagination.total).toBe(0);
+    expect(body.pagination.nextCursor).toBe(null);
   });
 });
 

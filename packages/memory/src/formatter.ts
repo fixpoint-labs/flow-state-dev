@@ -90,12 +90,12 @@ export interface MemoryContextFormatterOptions {
 export function createDigestEntry(): (
   _input: unknown,
   ctx: any,
-) => { digest: string } | undefined {
-  return function digestEntry(_input, ctx) {
+) => Promise<{ digest: string } | undefined> {
+  return async function digestEntry(_input, ctx) {
     let digestText = ''
     try {
       const digestRef = ctx.resources?.digestMemory
-      const stored = digestRef?.state?.digest as Digest | undefined
+      const stored = (digestRef ? (await digestRef.state()).digest : undefined) as Digest | undefined
       digestText = stored?.content?.trim() ?? ''
     } catch {
       // Digest resource not available in this scope; treat as absent.
@@ -113,10 +113,10 @@ export function createDigestEntry(): (
 export function createWorkingEntry(): (
   _input: unknown,
   ctx: any,
-) => { working: string } | undefined {
-  return function workingEntry(_input, ctx) {
+) => Promise<{ working: string } | undefined> {
+  return async function workingEntry(_input, ctx) {
     const wmRef = ctx.resources?.workingMemory
-    const workingText = wmRef ? formatForContext(wmRef) : ''
+    const workingText = wmRef ? await formatForContext(wmRef) : ''
     if (!workingText) return undefined
     return { working: workingText }
   }
@@ -129,13 +129,13 @@ export function createWorkingEntry(): (
  */
 export function createSemanticEntry(
   options?: { topN?: number },
-): (_input: unknown, ctx: any) => { semantic: string } | undefined {
+): (_input: unknown, ctx: any) => Promise<{ semantic: string } | undefined> {
   const topN = options?.topN ?? DEFAULT_SEMANTIC_TOP_N
-  return function semanticEntry(_input, ctx) {
+  return async function semanticEntry(_input, ctx) {
     let facts: SemanticFact[] = []
     try {
       const semRef = ctx.resources?.semanticMemory
-      facts = semRef ? topFacts(semRef, topN) : []
+      facts = semRef ? await topFacts(semRef, topN) : []
     } catch {
       // Semantic resource not available in this scope; treat as absent.
     }
@@ -153,13 +153,13 @@ export function createSemanticEntry(
  */
 export function createEpisodicEntry(
   options?: { limit?: number },
-): (_input: unknown, ctx: any) => { episodic: string } | undefined {
+): (_input: unknown, ctx: any) => Promise<{ episodic: string } | undefined> {
   const limit = options?.limit ?? DEFAULT_EPISODIC_LIMIT
-  return function episodicEntry(_input, ctx) {
+  return async function episodicEntry(_input, ctx) {
     let episodes: Episode[] = []
     try {
       const epRef = ctx.resources?.episodicMemory
-      episodes = epRef ? recentEpisodes(epRef, limit) : []
+      episodes = epRef ? await recentEpisodes(epRef, limit) : []
     } catch {
       // Episodic resource not available in this scope; treat as absent.
     }
@@ -185,7 +185,7 @@ export function createEpisodicEntry(
  */
 export function createMemoryContextFormatter(
   options?: MemoryContextFormatterOptions,
-): (_input: unknown, ctx: any) => MemoryContextValue {
+): (_input: unknown, ctx: any) => Promise<MemoryContextValue> {
   const includeDigest = options?.digest !== false
   const includeWorking = options?.working !== false
 
@@ -212,22 +212,22 @@ export function createMemoryContextFormatter(
   const semanticEntry = includeSemantic ? createSemanticEntry(semanticOpts) : undefined
   const episodicEntry = includeEpisodic ? createEpisodicEntry(episodicOpts) : undefined
 
-  return function memoryContextFormatter(input, ctx) {
+  return async function memoryContextFormatter(input, ctx) {
     const out: NonNullable<MemoryContextValue> = {}
     if (digestEntry) {
-      const part = digestEntry(input, ctx)
+      const part = await digestEntry(input, ctx)
       if (part) out.digest = part.digest
     }
     if (workingEntry) {
-      const part = workingEntry(input, ctx)
+      const part = await workingEntry(input, ctx)
       if (part) out.working = part.working
     }
     if (semanticEntry) {
-      const part = semanticEntry(input, ctx)
+      const part = await semanticEntry(input, ctx)
       if (part) out.semantic = part.semantic
     }
     if (episodicEntry) {
-      const part = episodicEntry(input, ctx)
+      const part = await episodicEntry(input, ctx)
       if (part) out.episodic = part.episodic
     }
     if (Object.keys(out).length === 0) return undefined

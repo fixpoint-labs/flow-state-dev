@@ -449,9 +449,9 @@ export function perspectiveSnapshot(config: PerspectivePositionBlockConfig) {
       const obsRef = ctx.resources.get('perspectiveObservations')
       const posRef = ctx.resources.get('perspectivePositions')
       return {
-        observations: perspectiveObservations(obsRef),
-        positions: perspectivePositions(posRef),
-        turnCounter: obsRef.state.turnCounter,
+        observations: await perspectiveObservations(obsRef),
+        positions: await perspectivePositions(posRef),
+        turnCounter: (await obsRef.state()).turnCounter,
       }
     },
   })

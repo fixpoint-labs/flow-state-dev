@@ -8,6 +8,19 @@
  * packages/thought-fabric-core/src/helpers.ts.
  */
 
+/**
+ * Minimal structural view of a `ResourceRef` as used by the memory helpers.
+ *
+ * `@flow-state-dev/core` does not re-export `ResourceRef`, so we mirror just
+ * the async accessor surface the helpers touch: `state()` (now an async
+ * method) and `updateState()`. Structurally assignable from the real
+ * `ResourceRef` handed out by `ctx.resources`.
+ */
+export type MemResourceRef<TState> = {
+  state(): Promise<Readonly<TState>>
+  updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>
+}
+
 /** Generate a short random alphanumeric ID. */
 export function shortId(length = 4): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'

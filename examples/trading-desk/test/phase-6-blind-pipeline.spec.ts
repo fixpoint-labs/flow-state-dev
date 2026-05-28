@@ -40,12 +40,12 @@ function ctxWithThesis() {
       },
     },
     resources: {
-      // formatAnalystMemos / memoState call getOptional; undefined is fine.
-      memos: { getOptional: () => undefined },
-      // readContributionsEntries uses optional chaining on .state.
-      p2Contributions: { state: { entries: [] } },
-      // formatUserInstructions reads .state; undefined → "".
-      specialInstructions: { state: undefined },
+      // formatAnalystMemos / memoState call getOptional (async); undefined is fine.
+      memos: { getOptional: async () => undefined },
+      // readContributionsEntries reads async .state().
+      p2Contributions: { state: async () => ({ entries: [] }) },
+      // formatUserInstructions reads async .state(); undefined → "".
+      specialInstructions: { state: async () => undefined },
     },
   };
 }

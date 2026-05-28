@@ -199,8 +199,8 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
         return { triggered: false, facts: [], episodes: [] }
       }
 
-      const signature = computeSourceSignature(semRef, epRef)
-      const stored = digestRef?.state?.digest as Digest | undefined
+      const signature = await computeSourceSignature(semRef, epRef)
+      const stored = (digestRef ? (await digestRef.state()).digest : undefined) as Digest | undefined
 
       const force = !!input?.force
       const stale =
@@ -213,7 +213,7 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
         return { triggered: false, previous: stored?.content, facts: [], episodes: [] }
       }
 
-      const facts = topFacts(semRef, config.digest.topN.facts).map((f) => ({
+      const facts = (await topFacts(semRef, config.digest.topN.facts)).map((f) => ({
         subject: f.subject,
         content: f.content,
         category: f.category as string,
@@ -222,7 +222,7 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
       }))
 
       const episodes = epRef
-        ? rankEpisodesForDigest(recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
+        ? rankEpisodesForDigest(await recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
             content: e.content,
             category: e.category as string,
             significance: e.significance,
@@ -324,9 +324,9 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
       }
 
       const signature = semRef
-        ? computeSourceSignature(semRef, epRef)
+        ? await computeSourceSignature(semRef, epRef)
         : { semanticFactCount: 0, semanticReinforcementSum: 0, episodeCount: 0 }
-      const currentTurn = wmRef?.state?.currentTurn ?? 0
+      const currentTurn = wmRef ? ((await wmRef.state()).currentTurn ?? 0) : 0
 
       const next: Digest = {
         content,

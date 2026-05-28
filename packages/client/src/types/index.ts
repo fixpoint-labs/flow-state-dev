@@ -228,13 +228,15 @@ export type CollectionSnapshotEntry = {
  * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
  */
 export type CollectionListPage = {
-  items: Array<{ topic: string; clientData?: unknown }>;
+  items: Array<{ topic: string; storageKey: string; clientData?: unknown }>;
   pagination: {
-    offset: number;
     limit: number;
-    total: number;
-    hasMore: boolean;
-    nextOffset: number;
+    /**
+     * Opaque cursor for the next page (the prior page's raw last-seen storage
+     * key). Pass it back as `cursor` to fetch the following page. `null` means
+     * there are no more pages.
+     */
+    nextCursor: string | null;
   };
 };
 

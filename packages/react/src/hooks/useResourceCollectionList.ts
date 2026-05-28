@@ -24,7 +24,7 @@ export type UseResourceCollectionListResult = {
   error: Error | undefined;
   /** Re-fetch the first page from scratch. */
   refetch: () => void;
-  /** Append the next page; no-op if `pagination.hasMore` is false. */
+  /** Append the next page; no-op once `pagination.nextCursor` is `null`. */
   loadMore: () => void;
 };
 
@@ -45,11 +45,12 @@ export function useResourceCollectionList(
   const [generation, setGeneration] = useState(0);
 
   const fetchPage = useCallback(
-    async (offset: number, replace: boolean) => {
+    async (cursor: string | null, replace: boolean) => {
       setIsLoading(true);
       setError(undefined);
       try {
-        const queryOptions: CollectionListOptions = { offset };
+        const queryOptions: CollectionListOptions = {};
+        if (cursor !== null) queryOptions.cursor = cursor;
         if (limit !== undefined) queryOptions.limit = limit;
         if (topicPrefix !== undefined) queryOptions.topicPrefix = topicPrefix;
         const page = await list(queryOptions);
@@ -69,9 +70,9 @@ export function useResourceCollectionList(
   );
 
   // Initial / re-fetch whenever inputs change. `generation` lets refetch()
-  // force re-run without changing query inputs.
+  // force re-run without changing query inputs. First page omits the cursor.
   useEffect(() => {
-    void fetchPage(0, true);
+    void fetchPage(null, true);
   }, [fetchPage, generation]);
 
   const refetch = useCallback(() => {
@@ -79,8 +80,18 @@ export function useResourceCollectionList(
   }, []);
 
   const loadMore = useCallback(() => {
-    if (!pagination?.hasMore) return;
-    void fetchPage(pagination.nextOffset, false);
+    // No fetched page yet (still showing the prefetched window): start a fresh
+    // cursored scan from the top and replace the prefetched snapshot with the
+    // real first page. Prefetched items are a display-only snapshot window, not
+    // a cursor anchor, so we can't keyset-page from them — re-scanning from the
+    // top is the least surprising correct behavior.
+    if (pagination === undefined) {
+      void fetchPage(null, true);
+      return;
+    }
+    // `nextCursor === null` means the end of pages.
+    if (pagination.nextCursor === null) return;
+    void fetchPage(pagination.nextCursor, false);
   }, [fetchPage, pagination]);
 
   // Initial paint: when the snapshot exposes a prefetched window and we
@@ -90,15 +101,16 @@ export function useResourceCollectionList(
   // `prefetchWindow` — render immediately, no network round-trip.
   const surfaced =
     items.length === 0 && prefetched !== undefined ? prefetched : items;
+  // Synthesize pagination from the snapshot while only prefetched items show.
+  // `nextCursor: null` when the prefetched window already covers the whole
+  // collection (nothing more to load); otherwise a non-null sentinel so
+  // `loadMore` is enabled — its first call re-scans from the top (see above).
   const surfacedPagination =
     pagination ??
     (count !== undefined && prefetched !== undefined
       ? {
-          offset: 0,
           limit: prefetched.length,
-          total: count,
-          hasMore: prefetched.length < count,
-          nextOffset: prefetched.length
+          nextCursor: prefetched.length < count ? "" : null
         }
       : undefined);
 

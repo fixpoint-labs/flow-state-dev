@@ -23,9 +23,8 @@
 
 import { generator, handler } from '@flow-state-dev/core'
 import { z } from 'zod'
-import type { Episode, EpisodicMemoryState } from '../../episodic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory.js'
-import type { WorkingMemoryState } from '../../working-memory.js'
+import type { Episode } from '../../episodic-memory.js'
+import type { SemanticFact } from '../../semantic-memory.js'
 import { allFacts } from '../../semantic-memory-helpers.js'
 import { effectiveConfidence } from '../../janitor.js'
 import type {
@@ -182,28 +181,28 @@ export function exactPhraseMatches(
  * Read semantic facts and episodes from the block context's resource
  * registry. Missing stores are silently coerced to empty arrays.
  */
-function readStores(ctx: any): {
+async function readStores(ctx: any): Promise<{
   semantic: SemanticFact[]
   episodic: Episode[]
   currentTurn: number
-} {
+}> {
   let semantic: SemanticFact[] = []
   let episodic: Episode[] = []
   let currentTurn = 0
 
   try {
-    const semRef = ctx.resources?.semanticMemory as { state?: SemanticMemoryState } | undefined
-    if (semRef?.state) semantic = allFacts({ state: semRef.state } as any)
+    const semRef = ctx.resources?.semanticMemory
+    if (semRef) semantic = await allFacts(semRef)
   } catch { /* not installed */ }
 
   try {
-    const epRef = ctx.resources?.episodicMemory as { state?: EpisodicMemoryState } | undefined
-    if (epRef?.state) episodic = epRef.state.episodes ?? []
+    const epRef = ctx.resources?.episodicMemory
+    if (epRef) episodic = (await epRef.state()).episodes ?? []
   } catch { /* not installed */ }
 
   try {
-    const wmRef = ctx.resources?.workingMemory as { state?: WorkingMemoryState } | undefined
-    if (wmRef?.state) currentTurn = wmRef.state.currentTurn ?? 0
+    const wmRef = ctx.resources?.workingMemory
+    if (wmRef) currentTurn = (await wmRef.state()).currentTurn ?? 0
   } catch { /* not installed */ }
 
   return { semantic, episodic, currentTurn }
@@ -250,7 +249,7 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
     name: 'memory/recall.prepare',
     outputSchema: prepareOutputSchema,
     execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
-      const { semantic, episodic, currentTurn } = readStores(ctx)
+      const { semantic, episodic, currentTurn } = await readStores(ctx)
 
       const eligibleEpisodes = input.sinceTurn !== undefined
         ? episodic.filter((e) => e.occurredAtTurn >= input.sinceTurn!)

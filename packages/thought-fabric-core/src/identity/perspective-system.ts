@@ -121,9 +121,9 @@ export interface PerspectiveSystem {
 
   // -- Helpers exposed for advanced/manual use --
   /** Read accumulated observations + positions from a runtime context. */
-  recall: (ctx: any) => PerspectiveAccumulated
+  recall: (ctx: any) => Promise<PerspectiveAccumulated>
   /** Context formatter for generator `context: [...]` slots — equivalent to the `accumulated` preset. */
-  contextFormatter: (input: any, ctx: any) => string
+  contextFormatter: (input: any, ctx: any) => Promise<string>
 }
 
 // ---------------------------------------------------------------------------
@@ -247,18 +247,18 @@ export function system(
   }
 
   // Recall helper — reads accumulated state from a runtime ctx
-  function recall(ctx: any): PerspectiveAccumulated {
+  async function recall(ctx: any): Promise<PerspectiveAccumulated> {
     const obsRef = ctx.resources?.perspectiveObservations ?? ctx.resources?.get?.('perspectiveObservations')
     const posRef = ctx.resources?.perspectivePositions ?? ctx.resources?.get?.('perspectivePositions')
     return {
-      observations: obsRef ? perspectiveObservations(obsRef) : [],
-      positions: posRef ? perspectivePositions(posRef) : [],
-      turnCounter: obsRef?.state?.turnCounter ?? 0,
+      observations: obsRef ? await perspectiveObservations(obsRef) : [],
+      positions: posRef ? await perspectivePositions(posRef) : [],
+      turnCounter: obsRef ? (await obsRef.state()).turnCounter : 0,
     }
   }
 
   // Context formatter — equivalent to the capability's `accumulated` preset
-  function contextFormatter(_input: any, ctx: any): string {
+  async function contextFormatter(_input: any, ctx: any): Promise<string> {
     const obsRef = ctx.resources?.perspectiveObservations ?? ctx.resources?.get?.('perspectiveObservations')
     const posRef = ctx.resources?.perspectivePositions ?? ctx.resources?.get?.('perspectivePositions')
     return formatPerspectiveAccumulated(obsRef, posRef)

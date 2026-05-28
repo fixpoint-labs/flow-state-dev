@@ -9,15 +9,11 @@
  * the package index.
  */
 
-import type { ResourceContext } from '@flow-state-dev/core'
 import { tokenOverlap } from './helpers.js'
 import type { ResolvedHygieneConfig } from '../janitor-blocks.js'
 import type { RankedMemoryItem } from '../provider.js'
-import type { WorkingMemoryState } from '../working-memory.js'
 import { items as wmItems } from '../working-memory-helpers.js'
-import type { EpisodicMemoryState } from '../episodic-memory.js'
 import { recent } from '../episodic-memory-helpers.js'
-import type { SemanticMemoryState } from '../semantic-memory.js'
 import { allFacts } from '../semantic-memory-helpers.js'
 import { effectiveConfidence } from '../janitor.js'
 
@@ -38,18 +34,16 @@ export function createRecall(
    */
   decayConfig?: false | { halfLife: number },
 ) {
-  return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
+  return async function recall(ctx: any, cue?: string): Promise<RankedMemoryItem[]> {
     const results: RankedMemoryItem[] = []
 
     // 1. Read semantic facts first (highest authority)
     if (semanticConfig) {
       try {
-        const semRef = semanticConfig.scope === 'user'
-          ? ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-          : ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+        const semRef = ctx.resources?.semanticMemory
 
         if (semRef) {
-          const facts = allFacts(semRef)
+          const facts = await allFacts(semRef)
           const now = Date.now()
           for (const fact of facts) {
             // Relevance: effective × (0.5 + 0.5 × normalizedReinforcement).
@@ -81,9 +75,9 @@ export function createRecall(
 
     // 2. Read working memory
     try {
-      const wmRef = ctx.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
+      const wmRef = ctx.resources?.workingMemory
       if (wmRef) {
-        const entries = wmItems(wmRef)
+        const entries = await wmItems(wmRef)
         for (const entry of entries) {
           // Dedup: skip if semantic already has similar content
           const isDupOfSemantic = results.some(
@@ -110,12 +104,10 @@ export function createRecall(
     // 3. Read episodic memory (if installed)
     if (episodicConfig) {
       try {
-        const epRef = episodicConfig.scope === 'user'
-          ? ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+        const epRef = ctx.resources?.episodicMemory
 
         if (epRef) {
-          const episodes = recent(epRef)
+          const episodes = await recent(epRef)
           const maxTurn = episodes.length > 0 ? Math.max(...episodes.map((e) => e.occurredAtTurn)) : 1
 
           for (const ep of episodes) {

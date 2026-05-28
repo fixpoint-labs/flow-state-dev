@@ -38,8 +38,9 @@ const conservativePrompt = loadPrompt(
 const neutralPrompt = loadPrompt("phase-4/prompts/neutral.prompt.md");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function memoState(ctx: any, collectionKey: string): unknown {
-  return ctx.resources.memos?.getOptional(collectionKey)?.state;
+async function memoState(ctx: any, collectionKey: string): Promise<unknown> {
+  const ref = await ctx.resources.memos?.getOptional(collectionKey);
+  return ref ? await ref.state() : undefined;
 }
 
 const tradingMemos = (reasoning: boolean) => [
@@ -68,10 +69,10 @@ export const conservativeRiskGenerator = generator({
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
   uses: tradingMemos(false),
   context: {
-    aggressiveCritique: (_input, ctx) =>
+    aggressiveCritique: async (_input, ctx) =>
       formatPersonaCritique(
         "Aggressive Risk critique",
-        memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+        await memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
       ),
   },
   ...definePromptFile(conservativePrompt),
@@ -88,15 +89,15 @@ export const neutralRiskGenerator = generator({
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
   uses: tradingMemos(true),
   context: {
-    aggressiveCritique: (_input, ctx) =>
+    aggressiveCritique: async (_input, ctx) =>
       formatPersonaCritique(
         "Aggressive Risk critique",
-        memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+        await memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
       ),
-    conservativeCritique: (_input, ctx) =>
+    conservativeCritique: async (_input, ctx) =>
       formatPersonaCritique(
         "Conservative Risk critique",
-        memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+        await memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
       ),
   },
   ...definePromptFile(neutralPrompt),

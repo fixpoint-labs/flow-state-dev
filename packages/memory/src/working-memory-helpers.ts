@@ -1,6 +1,5 @@
-import type { ResourceContext } from '@flow-state-dev/core'
 import type { DecayStrategy, WorkingMemoryEntry, WorkingMemoryState } from './working-memory.js'
-import { shortId } from './internal/helpers.js'
+import { shortId, type MemResourceRef } from './internal/helpers.js'
 
 /** Decay configuration for working memory salience computation. */
 export interface WorkingMemoryDecayConfig {
@@ -81,7 +80,7 @@ export function computeSalience(
 // Resource operations
 // ---------------------------------------------------------------------------
 
-type WmRef = ResourceContext<WorkingMemoryState>
+type WmRef = MemResourceRef<WorkingMemoryState>
 
 /** Input for adding an entry. ID is auto-generated if omitted. */
 export type AddEntryInput = {
@@ -110,7 +109,7 @@ export async function add(
   config?: WorkingMemoryHelperConfig,
 ): Promise<WorkingMemoryEntry> {
   const resolved = resolveConfig(config)
-  const state = ref.state
+  const state = await ref.state()
 
   const newEntry: WorkingMemoryEntry = {
     id: entry.id ?? `wm_${shortId()}`,
@@ -283,8 +282,9 @@ export async function advance(
  * Synchronous read — returns a snapshot of the current state.
  * Ties are broken by array position (stable sort).
  */
-export function items(ref: WmRef): WorkingMemoryEntry[] {
-  return [...ref.state.entries].sort((a, b) => b.salience - a.salience)
+export async function items(ref: WmRef): Promise<WorkingMemoryEntry[]> {
+  const state = await ref.state()
+  return [...state.entries].sort((a, b) => b.salience - a.salience)
 }
 
 /**
@@ -300,8 +300,8 @@ export function items(ref: WmRef): WorkingMemoryEntry[] {
  * Use this when injecting memory into a generator's `context:` slot.
  * For a ready-made slot function, see {@link workingMemoryContextFormatter}.
  */
-export function formatForContext(ref: WmRef): string {
-  const sorted = items(ref)
+export async function formatForContext(ref: WmRef): Promise<string> {
+  const sorted = await items(ref)
   if (sorted.length === 0) return ''
 
   return sorted
@@ -323,8 +323,8 @@ export function formatForContext(ref: WmRef): string {
  *
  * @internal Used by `workingMemoryObserve`. Not intended for external use.
  */
-export function formatForObserveContext(ref: WmRef): string {
-  const sorted = items(ref)
+export async function formatForObserveContext(ref: WmRef): Promise<string> {
+  const sorted = await items(ref)
   if (sorted.length === 0) return ''
 
   return sorted
@@ -360,8 +360,8 @@ export function formatForObserveContext(ref: WmRef): string {
  * `@flow-state-dev/core`'s public API. The structural type matches the
  * subset of BlockContext that this function actually uses.
  */
-export function workingMemoryContextFormatter(_input: unknown, ctx: { resources: { get(name: 'workingMemory'): WmRef } }): string {
+export async function workingMemoryContextFormatter(_input: unknown, ctx: { resources: { get(name: 'workingMemory'): WmRef } }): Promise<string> {
   const ref = ctx.resources.get('workingMemory')
-  const formatted = formatForContext(ref)
+  const formatted = await formatForContext(ref)
   return formatted ? `Active memories:\n${formatted}` : ''
 }

@@ -34,6 +34,6 @@ export type MemoryContextSections = {
 
 /** Read-side contract a memory implementation must satisfy. */
 export interface MemoryProvider {
-  recall(ctx: any, cue?: string): RankedMemoryItem[]
-  formatContext(input: unknown, ctx: any): MemoryContextSections | undefined
+  recall(ctx: any, cue?: string): Promise<RankedMemoryItem[]>
+  formatContext(input: unknown, ctx: any): Promise<MemoryContextSections | undefined>
 }

@@ -24,7 +24,7 @@ export function createMockSkillsCollection(
   const makeRef = (entry: MockEntry): ResourceRef => ({
     name: entry.name,
     scope: "org" as const,
-    state: entry.state as never,
+    state: vi.fn(async () => entry.state) as never,
     patchState: vi.fn(async (updates: Record<string, unknown>) => {
       entry.state = { ...entry.state, ...updates };
     }) as never,
@@ -45,13 +45,13 @@ export function createMockSkillsCollection(
   const ref: ResourceCollectionRef & { _store: Map<string, MockEntry> } = {
     pattern,
     scope: "org" as const,
-    get(key) {
+    async get(key) {
       const k = typeof key === "string" ? key : "";
       const entry = store.get(prefixed(pattern, k));
       if (!entry) throw new Error(`Not found: ${k}`);
       return makeRef(entry);
     },
-    getOptional(key) {
+    async getOptional(key) {
       const k = typeof key === "string" ? key : "";
       const entry = store.get(prefixed(pattern, k));
       return entry ? makeRef(entry) : undefined;
@@ -102,14 +102,25 @@ export function createMockSkillsCollection(
       store.set(full, entry);
       return makeRef(entry);
     }) as never,
-    list() {
-      return Array.from(store.values()).map(makeRef);
+    async list(opts) {
+      const prefix = opts?.prefix;
+      const all = Array.from(store.values()).filter((e) =>
+        prefix ? e.name.startsWith(prefixed(pattern, prefix)) : true,
+      );
+      return { items: all.map(makeRef) };
+    },
+    async *scan(opts) {
+      const prefix = opts?.prefix;
+      for (const entry of store.values()) {
+        if (prefix && !entry.name.startsWith(prefixed(pattern, prefix))) continue;
+        yield makeRef(entry);
+      }
     },
     delete: vi.fn(async (key) => {
       const k = typeof key === "string" ? key : "";
       store.delete(prefixed(pattern, k));
     }) as never,
-    count() {
+    async count() {
       return store.size;
     },
     config: { pattern, stateSchema: {} as never } as never,

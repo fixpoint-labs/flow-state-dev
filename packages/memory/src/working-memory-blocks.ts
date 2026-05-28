@@ -97,9 +97,9 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       '- Prefer fewer, higher-quality memories over many low-quality ones',
       '- Return empty observations array if nothing new is worth storing',
     ].join('\n'),
-    context: (_input: string, ctx) => {
+    context: async (_input: string, ctx) => {
       const ref = ctx.resources.get('workingMemory')
-      const formatted = formatForObserveContext(ref)
+      const formatted = await formatForObserveContext(ref)
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
@@ -198,11 +198,12 @@ export function workingMemorySnapshot() {
       currentTurn: z.number(),
     }),
     resources: { workingMemory: workingMemoryResource },
-    execute: (_input, ctx) => {
+    execute: async (_input, ctx) => {
       const ref = ctx.resources.get('workingMemory')
+      const state = await ref.state()
       return {
-        entries: items(ref),
-        currentTurn: ref.state.currentTurn,
+        entries: await items(ref),
+        currentTurn: state.currentTurn,
       }
     },
   })

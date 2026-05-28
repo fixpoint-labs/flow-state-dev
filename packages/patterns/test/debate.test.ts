@@ -38,9 +38,9 @@ function makeDebater(
       // The pattern installs the canonical writable resource; this
       // handler reads through ctx.resources by name.
     },
-    execute: (_input, ctx) => {
+    execute: async (_input, ctx) => {
       const round = (ctx.sequencer!.state as { round: number }).round;
-      const trans = (ctx.resources as any).transcript?.state ??
+      const trans = (await (ctx.resources as any).transcript?.state()) ??
         (ctx.session?.resources as any)?.transcript ??
         { entries: [] };
       const priors = (trans.entries ?? []).length;

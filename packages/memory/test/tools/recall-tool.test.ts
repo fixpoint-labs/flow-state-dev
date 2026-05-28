@@ -56,7 +56,7 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -71,7 +71,7 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
   return {
     name: 'episodicMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -91,7 +91,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -210,7 +210,7 @@ type StubFilterInput = { query: string; limit: number; candidates: MemoryItem[] 
 
 type StubOptions = {
   /** Build candidates from the runtime ctx. Defaults to walking semantic + episodic stores. */
-  candidatesFromCtx?: (input: PrepareInput, ctx: any) => MemoryItem[]
+  candidatesFromCtx?: (input: PrepareInput, ctx: any) => MemoryItem[] | Promise<MemoryItem[]>
   /** Stub the filter step. Defaults to selecting every candidate ID in order. */
   filter?: (input: StubFilterInput) => { selectedIds: string[] }
   /** Make the filter throw — exercises the rescue branch / error envelope. */
@@ -230,15 +230,15 @@ function makeStubStrategy(opts: StubOptions = {}): {
   const filterCalls: StubFilterInput[] = []
   const name = opts.name ?? 'stub'
 
-  const candidatesFromCtx = opts.candidatesFromCtx ?? ((_input, ctx) => {
+  const candidatesFromCtx = opts.candidatesFromCtx ?? (async (_input, ctx) => {
     const items: MemoryItem[] = []
     const sem = ctx.resources?.semanticMemory
     const ep = ctx.resources?.episodicMemory
-    if (sem?.state?.facts) {
-      for (const f of sem.state.facts as SemanticFact[]) items.push(semanticToMemoryItem(f))
+    if (sem) {
+      for (const f of (await sem.state()).facts as SemanticFact[]) items.push(semanticToMemoryItem(f))
     }
-    if (ep?.state?.episodes) {
-      for (const e of ep.state.episodes as Episode[]) items.push(episodeToMemoryItem(e))
+    if (ep) {
+      for (const e of (await ep.state()).episodes as Episode[]) items.push(episodeToMemoryItem(e))
     }
     return items
   })
@@ -247,7 +247,7 @@ function makeStubStrategy(opts: StubOptions = {}): {
     name: 'stub.prepare',
     execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
       prepareCalls.push(input)
-      const candidates = candidatesFromCtx(input, ctx)
+      const candidates = await candidatesFromCtx(input, ctx)
       return {
         query: input.query,
         limit: input.limit,

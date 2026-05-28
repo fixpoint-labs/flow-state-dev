@@ -192,14 +192,14 @@ export function formatPersonaCritique(label: string, memo: any): string {
 }
 
 /** Render the four Phase 1 analyst memos as a compact block. */
-export function formatAnalystMemos(memos: {
-  getOptional: (k: string) => { state: any } | undefined;
-}): string {
+export async function formatAnalystMemos(memos: {
+  getOptional: (k: string) => Promise<{ state: () => Promise<any> } | undefined>;
+}): Promise<string> {
   const blocks: string[] = [];
   for (const [, mapping] of Object.entries(PHASE_1_MEMO_KEYS)) {
-    const ref = memos.getOptional(mapping.collectionKey);
+    const ref = await memos.getOptional(mapping.collectionKey);
     const role = AGENTS[mapping.agentName].role;
-    blocks.push(formatMemoBlock(`${role}`, ref?.state));
+    blocks.push(formatMemoBlock(`${role}`, ref ? await ref.state() : undefined));
   }
   return blocks.join("\n\n");
 }
@@ -298,11 +298,12 @@ export function formatCitationIntegrity(
 
 /** Read the `entries` array off a named contributions resource. Returns
  *  `[]` when the resource is missing or empty. */
-export function readContributionsEntries(
+export async function readContributionsEntries(
   ctx: any,
   resourceName: string,
-): RoundRobinContributionEntry[] {
-  const state = ctx.resources?.[resourceName]?.state as
+): Promise<RoundRobinContributionEntry[]> {
+  const ref = ctx.resources?.[resourceName];
+  const state = (ref ? await ref.state() : undefined) as
     | RoundRobinContributionsState
     | undefined;
   return state?.entries ?? [];

@@ -315,10 +315,10 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       },
       maxIterations: Math.max(0, maxRounds - 1),
     })
-    .map((_value: unknown, ctx: any) => {
+    .map(async (_value: unknown, ctx: any) => {
       const state = ctx.sequencer!.state;
-      const contribState = ctx.resources?.[accessorKey]
-        ?.state as RoundRobinContributionsState | undefined;
+      const contribState = (await ctx.resources?.[accessorKey]
+        ?.state()) as RoundRobinContributionsState | undefined;
       const final: RoundRobinFinalShape = {
         rounds: state.round,
         contributions: contribState?.entries ?? [],

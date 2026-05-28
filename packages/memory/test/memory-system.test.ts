@@ -52,7 +52,7 @@ function createMockWmRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as WorkingMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -76,7 +76,7 @@ function createMockSysRef(
   return {
     name: 'memorySystem',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as MemorySystemState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -98,7 +98,7 @@ function createMockEpRef(
   return {
     name: 'episodicMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as EpisodicMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -145,7 +145,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -431,7 +431,7 @@ describe('memory/memorySystem', () => {
   // ---------------------------------------------------------------------------
 
   describe('recall()', () => {
-    it('returns working memory items sorted by salience', () => {
+    it('returns working memory items sorted by salience', async () => {
       const wmRef = createMockWmRef({
         entries: [
           { id: 'e1', content: 'Low priority', salience: 0.3, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.3, category: 'identity', durability: 'session' },
@@ -444,25 +444,25 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       expect(result).toHaveLength(2)
       expect(result[0].content).toBe('High priority')
       expect(result[0].source).toBe('working')
       expect(result[1].content).toBe('Low priority')
     })
 
-    it('returns empty array when no memories', () => {
+    it('returns empty array when no memories', async () => {
       const wmRef = createMockWmRef()
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
         resources: createMockResources({ workingMemory: wmRef }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       expect(result).toEqual([])
     })
 
-    it('includes episodic items when episodic is configured', () => {
+    it('includes episodic items when episodic is configured', async () => {
       const wmRef = createMockWmRef()
       const epRef = createMockEpRef({
         episodes: [
@@ -475,13 +475,13 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef, episodicMemory: epRef }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       expect(result).toHaveLength(1)
       expect(result[0].source).toBe('episodic')
       expect(result[0].content).toBe('User likes React')
     })
 
-    it('deduplicates WM over episodic when content overlaps', () => {
+    it('deduplicates WM over episodic when content overlaps', async () => {
       const wmRef = createMockWmRef({
         entries: [
           { id: 'e1', content: 'User prefers TypeScript', salience: 0.8, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8, category: 'preference', durability: 'persistent' },
@@ -498,13 +498,13 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef, episodicMemory: epRef }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       // Should only have WM version, episodic deduped
       expect(result).toHaveLength(1)
       expect(result[0].source).toBe('working')
     })
 
-    it('boosts items matching cue', () => {
+    it('boosts items matching cue', async () => {
       const wmRef = createMockWmRef({
         entries: [
           { id: 'e1', content: 'User likes React', salience: 0.5, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.5, category: 'preference', durability: 'session' },
@@ -517,7 +517,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef }),
       }
 
-      const withCue = mem.recall(ctx, 'React')
+      const withCue = await mem.recall(ctx, 'React')
       const reactItem = withCue.find((i) => i.content === 'User likes React')!
       expect(reactItem.relevance).toBeGreaterThan(0.5) // boosted
     })
@@ -567,8 +567,8 @@ describe('memory/memorySystem', () => {
         { content: 'User likes TypeScript', importance: 0.7, durability: 'session', category: 'preference' },
       ])
 
-      expect(wmRef.state.entries).toHaveLength(1)
-      expect(wmRef.state.entries[0].content).toBe('User likes TypeScript')
+      expect((await wmRef.state()).entries).toHaveLength(1)
+      expect((await wmRef.state()).entries[0].content).toBe('User likes TypeScript')
     })
 
     it('auto-pins high-importance items (>= 0.85)', async () => {
@@ -579,7 +579,7 @@ describe('memory/memorySystem', () => {
         { content: 'Critical goal', importance: 0.9, durability: 'permanent', category: 'task' },
       ])
 
-      expect(wmRef.state.entries[0].pinned).toBe(true)
+      expect((await wmRef.state()).entries[0].pinned).toBe(true)
     })
 
     it('does not auto-pin items below 0.85', async () => {
@@ -590,7 +590,7 @@ describe('memory/memorySystem', () => {
         { content: 'Minor fact', importance: 0.6, durability: 'session', category: 'identity' },
       ])
 
-      expect(wmRef.state.entries[0].pinned).toBe(false)
+      expect((await wmRef.state()).entries[0].pinned).toBe(false)
     })
 
     it('routes persistent items to episodic memory', async () => {
@@ -607,9 +607,9 @@ describe('memory/memorySystem', () => {
         { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'identity' },
       ], configWithEpisodic, epRef)
 
-      expect(epRef.state.episodes).toHaveLength(1)
-      expect(epRef.state.episodes[0].content).toBe('User name is Jake')
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(1)
+      expect((await epRef.state()).episodes).toHaveLength(1)
+      expect((await epRef.state()).episodes[0].content).toBe('User name is Jake')
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(1)
     })
 
     it('does not route transient items to episodic memory', async () => {
@@ -626,7 +626,7 @@ describe('memory/memorySystem', () => {
         { content: 'Transient thought', importance: 0.8, durability: 'transient', category: 'event' },
       ], configWithEpisodic, epRef)
 
-      expect(epRef.state.episodes).toHaveLength(0)
+      expect((await epRef.state()).episodes).toHaveLength(0)
     })
 
     it('does not route items below significance threshold to episodic', async () => {
@@ -643,7 +643,7 @@ describe('memory/memorySystem', () => {
         { content: 'Moderate fact', importance: 0.7, durability: 'persistent', category: 'identity' },
       ], configWithEpisodic, epRef)
 
-      expect(epRef.state.episodes).toHaveLength(0)
+      expect((await epRef.state()).episodes).toHaveLength(0)
     })
 
     it('deduplicates overlapping working memory entries structurally', async () => {
@@ -659,8 +659,8 @@ describe('memory/memorySystem', () => {
         { content: 'Build CLI tool for deployment', importance: 0.8, durability: 'session', category: 'task' },
       ])
 
-      expect(wmRef.state.entries).toHaveLength(1)
-      expect(wmRef.state.entries[0].content).toBe('Build CLI tool for deployment')
+      expect((await wmRef.state()).entries).toHaveLength(1)
+      expect((await wmRef.state()).entries[0].content).toBe('Build CLI tool for deployment')
     })
 
     it('skips near-identical working memory entries', async () => {
@@ -676,8 +676,8 @@ describe('memory/memorySystem', () => {
         { content: 'User lives in Woodstock New York', importance: 0.9, durability: 'persistent', category: 'attribute' },
       ])
 
-      expect(wmRef.state.entries).toHaveLength(1)
-      expect(wmRef.state.entries[0].id).toBe('existing')
+      expect((await wmRef.state()).entries).toHaveLength(1)
+      expect((await wmRef.state()).entries[0].id).toBe('existing')
     })
 
     it('handles empty items array', async () => {
@@ -686,7 +686,7 @@ describe('memory/memorySystem', () => {
 
       await runReflect(wmRef, sysRef, [])
 
-      expect(wmRef.state.entries).toHaveLength(0)
+      expect((await wmRef.state()).entries).toHaveLength(0)
     })
   })
 
@@ -718,7 +718,7 @@ describe('memory/memorySystem', () => {
 
       await runTick(wmRef, sysRef)
 
-      expect(wmRef.state.currentTurn).toBe(4)
+      expect((await wmRef.state()).currentTurn).toBe(4)
     })
 
     it('recomputes salience on all entries', async () => {
@@ -733,7 +733,7 @@ describe('memory/memorySystem', () => {
       await runTick(wmRef, sysRef)
 
       // After tick: currentTurn=1, elapsed=1, salience = 1.0 * (1+1)^(-0.5) ≈ 0.7071
-      expect(wmRef.state.entries[0].salience).toBeCloseTo(0.7071, 3)
+      expect((await wmRef.state()).entries[0].salience).toBeCloseTo(0.7071, 3)
     })
 
     it('resets consolidation counters when trigger is met', async () => {
@@ -747,8 +747,8 @@ describe('memory/memorySystem', () => {
       await runTick(wmRef, sysRef)
 
       // After tick: currentTurn=15, 15 turns since consolidation, 6 episodic writes >= 5
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(0)
-      expect(sysRef.state.lastConsolidationTurn).toBe(15)
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(0)
+      expect((await sysRef.state()).lastConsolidationTurn).toBe(15)
     })
 
     it('does not trigger consolidation before minInterval', async () => {
@@ -761,7 +761,7 @@ describe('memory/memorySystem', () => {
       await runTick(wmRef, sysRef)
 
       // Only 3 turns since last consolidation (< 4 minInterval)
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(10)
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(10)
     })
   })
 
@@ -1264,8 +1264,8 @@ describe('memory/memorySystem', () => {
       }) as any
 
       expect(result.added).toBe(1)
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].content).toBe('User works at Stripe')
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].content).toBe('User works at Stripe')
     })
 
     it('handles "reinforce" action — bumps existing fact', async () => {
@@ -1288,8 +1288,8 @@ describe('memory/memorySystem', () => {
       }) as any
 
       expect(result.reinforced).toBe(1)
-      expect(semRef.state.facts[0].reinforcementCount).toBe(3)
-      expect(semRef.state.facts[0].confidence).toBe(0.75) // 0.7 + 0.05
+      expect((await semRef.state()).facts[0].reinforcementCount).toBe(3)
+      expect((await semRef.state()).facts[0].confidence).toBe(0.75) // 0.7 + 0.05
     })
 
     it('handles "update" action — changes content of existing fact', async () => {
@@ -1312,9 +1312,9 @@ describe('memory/memorySystem', () => {
       }) as any
 
       expect(result.updated).toBe(1)
-      expect(semRef.state.facts[0].id).toBe('sf_target') // ID preserved
-      expect(semRef.state.facts[0].content).toBe('User works at Stripe')
-      expect(semRef.state.facts[0].confidence).toBe(0.85)
+      expect((await semRef.state()).facts[0].id).toBe('sf_target') // ID preserved
+      expect((await semRef.state()).facts[0].content).toBe('User works at Stripe')
+      expect((await semRef.state()).facts[0].confidence).toBe(0.85)
     })
 
     it('handles "invalidate" action — removes existing fact', async () => {
@@ -1337,7 +1337,7 @@ describe('memory/memorySystem', () => {
       }) as any
 
       expect(result.invalidated).toBe(1)
-      expect(semRef.state.facts).toHaveLength(0)
+      expect((await semRef.state()).facts).toHaveLength(0)
     })
 
     it('logs warning for missing targetFactId on reinforce', async () => {
@@ -1382,8 +1382,8 @@ describe('memory/memorySystem', () => {
         }],
       })
 
-      expect(epRef.state.episodes[0].consolidated).toBe(true)
-      expect(epRef.state.episodes[1].consolidated).toBe(true)
+      expect((await epRef.state()).episodes[0].consolidated).toBe(true)
+      expect((await epRef.state()).episodes[1].consolidated).toBe(true)
     })
 
     it('resets memory system consolidation counters', async () => {
@@ -1407,9 +1407,9 @@ describe('memory/memorySystem', () => {
         }],
       })
 
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(0)
-      expect(sysRef.state.evictedPersistentSinceLastConsolidation).toBe(0)
-      expect(sysRef.state.lastConsolidationTurn).toBe(15)
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(0)
+      expect((await sysRef.state()).evictedPersistentSinceLastConsolidation).toBe(0)
+      expect((await sysRef.state()).lastConsolidationTurn).toBe(15)
     })
 
     it('increments totalConsolidations counter', async () => {
@@ -1429,7 +1429,7 @@ describe('memory/memorySystem', () => {
         }],
       })
 
-      expect(semRef.state.totalConsolidations).toBe(1)
+      expect((await semRef.state()).totalConsolidations).toBe(1)
     })
 
     it('is a no-op when facts array is empty', async () => {
@@ -1444,7 +1444,7 @@ describe('memory/memorySystem', () => {
       expect(result.updated).toBe(0)
       expect(result.invalidated).toBe(0)
       // Counters should NOT be reset when no facts processed
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(6)
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(6)
     })
   })
 
@@ -1494,11 +1494,11 @@ describe('memory/memorySystem', () => {
         { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'identity' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].content).toBe('User name is Jake')
-      expect(semRef.state.facts[0].confidence).toBe(0.9) // importance used as confidence
-      expect(semRef.state.facts[0].category).toBe('identity')
-      expect(semRef.state.facts[0].subject).toBe('user')
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].content).toBe('User name is Jake')
+      expect((await semRef.state()).facts[0].confidence).toBe(0.9) // importance used as confidence
+      expect((await semRef.state()).facts[0].category).toBe('identity')
+      expect((await semRef.state()).facts[0].subject).toBe('user')
     })
 
     it('routes persistent+identity items directly to semantic store', async () => {
@@ -1511,9 +1511,9 @@ describe('memory/memorySystem', () => {
         { content: 'Some persistent fact', importance: 0.8, durability: 'persistent', category: 'identity' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].content).toBe('Some persistent fact')
-      expect(semRef.state.facts[0].category).toBe('identity')
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].content).toBe('Some persistent fact')
+      expect((await semRef.state()).facts[0].category).toBe('identity')
     })
 
     it('routes permanent+preference to semantic store', async () => {
@@ -1526,9 +1526,9 @@ describe('memory/memorySystem', () => {
         { content: 'Prefers dark mode', importance: 0.9, durability: 'permanent', category: 'preference' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].content).toBe('Prefers dark mode')
-      expect(semRef.state.facts[0].category).toBe('preference')
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].content).toBe('Prefers dark mode')
+      expect((await semRef.state()).facts[0].category).toBe('preference')
     })
 
     it('does not route persistent+event to semantic (unstable category)', async () => {
@@ -1541,7 +1541,7 @@ describe('memory/memorySystem', () => {
         { content: 'User asked about deployment', importance: 0.7, durability: 'persistent', category: 'event' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(0)
+      expect((await semRef.state()).facts).toHaveLength(0)
     })
 
     it('does not route persistent+task to semantic (unstable category)', async () => {
@@ -1554,7 +1554,7 @@ describe('memory/memorySystem', () => {
         { content: 'Fix the login bug', importance: 0.8, durability: 'persistent', category: 'task' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(0)
+      expect((await semRef.state()).facts).toHaveLength(0)
     })
 
     it('updates existing semantic fact when new content has high overlap but is more specific', async () => {
@@ -1570,10 +1570,10 @@ describe('memory/memorySystem', () => {
       ])
 
       // Should update existing fact, not create a duplicate
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].id).toBe('sf_existing')
-      expect(semRef.state.facts[0].content).toBe('User was born in May (specifically on the 8th)')
-      expect(semRef.state.facts[0].confidence).toBe(0.78)
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].id).toBe('sf_existing')
+      expect((await semRef.state()).facts[0].content).toBe('User was born in May (specifically on the 8th)')
+      expect((await semRef.state()).facts[0].confidence).toBe(0.78)
     })
 
     it('reinforces existing semantic fact when content is nearly identical', async () => {
@@ -1589,9 +1589,9 @@ describe('memory/memorySystem', () => {
       ])
 
       // Should reinforce, not duplicate
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].id).toBe('sf_existing')
-      expect(semRef.state.facts[0].reinforcementCount).toBe(3)
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].id).toBe('sf_existing')
+      expect((await semRef.state()).facts[0].reinforcementCount).toBe(3)
     })
 
     it('adds new fact when no overlap with existing facts', async () => {
@@ -1607,7 +1607,7 @@ describe('memory/memorySystem', () => {
       ])
 
       // No overlap — should add as new
-      expect(semRef.state.facts).toHaveLength(2)
+      expect((await semRef.state()).facts).toHaveLength(2)
     })
 
     it('still routes to WM and episodic alongside semantic', async () => {
@@ -1621,9 +1621,9 @@ describe('memory/memorySystem', () => {
       ])
 
       // All three stores receive the item
-      expect(wmRef.state.entries).toHaveLength(1)
-      expect(epRef.state.episodes).toHaveLength(1)
-      expect(semRef.state.facts).toHaveLength(1)
+      expect((await wmRef.state()).entries).toHaveLength(1)
+      expect((await epRef.state()).episodes).toHaveLength(1)
+      expect((await semRef.state()).facts).toHaveLength(1)
     })
   })
 
@@ -1662,9 +1662,9 @@ describe('memory/memorySystem', () => {
       await runTickWithSemantic(wmRef, sysRef)
 
       // Counters should NOT be reset — that's consolidationPersist's job
-      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(6)
-      expect(sysRef.state.evictedPersistentSinceLastConsolidation).toBe(1)
-      expect(sysRef.state.lastConsolidationTurn).toBe(0)
+      expect((await sysRef.state()).episodicWritesSinceLastConsolidation).toBe(6)
+      expect((await sysRef.state()).evictedPersistentSinceLastConsolidation).toBe(1)
+      expect((await sysRef.state()).lastConsolidationTurn).toBe(0)
     })
 
     it('still advances turn counter', async () => {
@@ -1673,7 +1673,7 @@ describe('memory/memorySystem', () => {
 
       await runTickWithSemantic(wmRef, sysRef)
 
-      expect(wmRef.state.currentTurn).toBe(4)
+      expect((await wmRef.state()).currentTurn).toBe(4)
     })
   })
 
@@ -1682,7 +1682,7 @@ describe('memory/memorySystem', () => {
   // ---------------------------------------------------------------------------
 
   describe('recall() (with semantic)', () => {
-    it('includes semantic facts in results', () => {
+    it('includes semantic facts in results', async () => {
       const wmRef = createMockWmRef()
       const semRef = createMockSemRef({
         facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe', confidence: 0.8, reinforcementCount: 3 })],
@@ -1697,13 +1697,13 @@ describe('memory/memorySystem', () => {
         }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       expect(result).toHaveLength(1)
       expect(result[0].source).toBe('semantic')
       expect(result[0].content).toBe('User works at Stripe')
     })
 
-    it('semantic dedup wins over working memory', () => {
+    it('semantic dedup wins over working memory', async () => {
       const wmRef = createMockWmRef({
         entries: [
           { id: 'wm1', content: 'User works at Google', salience: 0.8, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8, category: 'identity', durability: 'persistent' },
@@ -1722,7 +1722,7 @@ describe('memory/memorySystem', () => {
         }),
       }
 
-      const result = mem.recall(ctx)
+      const result = await mem.recall(ctx)
       // "works at" has significant token overlap — WM version should be deduped
       const sources = result.map((r) => r.source)
       // Both may appear if token overlap isn't > 0.6 (depends on exact content)
@@ -1730,7 +1730,7 @@ describe('memory/memorySystem', () => {
       expect(sources).toContain('semantic')
     })
 
-    it('applies cue boost to semantic facts', () => {
+    it('applies cue boost to semantic facts', async () => {
       const wmRef = createMockWmRef()
       const semRef = createMockSemRef({
         facts: [
@@ -1748,7 +1748,7 @@ describe('memory/memorySystem', () => {
         }),
       }
 
-      const result = mem.recall(ctx, 'Stripe')
+      const result = await mem.recall(ctx, 'Stripe')
       const stripeItem = result.find((r) => r.content === 'User works at Stripe')!
       const reactItem = result.find((r) => r.content === 'User likes React')!
       expect(stripeItem.relevance).toBeGreaterThan(reactItem.relevance)
@@ -1983,8 +1983,8 @@ describe('memory/memorySystem', () => {
 
       expect(result.removed).toBe(1)
       expect(result.merged).toBe(0)
-      expect(semRef.state.facts).toHaveLength(2)
-      expect(semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_1')).toBeUndefined()
+      expect((await semRef.state()).facts).toHaveLength(2)
+      expect((await semRef.state()).facts.find((f: SemanticFact) => f.id === 'sf_1')).toBeUndefined()
     })
 
     it('merges facts: updates first, removes rest', async () => {
@@ -2007,13 +2007,13 @@ describe('memory/memorySystem', () => {
 
       expect(result.merged).toBe(1)
       expect(result.removed).toBe(0)
-      expect(semRef.state.facts).toHaveLength(2) // sf_1 updated, sf_2 removed
-      const merged = semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_1')
+      expect((await semRef.state()).facts).toHaveLength(2) // sf_1 updated, sf_2 removed
+      const merged = (await semRef.state()).facts.find((f: SemanticFact) => f.id === 'sf_1')
       expect(merged).toBeDefined()
       expect(merged!.content).toBe('User was born in May in Maryland')
       expect(merged!.sourceEpisodeIds).toContain('ep1')
       expect(merged!.sourceEpisodeIds).toContain('ep2')
-      expect(semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_2')).toBeUndefined()
+      expect((await semRef.state()).facts.find((f: SemanticFact) => f.id === 'sf_2')).toBeUndefined()
     })
 
     it('handles empty removals and merges (no-op)', async () => {
@@ -2028,7 +2028,7 @@ describe('memory/memorySystem', () => {
 
       expect(result.removed).toBe(0)
       expect(result.merged).toBe(0)
-      expect(semRef.state.facts).toHaveLength(1)
+      expect((await semRef.state()).facts).toHaveLength(1)
     })
 
     it('skips removal if factId is also in a merge', async () => {
@@ -2052,8 +2052,8 @@ describe('memory/memorySystem', () => {
       // merge keeps sf_1 (updated) and removes sf_2
       expect(result.removed).toBe(0) // removal skipped
       expect(result.merged).toBe(1)
-      expect(semRef.state.facts).toHaveLength(1)
-      expect(semRef.state.facts[0].content).toBe('User was born in May in Maryland')
+      expect((await semRef.state()).facts).toHaveLength(1)
+      expect((await semRef.state()).facts[0].content).toBe('User was born in May in Maryland')
     })
 
     it('handles merge with 3+ source facts', async () => {
@@ -2076,8 +2076,8 @@ describe('memory/memorySystem', () => {
       }) as any
 
       expect(result.merged).toBe(1)
-      expect(semRef.state.facts).toHaveLength(3)
-      const merged = semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_2')
+      expect((await semRef.state()).facts).toHaveLength(3)
+      const merged = (await semRef.state()).facts.find((f: SemanticFact) => f.id === 'sf_2')
       expect(merged!.content).toBe('User was born in May in Maryland')
     })
 
@@ -2093,7 +2093,7 @@ describe('memory/memorySystem', () => {
 
       // removeFact is a no-op for missing IDs
       expect(result.removed).toBe(1)
-      expect(semRef.state.facts).toHaveLength(1)
+      expect((await semRef.state()).facts).toHaveLength(1)
     })
 
     it('returns { removed: 0, merged: 0 } when semantic resource is missing', async () => {

@@ -119,11 +119,11 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
         .filter(Boolean)
         .join("\n");
     },
-    user: (_input, ctx) => {
+    user: async (_input, ctx) => {
       const state = ctx.sequencer!.state;
       // TODO: computed-key resource accessor — see round-robin follow-up
-      const contribState = (ctx.resources as any)[accessor]
-        ?.state as RoundRobinContributionsState | undefined;
+      const contribState = (await (ctx.resources as any)[accessor]
+        ?.state()) as RoundRobinContributionsState | undefined;
       const entries = contribState?.entries ?? [];
       const priorBlock =
         entries.length > 0

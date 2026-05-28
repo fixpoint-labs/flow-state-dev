@@ -1,9 +1,8 @@
-import type { ResourceContext } from '@flow-state-dev/core'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
-import { shortId, tokenOverlap } from './internal/helpers.js'
+import { shortId, tokenOverlap, type MemResourceRef } from './internal/helpers.js'
 import { effectiveConfidence } from './janitor.js'
 
-type SemRef = ResourceContext<SemanticMemoryState>
+type SemRef = MemResourceRef<SemanticMemoryState>
 
 /**
  * Add a new semantic fact. Generates ID and sets `extractedAt` and
@@ -128,8 +127,8 @@ export async function removeFact(ref: SemRef, factId: string): Promise<void> {
  * Get all facts, sorted by reinforcementCount descending (most established first).
  * When `subject` is provided, returns only facts about that subject.
  */
-export function allFacts(ref: SemRef, subject?: string): SemanticFact[] {
-  let facts = [...ref.state.facts]
+export async function allFacts(ref: SemRef, subject?: string): Promise<SemanticFact[]> {
+  let facts = [...(await ref.state()).facts]
   if (subject != null) {
     facts = facts.filter((f) => f.subject === subject)
   }
@@ -141,8 +140,8 @@ export function allFacts(ref: SemRef, subject?: string): SemanticFact[] {
  * Thin wrapper over `allFacts`; primarily used by digest regeneration
  * to feed the most-reinforced subset into the prompt.
  */
-export function topFacts(ref: SemRef, limit: number, subject?: string): SemanticFact[] {
-  return allFacts(ref, subject).slice(0, limit)
+export async function topFacts(ref: SemRef, limit: number, subject?: string): Promise<SemanticFact[]> {
+  return (await allFacts(ref, subject)).slice(0, limit)
 }
 
 /**
@@ -182,8 +181,8 @@ export async function cullByEffectiveConfidence(
  * For larger stores, filters by token overlap with the query.
  * When `subject` is provided, scopes to that subject only.
  */
-export function query(ref: SemRef, q: string, limit?: number, subject?: string): SemanticFact[] {
-  const facts = allFacts(ref, subject)
+export async function query(ref: SemRef, q: string, limit?: number, subject?: string): Promise<SemanticFact[]> {
+  const facts = await allFacts(ref, subject)
 
   if (facts.length <= 50) {
     return limit != null ? facts.slice(0, limit) : facts

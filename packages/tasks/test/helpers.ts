@@ -112,7 +112,7 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       name: key,
       scope: "session",
       config: { scope: "session" } as ResourceRef<TState>["config"],
-      get state() {
+      async state() {
         return (instances.get(key) ?? ({} as TState)) as Readonly<TState>;
       },
       async patchState(updates: Partial<TState>) {
@@ -152,14 +152,14 @@ export function createFakeResourceCollection<TState extends JsonObject>(
     pattern,
     scope: "session",
     config: { pattern, scope: "session" } as ResourceCollectionRef<TState>["config"],
-    get(key) {
+    async get(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       if (!instances.has(k)) {
         throw new Error(`Resource instance "${k}" not found`);
       }
       return instanceRef(k);
     },
-    getOptional(key) {
+    async getOptional(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       return instances.has(k) ? instanceRef(k) : undefined;
     },
@@ -178,20 +178,41 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       }
       return instanceRef(k);
     },
-    list(prefix) {
-      const refs: ResourceRef<TState>[] = [];
+    async upsert(key, update, createOnly) {
+      const k = typeof key === "string" ? key : Object.values(key).join("/");
+      const prev = instances.get(k);
+      instances.set(
+        k,
+        (prev !== undefined
+          ? { ...prev, ...update }
+          : { ...(createOnly ?? {}), ...update }) as TState
+      );
+      return instanceRef(k);
+    },
+    async list(opts) {
+      const prefix = opts?.prefix;
+      const items: ResourceRef<TState>[] = [];
       for (const k of instances.keys()) {
         if (prefix === undefined || k.startsWith(prefix)) {
-          refs.push(instanceRef(k));
+          items.push(instanceRef(k));
         }
       }
-      return refs;
+      // Single-page fake: every instance fits in one page.
+      return { items };
+    },
+    async *scan(opts) {
+      const prefix = opts?.prefix;
+      for (const k of [...instances.keys()]) {
+        if (prefix === undefined || k.startsWith(prefix)) {
+          yield instanceRef(k);
+        }
+      }
     },
     async delete(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       instances.delete(k);
     },
-    count() {
+    async count() {
       return instances.size;
     },
   };

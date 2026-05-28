@@ -238,8 +238,8 @@ function buildDefaultController(config: {
         .filter(Boolean)
         .join("\n");
     },
-    user: (_input, ctx) => {
-      const state = ctx.resources.workspace?.state;
+    user: async (_input, ctx) => {
+      const state = await ctx.resources.workspace?.state();
       return `Current workspace state:\n${JSON.stringify(state, null, 2)}`;
     },
   });
@@ -472,7 +472,7 @@ export function routedSpecialists<
     resources: { workspace: workspaceResource },
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (_input, ctx) => {
-      const workspaceState = ctx.resources.workspace.state;
+      const workspaceState = await ctx.resources.workspace.state();
       const controlState = ctx.sequencer!.state;
       ctx.emitComponent(
         "routedSpecialists",
@@ -523,8 +523,8 @@ export function routedSpecialists<
       when: (v: { continue: boolean }) => v.continue,
       maxIterations,
     })
-    .map((_value: unknown, ctx: any) => {
-      const workspaceState = ctx.resources.workspace.state;
+    .map(async (_value: unknown, ctx: any) => {
+      const workspaceState = await ctx.resources.workspace.state();
       const controlState = ctx.sequencer!.state;
       const collection = getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });

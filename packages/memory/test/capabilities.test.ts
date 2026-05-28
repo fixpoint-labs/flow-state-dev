@@ -34,7 +34,7 @@ function createMockWmRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as WorkingMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -56,7 +56,7 @@ function createMockEpRef(
   return {
     name: 'episodicMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as EpisodicMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -79,7 +79,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -153,7 +153,7 @@ describe('memory/capabilities', () => {
       const entry = await fns.add({ content: 'User likes TypeScript', importance: 0.8 })
       expect(entry.content).toBe('User likes TypeScript')
       expect(entry.importance).toBe(0.8)
-      expect(wmRef.state.entries).toHaveLength(1)
+      expect((await wmRef.state()).entries).toHaveLength(1)
     })
 
     it('items() returns entries sorted by salience', async () => {
@@ -164,7 +164,7 @@ describe('memory/capabilities', () => {
       await fns.add({ content: 'Low', importance: 0.2 })
       await fns.add({ content: 'High', importance: 0.9 })
 
-      const sorted = fns.items()
+      const sorted = await fns.items()
       expect(sorted[0].content).toBe('High')
       expect(sorted[1].content).toBe('Low')
     })
@@ -175,12 +175,12 @@ describe('memory/capabilities', () => {
       const fns = workingMemoryCapability.fns!(ctx as any)
 
       await fns.add({ content: 'test', importance: 0.8 })
-      expect(wmRef.state.currentTurn).toBe(0)
+      expect((await wmRef.state()).currentTurn).toBe(0)
 
       await fns.tick()
-      expect(wmRef.state.currentTurn).toBe(1)
+      expect((await wmRef.state()).currentTurn).toBe(1)
       // Salience should be recomputed (lower due to decay)
-      expect(wmRef.state.entries[0].salience).toBeLessThan(0.8)
+      expect((await wmRef.state()).entries[0].salience).toBeLessThan(0.8)
     })
 
     it('evict() removes an entry', async () => {
@@ -189,11 +189,11 @@ describe('memory/capabilities', () => {
       const fns = workingMemoryCapability.fns!(ctx as any)
 
       const entry = await fns.add({ content: 'temp', importance: 0.5 })
-      expect(wmRef.state.entries).toHaveLength(1)
+      expect((await wmRef.state()).entries).toHaveLength(1)
 
       const removed = await fns.evict(entry.id)
       expect(removed).toBe(true)
-      expect(wmRef.state.entries).toHaveLength(0)
+      expect((await wmRef.state()).entries).toHaveLength(0)
     })
 
     it('pin() and unpin() toggle pin status', async () => {
@@ -202,13 +202,13 @@ describe('memory/capabilities', () => {
       const fns = workingMemoryCapability.fns!(ctx as any)
 
       const entry = await fns.add({ content: 'pin me', importance: 0.5 })
-      expect(wmRef.state.entries[0].pinned).toBe(false)
+      expect((await wmRef.state()).entries[0].pinned).toBe(false)
 
       await fns.pin(entry.id)
-      expect(wmRef.state.entries[0].pinned).toBe(true)
+      expect((await wmRef.state()).entries[0].pinned).toBe(true)
 
       await fns.unpin(entry.id)
-      expect(wmRef.state.entries[0].pinned).toBe(false)
+      expect((await wmRef.state()).entries[0].pinned).toBe(false)
     })
 
     it('format() returns bullet-list formatted entries', async () => {
@@ -219,7 +219,7 @@ describe('memory/capabilities', () => {
       await fns.add({ content: 'Fact A', importance: 0.8 })
       await fns.add({ content: 'Fact B', importance: 0.6 })
 
-      const formatted = fns.format()
+      const formatted = await fns.format()
       expect(formatted).toContain('- Fact A')
       expect(formatted).toContain('- Fact B')
     })
@@ -236,9 +236,9 @@ describe('memory/capabilities', () => {
 
       // Third entry should evict the lowest-salience one
       await fns.add({ content: 'C', importance: 0.9 })
-      expect(wmRef.state.entries).toHaveLength(2)
+      expect((await wmRef.state()).entries).toHaveLength(2)
       // 'A' (lowest salience) should have been evicted
-      const contents = wmRef.state.entries.map((e) => e.content)
+      const contents = (await wmRef.state()).entries.map((e) => e.content)
       expect(contents).not.toContain('A')
       expect(contents).toContain('B')
       expect(contents).toContain('C')
@@ -293,8 +293,8 @@ describe('memory/capabilities', () => {
 
       expect(episode.content).toBe('User discussed TypeScript')
       expect(episode.id).toMatch(/^ep_/)
-      expect(epRef.state.episodes).toHaveLength(1)
-      expect(epRef.state.totalEncoded).toBe(1)
+      expect((await epRef.state()).episodes).toHaveLength(1)
+      expect((await epRef.state()).totalEncoded).toBe(1)
     })
 
     it('recent() returns episodes sorted by turn', async () => {
@@ -317,7 +317,7 @@ describe('memory/capabilities', () => {
         context: { sessionId: 's1' },
       })
 
-      const episodes = fns.recent()
+      const episodes = await fns.recent()
       expect(episodes[0].content).toBe('Late')
       expect(episodes[1].content).toBe('Early')
     })
@@ -335,9 +335,9 @@ describe('memory/capabilities', () => {
         context: { sessionId: 's1' },
       })
 
-      expect(epRef.state.episodes[0].consolidated).toBe(false)
+      expect((await epRef.state()).episodes[0].consolidated).toBe(false)
       await fns.markConsolidated([ep.id])
-      expect(epRef.state.episodes[0].consolidated).toBe(true)
+      expect((await epRef.state()).episodes[0].consolidated).toBe(true)
     })
   })
 
@@ -392,7 +392,7 @@ describe('memory/capabilities', () => {
       expect(fact.content).toBe('User is a software engineer')
       expect(fact.subject).toBe('user')
       expect(fact.id).toMatch(/^sf_/)
-      expect(semRef.state.facts).toHaveLength(1)
+      expect((await semRef.state()).facts).toHaveLength(1)
     })
 
     it('updateFact() modifies fact content', async () => {
@@ -425,9 +425,9 @@ describe('memory/capabilities', () => {
         sourceEpisodeIds: [],
       })
 
-      expect(semRef.state.facts).toHaveLength(1)
+      expect((await semRef.state()).facts).toHaveLength(1)
       await fns.removeFact(fact.id)
-      expect(semRef.state.facts).toHaveLength(0)
+      expect((await semRef.state()).facts).toHaveLength(0)
     })
 
     it('query() searches facts by keyword', async () => {
@@ -448,7 +448,7 @@ describe('memory/capabilities', () => {
         sourceEpisodeIds: [],
       })
 
-      const all = fns.allFacts()
+      const all = await fns.allFacts()
       expect(all).toHaveLength(2)
     })
   })
@@ -593,7 +593,7 @@ describe('memory/capabilities', () => {
       const ctx = mockCtx({ wm: wmRef })
       const fns = mem.capability.fns!(ctx as any)
 
-      const results = fns.recall()
+      const results = await fns.recall()
       expect(results.length).toBeGreaterThanOrEqual(1)
       expect(results[0].content).toBe('User likes pizza')
       expect(results[0].source).toBe('working')
@@ -652,12 +652,12 @@ describe('memory/capabilities', () => {
       await fns.add({ content: 'A', importance: 0.3 })
       await fns.add({ content: 'B', importance: 0.5 })
       await fns.add({ content: 'C', importance: 0.7 })
-      expect(wmRef.state.entries).toHaveLength(3)
+      expect((await wmRef.state()).entries).toHaveLength(3)
 
       // 4th entry evicts lowest salience
       await fns.add({ content: 'D', importance: 0.9 })
-      expect(wmRef.state.entries).toHaveLength(3)
-      expect(wmRef.state.entries.map((e) => e.content)).not.toContain('A')
+      expect((await wmRef.state()).entries).toHaveLength(3)
+      expect((await wmRef.state()).entries.map((e) => e.content)).not.toContain('A')
     })
 
     it('createEpisodicMemoryCapability respects scope and maxEpisodes', async () => {
@@ -695,8 +695,8 @@ describe('memory/capabilities', () => {
       })
 
       // maxEpisodes is 2, so oldest should have been evicted
-      expect(epRef.state.episodes).toHaveLength(2)
-      expect(epRef.state.episodes.map((e) => e.content)).not.toContain('E1')
+      expect((await epRef.state()).episodes).toHaveLength(2)
+      expect((await epRef.state()).episodes.map((e) => e.content)).not.toContain('E1')
     })
 
     it('createSemanticMemoryCapability respects org scope', () => {
@@ -819,11 +819,11 @@ describe('memory/capabilities', () => {
       expect(tools[0]).toBe(cap.recallToolBlock)
     })
 
-    it('fns.recall returns [] for an empty store and ranked items when data exists', () => {
+    it('fns.recall returns [] for an empty store and ranked items when data exists', async () => {
       const cap = createMemoryCapability({ model: 'intent/utility', working: true })
 
       const emptyFns = cap.fns!(mockCtx({}) as any)
-      expect(emptyFns.recall()).toEqual([])
+      expect(await emptyFns.recall()).toEqual([])
 
       const wmRef = createMockWmRef({
         entries: [{
@@ -833,7 +833,7 @@ describe('memory/capabilities', () => {
         }],
       })
       const fns = cap.fns!(mockCtx({ wm: wmRef }) as any)
-      const results = fns.recall()
+      const results = await fns.recall()
       expect(results[0].content).toBe('User likes pizza')
       expect(results[0].source).toBe('working')
     })
@@ -847,7 +847,7 @@ describe('memory/capabilities', () => {
         .toThrow(/requires a `model`/)
     })
 
-    it('hygiene: false ranks semantic facts by raw confidence (no decay)', () => {
+    it('hygiene: false ranks semantic facts by raw confidence (no decay)', async () => {
       const cap = createMemoryCapability({
         model: 'intent/utility',
         working: true,
@@ -865,12 +865,12 @@ describe('memory/capabilities', () => {
         ],
       })
       const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
-      const results = fns.recall().filter((r) => r.source === 'semantic')
+      const results = (await fns.recall()).filter((r) => r.source === 'semantic')
       // No decay: the higher raw-confidence fact (OLD, 0.9) ranks first despite age.
       expect(results[0].id).toBe('sf_old')
     })
 
-    it('hygiene confidenceDecay ranks a fresh fact above an aged one of equal raw confidence', () => {
+    it('hygiene confidenceDecay ranks a fresh fact above an aged one of equal raw confidence', async () => {
       const cap = createMemoryCapability({
         model: 'intent/utility',
         working: true,
@@ -888,7 +888,7 @@ describe('memory/capabilities', () => {
         ],
       })
       const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
-      const results = fns.recall().filter((r) => r.source === 'semantic')
+      const results = (await fns.recall()).filter((r) => r.source === 'semantic')
       expect(results[0].id).toBe('sf_fresh')
     })
 

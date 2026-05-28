@@ -96,16 +96,17 @@ export type ResourceClient = {
   ) => Promise<void>;
 
   /**
-   * List a paginated page of collection item state.
-   * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
+   * List a keyset-paginated page of collection item state.
+   * GET /sessions/:sessionId/resources/:ref?limit=&cursor=&topicPrefix=
    *
    * Gated by `client.state.read` on the server. Items are ordered by
-   * lexicographic storage key.
+   * lexicographic storage key. Pass the prior page's `pagination.nextCursor`
+   * as `cursor` to fetch the next page; `nextCursor === null` means the end.
    */
   listCollectionItems: (
     sessionId: string,
     ref: string,
-    options?: { limit?: number; offset?: number; topicPrefix?: string }
+    options?: { limit?: number; cursor?: string | null; topicPrefix?: string }
   ) => Promise<CollectionListPage>;
 
   /**
@@ -225,14 +226,14 @@ export function createResourceClient(
   const listCollectionItems = async (
     sessionId: string,
     ref: string,
-    listOptions: { limit?: number; offset?: number; topicPrefix?: string } = {}
+    listOptions: { limit?: number; cursor?: string | null; topicPrefix?: string } = {}
   ): Promise<CollectionListPage> => {
     const query: string[] = [];
     if (listOptions.limit !== undefined) {
       query.push(`limit=${encodeURIComponent(String(listOptions.limit))}`);
     }
-    if (listOptions.offset !== undefined) {
-      query.push(`offset=${encodeURIComponent(String(listOptions.offset))}`);
+    if (listOptions.cursor !== undefined && listOptions.cursor !== null) {
+      query.push(`cursor=${encodeURIComponent(listOptions.cursor)}`);
     }
     if (listOptions.topicPrefix !== undefined) {
       query.push(`topicPrefix=${encodeURIComponent(listOptions.topicPrefix)}`);

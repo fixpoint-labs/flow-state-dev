@@ -38,7 +38,7 @@ describe("materializeWorker — prompt-driven branches", () => {
   it("reads prompt-ref content from the skill collection and strips frontmatter", async () => {
     const collection = createMockSkillsCollection();
     await collection.create(skillFileKey("demo", "reference/market.md"), {});
-    const ref = collection.getOptional(skillFileKey("demo", "reference/market.md"));
+    const ref = await collection.getOptional(skillFileKey("demo", "reference/market.md"));
     await (ref as unknown as { writeContent: (s: string) => Promise<void> }).writeContent(
       "---\ndescription: scratch\n---\n\nYou are a market analyst.",
     );

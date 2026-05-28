@@ -63,10 +63,10 @@ export const commitPortfolioManagerMemo = memoHandler({
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
     // is missing (defensive — should not happen post-Phase 3) or has no
     // recorded direction, record `null` rather than guess.
-    const traderMemo = ctx.resources.memos.getOptional(
+    const traderMemo = await ctx.resources.memos.getOptional(
       PHASE_3_MEMO_KEYS.trader.collectionKey,
     );
-    const traderState = traderMemo?.state as
+    const traderState = (traderMemo ? await traderMemo.state() : undefined) as
       | { direction?: string | null; dependsOn?: string[] | null }
       | undefined;
     const traderDirection = traderState?.direction;

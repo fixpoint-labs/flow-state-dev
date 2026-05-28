@@ -44,13 +44,12 @@ export class FileSync {
    */
   async hydrate(): Promise<void> {
     for (const collection of Object.values(this.collections)) {
-      const entries = collection.list();
-
-      for (const entry of entries) {
+      for await (const entry of collection.scan()) {
         const content = await entry.readContent();
         if (content === null) continue;
 
-        const fullPath = path.join(this.options.destination, entry.state.path);
+        const state = await entry.state();
+        const fullPath = path.join(this.options.destination, state.path);
         await this.sandbox.writeFile(fullPath, content);
       }
     }
@@ -76,12 +75,13 @@ export class FileSync {
       }
 
       // Find which collection owns this path
-      const owner = this.findOwner(file.path);
+      const owner = await this.findOwner(file.path);
       if (!owner) continue;
 
-      const existing = owner.collection.getOptional(file.path);
+      const existing = await owner.collection.getOptional(file.path);
+      const existingHash = existing ? (await existing.state()).hash : undefined;
 
-      if (!existing || this.options.syncMode === "full" || existing.state.hash !== file.hash) {
+      if (!existing || this.options.syncMode === "full" || existingHash !== file.hash) {
         const ref = await owner.collection.getOrCreate(file.path, {
           path: file.path,
           hash: file.hash,
@@ -89,7 +89,7 @@ export class FileSync {
         });
 
         // Update state if the hash changed
-        if (ref.state.hash !== file.hash) {
+        if ((await ref.state()).hash !== file.hash) {
           await ref.patchState({
             hash: file.hash,
             updatedAt: new Date().toISOString(),
@@ -103,10 +103,10 @@ export class FileSync {
 
     // Remove entries for files deleted from the sandbox
     for (const collection of Object.values(this.collections)) {
-      const entries = collection.list();
-      for (const entry of entries) {
-        if (!currentPaths.has(entry.state.path)) {
-          await collection.delete(entry.state.path);
+      for await (const entry of collection.scan()) {
+        const entryPath = (await entry.state()).path;
+        if (!currentPaths.has(entryPath)) {
+          await collection.delete(entryPath);
         }
       }
     }
@@ -119,15 +119,15 @@ export class FileSync {
    * existing entry at the path. If no existing entry, the first collection
    * is used as the default owner for new files.
    */
-  private findOwner(
+  private async findOwner(
     filePath: string,
-  ): { name: string; collection: ResourceCollectionRef<FileEntryState> } | undefined {
+  ): Promise<{ name: string; collection: ResourceCollectionRef<FileEntryState> } | undefined> {
     const entries = Object.entries(this.collections);
     if (entries.length === 0) return undefined;
 
     // Check if any collection already owns this path
     for (const [name, collection] of entries) {
-      if (collection.getOptional(filePath)) {
+      if (await collection.getOptional(filePath)) {
         return { name, collection };
       }
     }

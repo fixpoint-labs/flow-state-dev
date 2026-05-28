@@ -35,7 +35,7 @@ export function createRecordArgument(opts: {
       const state = ctx.sequencer!.state;
       const round = state.round;
 
-      const current = ctx.resources.transcript.state as DebateTranscriptState;
+      const current = (await ctx.resources.transcript.state()) as DebateTranscriptState;
       await ctx.resources.transcript.setState({
         entries: [
           ...(current.entries ?? []),

@@ -7,7 +7,7 @@
  * context slots, and human-readable summaries.
  */
 
-import type { ResourceContext } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import { shortId } from '../helpers.js'
 import type {
   PerspectiveInstance,
@@ -20,10 +20,10 @@ import type {
 } from './perspective.js'
 
 /** Reference type for the observations resource. */
-export type PerspectiveObservationsRef = ResourceContext<PerspectiveObservationsState>
+export type PerspectiveObservationsRef = ResourceRef<PerspectiveObservationsState>
 
 /** Reference type for the positions resource. */
-export type PerspectivePositionsRef = ResourceContext<PerspectivePositionsState>
+export type PerspectivePositionsRef = ResourceRef<PerspectivePositionsState>
 
 /** Input shape for `addPerspectiveObservation` — server fills id and addedAt. */
 export interface AddPerspectiveObservationInput {
@@ -213,7 +213,7 @@ export async function addPerspectiveObservation(
   ref: PerspectiveObservationsRef,
   input: AddPerspectiveObservationInput,
 ): Promise<PerspectiveObservation> {
-  const state = ref.state
+  const state = await ref.state()
 
   const observation: PerspectiveObservation = {
     id: `pobs_${shortId()}`,
@@ -260,11 +260,11 @@ export async function removePerspectiveObservation(
  * Returns observations in insertion order (oldest first). Use array methods
  * to sort by recency, confidence, or other criteria as needed.
  */
-export function perspectiveObservations(
+export async function perspectiveObservations(
   ref: PerspectiveObservationsRef,
   category?: string,
-): PerspectiveObservation[] {
-  const all = ref.state.observations
+): Promise<PerspectiveObservation[]> {
+  const all = (await ref.state()).observations
   return category === undefined ? [...all] : all.filter((o) => o.category === category)
 }
 
@@ -289,8 +289,8 @@ export async function advancePerspectiveObservations(
  * Groups by category and shows confidence in parentheses. Returns an empty
  * string when there are no observations.
  */
-export function formatPerspectiveObservations(ref: PerspectiveObservationsRef): string {
-  const observations = ref.state.observations
+export async function formatPerspectiveObservations(ref: PerspectiveObservationsRef): Promise<string> {
+  const observations = (await ref.state()).observations
   if (observations.length === 0) return ''
 
   const lines: string[] = ['## Observations recorded so far']
@@ -333,8 +333,8 @@ export async function addPerspectivePosition(
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<PerspectivePosition> {
   const addedAt = observationsRef
-    ? observationsRef.state.turnCounter
-    : ref.state.positions.length
+    ? (await observationsRef.state()).turnCounter
+    : (await ref.state()).positions.length
 
   const position: PerspectivePosition = {
     id: `ppos_${shortId()}`,
@@ -367,7 +367,7 @@ export async function challengePerspectivePosition(
   evidence: string,
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<boolean> {
-  const addedAt = observationsRef ? observationsRef.state.turnCounter : 0
+  const addedAt = observationsRef ? (await observationsRef.state()).turnCounter : 0
   let challenged = false
 
   await ref.updateState((s) => {
@@ -409,8 +409,8 @@ export async function removePerspectivePosition(
 }
 
 /** Read all positions in insertion order. */
-export function perspectivePositions(ref: PerspectivePositionsRef): PerspectivePosition[] {
-  return [...ref.state.positions]
+export async function perspectivePositions(ref: PerspectivePositionsRef): Promise<PerspectivePosition[]> {
+  return [...(await ref.state()).positions]
 }
 
 /**
@@ -418,8 +418,8 @@ export function perspectivePositions(ref: PerspectivePositionsRef): PerspectiveP
  * accumulated challenges. Returns an empty string when there are no
  * positions.
  */
-export function formatPerspectivePositions(ref: PerspectivePositionsRef): string {
-  const positions = ref.state.positions
+export async function formatPerspectivePositions(ref: PerspectivePositionsRef): Promise<string> {
+  const positions = (await ref.state()).positions
   if (positions.length === 0) return ''
 
   const lines: string[] = ['## Positions taken']
@@ -452,19 +452,19 @@ export function formatPerspectivePositions(ref: PerspectivePositionsRef): string
  * `accumulated` capability preset that injects evolving state into
  * generator prompts alongside the static perspective framing.
  */
-export function formatPerspectiveAccumulated(
+export async function formatPerspectiveAccumulated(
   observationsRef: PerspectiveObservationsRef | undefined,
   positionsRef?: PerspectivePositionsRef,
-): string {
+): Promise<string> {
   const sections: string[] = []
 
   if (observationsRef) {
-    const obs = formatPerspectiveObservations(observationsRef)
+    const obs = await formatPerspectiveObservations(observationsRef)
     if (obs) sections.push(obs)
   }
 
   if (positionsRef) {
-    const pos = formatPerspectivePositions(positionsRef)
+    const pos = await formatPerspectivePositions(positionsRef)
     if (pos) sections.push(pos)
   }
 

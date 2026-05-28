@@ -32,7 +32,7 @@ function createMockSemRef(
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -212,8 +212,8 @@ describe('memory/semanticMemory', () => {
       expect(result.subject).toBe('user')
       expect(result.reinforcementCount).toBe(1)
       expect(result.extractedAt).toBeDefined()
-      expect(ref.state.facts).toHaveLength(1)
-      expect(ref.state.totalExtracted).toBe(1)
+      expect((await ref.state()).facts).toHaveLength(1)
+      expect((await ref.state()).totalExtracted).toBe(1)
     })
 
     it('accepts custom subject', async () => {
@@ -246,8 +246,8 @@ describe('memory/semanticMemory', () => {
         sourceEpisodeIds: [],
       })
 
-      expect(ref.state.totalExtracted).toBe(2)
-      expect(ref.state.facts).toHaveLength(2)
+      expect((await ref.state()).totalExtracted).toBe(2)
+      expect((await ref.state()).facts).toHaveLength(2)
     })
   })
 
@@ -346,7 +346,7 @@ describe('memory/semanticMemory', () => {
       })
 
       await reinforce(ref, 'sf_abc123', [])
-      expect(ref.state.facts[0].reinforcementCount).toBe(2)
+      expect((await ref.state()).facts[0].reinforcementCount).toBe(2)
     })
 
     it('merges sourceEpisodeIds', async () => {
@@ -397,8 +397,8 @@ describe('memory/semanticMemory', () => {
       })
 
       await removeFact(ref, 'sf_remove')
-      expect(ref.state.facts).toHaveLength(1)
-      expect(ref.state.facts[0].id).toBe('sf_keep')
+      expect((await ref.state()).facts).toHaveLength(1)
+      expect((await ref.state()).facts[0].id).toBe('sf_keep')
     })
 
     it('is a no-op for non-existent ID', async () => {
@@ -407,7 +407,7 @@ describe('memory/semanticMemory', () => {
       })
 
       await removeFact(ref, 'sf_nonexistent')
-      expect(ref.state.facts).toHaveLength(1)
+      expect((await ref.state()).facts).toHaveLength(1)
     })
   })
 
@@ -416,7 +416,7 @@ describe('memory/semanticMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('allFacts()', () => {
-    it('returns facts sorted by reinforcementCount descending', () => {
+    it('returns facts sorted by reinforcementCount descending', async () => {
       const ref = createMockSemRef({
         facts: [
           makeFact({ id: 'sf_low', reinforcementCount: 1 }),
@@ -425,16 +425,16 @@ describe('memory/semanticMemory', () => {
         ],
       })
 
-      const result = allFacts(ref)
+      const result = await allFacts(ref)
       expect(result.map((f) => f.id)).toEqual(['sf_high', 'sf_mid', 'sf_low'])
     })
 
-    it('returns empty array for empty state', () => {
+    it('returns empty array for empty state', async () => {
       const ref = createMockSemRef()
-      expect(allFacts(ref)).toEqual([])
+      expect(await allFacts(ref)).toEqual([])
     })
 
-    it('filters by subject when provided', () => {
+    it('filters by subject when provided', async () => {
       const ref = createMockSemRef({
         facts: [
           makeFact({ id: 'sf_1', subject: 'user', content: 'Name is Jake' }),
@@ -443,16 +443,16 @@ describe('memory/semanticMemory', () => {
         ],
       })
 
-      const userFacts = allFacts(ref, 'user')
+      const userFacts = await allFacts(ref, 'user')
       expect(userFacts).toHaveLength(2)
       expect(userFacts.every((f) => f.subject === 'user')).toBe(true)
 
-      const jenniferFacts = allFacts(ref, 'jennifer')
+      const jenniferFacts = await allFacts(ref, 'jennifer')
       expect(jenniferFacts).toHaveLength(1)
       expect(jenniferFacts[0].content).toBe('Is the spouse')
     })
 
-    it('returns all facts when subject not provided', () => {
+    it('returns all facts when subject not provided', async () => {
       const ref = createMockSemRef({
         facts: [
           makeFact({ id: 'sf_1', subject: 'user' }),
@@ -460,7 +460,7 @@ describe('memory/semanticMemory', () => {
         ],
       })
 
-      expect(allFacts(ref)).toHaveLength(2)
+      expect(await allFacts(ref)).toHaveLength(2)
     })
   })
 
@@ -469,7 +469,7 @@ describe('memory/semanticMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('query()', () => {
-    it('returns all facts when store has ≤50 facts', () => {
+    it('returns all facts when store has ≤50 facts', async () => {
       const ref = createMockSemRef({
         facts: [
           makeFact({ id: 'sf_1', content: 'User likes React' }),
@@ -477,11 +477,11 @@ describe('memory/semanticMemory', () => {
         ],
       })
 
-      const result = query(ref, 'something unrelated')
+      const result = await query(ref, 'something unrelated')
       expect(result).toHaveLength(2)
     })
 
-    it('respects limit parameter for small stores', () => {
+    it('respects limit parameter for small stores', async () => {
       const ref = createMockSemRef({
         facts: [
           makeFact({ id: 'sf_1', content: 'First' }),
@@ -490,17 +490,17 @@ describe('memory/semanticMemory', () => {
         ],
       })
 
-      const result = query(ref, 'anything', 2)
+      const result = await query(ref, 'anything', 2)
       expect(result).toHaveLength(2)
     })
 
-    it('filters by token overlap for stores with >50 facts', () => {
+    it('filters by token overlap for stores with >50 facts', async () => {
       const facts = Array.from({ length: 55 }, (_, i) =>
         makeFact({ id: `sf_${i}`, content: i < 3 ? `User likes React framework ${i}` : `Unrelated fact number ${i}` }),
       )
       const ref = createMockSemRef({ facts })
 
-      const result = query(ref, 'React framework')
+      const result = await query(ref, 'React framework')
       // Should return the React-related facts (they have token overlap)
       expect(result.length).toBeGreaterThan(0)
       expect(result.length).toBeLessThan(55)

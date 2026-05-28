@@ -58,7 +58,7 @@ describe("buildSkillsCatalogContext", () => {
     expect(out).toContain("check-news");
     expect(out).toContain("Check the latest news");
     // The skill was written to the collection during the render.
-    expect(collection.getOptional("check-news/SKILL.md")).toBeDefined();
+    expect(await collection.getOptional("check-news/SKILL.md")).toBeDefined();
   });
 
   it("is idempotent — subsequent renders don't re-seed", async () => {
@@ -87,7 +87,7 @@ describe("buildSkillsCatalogContext", () => {
     // the skill, so the deletion sticks.
     const second = await formatter(undefined, ctx);
     expect(second).not.toContain("example");
-    expect(collection.getOptional("example/SKILL.md")).toBeUndefined();
+    expect(await collection.getOptional("example/SKILL.md")).toBeUndefined();
   });
 
   it("returns the empty-state description when no initialSkills are configured and the collection is empty", async () => {

@@ -40,7 +40,7 @@ export function createRecordContribution(opts: {
 
       // TODO: computed-key resource accessor — see round-robin follow-up
       const contribRef = (ctx.resources as any)[accessor];
-      const current = contribRef.state as RoundRobinContributionsState;
+      const current = (await contribRef.state()) as RoundRobinContributionsState;
       await contribRef.setState({
         entries: [
           ...(current.entries ?? []),

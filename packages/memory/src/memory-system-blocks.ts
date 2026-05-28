@@ -308,9 +308,9 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // memory here. LLMs reliably re-extract from any content they can see, regardless
   // of instructions. Dedup is handled structurally in the reflect handler via
   // findBestOverlap. The observer's job is pure extraction from new conversation items.
-  function buildContext(_input: unknown, ctx: { session?: any; resources: any }): string | undefined {
+  async function buildContext(_input: unknown, ctx: { session?: any; resources: any }): Promise<string | undefined> {
     const sysRef = ctx.resources.memorySystem
-    const sysState = sysRef.state
+    const sysState = await sysRef.state()
 
     // Get items from session
     if (config.source) {
@@ -413,7 +413,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           // Working memory dedup: check if this observation overlaps with an
           // existing WM entry. The observer doesn't see existing memory (to
           // prevent re-extraction), so dedup happens here structurally.
-          const existingEntries = wmItems(wmRef)
+          const existingEntries = await wmItems(wmRef)
           const wmMatch = findBestOverlap(item.content, existingEntries)
 
           if (wmMatch) {
@@ -451,7 +451,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           ) {
             await encode(epRef, {
               content: item.content,
-              occurredAtTurn: wmRef.state.currentTurn,
+              occurredAtTurn: (await wmRef.state()).currentTurn,
               significance: item.importance,
               category: item.category,
               durability: item.durability,
@@ -483,7 +483,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
             (item.durability === 'permanent' || item.durability === 'persistent') &&
             isStableCategory
           ) {
-            const existing = allFacts(semRef, normalizedSubject)
+            const existing = await allFacts(semRef, normalizedSubject)
             const match = findBestOverlap(item.content, existing)
 
             if (match) {
@@ -561,19 +561,20 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
       if (hasSemantic) return
 
       // Legacy behavior (no semantic): check trigger and reset counters here
-      const sysState = sysRef.state
-      const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
+      const sysState = await sysRef.state()
+      const turnsSinceConsolidation = (await wmRef.state()).currentTurn - sysState.lastConsolidationTurn
 
       if (
         turnsSinceConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.minInterval &&
         (sysState.episodicWritesSinceLastConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold ||
           sysState.evictedPersistentSinceLastConsolidation > 0)
       ) {
+        const currentTurn = (await wmRef.state()).currentTurn
         await sysRef.updateState((s: any) => ({
           ...s,
           episodicWritesSinceLastConsolidation: 0,
           evictedPersistentSinceLastConsolidation: 0,
-          lastConsolidationTurn: wmRef.state.currentTurn,
+          lastConsolidationTurn: currentTurn,
         }))
       }
     },
@@ -635,13 +636,13 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     execute: async (_input, ctx) => {
       const sysRef = ctx.resources.memorySystem
       const wmRef = ctx.resources.workingMemory
-      const sysState = sysRef.state
+      const sysState = await sysRef.state()
 
       const minInterval = config.semantic?.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval
       const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold
       const onEviction = config.semantic?.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction
 
-      const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
+      const turnsSinceConsolidation = (await wmRef.state()).currentTurn - sysState.lastConsolidationTurn
 
       const triggered = turnsSinceConsolidation >= minInterval &&
         (sysState.episodicWritesSinceLastConsolidation >= episodicThreshold ||
@@ -655,10 +656,10 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
       const semRef = ctx.resources.semanticMemory as any
 
       const unconsolidated = epRef
-        ? epRef.state.episodes.filter((e: any) => !e.consolidated)
+        ? (await epRef.state()).episodes.filter((e: any) => !e.consolidated)
         : []
 
-      const existingFacts = semRef ? allFacts(semRef) : []
+      const existingFacts = semRef ? await allFacts(semRef) : []
 
       return { triggered: true, episodes: unconsolidated, existingFacts }
     },
@@ -839,7 +840,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
               // LLM sometimes creates near-duplicates of existing facts with action 'new'
               // instead of 'reinforce'.
               const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
-              const existing = allFacts(semRef, normalizedSubject)
+              const existing = await allFacts(semRef, normalizedSubject)
               const match = findBestOverlap(fact.content, existing)
               if (match) {
                 if (match.minOverlap < 0.95) {
@@ -903,11 +904,12 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       }))
 
       // Reset memory system consolidation counters
+      const currentTurn = (await wmRef.state()).currentTurn
       await sysRef.updateState((s: any) => ({
         ...s,
         episodicWritesSinceLastConsolidation: 0,
         evictedPersistentSinceLastConsolidation: 0,
-        lastConsolidationTurn: wmRef.state.currentTurn,
+        lastConsolidationTurn: currentTurn,
       }))
 
       return { added, reinforced, updated, invalidated }
@@ -1000,7 +1002,7 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
       const semRef = (ctx.resources as any).semanticMemory
       if (!semRef) return { triggered: false, facts: [] }
 
-      const facts = allFacts(semRef)
+      const facts = await allFacts(semRef)
       const triggered = threshold > 0 && facts.length >= threshold
 
       if (!triggered) return { triggered: false, facts: [] }
@@ -1129,7 +1131,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
         try {
           const [keepId, ...removeIds] = merge.sourceFactIds
           // Collect source episode IDs from all source facts
-          const existingFacts = allFacts(semRef)
+          const existingFacts = await allFacts(semRef)
           const sourceEpisodeIds: string[] = []
           for (const id of merge.sourceFactIds) {
             const fact = existingFacts.find((f: any) => f.id === id)

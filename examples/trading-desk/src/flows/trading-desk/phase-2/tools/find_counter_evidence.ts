@@ -94,16 +94,17 @@ export const find_counter_evidence = handler({
     const candidates: Candidate[] = [];
 
     // 1. The opposing analyst memo, one candidate per body section.
-    const memoState = ctx.resources.memos.getOptional(
+    const memoRef = await ctx.resources.memos.getOptional(
       PHASE_1_MEMO_KEYS[input.opposingMemo].collectionKey,
-    )?.state;
+    );
+    const memoState = memoRef ? await memoRef.state() : undefined;
     for (const text of memoSectionTexts(memoState)) {
       candidates.push({ source: `memo:${input.opposingMemo}`, text });
     }
 
     // 2. Prior debate contributions, one candidate per turn.
     const entries: RoundRobinContributionEntry[] =
-      ctx.resources.p2Contributions.state.entries ?? [];
+      (await ctx.resources.p2Contributions.state()).entries ?? [];
     for (const entry of entries) {
       candidates.push({
         source: `contribution:${entry.agentName}:r${entry.round}`,

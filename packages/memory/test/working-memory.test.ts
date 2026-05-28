@@ -47,7 +47,7 @@ function createMockRef(
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => {
       state = { ...state, ...updates } as WorkingMemoryState
     },
@@ -209,7 +209,7 @@ describe('memory/workingMemory', () => {
       expect(result.salience).toBe(0.7) // initial salience = importance
       expect(result.pinned).toBe(false)
       expect(result.addedAtTurn).toBe(0)
-      expect(ref.state.entries).toHaveLength(1)
+      expect((await ref.state()).entries).toHaveLength(1)
     })
 
     it('generates a short random id when not provided', async () => {
@@ -232,7 +232,7 @@ describe('memory/workingMemory', () => {
         metadata: { source: 'user', tags: ['important'] },
       })
       expect(result.metadata).toEqual({ source: 'user', tags: ['important'] })
-      expect(ref.state.entries[0].metadata).toEqual({ source: 'user', tags: ['important'] })
+      expect((await ref.state()).entries[0].metadata).toEqual({ source: 'user', tags: ['important'] })
     })
 
     it('evicts lowest-salience non-pinned entry at capacity', async () => {
@@ -245,8 +245,8 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      expect(ref.state.entries).toHaveLength(2)
-      const ids = ref.state.entries.map((e) => e.id)
+      expect((await ref.state()).entries).toHaveLength(2)
+      const ids = (await ref.state()).entries.map((e) => e.id)
       expect(ids).not.toContain('low')
       expect(ids).toContain('high')
     })
@@ -261,7 +261,7 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      expect(ref.state.entries).toHaveLength(3)
+      expect((await ref.state()).entries).toHaveLength(3)
     })
 
     it('evicts first entry on salience tie (stable)', async () => {
@@ -274,7 +274,7 @@ describe('memory/workingMemory', () => {
 
       await add(ref, { content: 'new', importance: 0.5 }, { capacity: 2 })
 
-      const ids = ref.state.entries.map((e) => e.id)
+      const ids = (await ref.state()).entries.map((e) => e.id)
       expect(ids).not.toContain('first') // first in array is evicted
       expect(ids).toContain('second')
     })
@@ -293,8 +293,8 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'e1')
 
       expect(result).toBe(true)
-      expect(ref.state.entries).toHaveLength(1)
-      expect(ref.state.entries[0].id).toBe('e2')
+      expect((await ref.state()).entries).toHaveLength(1)
+      expect((await ref.state()).entries[0].id).toBe('e2')
     })
 
     it('removes pinned entry (overrides pin)', async () => {
@@ -305,7 +305,7 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'pinned')
 
       expect(result).toBe(true)
-      expect(ref.state.entries).toHaveLength(0)
+      expect((await ref.state()).entries).toHaveLength(0)
     })
 
     it('returns false for non-existent id', async () => {
@@ -313,7 +313,7 @@ describe('memory/workingMemory', () => {
       const result = await evict(ref, 'missing')
 
       expect(result).toBe(false)
-      expect(ref.state.entries).toHaveLength(1)
+      expect((await ref.state()).entries).toHaveLength(1)
     })
   })
 
@@ -327,7 +327,7 @@ describe('memory/workingMemory', () => {
       const result = await pin(ref, 'e1')
 
       expect(result).toBe(true)
-      expect(ref.state.entries[0].pinned).toBe(true)
+      expect((await ref.state()).entries[0].pinned).toBe(true)
     })
 
     it('returns true for already-pinned entry', async () => {
@@ -347,7 +347,7 @@ describe('memory/workingMemory', () => {
 
       const result = await pin(ref, 'e3', { maxPinnedSlots: 2 })
       expect(result).toBe(false)
-      expect(ref.state.entries[2].pinned).toBe(false)
+      expect((await ref.state()).entries[2].pinned).toBe(false)
     })
 
     it('returns false for non-existent id', async () => {
@@ -363,7 +363,7 @@ describe('memory/workingMemory', () => {
       const result = await unpin(ref, 'e1')
 
       expect(result).toBe(true)
-      expect(ref.state.entries[0].pinned).toBe(false)
+      expect((await ref.state()).entries[0].pinned).toBe(false)
     })
 
     it('returns true for already-unpinned entry', async () => {
@@ -393,9 +393,9 @@ describe('memory/workingMemory', () => {
       const result = await refresh(ref, 'e1')
 
       expect(result).toBe(true)
-      expect(ref.state.entries[0].lastAccessedAtTurn).toBe(5)
+      expect((await ref.state()).entries[0].lastAccessedAtTurn).toBe(5)
       // salience should be recomputed: importance * decay(0) = 0.8 * 1.0
-      expect(ref.state.entries[0].salience).toBeCloseTo(0.8, 3)
+      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.8, 3)
     })
 
     it('boosts salience of a decayed entry back to importance', async () => {
@@ -412,8 +412,8 @@ describe('memory/workingMemory', () => {
       await refresh(ref, 'e1')
 
       // After refresh: lastAccessedAtTurn = 10, elapsed = 0, salience = 0.8 * 1.0
-      expect(ref.state.entries[0].lastAccessedAtTurn).toBe(10)
-      expect(ref.state.entries[0].salience).toBeCloseTo(0.8, 3)
+      expect((await ref.state()).entries[0].lastAccessedAtTurn).toBe(10)
+      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.8, 3)
     })
 
     it('returns false for non-existent id (no-op)', async () => {
@@ -431,7 +431,7 @@ describe('memory/workingMemory', () => {
     it('increments currentTurn by 1', async () => {
       const ref = createMockRef({ currentTurn: 3 })
       await advance(ref)
-      expect(ref.state.currentTurn).toBe(4)
+      expect((await ref.state()).currentTurn).toBe(4)
     })
 
     it('recomputes salience for all entries', async () => {
@@ -445,14 +445,14 @@ describe('memory/workingMemory', () => {
       await advance(ref)
 
       // After advance: currentTurn=1, elapsed=1, salience = 1.0 * (1+1)^(-0.5) ≈ 0.7071
-      expect(ref.state.entries[0].salience).toBeCloseTo(0.7071, 3)
+      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.7071, 3)
     })
 
     it('handles empty entries (increments turn only)', async () => {
       const ref = createMockRef({ currentTurn: 0 })
       await advance(ref)
-      expect(ref.state.currentTurn).toBe(1)
-      expect(ref.state.entries).toHaveLength(0)
+      expect((await ref.state()).currentTurn).toBe(1)
+      expect((await ref.state()).entries).toHaveLength(0)
     })
 
     it('cumulative decay over multiple advances', async () => {
@@ -469,9 +469,9 @@ describe('memory/workingMemory', () => {
       await advance(ref)
       await advance(ref)
 
-      expect(ref.state.currentTurn).toBe(4)
+      expect((await ref.state()).currentTurn).toBe(4)
       // salience = 0.8 * (1+4)^(-0.5) = 0.8 * 5^(-0.5) ≈ 0.8 * 0.4472 ≈ 0.3578
-      expect(ref.state.entries[0].salience).toBeCloseTo(0.3578, 3)
+      expect((await ref.state()).entries[0].salience).toBeCloseTo(0.3578, 3)
     })
 
     it('decayed entry eventually loses to newer entry at eviction', async () => {
@@ -492,7 +492,7 @@ describe('memory/workingMemory', () => {
       // Now add a new entry at capacity 2 — old should be evicted
       await add(ref, { content: 'newcomer', importance: 0.5 }, { capacity: 2 })
 
-      const ids = ref.state.entries.map((e) => e.id)
+      const ids = (await ref.state()).entries.map((e) => e.id)
       expect(ids).not.toContain('old')
       expect(ids).toContain('recent')
     })
@@ -503,7 +503,7 @@ describe('memory/workingMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('items()', () => {
-    it('returns entries sorted by salience descending', () => {
+    it('returns entries sorted by salience descending', async () => {
       const ref = createMockRef({
         entries: [
           makeEntry({ id: 'low', salience: 0.2 }),
@@ -512,11 +512,11 @@ describe('memory/workingMemory', () => {
         ],
       })
 
-      const result = items(ref)
+      const result = await items(ref)
       expect(result.map((e) => e.id)).toEqual(['high', 'mid', 'low'])
     })
 
-    it('preserves array order on salience tie (stable)', () => {
+    it('preserves array order on salience tie (stable)', async () => {
       const ref = createMockRef({
         entries: [
           makeEntry({ id: 'first', salience: 0.5 }),
@@ -525,13 +525,13 @@ describe('memory/workingMemory', () => {
         ],
       })
 
-      const result = items(ref)
+      const result = await items(ref)
       expect(result.map((e) => e.id)).toEqual(['first', 'second', 'third'])
     })
 
-    it('returns empty array for empty state', () => {
+    it('returns empty array for empty state', async () => {
       const ref = createMockRef()
-      expect(items(ref)).toEqual([])
+      expect(await items(ref)).toEqual([])
     })
   })
 
@@ -540,7 +540,7 @@ describe('memory/workingMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('formatForContext()', () => {
-    it('returns bullet list with pin indicators, no scores or IDs', () => {
+    it('returns bullet list with pin indicators, no scores or IDs', async () => {
       const ref = createMockRef({
         entries: [
           makeEntry({ id: 'e1', salience: 0.85, pinned: true, content: 'User prefers TypeScript' }),
@@ -548,7 +548,7 @@ describe('memory/workingMemory', () => {
         ],
       })
 
-      const result = formatForContext(ref)
+      const result = await formatForContext(ref)
       expect(result).toContain('- (pinned) User prefers TypeScript')
       expect(result).toContain('- Refactoring auth module')
       // Salience scores and IDs are internal — not exposed to consuming LLMs
@@ -556,9 +556,9 @@ describe('memory/workingMemory', () => {
       expect(result).not.toContain('[0.')
     })
 
-    it('returns empty string for no entries', () => {
+    it('returns empty string for no entries', async () => {
       const ref = createMockRef()
-      expect(formatForContext(ref)).toBe('')
+      expect(await formatForContext(ref)).toBe('')
     })
   })
 
@@ -567,7 +567,7 @@ describe('memory/workingMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('formatForObserveContext()', () => {
-    it('includes entry IDs for the observe block LLM', () => {
+    it('includes entry IDs for the observe block LLM', async () => {
       const ref = createMockRef({
         entries: [
           makeEntry({ id: 'e1', salience: 0.85, pinned: true, content: 'User prefers TypeScript' }),
@@ -575,14 +575,14 @@ describe('memory/workingMemory', () => {
         ],
       })
 
-      const result = formatForObserveContext(ref)
+      const result = await formatForObserveContext(ref)
       expect(result).toContain('1. [id=e1] [0.85] (pinned) User prefers TypeScript')
       expect(result).toContain('2. [id=e2] [0.62] Refactoring auth module')
     })
 
-    it('returns empty string for no entries', () => {
+    it('returns empty string for no entries', async () => {
       const ref = createMockRef()
-      expect(formatForObserveContext(ref)).toBe('')
+      expect(await formatForObserveContext(ref)).toBe('')
     })
   })
 
@@ -591,7 +591,7 @@ describe('memory/workingMemory', () => {
   // ---------------------------------------------------------------------------
 
   describe('workingMemoryContextFormatter()', () => {
-    it('returns formatted string with header when entries exist', () => {
+    it('returns formatted string with header when entries exist', async () => {
       const ref = createMockRef({
         entries: [
           makeEntry({ id: 'e1', salience: 0.85, content: 'User prefers TypeScript' }),
@@ -599,17 +599,17 @@ describe('memory/workingMemory', () => {
       })
       const ctx = { resources: { get: () => ref } } as any
 
-      const result = workingMemoryContextFormatter(undefined, ctx)
+      const result = await workingMemoryContextFormatter(undefined, ctx)
       expect(result).toContain('Active memories:')
       expect(result).toContain('User prefers TypeScript')
       expect(result).not.toContain('[0.')
     })
 
-    it('returns empty string when no entries', () => {
+    it('returns empty string when no entries', async () => {
       const ref = createMockRef()
       const ctx = { resources: { get: () => ref } } as any
 
-      const result = workingMemoryContextFormatter(undefined, ctx)
+      const result = await workingMemoryContextFormatter(undefined, ctx)
       expect(result).toBe('')
     })
   })
@@ -782,9 +782,9 @@ describe('memory/workingMemory', () => {
       ])
 
       expect(result).toHaveLength(2)
-      expect(ref.state.entries).toHaveLength(2)
-      expect(ref.state.entries[0].content).toBe('User wants REST API')
-      expect(ref.state.entries[1].content).toBe('Using TypeScript')
+      expect((await ref.state()).entries).toHaveLength(2)
+      expect((await ref.state()).entries[0].content).toBe('User wants REST API')
+      expect((await ref.state()).entries[1].content).toBe('Using TypeScript')
     })
 
     it('handles replaces by evicting old entry before adding', async () => {
@@ -796,8 +796,8 @@ describe('memory/workingMemory', () => {
         { content: 'Build a REST API', importance: 0.8, replaces: 'old-goal' },
       ])
 
-      expect(ref.state.entries).toHaveLength(1)
-      expect(ref.state.entries[0].content).toBe('Build a REST API')
+      expect((await ref.state()).entries).toHaveLength(1)
+      expect((await ref.state()).entries[0].content).toBe('Build a REST API')
     })
 
     it('ignores replaces for non-existent IDs (no-op eviction)', async () => {
@@ -807,8 +807,8 @@ describe('memory/workingMemory', () => {
         { content: 'New memory', importance: 0.5, replaces: 'nonexistent' },
       ])
 
-      expect(ref.state.entries).toHaveLength(1)
-      expect(ref.state.entries[0].content).toBe('New memory')
+      expect((await ref.state()).entries).toHaveLength(1)
+      expect((await ref.state()).entries[0].content).toBe('New memory')
     })
 
     it('handles empty observations array', async () => {
@@ -816,7 +816,7 @@ describe('memory/workingMemory', () => {
       const result = await runRemember(ref, [])
 
       expect(result).toHaveLength(0)
-      expect(ref.state.entries).toHaveLength(0)
+      expect((await ref.state()).entries).toHaveLength(0)
     })
 
     it('respects pinned flag from observations', async () => {
@@ -826,7 +826,7 @@ describe('memory/workingMemory', () => {
         { content: 'Critical goal', importance: 0.9, pinned: true },
       ])
 
-      expect(ref.state.entries[0].pinned).toBe(true)
+      expect((await ref.state()).entries[0].pinned).toBe(true)
     })
 
     it('defaults pinned to false when not specified', async () => {
@@ -836,7 +836,7 @@ describe('memory/workingMemory', () => {
         { content: 'Regular fact', importance: 0.5 },
       ])
 
-      expect(ref.state.entries[0].pinned).toBe(false)
+      expect((await ref.state()).entries[0].pinned).toBe(false)
     })
 
     it('respects capacity config for eviction', async () => {
@@ -851,8 +851,8 @@ describe('memory/workingMemory', () => {
         { content: 'New memory', importance: 0.5 },
       ], { capacity: 2 })
 
-      expect(ref.state.entries).toHaveLength(2)
-      const ids = ref.state.entries.map((e) => e.id)
+      expect((await ref.state()).entries).toHaveLength(2)
+      const ids = (await ref.state()).entries.map((e) => e.id)
       expect(ids).not.toContain('low')
       expect(ids).toContain('high')
     })

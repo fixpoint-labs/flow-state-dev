@@ -123,7 +123,7 @@ export function defineMemoStateBlocks<Keys extends Record<string, KeyEntry>>(
             : typeof error === "string"
               ? error
               : errorMessageFallback;
-        const ref = ctx.resources.memos.getOptional(collectionKey);
+        const ref = await ctx.resources.memos.getOptional(collectionKey);
         if (ref !== undefined) {
           await ref.patchState({
             status: "error",
@@ -180,7 +180,7 @@ export async function publishMemo(
   collectionKey: string,
   patch: CommitPatch,
 ): Promise<void> {
-  const ref = ctx.resources.memos.get(collectionKey);
+  const ref = await ctx.resources.memos.get(collectionKey);
   await ref.patchState({
     ...patch,
     status: "published" as const,

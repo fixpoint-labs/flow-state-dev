@@ -670,7 +670,7 @@ function createMockObservationsRef(
     ...initialState,
   }
   return {
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as PerspectiveObservationsState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -685,7 +685,7 @@ function createMockPositionsRef(
     ...initialState,
   }
   return {
-    get state() { return state },
+    state: async () => state,
     patchState: async (updates) => { state = { ...state, ...updates } as PerspectivePositionsState },
     setState: async (next) => { state = next },
     updateState: async (fn) => { state = await fn(state) },
@@ -828,7 +828,7 @@ describe('identity/perspective — observation helpers', () => {
       expect(obs.category).toBe('concern')
       expect(obs.confidence).toBe(0.9)
       expect(obs.addedAt).toBe(5)
-      expect(ref.state.observations).toHaveLength(1)
+      expect((await ref.state()).observations).toHaveLength(1)
     })
 
     it('defaults category and confidence when omitted', async () => {
@@ -854,7 +854,7 @@ describe('identity/perspective — observation helpers', () => {
       const obs = await addPerspectiveObservation(ref, { content: 'x' })
       const removed = await removePerspectiveObservation(ref, obs.id)
       expect(removed).toBe(true)
-      expect(ref.state.observations).toHaveLength(0)
+      expect((await ref.state()).observations).toHaveLength(0)
     })
 
     it('returns false for missing id', async () => {
@@ -868,7 +868,7 @@ describe('identity/perspective — observation helpers', () => {
       const ref = createMockObservationsRef()
       await addPerspectiveObservation(ref, { content: 'a', category: 'risk' })
       await addPerspectiveObservation(ref, { content: 'b', category: 'concern' })
-      expect(perspectiveObservations(ref)).toHaveLength(2)
+      expect(await perspectiveObservations(ref)).toHaveLength(2)
     })
 
     it('filters by category', async () => {
@@ -876,7 +876,7 @@ describe('identity/perspective — observation helpers', () => {
       await addPerspectiveObservation(ref, { content: 'a', category: 'risk' })
       await addPerspectiveObservation(ref, { content: 'b', category: 'concern' })
       await addPerspectiveObservation(ref, { content: 'c', category: 'risk' })
-      const risks = perspectiveObservations(ref, 'risk')
+      const risks = await perspectiveObservations(ref, 'risk')
       expect(risks).toHaveLength(2)
       expect(risks.every((o) => o.category === 'risk')).toBe(true)
     })
@@ -884,9 +884,9 @@ describe('identity/perspective — observation helpers', () => {
     it('returns a copy, not the original array', async () => {
       const ref = createMockObservationsRef()
       await addPerspectiveObservation(ref, { content: 'a' })
-      const list = perspectiveObservations(ref)
+      const list = await perspectiveObservations(ref)
       list.pop()
-      expect(ref.state.observations).toHaveLength(1)
+      expect((await ref.state()).observations).toHaveLength(1)
     })
   })
 
@@ -895,7 +895,7 @@ describe('identity/perspective — observation helpers', () => {
       const ref = createMockObservationsRef()
       await advancePerspectiveObservations(ref)
       await advancePerspectiveObservations(ref)
-      expect(ref.state.turnCounter).toBe(2)
+      expect((await ref.state()).turnCounter).toBe(2)
     })
 
     it('newer observations get higher addedAt', async () => {
@@ -909,9 +909,9 @@ describe('identity/perspective — observation helpers', () => {
   })
 
   describe('formatPerspectiveObservations', () => {
-    it('returns empty string when no observations', () => {
+    it('returns empty string when no observations', async () => {
       const ref = createMockObservationsRef()
-      expect(formatPerspectiveObservations(ref)).toBe('')
+      expect(await formatPerspectiveObservations(ref)).toBe('')
     })
 
     it('groups observations by category', async () => {
@@ -922,7 +922,7 @@ describe('identity/perspective — observation helpers', () => {
       await addPerspectiveObservation(ref, {
         content: 'b', category: 'concern', confidence: 0.6,
       })
-      const out = formatPerspectiveObservations(ref)
+      const out = await formatPerspectiveObservations(ref)
       expect(out).toContain('**risk:**')
       expect(out).toContain('**concern:**')
       expect(out).toContain('a')
@@ -980,8 +980,8 @@ describe('identity/perspective — position helpers', () => {
       })
       const challenged = await challengePerspectivePosition(posRef, pos.id, 'counter-evidence')
       expect(challenged).toBe(true)
-      expect(posRef.state.positions[0].challenges).toHaveLength(1)
-      expect(posRef.state.positions[0].challenges[0].evidence).toBe('counter-evidence')
+      expect((await posRef.state()).positions[0].challenges).toHaveLength(1)
+      expect((await posRef.state()).positions[0].challenges[0].evidence).toBe('counter-evidence')
     })
 
     it('accumulates multiple challenges', async () => {
@@ -991,7 +991,7 @@ describe('identity/perspective — position helpers', () => {
       })
       await challengePerspectivePosition(posRef, pos.id, 'e1')
       await challengePerspectivePosition(posRef, pos.id, 'e2')
-      expect(posRef.state.positions[0].challenges).toHaveLength(2)
+      expect((await posRef.state()).positions[0].challenges).toHaveLength(2)
     })
 
     it('returns false for missing position', async () => {
@@ -1005,7 +1005,7 @@ describe('identity/perspective — position helpers', () => {
       const posRef = createMockPositionsRef()
       const pos = await addPerspectivePosition(posRef, { claim: 'c', reasoning: 'r' })
       expect(await removePerspectivePosition(posRef, pos.id)).toBe(true)
-      expect(posRef.state.positions).toHaveLength(0)
+      expect((await posRef.state()).positions).toHaveLength(0)
     })
 
     it('returns false for missing id', async () => {
@@ -1019,14 +1019,14 @@ describe('identity/perspective — position helpers', () => {
       const posRef = createMockPositionsRef()
       await addPerspectivePosition(posRef, { claim: 'a', reasoning: 'r' })
       await addPerspectivePosition(posRef, { claim: 'b', reasoning: 'r' })
-      expect(perspectivePositions(posRef)).toHaveLength(2)
+      expect(await perspectivePositions(posRef)).toHaveLength(2)
     })
   })
 
   describe('formatPerspectivePositions', () => {
-    it('returns empty string when no positions', () => {
+    it('returns empty string when no positions', async () => {
       const posRef = createMockPositionsRef()
-      expect(formatPerspectivePositions(posRef)).toBe('')
+      expect(await formatPerspectivePositions(posRef)).toBe('')
     })
 
     it('formats positions with claim, reasoning, and challenges', async () => {
@@ -1037,7 +1037,7 @@ describe('identity/perspective — position helpers', () => {
         confidence: 0.85,
       })
       await challengePerspectivePosition(posRef, pos.id, 'newer logs show strong auth')
-      const out = formatPerspectivePositions(posRef)
+      const out = await formatPerspectivePositions(posRef)
       expect(out).toContain('Auth needs review')
       expect(out).toContain('observed gaps')
       expect(out).toContain('0.85')
@@ -1047,10 +1047,10 @@ describe('identity/perspective — position helpers', () => {
   })
 
   describe('formatPerspectiveAccumulated', () => {
-    it('returns empty string when both resources are empty', () => {
+    it('returns empty string when both resources are empty', async () => {
       const obsRef = createMockObservationsRef()
       const posRef = createMockPositionsRef()
-      expect(formatPerspectiveAccumulated(obsRef, posRef)).toBe('')
+      expect(await formatPerspectiveAccumulated(obsRef, posRef)).toBe('')
     })
 
     it('combines observations and positions sections', async () => {
@@ -1059,7 +1059,7 @@ describe('identity/perspective — position helpers', () => {
       await addPerspectiveObservation(obsRef, { content: 'obs', category: 'risk', confidence: 0.9 })
       await addPerspectivePosition(posRef, { claim: 'pos', reasoning: 'r' })
 
-      const out = formatPerspectiveAccumulated(obsRef, posRef)
+      const out = await formatPerspectiveAccumulated(obsRef, posRef)
       expect(out).toContain('Observations recorded')
       expect(out).toContain('Positions taken')
       expect(out).toContain('obs')
@@ -1069,7 +1069,7 @@ describe('identity/perspective — position helpers', () => {
     it('works with only observations (no positions ref)', async () => {
       const obsRef = createMockObservationsRef()
       await addPerspectiveObservation(obsRef, { content: 'x' })
-      const out = formatPerspectiveAccumulated(obsRef)
+      const out = await formatPerspectiveAccumulated(obsRef)
       expect(out).toContain('Observations recorded')
       expect(out).not.toContain('Positions taken')
     })
@@ -1139,9 +1139,10 @@ describe('identity/perspective — block execution', () => {
       } as any, ctx)
 
       expect(result.observations).toHaveLength(2)
-      expect(obsRef.state.observations).toHaveLength(2)
-      expect(obsRef.state.observations[0].content).toBe('auth is weak')
-      expect(obsRef.state.observations[1].category).toBe('concern')
+      const obsState = await obsRef.state()
+      expect(obsState.observations).toHaveLength(2)
+      expect(obsState.observations[0].content).toBe('auth is weak')
+      expect(obsState.observations[1].category).toBe('concern')
     })
 
     it('promotes PerspectiveAnalysis salienceNotes to observations', async () => {
@@ -1185,7 +1186,7 @@ describe('identity/perspective — block execution', () => {
       expect(result.id).toMatch(/^ppos_/)
       expect(result.claim).toBe('Auth needs audit')
       expect(result.addedAt).toBe(3)
-      expect(posRef.state.positions).toHaveLength(1)
+      expect((await posRef.state()).positions).toHaveLength(1)
     })
   })
 
@@ -1205,7 +1206,7 @@ describe('identity/perspective — block execution', () => {
       } as any, ctx)
 
       expect(result.challenged).toBe(true)
-      expect(posRef.state.positions[0].challenges).toHaveLength(1)
+      expect((await posRef.state()).positions[0].challenges).toHaveLength(1)
     })
 
     it('reports false when position is missing', async () => {
@@ -1251,7 +1252,7 @@ describe('identity/perspective — block execution', () => {
       })
       const ctx = makeCtx({ observations: obsRef })
       await runForTest(block, undefined as any, ctx)
-      expect(obsRef.state.turnCounter).toBe(1)
+      expect((await obsRef.state()).turnCounter).toBe(1)
     })
   })
 })
@@ -1312,18 +1313,18 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     expect(typeof helpers.challenge).toBe('function')
 
     await helpers.observe({ content: 'auth gap', category: 'risk', confidence: 0.9 })
-    expect(obsRef.state.observations).toHaveLength(1)
+    expect((await obsRef.state()).observations).toHaveLength(1)
 
     const pos = await helpers.position({ claim: 'c', reasoning: 'r' })
-    expect(posRef.state.positions).toHaveLength(1)
+    expect((await posRef.state()).positions).toHaveLength(1)
 
     const challenged = await helpers.challenge(pos.id, 'counter')
     expect(challenged).toBe(true)
 
-    expect(helpers.observations()).toHaveLength(1)
-    expect(helpers.observations('risk')).toHaveLength(1)
-    expect(helpers.observations('nonexistent')).toHaveLength(0)
-    expect(helpers.positions()).toHaveLength(1)
+    expect(await helpers.observations()).toHaveLength(1)
+    expect(await helpers.observations('risk')).toHaveLength(1)
+    expect(await helpers.observations('nonexistent')).toHaveLength(0)
+    expect(await helpers.positions()).toHaveLength(1)
     expect(helpers.instance()).toBe(instance)
   })
 
@@ -1346,12 +1347,12 @@ describe('identity/perspective — createPerspectiveCapability', () => {
 
     const accumulated = (cap as any).__presetDefs.accumulated
     const formatter = accumulated.context['perspective-history']
-    const out = formatter({}, ctx)
+    const out = await formatter({}, ctx)
     expect(out).toContain('Observations recorded')
     expect(out).toContain('gap')
   })
 
-  it('accumulated preset returns empty when resources are empty', () => {
+  it('accumulated preset returns empty when resources are empty', async () => {
     const cap = createPerspectiveCapability(makeInstance())
     const ctx = makeCtx({
       observations: createMockObservationsRef(),
@@ -1359,7 +1360,7 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     })
     const accumulated = (cap as any).__presetDefs.accumulated
     const formatter = accumulated.context['perspective-history']
-    expect(formatter({}, ctx)).toBe('')
+    expect(await formatter({}, ctx)).toBe('')
   })
 })
 
@@ -1462,16 +1463,16 @@ describe('identity/perspective — system() factory', () => {
     await addPerspectivePosition(posRef, { claim: 'c', reasoning: 'r' })
     const ctx = makeCtx({ observations: obsRef, positions: posRef })
 
-    const state = p.recall(ctx)
+    const state = await p.recall(ctx)
     expect(state.observations).toHaveLength(1)
     expect(state.positions).toHaveLength(1)
     expect(state.turnCounter).toBe(2)
   })
 
-  it('recall returns empty state when resources are missing', () => {
+  it('recall returns empty state when resources are missing', async () => {
     const p = system(makeInstance())
     const ctx = { resources: { get: () => undefined } } as any
-    const state = p.recall(ctx)
+    const state = await p.recall(ctx)
     expect(state.observations).toEqual([])
     expect(state.positions).toEqual([])
     expect(state.turnCounter).toBe(0)
@@ -1485,7 +1486,7 @@ describe('identity/perspective — system() factory', () => {
       observations: obsRef,
       positions: createMockPositionsRef(),
     })
-    const out = p.contextFormatter({}, ctx)
+    const out = await p.contextFormatter({}, ctx)
     expect(out).toContain('obs')
   })
 

@@ -28,7 +28,7 @@ export const chunk = handler({
   resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const text = ctx.resources.context?.state.text ?? "";
+    const text = (await ctx.resources.context?.state())?.text ?? "";
     const totalChunks = Math.max(1, Math.ceil(text.length / input.chunkSize));
     const start = input.chunkIndex * input.chunkSize;
     const end = Math.min(text.length, start + input.chunkSize);

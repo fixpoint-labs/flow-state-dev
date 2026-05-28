@@ -54,7 +54,7 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
   return {
     name: 'workingMemory',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -75,7 +75,7 @@ function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<
   return {
     name: 'memorySystem',
     scope: 'session',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as MemorySystemState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -95,7 +95,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
   return {
     name: 'semanticMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -110,7 +110,7 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
   return {
     name: 'episodicMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -125,7 +125,7 @@ function createMockDigestRef(initial?: Partial<DigestMemoryState>): ResourceHand
   return {
     name: 'digestMemory',
     scope: 'user',
-    get state() { return state },
+    state: async () => state,
     patchState: async (u) => { state = { ...state, ...u } as DigestMemoryState },
     setState: async (n) => { state = n },
     updateState: async (fn) => { state = await fn(state) },
@@ -242,7 +242,7 @@ describe('memory/digest', () => {
 
   describe('helpers', () => {
     describe('computeSourceSignature', () => {
-      it('sums reinforcement counts and counts items', () => {
+      it('sums reinforcement counts and counts items', async () => {
         const semRef = createMockSemRef({
           facts: [
             makeFact({ id: 'a', reinforcementCount: 3 }),
@@ -250,55 +250,55 @@ describe('memory/digest', () => {
           ],
         })
         const epRef = createMockEpRef({ episodes: [makeEpisode({ id: 'e1' }), makeEpisode({ id: 'e2' })] })
-        const sig = computeSourceSignature(semRef, epRef)
+        const sig = await computeSourceSignature(semRef, epRef)
         expect(sig).toEqual({ semanticFactCount: 2, semanticReinforcementSum: 8, episodeCount: 2 })
       })
 
-      it('treats missing episodic as zero episodes', () => {
+      it('treats missing episodic as zero episodes', async () => {
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a' })] })
-        const sig = computeSourceSignature(semRef)
+        const sig = await computeSourceSignature(semRef)
         expect(sig.episodeCount).toBe(0)
       })
     })
 
     describe('isStale', () => {
-      it('is stale when no digest exists', () => {
+      it('is stale when no digest exists', async () => {
         const digestRef = createMockDigestRef()
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a' })] })
-        expect(isStale(digestRef, semRef)).toBe(true)
+        expect(await isStale(digestRef, semRef)).toBe(true)
       })
 
-      it('is fresh when signature matches', () => {
+      it('is fresh when signature matches', async () => {
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a', reinforcementCount: 2 })] })
         const epRef = createMockEpRef()
-        const sig = computeSourceSignature(semRef, epRef)
+        const sig = await computeSourceSignature(semRef, epRef)
         const digestRef = createMockDigestRef({ digest: makeDigest({ sourceSignature: sig }) })
-        expect(isStale(digestRef, semRef, epRef)).toBe(false)
+        expect(await isStale(digestRef, semRef, epRef)).toBe(false)
       })
 
-      it('is stale when fact count differs', () => {
+      it('is stale when fact count differs', async () => {
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a' }), makeFact({ id: 'b' })] })
         const digestRef = createMockDigestRef({
           digest: makeDigest({ sourceSignature: { semanticFactCount: 1, semanticReinforcementSum: 1, episodeCount: 0 } }),
         })
-        expect(isStale(digestRef, semRef)).toBe(true)
+        expect(await isStale(digestRef, semRef)).toBe(true)
       })
 
-      it('is stale when reinforcement sum differs', () => {
+      it('is stale when reinforcement sum differs', async () => {
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a', reinforcementCount: 4 })] })
         const digestRef = createMockDigestRef({
           digest: makeDigest({ sourceSignature: { semanticFactCount: 1, semanticReinforcementSum: 1, episodeCount: 0 } }),
         })
-        expect(isStale(digestRef, semRef)).toBe(true)
+        expect(await isStale(digestRef, semRef)).toBe(true)
       })
 
-      it('is stale when episode count differs', () => {
+      it('is stale when episode count differs', async () => {
         const semRef = createMockSemRef({ facts: [makeFact({ id: 'a' })] })
         const epRef = createMockEpRef({ episodes: [makeEpisode({ id: 'e1' })] })
         const digestRef = createMockDigestRef({
           digest: makeDigest({ sourceSignature: { semanticFactCount: 1, semanticReinforcementSum: 1, episodeCount: 0 } }),
         })
-        expect(isStale(digestRef, semRef, epRef)).toBe(true)
+        expect(await isStale(digestRef, semRef, epRef)).toBe(true)
       })
     })
 
@@ -309,7 +309,7 @@ describe('memory/digest', () => {
   // ---------------------------------------------------------------------------
 
   describe('topFacts', () => {
-    it('returns top-N by reinforcement count', () => {
+    it('returns top-N by reinforcement count', async () => {
       const semRef = createMockSemRef({
         facts: [
           makeFact({ id: 'a', reinforcementCount: 1 }),
@@ -317,7 +317,7 @@ describe('memory/digest', () => {
           makeFact({ id: 'c', reinforcementCount: 3 }),
         ],
       })
-      const top = topFacts(semRef, 2)
+      const top = await topFacts(semRef, 2)
       expect(top.map((f) => f.id)).toEqual(['b', 'c'])
     })
   })
@@ -509,14 +509,14 @@ describe('memory/digest', () => {
       const out = await runForTest(block, 'NEW DIGEST' as any, ctx) as any
 
       expect(out.persisted).toBe(true)
-      expect(digestRef.state.digest?.content).toBe('NEW DIGEST')
-      expect(digestRef.state.digest?.generatedAtTurn).toBe(9)
-      expect(digestRef.state.digest?.sourceSignature).toEqual({
+      expect((await digestRef.state()).digest?.content).toBe('NEW DIGEST')
+      expect((await digestRef.state()).digest?.generatedAtTurn).toBe(9)
+      expect((await digestRef.state()).digest?.sourceSignature).toEqual({
         semanticFactCount: 2,
         semanticReinforcementSum: 3,
         episodeCount: 1,
       })
-      expect(digestRef.state.totalGenerated).toBe(1)
+      expect((await digestRef.state()).totalGenerated).toBe(1)
     })
 
     it('does not increment totalGenerated on empty content', async () => {
@@ -534,7 +534,7 @@ describe('memory/digest', () => {
       } as any
       const out = await runForTest(block, '' as any, ctx) as any
       expect(out.persisted).toBe(false)
-      expect(digestRef.state.totalGenerated).toBe(0)
+      expect((await digestRef.state()).totalGenerated).toBe(0)
     })
   })
 

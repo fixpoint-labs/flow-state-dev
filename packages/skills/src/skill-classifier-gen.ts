@@ -57,14 +57,14 @@ export interface SkillClassifierOptions {
 }
 
 /** List enabled skills (capped) with their description for the prompt. */
-function listSkillsForPrompt(
+async function listSkillsForPrompt(
   collection: ResourceCollectionRef | undefined,
   cap: number,
-): Array<{ name: string; description: string }> {
+): Promise<Array<{ name: string; description: string }>> {
   if (!collection) return [];
   const out: Array<{ name: string; description: string }> = [];
   const seen = new Set<string>();
-  for (const ref of collection.list()) {
+  for await (const ref of collection.scan()) {
     if (out.length >= cap) break;
     if (!ref.name.endsWith("/SKILL.md")) continue;
     const segments = ref.name.split("/");
@@ -72,7 +72,7 @@ function listSkillsForPrompt(
     const skillName = segments[segments.length - 2]!;
     if (seen.has(skillName)) continue;
     seen.add(skillName);
-    const state = ref.state as unknown as SkillState;
+    const state = (await ref.state()) as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     let desc = state.description ?? "";
     if (state.whenToUse) desc = `${desc}\n${state.whenToUse}`;
@@ -97,7 +97,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     agentType: "trace",
     prompt: async (_input, ctx) => {
       const collection = getCollection(ctx, opts.collectionKey);
-      const skills = listSkillsForPrompt(collection, cap);
+      const skills = await listSkillsForPrompt(collection, cap);
       if (skills.length === 0) {
         return [
           "You classify a single user message: which (if any) of the available skills applies?",
@@ -129,12 +129,12 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
       const collection = getCollection(ctx, opts.collectionKey);
       const validNames = new Set<string>();
       if (collection) {
-        for (const ref of collection.list()) {
+        for await (const ref of collection.scan()) {
           if (!ref.name.endsWith("/SKILL.md")) continue;
           const segments = ref.name.split("/");
           if (segments.length < 2) continue;
           const skillName = segments[segments.length - 2]!;
-          const state = ref.state as unknown as SkillState;
+          const state = (await ref.state()) as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           validNames.add(skillName);
         }

@@ -126,10 +126,10 @@ export function createJudge(opts: CreateJudgeOptions) {
         .filter(Boolean)
         .join("\n");
     },
-    user: (_input, ctx) => {
+    user: async (_input, ctx) => {
       const state = ctx.sequencer!.state;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
+      const transcriptState = (await ctx.resources.transcript
+        ?.state()) as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
       const positionsBlock = opts.stances.length > 0
         ? `Positions argued:\n${opts.stances.map((s) => `- ${s}`).join("\n")}`

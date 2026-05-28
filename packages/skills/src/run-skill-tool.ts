@@ -121,16 +121,16 @@ function getRequiredCollection(
 }
 
 /** List enabled (non-disabled) skill names + descriptions for the tool surface. */
-export function listEnabledSkills(
+export async function listEnabledSkills(
   collection: ResourceCollectionRef,
-): Array<{ name: string; description: string }> {
+): Promise<Array<{ name: string; description: string }>> {
   const out: Array<{ name: string; description: string }> = [];
   const seen = new Set<string>();
-  for (const ref of collection.list()) {
+  for await (const ref of collection.scan()) {
     // The collection holds a mix of SKILL.md manifests and supporting files.
     // Manifests have keys ending in `/SKILL.md` once stripped of the prefix.
     if (!ref.name.endsWith("/SKILL.md")) continue;
-    const state = ref.state as unknown as SkillState;
+    const state = (await ref.state()) as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     // Extract skill name from the storage key — strip prefix and `/SKILL.md`.
     const segments = ref.name.split("/");
@@ -235,16 +235,16 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
       await ensureSeeded(collection, initialSkills);
 
       const manifestKey = skillManifestKey(input.name);
-      const manifest = collection.getOptional(manifestKey);
+      const manifest = await collection.getOptional(manifestKey);
       if (!manifest) {
-        const enabled = listEnabledSkills(collection);
+        const enabled = await listEnabledSkills(collection);
         const available = enabled.map((s) => s.name).join(", ") || "(none)";
         throw new Error(
           `Unknown skill "${input.name}". Available: ${available}`,
         );
       }
 
-      const state = manifest.state as unknown as SkillState;
+      const state = (await manifest.state()) as unknown as SkillState;
       if (state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be invoked by the agent`,

@@ -272,12 +272,19 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
 }
 
 /**
- * GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=
+ * GET /sessions/:sessionId/resources/:ref?limit=&cursor=&topicPrefix=
  *
- * Returns one paginated page of a collection's per-item state. Items are
+ * Returns one keyset-paginated page of a collection's per-item state. Items are
  * sorted lexicographically by storage key. Gated by `client.state.read`.
  * Session scope only at v1; non-session collections must be read via the
  * snapshot's `prefetched` window.
+ *
+ * Pagination is bounded to a single store page (no full-prefix read): `cursor`
+ * is the prior page's opaque `nextCursor` (the raw last-seen storage key).
+ * `nextCursor === null` signals the final page. A page may legitimately return
+ * fewer items than `limit` (or zero) while `nextCursor` is non-null when
+ * pattern/topicPrefix filtering drops trailing keys — callers keep paging until
+ * `nextCursor === null`.
  */
 export async function handleListCollectionState(
   request: Request,
@@ -310,53 +317,48 @@ export async function handleListCollectionState(
 
   const url = new URL(request.url);
   const limitParam = url.searchParams.get("limit");
-  const offsetParam = url.searchParams.get("offset");
+  const cursor = url.searchParams.get("cursor");
   const topicPrefix = url.searchParams.get("topicPrefix") ?? undefined;
 
   const limit = limitParam !== null ? Number.parseInt(limitParam, 10) : STATE_LIST_DEFAULT_LIMIT;
-  const offset = offsetParam !== null ? Number.parseInt(offsetParam, 10) : 0;
 
   if (!Number.isInteger(limit) || limit < 1 || limit > STATE_LIST_MAX_LIMIT) {
     return jsonResponse(400, {
       error: `limit must be 1–${STATE_LIST_MAX_LIMIT}`
     });
   }
-  if (!Number.isInteger(offset) || offset < 0) {
-    return jsonResponse(400, { error: "offset must be >= 0" });
-  }
 
-  // Read only this collection's keys (its pattern prefix) instead of the whole
-  // scope. An empty prefix (e.g. `[topic]/observations`) falls back to getAll.
+  // Read a single bounded page from the store rather than slurping the whole
+  // prefix into memory. An empty pattern prefix scans the scope from the cursor.
   const keyPrefix = getPatternPrefix(config.pattern);
-  const persisted = keyPrefix
-    ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-    : await ctx.stores.resourceState.getAll("session", session.id);
-  const matchedKeys = Object.keys(persisted)
-    .filter((k) => matchesPattern(config.pattern, k))
-    .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
-    .sort();
-  const total = matchedKeys.length;
+  const storePrefix = keyPrefix ? `${keyPrefix}/` : "";
+  const storeResult = await ctx.stores.resourceState.getByPrefixPaged(
+    "session",
+    session.id,
+    storePrefix,
+    { limit, after: cursor ?? undefined, order: "asc" }
+  );
 
-  const pageKeys = matchedKeys.slice(offset, offset + limit);
+  // Post-filter the page's rows by pattern + topicPrefix. `nextCursor` is the
+  // store page's last raw key (NOT the last surviving item) so trailing keys
+  // filtered out here are still advanced past on the next request.
   const items: Array<{ topic: string; storageKey: string; clientData?: unknown }> = [];
-  for (const key of pageKeys) {
-    const state = isJsonObject(persisted[key]) ? (persisted[key] as JsonObject) : {};
-    const item: { topic: string; storageKey: string; clientData?: unknown } = {
-      topic: extractBareTopic(config.pattern, key),
-      storageKey: key
-    };
-    item.clientData = await applyClientData(config, state);
-    items.push(item);
+  for (const row of storeResult.items) {
+    if (!matchesPattern(config.pattern, row.key)) continue;
+    if (topicPrefix !== undefined && !row.key.startsWith(topicPrefix)) continue;
+    const state = isJsonObject(row.value) ? (row.value as JsonObject) : {};
+    items.push({
+      topic: extractBareTopic(config.pattern, row.key),
+      storageKey: row.key,
+      clientData: await applyClientData(config, state)
+    });
   }
 
   return jsonResponse(200, {
     items,
     pagination: {
-      offset,
       limit,
-      total,
-      hasMore: offset + limit < total,
-      nextOffset: Math.min(offset + limit, total)
+      nextCursor: storeResult.nextCursor ?? null
     }
   });
 }

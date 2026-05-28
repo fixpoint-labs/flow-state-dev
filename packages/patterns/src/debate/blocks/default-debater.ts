@@ -108,10 +108,10 @@ export function createDebater(opts: CreateDebaterOptions) {
         .filter(Boolean)
         .join("\n");
     },
-    user: (_input, ctx) => {
+    user: async (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as DebateState;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
+      const transcriptState = (await ctx.resources.transcript
+        ?.state()) as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
       const priorBlock =
         entries.length > 0

@@ -385,7 +385,7 @@ export interface MemorySystem extends MemoryProvider {
   /** Session-scoped janitor tracking resource (when janitor is configured). */
   janitorResource?: typeof janitorResource
   /** Cross-store recall helper. */
-  recall: (ctx: any, cue?: string) => RankedMemoryItem[]
+  recall: (ctx: any, cue?: string) => Promise<RankedMemoryItem[]>
   /**
    * Context formatter for generator context arrays.
    *
@@ -402,9 +402,9 @@ export interface MemorySystem extends MemoryProvider {
    * richer mixes (semantic facts, recent episodes, custom limits) call
    * `createMemoryContextFormatter(options)` directly.
    */
-  contextFormatter: (input: unknown, ctx: any) => MemoryContextSections | undefined
+  contextFormatter: (input: unknown, ctx: any) => Promise<MemoryContextSections | undefined>
   /** Alias of `contextFormatter` exposed under the `MemoryProvider` name. */
-  formatContext: (input: unknown, ctx: any) => MemoryContextSections | undefined
+  formatContext: (input: unknown, ctx: any) => Promise<MemoryContextSections | undefined>
   /** Working memory module — resource and helpers. */
   working: {
     resource: typeof workingMemoryResource

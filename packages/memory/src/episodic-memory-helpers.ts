@@ -1,8 +1,7 @@
-import type { ResourceContext } from '@flow-state-dev/core'
 import type { Episode, EpisodicMemoryState } from './episodic-memory.js'
-import { shortId } from './internal/helpers.js'
+import { shortId, type MemResourceRef } from './internal/helpers.js'
 
-type EpRef = ResourceContext<EpisodicMemoryState>
+type EpRef = MemResourceRef<EpisodicMemoryState>
 
 /** Milliseconds in a day. */
 const MS_PER_DAY = 1000 * 60 * 60 * 24
@@ -64,8 +63,8 @@ export async function encode(
  * Get recent episodes sorted by `occurredAtTurn` descending (most recent first).
  * Optionally limit the number of results.
  */
-export function recent(ref: EpRef, limit?: number): Episode[] {
-  const sorted = [...ref.state.episodes].sort(
+export async function recent(ref: EpRef, limit?: number): Promise<Episode[]> {
+  const sorted = [...(await ref.state()).episodes].sort(
     (a, b) => b.occurredAtTurn - a.occurredAtTurn,
   )
   return limit != null ? sorted.slice(0, limit) : sorted

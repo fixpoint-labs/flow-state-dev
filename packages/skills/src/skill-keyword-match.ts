@@ -51,14 +51,14 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
       const collection = getCollection(ctx, opts.collectionKey);
       if (collection) {
         const seen = new Set<string>();
-        for (const ref of collection.list()) {
+        for await (const ref of collection.scan()) {
           if (!ref.name.endsWith("/SKILL.md")) continue;
           const segments = ref.name.split("/");
           if (segments.length < 2) continue;
           const skillName = segments[segments.length - 2]!;
           if (seen.has(skillName)) continue;
           seen.add(skillName);
-          const state = ref.state as unknown as SkillState;
+          const state = (await ref.state()) as unknown as SkillState;
           if (state.disableModelInvocation) continue;
           if (!state.keywords || state.keywords.length === 0) continue;
           if (state.keywords.some((kw) => lowered.includes(kw))) {

@@ -66,7 +66,7 @@ export function buildSkillsCatalogContext(
       // Seeding failure already logged; fall through with whatever the
       // collection contains (possibly empty).
     }
-    const enabled = listEnabledSkills(collection);
+    const enabled = await listEnabledSkills(collection);
     return buildRunSkillDescription(enabled);
   };
 }
@@ -89,7 +89,7 @@ export function buildActiveSkillsContext(
     const blocks: string[] = [];
     for (const entry of active) {
       if (entry.mode !== "inline") continue;
-      const manifest = collection.getOptional(skillManifestKey(entry.name));
+      const manifest = await collection.getOptional(skillManifestKey(entry.name));
       if (!manifest) continue;
       const raw = (await manifest.readContent()) ?? "";
       const body = stripFrontmatter(raw);
@@ -97,7 +97,7 @@ export function buildActiveSkillsContext(
         arguments: entry.input,
         skillDir: path.posix.join("/workspace", opts.mountPath, entry.name),
       });
-      const state = manifest.state as unknown as SkillState;
+      const state = (await manifest.state()) as unknown as SkillState;
       const restriction = state.allowedTools && state.allowedTools.length > 0
         ? `\n(While this skill is active, only these tools are available: ${state.allowedTools.join(", ")}.)`
         : "";

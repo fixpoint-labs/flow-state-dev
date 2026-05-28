@@ -136,10 +136,10 @@ export function createModerator(opts: CreateModeratorOptions) {
         .filter(Boolean)
         .join("\n");
     },
-    user: (_input, ctx) => {
+    user: async (_input, ctx) => {
       const state = (ctx.sequencer?.state ?? {}) as DebateState;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
+      const transcriptState = (await ctx.resources.transcript
+        ?.state()) as DebateTranscriptState | undefined;
       const entries = transcriptState?.entries ?? [];
       const byRound = new Map<number, typeof entries>();
       for (const e of entries) {

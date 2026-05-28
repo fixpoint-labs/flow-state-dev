@@ -78,7 +78,7 @@ export function memorySystemJanitor(
     execute: async (_input, ctx) => {
       const wmRef = ctx.resources.workingMemory
       const janRef = ctx.resources.janitor
-      const currentTurn = wmRef.state.currentTurn ?? 0
+      const currentTurn = (await wmRef.state()).currentTurn ?? 0
       // Semantic and episodic resources are installed conditionally above,
       // which forces the inferred ctx type to a wider shape. Cast at the
       // point of use to the specific helper signatures.

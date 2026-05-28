@@ -66,7 +66,10 @@ export async function createBashTool(
   } = options;
 
   // 1. Resolve or create sandbox
-  const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
+  const existingId =
+    persist && bashSession
+      ? (await bashSession.state()).sandboxId || undefined
+      : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
 
   // 2. Create sync bridge
@@ -80,9 +83,12 @@ export async function createBashTool(
   await sync.hydrate();
 
   // 4. Build file listing for LLM context
-  const allFiles = Object.values(collections)
-    .flatMap((c: ResourceCollectionRef<FileEntryState>) => c.list())
-    .map((ref) => ref.state.path);
+  const allFiles: string[] = [];
+  for (const c of Object.values<ResourceCollectionRef<FileEntryState>>(collections)) {
+    for await (const ref of c.scan()) {
+      allFiles.push((await ref.state()).path);
+    }
+  }
   const fileList = allFiles.join("\n");
 
   // 5. Construct AI SDK tools

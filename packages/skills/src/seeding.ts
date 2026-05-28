@@ -66,7 +66,7 @@ async function doSeed(
       console.warn(`[skills] skipped initial skill: ${(err as Error).message}`);
       continue;
     }
-    if (alreadySeeded.has(skill.name) && !needsResed(collection, skill)) continue;
+    if (alreadySeeded.has(skill.name) && !(await needsResed(collection, skill))) continue;
 
     try {
       await seedOne(collection, skill);
@@ -101,21 +101,21 @@ async function doSeed(
  * seeder. Returns `false` when both source and persisted agree on
  * having (or lacking) the fields.
  */
-function needsResed(
+async function needsResed(
   collection: ResourceCollectionRef,
   skill: InitialSkill,
-): boolean {
+): Promise<boolean> {
   let parsed: ReturnType<typeof parseSkillMd>;
   try {
     parsed = parseSkillMd(skill.skillMd);
   } catch {
     return false;
   }
-  const ref = collection.getOptional(skillManifestKey(skill.name));
+  const ref = await collection.getOptional(skillManifestKey(skill.name));
   // A missing manifest on an already-seeded skill means the user
   // deleted it deliberately — preserve that decision, do not re-seed.
   if (!ref) return false;
-  const persisted = ref.state as Record<string, unknown> | undefined;
+  const persisted = (await ref.state()) as Record<string, unknown> | undefined;
   if (!persisted) return false;
   if (parsed.state.contextMode !== undefined && persisted.contextMode !== parsed.state.contextMode) {
     return true;
@@ -159,9 +159,9 @@ async function seedOne(
 async function loadMeta(
   collection: ResourceCollectionRef,
 ): Promise<SkillsCollectionMeta> {
-  const ref = collection.getOptional(META_KEY);
+  const ref = await collection.getOptional(META_KEY);
   if (!ref) return { seededNames: [] };
-  const state = ref.state as Record<string, unknown>;
+  const state = (await ref.state()) as Record<string, unknown>;
   const seeded = state.seededNames;
   if (Array.isArray(seeded)) {
     return { seededNames: seeded.filter((s): s is string => typeof s === "string") };
