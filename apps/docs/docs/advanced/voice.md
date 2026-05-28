@@ -67,7 +67,8 @@ Add `voice.tts` to a flow to enable audio synthesis for its responses.
 const myFlow = defineFlow({
   kind: "my-flow",
   voice: {
-    tts: { model: "gpt-4o-mini-tts", voice: "alloy" },
+    // `model` is optional — omit it to use the provider's default.
+    tts: { voice: "alloy" },
   },
   actions: { /* ... */ },
 });
@@ -158,21 +159,20 @@ Send audio as base64 JSON:
   "userId": "u_123",
   "audio": "<base64-encoded audio bytes>",
   "mediaType": "audio/webm",
-  "model": "gpt-4o-mini-transcribe",
   "language": "en"
 }
 ```
 
-Or as raw binary with the model as a query parameter:
+Or as raw binary:
 
 ```
-POST /api/flows/transcribe?userId=u_123&model=gpt-4o-mini-transcribe
+POST /api/flows/transcribe?userId=u_123
 Content-Type: audio/webm
 
 <raw audio bytes>
 ```
 
-The model is resolved in order: the per-request `model` field wins, then the provider's `defaultModels.transcribe`. If neither is set, the endpoint returns `400 no_model` — there is no built-in default model string. If no provider is configured, or the configured provider can't transcribe, it returns 501.
+`model` is optional on both forms. The endpoint resolves it in order: the per-request `model` field wins, then the provider's `defaultModels.transcribe`. If neither is set, the endpoint returns `400 no_model` — there is no built-in default model string. If no provider is configured, or the configured provider can't transcribe, it returns 501.
 
 Response:
 

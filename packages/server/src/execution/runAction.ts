@@ -11,7 +11,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { canSpeak, getRequestWorkPool } from "@flow-state-dev/core";
+import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -710,20 +710,23 @@ export async function runActionInternal<
   // for TTS but the provider can't synthesize, log a warning and continue
   // text-only rather than constructing a pipeline that would always fail.
   if (voiceConfig?.tts !== undefined && ttsEnabled) {
-    if (options.voiceProvider !== undefined && canSpeak(options.voiceProvider)) {
+    const provider = options.voiceProvider;
+    if (provider !== undefined && (canSpeak(provider) || canSpeakStream(provider))) {
+      // Either batch (`speak`) or streaming (`speakStream`) is enough — the
+      // pipeline branches on `canSpeakStream` per sentence.
       ttsHook = createTTSEmitterHook({
         config: voiceConfig.tts,
-        provider: options.voiceProvider,
+        provider,
         emitter: response,
         signal: composedSignal
       });
       response.addEventObserver((event) => ttsHook!.onEvent(event));
-    } else if (options.voiceProvider !== undefined) {
+    } else if (provider !== undefined) {
       logRuntimeEvent(
         logger,
         "warn",
-        "[flow-state] flow requested TTS but the voice provider does not support speak; continuing text-only",
-        { requestId, provider: options.voiceProvider.providerName }
+        "[flow-state] flow requested TTS but the voice provider supports neither speak nor speakStream; continuing text-only",
+        { requestId, provider: provider.providerName }
       );
     }
   }

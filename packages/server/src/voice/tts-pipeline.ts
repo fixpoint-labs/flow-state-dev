@@ -206,13 +206,20 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
       await acquireSlot();
       try {
         if (cancelled) throw new PipelineCancelledError();
+        // Compose the request signal with the pipeline's own cancel signal so
+        // `pipeline.cancel()` from runAction's error path actually aborts an
+        // in-flight `speak()` instead of waiting up to SYNTHESIS_TIMEOUT_MS.
+        const speakSignal =
+          options.signal !== undefined
+            ? AbortSignal.any([options.signal, cancelController.signal])
+            : cancelController.signal;
         return await withTimeout(
           options.provider.speak!({
             text,
             voice: options.config.voice,
             speed: options.config.speed,
             model: options.config.model,
-            signal: options.signal
+            signal: speakSignal
           }),
           SYNTHESIS_TIMEOUT_MS
         );
