@@ -10,8 +10,7 @@ import type {
   FlowStateSettings,
   Middleware,
   ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../../registry/flow-registry";
@@ -36,8 +35,11 @@ export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
+  /**
+   * Router-level voice provider for TTS and STT. A per-flow `voice.provider`
+   * on the flow definition overrides this at dispatch time.
+   */
+  voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   middleware?: Middleware[];
@@ -72,8 +74,7 @@ export function createInboundTransportHost(
     registry,
     stores,
     modelResolver,
-    speechResolver,
-    transcriptionResolver,
+    voiceProvider,
     settings,
     middleware,
     logger,
@@ -91,6 +92,11 @@ export function createInboundTransportHost(
     }
 
     const requestId = envelope.requestId ?? generateId("req");
+
+    // Per-flow `voice.provider` wins over the router-level provider, mirroring
+    // the principal-resolver override pattern below. Merged once here so
+    // `runAction` receives the effective value and never re-merges.
+    const effectiveVoiceProvider = flow.voice?.provider ?? voiceProvider;
 
     // Per-flow SSE heartbeat override wins over the host default.
     const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
@@ -134,7 +140,7 @@ export function createInboundTransportHost(
       metadata: envelope.metadata,
       signal: envelope.signal,
       modelResolver,
-      speechResolver,
+      voiceProvider: effectiveVoiceProvider,
       settings,
       middleware,
       stores,
@@ -219,8 +225,10 @@ export function createInboundTransportHost(
     stores,
     resolvers: {
       model: modelResolver,
-      speech: speechResolver,
-      transcription: transcriptionResolver
+      // Router-level provider only — the per-action effective provider (which
+      // may be a per-flow override) is merged in `dispatch` and not mirrored
+      // here. This bag exists for adapter introspection.
+      voice: voiceProvider
     },
     middleware,
     logger,

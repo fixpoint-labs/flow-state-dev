@@ -112,6 +112,8 @@ const router = createFlowApiRouter({ registry, stores });
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.provider` overrides it. See the [Voice guide](https://flowstate.dev/docs/advanced/voice).
+
 ## What this package does
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items

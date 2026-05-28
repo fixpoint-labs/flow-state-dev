@@ -11,7 +11,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { getRequestWorkPool } from "@flow-state-dev/core";
+import { canSpeak, getRequestWorkPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -480,21 +480,16 @@ export async function runActionInternal<
   // Set up TTS pipeline if the flow has voice.tts configured AND the client
   // explicitly opted in (ttsEnabled: true). TTS is off by default — we don't
   // want to synthesize audio unless the client specifically asks for it.
+  // TTS hook is constructed later (after `composedSignal` exists) so the
+  // request-level abort signal can be threaded into provider calls. The
+  // observer must still be registered before action execution emits content
+  // deltas; `composedSignal` is created well before that point.
   let ttsHook: TTSEmitterHook | undefined;
   const voiceConfig = options.flow.voice;
   const voiceMeta = options.metadata?.voice as
     | { ttsEnabled?: boolean; inputModality?: string }
     | undefined;
   const ttsEnabled = voiceMeta?.ttsEnabled === true;
-
-  if (voiceConfig?.tts !== undefined && ttsEnabled) {
-    ttsHook = createTTSEmitterHook({
-      config: voiceConfig.tts,
-      speechResolver: options.speechResolver,
-      emitter: response
-    });
-    response.addEventObserver((event) => ttsHook!.onEvent(event));
-  }
 
   // --- Abort controller: register so the abort endpoint can signal cancellation ---
   // Register just before `createExecutionContext` to minimize the leak window
@@ -709,6 +704,29 @@ export async function runActionInternal<
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
+
+  // Construct the TTS pipeline now that the request-level signal exists.
+  // Gated on a provider that actually advertises `speak`; if the flow asks
+  // for TTS but the provider can't synthesize, log a warning and continue
+  // text-only rather than constructing a pipeline that would always fail.
+  if (voiceConfig?.tts !== undefined && ttsEnabled) {
+    if (options.voiceProvider !== undefined && canSpeak(options.voiceProvider)) {
+      ttsHook = createTTSEmitterHook({
+        config: voiceConfig.tts,
+        provider: options.voiceProvider,
+        emitter: response,
+        signal: composedSignal
+      });
+      response.addEventObserver((event) => ttsHook!.onEvent(event));
+    } else if (options.voiceProvider !== undefined) {
+      logRuntimeEvent(
+        logger,
+        "warn",
+        "[flow-state] flow requested TTS but the voice provider does not support speak; continuing text-only",
+        { requestId, provider: options.voiceProvider.providerName }
+      );
+    }
+  }
 
   // FIX-663: a separate controller for fire-and-forget `.work()` tasks. It
   // fires ONLY when the abort-registry controller fires (the explicit
@@ -999,6 +1017,10 @@ export async function runActionInternal<
 
         ctx.requestRuntime.status = "aborted";
 
+        // Abandon in-flight TTS synthesis: the client is gone, so don't run
+        // provider calls to completion against a closed connection.
+        if (ttsHook !== undefined) await ttsHook.cancel();
+
         await runObserverSafely(options.flow.request?.onFinished, {
           requestId,
           actionName: options.actionName,
@@ -1026,6 +1048,8 @@ export async function runActionInternal<
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
+
+        if (ttsHook !== undefined) await ttsHook.cancel();
 
         await runObserverSafely(options.flow.request?.onFinished, {
           requestId,
@@ -1067,6 +1091,8 @@ export async function runActionInternal<
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
+
+      if (ttsHook !== undefined) await ttsHook.cancel();
 
       await runObserverSafely(action.onErrored, {
         requestId,

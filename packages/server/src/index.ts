@@ -92,11 +92,7 @@ export {
   createFSDProvider,
   detectAvailableProviders,
   parseModelString,
-  createFallbackModel,
-  createAiSdkSpeechResolver,
-  wrapAiSdkSpeechModel,
-  createAiSdkTranscriptionResolver,
-  wrapAiSdkTranscriptionModel
+  createFallbackModel
 } from "@flow-state-dev/core/models";
 export type {
   ResolveAiSdkLanguageModel,
@@ -113,8 +109,6 @@ export type {
   ProviderAvailability,
   ParsedModelString,
   FallbackModelEntry,
-  ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel,
   ProviderPreference,
   ResolveOptions,
   ExplainCandidate,

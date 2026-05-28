@@ -10,7 +10,7 @@ import type {
   Middleware,
   ModelResolver,
   RetryPolicy,
-  SpeechResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { ExecutionContext } from "../context/types";
@@ -85,7 +85,12 @@ export type RunActionOptions<
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
+  /**
+   * Voice provider for TTS and STT. Already merged by the host (per-flow
+   * `voice.provider` wins over the router-level provider), so `runAction`
+   * receives the effective value and never re-merges.
+   */
+  voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   stores: StoreRegistry;

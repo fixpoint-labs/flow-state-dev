@@ -14,6 +14,8 @@ Items serve three purposes:
 2. **Session history** — persisted items accumulate across requests, forming the conversation log
 3. **LLM context** — some item types feed into conversation history for future model calls
 
+Voice I/O streams chunked audio over the same SSE channel — see [Voice](../advanced/voice).
+
 ## The items you'll use most
 
 Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
