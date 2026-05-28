@@ -97,8 +97,8 @@ describe("chat-agent blocks", () => {
 
     // Verify: metadata in state, body in content
     const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
-    const ref = artifacts.get("new-doc");
-    expect(ref.state.title).toBe("New Document");
+    const ref = await artifacts.get("new-doc");
+    expect((await ref.state()).title).toBe("New Document");
     const content = await ref.readContent();
     expect(content).toBe("Fresh content");
   });
@@ -119,8 +119,8 @@ describe("chat-agent blocks", () => {
     });
 
     const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
-    const ref = artifacts.get("doc-1");
-    expect(ref.state.title).toBe("Revised");
+    const ref = await artifacts.get("doc-1");
+    expect((await ref.state()).title).toBe("Revised");
     const content = await ref.readContent();
     expect(content).toBe("v2");
   });

@@ -70,7 +70,7 @@ const scheduleDigest = handler({
     }>;
     const key = "digest";
     const nextState = { cron: input.cron, action: input.action, enabled: true };
-    const existing = schedules.getOptional(key);
+    const existing = await schedules.getOptional(key);
     if (existing !== undefined) {
       await existing.setState(nextState);
     } else {
@@ -100,15 +100,14 @@ const clearSchedules = handler({
       enabled: boolean;
     }>;
     const prefix = "schedules/";
-    const refs = schedules.list();
-    await Promise.all(
-      refs.map((ref) =>
-        schedules.delete(
-          ref.name.startsWith(prefix) ? ref.name.slice(prefix.length) : ref.name,
-        ),
-      ),
-    );
-    return { cleared: refs.length };
+    let cleared = 0;
+    for await (const ref of schedules.scan()) {
+      await schedules.delete(
+        ref.name.startsWith(prefix) ? ref.name.slice(prefix.length) : ref.name,
+      );
+      cleared++;
+    }
+    return { cleared };
   },
 });
 

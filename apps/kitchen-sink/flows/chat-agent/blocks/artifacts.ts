@@ -63,25 +63,24 @@ export const artifactResources = {
  * Context formatter that shows the artifact inventory (title + summary)
  * so the LLM knows what artifacts exist without reading full content.
  */
-const artifactListContext = (_input: unknown, ctx: any) => {
+const artifactListContext = async (_input: unknown, ctx: any): Promise<string> => {
   const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
     title: string;
     summary: string;
     updatedAt: number;
   }>;
-  const instances = artifacts.list();
-  if (instances.length === 0) {
+  const lines: string[] = [];
+  for await (const ref of artifacts.scan()) {
+    const state = await ref.state();
+    const id = ref.name.replace("artifacts/", "");
+    const title = state.title ?? "Untitled";
+    const summary = state.summary ? ` — ${state.summary}` : "";
+    lines.push(`- ${id}: ${title}${summary}`);
+  }
+  if (lines.length === 0) {
     return "No artifacts exist yet in this session.";
   }
-  const list = instances
-    .map((ref: any) => {
-      const id = ref.name.replace("artifacts/", "");
-      const title = ref.state.title ?? "Untitled";
-      const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
-      return `- ${id}: ${title}${summary}`;
-    })
-    .join("\n");
-  return `Current artifacts:\n${list}`;
+  return `Current artifacts:\n${lines.join("\n")}`;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,18 +114,19 @@ export const readArtifact = handler({
   cacheable: { ttl: 60_000 },
 
   execute: async (input, ctx) => {
-    const ref = ctx.resources.artifacts.getOptional(input.artifactId);
+    const ref = await ctx.resources.artifacts.getOptional(input.artifactId);
 
     if (ref === undefined) {
       return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
     }
 
+    const state = await ref.state();
     return {
       id: input.artifactId,
-      title: ref.state.title,
-      updatedAt: ref.state.updatedAt,
-      extension: ref.state.extension,
-      summary: ref.state.summary ?? "",
+      title: state.title,
+      updatedAt: state.updatedAt,
+      extension: state.extension,
+      summary: state.summary ?? "",
       content: await ref.readContent() ?? ""
     };
   }
@@ -183,7 +183,7 @@ const saveSummary = handler({
   resources: artifactResources,
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input;
-    const ref = ctx.resources.artifacts.getOptional(id);
+    const ref = await ctx.resources.artifacts.getOptional(id);
     if (ref) await ref.patchState({ summary: input.summary });
     return { success: true, id };
   }
