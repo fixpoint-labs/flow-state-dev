@@ -6,7 +6,6 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { z } from "zod";
 import { debateInputSchema } from "../schemas";
 
 export function createInitTranscript(opts: {
@@ -17,9 +16,8 @@ export function createInitTranscript(opts: {
   return handler({
     name: `${opts.name}-init`,
     inputSchema: debateInputSchema,
-    outputSchema: z.any(),
     resources: { transcript: opts.transcript },
-    execute: async (input, ctx) => {
+    execute: async (_input, ctx) => {
       await ctx.resources.transcript.setState({
         entries: [],
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
@@ -29,7 +27,6 @@ export function createInitTranscript(opts: {
         collectionId: opts.collectionId,
         sequencer: ctx.sequencer!,
       });
-      return input;
     },
   });
 }
