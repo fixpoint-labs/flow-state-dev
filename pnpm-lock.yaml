@@ -160,6 +160,9 @@ importers:
       '@flow-state-dev/vercel':
         specifier: workspace:*
         version: link:../../packages/vercel
+      '@flow-state-dev/voice-openai':
+        specifier: workspace:*
+        version: link:../../packages/voice-openai
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
@@ -1123,7 +1126,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
 packages:
 

@@ -14,9 +14,9 @@
  */
 import { after } from "next/server";
 import path from "node:path";
-import { openai } from "@ai-sdk/openai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, filesystemStores, inMemoryStores } from "@flow-state-dev/server";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
@@ -75,8 +75,7 @@ export const flowstate = createFlowState({
       ? createKitchenSinkTestModelResolver()
       : undefined,
   voice: {
-    speech: (modelId) => openai.speech(modelId),
-    transcription: (modelId) => openai.transcription(modelId),
+    provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }),
   },
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },

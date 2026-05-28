@@ -11,8 +11,7 @@ import type {
   FlowStateSettings,
   Middleware,
   ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
@@ -47,8 +46,13 @@ export type CreateFlowApiRouterOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
+  /**
+   * Voice provider for TTS and STT. Optional. If omitted, flows requesting TTS
+   * silently skip synthesis (text continues), and the transcribe endpoint
+   * returns 501. A per-flow `voice.provider` on the flow definition overrides
+   * this at dispatch time.
+   */
+  voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   maxResponseBufferSize?: number;

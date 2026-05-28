@@ -9,8 +9,7 @@ import type {
   FlowStateSettings,
   Middleware,
   ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -129,8 +128,12 @@ export type CreateFlowRouteHandlersOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
+  /**
+   * Voice provider for TTS and STT. Optional. If omitted, flows requesting TTS
+   * silently skip synthesis (text continues), and the transcribe endpoint
+   * returns 501. A per-flow `voice.provider` overrides this at dispatch time.
+   */
+  voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
@@ -245,8 +248,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     registry: options.registry,
     stores,
     modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
-    transcriptionResolver: options.transcriptionResolver,
+    voiceProvider: options.voiceProvider,
     settings: options.settings,
     middleware: options.middleware,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
@@ -333,7 +335,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRequestStream(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: options.transcriptionResolver,
+          voiceProvider: options.voiceProvider,
           defaultSseHeartbeatMs
         });
       }
@@ -397,7 +399,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleTranscribe(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: options.transcriptionResolver
+          voiceProvider: options.voiceProvider
         });
       }
 
@@ -406,7 +408,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           modelResolver: options.modelResolver,
-          speechResolver: options.speechResolver,
+          voiceProvider: options.voiceProvider,
           middleware: options.middleware
         });
       }

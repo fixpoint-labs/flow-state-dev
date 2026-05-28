@@ -16,8 +16,7 @@ import type {
   PrincipalResolutionContext,
   ResolvePrincipalFn,
   ResolvedPrincipal,
-  SpeechResolver,
-  TranscriptionResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResponseEmitter } from "../streaming/response-emitter";
@@ -162,8 +161,12 @@ export interface InboundTransportHost {
   readonly stores: StoreRegistry;
   readonly resolvers?: {
     model?: ModelResolver;
-    speech?: SpeechResolver;
-    transcription?: TranscriptionResolver;
+    /**
+     * Router-level voice provider, set once at host construction. Per-action
+     * dispatch uses `flow?.voice?.provider ?? voice`; this bag is for adapter
+     * introspection only and is not consulted during the per-action merge.
+     */
+    voice?: VoiceProvider;
   };
   readonly middleware?: Middleware[];
   readonly logger?: RuntimeLogger;

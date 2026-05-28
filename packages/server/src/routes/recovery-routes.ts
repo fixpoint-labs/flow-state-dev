@@ -1,7 +1,7 @@
 /**
  * HTTP route handlers for request recovery (retry + active request listing).
  */
-import type { Middleware, ModelResolver, SpeechResolver } from "@flow-state-dev/core/types";
+import type { Middleware, ModelResolver, VoiceProvider } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
@@ -13,7 +13,7 @@ type RecoveryRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
+  voiceProvider?: VoiceProvider;
   middleware?: Middleware[];
   logger?: RuntimeLogger;
 };
@@ -84,7 +84,7 @@ export async function handleRetryRequest(
           }
         : undefined,
       modelResolver: ctx.modelResolver,
-      speechResolver: ctx.speechResolver,
+      voiceProvider: ctx.voiceProvider,
       middleware: ctx.middleware,
       logger: ctx.logger
     });

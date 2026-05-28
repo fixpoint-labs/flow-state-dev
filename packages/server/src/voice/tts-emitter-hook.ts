@@ -10,15 +10,17 @@
  *                       the entire action completes)
  */
 import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
-import type { SpeechResolver, TTSConfig } from "@flow-state-dev/core/types";
+import type { TTSConfig, VoiceProvider } from "@flow-state-dev/core/types";
 import type { ResponseEmitter, RequestStreamEventWithId } from "../streaming/response-emitter";
 import { createTTSPipeline, type TTSPipeline } from "./tts-pipeline";
 
 export type TTSEmitterHook = {
   /** Called after each event is emitted. Intercepts content events for TTS. */
   onEvent(event: RequestStreamEventWithId): void;
-  /** Wait for all pending synthesis to complete. */
+  /** Success path: flush remaining text and wait for all synthesis to settle. */
   finalize(): Promise<void>;
+  /** Failure path: abandon in-flight synthesis (delegates to `pipeline.cancel`). */
+  cancel(): Promise<void>;
 };
 
 /**
@@ -27,13 +29,15 @@ export type TTSEmitterHook = {
  */
 export function createTTSEmitterHook(options: {
   config: TTSConfig;
-  speechResolver?: SpeechResolver;
+  provider: VoiceProvider;
   emitter: ResponseEmitter;
+  signal?: AbortSignal;
 }): TTSEmitterHook {
   const pipeline = createTTSPipeline({
     config: options.config,
-    speechResolver: options.speechResolver,
-    emitter: options.emitter
+    provider: options.provider,
+    emitter: options.emitter,
+    signal: options.signal
   });
 
   // Track which items are assistant messages
@@ -90,6 +94,10 @@ export function createTTSEmitterHook(options: {
         }
       }
       await pipeline.drain();
+    },
+
+    async cancel() {
+      await pipeline.cancel();
     }
   };
 }

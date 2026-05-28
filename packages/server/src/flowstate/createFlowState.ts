@@ -12,8 +12,6 @@
  */
 import {
   createModelResolver,
-  createAiSdkSpeechResolver,
-  createAiSdkTranscriptionResolver,
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
@@ -198,19 +196,13 @@ class InternalFlowState<TSettings extends object>
     const modelResolver =
       this.#options.modelResolver ??
       createModelResolver(toModelResolverOptions(this.#options.models));
-    const speechResolver = this.#options.voice?.speech
-      ? createAiSdkSpeechResolver(this.#options.voice.speech)
-      : undefined;
-    const transcriptionResolver = this.#options.voice?.transcription
-      ? createAiSdkTranscriptionResolver(this.#options.voice.transcription)
-      : undefined;
+    const voiceProvider = this.#options.voice?.provider;
 
     return createFlowApiRouter({
       registry: this.#registry,
       stores,
       modelResolver,
-      speechResolver,
-      transcriptionResolver,
+      voiceProvider,
       settings: this.#options.settings as FlowStateSettings | undefined,
       onError: this.#options.onError,
       onBackgroundWork: this.#options.onBackgroundWork,

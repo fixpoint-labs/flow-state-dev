@@ -1,7 +1,7 @@
 /**
  * Interrupted request detection and recovery utilities.
  */
-import type { Middleware, ModelResolver, SpeechResolver } from "@flow-state-dev/core/types";
+import type { Middleware, ModelResolver, VoiceProvider } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -86,7 +86,7 @@ export type RetryRequestOptions = {
   registryEntry?: ActiveRequestEntry;
   /** Standard runAction dependencies. */
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
+  voiceProvider?: VoiceProvider;
   middleware?: Middleware[];
   logger?: RuntimeLogger;
 };
@@ -152,7 +152,7 @@ export async function retryRequest(
       retryOf: options.originalRequestId
     },
     modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
+    voiceProvider: options.voiceProvider,
     middleware: options.middleware,
     stores,
     responseEmitter: liveStream.emitter,
