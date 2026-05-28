@@ -103,7 +103,15 @@ const system = eventActors({
 
 ### Task Board
 
-Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains (or `shouldExit` returns true in `wait` mode).
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
+
+**Termination modes (`onIdle`)**:
+
+- `"complete-or-blocked"` (default, FIX-626): exit on full drain OR when no `in_progress`/`awaiting_review` task is active and no `pending` task has all deps `completed`. Handles the DAG case where an upstream task errors and downstream pendings can never run.
+- `"complete"`: exit only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
+- `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
+
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures"` field so callers can tell a clean drain from a dep-blocked exit without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
@@ -146,13 +154,15 @@ The collection then lives on `ctx.request` and survives every block boundary in 
 
 `awaiting_review` is fully supported per FIX-443 §10.1: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 
-Workers are first-class block compositions, not callbacks. The pattern composes them via `.then(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `router` selects per `task.assignee` (BP-013, with `connectInput` adapting `Task → TaskWorkerInput` inside the router's `execute`).
+Workers are first-class block compositions, not callbacks. The pattern composes them via `.then(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 
-**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`
+`createCascadeSkipDependents` is a substrate building block consumers `.tap()` after `board.block`: it transitively cancels any pending task whose deps include an `errored` task (stamping a `"skipped"` label), so dep-blocked pendings reach a terminal status instead of lingering. `planAndExecute` and `supervisor` both wire it this way.
+
+**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`, `createCascadeSkipDependents`
 
 ### Round Robin
 
-Fixed-roster, deterministic-order turn-taking. Every agent in the roster contributes once per round, in declared order. After each round a judge inspects the transcript and returns `{ done, summary }`; the loop exits on done or when `maxRounds` is hit.
+Fixed-roster, deterministic-order turn-taking. Every agent in the roster contributes once per round, in declared order. The loop exits when `maxRounds` is reached or when the optional `terminateWhen(ctx)` predicate returns true. A synthesizer composes the transcript as the terminal step by default; pass `synthesizer: false` to return the raw shape.
 
 ```typescript
 import { roundRobin } from "@flow-state-dev/patterns/round-robin";
@@ -168,7 +178,9 @@ const editorial = roundRobin({
 });
 ```
 
-Override any roster entry by passing a `block`; override the judge or the synthesizer by passing custom blocks. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
+An optional `referee` runs after every round and audits the round's contributions for argument-quality issues (exaggeration, dismissed counter-arguments, unsupported claims). It returns `{ critique }`, accumulates in outer state as `refereeCritiques`, and the default roster agents render prior critiques into their prompts on subsequent rounds. The referee does **not** control termination.
+
+Override any roster entry by passing a `block`. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
 
 When two or more `roundRobin()` instances appear in the same sequencer chain, set `accessorKey` to a distinct string on each — the pattern's internal blocks declare the contributions resource under that key, and the framework's resource-merge rejects the same key pointing at different `defineResource()` references. Default is `"contributions"`.
 
@@ -188,7 +200,9 @@ const risk = roundRobin({
 });
 ```
 
-**Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`
+The final shape (before any synthesizer) is `{ rounds, contributions, refereeCritiques }`.
+
+**Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinReferee`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinRefereeOutputSchema`, `roundRobinRefereeCritiqueSchema`
 
 ### Debate
 
@@ -209,7 +223,9 @@ const proCon = debate({
 
 Built on the Round Robin chassis; see that section for the loop substrate. Override any debater by passing a `block`; override the judge or the synthesizer with custom blocks. See [Debate](https://flow-state.dev/docs/patterns/debate) for the full reference, the bias-mitigation toggles, and the documented failure modes.
 
-**Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`
+The pattern also accepts an optional `moderator` block. When provided, the moderator **opens each round** (runs before the round's debaters, right after `incrementRound`). It picks which debaters speak that round, may supply a `briefing` and `newAngle` that those debaters see, and may set `done: true` to make this the final round. The moderator sees the full transcript of all *prior* rounds — the current round's speakers haven't yet argued when the moderator decides. A separate `terminateWhen?: (ctx) => boolean` predicate is available for session-state-driven early exits that don't involve transcript analysis. See the full reference on the [Debate page](https://flow-state.dev/docs/patterns/debate) for the moderator output shape and behavior.
+
+**Key exports:** `debate`, `createDebateTranscript`, `createDebater`, `createJudge`, `createModerator`, `createSynthesize`, `createInitTranscript`, `createRecordArgument`, `formatTranscriptForJudge`, `debateInputSchema`, `debateStateSchema`, `debateContributionEntrySchema`, `debateVerdictSchema`, `debateTranscriptStateSchema`, `debateModeratorOutputSchema`, `debateModeratorDecisionSchema`
 
 ## Pattern-Level `instructions`
 
@@ -310,6 +326,12 @@ import {
 ```
 
 The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
+
+## Skill-pattern binding
+
+`defaultPatternRegistry` plugs into `@flow-state-dev/skills` so a SKILL.md frontmatter can declare a multi-agent pattern. Wire it via `createSkillsCapability({ patternRegistry: defaultPatternRegistry })`. Eight entries are registered: `task-board`, `plan-and-execute`, `supervisor`, `parallel-tasks`, `coordinator` (deprecated alias for `parallel-tasks`), `routed-specialists`, plus two reserved stubs (`event-actors`, `approval-gate`) that throw clear deferral errors.
+
+Each adapter validates its `pattern-config` block via a strict Zod schema — unknown keys reject at parse rather than silently passing through. See the [pattern skills docs](https://flow-state.dev/docs/skills/pattern-skills) for the full surface.
 
 ## Running tests
 

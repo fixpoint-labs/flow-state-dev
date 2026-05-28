@@ -142,6 +142,35 @@ function isOutputItem(value: unknown): value is OutputItem {
 }
 
 /**
+ * True when the event carries (or refers to) an item with `transient: true`.
+ *
+ * `item.added` / `item.done` carry the full item inline. The other item-bound
+ * events (`item.updated`, `content.*`) reference the item by id, so the lookup
+ * goes through `itemsById` — which the caller has already populated for
+ * `item.added` before `appendEvent` runs. Non-item-bound events (request.*,
+ * ping, debug, resource_changed) return false; they're never transient at
+ * this layer.
+ */
+function isTransientItemEvent(
+  event: RequestStreamEventWithId,
+  itemsById: ReadonlyMap<string, OutputItem>
+): boolean {
+  if (event.type === "item.added" || event.type === "item.done") {
+    return (event.item as { transient?: boolean }).transient === true;
+  }
+  if (
+    event.type === "item.updated" ||
+    event.type === "content.added" ||
+    event.type === "content.delta" ||
+    event.type === "content.done"
+  ) {
+    const item = itemsById.get(event.itemId);
+    return item?.transient === true;
+  }
+  return false;
+}
+
+/**
  * Stateful request event emitter used by runtime execution and SSE transport.
  */
 export class ResponseEmitter implements ResponseEmitterHandle {
@@ -158,6 +187,10 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
   private itemHooks?: ResponseEmitterItemHooks;
   private eventHooks?: ResponseEmitterEventHooks;
+  private readonly itemListeners = new Set<{
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void;
+    filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+  }>();
 
   /**
    * Creates a request-scoped emitter instance.
@@ -193,6 +226,82 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    */
   setItemHooks(hooks: ResponseEmitterItemHooks): void {
     this.itemHooks = hooks;
+  }
+
+  /**
+   * Subscribes to subsequent item lifecycle transitions on this emitter
+   * (FIX-621). `kind` is `"added"` for fresh items, `"updated"` for in-place
+   * mutations (item.updated and streaming content.delta), and `"done"` for
+   * terminal status. Returns an idempotent unsubscribe — calling it more
+   * than once is a no-op. Listener errors are isolated: a throw routes to
+   * a debug event and other listeners still fire.
+   *
+   * Fan-out uses snapshot semantics: the listener set is copied before
+   * iteration, so a listener that unsubscribes itself (or registers a new
+   * listener) mid-fan-out does not corrupt the in-flight loop. A listener
+   * registered during fan-out only sees subsequent events.
+   *
+   * When `options.filter` is provided, the listener is skipped for events
+   * the filter returns false for (FIX-660). Filter throws are caught and
+   * the listener STILL fires (fail-open) — a filter that throws is a
+   * caller bug; failing closed would silently produce 5-second
+   * `.waitForCondition` timeouts with nothing in the trace explaining why.
+   */
+  subscribeToItems(
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    options?: {
+      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+    }
+  ): () => void {
+    const entry = { listener, filter: options?.filter };
+    this.itemListeners.add(entry);
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) return;
+      unsubscribed = true;
+      this.itemListeners.delete(entry);
+    };
+  }
+
+  /**
+   * Fans out an item transition to all currently-registered listeners.
+   * Snapshots the listener set first so in-flight unsubscribe/subscribe
+   * calls do not affect the current iteration. Per-listener filters are
+   * evaluated against the snapshot entry; listener and filter exceptions
+   * are both isolated via debug events and do not propagate.
+   */
+  private fanoutItemEvent(
+    item: OutputItem,
+    kind: "added" | "updated" | "done"
+  ): void {
+    const snapshot = Array.from(this.itemListeners);
+    for (const entry of snapshot) {
+      let pass = true;
+      if (entry.filter !== undefined) {
+        try {
+          pass = entry.filter(item, kind);
+        } catch (err) {
+          void this.emitDebug("response.subscribeToItems.filter_threw", {
+            err: String(err),
+            itemType: item.type
+          });
+          // Fail-open: a throwing filter is a caller bug; silently
+          // skipping the listener would surface as a phantom timeout.
+          pass = true;
+        }
+      }
+      if (!pass) continue;
+      try {
+        entry.listener(item, kind);
+      } catch (err) {
+        // Fire-and-forget — emitDebug is async but we deliberately don't
+        // await it inside the fan-out loop to avoid serializing listeners
+        // behind the debug-event persistence path.
+        void this.emitDebug("response.subscribeToItems.listener_threw", {
+          err: String(err)
+        });
+      }
+    }
   }
 
   /**
@@ -278,12 +387,19 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.added"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    this.fanoutItemEvent(interceptedItem, "added");
 
-    this.onLogEvent?.("item.added", {
-      itemId: interceptedItem.id,
-      itemType: interceptedItem.type,
-      blockName: interceptedItem.provenance?.blockName
-    });
+    // Skip the runtime log line for transient items. Long-lived polling
+    // patterns (task-board claim-task / check-board) emit hundreds of
+    // these per second; logging each one floods stderr without adding
+    // operator value. Persistence and wire delivery are unchanged below.
+    if (interceptedItem.transient !== true) {
+      this.onLogEvent?.("item.added", {
+        itemId: interceptedItem.id,
+        itemType: interceptedItem.type,
+        blockName: interceptedItem.provenance?.blockName
+      });
+    }
 
     return this.appendEvent<ItemAddedEvent>({
       type: "item.added",
@@ -301,6 +417,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.done"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    this.fanoutItemEvent(interceptedItem, "done");
     const event = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
       item: interceptedItem
@@ -335,11 +452,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     const sanitized = stripInvariantKeys(patch);
     const merged = { ...existing, ...sanitized } as OutputItem;
     this.itemsById.set(itemId, merged);
+    this.fanoutItemEvent(merged, "updated");
 
-    this.onLogEvent?.("item.updated", {
-      itemId,
-      patchKeys: Object.keys(sanitized)
-    });
+    if (existing.transient !== true) {
+      this.onLogEvent?.("item.updated", {
+        itemId,
+        patchKeys: Object.keys(sanitized)
+      });
+    }
 
     return this.appendEvent<ItemUpdatedEvent>({
       type: "item.updated",
@@ -396,11 +516,13 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     contentIndex: number,
     content: Content
   ): Promise<RequestStreamEventWithId> {
-    this.onLogEvent?.("content.added", {
-      itemId,
-      contentIndex,
-      contentType: content.type
-    });
+    if (this.itemsById.get(itemId)?.transient !== true) {
+      this.onLogEvent?.("content.added", {
+        itemId,
+        contentIndex,
+        contentType: content.type
+      });
+    }
 
     return this.appendEvent<ContentPartAddedEvent>({
       type: "content.added",
@@ -564,19 +686,24 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Returns current tracked items sorted chronologically (ts, then itemIndex tiebreaker).
+   * Returns current tracked items in stream (insertion) order.
+   *
+   * The backing `Map` preserves first-insert order and re-`set`s (item.done /
+   * item.updated) keep an item's original slot, so iteration order already
+   * matches the emission sequence that `itemIndex` encodes. No read-time sort
+   * (FIX-406 6G) — the previous `Array.from(...).sort()` ran on every emit via
+   * `getItemCount`'s former `getItems().length`, compounding to O(N² log N).
    */
   getItems(): OutputItem[] {
-    const items = Array.from(this.itemsById.values());
-    items.sort((left, right) => {
-      const tsDiff = left.ts - right.ts;
-      if (tsDiff !== 0) {
-        return tsDiff;
-      }
+    return Array.from(this.itemsById.values());
+  }
 
-      return left.itemIndex - right.itemIndex;
-    });
-    return items;
+  /**
+   * O(1) count of tracked items. Used on the per-emit hot path to assign the
+   * next `itemIndex` without materializing or ordering the items snapshot.
+   */
+  getItemCount(): number {
+    return this.itemsById.size;
   }
 
   /**
@@ -645,8 +772,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       id: interceptedEnvelope.id
     };
 
-    this.events.push(withId);
-    this.enforceBufferLimit();
+    // Transient-item events skip the in-RAM buffer. Long-lived polling
+    // patterns (e.g. task-board's claim-task / check-board worker loop)
+    // emit hundreds of `block_trace` lifecycle events per second; counting
+    // them against `maxBufferSize` evicts earlier non-transient events
+    // that operators still want in post-mortem inspection. The wire and
+    // persistence paths below are unaffected — transient events still
+    // stream live and still land in the events log per the streaming
+    // contract.
+    if (!isTransientItemEvent(withId, this.itemsById)) {
+      this.events.push(withId);
+      this.enforceBufferLimit();
+    }
 
     // Mutate the in-flight item snapshot for streaming-text deltas
     // (FIX-479). The events log no longer carries content.delta entries,
@@ -741,6 +878,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       return;
     }
     this.itemHooks?.onItemUpdate?.(item);
+    this.fanoutItemEvent(item, "updated");
   }
 
   private enforceBufferLimit(): void {

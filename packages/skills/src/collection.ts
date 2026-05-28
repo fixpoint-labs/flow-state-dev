@@ -20,16 +20,30 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 import type { ResourceScope } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
-/** The Zod schema for a SKILL.md resource's state. */
+/** The Zod schema for a SKILL.md resource's state.
+ *
+ * `contextMode` must list every mode the parser emits — when the enum
+ * rejects a value, the framework's `normalizeResourceState` falls back
+ * to the schema's default state and **wipes the entire record**, not
+ * just the offending field. A pattern skill persisted under an enum
+ * that omits `"pattern"` would lose `patternBinding` entirely, and the
+ * runSkill router would then dispatch to inline by default.
+ *
+ * `patternBinding` is typed loosely here (a passthrough object). The
+ * authoritative shape lives in `@flow-state-dev/core/types/skill.ts`
+ * (`PatternBinding`); duplicating that nested Zod here would be
+ * brittle and the parser is the contract surface.
+ */
 export const skillStateSchema = z.object({
   description: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),
-  contextMode: z.enum(["inline", "fork"]).optional(),
+  contextMode: z.enum(["inline", "fork", "pattern"]).optional(),
   disableModelInvocation: z.boolean().optional(),
   outputSchema: z.unknown().optional(),
   whenToUse: z.string().optional(),
   argumentHint: z.string().optional(),
   keywords: z.array(z.string()).optional(),
+  patternBinding: z.object({}).passthrough().optional(),
   _seededAt: z.string().optional(),
   _preservedFields: z.record(z.unknown()).optional(),
   seededNames: z.array(z.string()).optional(),
@@ -87,6 +101,21 @@ export function defineSkillsCollection(
         if (typeof s.contextMode === "string") out.contextMode = s.contextMode;
         if (Array.isArray(s.keywords)) out.keywords = s.keywords;
         if (typeof s._seededAt === "string") out.seededAt = s._seededAt;
+        // Pattern skills: surface the pattern key + worker count so the
+        // DevTool resources panel reflects what would dispatch on
+        // runSkill rather than just "contextMode: pattern".
+        if (s.patternBinding && typeof s.patternBinding === "object") {
+          const pb = s.patternBinding as Record<string, unknown>;
+          if (typeof pb.pattern === "string") {
+            out.pattern = pb.pattern;
+            const workers = pb.workers as Record<string, unknown> | undefined;
+            if (workers && typeof workers === "object") {
+              out.workerCount = Object.keys(workers).length;
+            }
+            const tasks = pb.initialTasks as unknown[] | undefined;
+            if (Array.isArray(tasks)) out.initialTaskCount = tasks.length;
+          }
+        }
         return out as never;
       },
     },
@@ -101,7 +130,34 @@ export function skillManifestKey(name: string): string {
   return `${name}/SKILL.md`;
 }
 
-/** Resource key (relative to prefix) for a skill's supporting file. */
+/** Resource key (relative to prefix) for a skill's supporting file.
+ *
+ * Normalizes the caller's path so authors can write either `reference/x.md`
+ * or `./reference/x.md` in their `prompt-ref` / similar fields and get the
+ * same lookup key. Without normalization, `./reference/x.md` joined against
+ * `<skillName>` produces `<skillName>/./reference/x.md`, which never matches
+ * the seeded entry at `<skillName>/reference/x.md`.
+ *
+ * Rejects `..` segments — supporting files must live inside the skill folder.
+ */
 export function skillFileKey(name: string, relativePath: string): string {
-  return `${name}/${relativePath.replace(/^\/+/, "")}`;
+  const normalized = normalizeSkillFilePath(relativePath);
+  return `${name}/${normalized}`;
+}
+
+function normalizeSkillFilePath(relativePath: string): string {
+  // Strip any leading slashes, then walk segments dropping `.` and rejecting `..`.
+  const trimmed = relativePath.replace(/^\/+/, "");
+  const segments = trimmed.split("/");
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      throw new Error(
+        `Invalid skill file path "${relativePath}": ".." segments are not allowed`,
+      );
+    }
+    out.push(seg);
+  }
+  return out.join("/");
 }

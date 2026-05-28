@@ -154,6 +154,17 @@ const PRESET_MIGRATION_MESSAGE =
 export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /**
+ * Canonicalize an intent name into the suffix used in `FSDEV_INTENT_<NAME>`
+ * environment-variable overrides: uppercased, with hyphens replaced by
+ * underscores. Two distinct intent names that produce the same canonical
+ * form (`my-custom` and `my_custom`) will collide as env-var overrides;
+ * `createModelResolver` rejects such configurations at construction.
+ */
+export function canonicalizeIntentName(intentName: string): string {
+  return intentName.toUpperCase().replace(/-/g, "_");
+}
+
+/**
  * Parse a model string into its components.
  *
  * Supported formats:

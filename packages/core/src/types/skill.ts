@@ -11,6 +11,8 @@
  */
 
 import type { GeneratorTool } from "../blocks/generator";
+import type { AgentType } from "../items/types";
+import type { AgentOverrides } from "./agent";
 
 /**
  * A bag of executable tools that skills may reference by string key.
@@ -27,8 +29,80 @@ export type ToolCatalog = Record<string, GeneratorTool>;
  * - `inline` (default): skill body is injected into the in-flight generator
  *   on the next tool-loop step via the existing `prepareStep` machinery.
  * - `fork`: skill runs in a subagent with isolated context and tool set.
+ * - `pattern`: skill activates a multi-agent pattern declared in frontmatter.
+ *   Set automatically when `pattern:` is present; rejected if combined with
+ *   `context: fork` or `context: inline`.
  */
-export type SkillContextMode = "inline" | "fork";
+export type SkillContextMode = "inline" | "fork" | "pattern";
+
+/**
+ * A single worker entry under a pattern skill's `workers:` map. Exactly
+ * one of `prompt`, `promptRef`, `blockRef`, `agentRef` is set — parsed
+ * from kebab-case frontmatter and validated at parse time.
+ *
+ * `agentRef` and `agentOverrides` are reserved for the Agents primitive.
+ * The parser accepts them and the materializer stubs activation with a
+ * clear deferral error when no AgentRegistry is wired.
+ */
+export interface WorkerSpec {
+  /** Inline prompt body. Substitutions apply at activation. */
+  prompt?: string;
+  /** Skill-folder-relative path to a prompt file. */
+  promptRef?: string;
+  /** Block registry key — caller supplies a populated registry. */
+  blockRef?: string;
+  /** Agent registry key — resolves through the supplied AgentRegistry. */
+  agentRef?: string;
+  /** REPLACE-semantic overrides applied to the resolved agent. Requires agentRef. */
+  agentOverrides?: AgentOverrides;
+  /** Tool catalog keys made available to a prompt-driven worker. */
+  tools?: string[];
+  /** Agent-type tag controlling history/visibility. Defaults to `"sub"`. */
+  agentType?: AgentType;
+  /** Model id override. Falls back to the deps' default. */
+  model?: string;
+}
+
+/**
+ * An entry in a pattern skill's `initial-tasks:` list. Validated at parse
+ * time — assignees must match a worker key, deps must reference another
+ * initial task by id, and the dep graph must be acyclic.
+ */
+export interface TaskInitYaml {
+  /** Stable id used by other tasks' `deps`. Auto-generated when omitted. */
+  id?: string;
+  /** Goal text seeded into the task; `$ARGUMENTS` substituted at activation. */
+  goal: string;
+  /** Worker key responsible for this task. Optional for free-claim patterns. */
+  assignee?: string;
+  /** Ids of tasks this one waits on. Must reference initial-tasks ids. */
+  deps?: string[];
+  /** Priority hint surfaced to the dispatcher. */
+  priority?: number;
+  /** Cap on retries from the dispatcher. */
+  maxAttempts?: number;
+  /** Opaque metadata forwarded onto the materialized Task. */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Pattern binding parsed from `SKILL.md` frontmatter when `pattern:` is
+ * present. Materialized by the runSkill router's pattern route, which
+ * delegates worker construction and dispatcher wiring to the registered
+ * PatternFactory.
+ */
+export interface PatternBinding {
+  /** Kebab-case registry key, e.g. `"task-board"`. */
+  pattern: string;
+  /** Backing scope for the materialized TaskCollection. Defaults to request. */
+  collection?: { scope: "request" | "session" };
+  /** Map of worker key → spec. Keys match `^[a-z0-9_-]+$`. */
+  workers: Record<string, WorkerSpec>;
+  /** Tasks seeded into the collection at activation. */
+  initialTasks: TaskInitYaml[];
+  /** Verbatim kebab-case config forwarded to the pattern factory. */
+  patternConfig?: Record<string, unknown>;
+}
 
 /**
  * Parsed state for a `skills/{name}/SKILL.md` resource. Derived from the
@@ -71,6 +145,12 @@ export interface SkillState {
 
   /** Unknown kebab-case frontmatter keys preserved as camelCase for round-trip. */
   _preservedFields?: Record<string, unknown>;
+
+  /**
+   * Pattern binding when `pattern:` is declared in frontmatter. Present
+   * iff `contextMode === "pattern"`.
+   */
+  patternBinding?: PatternBinding;
 }
 
 /**
@@ -114,7 +194,7 @@ export interface RunSkillOutput {
   mode: SkillContextMode;
   /** Inline mode: ack message; the agent should re-read context on the next step. */
   message?: string;
-  /** Fork mode: structured result returned from the subagent. */
+  /** Fork/pattern mode: structured result returned from the subagent or pattern. */
   result?: unknown;
 }
 
@@ -145,22 +225,22 @@ export interface SkillsCollectionMeta {
 }
 
 // ---------------------------------------------------------------------------
-// Intent classification (FIX-421)
+// Skill activation (FIX-421)
 // ---------------------------------------------------------------------------
 
 /**
  * Origin of a skill-activation match. Carried on `MatchedSkill` so downstream
  * consumers (trace UI, telemetry) can branch on how the decision was reached.
  */
-export type IntentSource =
+export type SkillActivationSource =
   | "slash"            // user typed `/skill-name`
   | "keyword"          // local keyword scan matched
   | "classifier"       // LLM classifier produced the match
   | "manual-override"; // explicit user/UI selection bypassed classification
 
 /**
- * One skill matched by an intent-classification pass. Multiple may be active
- * per turn — the up-front intent selector activates all of them in inline
+ * One skill matched by a skill-activation pass. Multiple may be active
+ * per turn — the up-front skill activator activates all of them in inline
  * mode by default.
  */
 export interface MatchedSkill {
@@ -168,8 +248,8 @@ export interface MatchedSkill {
   name: string;
   /** Argument substituted for `$ARGUMENTS` in the skill body. Empty if none. */
   input: string;
-  /** Which tier of `intentSelector` produced this match. */
-  source: IntentSource;
+  /** Which tier of `skillActivator` produced this match. */
+  source: SkillActivationSource;
   /** Classifier confidence (0..1). Only present when `source === "classifier"`. */
   confidence?: number;
 }

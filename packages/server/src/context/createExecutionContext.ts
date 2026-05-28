@@ -56,6 +56,9 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import type { TraceStore } from "../stores/types";
 import type {
+  ContentScopeType,
+  ContentStore,
+  ResourceStateStore,
   OrgRecord,
   RequestRecord,
   SessionRecord,
@@ -63,14 +66,14 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
-import { sanitizeToolName } from "@flow-state-dev/core/utils";
+import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
+import type { TracingLevel } from "@flow-state-dev/core";
+import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
-import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
   resolveUserStorageKey,
@@ -91,6 +94,10 @@ function normalizeLimit(
 
   if (typeof limit === "number") {
     return Math.max(0, Math.min(valuesLength, limit));
+  }
+
+  if ("turns" in limit) {
+    return Math.max(0, Math.min(valuesLength, limit.turns));
   }
 
   return Math.max(0, Math.min(valuesLength, limit.tokens));
@@ -250,6 +257,112 @@ function normalizeScopeResourceContent(
   return normalized;
 }
 
+/**
+ * Load only the content a scope's declared resources reference. Fixed
+ * resources resolve to a single storage key (`content.get`); collections
+ * resolve to their pattern prefix (`content.getByPrefix`, where an empty
+ * prefix loads every instance in the scope). A scope with no declared
+ * resources issues no content read at all. The merged map seeds
+ * `normalizeScopeResourceContent`, so undeclared keys never enter the
+ * execution context.
+ */
+async function loadDeclaredScopeContent(
+  content: ContentStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, string>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, string>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      // A non-empty static prefix targets the collection's `prefix/...`
+      // namespace; an empty prefix (e.g. `[topic]/observations`) loads
+      // every key in the scope.
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(content.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await content.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, string> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (typeof value === "string") seed[key] = value;
+  }
+  return seed;
+}
+
+/**
+ * Load only the state a scope's declared resources reference (FIX-689), the
+ * state-layer twin of `loadDeclaredScopeContent`. Fixed resources resolve to a
+ * single storage key (`resourceState.get`); collections resolve to their
+ * pattern prefix (`resourceState.getByPrefix`, where an empty prefix loads
+ * every instance in the scope). A scope with no declared resources issues no
+ * state read at all. The merged map seeds `normalizeScopeResources`, which
+ * fills declared single-resource defaults and preserves loaded collection
+ * instances — so undeclared keys never enter the execution context.
+ */
+async function loadDeclaredResourceState(
+  resourceState: ResourceStateStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): Promise<Record<string, JsonObject>> {
+  const accessors = Object.entries(configs);
+  if (accessors.length === 0) return {};
+
+  const storageKeys = resourceStorageKeys(configs);
+  const fixedKeys = new Set<string>();
+  const collectionReads: Array<Promise<Record<string, JsonObject>>> = [];
+
+  for (const [accessor, config] of accessors) {
+    if (isCollectionConfig(config)) {
+      const prefix = getPatternPrefix(config.pattern);
+      const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+      collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
+    } else {
+      fixedKeys.add(storageKeys[accessor]!);
+    }
+  }
+
+  const [collectionResults, fixedResults] = await Promise.all([
+    Promise.all(collectionReads),
+    Promise.all(
+      [...fixedKeys].map(
+        async (key) => [key, await resourceState.get(scopeType, scopeId, key)] as const
+      )
+    )
+  ]);
+
+  const seed: Record<string, JsonObject> = {};
+  for (const result of collectionResults) {
+    Object.assign(seed, result);
+  }
+  for (const [key, value] of fixedResults) {
+    if (value !== undefined) seed[key] = value;
+  }
+  return seed;
+}
+
 function asJsonValue(value: unknown): JsonValue {
   if (
     value === null ||
@@ -299,6 +412,13 @@ function updateObjectState(
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
+    /**
+     * Identifier of the concrete scope instance — `userId` for `"user"`,
+     * `orgId` for `"org"`, `sessionId` for `"session"`. Threaded into
+     * `CollectionHookContext.scopeId` so per-instance lifecycle hooks
+     * can correlate mutations back to the owning entity.
+     */
+    scopeId: string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
@@ -481,6 +601,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           // integration is handled at a higher level when available.
         },
         scopeType: options.scope,
+        scopeId: options.scopeId,
       };
 
       const nsHandle: ResourceCollectionRef<JsonObject> = {
@@ -510,7 +631,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
         async create(
           key: string | Record<string, string>,
-          initial?: Partial<JsonObject>
+          initial?: Partial<JsonObject>,
+          createOptions?: { replace?: boolean }
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
 
@@ -522,47 +644,72 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           }
 
           const resources = options.readResources();
-          if (storageKey in resources) {
+          const exists = storageKey in resources;
+          const replace = createOptions?.replace === true;
+
+          if (exists && !replace) {
             throw new Error(`Resource instance "${storageKey}" already exists`);
           }
 
-          // Check instance limits
-          const currentCount = countInstances(nsConfig.pattern, resources);
-          if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
-            const eviction = nsConfig.eviction ?? "none";
-            if (eviction === "none") {
-              throw new Error(
-                `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
-              );
+          // Check instance limits ONLY when adding a new instance. The replace
+          // branch reuses an existing storage slot, so it can't push us over
+          // maxInstances.
+          if (!exists) {
+            const currentCount = countInstances(nsConfig.pattern, resources);
+            if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
+              const eviction = nsConfig.eviction ?? "none";
+              if (eviction === "none") {
+                throw new Error(
+                  `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
+                );
+              }
+              // Evict one instance — persists the deletion
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
             }
-            // Evict one instance — persists the deletion
-            await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
           }
 
-          // Validate state via schema — throw on invalid input, never silent fallback
+          // Validate state via schema — throw on invalid input, never silent fallback.
+          // Defaults declared on the schema (e.g. `.nullable().default(null)`,
+          // per BP-023) fill missing fields on both the create and replace
+          // branches, so callers only supply the non-nullable scaffold.
           const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
           if (!parseResult.success) {
             const issue = parseResult.error.issues[0];
             const issuePath = issue === undefined ? "" : issue.path.join(".");
             const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
             const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+            const opLabel = replace && exists ? "create(replace)" : "create";
             throw new Error(
-              `Namespace "${nsConfig.pattern}" create("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              `Namespace "${nsConfig.pattern}" ${opLabel}("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
             );
           }
 
           const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
 
-          const nextResources = { ...resources, [storageKey]: state };
+          // Capture (cloned) prior state for the updated-hook before
+          // persisting. Clone so hook code that caches or mutates `prev`
+          // can't observe stale store internals — matches the defensive
+          // copy on the per-instance `setState`/`patchState` paths.
+          const prevState = exists
+            ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
+            : undefined;
+
+          const nextResources = { ...(options.readResources()), [storageKey]: state };
           await options.persistResources(nextResources);
 
           lruAccess.set(storageKey, Date.now());
 
-          if (nsConfig.onInstanceCreated) {
-            await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+          if (exists) {
+            if (nsConfig.onInstanceUpdated) {
+              await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+          } else {
+            if (nsConfig.onInstanceCreated) {
+              await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "created");
           }
-
-          options.onResourceChanged?.(storageKey, "created");
 
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
@@ -577,6 +724,69 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
+          return nsHandle.create(key, initial);
+        },
+
+        async upsert(
+          key: string | Record<string, string>,
+          update: Partial<JsonObject>,
+          createOnly?: Partial<JsonObject>
+        ): Promise<ResourceRef<JsonObject>> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+
+          // Validate that key matches pattern. We do this here so the
+          // create-branch error (from nsHandle.create) and the patch-branch
+          // path produce equivalent diagnostics.
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
+
+          const resources = options.readResources();
+          const exists = storageKey in resources;
+
+          if (exists) {
+            // Patch branch: merge `update` over existing state, validate the
+            // merged shape explicitly, then persist. We pre-validate (rather
+            // than rely on `persistNamespaceInstanceState`'s safeParse-with-
+            // empty-fallback) so a bad `update` throws loudly — matching the
+            // create branch's behavior. Without this, an invalid `update`
+            // would silently overwrite the resource with `{}` on the patch
+            // branch but throw on the create branch — an asymmetry that
+            // makes caller bugs hard to detect.
+            const rawPrev = resources[storageKey] as JsonObject;
+            const merged = updateObjectState(rawPrev, update);
+            const parseResult = nsConfig.stateSchema.safeParse(merged);
+            if (!parseResult.success) {
+              const issue = parseResult.error.issues[0];
+              const issuePath = issue === undefined ? "" : issue.path.join(".");
+              const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
+              const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+              throw new Error(
+                `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+              );
+            }
+            // Clone `prev` before passing it to the hook — matches the
+            // defensive copy `readState()` does on the per-instance
+            // `patchState` path. Hook code that caches or mutates `prev`
+            // shouldn't be able to observe stale store internals.
+            const prev = cloneValue(rawPrev) as JsonObject;
+            await persistNamespaceInstanceState(storageKey, nsConfig, merged);
+            lruAccess.set(storageKey, Date.now());
+            if (nsConfig.onInstanceUpdated) {
+              const next = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
+              await nsConfig.onInstanceUpdated(storageKey, next, prev, hookCtx);
+            }
+            options.onResourceChanged?.(storageKey, "updated");
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
+
+          // Create branch: delegate to `create`. Merge `update` over
+          // `createOnly` so update wins on overlapping keys (the delta is
+          // the "what I'm trying to express now"; createOnly is the
+          // scaffold that only matters at first creation).
+          const initial = { ...(createOnly ?? {}), ...update };
           return nsHandle.create(key, initial);
         },
 
@@ -741,9 +951,12 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
-  // Remove from in-memory map and persist the deletion
-  delete resources[evictKey];
-  await persistResources({ ...resources });
+  // Persist the deletion without mutating the caller's map — persistResources
+  // diffs next-vs-cache to derive the per-key delete, so the cache must still
+  // hold evictKey when it runs.
+  const next = { ...resources };
+  delete next[evictKey];
+  await persistResources(next);
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {
@@ -910,8 +1123,158 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 }
 
 /**
+ * Expands the items of a single RequestRecord into LLM-ready messages.
+ *
+ * Applies, in order: a stable sort by `(ts, itemIndex)`, the transient
+ * filter, the allowed-item-types filter, and `itemToLLMMessages` per item.
+ * `itemToLLMMessages` internally applies `resolveItemVisibility` so
+ * sub-agent and trace items are dropped here as well.
+ *
+ * `allowedRoles`, when set, drops any produced LLM message whose role is
+ * not in the allowlist.
+ *
+ * Sort-equivalence assumption: this expands and sorts items per request,
+ * not globally. That is safe because completed prior requests have
+ * non-overlapping `(ts, itemIndex)` ranges — `priorRequests` is sorted by
+ * `startedAtMs` and a completed request's items have timestamps strictly
+ * within its lifetime. Concatenating expansions of pre-ordered requests
+ * therefore preserves the same global ordering the previous flatten-then-
+ * sort path produced.
+ */
+function expandRequestToMessages(
+  items: readonly (OutputItem | BlockTraceItem)[],
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): LLMMessage[] {
+  const sorted = [...items].sort((a, b) => {
+    const tsDiff = a.ts - b.ts;
+    return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+  });
+
+  const out: LLMMessage[] = [];
+  for (const item of sorted) {
+    if (item.transient === true) continue;
+    if (!allowedTypes.has(item.type)) continue;
+
+    const llmMessages = itemToLLMMessages(item, sorted);
+    for (const llmMessage of llmMessages) {
+      if (
+        allowedRoles !== undefined &&
+        !allowedRoles.has(
+          llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool"
+        )
+      ) {
+        continue;
+      }
+      out.push(llmMessage);
+    }
+  }
+  return out;
+}
+
+type SelectedTurn = { messages: LLMMessage[] };
+
+/**
+ * Selects which prior requests participate in history given the limit,
+ * returning each selected turn's pre-expanded `LLMMessage[]` so callers
+ * can assemble the final array without re-expanding.
+ *
+ * Turn-based (bare `number` or `{ turns: N }`): returns the last N
+ * completed prior requests. Guards `Array.prototype.slice(-0)` — which
+ * returns the whole array — by explicitly returning `[]` for N <= 0.
+ *
+ * Token-based (`{ tokens: T }`): walks `priorRequests` from the end,
+ * expanding each candidate to its LLM messages and counting tokens. A
+ * candidate is accepted whole if it fits the remaining budget; otherwise
+ * walking stops (turns are never split). If the first (most recent) prior
+ * turn alone exceeds the budget, it is accepted anyway — returning an
+ * empty history when a single oversized turn exists hides more context
+ * than it saves.
+ *
+ * `undefined` limit returns all prior requests.
+ */
+async function selectRequestsByLimit(
+  priorRequests: RequestRecord[],
+  limit: MessageLimit | undefined,
+  tokenCounter: TokenCounter,
+  resolveModelId: () => string,
+  allowedTypes: Set<string>,
+  allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
+): Promise<SelectedTurn[]> {
+  const expand = (request: RequestRecord): SelectedTurn => ({
+    messages: expandRequestToMessages(
+      request.items ?? [],
+      allowedTypes,
+      allowedRoles,
+    ),
+  });
+
+  if (limit === undefined) {
+    return priorRequests.map(expand);
+  }
+
+  // Turn-based: bare number or { turns: N }
+  if (typeof limit === "number" || "turns" in limit) {
+    const turns = typeof limit === "number" ? limit : limit.turns;
+    if (turns <= 0) return [];
+    return priorRequests.slice(-turns).map(expand);
+  }
+
+  // Token-based: pack whole turns from the end, never split. Each
+  // candidate is expanded exactly once and the expansion is reused in
+  // the final assembly — no double-expansion.
+  const budget = limit.tokens;
+  const model = resolveModelId();
+  const selected: SelectedTurn[] = [];
+  let runningTokens = 0;
+
+  for (let i = priorRequests.length - 1; i >= 0; i--) {
+    const turn = expand(priorRequests[i]!);
+    const candidateTokens = turn.messages.length === 0
+      ? 0
+      : await tokenCounter.countMessages(turn.messages, model);
+
+    if (selected.length === 0) {
+      // Most-recent-turn exception: always include the latest prior turn
+      // even if it alone exceeds the budget.
+      selected.unshift(turn);
+      runningTokens = candidateTokens;
+      continue;
+    }
+
+    if (runningTokens + candidateTokens > budget) {
+      break;
+    }
+
+    selected.unshift(turn);
+    runningTokens += candidateTokens;
+  }
+
+  return selected;
+}
+
+/**
  * Loads conversation history from prior completed requests in this session,
- * converts to LLM-ready messages, and applies filtering/limiting.
+ * converts to LLM-ready messages, and applies turn-aware limiting.
+ *
+ * `limit` is interpreted as a count of conversational turns, where one
+ * `RequestRecord` is one turn. Tool-call/result messages within a retained
+ * turn are carried full-fidelity and do not decrement the budget. This
+ * fixes the original failure mode where a tool-heavy turn could fully
+ * consume an `N`-message window and evict the prior user message.
+ *
+ * Token-based limits are turn-aligned: whole turns are packed from the
+ * end and never split. The most recent prior turn is always included
+ * (even if alone over budget). See `selectRequestsByLimit`.
+ *
+ * Live items from the current (in-flight) request are always appended
+ * regardless of limit — this preserves the retry-after-mid-turn-failure
+ * scenario where the user's "try again" must see the in-flight tool state.
+ *
+ * Empty-of-LLM-content turns (turns whose items are all sub-agent or
+ * non-LLM types) still count against `{ turns: N }` but contribute zero
+ * messages. This keeps the slice logic at the request level and matches
+ * the spec's documented v1 behavior.
  *
  * Optionally includes items from the current in-flight request via
  * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
@@ -924,85 +1287,37 @@ async function loadLLMHistory(
   query?: ItemQuery,
   readLiveItems?: () => Array<OutputItem | BlockTraceItem>
 ): Promise<LLMMessage[]> {
-
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
     : LLM_AUDIENCE_TYPES;
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
+  const selectedTurns = await selectRequestsByLimit(
+    priorRequests,
+    query?.limit,
+    tokenCounter,
+    resolveModelId,
+    allowedTypes,
+    allowedRoles,
+  );
+
   const messages: LLMMessage[] = [];
-
-  function processItems(items: Array<OutputItem | BlockTraceItem>): void {
-    const sorted = [...items].sort((a, b) => {
-      const tsDiff = a.ts - b.ts;
-      return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
-    });
-
-    for (const item of sorted) {
-      if (item.transient === true) {
-        continue;
-      }
-
-      if (!allowedTypes.has(item.type)) {
-        continue;
-      }
-
-      const llmMessages = itemToLLMMessages(item, sorted);
-      for (const llmMessage of llmMessages) {
-        if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
-          continue;
-        }
-
-        messages.push(llmMessage);
-      }
-    }
+  for (const turn of selectedTurns) {
+    messages.push(...turn.messages);
   }
 
-  for (const request of priorRequests) {
-    if (request.items !== undefined) {
-      processItems(request.items);
-    }
-  }
-
-  // Include current request's live items so background work blocks (e.g.
-  // sessionTitleGenerator) can see the just-completed output.
+  // Live items from the in-flight request are always included regardless
+  // of limit. This is the retry/resume guarantee.
   if (readLiveItems !== undefined) {
-    processItems(readLiveItems());
+    messages.push(
+      ...expandRequestToMessages(readLiveItems(), allowedTypes, allowedRoles)
+    );
   }
 
-  // Apply limit
-  const limit = query?.limit;
-  if (limit === undefined) {
-    return messages;
-  }
-
-  if (typeof limit === "number") {
-    const sliced = limit < messages.length
-      ? messages.slice(messages.length - limit)
-      : messages;
-    // Ensure the slice didn't orphan a tool-result from its preceding
-    // assistant tool-call. AI SDK v6 requires tool-call/tool-result pairs;
-    // an orphaned tool-result causes models to produce empty output.
-    return trimOrphanedToolMessages(sliced);
-  }
-
-  // Token-based limit: pack from end within budget
-  const tokenBudget = limit.tokens;
-  let tokensUsed = 0;
-  let startIndex = messages.length;
-  const model = resolveModelId();
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const tokens = await tokenCounter.countMessages([messages[i]!], model);
-    if (tokensUsed + tokens > tokenBudget) {
-      break;
-    }
-
-    tokensUsed += tokens;
-    startIndex = i;
-  }
-
-  return trimOrphanedToolMessages(messages.slice(startIndex));
+  // Defense-in-depth: with turn-aligned slicing orphans should be
+  // structurally unreachable in normal operation, but keep the trim for
+  // edge data states (e.g., a request whose items begin mid-tool-pair).
+  return trimOrphanedToolMessages(messages);
 }
 
 /**
@@ -1165,6 +1480,12 @@ type EmissionContext = {
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
   /**
+   * Task attribution (FIX-658) — id of the task this scope is running, inherited
+   * from the nearest enclosing scope marked via `ctx._markTaskScope`. Stamped
+   * onto every item this scope emits.
+   */
+  taskId?: string;
+  /**
    * Agent identity that scope-emitted items inherit. Set by the owning
    * generator; undefined at the root (runtime-level emissions carry no
    * identity). Callers may override per-emission via options.
@@ -1203,6 +1524,7 @@ function createEmitMessage(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
@@ -1260,6 +1582,7 @@ function createEmitComponent(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       agentType: options?.agentType ?? emCtx.agentType,
       agentName: options?.agentName ?? emCtx.agentName,
       component,
@@ -1729,6 +2052,7 @@ function createEmitStatus(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
       message: slot.message,
       blocked: options?.blocked,
       backgroundTasks: options?.backgroundTasks
@@ -1942,6 +2266,13 @@ export async function createExecutionContext<
       ? resolveOrgStorageKey(optionsOrgId, flow)
       : undefined;
 
+  // Window the cross-turn history load to the most recent N completed
+  // requests (FIX-685). This bounds the store read and the default
+  // generator's in-prompt history regardless of session length; the full
+  // session stays retrievable via the state endpoint. Per-call
+  // history({ limit }) refines within this window — it cannot widen it.
+  const historyWindowTurns = flow.session?.historyWindow?.turns ?? 50;
+
   // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
   const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
@@ -1949,13 +2280,25 @@ export async function createExecutionContext<
     stores.session.get(sessionId),
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
-    stores.request.list({ sessionId })
+    // The N most-recently-started completed requests — `status:"completed"`
+    // excludes the current (in-progress) request and any in-flight siblings;
+    // `orderBy:"startedAtMs"` makes the windowed selection robust to
+    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    stores.request.list({
+      sessionId,
+      status: "completed",
+      limit: historyWindowTurns,
+      orderBy: "startedAtMs",
+      withItems: true
+    })
   ]);
 
-  // Filter to completed prior requests once — reused by both all()/client()
+  // The windowed list already filters to completed requests at the store;
+  // exclude only the current request (defends a retry that reuses an id),
+  // then sort ascending for stable history ordering. Reused by all()/client()
   // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
-    .filter((r) => r.id !== requestId && r.status === "completed")
+    .filter((r) => r.id !== requestId)
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   // Build prior items from completed request records. This replaces the
@@ -2056,13 +2399,17 @@ export async function createExecutionContext<
     await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
-  // Content lives in ContentStore exclusively (FIX-347). Eagerly load all
-  // content for the scopes this execution touches so reads during the run
-  // are synchronous against the in-memory cache.
+  // Content lives in ContentStore exclusively (FIX-347). Load only the
+  // content this flow declares (FIX-685) — fixed resources by key,
+  // collections by pattern prefix — so reads during the run are synchronous
+  // against the in-memory cache without over-fetching the whole scope. The
+  // full-scope view stays available via the state endpoint.
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    stores.content.getAll("session", sessionId),
-    stores.content.getAll("user", userKey),
-    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
+    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredScopeContent(stores.content, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, string>>({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -2076,6 +2423,26 @@ export async function createExecutionContext<
   const initialOrgContent = normalizeScopeResourceContent(
     orgResourceConfigs,
     resolvedOrgId !== undefined ? orgContentFromStore : undefined
+  );
+
+  // Resource state lives in ResourceStateStore exclusively (FIX-689), the
+  // state-layer twin of the content load above. Load only the state this flow
+  // declares — single resources by key, collections by pattern prefix — into
+  // per-scope caches; in-execution reads/writes hit the cache and persist
+  // per-key, never rewriting the whole scope record.
+  const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
+    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionResourceConfigs),
+    loadDeclaredResourceState(stores.resourceState, "user", userKey, userResourceConfigs),
+    resolvedOrgKey !== undefined
+      ? loadDeclaredResourceState(stores.resourceState, "org", resolvedOrgKey, orgResourceConfigs)
+      : Promise.resolve<Record<string, JsonObject>>({})
+  ]);
+
+  const initialSessionState = normalizeScopeResources(sessionResourceConfigs, sessionStateFromStore);
+  const initialUserState = normalizeScopeResources(userResourceConfigs, userStateFromStore);
+  const initialOrgState = normalizeScopeResources(
+    orgResourceConfigs,
+    resolvedOrgId !== undefined ? orgStateFromStore : undefined
   );
 
   let requestRecord = loadedRequest;
@@ -2121,11 +2488,17 @@ export async function createExecutionContext<
     current: orgRecord
   };
 
+  // State refs: eagerly loaded from ResourceStateStore at initialization
+  // (FIX-689), mirroring the content refs below. All reads during execution
+  // use the in-memory cache (synchronous); writes update the cache and persist
+  // to ResourceStateStore (async, per-key). The scope record's `.resources`
+  // field is no longer read or written by this path.
+  const sessionStateRef = { current: initialSessionState };
+  const userStateRef = { current: initialUserState };
+  const orgStateRef = { current: initialOrgState };
+
   const readSessionResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      sessionResourceConfigs,
-      sessionRef.current.resources as Record<string, unknown> | undefined
-    );
+    sessionStateRef.current;
 
   // Content refs: eagerly loaded from ContentStore at initialization.
   // All reads during execution use the in-memory cache (synchronous).
@@ -2138,19 +2511,13 @@ export async function createExecutionContext<
     sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      userResourceConfigs,
-      userRef.current.resources as Record<string, unknown> | undefined
-    );
+    userStateRef.current;
 
   const readUserResourceContent = (): Record<string, string> =>
     userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
-    normalizeScopeResources(
-      orgResourceConfigs,
-      orgRef.current?.resources as Record<string, unknown> | undefined
-    );
+    orgStateRef.current;
 
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
@@ -2158,16 +2525,21 @@ export async function createExecutionContext<
   const persistSessionResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    sessionRef.current = {
-      ...sessionRef.current,
-      resources: normalizeScopeResources(sessionResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Resource metadata writes are outside the state CAS path today
-    // (see FIX-347 for splitting resources from scope records). Use "any"
-    // to preserve current last-write-wins behavior for the resources field
-    // until that split lands.
-    await stores.session.set(sessionRef.current.id, sessionRef.current, "any");
+    const normalized = normalizeScopeResources(sessionResourceConfigs, next);
+    const previous = sessionStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("session", sessionId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("session", sessionId, key);
+      }
+    }
+
+    sessionStateRef.current = normalized;
   };
 
   const persistSessionResourceContent = async (
@@ -2193,13 +2565,21 @@ export async function createExecutionContext<
   const persistUserResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    userRef.current = {
-      ...userRef.current,
-      resources: normalizeScopeResources(userResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Last-write-wins for resources; see persistSessionResources comment.
-    await stores.user.set(userRef.current.id, userRef.current, "any");
+    const normalized = normalizeScopeResources(userResourceConfigs, next);
+    const previous = userStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("user", userKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("user", userKey, key);
+      }
+    }
+
+    userStateRef.current = normalized;
   };
 
   const persistUserResourceContent = async (
@@ -2225,18 +2605,25 @@ export async function createExecutionContext<
   const persistProjectResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    const current = orgRef.current;
-    if (current === undefined) {
+    if (resolvedOrgKey === undefined) {
       return;
     }
 
-    orgRef.current = {
-      ...current,
-      resources: normalizeScopeResources(orgResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    // Last-write-wins for resources; see persistSessionResources comment.
-    await stores.org.set(orgRef.current.id, orgRef.current, "any");
+    const normalized = normalizeScopeResources(orgResourceConfigs, next);
+    const previous = orgStateRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (!deepEqual(previous[key], value)) {
+        await stores.resourceState.set("org", resolvedOrgKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.resourceState.delete("org", resolvedOrgKey, key);
+      }
+    }
+
+    orgStateRef.current = normalized;
   };
 
   const persistProjectResourceContent = async (
@@ -2375,6 +2762,7 @@ export async function createExecutionContext<
 
   const userResources = createScopeResourceRegistry({
     scope: "user",
+    scopeId: userId,
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
@@ -2385,6 +2773,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
+    scopeId: sessionId,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     persistResources: persistSessionResources,
@@ -2398,6 +2787,7 @@ export async function createExecutionContext<
       ? undefined
       : createScopeResourceRegistry({
           scope: "org",
+          scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
@@ -2504,7 +2894,8 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        orgId: orgRef.current?.orgId
+        orgId: orgRef.current?.orgId,
+        tenantId: options.tenantId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2523,7 +2914,8 @@ export async function createExecutionContext<
       identity: {
         type: "user" as const,
         id: userRef.current.id,
-        userId: userRef.current.userId
+        userId: userRef.current.userId,
+        tenantId: options.tenantId
       },
       ...userOpsEmitting
     },
@@ -2537,7 +2929,8 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        orgId: sessionRef.current.orgId
+        orgId: sessionRef.current.orgId,
+        tenantId: options.tenantId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2641,7 +3034,8 @@ export async function createExecutionContext<
               type: "org" as const,
               id: orgRef.current.id,
               userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId
+              orgId: orgRef.current.orgId,
+              tenantId: options.tenantId
             },
             ...orgOpsEmitting
           },
@@ -2686,11 +3080,29 @@ export async function createExecutionContext<
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
     result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
     previous?: ExecutionParentNode;
+    /**
+     * Task id marked on this scope via `ctx._markTaskScope`. Descendant scopes
+     * walk `previous` to find the nearest marked ancestor and inherit it as
+     * `emCtx.taskId` / `_blockIdentity.taskId`, which emit sites stamp onto
+     * items. Mutable: a worker body marks its enclosing sequencer node at
+     * runtime, before constructing the child scopes that do the work.
+     */
+    scopeTaskId?: string;
   };
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
-    result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
+    result: {
+      status: "not_started" | "running" | "completed" | "failed";
+      output?: unknown;
+      error?: Error;
+      /**
+       * Set true when this block threw and a `.rescue()` handler recovered the
+       * error during its run. Stamped from the child context's `_didRescue` in
+       * `_withExecutionScope`'s success branch; read by `wasRescued`.
+       */
+      rescued?: boolean;
+    };
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -2754,7 +3166,12 @@ export async function createExecutionContext<
 
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
     onBlockStart: logger
-      ? (blockName, blockKind, input) => {
+      ? (blockName, blockKind, input, transient) => {
+          // Transient blocks (e.g. task-board's poll loop) fire hundreds
+          // of times per second; the runtime debug log floods stderr
+          // without adding operator value. The block_trace lifecycle is
+          // still emitted; this only suppresses the human-readable line.
+          if (transient === true) return;
           logRuntimeEvent(logger, "debug", "[flow-state] nested block started", {
             ...baseLogContext,
             blockName,
@@ -2764,7 +3181,8 @@ export async function createExecutionContext<
         }
       : undefined,
     onBlockComplete: logger
-      ? (blockName, blockKind, output, durationMs) => {
+      ? (blockName, blockKind, output, durationMs, transient) => {
+          if (transient === true) return;
           logRuntimeEvent(logger, "debug", "[flow-state] nested block completed", {
             ...baseLogContext,
             blockName,
@@ -2775,7 +3193,10 @@ export async function createExecutionContext<
         }
       : undefined,
     onBlockError: logger
-      ? (blockName, blockKind, error, durationMs) => {
+      ? (blockName, blockKind, error, durationMs, transient) => {
+          // Errors keep logging even for transient blocks — a failing
+          // poll loop is exactly the kind of thing operators need to see.
+          void transient;
           logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
             ...baseLogContext,
             blockName,
@@ -2900,11 +3321,79 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
+  // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
+  // with the same key share a single fn() invocation. Sits in front of the
+  // RequestStore so the wrapped side effect cannot fire twice in a race
+  // (the store is the durable backstop across retries).
+  // In-process memo of completed runOnce results. Populated synchronously
+  // the instant `fn()` resolves — before the store write — so a store
+  // failure cannot cause `fn()` to re-execute on a subsequent retry within
+  // the same request process. Store persistence is treated as best-effort
+  // bookkeeping for cross-process durability.
+  const runOnceMemo = new Map<string, unknown>();
+  const runOnceInflight = new Map<string, Promise<unknown>>();
+  const runOnce = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (typeof key !== "string" || key.length === 0) {
+      return Promise.reject(
+        new Error("ctx.runOnce(key, fn): `key` must be a non-empty string")
+      );
+    }
+    // Fast path: memo hit (a prior call in this process already completed).
+    if (runOnceMemo.has(key)) {
+      return Promise.resolve(runOnceMemo.get(key) as T);
+    }
+    // Claim the inflight slot synchronously before awaiting the store —
+    // otherwise concurrent calls with the same key all see an empty
+    // inflight map and each spawn their own fn() invocation.
+    const existing = runOnceInflight.get(key);
+    if (existing !== undefined) return existing as Promise<T>;
+
+    const requestId = requestRef.current.id;
+    const promise = (async (): Promise<T> => {
+      // Durable lookup. Catches block-retry resumes that lost the
+      // in-process memo (none today; future-proofs for durable execution).
+      const stored = await stores.request.getRunOnceResult(requestId, key);
+      if (stored.found) {
+        runOnceMemo.set(key, stored.value);
+        return stored.value as T;
+      }
+      const value = await fn();
+      // Memoize BEFORE the store write so a store failure cannot cause
+      // re-execution on the next retry within this process.
+      runOnceMemo.set(key, value);
+      try {
+        await stores.request.setRunOnceResult(requestId, key, value);
+      } catch (err) {
+        // Persistence failure is non-fatal: the side effect already fired
+        // and the in-process memo carries de-dup for the rest of this
+        // request. Cross-process durability is degraded but we do not
+        // amplify a store outage into a double-charge by re-running fn().
+        console.warn(
+          `[flow-state] runOnce persistence failed for key "${key}" (request ${requestId}); ` +
+            `in-process dedup remains in effect`,
+          err
+        );
+      }
+      return value;
+    })();
+    runOnceInflight.set(key, promise as Promise<unknown>);
+    promise.finally(() => {
+      runOnceInflight.delete(key);
+    });
+    return promise;
+  };
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
     siblingSearchLimit: number | undefined,
-    scopeEmCtx?: EmissionContext
+    scopeEmCtx?: EmissionContext,
+    // FIX-663: when provided, sets this scope's `ctx.signal` instead of the
+    // closure-captured `options.signal`. `_withExecutionScope` threads the
+    // current parent ctx's signal here so child scopes inherit the parent's
+    // signal (which may be the background signal inside a `.work()` tree)
+    // rather than the root request signal via closure capture.
+    signalOverride?: AbortSignal
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
@@ -2921,13 +3410,14 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
       org: orgHandle,
       resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
-      signal: options.signal ?? new AbortController().signal,
+      signal: signalOverride ?? options.signal ?? new AbortController().signal,
       resolveModel,
       targets: new Proxy({}, {
         get(_target, prop) {
@@ -3076,6 +3566,27 @@ export async function createExecutionContext<
 
         return { status: "not_started" } as BlockResult<never>;
       },
+      wasRescued: (target) => {
+        const name = typeof target === "string" ? target : target.name;
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name !== name) {
+              continue;
+            }
+            // Most-recent matching sibling wins (per-iteration correct under
+            // `.loopBack`), mirroring `getBlockResult`'s resolution.
+            return sibling.result.rescued === true;
+          }
+        }
+
+        return false;
+      },
       // Populated immediately after this object literal closes so the
       // deprecated aliases share the underlying impls with `ctx.emit.*`
       // and the trace.blockDebug emitter can read this context's
@@ -3084,12 +3595,39 @@ export async function createExecutionContext<
       emitComponent: undefined as unknown as BlockContext["emitComponent"],
       emitStatus: undefined as unknown as BlockContext["emitStatus"],
       emit: undefined as unknown as BlockContext["emit"],
+      _peekStatus: undefined as unknown as BlockContext["_peekStatus"],
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
+      // FIX-402: idempotency primitives. `idempotencyKey` is populated per
+      // block by executeBlock (it depends on the current blockPath, which is
+      // only known at execution time); `runOnce` closes over the request's
+      // store ref so it works across every scoped child context.
+      idempotencyKey: undefined,
+      runOnce,
+      // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
+      // as running `taskId`. The task-board worker body calls this once per
+      // claimed task; child scopes constructed afterward inherit it (see the
+      // `scopeTaskId` walk in `_withExecutionScope`). Writing to the shared
+      // node object means a later sibling step sees the mark even though the
+      // marking step has already returned. Each `.loopBack` turn runs in a
+      // fresh node, so sequential tasks of one worker stay separated even when
+      // their execution paths are identical.
+      _markTaskScope: (taskId: string | null): void => {
+        for (
+          let node: ExecutionParentNode | undefined = parentChain;
+          node !== undefined;
+          node = node.previous
+        ) {
+          if (node.parent.kind === "sequencer") {
+            node.scopeTaskId = taskId ?? undefined;
+            return;
+          }
+        }
+      },
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -3144,6 +3682,7 @@ export async function createExecutionContext<
               },
               ts: containerStartedAt,
               ownedBy: activeEmCtx.ownedBy,
+              taskId: activeEmCtx.taskId,
               blockName: resolvedParent.name,
               component: resolvedParent.container.component,
               label: resolvedParent.container.label,
@@ -3170,6 +3709,19 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        // Task attribution (FIX-658): inherit the nearest enclosing scope's
+        // marked task id. Resolved at construction — a worker body marks its
+        // enclosing sequencer node before constructing the steps that emit, so
+        // those steps' chains see the mark here. Re-resolved per scope (not
+        // copied from the parent emCtx) because the mark lands after the
+        // parent scope's emCtx was built.
+        let resolvedTaskId: string | undefined;
+        for (let node: ExecutionParentNode | undefined = childChain; node !== undefined; node = node.previous) {
+          if (node.scopeTaskId !== undefined) {
+            resolvedTaskId = node.scopeTaskId;
+            break;
+          }
+        }
         const childPhase = resolvedParent.phase ?? "main";
         // Each scope starts with no identity. Generators that declare an
         // `agentType` stamp it directly on the items they emit; other
@@ -3189,12 +3741,21 @@ export async function createExecutionContext<
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
+          taskId: resolvedTaskId,
         };
+        // FIX-663: propagate the signal down the scope chain. An explicit
+        // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
+        // inherit the *current* parent ctx's signal so descendant scopes of
+        // a `.work()` task tree keep seeing the background signal. Reading
+        // `context.signal` (not the closure-captured `options.signal`) is
+        // what makes the override propagate beyond one level.
+        const childSignal = signalOverride ?? context.signal;
         const childContext = createContext(
           childChain,
           childSiblingRegistry,
           childSiblingRegistry.length - 1,
-          childEmCtx
+          childEmCtx,
+          childSignal
         );
 
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
@@ -3203,6 +3764,7 @@ export async function createExecutionContext<
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
+          taskId: childEmCtx.taskId,
           phase: resolvedParent.phase ?? "main",
           blockPath: resolvedParent.path,
           transient: resolvedParent.transient
@@ -3212,6 +3774,13 @@ export async function createExecutionContext<
         // so `.work()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-work-pool.ts`.
         (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+        // FIX-663: re-attach the background signal on every scope so nested
+        // `.work()` dispatches can read it (the dispatch site reads
+        // `ctx._requestBackgroundSignal`, not `ctx.signal`).
+        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // FIX-406 6H: propagate the request's tracing level so sequencers in
+        // any nested scope gate observability snapshots consistently.
+        (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.
@@ -3222,6 +3791,11 @@ export async function createExecutionContext<
           siblingEntry.result.status = "completed";
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
+          // Carry the child's out-of-band rescue flag onto its sibling entry so
+          // a downstream sibling can read it via `ctx.wasRescued(...)`. Written
+          // by the sequencer runtime's rescue catch (see `_didRescue`).
+          siblingEntry.result.rescued =
+            (childContext as { _didRescue?: boolean })._didRescue === true;
 
           // Harvest the BlockValue hint set by the child's execute (if any)
           // so the block_trace `output` patch carries a ref/structure rather
@@ -3402,6 +3976,11 @@ export async function createExecutionContext<
       status: emitStatusImpl,
       trace: traceEmitters,
     };
+    // Read the request-scoped status slot. Internal — used by the generator's
+    // tool-call dispatch to snapshot/restore the slot around a parallel tool
+    // round so a tool's `activeStatusMessage` does not linger past the
+    // tool's lifetime.
+    context._peekStatus = (): string => statusSlot.message;
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,
@@ -3455,5 +4034,12 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  // FIX-663: attach the background signal to the root context. Child scopes
+  // re-attach it in `_withExecutionScope` (alongside the work pool).
+  (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
+  // with child scopes — keeps observability gating correct if a sequencer ever
+  // executes directly on the root context.
+  (rootContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
   return rootContext;
 }

@@ -1,0 +1,24 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "query": "JPM recent strategic announcement product launch regulatory filing",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.jpmorganchase.com/news/jpm-onyx-blockchain-network-expansion.html",
+      "title": "JPMorgan expands Onyx blockchain network to new institutional partners",
+      "snippet": "Onyx Digital Assets adds a tranche of new institutional participants; intraday repo network now includes a majority of primary dealers.",
+      "publisher": "jpmorganchase.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reuters.com/business/finance/jpmorgan-basel-3-endgame-capital.html",
+      "title": "JPMorgan flags Basel III Endgame capital impact on capital return",
+      "snippet": "Bank projects roughly 50bps of additional capital required under finalised rules; buyback pace may step down accordingly.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

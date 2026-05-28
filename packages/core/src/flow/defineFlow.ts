@@ -30,8 +30,9 @@ import type {
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { validateSchedulesConfig } from "../types/schedules";
-import { warnDeprecated } from "../utils/deprecation";
-import { introspectStateKeys } from "../utils/zod-introspect";
+import { validateChatConfig } from "../types/chat";
+import { warnDeprecated } from "../helpers/deprecation";
+import { introspectStateKeys } from "../helpers/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
 
@@ -519,6 +520,9 @@ function createFlowInstance(
   const schedules = definition.schedules;
   validateSchedulesConfig(kind, schedules, actions);
 
+  const chat = definition.chat;
+  validateChatConfig(kind, chat, actions);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -536,6 +540,7 @@ function createFlowInstance(
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
     mcp,
+    chat,
     schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
@@ -587,6 +592,7 @@ export function defineFlow<
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
     mcp: baseInstance.mcp,
+    chat: baseInstance.chat,
     schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,

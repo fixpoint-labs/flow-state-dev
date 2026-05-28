@@ -20,7 +20,7 @@
       "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],
       "@flow-state-dev/core/items/internal": ["packages/core/src/items/internal.ts"],
       "@flow-state-dev/core/models": ["packages/core/src/models/index.ts"],
-      "@flow-state-dev/core/utils": ["packages/core/src/utils/index.ts"],
+      "@flow-state-dev/core/helpers": ["packages/core/src/helpers/index.ts"],
       "@flow-state-dev/server": ["packages/server/src/index.ts"],
       "@flow-state-dev/server/testing": ["packages/server/src/testing.ts"],
       "@flow-state-dev/client": ["packages/client/src/index.ts"],
@@ -28,6 +28,9 @@
       "@flow-state-dev/testing": ["packages/testing/src/index.ts"],
       "@flow-state-dev/mcp": ["packages/mcp/src/index.ts"],
       "@flow-state-dev/scheduled": ["packages/scheduled/src/index.ts"],
+      "@flow-state-dev/scheduled/testing": ["packages/scheduled/src/testing.ts"],
+      "@flow-state-dev/chat-sdk": ["packages/chat-sdk/src/index.ts"],
+      "@flow-state-dev/chat-sdk/testing": ["packages/chat-sdk/src/testing.ts"],
       "@flow-state-dev/cli": ["packages/cli/src/index.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
       "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
@@ -42,6 +45,7 @@
       "@flow-state-dev/devtool/react": ["packages/devtool/src/react/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],
+      "@flow-state-dev/vercel/schedules": ["packages/vercel/src/schedules.ts"],
       "@flow-state-dev/voice-openai": ["packages/voice-openai/src/index.ts"],
       "@thought-fabric/core": ["packages/thought-fabric-core/src/index.ts"]
     }

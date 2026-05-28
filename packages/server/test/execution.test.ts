@@ -843,6 +843,139 @@ describe("execution runtime", () => {
     expect(result.output).toEqual({ outputMissing: true, status: "failed", hasError: true });
   });
 
+  it("reports wasRescued=true for a rescued sibling and false otherwise", async () => {
+    const { ctx } = await createRuntimeContext("req_was_rescued");
+
+    const thrower = handler({
+      name: "ws-thrower",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+    const recovery = handler({
+      name: "ws-recovery",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    // A rescued sub-sequencer: its inner throw is recovered, so it completes
+    // and becomes a (rescued) sibling in the outer scope.
+    const dispatch = sequencer({ name: "ws-dispatch", inputSchema: z.number() })
+      .then(thrower)
+      .rescue([{ block: recovery }]);
+
+    const okStep = handler({
+      name: "ws-ok",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value
+    });
+    // A sibling sequencer that completes without ever rescuing.
+    const safe = sequencer({ name: "ws-safe", inputSchema: z.number() }).then(okStep);
+
+    const probe = handler({
+      name: "ws-probe",
+      inputSchema: z.number(),
+      outputSchema: z.object({
+        rescuedByDef: z.boolean(),
+        rescuedByName: z.boolean(),
+        safeRescued: z.boolean(),
+        unknownRescued: z.boolean()
+      }),
+      execute: (_value, stepCtx) => ({
+        rescuedByDef: stepCtx.wasRescued(dispatch),
+        rescuedByName: stepCtx.wasRescued("ws-dispatch"),
+        safeRescued: stepCtx.wasRescued(safe),
+        unknownRescued: stepCtx.wasRescued("does-not-exist")
+      })
+    });
+
+    const flow = sequencer({ name: "ws-outer", inputSchema: z.number() })
+      .then(dispatch)
+      .then(safe)
+      .then(probe);
+
+    const result = await executeBlock({ block: flow, input: 5, ctx });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({
+      rescuedByDef: true,
+      rescuedByName: true,
+      safeRescued: false,
+      unknownRescued: false
+    });
+  });
+
+  it("tracks wasRescued per-iteration under loopBack", async () => {
+    const { ctx } = await createRuntimeContext("req_was_rescued_loop");
+
+    // Throws on its first run only, then succeeds — so the rescue fires in
+    // iteration 0 but not iteration 1.
+    let attempts = 0;
+    const flaky = handler({
+      name: "loop-flaky",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("first-attempt failure");
+        }
+        return attempts;
+      }
+    });
+    const recovery = handler({
+      name: "loop-recovery",
+      inputSchema: z.any(),
+      outputSchema: z.number(),
+      execute: () => -1
+    });
+    const dispatch = sequencer({ name: "loop-dispatch", inputSchema: z.any() })
+      .then(flaky)
+      .rescue([{ block: recovery }]);
+
+    // Drives exactly two iterations via a closure counter.
+    let loops = 0;
+    const controller = handler({
+      name: "loop-controller",
+      inputSchema: z.any(),
+      outputSchema: z.object({ continue: z.boolean() }),
+      execute: () => {
+        loops += 1;
+        return { continue: loops < 2 };
+      }
+    });
+    // Records this iteration's rescued status as observed by a downstream
+    // sibling of `dispatch`.
+    const observed: boolean[] = [];
+    const probe = handler({
+      name: "loop-probe",
+      inputSchema: z.object({ continue: z.boolean() }),
+      outputSchema: z.object({ continue: z.boolean() }),
+      execute: (input, stepCtx) => {
+        observed.push(stepCtx.wasRescued(dispatch));
+        return input;
+      }
+    });
+
+    const flow = sequencer({ name: "loop-outer", inputSchema: z.any() })
+      .then(dispatch)
+      .then(controller)
+      .then(probe)
+      .loopBack(dispatch.name, {
+        when: (v) => (v as { continue: boolean }).continue,
+        maxIterations: 5
+      });
+
+    const result = await executeBlock({ block: flow, input: {}, ctx });
+
+    expect(result.error).toBeUndefined();
+    // Iteration 0 rescued; iteration 1 ran clean.
+    expect(observed).toEqual([true, false]);
+  });
+
   it("resolves getTarget from sibling registry before ancestors", async () => {
     const { ctx } = await createRuntimeContext("req_targets_siblings");
 
@@ -2419,7 +2552,7 @@ describe("transient block output", () => {
           block: sequencer({
             name: "mixed-sequencer",
             inputSchema: z.object({ value: z.string() }),
-            outputSchema: z.string(),
+            outputSchema: z.object({ value: z.string() }),
             execute: async (input, ctx) => {
               await ctx._withExecutionScope!(
                 { name: "transient-step", kind: "handler", instanceId: "t1" },
@@ -3270,5 +3403,237 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);
     expect(statusMessages).toEqual(["step A running", "step B running"]);
+  });
+});
+
+describe("generator/tool status-slot restore (FIX-600)", () => {
+  it("restores the slot to the generator's pre-tool value after a tool round", async () => {
+    const stores = createInMemoryStores();
+
+    const tool = handler({
+      name: "weather-tool",
+      inputSchema: z.object({ city: z.string() }),
+      outputSchema: z.string(),
+      activeStatusMessage: "Calling weather tool...",
+      execute: (input, toolCtx) => {
+        // The tool's own activeStatusMessage doesn't fire automatically
+        // when invoked through the generator's tool loop (it bypasses
+        // the dispatcher), so emit it imperatively to model the bug
+        // surface: a tool whose status is left in the slot after it
+        // completes.
+        toolCtx.emit.status("Calling weather tool...");
+        return `weather in ${input.city}`;
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      activeStatusMessage: "Responding",
+      tools: [tool]
+    });
+
+    const flow = defineFlow({
+      kind: "tool-status-restore-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_tool_status_restore",
+      sessionId: "sess_tool_status_restore",
+      userId: "user_tool_status_restore",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          if (Array.isArray(options.tools) && options.tools.length > 0) {
+            await options.tools[0].execute({ city: "Tokyo" }, { toolCallId: "tc_1" });
+          }
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_tool_status_restore", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "weather?" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // Expected sequence: generator sets "Responding", the tool wrapper
+    // surfaces "Using weather-tool…", the tool's own emit overrides with
+    // "Calling weather tool...", restore puts "Responding" back.
+    expect(statusMessages).toEqual([
+      "Responding",
+      "Using weather-tool…",
+      "Calling weather tool...",
+      "Responding"
+    ]);
+  });
+
+  it("restores only once after parallel tool calls complete", async () => {
+    const stores = createInMemoryStores();
+
+    const toolA = handler({
+      name: "tool-a",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        toolCtx.emit.status("Running A");
+        return "a";
+      }
+    });
+    const toolB = handler({
+      name: "tool-b",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        toolCtx.emit.status("Running B");
+        return "b";
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tools",
+      activeStatusMessage: "Responding",
+      tools: [toolA, toolB]
+    });
+
+    const flow = defineFlow({
+      kind: "parallel-tools-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_parallel_tools",
+      sessionId: "sess_parallel_tools",
+      userId: "user_parallel_tools",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          // Kick off both tool executes without awaiting individually;
+          // wait for both via Promise.all to model parallel dispatch.
+          await Promise.all([
+            options.tools[0].execute({}, { toolCallId: "tc_a" }),
+            options.tools[1].execute({}, { toolCallId: "tc_b" })
+          ]);
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_parallel_tools", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "go" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // The exact ordering of "Running A" vs "Running B" is not guaranteed
+    // (parallel competition), but the slot must (1) start at "Responding"
+    // and (2) end at "Responding" with exactly ONE restore (no
+    // intermediate "Responding" between the two tool emits — the
+    // refcount only restores when the last tool exits).
+    expect(statusMessages[0]).toBe("Responding");
+    expect(statusMessages[statusMessages.length - 1]).toBe("Responding");
+    // Exactly two restores would mean we restored after each tool;
+    // exactly one restore is the contract.
+    const restoreCount = statusMessages
+      .slice(1, -1)
+      .filter((m: string) => m === "Responding").length;
+    expect(restoreCount).toBe(0);
+  });
+
+  it("clears the 'Using <tool>' status after a tool with no emit.status finishes", async () => {
+    // Regression: web tools like search/fetch/crawl don't call emit.status
+    // themselves. The framework surfaces "Using <tool>…" so the in-flight
+    // indicator reflects the current tool — and must clear it on completion
+    // so the indicator doesn't claim the tool is still running.
+    const stores = createInMemoryStores();
+
+    const silentTool = handler({
+      name: "search",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.string(),
+      execute: (input) => `results for ${input.q}`
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      activeStatusMessage: "Responding",
+      tools: [silentTool]
+    });
+
+    const flow = defineFlow({
+      kind: "silent-tool-status-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: chat
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_silent_tool",
+      sessionId: "sess_silent_tool",
+      userId: "user_silent_tool",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          await options.tools[0].execute({ q: "weather" }, { toolCallId: "tc_1" });
+          return { text: "ok" };
+        }
+      }),
+      response: createResponseEmitter({ requestId: "req_silent_tool", now: () => 1 })
+    });
+
+    await executeBlock({ block: chat, input: { text: "search?" }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+
+    // The "Using search…" surfaced by the wrapper must be cleared back to
+    // the generator's "Responding" once the tool returns — even though the
+    // tool itself never touched the slot.
+    expect(statusMessages).toEqual([
+      "Responding",
+      "Using search…",
+      "Responding"
+    ]);
   });
 });

@@ -8,6 +8,7 @@
  * without an extra fetch.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
@@ -34,6 +35,38 @@ export const thesisSection = z.object({
 
 export type ThesisSection = z.infer<typeof thesisSection>;
 
+/** Shared citation shape — kept in resources.ts (not the per-phase thesis
+ *  schema) because the renderer reads citations off memo state, and memo
+ *  state is the canonical persisted shape. Phase 1's thesis-schema
+ *  re-exports its own `citation` for the LLM output contract; they agree. */
+export const memoCitation = z.object({
+  url: z.string(),
+  title: z.string(),
+});
+
+export type MemoCitation = z.infer<typeof memoCitation>;
+
+/** Phase 2 citation-integrity report (FIX-679). Produced deterministically
+ *  by `validateCitations` after the bull/bear debate, not by any LLM:
+ *  every `[memo:X "quote"]` tag in every debate contribution is substring-
+ *  checked against the named analyst memo. `invalidTags` lists the tags
+ *  whose quote did not appear verbatim. Persisted on the research-manager
+ *  memo and mirrored on session state so the RM generator's context
+ *  formatter can render it. */
+export const citationIntegritySchema = z.object({
+  tagsChecked: z.number(),
+  tagsValid: z.number(),
+  invalidTags: z.array(
+    z.object({
+      contribution: z.string(),
+      tag: z.string(),
+      attemptedQuote: z.string(),
+    }),
+  ),
+});
+
+export type CitationIntegrity = z.infer<typeof citationIntegritySchema>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -45,14 +78,23 @@ export const memoStateSchema = z.object({
   ticker: z.string(),
   date: z.string(),
   phaseId: z.string(),
-  label: z.string().nullable(),
-  headline: z.string().nullable(),
-  rating: z.string().nullable(),
-  body: z.array(thesisSection).nullable(),
-  metrics: z.record(z.string(), z.string()).nullable(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  errorMessage: z.string().nullable(),
+  label: z.string().nullable().default(null),
+  headline: z.string().nullable().default(null),
+  rating: z.string().nullable().default(null),
+  body: z.array(thesisSection).nullable().default(null),
+  metrics: z.record(z.string(), z.string()).nullable().default(null),
+  startedAt: z.string().nullable().default(null),
+  completedAt: z.string().nullable().default(null),
+  errorMessage: z.string().nullable().default(null),
+  /** Phase 1 investigative citations (FIX-612). Populated by analyst
+   *  generators when they invoke `fetch` on a discovery URL; null on the
+   *  cheap preset and on memos that never investigated. Renderer shows a
+   *  "Sources" footer when non-empty. */
+  citations: z.array(memoCitation).nullable().default(null),
+  /** Phase 1 data-grounding sentinel (FIX-681). Only analyst memos populate
+   *  this; later-phase memos leave it `null`. `"unavailable"` memos are
+   *  flagged by the prompt formatters so downstream agents skip synthesis. */
+  dataQuality: z.enum(["full", "partial", "unavailable"]).nullable().default(null),
   // Phase 2 InvestmentThesis extension. Only the research-manager memo
   // (`memos/p2/research-manager`) populates these; all other memos leave
   // them `null`. Read by Phase 3+ to reason about the debate's outcome.
@@ -61,6 +103,11 @@ export const memoStateSchema = z.object({
   keyRisks: z.array(z.string()).nullable().default(null),
   keyOpportunities: z.array(z.string()).nullable().default(null),
   unresolvedDisagreements: z.array(z.string()).nullable().default(null),
+  // Phase 2 citation-integrity report (FIX-679). Only the research-manager
+  // memo populates this, projected from session state by the writer (the
+  // LLM never emits it). Null on every other memo and on runs that produced
+  // no tagged contributions.
+  citationIntegrity: citationIntegritySchema.nullable().default(null),
   // Phase 3 TradeProposal extension. Only the trader memo
   // (`memos/p3/trader`) populates these; all other memos leave them `null`.
   // Read by Phase 4+ to reason about the proposed trade.
@@ -105,6 +152,12 @@ export const memoStateSchema = z.object({
       z.object({
         description: z.string(),
         reason: z.string(),
+        dismissalCategory: z.enum([
+          "already-addressed",
+          "out-of-scope",
+          "no-mechanism",
+          "asymmetric-no-bound",
+        ]),
       }),
     )
     .nullable()
@@ -200,3 +253,15 @@ export const memosCollection = defineResourceCollection({
 export const memoResources = {
   memos: memosCollection,
 } as const;
+
+/**
+ * Phase 2 round-robin contributions resource. Created as a free resource ref
+ * (no surrounding collection) so the bull/bear round-robin can share its
+ * transcript with the three post-loop consolidation generators and with the
+ * `tradingDesk` capability's stance/debate presets.
+ *
+ * Lives in this top-level resources module so importers (the round-robin
+ * instance, the capability, the flow registration) all pull from one place —
+ * keeping the import graph cycle-free without a per-phase leaf module.
+ */
+export const phase2Contributions = createRoundRobinContributions();

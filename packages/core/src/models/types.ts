@@ -1,5 +1,3 @@
-import type { GeneratorModel } from "../types/model";
-
 // ---------------------------------------------------------------------------
 // Provider names
 // ---------------------------------------------------------------------------
@@ -15,16 +13,17 @@ export const gatewayTypes = ["vercel", "openrouter"] as const;
 export type GatewayType = (typeof gatewayTypes)[number];
 
 // ---------------------------------------------------------------------------
-// Model group config
+// Fallback-model internal merge type
 // ---------------------------------------------------------------------------
 
-export interface ModelGroupConfig {
-  /** Ordered preference list. Format: 'provider/model-id'. */
-  models: string[];
-  /** Default generation settings for this group. User config wins. */
-  defaults?: ModelGroupDefaults;
-}
-
+/**
+ * Internal merge type used by `createFallbackModel` to apply per-provider
+ * defaults under call-site options. Not part of the public API — the public
+ * surface for per-intent defaults is {@link IntentDefaults}.
+ *
+ * `providerOptions` is filtered by the resolved candidate's provider name
+ * before merging, so keys for other providers are dropped silently.
+ */
 export interface ModelGroupDefaults {
   maxTokens?: number;
   /** Per-provider options (only applied when the resolved model matches the provider). */
@@ -32,36 +31,52 @@ export interface ModelGroupDefaults {
 }
 
 // ---------------------------------------------------------------------------
-// Provider factory config
+// Intent defaults (FIX-633)
 // ---------------------------------------------------------------------------
 
-export interface FSDProviderConfig {
-  /** Model groups. Keys are group names ('fast', 'thinking', etc.). */
-  groups: Record<string, ModelGroupConfig>;
+/**
+ * Per-intent defaults applied when a candidate from that intent wins
+ * resolution. The resolved candidate's provider is used to filter
+ * `providerOptions` — keys for other providers are dropped silently
+ * (matches the Vercel AI SDK's per-provider namespace behavior).
+ *
+ * Call-site `providerOptions` (passed by a generator at execution time)
+ * always wins on key collisions. Nested provider-namespace objects are
+ * deep-merged.
+ *
+ * Captured at resolver construction time — the resolved fallback model
+ * is immutable. Mutations to `intentDefaults` after `createModelResolver`
+ * has been called do not affect already-resolved intents (intents are
+ * cached by `(name, normalizedPreference)`).
+ *
+ * Open shape so future fields (reasoning, caching, etc.) can be added
+ * without a breaking change.
+ */
+export interface IntentDefaults {
   /**
-   * AI SDK provider instances. Keys are provider prefixes used in model strings.
-   * If omitted, auto-creates providers from env vars.
+   * Per-provider options merged into the request when a candidate from
+   * the intent's list wins. Only the resolved provider's sub-object is
+   * kept; others are dropped.
    */
-  providers?: Record<string, unknown>;
-  /**
-   * Explicit API keys. Overrides env var detection.
-   * Format: { anthropic: 'sk-...', openai: 'sk-...', google: '...' }
-   */
-  keys?: Partial<Record<string, string>>;
-  /** Gateway providers that can route to multiple backends. */
-  gateways?: Record<string, GatewayEntry>;
-  /** Retry policy for failed model calls. */
-  retryPolicy?: RetryPolicy;
-  /**
-   * Default provider preference applied when a call-site
-   * `ResolveOptions.preferProvider` is omitted. Accepts a provider name or an ordered list. The resolver
-   * performs a stable reorder of the group's model list: preferred buckets
-   * first (in the order given), remaining models after, in their original
-   * relative order. Fully backward-compatible — omitting this preserves the
-   * group author's ordering.
-   */
-  providerPreference?: ProviderPreference;
+  providerOptions?: Record<string, Record<string, unknown>>;
 }
+
+// ---------------------------------------------------------------------------
+// Legacy createFSDProvider types — tombstoned in FIX-633
+// ---------------------------------------------------------------------------
+
+/** @deprecated Removed in FIX-633. Migrate to createModelResolver({ intents, intentDefaults }). */
+export type FSDProvider = never;
+/** @deprecated Removed in FIX-633. */
+export type FSDProviderConfig = never;
+/** @deprecated Removed in FIX-633. Use `{ intents: Record<string, string[]> }` on createModelResolver instead. */
+export type ModelGroupConfig = never;
+/** @deprecated Removed in FIX-633. Use ResolveModelCallOptions instead. */
+export type ResolveOptions = never;
+/** @deprecated Removed in FIX-633. */
+export type ExplainCandidate = never;
+/** @deprecated Removed in FIX-633. */
+export type ExplainResult = never;
 
 // ---------------------------------------------------------------------------
 // Provider preference (FIX-425)
@@ -69,67 +84,10 @@ export interface FSDProviderConfig {
 
 /**
  * Brand preference axis: a provider name ("anthropic") or an ordered list
- * of provider names (["anthropic", "google"]). Orthogonal to the model
- * group / intent axis — the group or intent defines the candidate pool;
- * preference reorders it.
+ * of provider names (["anthropic", "google"]). Orthogonal to the intent
+ * axis — the intent defines the candidate pool; preference reorders it.
  */
 export type ProviderPreference = string | string[];
-
-/**
- * Options passed to a provider call site to influence model resolution
- * without editing the group definition.
- */
-export interface ResolveOptions {
-  /**
-   * Preferred provider(s). Overrides any provider-level default when set.
-   * Renamed from the legacy `prefer` field — passing `prefer` now throws a
-   * migration error.
-   */
-  preferProvider?: ProviderPreference;
-  /**
-   * When true, throws if no model from the preferred providers is available.
-   * When false (default), falls back to the full group in its natural order.
-   */
-  strict?: boolean;
-}
-
-/**
- * One row returned by {@link FSDProvider.explain}. Reflects the resolver's
- * decision for a single candidate model, including whether it is available
- * and why.
- */
-export interface ExplainCandidate {
-  /** Model string in `provider/model-id` form, verbatim from the group. */
-  modelId: string;
-  /** Provider prefix extracted from `modelId`. */
-  providerName: string;
-  /** Whether the resolver can construct a working model for this entry. */
-  available: boolean;
-  /** How this model would be reached when available. */
-  source?: "key" | "gateway";
-  /** Gateway name when `source === "gateway"`. */
-  gateway?: string;
-  /** Short reason when `available === false`. */
-  reason?: string;
-}
-
-/**
- * Introspection output describing what a provider call will do, before it is
- * used. Useful for debugging, UI selectors, and spec authoring.
- */
-export interface ExplainResult {
-  /** The group (or preset) name that was resolved. */
-  preset: string;
-  /**
-   * The normalized preference list (after dedupe / empty-entry removal). An
-   * empty array means "no preference" — the preset's natural order is used.
-   */
-  prefer: string[];
-  /** Candidates in the order the fallback chain would walk them. */
-  candidates: ExplainCandidate[];
-  /** The first available candidate's model string, or `null` when none. */
-  willUse: string | null;
-}
 
 export interface GatewayConfig {
   type: GatewayType;
@@ -152,31 +110,3 @@ export interface RetryPolicy {
   maxDelayMs?: number;
 }
 
-// ---------------------------------------------------------------------------
-// FSD Provider callable
-// ---------------------------------------------------------------------------
-
-export interface FSDProvider {
-  /**
-   * Get a GeneratorModel for a named group. Optional
-   * `ResolveOptions.preferProvider` reorders the group's models by provider
-   * before availability filtering and fallback. Call-site `preferProvider`
-   * overrides any provider-level default.
-   */
-  (groupName: string, options?: ResolveOptions): GeneratorModel;
-  /** Explicit form: get a language model for a named group. */
-  languageModel(groupName: string, options?: ResolveOptions): GeneratorModel;
-  /** List available groups. */
-  groups(): string[];
-  /**
-   * Check which models in a group are available. When
-   * `options.preferProvider` is supplied, the returned list is ordered after the preference reorder
-   * (same order the fallback chain will walk).
-   */
-  available(groupName: string, options?: ResolveOptions): string[];
-  /**
-   * Describe the candidate list and resolver decision for a group. See
-   * {@link ExplainResult}.
-   */
-  explain(groupName: string, options?: ResolveOptions): ExplainResult;
-}

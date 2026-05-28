@@ -10,6 +10,14 @@ export type ScopeIdentity = {
   id: string;
   userId?: string;
   orgId?: string;
+  /**
+   * Optional tenant the request runs under (FIX-406 6D). Extracted from a
+   * configurable HTTP header (default `x-tenant-id`) and exposed on request,
+   * session, user, and org scope identities so handlers and middleware can
+   * branch on it. Undefined for single-tenant apps. (Tenant-scoped store-key
+   * isolation is a separate, deferred change.)
+   */
+  tenantId?: string;
 };
 
 export type SessionItem = {
@@ -26,7 +34,28 @@ export type SessionItem = {
   agentName?: string;
 };
 
-export type MessageLimit = number | { tokens: number };
+/**
+ * Bounds the number of items / messages / turns returned by a view.
+ *
+ * The bare `number` form is interpreted per-view:
+ * - In `items.history()`, `N` means "the last N conversational turns" — a
+ *   tool-heavy turn counts as one turn regardless of how many tool-call /
+ *   tool-result protocol messages it produced.
+ * - In `items.all()` and `items.client()`, `N` means "the last N items".
+ *
+ * `{ turns: N }` is the explicit form for turn-based limiting and is
+ * intended for `items.history()`. It is also accepted by `items.all()`
+ * and `items.client()` for type-system uniformity, but in those views it
+ * is treated as a plain item count (`N` items, not "items from N turns")
+ * — those views have no notion of a turn boundary. Prefer bare `number`
+ * or omit the limit on the non-history views to avoid this fallback.
+ *
+ * `{ tokens: N }` is token-aware. In `items.history()` packing is turn-
+ * aligned: whole turns are accepted from the end until adding the next
+ * would exceed the budget. The most recent prior turn is always included
+ * even if it alone exceeds the budget.
+ */
+export type MessageLimit = number | { tokens: number } | { turns: number };
 
 export type ItemQuery = {
   limit?: MessageLimit;

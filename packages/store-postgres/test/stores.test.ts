@@ -71,6 +71,25 @@ function makeRequestRecord(
   };
 }
 
+function makeMessageItem(
+  requestId: string,
+  id: string,
+  itemIndex: number,
+  text: string
+): Record<string, unknown> {
+  return {
+    id,
+    type: "message",
+    status: "done",
+    requestId,
+    itemIndex,
+    provenance: { blockKind: "generator", blockInstanceId: "b1", blockName: "g" },
+    ts: now(),
+    role: "assistant",
+    content: [{ type: "text", text }]
+  };
+}
+
 function makeUserRecord(id: string): UserRecord {
   const ts = now();
   return {
@@ -266,6 +285,63 @@ describe("PostgreSQL store adapter", () => {
       expect(await s.request.list({ userId: "user_1" })).toHaveLength(1);
     });
 
+    it("orderBy startedAtMs orders by start time, not last update", async () => {
+      const s = await freshStores();
+      // req_old started first but was updated last; req_new started last but
+      // updated first. orderBy:startedAtMs must return start order (new, old);
+      // the default updatedAt order returns (old, new).
+      await s.request.set(
+        "req_old",
+        makeRequestRecord("req_old", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 100,
+          createdAt: 100,
+          updatedAt: 999
+        }),
+        "any"
+      );
+      await s.request.set(
+        "req_new",
+        makeRequestRecord("req_new", "flow-a", "run", "user_1", "sess_o", {
+          status: "completed",
+          startedAtMs: 500,
+          createdAt: 500,
+          updatedAt: 200
+        }),
+        "any"
+      );
+
+      const byStarted = await s.request.list({ sessionId: "sess_o", orderBy: "startedAtMs" });
+      expect(byStarted.map((r) => r.id)).toEqual(["req_new", "req_old"]);
+
+      const byUpdated = await s.request.list({ sessionId: "sess_o" });
+      expect(byUpdated.map((r) => r.id)).toEqual(["req_old", "req_new"]);
+    });
+
+    it("orderBy startedAtMs with limit selects the most-recently-started", async () => {
+      const s = await freshStores();
+      for (let n = 1; n <= 3; n++) {
+        await s.request.set(
+          `req_${n}`,
+          makeRequestRecord(`req_${n}`, "flow-a", "run", "user_1", "sess_l", {
+            status: "completed",
+            startedAtMs: n * 100,
+            createdAt: n * 100,
+            updatedAt: n * 100
+          }),
+          "any"
+        );
+      }
+
+      const windowed = await s.request.list({
+        sessionId: "sess_l",
+        status: "completed",
+        orderBy: "startedAtMs",
+        limit: 2
+      });
+      expect(windowed.map((r) => r.id)).toEqual(["req_3", "req_2"]);
+    });
+
     it("filters by status", async () => {
       const s = await freshStores();
       await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "completed" }), "any");
@@ -299,16 +375,524 @@ describe("PostgreSQL store adapter", () => {
       const s = await freshStores();
       await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
 
-      const items = [
-        { kind: "text" as const, content: "hello", sequenceNumber: 1 }
-      ];
+      const items = [makeMessageItem("req_1", "msg_1", 1, "hello")] as any;
       s.request.persistItems("req_1", items);
       await s.request.flushItems("req_1");
 
       const result = await s.request.get("req_1");
       expect(result!.items).toBeDefined();
       expect(result!.items).toHaveLength(1);
-      expect((result!.items![0] as { content: string }).content).toBe("hello");
+      expect(result!.items![0]!.id).toBe("msg_1");
+    });
+  });
+
+  // --- Content store (FIX-685) ---
+
+  describe("content store", () => {
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "files/a.ts", "a");
+      await s.content.set("session", "s1", "files/b.ts", "b");
+      await s.content.set("session", "s1", "notes", "n");
+
+      expect(await s.content.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": "a",
+        "files/b.ts": "b"
+      });
+    });
+
+    it("getByPrefix with an empty prefix returns all keys in scope", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "notes", "n");
+      await s.content.set("session", "s1", "files/a.ts", "a");
+
+      expect(await s.content.getByPrefix("session", "s1", "")).toEqual({
+        notes: "n",
+        "files/a.ts": "a"
+      });
+    });
+
+    it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
+      const s = await freshStores();
+      await s.content.set("session", "s1", "a_b/1", "match");
+      await s.content.set("session", "s1", "axb/1", "no"); // `_` is a LIKE wildcard
+      await s.content.set("session", "s1", "other", "no");
+
+      expect(await s.content.getByPrefix("session", "s1", "a_b/")).toEqual({
+        "a_b/1": "match"
+      });
+    });
+  });
+
+  describe("resource state store", () => {
+    it("set then get round-trips JSONB state", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
+        language: "ts",
+        lines: 10
+      });
+    });
+
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
+      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+
+      expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
+        "files/a.ts": { v: 1 },
+        "files/b.ts": { v: 2 }
+      });
+    });
+
+    it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "a_b/1", { v: "match" });
+      await s.resourceState.set("session", "s1", "axb/1", { v: "no" });
+      await s.resourceState.set("session", "s1", "other", { v: "no" });
+
+      expect(await s.resourceState.getByPrefix("session", "s1", "a_b/")).toEqual({
+        "a_b/1": { v: "match" }
+      });
+    });
+
+    it("set overwrites and delete removes a single key", async () => {
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "k", { v: 1 });
+      await s.resourceState.set("session", "s1", "k", { v: 2 });
+      expect(await s.resourceState.get("session", "s1", "k")).toEqual({ v: 2 });
+      await s.resourceState.delete("session", "s1", "k");
+      expect(await s.resourceState.get("session", "s1", "k")).toBeUndefined();
+    });
+  });
+
+  // --- FIX-657: request_items table ---
+
+  describe("request_items (FIX-657)", () => {
+    it("creates the request_items table and ordering index", async () => {
+      await freshStores();
+      const executor = pgliteExecutor(pglite);
+      const t = await executor.query(
+        "SELECT to_regclass('request_items') AS r"
+      );
+      expect((t.rows[0] as any).r).toBe("request_items");
+      const i = await executor.query(
+        "SELECT to_regclass('idx_request_items_request_sequence') AS r"
+      );
+      expect((i.rows[0] as any).r).toBe("idx_request_items_request_sequence");
+    });
+
+    it("unnest-based UPSERT lands two rows with typed-array params", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_unnest",
+        makeRequestRecord("req_unnest", "flow-a", "run", "u"),
+        "any"
+      );
+      s.request.persistItems("req_unnest", [
+        makeMessageItem("req_unnest", "a", 0, "x") as any,
+        makeMessageItem("req_unnest", "b", 1, "y") as any
+      ]);
+      await s.request.flushItems("req_unnest");
+      const executor = pgliteExecutor(pglite);
+      const result = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_unnest"]
+      );
+      expect(Number((result.rows[0] as any).c)).toBe(2);
+    });
+
+    it("upserts only the changed item when one reference changes", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_diff",
+        makeRequestRecord("req_diff", "flow-a", "run", "u"),
+        "any"
+      );
+      const a = makeMessageItem("req_diff", "a", 0, "first-a");
+      const b = makeMessageItem("req_diff", "b", 1, "first-b");
+      s.request.persistItems("req_diff", [a, b] as any);
+      await s.request.flushItems("req_diff");
+
+      const b2 = makeMessageItem("req_diff", "b", 1, "second-b");
+      // Same reference for `a` (no-op), new reference for `b` (UPSERT).
+      s.request.persistItems("req_diff", [a, b2] as any);
+      await s.request.flushItems("req_diff");
+
+      const got = await s.request.get("req_diff");
+      const items = got!.items!;
+      const aRow = items.find((i: any) => i.id === "a") as any;
+      const bRow = items.find((i: any) => i.id === "b") as any;
+      expect(aRow.content[0].text).toBe("first-a");
+      expect(bRow.content[0].text).toBe("second-b");
+    });
+
+    it("second flush is a no-op when no references changed", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_noop",
+        makeRequestRecord("req_noop", "flow-a", "run", "u"),
+        "any"
+      );
+      const item = makeMessageItem("req_noop", "a", 0, "x");
+      s.request.persistItems("req_noop", [item] as any);
+      await s.request.flushItems("req_noop");
+
+      // Spy on executor to count UPSERTs after the steady-state is reached.
+      const executor = pgliteExecutor(pglite);
+      const before = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_noop"]
+      );
+      expect(Number((before.rows[0] as any).c)).toBe(1);
+
+      // Persist the same reference again — should not change row count or data.
+      s.request.persistItems("req_noop", [item] as any);
+      await s.request.flushItems("req_noop");
+
+      const after = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_noop"]
+      );
+      expect(Number((after.rows[0] as any).c)).toBe(1);
+    });
+
+    it("keyed item upsert updates row and sequence on re-emit", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_keyed",
+        makeRequestRecord("req_keyed", "flow-a", "run", "u"),
+        "any"
+      );
+      const keyed = "item_component_keyed:task-board";
+      const first = makeMessageItem("req_keyed", keyed, 5, "v1");
+      s.request.persistItems("req_keyed", [first] as any);
+      await s.request.flushItems("req_keyed");
+      const second = makeMessageItem("req_keyed", keyed, 12, "v2");
+      s.request.persistItems("req_keyed", [second] as any);
+      await s.request.flushItems("req_keyed");
+
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT sequence, data FROM request_items WHERE request_id = $1",
+        ["req_keyed"]
+      );
+      expect(got.rows).toHaveLength(1);
+      expect(Number((got.rows[0] as any).sequence)).toBe(12);
+    });
+
+    it("get returns legacy data.items when request_items has no rows", async () => {
+      const s = await freshStores();
+      const legacyItem = makeMessageItem("legacy_1", "legacy_a", 0, "legacy-x");
+      // Seed the legacy shape: items live inside data.items on the
+      // requests row, with no rows in request_items.
+      const record = makeRequestRecord("legacy_1", "flow-a", "run", "u", "sess", {
+        items: [legacyItem as any]
+      });
+      // Bypass the new strip-on-set by writing the JSONB directly.
+      const executor = pgliteExecutor(pglite);
+      await executor.query(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
+        [
+          "legacy_1",
+          record.flowKind,
+          record.userId,
+          record.sessionId ?? null,
+          record.status,
+          record.version,
+          record.createdAt,
+          record.updatedAt,
+          JSON.stringify(record)
+        ]
+      );
+      const got = await s.request.get("legacy_1");
+      expect(got!.items).toHaveLength(1);
+      expect(got!.items![0]!.id).toBe("legacy_a");
+    });
+
+    it("merges legacy data.items with request_items rows, table-wins on collision", async () => {
+      const s = await freshStores();
+      const legacyA = makeMessageItem("merge_1", "shared", 0, "legacy-version");
+      const legacyB = makeMessageItem("merge_1", "legacy-only", 1, "legacy-b");
+      const record = makeRequestRecord("merge_1", "flow-a", "run", "u", "sess", {
+        items: [legacyA as any, legacyB as any]
+      });
+      const executor = pgliteExecutor(pglite);
+      await executor.query(
+        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
+          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
+        [
+          "merge_1",
+          record.flowKind,
+          record.userId,
+          record.sessionId ?? null,
+          record.status,
+          record.version,
+          record.createdAt,
+          record.updatedAt,
+          JSON.stringify(record)
+        ]
+      );
+      // Write the table version for `shared` with new content (table wins).
+      const tableShared = makeMessageItem("merge_1", "shared", 2, "table-version");
+      const tableC = makeMessageItem("merge_1", "table-only", 3, "table-c");
+      s.request.persistItems("merge_1", [tableShared, tableC] as any);
+      await s.request.flushItems("merge_1");
+
+      const got = await s.request.get("merge_1");
+      expect(got!.items).toHaveLength(3);
+      const sharedRow = got!.items!.find((i) => i.id === "shared") as any;
+      expect(sharedRow.content[0].text).toBe("table-version");
+      // Ordered by itemIndex: legacy-only (1), shared (2), table-only (3)
+      expect(got!.items!.map((i) => i.id)).toEqual([
+        "legacy-only",
+        "shared",
+        "table-only"
+      ]);
+    });
+
+    it("list default leaves items undefined", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_l1",
+        makeRequestRecord("req_l1", "flow-a", "run", "u", "sess_L"),
+        "any"
+      );
+      s.request.persistItems("req_l1", [
+        makeMessageItem("req_l1", "a", 0, "x") as any
+      ]);
+      await s.request.flushItems("req_l1");
+
+      const out = await s.request.list({ sessionId: "sess_L" });
+      expect(out).toHaveLength(1);
+      expect(out[0]!.items).toBeUndefined();
+    });
+
+    it("list with withItems:true populates items, merging legacy + table", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_l2",
+        makeRequestRecord("req_l2", "flow-a", "run", "u", "sess_L2"),
+        "any"
+      );
+      s.request.persistItems("req_l2", [
+        makeMessageItem("req_l2", "a", 0, "x") as any,
+        makeMessageItem("req_l2", "b", 1, "y") as any
+      ]);
+      await s.request.flushItems("req_l2");
+
+      const out = await s.request.list({ sessionId: "sess_L2", withItems: true });
+      expect(out).toHaveLength(1);
+      expect(out[0]!.items).toHaveLength(2);
+      expect(out[0]!.items!.map((i) => i.id)).toEqual(["a", "b"]);
+    });
+
+    it("list with withItems:true against an empty session returns []", async () => {
+      const s = await freshStores();
+      const out = await s.request.list({
+        sessionId: "no_such_session",
+        withItems: true
+      });
+      expect(out).toEqual([]);
+    });
+
+    it("set strips items from JSONB serialization", async () => {
+      const s = await freshStores();
+      const record = makeRequestRecord("req_strip", "flow-a", "run", "u");
+      record.items = [makeMessageItem("req_strip", "x", 0, "x") as any];
+      await s.request.set("req_strip", record, "any");
+
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT data->'items' AS items FROM requests WHERE id = $1",
+        ["req_strip"]
+      );
+      expect((got.rows[0] as any).items).toBeNull();
+    });
+
+    it("terminal set clears lastPersistedItems so a re-persist re-upserts", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_term",
+        makeRequestRecord("req_term", "flow-a", "run", "u"),
+        "any"
+      );
+      const item = makeMessageItem("req_term", "x", 0, "v1");
+      s.request.persistItems("req_term", [item] as any);
+      await s.request.flushItems("req_term");
+
+      // Terminal write clears the per-request reference map.
+      await s.request.set(
+        "req_term",
+        makeRequestRecord("req_term", "flow-a", "run", "u", undefined, {
+          status: "completed",
+          completedAtMs: Date.now()
+        }),
+        "any"
+      );
+
+      // Same item reference, but the prior map is gone — flush issues
+      // an UPSERT (idempotent, count unchanged).
+      s.request.persistItems("req_term", [item] as any);
+      await s.request.flushItems("req_term");
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_term"]
+      );
+      expect(Number((got.rows[0] as any).c)).toBe(1);
+    });
+
+    it("delete awaits pending flush and removes rows from request_items", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_del",
+        makeRequestRecord("req_del", "flow-a", "run", "u"),
+        "any"
+      );
+      s.request.persistItems("req_del", [
+        makeMessageItem("req_del", "x", 0, "x") as any
+      ]);
+      // Do NOT await flushItems — delete must drain the queue itself.
+      await s.request.delete("req_del");
+
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_del"]
+      );
+      expect(Number((got.rows[0] as any).c)).toBe(0);
+    });
+
+    it("rejects items with id longer than the index row size limit", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_big",
+        makeRequestRecord("req_big", "flow-a", "run", "u"),
+        "any"
+      );
+      const oversized = "x".repeat(2700);
+      s.request.persistItems("req_big", [
+        makeMessageItem("req_big", oversized, 0, "x") as any
+      ]);
+      await expect(s.request.flushItems("req_big")).rejects.toThrow(
+        /exceeds limit/i
+      );
+    });
+
+    it("1000 sequential persistItems calls coalesce to one row per item", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_coal",
+        makeRequestRecord("req_coal", "flow-a", "run", "u"),
+        "any"
+      );
+      const items = [
+        makeMessageItem("req_coal", "a", 0, "x"),
+        makeMessageItem("req_coal", "b", 1, "y")
+      ];
+      for (let i = 0; i < 1000; i += 1) {
+        s.request.persistItems("req_coal", items as any);
+      }
+      await s.request.flushItems("req_coal");
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_coal"]
+      );
+      expect(Number((got.rows[0] as any).c)).toBe(2);
+    });
+
+    it("flushItems drains snapshots queued during an in-flight flush", async () => {
+      // Regression for the coalescing race: persistItems(A) queues a flush;
+      // while that flush is awaiting the UPSERT, persistItems(B) lands. The
+      // early-return contract means no second microtask is scheduled — the
+      // in-flight flush must loop and pick up B before settling, otherwise
+      // flushItems returns with B's rows still missing from the DB.
+      //
+      // PGlite's query is synchronous, so a bare `await Promise.resolve()`
+      // doesn't yield long enough for the race to materialize. Wrap the
+      // executor in a delay-on-INSERT shim so the UPSERT genuinely
+      // suspends — that's what real Postgres does.
+      pglite = new PGlite();
+      const raw = pgliteExecutor(pglite);
+      let upsertCount = 0;
+      let releaseFirstUpsert!: () => void;
+      const firstUpsertGate = new Promise<void>((r) => {
+        releaseFirstUpsert = r;
+      });
+      let signalFirstUpsertEntered!: () => void;
+      const firstUpsertEntered = new Promise<void>((r) => {
+        signalFirstUpsertEntered = r;
+      });
+      const gate: QueryExecutor = {
+        async query(text, values) {
+          if (text.startsWith("INSERT INTO request_items")) {
+            upsertCount += 1;
+            if (upsertCount === 1) {
+              signalFirstUpsertEntered();
+              await firstUpsertGate;
+            }
+          }
+          return raw.query(text, values);
+        }
+      };
+      stores = await createPostgresStores({ executor: gate });
+
+      await stores.request.set(
+        "req_race",
+        makeRequestRecord("req_race", "flow-a", "run", "u"),
+        "any"
+      );
+      const a = makeMessageItem("req_race", "a", 0, "x");
+      const b = makeMessageItem("req_race", "b", 1, "y");
+      stores.request.persistItems("req_race", [a] as any);
+      // Wait until the first UPSERT is suspended on the gate before
+      // landing the second persistItems.
+      await firstUpsertEntered;
+      stores.request.persistItems("req_race", [a, b] as any);
+      releaseFirstUpsert();
+
+      await stores.request.flushItems("req_race");
+
+      const got = await raw.query(
+        "SELECT count(*) AS c FROM request_items WHERE request_id = $1",
+        ["req_race"]
+      );
+      expect(Number((got.rows[0] as any).c)).toBe(2);
+    });
+
+    it("concurrent persistItems on different requests do not interfere", async () => {
+      const s = await freshStores();
+      await s.request.set(
+        "req_iso_a",
+        makeRequestRecord("req_iso_a", "flow-a", "run", "u"),
+        "any"
+      );
+      await s.request.set(
+        "req_iso_b",
+        makeRequestRecord("req_iso_b", "flow-a", "run", "u"),
+        "any"
+      );
+      s.request.persistItems("req_iso_a", [
+        makeMessageItem("req_iso_a", "a", 0, "x") as any
+      ]);
+      s.request.persistItems("req_iso_b", [
+        makeMessageItem("req_iso_b", "b", 0, "y") as any
+      ]);
+      await Promise.all([
+        s.request.flushItems("req_iso_a"),
+        s.request.flushItems("req_iso_b")
+      ]);
+      const executor = pgliteExecutor(pglite);
+      const got = await executor.query(
+        "SELECT request_id, count(*) AS c FROM request_items GROUP BY request_id ORDER BY request_id"
+      );
+      expect(got.rows).toHaveLength(2);
+      expect(Number((got.rows[0] as any).c)).toBe(1);
+      expect(Number((got.rows[1] as any).c)).toBe(1);
     });
   });
 
@@ -622,6 +1206,42 @@ describe("PostgreSQL store adapter", () => {
 
       const events = await s.request.getEvents(requestId);
       expect(events).toHaveLength(2);
+    });
+  });
+
+  // --- runOnce result store (FIX-402) ---
+
+  describe("runOnce result store", () => {
+    it("returns { found: false } before any write", async () => {
+      const s = await freshStores();
+      const got = await s.request.getRunOnceResult("req1", "stripe-charge");
+      expect(got).toEqual({ found: false });
+    });
+
+    it("set then get round-trips JSON-serializable values", async () => {
+      const s = await freshStores();
+      const value = { id: "ch_123", amount: 4200, livemode: false };
+      await s.request.setRunOnceResult("req1", "stripe-charge", value);
+      const got = await s.request.getRunOnceResult("req1", "stripe-charge");
+      expect(got).toEqual({ found: true, value });
+    });
+
+    it("upsert overwrites — later writes win on the same (requestId, key)", async () => {
+      const s = await freshStores();
+      await s.request.setRunOnceResult("req1", "k", 1);
+      await s.request.setRunOnceResult("req1", "k", 2);
+      const got = await s.request.getRunOnceResult("req1", "k");
+      expect(got.value).toBe(2);
+    });
+
+    it("keys are scoped per request", async () => {
+      const s = await freshStores();
+      await s.request.setRunOnceResult("req1", "k", "A");
+      await s.request.setRunOnceResult("req2", "k", "B");
+      const r1 = await s.request.getRunOnceResult("req1", "k");
+      const r2 = await s.request.getRunOnceResult("req2", "k");
+      expect(r1.value).toBe("A");
+      expect(r2.value).toBe("B");
     });
   });
 

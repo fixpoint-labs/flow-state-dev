@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA retail investor sentiment forum stocktwits seekingalpha",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://stocktwits.com/symbol/NVDA",
+      "title": "NVDA Stocktwits stream: bullish 71% over last 7 days",
+      "snippet": "Retail sentiment skew remains positive heading into the print; bullish-tagged messages outpaced bearish 3.4-to-1.",
+      "publisher": "stocktwits.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.reddit.com/r/wallstreetbets/comments/nvda-pre-earnings-positioning.html",
+      "title": "WSB pre-earnings positioning on NVDA — split between long calls and puts",
+      "snippet": "Flow data shows roughly even split between weekly long calls and short-dated puts; sentiment less one-sided than prior quarters.",
+      "publisher": "reddit.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://seekingalpha.com/article/nvda-sentiment-divergence-vs-fundamentals.html",
+      "title": "NVDA: sentiment indicators flag divergence from fundamentals",
+      "snippet": "Author argues retail sentiment is more bullish than the AAII institutional survey, suggesting froth at the margin.",
+      "publisher": "seekingalpha.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

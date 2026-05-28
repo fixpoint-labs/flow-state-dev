@@ -7,11 +7,13 @@
  * `runAction` directly.
  */
 import type {
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   SpeechResolver,
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
@@ -36,6 +38,8 @@ export type CreateInboundTransportHostOptions = {
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   transcriptionResolver?: TranscriptionResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   middleware?: Middleware[];
   logger?: RuntimeLogger;
   resolvePrincipal: PrincipalResolver;
@@ -49,6 +53,8 @@ export type CreateInboundTransportHostOptions = {
    * When 0 or undefined, no host-level default is applied.
    */
   defaultSseHeartbeatMs?: number;
+  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
+  tracingLevel?: TracingLevel;
 };
 
 /**
@@ -68,12 +74,14 @@ export function createInboundTransportHost(
     modelResolver,
     speechResolver,
     transcriptionResolver,
+    settings,
     middleware,
     logger,
     resolvePrincipal,
     onBackgroundWork,
     maxResponseBufferSize,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    tracingLevel
   } = options;
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
@@ -121,15 +129,18 @@ export function createInboundTransportHost(
       sessionId: envelope.sessionId,
       requestId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
+      tenantId: envelope.tenantId,
       source: envelope.source,
       metadata: envelope.metadata,
       signal: envelope.signal,
       modelResolver,
       speechResolver,
+      settings,
       middleware,
       stores,
       responseEmitter,
-      logger
+      logger,
+      tracingLevel
     }).finally(() => {
       if (liveStream !== null) {
         liveStream.close();

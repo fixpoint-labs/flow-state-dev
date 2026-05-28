@@ -35,14 +35,15 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 ## Layout
 
 - `flows/chat-agent/` — flow-specific code (flow.ts, blocks, schemas, prompts). Exports `chatAgentFlow` (`kind: "chat-agent"`).
-- `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts, memory). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 8 discrete text-transform actions. The `personalize` action reads user-scoped episodic + semantic memories captured by chat-agent via a `memorySystem` configured identically (no flow-isolation, so storage is shared by `userId`).
+- `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts, memory). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 8 discrete text-transform actions. The `personalize` action reads user-scoped episodic + semantic memories captured by chat-agent. It only consumes memory, so it wires in `createMemoryCapability` (read-side) configured with the same tiers — not `system()` (no flow-isolation, so storage is shared by `userId`).
+- `flows/weekly-digest/` — reference wiring for scheduled actions. One static schedule (`monday-summary`) plus a dynamic resource-collection resolver backed by `defineScheduleCollection` + `createPostgresScheduleIndex`. The `scheduleDigest` action lets a caller add per-user dynamic schedules at runtime.
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
 - `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
 - `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
-- `lib/server.ts` — flow registry + API router setup.
+- `lib/flowstate.ts` — `createFlowState` runtime assembly (flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API.
 
-To add a new flow: drop it under `flows/<name>/`, register it in `lib/server.ts`, and mount it from `app/<name>/page.tsx`.
+To add a new flow: drop it under `flows/<name>/`, register it in `lib/flowstate.ts`, and mount it from `app/<name>/page.tsx`.
 
 ## Capabilities
 
@@ -53,6 +54,27 @@ This app uses `defineCapability()` to bundle related resources, context formatte
 - **`bashCapability`** (framework: `createBashCapability()` from `@flow-state-dev/tools/bash`) — bash tool blocks + environment-aware context guidance. Adapts prompt based on provider config (network access, python, just-bash vs local).
 
 Generators and pattern factories declare `uses: [featuresCapability]` — one line replaces manual tools/context/resources plumbing.
+
+## Scheduled actions demo
+
+The `weekly-digest` flow is the live reference for the docs in
+`apps/docs/docs/server/scheduled.md` and `…/schedule-index.md`. Two
+Vercel cron routes drive it (`vercel.json`):
+
+- `GET /api/cron/static/[scheduleId]` — Vercel Cron → POST shim for static schedules.
+- `GET /api/cron/schedule-tick` — 15-minute polling tick that claims due rows from the `ScheduleIndex` and fans out dispatches.
+
+Env vars required at runtime: `CRON_SECRET` (shared bearer between cron
+routes and the dispatch endpoint) and `NEXT_PUBLIC_BASE_URL` (deployment
+URL the shims POST back into). The index lives in Postgres alongside
+the rest of the stores, so `FSD_DB_URL` / `DATABASE_URL` is required too.
+
+Profile selection: `lib/flowstate.ts` declares a `prod` (Postgres) and a
+`dev` (in-memory) store profile. It defaults to `prod` whenever a database
+URL (`FSD_DB_URL` / `DATABASE_URL`) is configured — the deployed/Vercel case —
+and to `dev` otherwise (local dev with no DB). Set `FSD_ENV=prod` / `FSD_ENV=dev`
+to override the default explicitly. The scheduler index only resolves under
+`prod`, so the cron tick no-ops without a Postgres profile.
 
 ## UI Components: Upstream-First Convention
 

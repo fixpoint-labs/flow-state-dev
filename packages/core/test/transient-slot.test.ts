@@ -5,7 +5,7 @@ import {
   isTransientSlot,
   getTransientKeys,
   stripTransientKeys,
-} from "../src/utils/transient-slot";
+} from "../src/helpers/transient-slot";
 
 describe("transientSlot", () => {
   it("stamps the marker so isTransientSlot returns true", () => {

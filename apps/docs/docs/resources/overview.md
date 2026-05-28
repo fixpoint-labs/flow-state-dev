@@ -128,6 +128,22 @@ The block brings its own resource requirements. No need to repeat them in the fl
 
 Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority over block-level ones. Blocks are self-documenting: their resource needs bubble up automatically.
 
+## Only declared resources load
+
+A request loads content only for the resources the flow declares. The execution context resolves each declared fixed resource by its storage key and each collection by its pattern prefix, then reads exactly those from the content store. Content that no block or flow declares is never pulled into the context.
+
+```ts
+defineFlow({
+  kind: "writer",
+  resources: {
+    draft: defineResource({ scope: "session", stateSchema: z.object({}) }),
+  },
+  // ...actions
+});
+```
+
+Here a request loads the `draft` content and nothing else, even if other keys exist in the session scope from another flow or an earlier design. Declaring what you use keeps per-request loading proportional to the flow rather than to everything stored in the scope. The full set of stored content for a scope is still available through the [state endpoint](/docs/fundamentals/state-and-scopes); the scoping applies to the per-request execution context, not to the persisted data.
+
 ## Resource scope levels
 
 | Scope | Lifetime |

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs"],
+      "ignoreBinaries": ["build"]
+    },
+    "packages/*": {
+      "entry": ["test/**/*.{test,spec}.{ts,tsx}", "**/*.type-test.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/cli": {
+      "entry": [
+        "bin/*.ts",
+        "test/**/*.{test,spec}.ts",
+        "test/fixtures/**/*.ts"
+      ]
+    },
+    "packages/ui": {
+      "entry": ["stories/**/*.{ts,tsx}", "test/**/*.{test,spec}.{ts,tsx}"],
+      "ignore": ["registry/**", ".storybook/shadcn/**"],
+      "ignoreDependencies": [
+        "class-variance-authority",
+        "clsx",
+        "cmdk",
+        "radix-ui",
+        "react-jsx-parser",
+        "tailwind-merge"
+      ]
+    },
+    "apps/devtool": {
+      "entry": ["src/main.tsx", "vite.config.ts"],
+      "ignoreDependencies": ["tailwindcss"]
+    },
+    "apps/kitchen-sink": {
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "flows/**/index.ts",
+        "next.config.{js,mjs,ts}",
+        "e2e/**/*.{test,spec}.ts"
+      ]
+    },
+    "apps/docs": {
+      "entry": ["docusaurus.config.ts", "sidebars.ts", "src/**/*.{ts,tsx}"],
+      "ignore": ["src/css/**"]
+    },
+    "examples/*": {
+      "entry": ["src/**/index.ts", "test/**/*.{test,spec}.ts"]
+    }
+  }
+}

@@ -4,12 +4,11 @@ Compact reference for locked contracts and key decisions. For detailed explanati
 
 ## Authority Order
 
-1. `preperation/architecture/*` — Canonical specs (highest authority)
-2. `docs/architecture/*` — Adapted reference docs (this repo)
-3. `docs/contributing/best-practices.md` — Implementation standards
-4. `AGENTS.md` — Process protocol
+1. `docs/architecture/*` — Reference docs (authoritative)
+2. `docs/contributing/best-practices.md` — Implementation standards
+3. `AGENTS.md` — Process protocol
 
-Conflict rule: `preperation/architecture/*` wins.
+Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
 
 ## Locked Contracts (Phase 1)
 

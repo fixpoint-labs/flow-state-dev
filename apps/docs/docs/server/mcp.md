@@ -24,15 +24,28 @@ pnpm add @flow-state-dev/mcp
 
 ## Mounting the adapter
 
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/server";
+The MCP adapter is just another entry in `adapters` on
+[`createFlowState`](./setup.md), the canonical setup entrypoint:
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  adapters: [createMcpTransportAdapter()]
+export const flowstate = createFlowState({
+  flows: { billing: billingFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  adapters: [createMcpTransportAdapter()],
 });
+```
+
+Turn the handle into route handlers with a platform handler — the MCP
+webhooks mount under the same router:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 ```
 
 The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and

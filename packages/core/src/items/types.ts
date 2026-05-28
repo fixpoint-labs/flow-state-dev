@@ -67,6 +67,16 @@ export type OutputItemBase = {
    *  `blockInstanceId` of the sequencer/router that declared the container. */
   ownedBy?: string;
   /**
+   * Id of the task this item was emitted under, when produced inside a worker
+   * scope that marked its active task via `ctx._markTaskScope` (the task-board
+   * worker body does this per claimed task). Captured at emit time from the
+   * nearest enclosing marked scope, so concurrent sibling workers and
+   * sequential turns of one worker attribute correctly even when their
+   * execution paths collide. Undefined for items emitted outside any task
+   * scope. Read by the task-attribution helpers in `@flow-state-dev/core/items`.
+   */
+  taskId?: string;
+  /**
    * Identity of the generator that produced this item. Governs visibility
    * via `resolveItemVisibility()` for conversational item types
    * (`message`, `reasoning`, `tool_output`). Structural items
@@ -182,6 +192,11 @@ export type BlockTraceItem = OutputItemBase & {
     prompt: string;
     user?: unknown[];
     history?: unknown[];
+    /** Raw `.md` source, present when the prompt was authored via a PromptFile
+     * (`definePromptFile`). Absent for inline-string/function prompts. */
+    templateSource?: string;
+    /** Parsed, Zod-validated frontmatter, present for PromptFile prompts. */
+    templateFrontmatter?: Record<string, unknown>;
   };
   modelUsage?: {
     model: string;
@@ -251,6 +266,25 @@ export type ToolOutputItem = OutputItemBase & {
      */
     details?: Record<string, unknown>;
   };
+  /**
+   * True when this `tool_output` was served from the per-tool memoization
+   * cache (FIX-610) rather than executed against the upstream. The cached
+   * value flows through the same envelope so transcripts, replay, and
+   * downstream consumers see one shape regardless of source.
+   */
+  cached?: boolean;
+  /**
+   * Age (in milliseconds) of the cached entry at the moment the cache
+   * hit served it. Set only when `cached === true`.
+   */
+  cacheAgeMs?: number;
+  /**
+   * Attribution back to the task whose original tool call populated this
+   * cache entry, when the cache hit crossed a task boundary inside a
+   * Task Board run (FIX-610 Wave 2). Absent for same-task cache hits and
+   * for non-board contexts.
+   */
+  sourceTask?: { collectionId: string; taskId: string };
 };
 
 export type RouterDecisionItem = OutputItemBase & {

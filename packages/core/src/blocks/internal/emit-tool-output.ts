@@ -9,7 +9,7 @@
  */
 import type { BlockContext, BlockDefinition } from "../../types/block";
 import type { AgentType, ModelIdentity } from "../../items/types";
-import { sanitizeToolName } from "../../utils/tool-name";
+import { sanitizeToolName } from "../../helpers/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
 
@@ -33,6 +33,17 @@ export type EmitToolOutputAttribution = {
    * tool-loop path; the `.asTool()` path leaves it absent.
    */
   model?: ModelIdentity;
+  /**
+   * Cache-hit attribution (FIX-610). When set, the emitted `tool_output`
+   * item carries `cached: true` plus the supplied `cacheAgeMs` and (when
+   * the hit crossed a task boundary inside a Task Board run) a
+   * `sourceTask` pointer back to the originating task. Absent for normal
+   * uncached calls.
+   */
+  cached?: {
+    ageMs: number;
+    sourceTask?: { collectionId: string; taskId: string };
+  };
 };
 
 /**
@@ -74,9 +85,19 @@ export async function emitToolOutputAround(
     },
     ts: Date.now(),
     ownedBy: parentIdentity?.ownedBy,
+    taskId: parentIdentity?.taskId,
     ...(attribution.agentType !== undefined ? { agentType: attribution.agentType } : {}),
     ...(attribution.agentName !== undefined ? { agentName: attribution.agentName } : {}),
     ...(attribution.model !== undefined ? { model: attribution.model } : {}),
+    ...(attribution.cached !== undefined
+      ? {
+          cached: true,
+          cacheAgeMs: attribution.cached.ageMs,
+          ...(attribution.cached.sourceTask !== undefined
+            ? { sourceTask: attribution.cached.sourceTask }
+            : {}),
+        }
+      : {}),
     blockName,
     output: undefined,
     toolCall: {

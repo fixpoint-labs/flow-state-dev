@@ -16,8 +16,22 @@
  * `portfolioManager` memo, and is reset to `false` by `seedSession` at
  * the start of each run. Surfaced to the client so the status bar can
  * render a terminal "complete" state without inferring it from item counts.
+ *
+ * `stoppedReason` is the human-readable reason an `analyze` run was
+ * aborted before producing a recommendation. Two known causes:
+ *   - `"unresolvable-ticker"` — the pre-flight guard could not resolve
+ *      the ticker (missing fixture / all live providers unavailable).
+ *   - `"phase-1-missing-primary"` — the `fundamentals` OR `companyProfile`
+ *      analyst errored. These two are non-substitutable, so phases 2–5
+ *      would be synthesizing on hollow input even if other analysts succeeded.
+ *   - `"phase-1-no-data"` — every Phase 1 analyst errored, so phases 2–5
+ *      would be synthesizing on no upstream data (all-error backstop).
+ * The full sentence (e.g. `"Could not resolve ticker ZZZ in fixture mode."`)
+ * is stored in `stoppedMessage` for direct UI rendering. Both fields are
+ * reset to `null` by `seedSession` at the start of each run.
  */
 import { z } from "zod";
+import { citationIntegritySchema } from "./resources";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -32,6 +46,12 @@ export const sessionStateSchema = z.object({
     .record(z.string(), z.enum(["pending", "writing", "published", "error"]))
     .default({}),
   runComplete: z.boolean().default(false),
+  stoppedReason: z
+    .enum(["unresolvable-ticker", "phase-1-missing-primary", "phase-1-no-data"])
+    .nullable()
+    .default(null),
+  stoppedMessage: z.string().nullable().default(null),
+  citationIntegrity: citationIntegritySchema.nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

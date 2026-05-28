@@ -4,7 +4,7 @@
  * Schema auto-initializes on first call.
  */
 
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
 import type { Pool, PoolConfig } from "pg";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
 import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
@@ -14,8 +14,10 @@ import { createPostgresUserStore } from "./user-store";
 import { createPostgresOrgStore } from "./org-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
+import { createPostgresResourceStateStore } from "./resource-state-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/server";
+import { createPgPoolTx } from "./tx";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
 
@@ -83,6 +85,9 @@ export async function createPostgresStores(
       async query(text: string, values?: unknown[]) {
         const result = await pool.query(text, values);
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
       }
     };
     closePool = async () => {
@@ -139,6 +144,9 @@ export async function createPostgresStores(
       async query(text: string, values?: unknown[]) {
         const result = await pool.query(text, values);
         return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
+      },
+      async beginTx() {
+        return createPgPoolTx(pool);
       }
     };
     closePool = async () => {
@@ -180,6 +188,7 @@ export async function createPostgresStores(
       org: createPostgresOrgStore(executor),
       activeRequests: createPostgresActiveRequestRegistry(executor),
       content: createPostgresContentStore(executor),
+      resourceState: createPostgresResourceStateStore(executor),
       checkpoints: createPostgresCheckpointStore(executor),
       traces: createInMemoryTraceStore(),
       async close() {
@@ -199,10 +208,30 @@ export async function createPostgresStores(
     org: createPostgresOrgStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),
     content: createPostgresContentStore(executor),
+    resourceState: createPostgresResourceStateStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),
     traces: createInMemoryTraceStore(),
     async close() {
       await closePool();
+    }
+  };
+}
+
+/**
+ * Postgres store adapter for `createFlowState`. Backs the `primary`
+ * capability slot. Wraps `createPostgresStores`, memoizing the registry so
+ * lazy resolution opens the pool once, and disposes it via `close()`.
+ */
+export function postgresStores(options: PostgresStoreOptions): StoreAdapter {
+  let registry: PostgresStoreRegistry | undefined;
+  return {
+    capabilities: ["primary"],
+    async resolve() {
+      registry ??= await createPostgresStores(options);
+      return registry;
+    },
+    async dispose() {
+      await registry?.close();
     }
   };
 }
@@ -214,8 +243,11 @@ export {
   createPostgresOrgStore,
   createPostgresActiveRequestRegistry,
   createPostgresContentStore,
+  createPostgresResourceStateStore,
   createPostgresCheckpointStore
 };
 
 export { initializeSchema } from "./schema";
-export type { PostgresStoreOptions, PoolConfig, QueryExecutor } from "./types";
+export { createPostgresScheduleIndex } from "./schedule-index";
+export { createPgPoolTx } from "./tx";
+export type { PostgresStoreOptions, PoolConfig, QueryExecutor, TxClient } from "./types";

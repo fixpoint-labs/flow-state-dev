@@ -85,6 +85,24 @@ async function seedFlowStores(options: {
   // its identity. Lets multiple `testFlow` calls share a registry without
   // resetting journals or resource state on each invocation.
 
+  // Resource state lives in the ResourceStateStore (FIX-689), keyed per-resource
+  // and separate from the scope record. Seed it there (idempotently) so flows
+  // under test — which load state from the store, not the record — see it.
+  const seedResourceState = async (
+    scopeType: "session" | "user" | "org",
+    scopeId: string,
+    resources: Record<string, unknown> | undefined
+  ): Promise<void> => {
+    if (resources === undefined) return;
+    const normalized = toJsonObjectRecord(cloneRecord(resources));
+    for (const [key, value] of Object.entries(normalized)) {
+      const existing = await options.stores.resourceState.get(scopeType, scopeId, key);
+      if (existing === undefined) {
+        await options.stores.resourceState.set(scopeType, scopeId, key, value);
+      }
+    }
+  };
+
   if (options.seed?.user !== undefined) {
     const existing = await options.stores.user.get(options.userId);
     if (existing === undefined) {
@@ -92,15 +110,12 @@ async function seedFlowStores(options: {
         id: options.userId,
         userId: options.userId,
         state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
-        resources:
-          options.seed.user.resources === undefined
-            ? undefined
-            : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
         version: 0,
         createdAt: now,
         updatedAt: now
       }, "any");
     }
+    await seedResourceState("user", options.userId, options.seed.user.resources);
   }
 
   if (options.orgId !== undefined) {
@@ -111,15 +126,12 @@ async function seedFlowStores(options: {
         orgId: options.orgId,
         userId: options.userId,
         state: toJsonObject(cloneRecord(options.seed?.org?.state ?? {})),
-        resources:
-          options.seed?.org?.resources === undefined
-            ? undefined
-            : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
         version: 0,
         createdAt: now,
         updatedAt: now
       }, "any");
     }
+    await seedResourceState("org", options.orgId, options.seed?.org?.resources);
   }
 
   if (options.sessionId !== undefined) {
@@ -133,16 +145,13 @@ async function seedFlowStores(options: {
         metadata: undefined,
         latestRequestId: undefined,
         state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
-        resources:
-          options.seed?.session?.resources === undefined
-            ? undefined
-            : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
         version: 0,
         createdAt: now,
         updatedAt: now,
         journal: []
       }, "any");
     }
+    await seedResourceState("session", options.sessionId, options.seed?.session?.resources);
   }
 
   if (options.seed?.request !== undefined) {
@@ -205,6 +214,7 @@ export async function testFlow<TInput = unknown>(
       models: options.models,
       policy: options.unmockedGeneratorPolicy
     }),
+    settings: options.settings,
     stores
   });
 

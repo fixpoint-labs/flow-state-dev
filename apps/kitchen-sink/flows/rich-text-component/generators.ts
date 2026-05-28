@@ -121,10 +121,10 @@ export const fixCodeGenerator = generator({
 /**
  * Personalize the text using user-scoped memories captured by chat-agent.
  *
- * `mem.capability` auto-installs the working/episodic/semantic memory
- * resources and (via its default `context` preset) injects unified recall
- * output under a `<memory>` tag in the system context. The prompt instructs
- * the model to weave those facts in only where they naturally fit.
+ * `mem` (the memory capability) auto-installs the working/episodic/semantic
+ * memory resources and (via its default `context` preset) injects unified
+ * recall output under a `<memory>` tag in the system context. The prompt
+ * instructs the model to weave those facts in only where they naturally fit.
  *
  * Memories are user-scoped with no flow-isolation, so this reads the same
  * episodic + semantic store that chat-agent writes via `mem.captureFromItems`.
@@ -133,7 +133,7 @@ export const personalizeGenerator = generator({
   name: "personalize-generator",
   model: MODEL_ID,
   agentType: "primary",
-  uses: [mem.capability],
+  uses: [mem],
   inputSchema: personalizeInputSchema,
   prompt: PERSONALIZE_PROMPT,
   user: (input) => input.text,

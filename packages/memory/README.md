@@ -16,6 +16,41 @@ Peer of `@flow-state-dev/core`.
 
 ## Quick start
 
+There are two entry points. They take the same tier configs and differ only in what they wire up. Pick by what your flow does with memory.
+
+### `createMemoryCapability` — read-side memory
+
+Use this when a flow only consumes memory: context injection, the recall tool, typed helpers. No auto-capture pipeline is built.
+
+```ts
+import { defineFlow, generator } from "@flow-state-dev/core";
+import { createMemoryCapability } from "@flow-state-dev/memory";
+
+const mem = createMemoryCapability({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+});
+
+const reader = generator({
+  uses: [mem],
+  // ...
+});
+
+export const readerFlow = defineFlow({
+  kind: "reader-flow",
+  resources: { ...mem.sessionResources, ...mem.userResources },
+  actions: { /* ... */ },
+});
+```
+
+`mem` is the capability itself — `uses: [mem]` contributes a `<memory>` context block, the agent-invocable `memory/recall` tool, and typed `ctx.cap.*` helpers.
+
+### `system()` — the same capability plus the write side
+
+Use this when the flow also writes into memory: auto-observation, consolidation, prune, and the hygiene janitor. `system()` builds the same capability internally (`mem.capability`) and adds the capture pipeline.
+
 ```ts
 import { defineFlow, generator } from "@flow-state-dev/core";
 import { system } from "@flow-state-dev/memory";
@@ -33,15 +68,16 @@ const chat = generator({
   // ...
 });
 
-export const myFlow = defineFlow({
-  kind: "my-flow",
-  sessionResources: mem.sessionResources,
-  userResources: mem.userResources,
-  actions: { /* ... */ },
+export const chatFlow = defineFlow({
+  kind: "chat-flow",
+  resources: { ...mem.sessionResources, ...mem.userResources },
+  actions: {
+    // ...capture after each turn, e.g. a sequencer ending in `.work(mem.captureFromItems)`
+  },
 });
 ```
 
-`mem.capability` contributes a `<memory>` context block, the agent-invocable `memory/recall` tool, and typed `ctx.cap.*` helpers. Wire it once and the generator has memory.
+Rule of thumb: if your flow never calls into the capture pipeline, reach for `createMemoryCapability`. If it captures, reach for `system()`.
 
 ## What's in the package
 
@@ -51,10 +87,13 @@ export const myFlow = defineFlow({
 | Episodic | user | Past sessions stored as discrete episodes, recallable by content |
 | Semantic | user | Consolidated facts the agent has decided are worth keeping |
 | Digest | user | Summarized rollups across many sessions |
+| Hygiene | session | Time-based confidence decay and episodic TTL maintenance |
+
+Two entry points: `createMemoryCapability()` builds the read-side capability; `system()` builds the same capability plus the auto-capture and lifecycle pipeline.
 
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
-**Key exports:** `system`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+**Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
 
 ## Where it came from
 

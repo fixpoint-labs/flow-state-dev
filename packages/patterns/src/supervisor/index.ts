@@ -14,23 +14,25 @@
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import { flowPolicy } from "@flow-state-dev/tasks";
 import type {
   AgentType,
   GeneratorHistoryConfig,
   GeneratorSlot,
+  InstructionsSlot,
   SequencerDefinition,
   UsesSlot,
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard } from "../task-board";
-import { createCascadeSkipDependents } from "../plan-and-execute/blocks/cascade-skip-dependents";
+import { taskBoard, createCascadeSkipDependents } from "../task-board";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
   reviewerVerdictSchema,
   reviewerInputSchema,
   type SubTaskErrorStrategy,
+  type SupervisorInput,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { buildReviewedWorker } from "./blocks/reviewer-check";
@@ -64,10 +66,6 @@ export { createSynthesize } from "./blocks/synthesize";
 export { createLabelFailedReviews } from "./blocks/label-failed-reviews";
 export { legacyWorkerAdapter } from "./blocks/legacy-worker-adapter";
 
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
-
 export interface SupervisorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
 > {
@@ -76,7 +74,7 @@ export interface SupervisorConfig<
   worker?: BlockDefinition<any, any>;
   /** Worker registry — `Record<assignee, BlockDefinition>`. */
   workers?: Record<string, BlockDefinition<any, any>>;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<SupervisorInput>;
   reviewCriteria?: string[];
   /** Per-task retry budget for review rejection. Default 3. */
   maxAttemptsPerTask?: number;
@@ -102,7 +100,7 @@ function buildDefaultReviewer(opts: {
   agentType?: AgentType;
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
-}): BlockDefinition<any, any> {
+}) {
   const criteriaBlock =
     opts.reviewCriteria && opts.reviewCriteria.length > 0
       ? `\nEvaluation criteria:\n${opts.reviewCriteria
@@ -128,7 +126,7 @@ function buildDefaultReviewer(opts: {
     ],
     user: (input: unknown) =>
       typeof input === "string" ? input : JSON.stringify(input, null, 2),
-  }) as BlockDefinition<any, any>;
+  });
 }
 
 /**
@@ -169,9 +167,9 @@ function buildDefaultSynthesizer(opts: {
   context?: GeneratorSlot<any, any>;
   history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<any>;
   agentType?: AgentType;
-}): BlockDefinition<any, any> {
+}) {
   const basePrompt = [
     "You are the final synthesis step in a supervisor workflow.",
     "Combine the workers' outputs into the FINAL DELIVERABLE the user requested.",
@@ -220,7 +218,7 @@ function buildDefaultSynthesizer(opts: {
       }
       return parts.join("\n\n");
     },
-  }) as BlockDefinition<any, any>;
+  });
 }
 
 /** Build a `supervisor` block. See module doc for pipeline shape. */
@@ -258,7 +256,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const boardOnError: "skip" | "fail" =
     onSubTaskError === "fail" ? "fail" : "skip";
 
-  const resolvedReviewer: BlockDefinition<any, any> | undefined =
+  const resolvedReviewer =
     config.reviewer === false
       ? undefined
       : (config.reviewer ??
@@ -271,9 +269,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         }));
 
   // Wrap each worker (uniform OR registry entry) in a reviewedWorker chain.
-  const reviewedWorkers:
-    | BlockDefinition<any, any>
-    | Record<string, BlockDefinition<any, any>> =
+  const reviewedWorkers =
     workerRegistry !== undefined
       ? Object.fromEntries(
           Object.entries(workerRegistry).map(([key, block]) => [
@@ -315,31 +311,21 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       agentType: synthesizerAgentType,
     });
 
-  // `onIdle: "wait"` + `shouldExit` mirrors plan-and-execute so pendings
-  // whose deps `errored` don't deadlock the drain — they get
-  // cascade-skipped after instead.
+  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
+  // (FIX-626) so pendings whose deps `errored` don't deadlock the
+  // drain — they get cascade-skipped after instead.
   const board = taskBoard({
     name: `${name}-board`,
     collection: { backing: "request", collectionId: name },
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",
-    onIdle: "wait",
     onError: boardOnError,
-    shouldExit: (collection) => {
-      if (
-        collection.count({ status: ["in_progress", "awaiting_review"] }) > 0
-      )
-        return false;
-      const pending = collection.list({ status: "pending" });
-      if (pending.length === 0) return true;
-      const completedIds = new Set(
-        collection.list({ status: "completed" }).map((t) => t.id),
-      );
-      return !pending.some((t) =>
-        (t.deps ?? []).every((d) => completedIds.has(d)),
-      );
-    },
+    // FIX-610: pin declaredDepsOnly explicitly. Supervisor workers
+    // are reviewed per-task; widening visibility across all tasks
+    // would let reviewers attribute reasoning to siblings that the
+    // worker never actually consulted.
+    flowPolicy: flowPolicy.declaredDepsOnly(),
   });
 
   const captureAndPlan = createCaptureAndPlan({
@@ -373,5 +359,5 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .then(board.block)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
-    .then(synthesize) as SequencerDefinition<any, any>;
+    .then(synthesize);
 }

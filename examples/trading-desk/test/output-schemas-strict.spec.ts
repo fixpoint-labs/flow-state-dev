@@ -15,18 +15,18 @@ import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
+import { grokOutputSchema } from "../src/flows/trading-desk/phase-1/tools/get_social_sentiment";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
-} from "../src/flows/trading-desk/phase-2/thesis-schemas";
-import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/schemas";
+} from "../src/flows/trading-desk/phase-2/generators";
+import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/trader";
 import {
-  neutralCritiqueOutputSchema,
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/schemas";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 
 type Issue = { path: string; reason: string };
 
@@ -115,12 +115,12 @@ function findStrictViolations(schema: ZodTypeAny, path = "$"): Issue[] {
 
 const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 1 thesisOutputSchema", thesisOutputSchema],
+  ["Phase 1 get_social_sentiment grokOutputSchema", grokOutputSchema],
   ["Phase 2 bullThesisOutputSchema", bullThesisOutputSchema],
   ["Phase 2 bearThesisOutputSchema", bearThesisOutputSchema],
   ["Phase 2 investmentThesisOutputSchema", investmentThesisOutputSchema],
   ["Phase 3 tradeProposalOutputSchema", tradeProposalOutputSchema],
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
-  ["Phase 4 neutralCritiqueOutputSchema", neutralCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
 ];

@@ -56,14 +56,18 @@ export function createMockSkillsCollection(
       const entry = store.get(prefixed(pattern, k));
       return entry ? makeRef(entry) : undefined;
     },
-    create: vi.fn(async (key, initial) => {
+    create: vi.fn(async (key, initial, opts?: { replace?: boolean }) => {
       const k = typeof key === "string" ? key : "";
       const full = prefixed(pattern, k);
-      if (store.has(full)) throw new Error(`Already exists: ${full}`);
+      const replace = opts?.replace === true;
+      if (store.has(full) && !replace) throw new Error(`Already exists: ${full}`);
+      const existing = store.get(full);
       const entry: MockEntry = {
         name: full,
         state: { ...(initial as Record<string, unknown> | undefined) },
-        content: null,
+        // Preserve content across replace — matches the real impl, which
+        // only touches state on a replace; content is managed separately.
+        content: existing?.content ?? null,
       };
       store.set(full, entry);
       return makeRef(entry);
@@ -80,6 +84,22 @@ export function createMockSkillsCollection(
         };
         store.set(full, entry);
       }
+      return makeRef(entry);
+    }) as never,
+    upsert: vi.fn(async (key, update, createOnly) => {
+      const k = typeof key === "string" ? key : "";
+      const full = prefixed(pattern, k);
+      const existing = store.get(full);
+      if (existing !== undefined) {
+        existing.state = { ...existing.state, ...(update as Record<string, unknown>) };
+        return makeRef(existing);
+      }
+      const merged = {
+        ...((createOnly as Record<string, unknown> | undefined) ?? {}),
+        ...(update as Record<string, unknown>),
+      };
+      const entry: MockEntry = { name: full, state: merged, content: null };
+      store.set(full, entry);
       return makeRef(entry);
     }) as never,
     list() {

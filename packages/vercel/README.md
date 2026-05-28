@@ -10,31 +10,33 @@ Vercel deployment adapter for flow-state-dev. Wraps a flow-state-dev router into
 pnpm add @flow-state-dev/vercel
 ```
 
-Three files to deploy any FSD app to Vercel:
+Two files to deploy an FSD app to Vercel.
 
-**1. Server setup** (`lib/server.ts`) — same as local dev:
+**1. FlowState** (`lib/flowstate.ts`) — the runtime config:
 
 ```ts
-import { createModelResolver } from "@flow-state-dev/core/models";
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import myFlow from "@/flows/my-flow/flow";
 
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-export const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver(),
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: {
+    prod: { primary: vercelPostgresStores() },
+    dev: { primary: inMemoryStores() },
+  },
+  defaultProfile: "dev",
 });
 ```
 
 **2. Catch-all route** (`app/api/flows/[...path]/route.ts`):
 
 ```ts
-import { createVercelHandler } from "@flow-state-dev/vercel";
-import { router } from "@/lib/server";
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 
 // Next.js reads these statically — must be literal declarations, not re-exports.
 export const runtime = "nodejs";
@@ -42,18 +44,36 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-**3. Bare route** (`app/api/flows/route.ts`):
+SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds. `createVercelNextHandler` resolves the router lazily on the first request, so async store init works with no top-level await.
 
-Next.js `[...path]` catch-all requires at least one segment. This sibling route handles `/api/flows` with no trailing path.
+For background work that must survive the function freezing after the response (scheduled dispatches, post-202 execution), wire Vercel's `after` at construction with `createFlowState({ onBackgroundWork: (p) => after(() => p) })` from `next/server`. It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
+
+## `@flow-state-dev/vercel/store`
+
+`vercelPostgresStores()` returns a `StoreAdapter` for the `primary` capability slot, Postgres tuned for Vercel and Neon. It bakes in the Vercel pool defaults (`vercelPgPoolOptions`), swaps in Neon's WebSocket `Client` for `.neon.tech` URLs, skips schema init (migrations run out-of-band at build), and uses the polling tail fallback. No `process.env.VERCEL` checks or URL sniffing in your code — declare it as a profile slot.
 
 ```ts
-import { createVercelBareHandler } from "@flow-state-dev/vercel";
-import { router } from "@/lib/server";
+import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 
-export const { GET, POST } = createVercelBareHandler(router);
+createFlowState({
+  flows: { myFlow },
+  stores: { prod: { primary: vercelPostgresStores() } },
+});
 ```
 
-SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds.
+The connection string defaults to `FSD_DB_URL` then `DATABASE_URL`. Pass `{ connectionString }` to override.
+
+## `@flow-state-dev/vercel/next`
+
+`createVercelNextHandler(flowstate)` mounts a `FlowState` onto a catch-all route with Vercel's SSE header shaping. Pass the `FlowState` handle, not `flowstate.getRouter()` — the handler resolves the router lazily itself.
+
+```ts
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+```
+
+Requires Next.js 15+. For non-Vercel Next deployments, use `createNextHandler` from `@flow-state-dev/next` instead.
 
 ## What it does
 
@@ -141,6 +161,37 @@ export const stores = await createPostgresStores({
 The subpath is zero-runtime — it uses `import type` for `pg`, so importing it doesn't add `pg` to your bundle if you aren't using the Postgres adapter.
 
 For first-request cold-start latency (typical 1–3s after wake-up), swap in Neon's WebSocket `Client` using `pg.PoolConfig.Client`. See the `@flow-state-dev/store-postgres` README for the recipe.
+
+## Scheduled actions
+
+`@flow-state-dev/vercel/schedules` ships two helpers for wiring Vercel Cron to the scheduled-actions transport.
+
+`createGetToPostCronShim` turns the GET hit Vercel Cron sends into the POST the framework dispatch endpoint expects:
+
+```ts title="app/api/cron/billing/monthly-invoices/route.ts"
+import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
+
+export const GET = createGetToPostCronShim({
+  flowKind: "billing",
+  scheduleId: "monthly-invoices"
+});
+```
+
+`createScheduleTickHandler` runs once per cron beat, claims due rows from a `ScheduleIndex`, and dispatches each with bounded concurrency:
+
+```ts title="app/api/cron/schedule-tick/route.ts"
+import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
+import { scheduleIndex } from "@/lib/schedule-index";
+
+export const GET = createScheduleTickHandler({
+  flowKind: "reminders",
+  index: scheduleIndex
+});
+```
+
+Both helpers authenticate inbound requests via constant-time bearer compare against `CRON_SECRET` and forward the same bearer to the dispatch endpoint. Runtime deps stay zero — only `@flow-state-dev/scheduled` type imports cross the boundary.
+
+See [Scheduled actions on Vercel Cron](https://flowstate.dev/guides/scheduled-vercel-cron) for the full setup.
 
 ## Scripts
 

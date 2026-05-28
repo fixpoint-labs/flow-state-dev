@@ -126,6 +126,23 @@ export { removeFact as removeSemanticFact } from './semantic-memory-helpers.js'
 export { allFacts as semanticFacts } from './semantic-memory-helpers.js'
 export { query as querySemanticFacts } from './semantic-memory-helpers.js'
 export { topFacts as topSemanticFacts } from './semantic-memory-helpers.js'
+export { cullByEffectiveConfidence } from './semantic-memory-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 1 + 2 + 3: Memory hygiene — janitor resource, helpers, block (FIX-411)
+// ---------------------------------------------------------------------------
+
+export {
+  effectiveConfidence,
+  janitorResource,
+  janitorStateSchema,
+  DEFAULT_HYGIENE_CONFIG,
+} from './janitor.js'
+export type { JanitorState } from './janitor.js'
+export { cullByTTL, markStale } from './episodic-memory-helpers.js'
+export type { EpisodicTTLConfig } from './episodic-memory-helpers.js'
+export { memorySystemJanitor } from './janitor-blocks.js'
+export type { ResolvedHygieneConfig } from './janitor-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Digest memory schemas, types, resource factory
@@ -200,6 +217,7 @@ export type {
   MemorySystemConfig,
   MemorySystem,
   MemoryToolConfig,
+  HygieneConfig,
   RankedMemoryItem,
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
@@ -207,6 +225,17 @@ export type {
   DigestSystemConfig,
   MemoryCapabilityPreset,
 } from './memory-system.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Composed memory capability factory
+// ---------------------------------------------------------------------------
+
+export { createMemoryCapability } from './memory-capability.js'
+export type {
+  CreateMemoryCapabilityOptions,
+  MemoryCapability,
+  MemoryCapabilityResources,
+} from './memory-capability.js'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Agent-invocable recall tool (FIX-409)

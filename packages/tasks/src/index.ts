@@ -55,6 +55,9 @@ export {
   type ResourceBackingSpec,
 } from "./collection/get-or-create";
 
+// Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
+export { onTaskChangeFor } from "./collection/predicates";
+
 // Dispatchers
 export type { TaskDispatcher } from "./dispatchers/types";
 export { fifoDispatcher } from "./dispatchers/fifo";
@@ -90,3 +93,22 @@ export {
   type DispatchAndExecuteOptions,
   type DispatchAndExecuteResult,
 } from "./helpers/dispatch-and-execute";
+
+// Flow policy — observation ledger + per-task selection policies that
+// shape `TaskWorkerInput.priorWork` for Task Board worker dispatches.
+export {
+  bindObservationLedger,
+  createObservationLedger,
+  createObservationLedgerCapability,
+  flowPolicy,
+  formatPriorWork,
+} from "./flow-policy";
+export type {
+  CreateObservationLedgerCapabilityOptions,
+  Observation,
+  ObservationLedger,
+  ObservationLedgerAccessor,
+  ObservationLedgerView,
+  TaskFlowPolicy,
+  TaskPriorWork,
+} from "./flow-policy";

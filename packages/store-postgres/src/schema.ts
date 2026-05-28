@@ -137,6 +137,20 @@ const RESOURCE_CONTENT_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id)"
 ];
 
+const RESOURCE_STATE_TABLE = `
+CREATE TABLE IF NOT EXISTS resource_state (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  state         JSONB NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, resource_key)
+);
+`;
+
+const RESOURCE_STATE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
+];
+
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
   request_id      TEXT NOT NULL,
@@ -148,6 +162,24 @@ CREATE TABLE IF NOT EXISTS request_events (
 
 const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
+];
+
+// Request items: one row per item produced by a request. PK
+// `(request_id, item_id)` so keyed-component re-emissions UPSERT in place.
+// Per-row storage keeps unchanged rows out of every flush's TOAST rewrite.
+const REQUEST_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS request_items (
+  request_id  TEXT   NOT NULL,
+  item_id     TEXT   NOT NULL,
+  sequence    BIGINT NOT NULL,
+  item_type   TEXT   NOT NULL,
+  data        JSONB  NOT NULL,
+  PRIMARY KEY (request_id, item_id)
+);
+`;
+
+const REQUEST_ITEMS_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_request_items_request_sequence ON request_items(request_id, sequence)"
 ];
 
 // FIX-401: durable sequencer checkpoints. Identity is
@@ -170,6 +202,41 @@ CREATE TABLE IF NOT EXISTS sequencer_checkpoints (
 
 const SEQUENCER_CHECKPOINTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id)"
+];
+
+// Optional schedule index for `createPostgresScheduleIndex`. Keyed by
+// (user_id, key) — a derived read-model of per-user schedule resource
+// collections. `next_fire_at` is ms since epoch and is scanned/advanced
+// inside one transaction by claimDue (SELECT ... FOR UPDATE SKIP LOCKED).
+const SCHEDULE_INDEX_TABLE = `
+CREATE TABLE IF NOT EXISTS schedule_index (
+  user_id      TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  cron         TEXT NOT NULL,
+  timezone     TEXT,
+  next_fire_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+`;
+
+const SCHEDULE_INDEX_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at)"
+];
+
+// Per-request runOnce result store. Identity is (request_id, key); inserts
+// upsert on the primary key. `value` is JSONB so adapters can roundtrip
+// arbitrary JSON-serializable results without ALTER TABLE.
+const REQUEST_RUNONCE_TABLE = `
+CREATE TABLE IF NOT EXISTS request_runonce (
+  request_id TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      JSONB NOT NULL,
+  PRIMARY KEY (request_id, key)
+);
+`;
+
+const REQUEST_RUNONCE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_request_runonce_request_id ON request_runonce(request_id)"
 ];
 
 /**
@@ -243,8 +310,12 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ORGS_TABLE,
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
+      RESOURCE_STATE_TABLE,
       REQUEST_EVENTS_TABLE,
-      SEQUENCER_CHECKPOINTS_TABLE
+      REQUEST_ITEMS_TABLE,
+      REQUEST_RUNONCE_TABLE,
+      SEQUENCER_CHECKPOINTS_TABLE,
+      SCHEDULE_INDEX_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -253,8 +324,12 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ORGS_INDEXES,
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
+      ...RESOURCE_STATE_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
-      ...SEQUENCER_CHECKPOINTS_INDEXES
+      ...REQUEST_ITEMS_INDEXES,
+      ...REQUEST_RUNONCE_INDEXES,
+      ...SEQUENCER_CHECKPOINTS_INDEXES,
+      ...SCHEDULE_INDEX_INDEXES
     ]
   };
 }

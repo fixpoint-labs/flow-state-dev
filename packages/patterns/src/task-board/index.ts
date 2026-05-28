@@ -35,8 +35,19 @@
  *
  * ## Termination
  *
- * - `onIdle: 'complete'` (default): exit when no `pending`,
- *   `in_progress`, or `awaiting_review` tasks remain.
+ * - `onIdle: 'complete-or-blocked'` (default, FIX-626): exit when the
+ *   collection drains, OR when no active worker is in-flight and no
+ *   `pending` task is claimable (every remaining pending has a
+ *   non-`completed` dep). Handles the DAG case where an upstream task
+ *   errors and downstream pendings can never run. The final
+ *   `task-board-meta` item carries `terminationReason:
+ *   "all-completed" | "blocked-by-failures"` so callers can tell the
+ *   two outcomes apart without inspecting `counts`.
+ *
+ * - `onIdle: 'complete'`: exit only when no `pending`, `in_progress`,
+ *   or `awaiting_review` tasks remain. Legacy default. Use when a
+ *   pending task with a non-completed dep is a transient state an
+ *   external pump will eventually resolve.
  *   `awaiting_review` keeps the loop alive — workers idle-poll until
  *   an external actor transitions the task out.
  *
@@ -52,10 +63,14 @@
  * pattern-level coordination beyond that.
  */
 import { sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  onTaskChangeFor,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskInit,
@@ -71,6 +86,7 @@ import {
   taskBoardStateSchema,
   taskBoardWorkerStateSchema,
   taskBoardWorkerBodyStateSchema,
+  claimResultSchema,
   type ClaimResult,
 } from "./schemas";
 import type { Task } from "@flow-state-dev/tasks";
@@ -87,6 +103,13 @@ import {
   createBoardMetaActive,
   createBoardMetaCompleted,
 } from "./blocks/board-meta";
+import {
+  createFlowPolicyResolver,
+  createInstallBoardFlowState,
+  createTeardownBoardFlowState,
+  stampCurrentTaskId,
+  type BoardRunFlowState,
+} from "./flow-policy-wiring";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -136,6 +159,8 @@ export type {
 } from "./blocks/record-result";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
+export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
+export type { CascadeSkipDependentsOptions } from "./blocks/cascade-skip-dependents";
 export {
   createBoardMetaActive,
   createBoardMetaCompleted,
@@ -147,6 +172,7 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
+export type { BoardRunFlowState } from "./flow-policy-wiring";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -251,12 +277,18 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Termination behavior when the worker pool is idle.
    *
-   * - `"complete"` (default): exit when no `pending`, `in_progress`,
-   *   or `awaiting_review` tasks remain. Single-pass drain.
+   * - `"complete-or-blocked"` (default, FIX-626): exit when the
+   *   collection drains, OR when no in-flight worker is active and no
+   *   `pending` task is claimable. The final `task-board-meta` item's
+   *   `terminationReason` field distinguishes `"all-completed"` from
+   *   `"blocked-by-failures"`.
+   * - `"complete"`: exit only when no `pending`, `in_progress`, or
+   *   `awaiting_review` tasks remain. Pre-FIX-626 default; preserved
+   *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
    */
-  onIdle?: "wait" | "complete";
+  onIdle?: "wait" | "complete" | "complete-or-blocked";
 
   /** Tasks seeded into the collection at board start. Optional. */
   initialTasks?: readonly TaskInit<TInput>[];
@@ -285,7 +317,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Predicate for `onIdle: 'wait'` — return `true` to terminate the
    * loop. Evaluated once per iteration in `checkBoard`. Ignored in
-   * `onIdle: 'complete'` mode.
+   * `onIdle: 'complete'` and `onIdle: 'complete-or-blocked'` modes.
    */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
 
@@ -295,6 +327,43 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * `awaiting_review` task to be resumed). Default: 50ms.
    */
   idlePollMs?: number;
+
+  /**
+   * Per-board tool-result memoization (FIX-610 Layer B). Enabled
+   * automatically when any worker tool declares `cacheable`; pass
+   * `false` to disable, or an object to tune. The cache is bound to a
+   * single board run — it's torn down whether the board completes or
+   * errors, so cross-run leakage stays impossible by construction.
+   */
+  toolCache?: TaskBoardToolCacheConfig | boolean;
+
+  /**
+   * Per-board flow policy (FIX-610 Layer A). Decides which prior-task
+   * observations a soon-to-dispatch worker sees on
+   * `TaskWorkerInput.priorWork`. Default: `flowPolicy.declaredDepsOnly()`
+   * — wire-identical to pre-FIX-610 behavior. Pattern factories like
+   * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
+   *
+   * Per-board flow policy. Decides which prior-task observations a
+   * soon-to-dispatch worker sees on `TaskWorkerInput.priorWork`.
+   * Default: `flowPolicy.declaredDepsOnly()`. Pattern factories like
+   * `planAndExecute` pin richer defaults (`recentTrajectory({ n: 8 })`).
+   */
+  flowPolicy?: import("@flow-state-dev/tasks").TaskFlowPolicy;
+}
+
+/**
+ * Per-board tool-cache tuning (FIX-610). All fields optional.
+ */
+export interface TaskBoardToolCacheConfig {
+  /** Default true when any tool in the board's worker(s) declares `cacheable`. */
+  enabled?: boolean;
+  /** Default TTL (ms) for cacheable tools that don't specify one. */
+  defaultTtl?: number;
+  /** Max entries before LRU eviction. Default 5000. */
+  maxEntries?: number;
+  /** Default scope for tools that don't specify one. Default `"run"`. */
+  defaultScope?: "run" | "request" | "session";
 }
 
 export interface TaskBoardHandle {
@@ -347,12 +416,14 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     workers,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
-    onIdle = "complete",
+    onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
     maxIterations = 10_000,
     shouldExit,
     idlePollMs = 50,
+    toolCache,
+    flowPolicy: flowPolicyConfig,
   } = config;
 
   if (concurrency < 1) {
@@ -404,7 +475,28 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  const workerStep = buildWorkerStep({ name, workers, collection: collectionFactory });
+  // FIX-610 shared run-state bag — populated by `installFlowState`
+  // at the top of the outer sequencer and consulted by every worker
+  // dispatch. Cleared by `teardownFlowState` on both completion and
+  // error paths so a board re-entered within the same request starts
+  // each run fresh.
+  const runState: BoardRunFlowState = { collectionId };
+  const installFlowState = createInstallBoardFlowState({
+    name,
+    collectionId,
+    flowPolicy: flowPolicyConfig,
+    toolCache,
+    collection: collectionFactory,
+    runState,
+  });
+  const teardownFlowState = createTeardownBoardFlowState({ name, runState });
+
+  const workerStep = buildWorkerStep({
+    name,
+    workers,
+    collection: collectionFactory,
+    resolveFlowPolicy: createFlowPolicyResolver(runState),
+  });
 
   const recordSuccess = createRecordSuccess({
     name: `${name}-worker-record-success`,
@@ -421,7 +513,6 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     name: `${name}-worker-check-board`,
     collection: collectionFactory,
     onIdle,
-    idlePollMs,
     shouldExit,
   });
 
@@ -444,17 +535,96 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   })
     .tap(async (task: Task, ctx) => {
       await ctx.sequencer!.patchState({ currentTaskId: task.id });
+      // FIX-658: mark this worker-body scope so every item the worker emits
+      // (messages, tool calls, sources, reasoning) is stamped with the task
+      // id at emit time. This makes per-task attribution correct under
+      // concurrent fan-out — a sibling worker's items no longer fall inside
+      // this task's render window — and across sequential `loopBack` turns,
+      // where the execution path repeats but each turn is a fresh scope.
+      ctx._markTaskScope?.(task.id);
+      // FIX-610: also stamp the active task id onto the shared
+      // run-state bag so any cacheable tool the worker invokes attributes
+      // cache writes to this task (later hits get `sourceTask`).
+      stampCurrentTaskId(runState, task);
     })
     .then(workerStep)
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);
 
-  function makeWorker(workerId: number): SequencerDefinition<any, any> {
+  function makeWorker(workerId: number) {
+    // Per-worker mutable cell holding the resolved collection ref. The
+    // `.waitForCondition` predicate signature is `(items) => boolean`
+    // and does not receive a ctx, so we capture the ref via a leading
+    // `.tap` step the first time this worker runs. Resolving once per
+    // worker is fine: the collection factory is idempotent (same
+    // collectionId → same ref) and avoids re-doing the lookup every
+    // iteration. Predicate reads from `cell.collection!` — guaranteed
+    // populated because the tap runs before the wait.
+    const cell: {
+      collection?: TaskCollectionRef;
+      wakeFilter?: (item: OutputItem) => boolean;
+    } = {};
+
+    const idleWait = sequencer({
+      name: `${name}-worker-${workerId}-idle-wait`,
+      inputSchema: z.unknown(),
+      // idleWait is the false-branch sibling of `claimTask`: both feed the
+      // worker's `.thenIf((out: ClaimResult) => ...)` gates below, so its
+      // terminal `.map` must produce a `ClaimResult`. The trailing `.map`
+      // erases the tracked schema (so `.validate()` can't see it), so this
+      // contract is enforced by the sequencer's runtime exit gate.
+      outputSchema: claimResultSchema,
+    })
+      .tap((_input, ctx) => {
+        if (cell.collection === undefined) {
+          cell.collection = collectionFactory(ctx);
+          cell.wakeFilter = onTaskChangeFor(cell.collection.collectionId);
+        }
+      })
+      .waitForCondition(
+        (items) =>
+          cell.collection === undefined
+            ? false
+            : whenBoardClaimable(cell.collection, { onIdle, shouldExit })(items),
+        // Long timeout: a quiet board still wakes on task-change items.
+        // The timeout is the upper bound on starvation if the wake
+        // signal is somehow missed — the worker's outer `loopBack`
+        // re-evaluates exit on every wake, so even a hard timeout
+        // cycles cleanly back through `checkBoard`. Per spec §3.6,
+        // scale to `idlePollMs * 100` so test boards with tiny poll
+        // intervals still cycle quickly.
+        //
+        // `wakeOn` (FIX-660): fast-path the listener so transient
+        // `resource_change` and `block_trace` items emitted by sibling
+        // workers do not trigger a full collection scan. Without this
+        // filter, a 16-worker `eventActors` board pays
+        // `16 × collection.list()` per workspace patchState — visible
+        // as multi-second idle gaps. `cell.collection` is guaranteed
+        // populated by the leading `.tap`.
+        {
+          timeoutMs: Math.max(idlePollMs * 100, 50),
+          // Defer to the cell because `cell.wakeFilter` is only known
+          // after the leading `.tap` resolves the collection at runtime.
+          // The outer closure is stable; the inner call is one
+          // indirection per fan-out event. Pre-tap (impossible by
+          // construction, but typed-defensively) the filter is open
+          // (`true`) so no signal is dropped before the cell populates.
+          wakeOn: (item) =>
+            cell.wakeFilter === undefined ? true : cell.wakeFilter(item),
+        }
+      )
+      .map(() => ({ claimed: false, task: undefined as Task | undefined }));
+
     return sequencer({
       name: `${name}-worker-${workerId}`,
       stateSchema: taskBoardWorkerStateSchema,
     })
       .then(claimTask)
+      .thenIf(
+        (out: ClaimResult) => !out.claimed,
+        () => undefined,
+        idleWait
+      )
       .thenIf(
         (out: ClaimResult) => out.claimed,
         // Connector: ClaimResult → Task (the workerStep's input).
@@ -467,13 +637,17 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       .loopBack(claimStepName, {
         when: (v) => (v as { shouldContinue?: boolean }).shouldContinue === true,
         maxIterations,
-      }) as SequencerDefinition<any, any>;
+      });
   }
 
   const block = sequencer({
     name,
     stateSchema: taskBoardStateSchema,
   })
+    // FIX-610: install run-scoped cache + ledger BEFORE seed so any
+    // tool a seed handler might call (rare but possible via custom
+    // seed paths) sees the binding too.
+    .tap(installFlowState)
     .tap(boardMetaActive)
     .tap(seedBlock)
     .forEach(
@@ -481,7 +655,13 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       (workerId: number) => makeWorker(workerId),
       { maxConcurrency: concurrency }
     )
-    .tap(boardMetaCompleted) as SequencerDefinition<any, any>;
+    .tap(boardMetaCompleted)
+    // FIX-610: teardown on the success path. The `.rescue` below also
+    // runs teardown on errors so cleanup is symmetric — leaving stale
+    // run-state across re-entries inside the same request would
+    // otherwise misattribute cache hits.
+    .tap(teardownFlowState)
+    .rescue([{ block: teardownFlowState }]);
 
   // Capability — backing-aware. Sequencer-spec collections get a
   // capability that auto-resolves the collection via the parent

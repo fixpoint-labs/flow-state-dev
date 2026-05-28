@@ -7,42 +7,37 @@ These instructions define the collaboration protocol for agent-driven work in th
 At the start of a new conversation in this repo, read:
 
 - `CLAUDE.md` — project orientation and key constraints
-- `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-009)
+- `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
 
-For deeper canonical authority on edge cases, consult `../preperation/architecture/*`.
-
-**Authority order**: `../preperation/architecture/*` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file.
+**Authority order**: `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins.
 
 ## Wave execution protocol
 
 Use this protocol when work is wave-based:
 
-- Waves have numbers and letters. Numbers represent the phase of wave we are in, letters indicate the major milestone. Our `..preperation/architecture/IMPLEMENTATION_PLAN.md` tracks the waves we are targeting.
+- Waves have numbers and letters. Numbers represent the phase of wave we are in, letters indicate the major milestone. Wave plans live under `docs/internal/waves/wave-<number>/` and track what's targeted for each milestone.
 - Keep wave plans under their wave number, currently at `docs/internal/waves/wave-1/` using `wave-1.<letter>.md`.
 - Each wave file must include objective, scope, task breakdown, deliverables, and verification gates.
 - Completed wave work must update:
   - `docs/internal/waves/wave-1/wave-1.<letter>-journal.md`
   - `docs/internal/waves/wave-1/wave-1.<letter>-changelog.md`
-  - `changelog.md` (concise project-level summary — see Changelog style below)
 
-## Changelog style
+## Release notes
 
-`changelog.md` is read by humans scanning what shipped — not by reviewers auditing how. Keep it tight.
+This repo uses Changesets for release coordination. Do not edit a root `changelog.md` — none exists.
 
-**Audience and depth.** Write for a contributor or user catching up on the project, not for the reviewer of the originating PR. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and references to other tickets belong in the PR description, the wave journal, or the Linear comment — not here.
+**On every PR with user-facing impact:**
 
-**Shape of an entry:**
+1. Run `pnpm changeset`. Pick the affected publishable package(s).
+2. Pre-1.0: choose `patch` for non-breaking, `minor` for breaking. Never `major`.
+3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
+4. Commit the generated `.changeset/<name>.md` file with the PR.
 
-- One H3 per shipped change, dated under the H2 of the day it landed on `main`.
-- 3–6 bullets. Each bullet is one or two short sentences conveying a single user-facing fact: a new API, a renamed concept, a behavior change, a doc location. If you can't summarize at this level, the entry probably needs to be split or trimmed.
-- Lead each bullet with the fact, not bolded preamble. Inline `code` for symbol names is fine; bolded category labels at the start of every bullet are not.
-- No file paths, line numbers, LOC counts, test counts, or "Tests" / "Out of scope" sections. If a doc page is genuinely worth pointing readers at, name it; don't list every README that got a sentence updated.
+**Skip changesets** for internal-only changes (refactors, test-only edits, internal helpers, infra). State that explicitly in the PR description so a reviewer can verify, or run `pnpm changeset --empty` and commit the resulting empty fragment.
 
-**One entry per PR, not per intermediate decision.** Mid-PR refinements get folded into the single entry for that PR. If a follow-up PR materially revises a feature whose entry is still in the same release window, prefer extending or rewriting the original entry rather than adding a "follow-up" entry that documents the diff.
-
-**When in doubt, look at the older entries.** The 2026-04-11 (`fsdev dev`, `defineCapability`, View Sequencer State) and 2026-03-20 (Resource Namespaces) entries are the reference style. The recent verbose entries were a regression — don't repeat them.
+**Reference:** [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) covers when to write what, the multi-package case, common mistakes, and what happens at release time. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule.
 
 ## Implementation guardrails
 
@@ -162,7 +157,7 @@ Three tiers, picked by what kind of regression you want to catch:
 When making changes that affect the framework's behavior or API, update documentation in the same change set as the code change.
 
 **Architecture docs** (`docs/architecture/`):
-Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These docs are adapted from the canonical specs in `../preperation/architecture/` and serve as the in-repo reference for framework developers.
+Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These are the authoritative in-repo reference for framework developers; keep them in sync with the code.
 
 **Package READMEs** (`packages/*/README.md`):
 Update when a package's exported surface, behavior, or setup commands materially change. Keep the structure consistent: Purpose → Quick Start → API Surface → Scripts.

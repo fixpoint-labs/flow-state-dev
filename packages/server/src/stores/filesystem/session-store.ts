@@ -55,6 +55,42 @@ export class FilesystemSessionStore implements SessionStore {
     return this.store.set(id, value, expectedVersion);
   }
 
+  /**
+   * Delta verbs (`patchField`/`incField`/`pushToArray`) delegate to the shared
+   * CAS record store, which mutates one depth-1 `state` field in place under
+   * the per-id lock instead of rewriting the whole record. Per-verb semantics
+   * are documented on `FilesystemRecordStore`.
+   */
+  async patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<SessionRecord>> {
+    return this.store.patchField(id, path, value, expectedVersion, updatedAt);
+  }
+
+  async incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<SessionRecord>> {
+    return this.store.incField(id, path, delta, expectedVersion, updatedAt);
+  }
+
+  async pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<SessionRecord>> {
+    return this.store.pushToArray(id, path, values, expectedVersion, updatedAt);
+  }
+
   async delete(id: string): Promise<void> {
     await this.store.delete(id);
   }

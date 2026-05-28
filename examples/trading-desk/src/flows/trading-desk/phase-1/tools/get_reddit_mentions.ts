@@ -4,7 +4,7 @@
  * `unavailable`. Fixture mode loads curated NVDA JSON.
  */
 import { handler } from "@flow-state-dev/core";
-import { loadFixture } from "../../services/fixtures";
+import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
 

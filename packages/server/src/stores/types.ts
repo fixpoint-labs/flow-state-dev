@@ -55,6 +55,11 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  /**
+   * Output items produced by this request. Adapters that store items
+   * separately may leave this `undefined` on `list()` results unless
+   * `RequestListOptions.withItems` is true.
+   */
   items?: OutputItem[];
   interruptedAt?: number;
   abortRequested?: boolean;
@@ -86,6 +91,22 @@ export type RequestListOptions = {
   status?: RequestStatus;
   limit?: number;
   offset?: number;
+  /**
+   * Sort key for the returned (and limited) set, descending. `"updatedAt"`
+   * (default) preserves prior behavior. `"startedAtMs"` orders by request
+   * start time so a `limit`-windowed read selects the most-recently-started
+   * requests regardless of later out-of-order metadata writes. Adapters that
+   * persist `startedAtMs` only inside the record blob order by the equivalent
+   * `created_at` column (set to `startedAtMs` at creation, never mutated).
+   */
+  orderBy?: "startedAtMs" | "updatedAt";
+  /**
+   * If true, populate `record.items` for each returned record. Default
+   * false. Adapters that store items separately (Postgres) avoid an
+   * extra query per list when this is false; adapters that store items
+   * inline ignore the flag.
+   */
+  withItems?: boolean;
 };
 
 export type UserListOptions = {
@@ -262,6 +283,30 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     requestId: string,
     options: SubscribeToEventsOptions
   ): AsyncIterableIterator<RequestStreamEvent>;
+
+  /**
+   * Lookup the memoized result of a `ctx.runOnce(key, fn)` call (FIX-402).
+   * Returns `{ found: false }` when no record exists for this `(requestId,
+   * key)` pair. The stored value is opaque JSON — the caller is responsible
+   * for any type coercion. Implementations should treat misses as cheap
+   * and not allocate on miss.
+   */
+  getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }>;
+
+  /**
+   * Persist the result of a `ctx.runOnce(key, fn)` call (FIX-402). The
+   * value replaces any prior record for this `(requestId, key)` pair —
+   * callers serialize execution per key so a late writer overwriting an
+   * earlier success is benign (they computed the same fn).
+   */
+  setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void>;
 }
 
 /**
@@ -372,10 +417,61 @@ export interface ContentStore {
   /** Delete a single resource's content. */
   delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
 
-  /** Read all content for a scope instance. Used during context initialization and state route reads. */
+  /** Read all content for a scope instance. Used during state route reads (full-scope view). */
   getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
 
+  /**
+   * Read every content entry in a scope whose resourceKey starts with
+   * `keyPrefix`. An empty `keyPrefix` returns all keys in the scope
+   * (equivalent to `getAll`). Used during context initialization to load
+   * only the content a flow declares — fixed resources by exact key, and
+   * collections by their pattern prefix.
+   */
+  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
+
   /** Delete all content for a scope instance. Used during scope record deletion. */
+  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+}
+
+/**
+ * Separates resource state persistence from scope record persistence.
+ *
+ * State is addressed by (scopeType, scopeId, resourceKey) — the same scheme as
+ * `ContentStore`, and covers both single-resource and collection-instance
+ * state uniformly. Each resource's state is a `JsonObject` written under its
+ * own key, so a mutation to one resource never rewrites the whole scope
+ * record. This is the state-layer twin of `ContentStore` (FIX-689): content
+ * bodies and state metadata follow the same keyed storage pattern, but live in
+ * separate stores because their payload types and lifecycles are independent
+ * (a resource can carry state with no content body, and vice versa).
+ *
+ * Concurrency: plain per-key last-write-wins (no CAS), matching `ContentStore`.
+ * Per-resource keying structurally removes the whole-map clobber hazard that
+ * a shared inline `resources` map had.
+ */
+export interface ResourceStateStore {
+  /** Read a single resource's state, or `undefined` if none is stored. */
+  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<JsonObject | undefined>;
+
+  /** Write a single resource's state. Creates or overwrites. */
+  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void>;
+
+  /** Delete a single resource's state. */
+  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+
+  /** Read all state for a scope instance. Used by full-scope reads (`/state`, debug snapshot). */
+  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, JsonObject>>;
+
+  /**
+   * Read every state entry in a scope whose resourceKey starts with
+   * `keyPrefix`. An empty `keyPrefix` returns all keys in the scope
+   * (equivalent to `getAll`). Used during context initialization to load only
+   * the state a flow declares — fixed resources by exact key, collections by
+   * their pattern prefix.
+   */
+  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, JsonObject>>;
+
+  /** Delete all state for a scope instance. Used during scope record deletion. */
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
 }
 
@@ -441,6 +537,27 @@ export type StoreRegistry = {
   org: OrgStore;
   activeRequests: ActiveRequestRegistry;
   content: ContentStore;
+  resourceState: ResourceStateStore;
   checkpoints: CheckpointStore;
   traces: TraceStore;
 };
+
+/**
+ * Payload delivered to an `onPersistError` observable when a store adapter's
+ * background write fails. `store` names the adapter ("request", "traces",
+ * "activeRequests"), `id` is the affected record key (typically a requestId),
+ * and `error` is the underlying write failure (FIX-406 6B).
+ */
+export type PersistErrorInfo = {
+  store: string;
+  id: string;
+  error: Error;
+};
+
+/**
+ * Operator-suppliable hook fired on store persistence failures. Configured via
+ * the store factory (e.g. `createFilesystemStores({ onPersistError })`). When
+ * unset, adapters still log the failure — the hook is the structured channel
+ * for alerting, not a replacement for the safety-net log.
+ */
+export type PersistErrorHandler = (info: PersistErrorInfo) => void;

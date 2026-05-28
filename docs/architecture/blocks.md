@@ -259,6 +259,12 @@ Rules:
 
 The original array form continues to work unchanged. String entries in an array slot still emit as their own additional system messages, in author order, after the combined prompt+tagged-context message.
 
+#### Prompt files (`.md` authoring)
+
+A generator's `prompt` can be authored in a separate `.md` file rather than inline. `loadPromptFile(specifier, importerUrl, options?)` (Node, from `@flow-state-dev/core/prompt-file/node`) reads the file and auto-registers sibling `.md` files in the same directory as partials; `parsePromptFile(text, options?)` (isomorphic, from `@flow-state-dev/core/prompt-file`) takes raw text plus an explicit `partials` map for browser/bundled consumers. `definePromptFile(pf)` turns the parsed result into the generator config fields it covers (`prompt`, `user`, `caching`, `maxTokens`, `temperature`, and optionally `name`/`description`) to spread into `generator({...})`.
+
+The file is YAML frontmatter (strict-validated) over a body split into line-anchored `<system>`, `<user>`, and `<context>` sections. The body is a LiquidJS template rendered against three top-level variables: `input` (the generator's typed input), `ctx` (the same block context a TS prompt function receives), and `config` (the post-resolution config view, including `config.context` — the aggregated tag map described above). `strictVariables` is on, so unknown references throw at render. A `<context>` section in the template suppresses the framework's default XML-tag append and lets the template own context position (reorder, conditionally include, drop unrendered keys). Partials compose via `{% render 'name' %}` (isolated scope) or `{% include 'name' %}` (caller scope); custom value transforms register per file through the `filters` option. See [Prompts as Markdown](../../apps/docs/docs/advanced/generator-prompts-markdown.md) for the full reference.
+
 ### Tool Loop
 
 - Generator owns the tool loop internally — bounded by `maxIterations` (or runtime default)
@@ -456,7 +462,7 @@ ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "au
 
 ## Canonical Authority
 
-For full type signatures, edge cases, and detailed semantics, see `../preperation/architecture/BLOCKS.md`.
+This document is authoritative for block contracts. For full type signatures, refer to the published types in `@flow-state-dev/core`.
 
 
 Output dependencies use block-definition references instead of name-based state handles:

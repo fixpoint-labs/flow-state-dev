@@ -26,8 +26,6 @@ export type DebaterInstructions =
   | string
   | ((input: any, ctx: any) => string | Promise<string>);
 
-const debaterOutputSchema = z.object({ text: z.string() });
-
 /** Render prior arguments as a stance-tagged transcript, in turn order. */
 function formatPriorForDebater(
   entries: { round: number; stance: string; text: string }[],
@@ -67,10 +65,24 @@ export function createDebater(opts: CreateDebaterOptions) {
   return generator({
     name: `${opts.name}-debater-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
-    outputSchema: debaterOutputSchema,
+    // Plain-string output is intentional: with a structured schema the
+    // model is forced into JSON mode, which prevents the framework from
+    // streaming content as it generates. The recorder coerces both
+    // `string` and `{ text: string }` shapes, so custom override blocks
+    // can still return either.
+    outputSchema: z.string(),
+    // Stamp the streamed `message` items with the role name (e.g.
+    // "advocate") instead of the long generator name, so renderers can
+    // attribute streaming text to a debater by short identity.
+    agentName: opts.agentName,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     agentType: opts.agentType ?? "sub",
+    // No `activeStatusMessage` here: the pattern emits an inline
+    // `debate-turn-pending` row with the same information, and pairing
+    // them produces two near-identical "{agentName} is composing..."
+    // strings in the UI. The inline row wins because it's contextual
+    // (visible inside the debate card with stance + streaming text).
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
@@ -105,10 +117,28 @@ export function createDebater(opts: CreateDebaterOptions) {
         entries.length > 0
           ? `\nPrior arguments (in order):\n${formatPriorForDebater(entries)}\n`
           : "";
+      // Pick the moderator decision that opened THIS round (the one whose
+      // round number matches state.round). With the moderator running at
+      // the top of the round, the most recent decision is the current
+      // round's opener — but match on `round` explicitly to stay robust
+      // if the loop order ever changes.
+      const decisions = state.moderatorDecisions ?? [];
+      const currentDecision =
+        decisions.find((d) => d.round === state.round) ?? null;
+      const briefingBlock =
+        currentDecision && currentDecision.briefing
+          ? `\nBriefing from the moderator:\n${currentDecision.briefing}\n`
+          : "";
+      const angleBlock =
+        currentDecision && currentDecision.newAngle
+          ? `\nFocus for this round:\n${currentDecision.newAngle}\n`
+          : "";
       return [
         `Question under debate: ${state.question ?? ""}`,
         `Round ${state.round} of ${opts.maxRounds}.`,
         priorBlock,
+        briefingBlock,
+        angleBlock,
       ]
         .filter(Boolean)
         .join("\n");

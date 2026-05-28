@@ -6,7 +6,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { get_insider_transactions } from "../src/flows/trading-desk/phase-1/tools/get_insider_transactions";
-import { _resetCache } from "../src/flows/trading-desk/services/cache";
+import { _resetCache } from "../src/flows/trading-desk/lib/cache";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 

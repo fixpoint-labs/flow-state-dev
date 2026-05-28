@@ -128,7 +128,89 @@ The schema uses:
 | `users` | `id` | User-scoped state and resources |
 | `projects` | `id` | Project-scoped state and resources |
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
+| `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
+| `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
+| `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
+
+## Items storage
+
+Output items produced by a request are stored one row per item in the `request_items` table, separate from the `requests` record:
+
+```sql
+CREATE TABLE request_items (
+  request_id  TEXT   NOT NULL,
+  item_id     TEXT   NOT NULL,
+  sequence    BIGINT NOT NULL,
+  item_type   TEXT   NOT NULL,
+  data        JSONB  NOT NULL,
+  PRIMARY KEY (request_id, item_id)
+);
+CREATE INDEX idx_request_items_request_sequence ON request_items(request_id, sequence);
+```
+
+A typical query, in order:
+
+```sql
+SELECT data FROM request_items WHERE request_id = $1 ORDER BY sequence ASC;
+```
+
+The framework's `RequestStore.persistItems` API is unchanged. The adapter handles batched UPSERT inside `persistItems` / `flushItems` calls, keyed by `(request_id, item_id)` so keyed-component re-emissions update in place.
+
+## Why a separate table
+
+In the prior shape, items were stored as a JSONB sub-path inside `requests.data->'items'` and rewritten on every coalesced flush. Postgres keeps large column values out-of-line in a side table called TOAST; updating a JSONB column produces a new TOAST copy and leaves the prior chunks dead until autovacuum reclaims them. On serverless Postgres (Neon, Vercel Postgres, RDS Aurora Serverless), autovacuum runs less aggressively because compute suspends between requests, so dead TOAST tuples accumulate faster than they clear.
+
+A production request with about 4.5MB of items JSON ended up occupying 349MB on disk — a 78x amplification.
+
+After the change, an item INSERT pays the TOAST cost once. An UPDATE only rewrites the one row's payload, not the entire items array. Unchanged item rows are never re-TOAST'd. Storage cost is proportional to data emitted, not to flush cadence.
+
+## Upgrading from older versions
+
+Migration is lazy. There is no offline step and no required backfill.
+
+- New requests after the deploy: items go straight to `request_items`. The `requests.data` JSONB no longer carries a `data.items` slice for new writes.
+- Legacy requests at deploy time: items still live in `data.items`. The adapter's read path returns them via a fallback that merges `request_items` rows with `data.items`, ordered by `itemIndex`.
+- In-flight requests at deploy time: items emitted before the deploy live in `data.items`; items emitted after live in `request_items`. The merge returns both, in order.
+
+The merge is one-directional, which makes this **a forward-only deploy**. Once new code has written even one row to `request_items`, that data is invisible to the old code (which only reads `data.items`). Rolling back requires manually exporting `request_items` rows back into `data.items` JSONB arrays. Validate the deploy in a staging environment before rolling out.
+
+## Reclaiming storage from the legacy bloat
+
+After upgrade, the legacy `data.items` arrays on already-migrated requests are still occupying disk space inside the bloated `requests` table. Two optional, operator-driven steps reclaim it.
+
+1. Strip the legacy slice from migrated rows:
+
+   ```sql
+   UPDATE requests
+   SET data = data - 'items'
+   WHERE id IN (SELECT request_id FROM request_items GROUP BY request_id)
+     AND data ? 'items';
+   ```
+
+   The statement is idempotent and safe to run on a live database. After it runs, the lazy fallback in the read path is a no-op for those requests.
+
+2. Reclaim the dead TOAST tuples with [`pg_repack`](https://reorg.github.io/pg_repack/):
+
+   ```bash
+   pg_repack requests --no-superuser-check
+   ```
+
+   Neon supports `pg_repack` ([docs](https://neon.com/docs/extensions/pg_repack)). The repack rewrites the table without an exclusive lock, but it produces WAL that lands in the deployment's history-window billed storage during execution. Consider temporarily shrinking the history window during the run on Neon.
+
+Neither step is required for correctness. They reclaim disk that was wasted by the prior write pattern; new requests under the new code path don't incur the bloat in the first place.
+
+## Breaking change in `list()` behavior
+
+`RequestStore.list()` no longer populates `record.items` by default on the Postgres adapter. Items are stored in a separate table and populating them costs an additional query per call; default-off avoids paying that cost on the many listing endpoints that don't read items.
+
+Pass `withItems: true` to opt in:
+
+```ts
+const requests = await stores.request.list({ sessionId, withItems: true });
+```
+
+The three framework-internal callers that depend on items in listings are already updated: cross-turn history reconstruction, the `?includeItems` state endpoint, and the session-requests listing endpoint. Other adapters (memory, filesystem, SQLite) still return items inline regardless of the flag. Custom application code that read `record.items` from a `list()` result on Postgres must add the flag.
 
 ### Skipping runtime schema init
 
@@ -151,6 +233,31 @@ const stores = await createPostgresStores({
 ```
 
 Migrations are still idempotent if you forget — `skipSchemaInit` is a performance optimization, not a correctness requirement. See `apps/kitchen-sink/scripts/migrate.mjs` in the flow-state-dev repo for a full example.
+
+## Schedule index
+
+`createPostgresScheduleIndex(executor)` returns a `ScheduleIndex` implementation backed by the `schedule_index` table. Use it with `defineScheduleCollection` from `@flow-state-dev/scheduled` to auto-mirror dynamic schedules, then point a cron tick at the index to dispatch due rows.
+
+```ts
+import pg from "pg";
+import { createPostgresScheduleIndex } from "@flow-state-dev/store-postgres";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const executor = {
+  async query(text: string, values?: unknown[]) {
+    const r = await pool.query(text, values);
+    return { rows: r.rows, rowCount: r.rowCount ?? 0 };
+  },
+  async beginTx() {
+    return createPgPoolTx(pool);
+  }
+};
+const index = createPostgresScheduleIndex(executor);
+```
+
+`claimDue` reads + advances inside one transaction using `SELECT ... FOR UPDATE SKIP LOCKED` so multiple replicas can tick concurrently without double-firing. The factory requires the executor to implement `beginTx()` — the pool-backed executors `createPostgresStores` returns do. For PGlite-style single-connection executors, use the exported `createSingleConnectionTx` helper.
+
+See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
 
 ## Interrupted Request Recovery
 

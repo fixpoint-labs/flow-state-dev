@@ -20,42 +20,77 @@ src/flows/trading-desk/
   flow.ts                        flow definition (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   agents.ts                      AGENTS map + per-phase memo key registries
-  resources.ts                   memosCollection + thesisSection schema (shared across phases)
-  memo-writer.ts                 markWriting / commitMemo / markError taps (Phase 1)
-  services/
+  resources.ts                   memosCollection + thesisSection + phase2Contributions
+  capability.ts                  the tradingDesk capability — single import for every generator
+  lib/                           app-level helpers and factories (no external IO)
+    helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
+    memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
+    memo-setup.ts                defineMemoSetup — pre-create memo scaffolds per phase
+    approach-generator.ts        createApproachGenerator — Phases 3–5 fast-model preamble
+    format.ts                    shared prompt formatters (memo, debate, contributions)
     cache.ts                     process-wide TTL cache (getOrFetch)
     fixtures.ts                  loadFixture(tool, args)
+    ticker-resolver.ts           pre-flight ticker probe
+    discover.ts                  web-search → DiscoveryPayload shape
+  providers/                     external API clients (stateless, throw on failure)
     finnhub.ts                   Finnhub fetch helpers
     yahoo.ts                     Yahoo Finance v3 fetch helpers
-    format.ts                    shared prompt formatters (memo, debate, contributions)
-    trading-desk-capability.ts   the tradingDesk capability — single import for every generator
+    web.ts                       homepage meta + web-search fallback
+    xai.ts                       Grok (xAI) credentials + model id
   phase-1/
     index.ts                     phase1Pipeline (the sub-sequencer)
-    analysts.ts                  defineAnalyst factory + the four analyst sub-sequencers
-    setup.ts                     setupPhase1Memos (pre-creates memo resources)
+    analyst.ts                   defineAnalyst — per-analyst sub-sequencer factory
+    analysts.ts                  the five analyst sub-sequencers (5 × ~10 lines via defineAnalyst)
+    setup.ts                     setupPhase1Memos (defineMemoSetup)
+    writer.ts                    Phase-1 markWriting / commitMemo / markError (defineMemoWriter)
     prompts.ts                   per-analyst system prompts
-    thesis-schema.ts             Thesis output shape shared with memos
-    resources.ts                 (none yet — phase-1 doesn't add its own resources)
+    thesis-schema.ts             Thesis output shape (shared by all 5 analyst generators + writer)
     tools/                       one file per tool (get_balance_sheet.ts, etc.)
       schemas.ts                 shared zod schemas + ToolName / ToolInput / ToolOutput
       empty-payloads.ts          schema-valid zeros for "unavailable" results
       indicators-math.ts         pure RSI/MACD/ATR/SMA functions
       get_*.ts                   one per tool — mode branch + provider chain
       index.ts                   barrel re-export
-  phase-2/                       (same shape)
-  phase-3/
-  phase-4/
+  phase-2/                       (same shape — setup.ts + writer.ts + generators.ts + round-robin.ts)
+  phase-3/                       (single trader — trader.ts owns its output schema)
+  phase-4/                       (3 personas + risk-assessment consolidator)
+  phase-5/                       (single PM — portfolio-manager.ts owns its output schema)
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
 
+### Conventions enforced by this layout
+
+- **Factories live in `lib/`.** `defineMemoWriter`, `defineMemoSetup`, and
+  `defineAnalyst` (the last one is phase-1-specific, in `phase-1/analyst.ts`)
+  capture the shapes every phase repeats. Each phase's `setup.ts` and
+  `writer.ts` is now ≤ 15 lines + the per-phase commit projections.
+- **Single-consumer output schemas live next to the generator that emits
+  them.** `phase-3/trader.ts` and `phase-5/portfolio-manager.ts` declare
+  their output schemas inline; the writer imports the type back. Multi-
+  consumer schemas (Phase 1's `thesisOutputSchema`, Phase 4's persona +
+  risk-assessment schemas) stay in a `*-schema.ts` / `schemas.ts` file.
+- **`providers/` is for external API clients only.** Stateless,
+  throw-on-failure modules with no caching (callers wrap with
+  `getOrFetch` from `lib/cache.ts`).
+- **`lib/` is for everything that's neither identity (`agents.ts`),
+  contract (`resources.ts`, `state.ts`, `flow-schema.ts`), capability,
+  nor phase code.** Helpers, factories, formatters, stateless utilities.
+
 ## Adding a new generator
+
+**Structured-output agents in Phases 3–5 are wrapped with an approach
+preamble.** Each such agent has a sibling `<agent>ApproachGenerator`
+built via `createApproachGenerator()` in
+`lib/approach-generator.ts` and inserted before the structured
+generator in its step sequencer. Use the factory — don't hand-roll a
+new `generator({...})` for a preamble.
 
 Every generator in this example uses the `tradingDesk` capability for model
 selection + ticker/date context. The minimum scaffold:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { tradingDesk } from "../services/trading-desk-capability";
+import { tradingDesk } from "../capability";
 
 export const myGenerator = generator({
   name: "my-generator",
@@ -79,7 +114,62 @@ uses: [tradingDesk.presets({
 ```
 
 See the capability's available presets in
-[`services/trading-desk-capability.ts`](src/flows/trading-desk/services/trading-desk-capability.ts).
+[`capability.ts`](src/flows/trading-desk/capability.ts).
+
+### Adding a Phase 1 analyst
+
+Each analyst is one `defineAnalyst({ shortName, tools, generator })` call.
+The factory captures the universal recipe: `markWriting → .map(tickerDate)
+→ .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
+The call site supplies only what varies — the role's tools and its
+synthesis generator. See [`phase-1/analysts.ts`](src/flows/trading-desk/phase-1/analysts.ts)
+for the five existing analysts.
+
+To add a sixth:
+
+1. Add the agent to `AGENTS` and `PHASE_1_MEMO_KEYS` in `agents.ts`.
+2. Add a new `discover_<role>_context.ts` tool if it needs web discovery,
+   plus any role-specific `get_*` tools.
+3. Write the generator (output `thesisOutputSchema`).
+4. Call `defineAnalyst({...})` in `analysts.ts`.
+5. Wire it into `phase-1/index.ts`'s `.parallel({...})`.
+
+### Adding a phase setup or writer
+
+Two factories collapse the per-phase boilerplate:
+
+- `defineMemoSetup({ phaseId, agentTeam, keys, activePhase })` in
+  `lib/memo-setup.ts` — pre-creates the phase's memos in `pending`. The
+  memoStatus seed is derived from `Object.keys(keys)` so adding a new
+  memo to a phase is a one-line edit to `agents.ts`.
+- `defineMemoWriter({ phaseId, agentTeam, keys, errorMessageFallback,
+  errorTextPlaceholder? })` in `lib/memo-writer.ts` — returns
+  `{ markWriting, markError, defineCommit }`. Each phase's `writer.ts`
+  destructures `markWriting` and `markError`, then calls
+  `writer.defineCommit({ shortName, inputSchema, project, afterCommit? })`
+  for each commit handler. `project` returns the patch applied on top of
+  the standard `status: "published" / completedAt / errorMessage: null`
+  fields; `afterCommit` runs any phase-terminal session-state work (Phase
+  5 uses it to flip `runComplete`).
+
+### The `investigate` preset
+
+Phase 1 analysts opt into investigative search/fetch with
+`tradingDesk.presets({ investigate: true })`. The preset exposes the
+`fetch` tool and the `<investigation>` clause only on `costPreset ===
+"full"`; on `fast` both are absent and the prompt suppresses the
+`<investigation>` tag entirely (the resolver returns `null`, not `""`).
+Each analyst also wires a deterministic discovery tool
+(`discover_*_context`) into its parallel data fan-out. The discovery
+tools self-gate at the body level — they short-circuit to
+`skippedDiscoveryPayload` before any provider call when the preset isn't
+full. Two coordinated seams, same key, no leakage.
+
+The citation contract — every claim traces to either a `<data>` field
+or a URL the analyst actually fetched, and fetched URLs go in the
+`citations` array — is enforced by the prompt clauses, not by runtime
+validation. Body-section "Sources" is the v1 surface; inline `[n]`
+markers are intentionally deferred.
 
 If you have **costPreset-conditional** content (heavier context only on
 `full`), list the `*Full` variant of the preset alongside the always-on
@@ -152,19 +242,45 @@ call with `getOrFetch`).
 
 ## Round-robin patterns
 
-Round-robin instances (Phase 2 bull/bear debate, Phase 4 risk debate) use
-the `roundRobin()` pattern from `@flow-state-dev/patterns`. Two conventions
-for this example:
+**Phase 2's bull/bear debate is the canonical `roundRobin()` demo in this
+example.** It uses the pattern's distinguishing features: `terminateWhen`
+drives the round count from session state (`maxDebateRounds`),
+`uses: [tradingDesk]` resolves the model from `costPreset`, and the two
+researcher slots share a single transcript via the contributions accessor.
+No referee.
+
+Two conventions when using `roundRobin()` in this example:
 
 1. **Always set `accessorKey` explicitly.** Default `"contributions"` collides
-   when multiple round-robins coexist in the same flow. Trading-desk uses
-   `accessorKey: "p2Contributions"` for Phase 2 and `accessorKey:
-   "p4Contributions"` for Phase 4.
+   when multiple round-robins coexist in the same flow. Phase 2 uses
+   `accessorKey: "p2Contributions"`.
 
-2. **Declare the contributions resource in `phase-N/resources.ts`.** Importers
-   (the round-robin instance, the capability, the consolidator) all pull
-   from there. This keeps the phase's import graph cycle-free
+2. **Declare the contributions resource in `phase-N/contributions.ts`.**
+   Importers (the round-robin instance, the capability, the consolidator)
+   all pull from there. This keeps the phase's import graph cycle-free
    (see BP-019).
+
+**Phase 4 deliberately does NOT use `roundRobin()`.** It's a plain
+sequencer chain — `aggressiveStep.then(conservativeStep).then(neutralStep)`
+— even though the prose framing ("three risk officers in round-robin
+order") sounds like the pattern. None of `roundRobin()`'s features
+apply here:
+
+- `maxRounds` would be `1` (no debate cycling).
+- No synthesizer / referee.
+- The roster is heterogeneous — the neutral persona has its own output
+  schema, so the slots aren't interchangeable.
+- The personas don't read a shared transcript; they pull prior critiques
+  from the structured persona memos (`memos/p4/{aggressive,conservative}-risk`)
+  via per-generator `context` entries. The memo audit trail is the
+  richer source — using `roundRobin()` here would force every persona
+  through an adapter that flattens the structured output to free-form
+  text, then read that text back instead of the typed fields.
+
+Reintroducing `roundRobin()` for Phase 4 would require a `deriveRiskGoal`
+input adapter, a `toContributionShape` output adapter on every persona, a
+contributions resource, and a debate-transcript capability preset — all
+of them with no consumer. Keep it a plain chain.
 
 ## Fixture mode
 
@@ -188,14 +304,25 @@ When adding a new ticker to fixture coverage:
 
 Live mode wires Finnhub → Yahoo → FRED → Polymarket as the upstream
 providers, plus the `fetch` tool from `@flow-state-dev/tools` for article
-bodies. Required environment variables:
+bodies, plus Grok (xAI) for social sentiment when `XAI_API_KEY` is set.
+Required environment variables:
 
 ```
 FINNHUB_API_KEY=...      # finnhub.io — fundamentals, prices, news, insider transactions
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
+XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
 ```
 
 Polymarket and Yahoo Finance don't require keys.
+
+`get_social_sentiment` is the only Phase 1 tool that routes between a
+handler and a generator. Fixture and unavailable are handlers; the
+live-Grok path is a generator with the `xSearch` provider tool installed.
+The dispatch primitive is a `router` (block kinds differ across routes —
+the rest of the Phase 1 tools use `if` inside a handler because every
+branch is the same kind). See
+[`phase-1/tools/get_social_sentiment.ts`](src/flows/trading-desk/phase-1/tools/get_social_sentiment.ts)
+as the canonical example of a router-with-LLM-route pattern.
 
 If a live provider fails for a given tool, the tool returns an empty payload
 tagged `source: "unavailable"` (see BP-020). It does **not** fall back to

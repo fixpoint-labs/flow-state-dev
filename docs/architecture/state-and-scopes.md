@@ -264,13 +264,22 @@ Internally it is a sequencer with two steps: a generator that produces the title
 
 ## Persistence Adapters
 
-Phase 1 ships two adapters:
+Three adapters ship today:
 
-- **Filesystem** (runtime default): Durable, human-inspectable, CAS via versioning
-- **In-memory** (testing): Fast, isolated, no persistence
+- **In-memory** (zero-config default): Fast, isolated, no persistence. Used when `createFlowApiRouter` is called without a `stores` option, and for tests.
+- **SQLite** (recommended for persistence and production): Durable, single-file, indexed. `createSQLiteStores` lives in `@flow-state-dev/store-sqlite`. This is the default store for `fsdev dev`.
+- **Filesystem** (local development only): Durable and human-inspectable, but its event persistence is O(N²) per request and collapses under real load. Constructing it without `developmentOnly: true` logs a one-time warning steering you to SQLite (FIX-406).
 
 ```ts
-import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+import { createInMemoryStores } from "@flow-state-dev/server";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+
+// Recommended for anything that needs to survive a restart:
+const stores = createSQLiteStores({ filename: "./data/app.db" });
+
+// Filesystem is local-dev only; acknowledge it explicitly:
+import { createFilesystemStores } from "@flow-state-dev/server";
+const devStores = createFilesystemStores({ rootDir: "./data", developmentOnly: true });
 ```
 
 ## State Schema Bubbling
@@ -283,6 +292,20 @@ Block-level state declarations bubble upward for compatibility checking. This en
 ## Resource Declaration Bubbling
 
 Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. Flow-level declarations take priority on dedup; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
+
+## Tenant Identity
+
+Every scope identity (`request`, `session`, `user`, `org`) carries an optional `tenantId`. The HTTP transport reads it from a configurable header — `x-tenant-id` by default, overridable via `createFlowApiRouter({ tenantIdHeader })` — and threads it onto the context, so handlers and middleware can read `ctx.request.identity.tenantId` (or `ctx.session.identity.tenantId`) and branch on it.
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  tenantIdHeader: "x-tenant-id" // default
+});
+```
+
+The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`. Today the value is informational only — it does not yet namespace store keys, so two tenants sharing a session id still share a session record. Tenant-scoped store-key isolation (deriving `${tenantId}:${sessionId}` and threading it through the session, content, and request stores) is tracked separately.
 
 ## Cross-Flow State: Shared vs Isolated
 
@@ -350,7 +373,7 @@ State and resource mutations emit streaming events:
 
 ## Canonical Authority
 
-For full type signatures, resource/clientData details, and edge cases, see `../preperation/architecture/STATE_AND_SCOPES.md`.
+This document is authoritative for state and scope semantics. For full type signatures and resource/clientData details, refer to the published types in `@flow-state-dev/core`.
 
 
 ### Token-aware MessageLimit

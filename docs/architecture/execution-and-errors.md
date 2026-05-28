@@ -132,6 +132,19 @@ pipeline
 - Rescue failure propagates to the next matching handler or bubbles up
 - Rescue boundaries only handle failures from steps **before** them in the sequencer
 
+### Rescue registry (`ctx.wasRescued`)
+
+A downstream block can ask whether a prior block in the same sequencer scope threw and was recovered, via the public `ctx.wasRescued(target)` query (`target` is a block name or definition). This keeps rescue's shape-preserving contract intact — the recovered value carries no marker — while still letting a later step branch on "was this recovered?".
+
+The rescued bit is a transient flag on each block's sibling-result entry, never persisted into snapshots. It is per-iteration correct under `.loopBack` because the descending sibling search consults the **most recent** matching entry, and nested rescues are tracked at the scope where the rescued block ran as a sibling (the scope whose `_withExecutionScope` invoked it).
+
+The write → stamp → read chain:
+1. **Write** — when a `.rescue()` handler recovers an error, `runSequencerOperations`' catch sets `ctx._didRescue = true` on the rescued block's scoped context before returning the recovered value (`packages/core/src/blocks/sequencer.ts`).
+2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/server/src/context/createExecutionContext.ts`).
+3. **Read** — `ctx.wasRescued(target)` resolves `target` by name and returns `result.rescued === true` for the most-recent matching sibling, mirroring `getBlockResult`'s search. Returns `false` for a clean run, a never-dispatched step, an unknown name, or a call outside a sequencer; never throws.
+
+This replaced an earlier `{ __rescued: true }` sentinel value that `routedSpecialists` smuggled through the pipeline to signal recovery.
+
 ## Work Queue
 
 The work queue enables non-aborting side-chain execution:
@@ -150,6 +163,41 @@ pipeline
 - `.waitForWork({ failOnError: false })` — waits for work, failures are non-terminal
 - `.waitForWork({ failOnError: true })` — promotes any work failure to terminal request error
 - Work failures are logged and the failed `block_trace` reaches the DevTool's trace channel; `onStepErrored` observers still fire
+
+### Work queue signal lifecycle
+
+Background `.work()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
+
+- `abortController` — the abort-registry controller. Fires on the explicit `/abort` endpoint / `session.abortRequest()` only.
+- `backgroundController` — fires only when `abortController` fires.
+
+```
+runActionInternal
+  abortController        ← registry; fires on /abort only
+  composedSignal = AbortSignal.any([options.signal, abortController.signal])
+                         ← foreground chain; also fires on transport signal
+  backgroundController   ← NEW; listens on abortController.signal ({ once: true })
+                           does NOT see options.signal / composedSignal
+
+  createExecutionContext({ signal: composedSignal,
+                           backgroundSignal: backgroundController.signal })
+    root ctx.signal = composedSignal
+    root ctx._requestBackgroundSignal = backgroundController.signal
+    (re-attached on every child scope in _withExecutionScope)
+
+  sequencer .work(block):
+    taskCtx = { ...ctx, signal: ctx._requestBackgroundSignal }
+    executeBlock(block, input, taskCtx, path, { signalOverride: taskCtx.signal })
+      → _withExecutionScope threads signalOverride to every descendant scope,
+        so the whole background task tree sees the background signal
+```
+
+Wiring details:
+
+- `backgroundController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `backgroundController` because the listener is on `abortController.signal` directly.
+- `_requestBackgroundSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestWorkPool`.
+- The sequencer DSL substitutes `ctx.signal` with `_requestBackgroundSignal` at `.work()` / `.workIf()` / `.forEachBackground()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
+- `drainRequestWorkPool` no longer takes a signal on the success path: it waits unconditionally. The abort/disconnect path skips drain entirely (unchanged). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves.
 
 ## Generator Repair
 
@@ -221,7 +269,7 @@ The full request execution sequence:
 
 ## Canonical Authority
 
-For full type signatures, execution pseudocode, and edge cases, see `../preperation/architecture/EXECUTION_AND_ERRORS.md`.
+This document is authoritative for execution and error semantics. For full type signatures, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/server`.
 
 
 ### Token budget enforcement
@@ -256,6 +304,8 @@ interface CheckpointStore {
 ```
 
 Identity is `(requestId, blockInstanceId)`. Each `write` overwrites the prior record — storage is constant per sequencer regardless of step count. Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations; no migration is required when FIX-141 starts reading these records.
+
+The filesystem adapter derives each checkpoint's basename from a truncated SHA-256 digest (32 hex chars) of the `blockInstanceId`, keeping filenames bounded against per-component length limits on deeply-nested compositions. The canonical `blockInstanceId` is preserved in the JSON body so DevTool and operator inspection are unaffected; identity semantics are unchanged.
 
 ### Defaults and opt-out
 

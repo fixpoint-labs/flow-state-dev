@@ -27,6 +27,7 @@ import type { Episode, EpisodicMemoryState } from '../../episodic-memory.js'
 import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory.js'
 import type { WorkingMemoryState } from '../../working-memory.js'
 import { allFacts } from '../../semantic-memory-helpers.js'
+import { effectiveConfidence } from '../../janitor.js'
 import type {
   MemoryItem,
   PrepareEnvelope,
@@ -68,12 +69,31 @@ const EXACT_PHRASE_MIN_WORDS = 3
 /**
  * Intrinsic score for a semantic fact (no query component).
  *
- * `confidence × (0.5 + reinforcementCount/10)`. Stable, well-reinforced facts
- * float up.
+ * `effectiveConfidence(fact) × (0.5 + reinforcementCount/10)`. Stable,
+ * well-reinforced AND recently-reinforced facts float up. The fact's
+ * `confidence` is decayed by time-since-last-reinforcement (see
+ * `effectiveConfidence`) before being combined with the reinforcement
+ * normaliser, so the same raw confidence ranks lower as the fact ages.
+ *
+ * @param fact     The semantic fact to score.
+ * @param now      Optional reference time (unix ms) for decay computation —
+ *                 default `Date.now()`. Forwarded to `effectiveConfidence`.
+ * @param halfLife Optional half-life override (days). Default 180 via
+ *                 `DEFAULT_HYGIENE_CONFIG`. Pass an explicit value to match
+ *                 a configured hygiene profile, or `false` to skip decay
+ *                 entirely — useful for custom strategies that mirror
+ *                 `hygiene: false` callers.
  */
-export function intrinsicSemanticScore(fact: SemanticFact): number {
+export function intrinsicSemanticScore(
+  fact: SemanticFact,
+  now?: number,
+  halfLife?: number | false,
+): number {
+  const effective = halfLife === false
+    ? fact.confidence
+    : effectiveConfidence(fact, now, halfLife)
   const normalised = Math.min(1, fact.reinforcementCount / 10)
-  return Math.max(0, Math.min(1, fact.confidence * (0.5 + 0.5 * normalised)))
+  return Math.max(0, Math.min(1, effective * (0.5 + 0.5 * normalised)))
 }
 
 /**
@@ -296,7 +316,7 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
 // ---------------------------------------------------------------------------
 
 /** Output schema for the LLM filter call — ordered list of selected IDs. */
-const filterOutputSchema = z.object({
+export const filterOutputSchema = z.object({
   selectedIds: z.array(z.string()),
 })
 

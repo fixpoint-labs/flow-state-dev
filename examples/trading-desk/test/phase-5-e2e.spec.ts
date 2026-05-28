@@ -36,6 +36,8 @@ function analystThesis(label: string, headline: string) {
         { h: "Composite reading", p: "Synthesis holds.", items: null },
         { h: "Material items", p: null, items: ["Watch item A", "Watch item B"] },
       ],
+      citations: null,
+      dataQuality: "full" as const,
     },
   };
 }
@@ -200,7 +202,11 @@ function neutralCritiqueOutput() {
         invalidation: "tighter" as const,
       },
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
     },
   };
@@ -233,7 +239,11 @@ function riskAssessmentStructuredOutput() {
         },
       ],
       dismissedRisks: [
-        { description: "Earnings drawdown", reason: "Trade exits before earnings." },
+        {
+          description: "Earnings drawdown",
+          reason: "Trade exits before earnings.",
+          dismissalCategory: "out-of-scope" as const,
+        },
       ],
       recommendedAdjustments: {
         sizing: {
@@ -294,6 +304,19 @@ function portfolioManagerStructuredOutput(
         invalidation: { applied: true, reasoning: "Stop tightening accepted." },
       },
       keyDependencies: ["AI cap-ex cycle length"],
+      asymmetricEdge:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Street underprices the data-center attach rate."
+          : "",
+      nearTermCatalyst:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Q2 print lands in three weeks."
+          : "",
+      invalidationTrigger:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Attach rate flat or down two quarters running."
+          : "",
+      acknowledgedAndDropped: [] as { item: string; reason: string }[],
     },
   };
 }
@@ -316,12 +339,16 @@ function makeUpstreamMocks() {
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
     }),
-    "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bullResearcher",
+    "company-profile-analyst-generator": mockGenerator({
+      name: "company-profile-analyst-generator",
+      script: [analystThesis("Company Profile memo", "Identity resolved from provider data.")],
+    }),
+    "p2-research-debate-roster-bullResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bullResearcher",
       script: [{ text: "Bull round 1 contribution." }],
     }),
-    "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bearResearcher",
+    "p2-research-debate-roster-bearResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
     }),
     "consolidate-bull-memo": mockGenerator({
@@ -355,6 +382,30 @@ function makeUpstreamMocks() {
     "risk-assessment-generator": mockGenerator({
       name: "risk-assessment-generator",
       script: [riskAssessmentStructuredOutput()],
+    }),
+    "trader-approach-generator": mockGenerator({
+      name: "trader-approach-generator",
+      script: [{ text: "Trader approach preamble." }],
+    }),
+    "aggressive-approach-generator": mockGenerator({
+      name: "aggressive-approach-generator",
+      script: [{ text: "Aggressive approach preamble." }],
+    }),
+    "conservative-approach-generator": mockGenerator({
+      name: "conservative-approach-generator",
+      script: [{ text: "Conservative approach preamble." }],
+    }),
+    "neutral-approach-generator": mockGenerator({
+      name: "neutral-approach-generator",
+      script: [{ text: "Neutral approach preamble." }],
+    }),
+    "risk-assessment-approach-generator": mockGenerator({
+      name: "risk-assessment-approach-generator",
+      script: [{ text: "Risk-assessment approach preamble." }],
+    }),
+    "portfolio-manager-approach-generator": mockGenerator({
+      name: "portfolio-manager-approach-generator",
+      script: [{ text: "PM approach preamble." }],
     }),
   };
 }
@@ -403,7 +454,7 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | {
           status?: string;
@@ -445,6 +496,27 @@ describe("Phase 5 end-to-end", () => {
     expect(pmMemo?.agreesWithTrader).toBe(true);
 
     expect(pm.calls).toHaveLength(1);
+
+    // Every agent in Phases 3–5 streams an approach preamble as a
+    // `message` item with the agent's `agentName`. The preamble is the
+    // mechanism that fills the transcript gap during structured-output
+    // generation; verifying its presence here covers the wiring for all
+    // six agents in one e2e run.
+    for (const agentName of [
+      "trader",
+      "aggressiveRisk",
+      "conservativeRisk",
+      "neutralRisk",
+      "riskAssessment",
+      "portfolioManager",
+    ] as const) {
+      const messages = result.items.filter(
+        (item) =>
+          (item as { agentName?: string }).agentName === agentName &&
+          (item as { type?: string }).type === "message",
+      );
+      expect(messages.length).toBeGreaterThan(0);
+    }
   });
 
   it("portfolio-manager failure isolates: PM memo errors, runComplete stays false, prior memos still publish", async () => {
@@ -480,7 +552,7 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.memoStatus?.portfolioManager).toBe("error");
     expect(sessionState.runComplete).toBe(false);
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

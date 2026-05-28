@@ -8,6 +8,7 @@ export {
   ConcurrentModificationError,
   ScopeMutationTimeoutError,
   createFilesystemContentStore,
+  createFilesystemResourceStateStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
@@ -15,6 +16,7 @@ export {
   createFilesystemTraceStore,
   createFilesystemUserStore,
   createInMemoryContentStore,
+  createInMemoryResourceStateStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
@@ -23,17 +25,33 @@ export {
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
+  filesystemStores,
+  inMemoryStores,
   resolveOrgStorageKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS
 } from "./stores";
 export type {
+  CapabilitySlot,
+  CapabilitySlotMap,
+  StoreAdapter,
+  StoresConfig
+} from "./stores";
+export { createFlowState } from "./flowstate/createFlowState";
+export type {
+  CreateFlowStateOptions,
+  FlowState,
+  FlowStateModelsConfig,
+  FlowStateVoiceConfig
+} from "./flowstate/types";
+export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
   CheckpointStore,
   ContentScopeType,
   ContentStore,
+  ResourceStateStore,
   ExpectedVersion,
   OrgListOptions,
   OrgRecord,
@@ -41,6 +59,8 @@ export type {
   RequestListOptions,
   RequestRecord,
   RequestStatus,
+  PersistErrorHandler,
+  PersistErrorInfo,
   RequestStore,
   SessionListOptions,
   SessionRecord,
@@ -70,7 +90,6 @@ export {
   wrapAiSdkModel,
   createModelResolver,
   createFSDProvider,
-  defaultGroups,
   detectAvailableProviders,
   parseModelString,
   createFallbackModel,
@@ -82,6 +101,7 @@ export {
 export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
+  IntentDefaults,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,
@@ -106,9 +126,13 @@ export {
   NetworkError,
   RateLimitError,
   TimeoutError,
+  ContextLengthError,
+  ProviderUnavailableError,
   ToolExecutionError,
   ValidationError,
-  AmbiguousBlockNameError
+  AmbiguousBlockNameError,
+  FlowStateConfigError,
+  FlowStateDisposedError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
 export {
@@ -120,6 +144,7 @@ export { BoundedQueue } from "./utils/bounded-queue";
 export type { BoundedQueuePushResult } from "./utils/bounded-queue";
 export {
   isTerminalRequestStreamEvent,
+  isTerminalRequestStatus,
   synthesizeRequestInterrupted,
   pollEvents,
   abortableSleep,

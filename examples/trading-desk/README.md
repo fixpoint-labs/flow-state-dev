@@ -6,15 +6,37 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, twelve agents,
+manager hand down a five-tier final decision. Five phases, thirteen agents,
 one structured artifact at every convergence point.
 
 ## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — four sub-agents (Fundamentals, Sentiment,
-  News, Technical) running in parallel, each with a distinct identity.
+- **Parallel analyst fan-out** — five sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile) running in parallel, each with a
+  distinct identity.
+- **Investigative discovery + auditable citations** — on the `full` cost
+  preset each analyst gets a deterministic per-role web-search step
+  (`discover_*_context`) that surfaces up to 5 numbered URLs. The analyst
+  may read 2–3 via the `fetch` tool when the structured data leaves a
+  material question open. Every URL it relies on goes into a `citations`
+  field that renders as a "Sources" footer on the analyst card. The
+  `fast` preset keeps the cheap path cheap — discovery returns
+  `source: "skipped"`, `fetch` is absent, and the `<investigation>` clause
+  is suppressed from the prompt. The contract lives in the `investigate`
+  preset of the `tradingDesk` capability.
+- **Company Profile grounding** — a renderer-style analyst that fetches
+  structured business identity (sector, industry, business description,
+  scale) from public providers and writes it as a memo, so downstream
+  phases reason from a data-derived baseline rather than the model's
+  training priors. Live mode merges Finnhub and Yahoo so each fills in
+  what the other doesn't carry; when the description is still thin, two
+  web-enrichment backstops kick in — a homepage `<meta name="description">`
+  fetch and a web search via `@flow-state-dev/tools/search`'s
+  auto-detected provider (Tavily / Exa / Perplexity / Serper / Brave).
+  Each backstop fails soft to `null`. Returns an explicit `unavailable`
+  memo when the ticker cannot be resolved.
 - **Typed memo resources** — every analyst writes a structured `Thesis`-shape
   memo readable via the standard resource hook.
 - **Two-pane streaming UI** — transcript on the left, theses on the right.
@@ -28,6 +50,15 @@ Phase 1 — analyst fan-out:
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
   filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
   on failure, like other single-provider tools).
+- **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
+  sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
+  xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
+  single-provider tools). The payload carries both the numeric score and a
+  `posts` array of representative X excerpts (handle + one-sentence
+  verbatim quote + per-post polarity), so the analyst reasons from the
+  actual quotes rather than a single non-deterministic score.
+  `shortInterestPct` is `null` on the xAI path — short interest can't be
+  measured from chatter, and a fabricated 0 would read as "no shorts."
 - **Status-bar disclaimer** visible on every run.
 
 Phase 2 — research debate:
@@ -49,6 +80,9 @@ Phase 2 — research debate:
 
 Phase 3 — trader synthesis:
 
+- **Approach preamble** — a fast-model (`intent/utility`) free-text step
+  streams a one-sentence plan to the transcript before the structured
+  trader runs. Display-only; not fed into the trader.
 - **Single-shot structured synthesis** — one trader generator, no loop.
   Reads the Phase 2 `InvestmentThesis` and writes a typed `TradeProposal`.
 - **Typed extension fields** — `direction`, `sizePct`, `stopPrice`,
@@ -57,17 +91,23 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the four analyst
+  and its extension fields only; the full preset adds the five analyst
   memos and the full bull/bear debate transcript.
 
 Phase 4 — risk debate:
 
-- **Three risk personas in fixed round-robin order** — `aggressiveRisk`
+- **Per-agent approach preambles** — each of the three personas and the
+  consolidator stream a short fast-model (`intent/utility`) preamble
+  before their structured generator runs. Personas are `sub` agents and
+  don't emit struct cards, so the preambles are their only
+  transcript-visible output; the structured critique still lands in the
+  memos pane.
+- **Three risk personas in fixed order** — `aggressiveRisk`
   (push for outsized sizing), `conservativeRisk` (push for tighter risk),
-  `neutralRisk` (filter signal from noise). The pattern is Round Robin
-  with structured roster overrides — three custom generators replace the
-  default `{ text }` agents so each persona's contribution and its typed
-  critique fields come from a single LLM call.
+  `neutralRisk` (filter signal from noise). Each runs as its own step in
+  a plain sequencer chain. Personas after the first read prior critiques
+  from the persona memos via memo-backed `context` entries on their
+  generator definitions — no shared transcript resource.
 - **Four p4 memos** — three persona critiques plus a consolidated
   `riskAssessment`. The persona memos are the audit trail; the
   `riskAssessment` is the artifact Phase 5 reads.
@@ -82,15 +122,18 @@ Phase 4 — risk debate:
   remaining personas still run.
 - **Cost-preset gates prompt depth** — the cheap preset reads the trade
   proposal, the investment thesis, and prior persona memos; the full
-  preset adds the four analyst memos and the full bull/bear debate
+  preset adds the five analyst memos and the full bull/bear debate
   transcript.
 
 Phase 5 — portfolio manager:
 
+- **Approach preamble** — same shape as Phase 3: a fast-model preview of
+  how the PM intends to weigh the trade proposal against the risk
+  assessment, streamed before the structured decision lands.
 - **Final converging step** — a single `portfolioManager` generator reads
   the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
   trade proposal, Phase 4 risk assessment) and writes a typed
-  `PortfolioDecision`. On the `full` preset it also reads the four
+  `PortfolioDecision`. On the `full` preset it also reads the five
   analyst memos, the full bull/bear debate transcript, and the three
   persona risk critiques.
 - **Five-tier rating** — `finalRating` is one of `Sell`, `Underweight`,
@@ -138,8 +181,9 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
 - **source** — `fixture` (canonical hand-curated JSON) or `live` (Yahoo Finance
-  for prices and fundamentals; news and sentiment fall back to fixtures with a
-  noted follow-on).
+  + Finnhub + FRED + Polymarket for structured data; Grok via `xSearch` for
+  social sentiment when `XAI_API_KEY` is set; tools whose provider key is
+  absent return `unavailable`).
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -176,6 +220,32 @@ The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
 **re-run** click). See also [Persistence overview](../../apps/docs/docs/persistence/overview.md)
 for the generalized pattern.
 
+## Custom instructions
+
+The status bar carries a gear icon that opens a settings dialog where you can
+author free-text instructions that shape how the desk reasons — one global
+block applied to every phase plus one block per phase for narrower guidance.
+"Hold for days, not quarters", "weight balance-sheet quality over momentum",
+"treat litigation risk as the top concern" — that kind of thing.
+
+**Setting instructions.** The gear is enabled after the first analysis run
+(the dialog reads the user-scope resource through a session snapshot, so it
+needs a session to exist). Open it, type into any field, click Save. Empty
+fields produce no prompt content. Edits take effect on the next analysis
+run; the in-flight run, if any, is untouched.
+
+**How injection works.** The `tradingDesk` capability's always-on `core`
+preset renders a `<userInstructions>` block into every generator's prompt
+with a short framing sentence followed by the global block and the active
+phase's block. When both are empty the wrapper tag is suppressed entirely —
+no `<userInstructions/>` leaks into the prompt when nothing is set.
+
+**Where it's stored.** Per user, under
+`.fsdev/data/users/<userId>:trading-desk/` (the `:trading-desk` suffix comes
+from `flowIsolation: true` on the resource, so other flows running for the
+same user never see these instructions). The directory is covered by
+`.gitignore`.
+
 ## Provider keys
 
 The flow uses the framework's model resolver. Configure at least one provider
@@ -184,11 +254,21 @@ and `intent/chat` intents can resolve. The example does not bundle a
 default-model assumption — extend `lib/server.ts`'s `createModelResolver` call
 if you want to wire intents to specific gateway models.
 
-`yahoo-finance2` is keyless. The live source for news and sentiment is a
-fixture fallback today; setting `FINNHUB_API_KEY` for true live news + Finnhub
-sentiment lands in a follow-on. The same `FINNHUB_API_KEY` also powers
-`get_insider_transactions` — without it, the tool returns `unavailable` and
-the news analyst treats insider data as missing signal.
+`yahoo-finance2` is keyless. `FINNHUB_API_KEY` enables live Finnhub-backed
+tools (fundamentals, prices, news, insider transactions); without it those
+tools return `unavailable` and the relevant analyst treats the result as
+missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
+`xSearch` over X/Twitter; without it, `get_social_sentiment` returns
+`unavailable` and the sentiment analyst applies the same missing-signal
+treatment.
+
+Live investigative discovery on the `full` preset uses
+`@flow-state-dev/tools/search`'s auto-detected provider — Tavily, Exa,
+Perplexity, Serper, Brave, or Perplexity Sonar — whichever has a key in
+the environment. `TAVILY_API_KEY` is the recommended default. With no
+provider key the discovery tools emit `source: "unavailable"` per BP-020
+(no silent fallback to fixture data on the live path) and analysts
+skip investigation accordingly.
 
 ## Architecture in brief
 
@@ -196,12 +276,13 @@ the news analyst treats insider data as missing signal.
 analyze
   └─ seedSession                  (patch session state from input)
   └─ phase-1-analysts             (sub-sequencer, container item)
-        ├─ setupPhase1Memos       (.tap — pre-create 4 memos in `pending`)
+        ├─ setupPhase1Memos       (.tap — pre-create 5 memos in `pending`)
         └─ parallel
              ├─ fundamentalsAnalyst
              ├─ sentimentAnalyst
              ├─ newsAnalyst
-             └─ technicalAnalyst
+             ├─ technicalAnalyst
+             └─ companyProfileAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.then — { goal } from session state)
@@ -215,37 +296,44 @@ analyze
         ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
         └─ traderStep
              ├─ markWritingP3
+             ├─ traderApproachGenerator (sub, streams message item)
              ├─ traderGenerator   (.then — write `TradeProposal`)
              ├─ commitTraderMemo  (.tap)
              └─ markErrorP3       (.rescue)
   └─ phase-4-risk-debate          (sub-sequencer, container item)
         ├─ setupPhase4Memos       (.tap — pre-create 4 p4 memos in `pending`)
-        ├─ deriveRiskGoal         (.then — { goal } from session state)
-        ├─ phase4RoundRobin       (.then — single round, stub judge,
-        │                            three roster slots overridden with
-        │                            structured-output persona generators)
-        │     ├─ aggressiveStep   (markWriting + generator + commit +
-        │     │                     toContributionShape, rescue → markError)
-        │     ├─ conservativeStep (symmetric)
-        │     └─ neutralStep      (symmetric, neutral schema)
-        └─ riskAssessmentStep     (.then — consolidator, write
-                                     `RiskAssessment`; rescue → markError)
+        ├─ aggressiveStep         (.then — markWriting + approach preamble +
+        │                            generator + commit; rescue → markError)
+        ├─ conservativeStep       (.then — symmetric; reads aggressive memo)
+        ├─ neutralStep            (.then — symmetric, neutral schema; reads
+        │                            aggressive + conservative memos)
+        └─ riskAssessmentStep     (.then — approach preamble + consolidator,
+                                     write `RiskAssessment`; rescue → markError)
   └─ phase-5-portfolio-manager    (sub-sequencer, container item)
         ├─ setupPhase5Memos       (.tap — pre-create p5/portfolio-manager
         │                            in `pending`)
         └─ portfolioManagerStep
              ├─ markWritingP5
+             ├─ portfolioManagerApproachGenerator (sub, streams message item)
              ├─ portfolioManagerGenerator (.then — write `PortfolioDecision`)
              ├─ commitPortfolioManagerMemo (.tap — also flips
              │                                `session.runComplete = true`)
              └─ markErrorP5           (.rescue)
 ```
 
+All six Phase 3–5 approach preamble generators are built via the
+`createApproachGenerator` factory in
+[`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
+The factory locks the shared policy (`agentType: "sub"`,
+`model: "intent/utility"`, the user-instruction template) and exposes
+only the per-agent knobs.
+
 The four Phase 2 `roundRobin()` instances share one
-`phase2Contributions` resource (registered on the flow). Phase 4 follows
-the same pattern with its own `phase4Contributions` resource. The
-consolidation generators declare these on their `resources:` slot and
-read entries via `ctx.resources`.
+`phase2Contributions` resource (registered on the flow). The
+consolidation generators declare this on their `resources:` slot and
+read entries via `ctx.resources`. Phase 4 doesn't use `roundRobin()`
+(see "Why Round Robin and not Debate" below), so there's no Phase 4
+contributions resource.
 
 Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
 with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
@@ -261,23 +349,21 @@ with a 3-line stub that always returns `done: false` and leans on
 fixed-length loops. Debate's judge is the pattern's identity, so using
 Debate without a real judge would be reaching for the wrong primitive.
 
-Phase 4's risk debate uses `roundRobin()` for a different reason: there
-is no judge at all. The three risk personas (aggressive, conservative,
-neutral) are not adversaries — they are different postures contributing
-to a multi-angled critique. The neutral persona's job is to filter, not
-to win, and a downstream consolidation generator synthesizes the three
-persona memos into a single `RiskAssessment` that Phase 5 reads. Debate's
-anonymized-shuffled-transcript-then-judge identity does not match: Phase
-4 wants attributed contributions and a synthesizer, not a verdict.
-
-Phase 4 differs from Phase 2 in two ways. First, all three roster slots
-are overridden with custom structured-output generators rather than the
-pattern's default `{ text }` agents — each persona's contribution and
-its typed critique fields come from one LLM call. Second, the
-synthesizer slot is left empty (`synthesizer: false`) and the
-`riskAssessmentGenerator` runs as a separate downstream step, so the
-consolidated artifact is its own memo rather than the pattern's return
-value.
+Phase 4's risk panel does NOT use `roundRobin()` — it's a plain
+sequencer chain. The prose framing ("three risk officers in round-robin
+order") sounds like the pattern, but none of `roundRobin()`'s
+distinguishing features fit: single pass (no debate cycling), no
+referee, heterogeneous roster (the neutral persona has its own output
+schema), and the personas read prior critiques from the structured
+persona memos rather than from a shared free-form transcript. The
+memo-backed read is the richer source — using `roundRobin()` here
+would force every persona through an adapter that flattens the typed
+output to text and then read that text back instead of the typed
+fields. The three persona steps run as
+`aggressiveStep.then(conservativeStep).then(neutralStep)` inside
+`phase4Pipeline`, and the `riskAssessmentGenerator` runs as a separate
+downstream step that synthesizes the three persona memos into a single
+`RiskAssessment` that Phase 5 reads.
 
 ### Per-preset routing
 

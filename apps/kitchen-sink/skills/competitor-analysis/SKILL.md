@@ -1,64 +1,46 @@
 ---
-description: Produce a competitor analysis for a product, company, or market. Use when the user asks "who competes with X", "how does X stack up against Y", "what's the landscape for Z", or wants a comparison matrix. Enforces a disciplined framing so the answer doesn't degenerate into a feature-checklist dump.
+description: Produce a competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, what the landscape looks like for a category, or wants a comparison matrix. A discoverer identifies competitors and queues a worker per competitor; analyzers run in parallel; a synthesizer waits on all of them and writes the final analysis.
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
+argument-hint: <product, company, or market>
+
+pattern: task-board
+workers:
+  discoverer:
+    prompt-ref: ./reference/discover.md
+    tools: [search, taskTools]
+    agent-type: sub
+  analyzer:
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
+    agent-type: sub
+  synthesizer:
+    prompt-ref: ./reference/synthesize.md
+    agent-type: primary
+
+initial-tasks:
+  - id: discover
+    goal: Identify 3 to 5 competitors for $ARGUMENTS across direct / adjacent / DIY-status-quo tiers, then enqueue one analyzer task per competitor plus a single synthesizer task whose deps cover every analyzer task you queued.
+    assignee: discoverer
+
+pattern-config:
+  concurrency: 4
+  dispatcher: topological
+  on-idle: complete
+  on-error: skip
+
+allowed-tools: [search, fetch, taskTools]
 ---
 
-# Competitor Analysis
+This skill runs as a small team on a task board: a discoverer picks 3-5 competitors and queues one analyzer per competitor, the analyzers run in parallel, and a synthesizer waits on every analyzer to produce the final matrix and read.
 
-A good competitor analysis answers three questions: who is the user choosing between, on what dimensions, and what does that imply. A bad one is a bullet list of features with no judgment. When this skill is active, follow the structure below.
+**Dispatching the team.** This is a pattern skill — the team only runs when you invoke it through the `runSkill` tool. When this skill is the right fit for the user's question, call:
 
-## Define the space first
+```
+runSkill({ name: "competitor-analysis", input: "<the target product, company, or market>" })
+```
 
-Before listing competitors, name the category. Is this a direct-replacement market (two products doing the same job), or an expanding one (the product reshapes what "the job" is)? Who is the actual user — end user, buyer, developer?
+The `input` is what the user wants analyzed — extract it from their message. For "who competes with Linear?", pass `"Linear"`. For "compare Notion against its rivals", pass `"Notion"`. If the user named multiple targets, pick the one they led with.
 
-If the user's question is ambiguous, state your interpretation up front in one sentence and proceed. Don't ask a clarifying question unless the ambiguity is load-bearing.
+The tool returns the synthesizer's final analysis (a takeaway, a comparison matrix grouped by tier, and the strategic implications). Surface that result to the user as-is — don't paraphrase the matrix or add your own commentary on top. The team has already done the work.
 
-## Pick competitors across three tiers
-
-- **Direct.** Same category, same target user, high overlap in use case.
-- **Adjacent.** Different category or user, but a plausible substitute for some segment.
-- **DIY / status-quo.** What users do today if they pick none of the above. This is almost always the biggest competitor and is usually ignored.
-
-Aim for 3 to 6 total. Naming more dilutes the analysis.
-
-## Dimensions to evaluate
-
-Don't evaluate every product on every axis. Pick the 4 or 5 dimensions that actually matter for the user's decision. Common ones:
-
-- **Primary use case** (what the product is best at)
-- **Target user** (individual, team, enterprise; technical depth)
-- **Pricing model** (freemium, usage, seat, open-source)
-- **Distribution** (how users find and adopt it; PLG, sales-led, ecosystem)
-- **Momentum signals** (recent funding, hiring, user growth, shipped features in the last 6 months)
-- **Differentiation** (the one thing only this product does well)
-- **Weaknesses** (what users complain about — check reviews, GitHub issues, HN threads)
-
-Skip any dimension where the answer is uninteresting or identical across the set.
-
-## Gather evidence, not vibes
-
-Use search and fetch to ground claims in sources:
-
-- Pricing page, not a secondhand comparison article
-- Official changelog or release notes for recent activity
-- GitHub stars / release cadence for open-source
-- Public funding announcements for momentum (Crunchbase, TechCrunch, official posts)
-- Reddit, HN, G2, Trustpilot for user sentiment — note the tier of evidence
-
-When sources conflict or are missing, say so. "No recent pricing listed publicly" is a valid data point.
-
-## Structure the output
-
-1. **One-paragraph framing.** The market as you see it, the 3 to 6 players you're evaluating, and the decision axis you'll focus on.
-2. **Comparison.** Either a tight table (competitors × dimensions) or a per-competitor block — whichever fits the dimensions picked. Don't force a table when rows would be two-word placeholders.
-3. **Takeaway.** In 2 to 4 sentences: who wins for which kind of user, and what the main tradeoff is.
-
-## Calibration
-
-Be direct about uncertainty. Distinguish:
-
-- Observable facts (pricing, features on a page, open-source license)
-- Reported facts (news articles, analyst claims)
-- Your inferences (positioning guesses, strategic bets)
-
-Mark the last category explicitly. A confident inference that's wrong is worse than a hedged inference that's right.
+Don't try to do competitor analysis yourself in the chat. If you're not sure this skill applies (e.g. the user's question is only tangentially competitive), ask once before dispatching.

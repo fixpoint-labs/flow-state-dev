@@ -56,12 +56,24 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
       list: () => []
     } as any,
     response: {
-      emit: () => undefined
+      emit: () => undefined,
+      getItems: () => [],
+      subscribeToItems: (_l) => () => undefined
     },
+    emit: {
+      message: () => undefined,
+      component: () => undefined,
+      status: () => undefined,
+      trace: {} as any,
+    } as any,
     emitStatus: () => undefined,
+    _peekStatus: () => "",
     signal: new AbortController().signal,
     resolveModel,
     getTarget: () => undefined,
+    getBlockOutput: () => undefined,
+    getBlockResult: () => ({ status: "not_started" as const }),
+    wasRescued: () => false,
     targetStateSchemas: {},
     cap: {} as any,
   };

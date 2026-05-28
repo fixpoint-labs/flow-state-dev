@@ -198,4 +198,4 @@ These decisions are canonical and cannot change without architecture review:
 
 ## Canonical authority
 
-For edge cases and detailed contracts, the canonical specs in `../preperation/architecture/` are authoritative. The docs in this directory are adapted summaries — when in doubt, check the source spec.
+The docs in this directory are authoritative for the framework's architecture. For edge cases and detailed contracts, the package-level READMEs and source code are the ground truth.

@@ -6,3 +6,12 @@ export { FlowError } from "./flow-error.js";
 export type { FlowErrorOptions, FlowErrorScope } from "./flow-error.js";
 export { OutputValidationError } from "./output-validation-error.js";
 export type { OutputValidationDetails } from "./output-validation-error.js";
+export {
+  SequencerOutputSchemaError,
+  SequencerSchemaMismatchError
+} from "./sequencer-output-schema-error.js";
+export type {
+  SequencerOutputSchemaErrorDetails,
+  SequencerSchemaMismatchErrorDetails
+} from "./sequencer-output-schema-error.js";
+export { rootCause, isAbortLike } from "./abort.js";

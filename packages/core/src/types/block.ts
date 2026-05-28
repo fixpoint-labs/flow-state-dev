@@ -10,12 +10,14 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
   AgentType,
   BlockValueInternal,
   StructureShape,
   BlockTraceItem,
+  OutputItem,
   RouterDecisionItem,
   StateSnapshotItem
 } from "../items/types";
@@ -96,6 +98,43 @@ export type ExecutionParent = {
 
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
+  /**
+   * Snapshot of every item emitted to this response so far, in stream order.
+   * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
+   * over already-flushed items before subscribing for future ones.
+   */
+  getItems(): readonly OutputItem[];
+  /**
+   * O(1) count of items currently tracked by this response. Equivalent to
+   * `getItems().length` but without materializing or ordering the snapshot —
+   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   */
+  getItemCount(): number;
+  /**
+   * Subscribe to subsequent item lifecycle transitions on this response.
+   * `kind` distinguishes the underlying mutation: `"added"` for a freshly
+   * emitted item, `"updated"` for an in-place mutation, `"done"` for a
+   * terminal status. Returns an unsubscribe function — callers must invoke
+   * it to release the listener (typically inside a `finally`).
+   *
+   * When `options.filter` is provided, the listener fires only for items
+   * the filter returns true for. The filter is evaluated per-event,
+   * per-listener; non-matching events skip the listener invocation
+   * entirely. Use `filter` to reduce wake-cost when many subscribers share
+   * an emitter and most events are uninteresting to most subscribers.
+   *
+   * Filter exceptions are caught at the emitter boundary, logged via a
+   * `response.subscribeToItems.filter_threw` debug event, and the listener
+   * STILL FIRES (fail-open). A filter that throws is a caller bug; treating
+   * the throw as "skip" would silently mask the bug and surface only as a
+   * `.waitForCondition` timeout. Filters MUST be cheap and SHOULD NOT throw.
+   */
+  subscribeToItems(
+    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    options?: {
+      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+    }
+  ): () => void;
 }
 
 export type StateRef<TState extends object = Record<string, unknown>> = {
@@ -125,6 +164,27 @@ export type BlockResult<TOutput> =
   | { status: "completed"; output: TOutput }
   | { status: "failed"; error: Error };
 
+/**
+ * Instance-level settings, read inside blocks via `ctx.settings`.
+ *
+ * Empty by default and framework-provided — users declaration-merge their
+ * own keys in their project, exactly as Vite's `ImportMetaEnv` works:
+ *
+ * ```ts
+ * declare module "@flow-state-dev/core" {
+ *   interface FlowStateSettings {
+ *     sandbox: { type: "local" | "vercel" | "memory" };
+ *   }
+ * }
+ * ```
+ *
+ * The runtime value is supplied by `createFlowState({ settings })` and threaded
+ * onto every `BlockContext`. The `FlowState<TSettings>` generic and this
+ * interface are kept in sync by the same declaration merge.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface FlowStateSettings {}
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -142,6 +202,12 @@ export interface BlockContext<
   user: UserScopeHandle<TUserState>;
   org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * Instance-level settings declared on `createFlowState({ settings })`.
+   * Read-only. Typed via declaration merging into {@link FlowStateSettings}.
+   */
+  settings: FlowStateSettings;
 
   /**
    * Flat resource registry — every resource declared by this block, the
@@ -182,6 +248,24 @@ export interface BlockContext<
   getBlockResult<TBlock extends BlockDefinition>(
     block: TBlock
   ): BlockResult<BlockOutput<TBlock>>;
+
+  /**
+   * Returns whether `target` — a prior block in the current sequencer scope —
+   * recovered an error through its own `.rescue()` handler during its
+   * execution. The flag is set on the block that owns the `.rescue()` (e.g. a
+   * sub-sequencer wrapping a risky step), so query that block, not the inner
+   * step that threw. `target` is a block name or definition (resolved via
+   * `block.name`).
+   *
+   * Scope and resolution match `getBlockResult`: only blocks that ran as prior
+   * siblings in the current sequencer run are visible, and under `.loopBack`
+   * the most recent (current-iteration) run of a named block is consulted.
+   *
+   * Returns `false` when the block ran without rescuing, was never dispatched
+   * (e.g. skipped by `.thenIf`), is not found in the current scope, or when
+   * called outside a sequencer. Never throws.
+   */
+  wasRescued(target: string | BlockDefinition<any, any>): boolean;
 
   targets: InferTargetStatesFromSchemas<TTargets>;
 
@@ -294,11 +378,40 @@ export interface BlockContext<
    */
   attempt?: number;
 
+  /**
+   * Stable idempotency key for the currently-executing block. Derived from
+   * `${requestId}:${blockPath}` and intentionally excludes `attempt` so the
+   * value is identical across retries of the same logical step within a
+   * request. Suitable for passing directly to external APIs that accept an
+   * idempotency key (e.g. Stripe's `Idempotency-Key` header).
+   *
+   * Cross-request de-dup is out of scope: `retryRequest` creates a new
+   * request ID and therefore a new key. Use a user-controlled external key
+   * if cross-request idempotency is required.
+   */
+  idempotencyKey?: string;
+
+  /**
+   * Execute `fn` once per `(requestId, userKey)` and memoize the result on
+   * the request store. Subsequent calls — whether triggered by a block
+   * retry or a re-entry within the same request — return the persisted
+   * value without re-executing `fn`. The user-supplied `key` is the
+   * dedup unit, namespaced under the current request.
+   *
+   * Concurrent in-process calls with the same key share a single inflight
+   * promise so the wrapped side effect cannot fire twice in a race.
+   *
+   * Scope is per-request: a fresh `requestId` (including the one created by
+   * a `retryRequest` recovery dispatch) starts with an empty key space.
+   * Results must be JSON-serializable; non-serializable values throw.
+   */
+  runOnce?<T>(key: string, fn: () => Promise<T>): Promise<T>;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
-    onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
-    onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number) => void;
-    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
+    onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
+    onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number, transient?: boolean) => void;
+    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean) => void;
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void;
     onGeneratorModelResult?: (payload: {
       model: string;
@@ -326,6 +439,12 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
+    /**
+     * Id of the active task for this scope, resolved from the nearest
+     * enclosing scope marked via `_markTaskScope`. Stamped onto every item
+     * this scope emits as `OutputItem.taskId`.
+     */
+    taskId?: string;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
     phase?: "main" | "work";
     /**
@@ -345,11 +464,40 @@ export interface BlockContext<
     transient?: boolean;
   };
 
-  /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
+  /**
+   * @internal Runtime hook that executes nested blocks with parent-chain
+   * metadata. The optional `signalOverride` sets the `ctx.signal` of the
+   * child scope (and, transitively, every descendant scope that doesn't
+   * supply its own override). The sequencer DSL threads
+   * `_requestBackgroundSignal` here at `.work()` dispatch so background
+   * task trees see the background signal instead of the request signal.
+   * When omitted, the child inherits the current parent ctx's `signal`.
+   */
   _withExecutionScope?<TValue>(
     parent: ExecutionParent,
-    execute: (ctx: BlockContext) => Promise<TValue>
+    execute: (ctx: BlockContext) => Promise<TValue>,
+    signalOverride?: AbortSignal
   ): Promise<TValue>;
+
+  /**
+   * @internal Mark the nearest enclosing sequencer scope as belonging to a
+   * task. Every item emitted by this scope and its descendants (constructed
+   * after the mark) inherits the task id as `OutputItem.taskId`. The
+   * task-board worker body calls this once per claimed task so a worker's
+   * emissions attribute to the task it is running — correct under concurrent
+   * fan-out and across sequential `loopBack` turns, where execution paths
+   * collide but each turn is a fresh scope. Pass `null` to clear. No-op when
+   * the runtime does not provide it (mock contexts).
+   */
+  _markTaskScope?(taskId: string | null): void;
+
+  /**
+   * @internal Read the current value of the request-scoped status slot.
+   * Used by the generator's tool-call dispatch to snapshot/restore the slot
+   * around a tool round so a tool's `activeStatusMessage` does not linger
+   * past the tool's lifetime.
+   */
+  _peekStatus?(): string;
 
   /**
    * @internal Hint written by a sequencer/router's execute right before
@@ -378,6 +526,14 @@ export interface BlockContext<
   _outputTracker?: { lastBlockOutputItemId?: string };
 
   /**
+   * @internal Set by the sequencer runtime when a `.rescue()` handler recovers
+   * a thrown error. Read by `_withExecutionScope` post-execution to stamp the
+   * block's sibling-registry result (`result.rescued`), which `wasRescued`
+   * later consults. Not part of the public API.
+   */
+  _didRescue?: boolean;
+
+  /**
    * @internal Per-request background work pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
    * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
@@ -385,7 +541,82 @@ export interface BlockContext<
    * tests), sequencer DSL falls back to per-sequencer auto-await.
    */
   _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
+
+  /**
+   * @internal Background-work abort signal. Set by the server's request
+   * executor; absent in unit-test contexts. Fires ONLY when the request is
+   * explicitly aborted (e.g. POST `/abort`, `session.abortRequest()`), NOT
+   * on transport-level events like client disconnect, SSE close, or tab
+   * refresh. The sequencer DSL substitutes this for `ctx.signal` when
+   * dispatching `.work()` / `.workIf()` / `.forEachBackground()` tasks so
+   * background generators survive transport teardown.
+   *
+   * In unit-test contexts where this is absent, `.work()` falls back to the
+   * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
+   */
+  _requestBackgroundSignal?: AbortSignal;
+
+  /**
+   * @internal Effective tracing verbosity for this request (FIX-406 6H).
+   * Set by the runtime from `createFlowApiRouter({ tracingLevel })`; read by
+   * sequencers to gate non-durable observability snapshots. Absent → the
+   * sequencer falls back to `resolveTracingLevel()` (env / observability).
+   */
+  _tracingLevel?: TracingLevel;
+
+  /**
+   * @internal Per-request single-flight map for cacheable tool calls
+   * (FIX-610). Keys are the cache keys produced by `buildCacheKey`; values
+   * are the in-flight promises so concurrent calls within the same request
+   * share one upstream execution. Lazily created by
+   * `wrapToolExecuteWithCache` on the first cacheable tool call. Scope is
+   * per-request — concurrent calls across different requests each execute.
+   */
+  _toolInFlight?: Map<string, Promise<unknown>>;
+
+  /**
+   * @internal Optional hook invoked by `wrapToolExecuteWithCache` after a
+   * tool call resolves (hit or miss). Wave 2 of FIX-610 wires this up to
+   * write into the Task Board observation ledger so a later worker's
+   * flow policy can see prior tool traffic. Absent in Wave 1 and in any
+   * runtime that has no observation ledger installed.
+   */
+  _writeToolObservation?: (entry: {
+    toolName: string;
+    args: unknown;
+    result?: unknown;
+    error?: string;
+    cached: boolean;
+  }) => void;
 }
+
+/**
+ * A permissive, variance-friendly alias for `BlockContext` — typed where it
+ * matters (the session scope) and permissive everywhere else.
+ *
+ * Use this for helper functions that take a block's `ctx` as a parameter:
+ * the full `BlockContext`'s `TResources` generic is invariant on
+ * `ResourceRegistry`, so a handler whose `ctx.resources` is inferred as
+ * `ResourceRegistry<{ memos: ... }>` can't be assigned to a parameter typed
+ * `BlockContext<unknown, MyState>` (the default `ResourceRegistry<Record<...>>`
+ * isn't a supertype of the narrow inferred form). `LooseBlockContext` sidesteps
+ * the variance trap by leaving `resources` permissive — the helper accepts any
+ * block's ctx, and the call site retains its narrower typing internally.
+ *
+ * When the helper actually needs typed resources, narrow per call site or
+ * declare a stricter ctx shape inline. `LooseBlockContext` is for the
+ * common case where the helper only touches `ctx.session`.
+ */
+export type LooseBlockContext<
+  TSessionState extends object = Record<string, unknown>,
+> = {
+  session: import("./scope").SessionScopeHandle<TSessionState>;
+  user: import("./scope").UserScopeHandle<Record<string, unknown>>;
+  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
+  request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resources: any;
+};
 
 /**
  * Hint communicated from a block's `execute` out to the block_trace emitter
@@ -460,6 +691,67 @@ export interface BlockConfig<
    * (not flow-wide) — block authors opt in deliberately.
    */
   requireOrg?: boolean;
+
+  /**
+   * Opt-in tool-result memoization (FIX-610). When set, and when this
+   * block is installed as a tool on a generator, the framework caches the
+   * tool's output keyed on `(toolName, canonicalize(args), scope)` and
+   * serves repeat calls from the cache. Errors are never cached. Identical
+   * concurrent calls within a request are coalesced (single-flight).
+   *
+   * Pass `true` for cache-everything defaults, or an object to tune TTL,
+   * scope, key derivation, and a `cacheIf` predicate.
+   *
+   * No effect when the block is used outside a generator's tool slot.
+   */
+  cacheable?: BlockCacheableConfig | true;
+}
+
+/**
+ * Per-tool memoization config (FIX-610). See {@link BlockConfig.cacheable}.
+ *
+ * Cache writes happen after the tool returns successfully. Errors are
+ * never cached. Within a request, identical concurrent calls share one
+ * in-flight execution (single-flight). Cross-request concurrent calls
+ * each execute; last writer wins for the cache entry.
+ */
+export interface BlockCacheableConfig {
+  /**
+   * TTL in milliseconds. Omit to use the cache's default (board-level or
+   * the framework default of 5 minutes). `0` disables caching and
+   * emits a dev-mode warning.
+   */
+  ttl?: number;
+
+  /**
+   * Cache scope, controlling how widely a cached entry is reused:
+   *
+   * - `"run"` (default): one Task Board run. Entries are dropped when
+   *   the outer board exits.
+   * - `"request"`: the lifetime of the current request.
+   * - `"session"`: persists across requests within a session. Carries
+   *   the most leakage risk — only use when arguments unambiguously
+   *   identify the tenant.
+   */
+  scope?: "run" | "request" | "session";
+
+  /**
+   * Custom key derivation. Receives the tool's input and ctx; returns a
+   * deterministic string. Defaults to `JSON.stringify(canonicalize(args))`
+   * with recursive object-key sorting. Override when args carry
+   * irrelevant fields (timestamps, request ids) that should be excluded
+   * from the key.
+   */
+  keyFn?: (input: unknown, ctx: BlockContext) => string;
+
+  /**
+   * Predicate gating which results are cacheable. Receives the resolved
+   * output; return `true` to store, `false` to skip. Errors are never
+   * cached regardless of this predicate. Useful for tools that return a
+   * structured "no result" envelope that shouldn't poison the cache.
+   * Default: cache every successful result.
+   */
+  cacheIf?: (output: unknown, input: unknown) => boolean;
 }
 
 export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;

@@ -150,6 +150,8 @@ The **items array** on `RequestRecord` is the canonical output of a request — 
 
 Items are load-bearing. Without them, sessions cannot reconstruct history.
 
+The physical layout of the items record varies per adapter (Postgres stores them in a dedicated `request_items` table, others inline them in the request JSON). See [`@flow-state-dev/store-postgres` README](../../packages/store-postgres/README.md#items-storage) and [Items — Storage by adapter](./items.md#storage-by-adapter) for the per-adapter map.
+
 ### Events (the execution log)
 
 The **events log** is the ordered sequence of every SSE event emitted during execution — `item.added`, `content.delta`, `item.done`, etc. It includes events for transient items (sequencer snapshots, status updates, debug data) that never appear in the items record.
@@ -269,7 +271,7 @@ This enables UI grouping, debugging, and devtools timeline views.
 
 ## Canonical Authority
 
-For full type definitions, edge cases, and user-stream event contracts, see `../preperation/architecture/STREAMING.md`.
+This document is authoritative for the streaming model and event contracts. For full type definitions, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/server`.
 
 
 ### Generator usage metadata on `block_trace`

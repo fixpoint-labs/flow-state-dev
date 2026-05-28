@@ -23,6 +23,7 @@ import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFI
 import { findBestOverlap } from './internal/helpers.js'
 import { createDigestMemoryResource } from './digest-memory.js'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
+import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Config types
@@ -73,6 +74,12 @@ export interface MemorySystemBlocksConfig {
   /** Shared digest resource reference — must be the same instance across blocks. */
   _digestResource?: ReturnType<typeof createDigestMemoryResource>
   source?: (input: unknown, ctx: any) => string
+  /**
+   * Resolved hygiene configuration (FIX-411). When set, the consolidation
+   * and capture pipelines auto-wire the janitor block per `hygiene.schedule`.
+   * `undefined` means hygiene is disabled — janitor is neither built nor wired.
+   */
+  hygiene?: ResolvedHygieneConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +308,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // memory here. LLMs reliably re-extract from any content they can see, regardless
   // of instructions. Dedup is handled structurally in the reflect handler via
   // findBestOverlap. The observer's job is pure extraction from new conversation items.
-  function buildContext(_input: unknown, ctx: any): string | undefined {
+  function buildContext(_input: unknown, ctx: { session?: any; resources: any }): string | undefined {
     const sysRef = ctx.resources.memorySystem
     const sysState = sysRef.state
 
@@ -371,164 +378,151 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     ? createSemanticMemoryResource(config.semantic.scope)
     : undefined)
 
-  const sessionResources = {
-    workingMemory: workingMemoryResource,
-    memorySystem: memorySystemResource,
-  }
-
   const helperConfig: WorkingMemoryHelperConfig = {
     capacity: config.working.capacity,
     maxPinnedSlots: config.working.maxPinnedSlots,
     decay: config.working.decay,
   }
 
-  // Shared execute logic — extracted to avoid duplication across scope variants
-  async function executeReflect(input: UnifiedObservations, ctx: any) {
-    const wmRef = ctx.resources.workingMemory
-    const sysRef = ctx.resources.memorySystem
-
-    // Get episodic ref if available (FIX-435: flat resource registry)
-    let epRef: any = undefined
-    try {
-      epRef = ctx.resources?.episodicMemory
-    } catch { /* not installed */ }
-
-    // Get semantic ref if available
-    let semRef: any = undefined
-    try {
-      semRef = ctx.resources?.semanticMemory
-    } catch { /* not installed */ }
-
-    let episodicWrites = 0
-    let evictedPersistent = 0
-
-    for (const item of input.items) {
-      try {
-        // Working memory dedup: check if this observation overlaps with an
-        // existing WM entry. The observer doesn't see existing memory (to
-        // prevent re-extraction), so dedup happens here structurally.
-        const existingEntries = wmItems(wmRef)
-        const wmMatch = findBestOverlap(item.content, existingEntries)
-
-        if (wmMatch) {
-          if (wmMatch.minOverlap >= 0.95) {
-            // Near-identical — skip entirely, nothing new to store
-            continue
-          }
-          // Partial overlap — supersede the old entry with the richer version
-          if (wmMatch.fact.durability === 'persistent' || wmMatch.fact.durability === 'permanent') {
-            evictedPersistent++
-          }
-          await evict(wmRef, wmMatch.fact.id)
-        }
-
-        // Add to working memory (all durabilities)
-        const entry = await add(wmRef, {
-          content: item.content,
-          importance: item.importance,
-          pinned: false,
-          durability: item.durability,
-          category: item.category,
-        }, helperConfig)
-
-        // Auto-pin high-importance items
-        if (item.importance >= 0.85) {
-          await pin(wmRef, entry.id, helperConfig)
-        }
-
-        // Route to episodic memory if applicable
-        if (
-          epRef &&
-          config.episodic &&
-          (item.durability === 'persistent' || item.durability === 'permanent') &&
-          item.importance >= config.episodic.significanceThreshold
-        ) {
-          await encode(epRef, {
-            content: item.content,
-            occurredAtTurn: wmRef.state.currentTurn,
-            significance: item.importance,
-            category: item.category,
-            context: {
-              sessionId: ctx.session?.instanceId ?? 'unknown',
-              precedingTopic: undefined,
-            },
-          }, config.episodic.maxEpisodes)
-          episodicWrites++
-        }
-
-        // Direct extraction to semantic memory: persistent/permanent items with
-        // stable categories bypass consolidation. This avoids waiting 10+ turns
-        // for consolidation to distill clearly stable knowledge like user facts
-        // and preferences.
-        //
-        // Stable categories = all semantic categories. Session-only categories
-        // (event, task) skip semantic — they belong in working/episodic only.
-        //
-        // Dedup is subject-scoped: only compare against facts with the same subject.
-        // This prevents "born in May" about user deduping against an unrelated
-        // fact about a different person.
-        const sessionOnlyCategories = new Set(['event', 'task'])
-        const isStableCategory = !sessionOnlyCategories.has(item.category)
-        const normalizedSubject = (item.subject ?? 'user').toLowerCase()
-        if (
-          semRef &&
-          config.semantic &&
-          (item.durability === 'permanent' || item.durability === 'persistent') &&
-          isStableCategory
-        ) {
-          const existing = allFacts(semRef, normalizedSubject)
-          const match = findBestOverlap(item.content, existing)
-
-          if (match) {
-            // High overlap — update if content is meaningfully different, reinforce if same.
-            // Use minOverlap (both directions must be high) to detect true identity.
-            // When one is a subset of the other (min < 0.95 but max >= 0.6), update with the richer version.
-            if (match.minOverlap < 0.95) {
-              // Content differs (e.g., "born in May" → "born in May 8th") — update with richer version
-              const richer = item.content.length >= match.fact.content.length ? item.content : match.fact.content
-              await updateFact(semRef, match.fact.id, richer, [], Math.max(match.fact.confidence, item.importance))
-            } else {
-              await reinforce(semRef, match.fact.id, [])
-            }
-          } else {
-            await addFact(semRef, {
-              subject: normalizedSubject,
-              content: item.content,
-              confidence: item.importance,
-              category: item.category as any,
-              sourceEpisodeIds: [],
-            })
-          }
-        }
-      } catch (err) {
-        console.warn('[memory] Failed to persist memory item:', (err as Error).message ?? err)
-      }
-    }
-
-    // Update tracking counters
-    const allItems = ctx.session?.items?.all?.() ?? []
-    await sysRef.updateState((s: any) => ({
-      ...s,
-      lastProcessedIndex: allItems.length > 0 ? allItems.length - 1 : s.lastProcessedIndex,
-      episodicWritesSinceLastConsolidation: s.episodicWritesSinceLastConsolidation + episodicWrites,
-      evictedPersistentSinceLastConsolidation: s.evictedPersistentSinceLastConsolidation + evictedPersistent,
-    }))
-
-    return { episodicWrites, evictedPersistent }
-  }
-
-  // FIX-435: flat resources map; intrinsic scope on each resource routes
-  // it to the right storage layer.
-  const resources: Record<string, any> = { ...sessionResources }
-  if (episodicResource) resources.episodicMemory = episodicResource
-  if (semanticResource) resources.semanticMemory = semanticResource
-
   return handler({
     name: config.name ? `${config.name}/reflect` : 'memory/reflect',
     inputSchema: unifiedObservationsSchema,
     outputSchema: z.any(),
-    resources,
-    execute: executeReflect,
+    // FIX-435: flat resources map; intrinsic scope on each resource routes
+    // it to the right storage layer. Episodic and semantic are conditionally
+    // installed via spread — widens the inferred ctx type for those keys.
+    resources: {
+      workingMemory: workingMemoryResource,
+      memorySystem: memorySystemResource,
+      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+    },
+    execute: async (input, ctx) => {
+      const wmRef = ctx.resources.workingMemory
+      const sysRef = ctx.resources.memorySystem
+      // Episodic and semantic are installed conditionally above; cast at
+      // point of use to the helper signatures.
+      const epRef = ctx.resources.episodicMemory as any
+      const semRef = ctx.resources.semanticMemory as any
+
+      let episodicWrites = 0
+      let evictedPersistent = 0
+
+      for (const item of input.items) {
+        try {
+          // Working memory dedup: check if this observation overlaps with an
+          // existing WM entry. The observer doesn't see existing memory (to
+          // prevent re-extraction), so dedup happens here structurally.
+          const existingEntries = wmItems(wmRef)
+          const wmMatch = findBestOverlap(item.content, existingEntries)
+
+          if (wmMatch) {
+            if (wmMatch.minOverlap >= 0.95) {
+              // Near-identical — skip entirely, nothing new to store
+              continue
+            }
+            // Partial overlap — supersede the old entry with the richer version
+            if (wmMatch.fact.durability === 'persistent' || wmMatch.fact.durability === 'permanent') {
+              evictedPersistent++
+            }
+            await evict(wmRef, wmMatch.fact.id)
+          }
+
+          // Add to working memory (all durabilities)
+          const entry = await add(wmRef, {
+            content: item.content,
+            importance: item.importance,
+            pinned: false,
+            durability: item.durability,
+            category: item.category,
+          }, helperConfig)
+
+          // Auto-pin high-importance items
+          if (item.importance >= 0.85) {
+            await pin(wmRef, entry.id, helperConfig)
+          }
+
+          // Route to episodic memory if applicable
+          if (
+            epRef &&
+            config.episodic &&
+            (item.durability === 'persistent' || item.durability === 'permanent') &&
+            item.importance >= config.episodic.significanceThreshold
+          ) {
+            await encode(epRef, {
+              content: item.content,
+              occurredAtTurn: wmRef.state.currentTurn,
+              significance: item.importance,
+              category: item.category,
+              durability: item.durability,
+              context: {
+                sessionId: ctx.session?.identity?.id ?? 'unknown',
+                precedingTopic: undefined,
+              },
+            }, config.episodic.maxEpisodes)
+            episodicWrites++
+          }
+
+          // Direct extraction to semantic memory: persistent/permanent items with
+          // stable categories bypass consolidation. This avoids waiting 10+ turns
+          // for consolidation to distill clearly stable knowledge like user facts
+          // and preferences.
+          //
+          // Stable categories = all semantic categories. Session-only categories
+          // (event, task) skip semantic — they belong in working/episodic only.
+          //
+          // Dedup is subject-scoped: only compare against facts with the same subject.
+          // This prevents "born in May" about user deduping against an unrelated
+          // fact about a different person.
+          const sessionOnlyCategories = new Set(['event', 'task'])
+          const isStableCategory = !sessionOnlyCategories.has(item.category)
+          const normalizedSubject = (item.subject ?? 'user').toLowerCase()
+          if (
+            semRef &&
+            config.semantic &&
+            (item.durability === 'permanent' || item.durability === 'persistent') &&
+            isStableCategory
+          ) {
+            const existing = allFacts(semRef, normalizedSubject)
+            const match = findBestOverlap(item.content, existing)
+
+            if (match) {
+              // High overlap — update if content is meaningfully different, reinforce if same.
+              // Use minOverlap (both directions must be high) to detect true identity.
+              // When one is a subset of the other (min < 0.95 but max >= 0.6), update with the richer version.
+              if (match.minOverlap < 0.95) {
+                // Content differs (e.g., "born in May" → "born in May 8th") — update with richer version
+                const richer = item.content.length >= match.fact.content.length ? item.content : match.fact.content
+                await updateFact(semRef, match.fact.id, richer, [], Math.max(match.fact.confidence, item.importance))
+              } else {
+                await reinforce(semRef, match.fact.id, [])
+              }
+            } else {
+              await addFact(semRef, {
+                subject: normalizedSubject,
+                content: item.content,
+                confidence: item.importance,
+                category: item.category as any,
+                sourceEpisodeIds: [],
+              })
+            }
+          }
+        } catch (err) {
+          console.warn('[memory] Failed to persist memory item:', (err as Error).message ?? err)
+        }
+      }
+
+      // Update tracking counters
+      const allItems = ctx.session?.items?.all?.() ?? []
+      await sysRef.updateState((s: any) => ({
+        ...s,
+        lastProcessedIndex: allItems.length > 0 ? allItems.length - 1 : s.lastProcessedIndex,
+        episodicWritesSinceLastConsolidation: s.episodicWritesSinceLastConsolidation + episodicWrites,
+        evictedPersistentSinceLastConsolidation: s.evictedPersistentSinceLastConsolidation + evictedPersistent,
+      }))
+
+      return { episodicWrites, evictedPersistent }
+    },
   })
 }
 
@@ -626,60 +620,48 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     existingFacts: z.array(z.any()),
   })
 
-  const sessionResources = {
-    workingMemory: workingMemoryResource,
-    memorySystem: memorySystemResource,
-  }
-
-  async function executeGuard(_input: unknown, ctx: any) {
-    const sysRef = ctx.resources.memorySystem
-    const wmRef = ctx.resources.workingMemory
-    const sysState = sysRef.state
-
-    const minInterval = config.semantic?.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval
-    const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold
-    const onEviction = config.semantic?.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction
-
-    const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
-
-    const triggered = turnsSinceConsolidation >= minInterval &&
-      (sysState.episodicWritesSinceLastConsolidation >= episodicThreshold ||
-        (onEviction && sysState.evictedPersistentSinceLastConsolidation > 0))
-
-    if (!triggered) return { triggered: false, episodes: [], existingFacts: [] }
-
-    // Read unconsolidated episodes (FIX-435: flat resource registry)
-    let epRef: any = undefined
-    try {
-      epRef = ctx.resources?.episodicMemory
-    } catch { /* not installed */ }
-
-    const unconsolidated = epRef
-      ? epRef.state.episodes.filter((e: any) => !e.consolidated)
-      : []
-
-    // Read existing semantic facts
-    let semRef: any = undefined
-    try {
-      semRef = ctx.resources?.semanticMemory
-    } catch { /* not installed */ }
-
-    const existingFacts = semRef ? allFacts(semRef) : []
-
-    return { triggered: true, episodes: unconsolidated, existingFacts }
-  }
-
-  // FIX-435: flat resources map; intrinsic scope routes each resource.
-  const resources: Record<string, any> = { ...sessionResources }
-  if (episodicResource) resources.episodicMemory = episodicResource
-  if (semanticResource) resources.semanticMemory = semanticResource
-
   return handler({
     name: config.name ? `${config?.name ?? 'memory'}/consolidate/guard` : 'memory/consolidate/guard',
     inputSchema: z.any(),
     outputSchema: guardOutputSchema,
-    resources,
-    execute: executeGuard,
+    // FIX-435: flat resources map; intrinsic scope routes each resource.
+    // Episodic/semantic are conditionally installed via spread.
+    resources: {
+      workingMemory: workingMemoryResource,
+      memorySystem: memorySystemResource,
+      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+    },
+    execute: async (_input, ctx) => {
+      const sysRef = ctx.resources.memorySystem
+      const wmRef = ctx.resources.workingMemory
+      const sysState = sysRef.state
+
+      const minInterval = config.semantic?.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval
+      const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold
+      const onEviction = config.semantic?.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction
+
+      const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
+
+      const triggered = turnsSinceConsolidation >= minInterval &&
+        (sysState.episodicWritesSinceLastConsolidation >= episodicThreshold ||
+          (onEviction && sysState.evictedPersistentSinceLastConsolidation > 0))
+
+      if (!triggered) return { triggered: false, episodes: [], existingFacts: [] }
+
+      // Episodic and semantic are installed conditionally above; cast at
+      // point of use to the helper signatures.
+      const epRef = ctx.resources.episodicMemory as any
+      const semRef = ctx.resources.semanticMemory as any
+
+      const unconsolidated = epRef
+        ? epRef.state.episodes.filter((e: any) => !e.consolidated)
+        : []
+
+      const existingFacts = semRef ? allFacts(semRef) : []
+
+      return { triggered: true, episodes: unconsolidated, existingFacts }
+    },
   })
 }
 
@@ -816,132 +798,120 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     ? createEpisodicMemoryResource(config.episodic.scope)
     : undefined)
 
-  const sessionResources = {
-    workingMemory: workingMemoryResource,
-    memorySystem: memorySystemResource,
-  }
-
-  async function executePersist(input: ConsolidationOutput, ctx: any) {
-    if (input.facts.length === 0) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
-
-    // FIX-435: flat resource registry — intrinsic scope routes lookups.
-    let semRef: any = undefined
-    try {
-      semRef = ctx.resources?.semanticMemory
-    } catch { /* not installed */ }
-
-    if (!semRef) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
-
-    // Get episodic ref for marking consolidated
-    let epRef: any = undefined
-    try {
-      epRef = ctx.resources?.episodicMemory
-    } catch { /* not installed */ }
-
-    const sysRef = ctx.resources.memorySystem
-    const wmRef = ctx.resources.workingMemory
-
-    let added = 0
-    let reinforced = 0
-    let updated = 0
-    let invalidated = 0
-    const consolidatedEpisodeIds = new Set<string>()
-
-    for (const fact of input.facts) {
-      try {
-        for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
-
-        switch (fact.action) {
-          case 'new': {
-            // Dedup: check existing facts (same subject) before adding. The consolidation
-            // LLM sometimes creates near-duplicates of existing facts with action 'new'
-            // instead of 'reinforce'.
-            const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
-            const existing = allFacts(semRef, normalizedSubject)
-            const match = findBestOverlap(fact.content, existing)
-            if (match) {
-              if (match.minOverlap < 0.95) {
-                const richer = fact.content.length >= match.fact.content.length ? fact.content : match.fact.content
-                await updateFact(semRef, match.fact.id, richer, fact.sourceEpisodeIds, Math.max(match.fact.confidence, fact.confidence))
-                updated++
-              } else {
-                await reinforce(semRef, match.fact.id, fact.sourceEpisodeIds)
-                reinforced++
-              }
-            } else {
-              await addFact(semRef, {
-                subject: normalizedSubject,
-                content: fact.content,
-                confidence: fact.confidence,
-                category: fact.category,
-                sourceEpisodeIds: fact.sourceEpisodeIds,
-              })
-              added++
-            }
-            break
-          }
-
-          case 'reinforce':
-            if (fact.targetFactId) {
-              const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
-              if (result) reinforced++
-              else console.warn(`[memory] Reinforce target not found: ${fact.targetFactId}`)
-            }
-            break
-
-          case 'update':
-            if (fact.targetFactId) {
-              const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
-              if (result) updated++
-              else console.warn(`[memory] Update target not found: ${fact.targetFactId}`)
-            }
-            break
-
-          case 'invalidate':
-            if (fact.targetFactId) {
-              await removeFact(semRef, fact.targetFactId)
-              invalidated++
-            }
-            break
-        }
-      } catch (err) {
-        console.warn('[memory] Failed to process consolidation fact:', (err as Error).message ?? err)
-      }
-    }
-
-    // Mark episodes as consolidated
-    if (epRef && consolidatedEpisodeIds.size > 0) {
-      await markConsolidated(epRef, [...consolidatedEpisodeIds])
-    }
-
-    // Increment consolidation counter
-    await semRef.updateState((s: any) => ({
-      ...s,
-      totalConsolidations: s.totalConsolidations + 1,
-    }))
-
-    // Reset memory system consolidation counters
-    await sysRef.updateState((s: any) => ({
-      ...s,
-      episodicWritesSinceLastConsolidation: 0,
-      evictedPersistentSinceLastConsolidation: 0,
-      lastConsolidationTurn: wmRef.state.currentTurn,
-    }))
-
-    return { added, reinforced, updated, invalidated }
-  }
-
-  // FIX-435: flat resources map; intrinsic scope routes each resource.
-  const resources: Record<string, any> = { ...sessionResources }
-  if (episodicResource) resources.episodicMemory = episodicResource
-  if (semanticResource) resources.semanticMemory = semanticResource
-
   return handler({
     name: config.name ? `${config.name}/consolidate/persist` : 'memory/consolidate/persist',
     inputSchema: consolidationOutputSchema,
     outputSchema: z.any(),
-    resources,
-    execute: executePersist,
+    // FIX-435: flat resources map; intrinsic scope routes each resource.
+    // Episodic and semantic are conditionally installed via spread — widens
+    // the inferred ctx type for those keys.
+    resources: {
+      workingMemory: workingMemoryResource,
+      memorySystem: memorySystemResource,
+      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+    },
+    execute: async (input, ctx) => {
+      if (input.facts.length === 0) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+
+      // Episodic and semantic are installed conditionally above; cast at
+      // point of use to the helper signatures.
+      const semRef = ctx.resources.semanticMemory as any
+      if (!semRef) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+
+      const epRef = ctx.resources.episodicMemory as any
+      const sysRef = ctx.resources.memorySystem
+      const wmRef = ctx.resources.workingMemory
+
+      let added = 0
+      let reinforced = 0
+      let updated = 0
+      let invalidated = 0
+      const consolidatedEpisodeIds = new Set<string>()
+
+      for (const fact of input.facts) {
+        try {
+          for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
+
+          switch (fact.action) {
+            case 'new': {
+              // Dedup: check existing facts (same subject) before adding. The consolidation
+              // LLM sometimes creates near-duplicates of existing facts with action 'new'
+              // instead of 'reinforce'.
+              const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
+              const existing = allFacts(semRef, normalizedSubject)
+              const match = findBestOverlap(fact.content, existing)
+              if (match) {
+                if (match.minOverlap < 0.95) {
+                  const richer = fact.content.length >= match.fact.content.length ? fact.content : match.fact.content
+                  await updateFact(semRef, match.fact.id, richer, fact.sourceEpisodeIds, Math.max(match.fact.confidence, fact.confidence))
+                  updated++
+                } else {
+                  await reinforce(semRef, match.fact.id, fact.sourceEpisodeIds)
+                  reinforced++
+                }
+              } else {
+                await addFact(semRef, {
+                  subject: normalizedSubject,
+                  content: fact.content,
+                  confidence: fact.confidence,
+                  category: fact.category,
+                  sourceEpisodeIds: fact.sourceEpisodeIds,
+                })
+                added++
+              }
+              break
+            }
+
+            case 'reinforce':
+              if (fact.targetFactId) {
+                const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
+                if (result) reinforced++
+                else console.warn(`[memory] Reinforce target not found: ${fact.targetFactId}`)
+              }
+              break
+
+            case 'update':
+              if (fact.targetFactId) {
+                const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
+                if (result) updated++
+                else console.warn(`[memory] Update target not found: ${fact.targetFactId}`)
+              }
+              break
+
+            case 'invalidate':
+              if (fact.targetFactId) {
+                await removeFact(semRef, fact.targetFactId)
+                invalidated++
+              }
+              break
+          }
+        } catch (err) {
+          console.warn('[memory] Failed to process consolidation fact:', (err as Error).message ?? err)
+        }
+      }
+
+      // Mark episodes as consolidated
+      if (epRef && consolidatedEpisodeIds.size > 0) {
+        await markConsolidated(epRef, [...consolidatedEpisodeIds])
+      }
+
+      // Increment consolidation counter
+      await semRef.updateState((s: any) => ({
+        ...s,
+        totalConsolidations: s.totalConsolidations + 1,
+      }))
+
+      // Reset memory system consolidation counters
+      await sysRef.updateState((s: any) => ({
+        ...s,
+        episodicWritesSinceLastConsolidation: 0,
+        evictedPersistentSinceLastConsolidation: 0,
+        lastConsolidationTurn: wmRef.state.currentTurn,
+      }))
+
+      return { added, reinforced, updated, invalidated }
+    },
   })
 }
 
@@ -955,15 +925,22 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
   const generateBlock = consolidationGenerate(config)
   const persistBlock = consolidationPersist(config)
 
-  const generateAndPersist = withDigestRegenerate(
-    sequencer({
-      name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
-      inputSchema: z.any(),
-    })
-      .then(generateBlock)
-      .then(persistBlock),
-    config,
-  )
+  // Order: generate → persist → janitor → digest-regen. Janitor runs after
+  // persist so reinforcement updates land before decay reads them, and
+  // before the digest so the digest summarises the post-cull store. Wired
+  // via `.tap()` because the janitor is state-mutation-only (BP-012/14).
+  let chain: any = sequencer({
+    name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
+    inputSchema: z.any(),
+  })
+    .then(generateBlock)
+    .then(persistBlock)
+
+  if (config.hygiene && config.hygiene.schedule === 'onConsolidation') {
+    chain = chain.tap(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+  }
+
+  const generateAndPersist = withDigestRegenerate(chain, config)
 
   return sequencer({
     name: config.name ? `${config.name}/consolidate` : 'memory/consolidate',
@@ -1009,31 +986,26 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
 
   const threshold = config.semantic?.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold
 
-  async function executeGuard(_input: unknown, ctx: any) {
-    let semRef: any = undefined
-    try {
-      semRef = ctx.resources?.semanticMemory
-    } catch { /* not installed */ }
-
-    if (!semRef) return { triggered: false, facts: [] }
-
-    const facts = allFacts(semRef)
-    const triggered = threshold > 0 && facts.length >= threshold
-
-    if (!triggered) return { triggered: false, facts: [] }
-    return { triggered: true, facts }
-  }
-
-  // FIX-435: flat resources map; intrinsic scope routes the resource.
-  const resources: Record<string, any> = {}
-  if (semanticResource) resources.semanticMemory = semanticResource
-
   return handler({
     name: config.name ? `${config.name}/prune/guard` : 'memory/prune/guard',
     inputSchema: z.any(),
     outputSchema: pruneGuardOutputSchema,
-    resources,
-    execute: executeGuard,
+    // FIX-435: flat resources map; intrinsic scope routes the resource.
+    // Semantic is conditionally installed via spread.
+    resources: {
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+    },
+    execute: async (_input, ctx) => {
+      // Semantic is installed conditionally above; cast at point of use.
+      const semRef = (ctx.resources as any).semanticMemory
+      if (!semRef) return { triggered: false, facts: [] }
+
+      const facts = allFacts(semRef)
+      const triggered = threshold > 0 && facts.length >= threshold
+
+      if (!triggered) return { triggered: false, facts: [] }
+      return { triggered: true, facts }
+    },
   })
 }
 
@@ -1117,71 +1089,66 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
     ? createSemanticMemoryResource(config.semantic.scope)
     : undefined)
 
-  async function executePersist(input: PruneOutput, ctx: any) {
-    let semRef: any = undefined
-    try {
-      semRef = ctx.resources?.semanticMemory
-    } catch { /* not installed */ }
-
-    if (!semRef) return { removed: 0, merged: 0 }
-
-    let removed = 0
-    let merged = 0
-
-    // Track all fact IDs referenced in merges to avoid double-removal
-    const mergedFactIds = new Set<string>()
-    for (const merge of (input.merges ?? [])) {
-      for (const id of merge.sourceFactIds) mergedFactIds.add(id)
-    }
-
-    // Process removals (skip any that are also in a merge)
-    for (const removal of (input.removals ?? [])) {
-      if (mergedFactIds.has(removal.factId)) continue
-      try {
-        await removeFact(semRef, removal.factId)
-        removed++
-      } catch (err) {
-        console.warn('[memory] Failed to remove fact during prune:', (err as Error).message ?? err)
-      }
-    }
-
-    // Process merges: update first source fact with merged content, remove the rest
-    for (const merge of (input.merges ?? [])) {
-      if (merge.sourceFactIds.length < 2) continue
-      try {
-        const [keepId, ...removeIds] = merge.sourceFactIds
-        // Collect source episode IDs from all source facts
-        const existingFacts = allFacts(semRef)
-        const sourceEpisodeIds: string[] = []
-        for (const id of merge.sourceFactIds) {
-          const fact = existingFacts.find((f) => f.id === id)
-          if (fact) sourceEpisodeIds.push(...fact.sourceEpisodeIds)
-        }
-        const uniqueSources = [...new Set(sourceEpisodeIds)]
-
-        await updateFact(semRef, keepId, merge.mergedContent, uniqueSources)
-        for (const id of removeIds) {
-          await removeFact(semRef, id)
-        }
-        merged++
-      } catch (err) {
-        console.warn('[memory] Failed to merge facts during prune:', (err as Error).message ?? err)
-      }
-    }
-
-    return { removed, merged }
-  }
-
-  // FIX-435: flat resources map; intrinsic scope routes the resource.
-  const resources: Record<string, any> = {}
-  if (semanticResource) resources.semanticMemory = semanticResource
-
   return handler({
     name: config.name ? `${config.name}/prune/persist` : 'memory/prune/persist',
     inputSchema: pruneOutputSchema,
     outputSchema: z.any(),
-    resources,
-    execute: executePersist,
+    // FIX-435: flat resources map; intrinsic scope routes the resource.
+    // Semantic is conditionally installed via spread.
+    resources: {
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+    },
+    execute: async (input, ctx) => {
+      // Semantic is installed conditionally above; cast at point of use.
+      const semRef = (ctx.resources as any).semanticMemory
+      if (!semRef) return { removed: 0, merged: 0 }
+
+      let removed = 0
+      let merged = 0
+
+      // Track all fact IDs referenced in merges to avoid double-removal
+      const mergedFactIds = new Set<string>()
+      for (const merge of (input.merges ?? [])) {
+        for (const id of merge.sourceFactIds) mergedFactIds.add(id)
+      }
+
+      // Process removals (skip any that are also in a merge)
+      for (const removal of (input.removals ?? [])) {
+        if (mergedFactIds.has(removal.factId)) continue
+        try {
+          await removeFact(semRef, removal.factId)
+          removed++
+        } catch (err) {
+          console.warn('[memory] Failed to remove fact during prune:', (err as Error).message ?? err)
+        }
+      }
+
+      // Process merges: update first source fact with merged content, remove the rest
+      for (const merge of (input.merges ?? [])) {
+        if (merge.sourceFactIds.length < 2) continue
+        try {
+          const [keepId, ...removeIds] = merge.sourceFactIds
+          // Collect source episode IDs from all source facts
+          const existingFacts = allFacts(semRef)
+          const sourceEpisodeIds: string[] = []
+          for (const id of merge.sourceFactIds) {
+            const fact = existingFacts.find((f: any) => f.id === id)
+            if (fact) sourceEpisodeIds.push(...fact.sourceEpisodeIds)
+          }
+          const uniqueSources = [...new Set(sourceEpisodeIds)]
+
+          await updateFact(semRef, keepId, merge.mergedContent, uniqueSources)
+          for (const id of removeIds) {
+            await removeFact(semRef, id)
+          }
+          merged++
+        } catch (err) {
+          console.warn('[memory] Failed to merge facts during prune:', (err as Error).message ?? err)
+        }
+      }
+
+      return { removed, merged }
+    },
   })
 }
 
@@ -1223,11 +1190,12 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
  * When semantic is configured, adds consolidation and prune as .work() steps.
- * When digest is configured, adds a top-level digest-regenerate work step
- * so the rolling summary refreshes on every turn whose source signature
- * changed (new episodes, new facts, removed facts) — independent of whether
- * consolidation or prune actually triggered. The digest block's own
- * staleness guard makes the call a cheap no-op when nothing has drifted.
+ * Digest regeneration is appended to the consolidation and prune chains
+ * (see `withDigestRegenerate`) rather than scheduled per-turn, matching
+ * FIX-408's "consolidation completion + sourceSignature delta" trigger. A
+ * per-turn run was structurally redundant — the digest's own staleness
+ * guard already no-ops when sources haven't drifted — and widened the
+ * failure surface of a background-only chain into the user-visible turn.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const observeBlock = memorySystemObserve(config)
@@ -1248,15 +1216,21 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
     pipeline = pipeline.work(consolidateBlock).work(pruneBlock)
   }
 
-  if (config.digest) {
-    // Connector returns `{}` so the captured pipeline value (reflect's
-    // output) is reshaped to match `digestRegenerateInputSchema`. `force` is
-    // omitted so the block's own staleness guard decides whether to
-    // regenerate based on source-signature drift.
-    pipeline = pipeline.work(
-      () => ({}),
-      digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }),
-    )
+  // Hygiene with `schedule: 'onCapture'` wires the janitor as a background
+  // `.work()` step every turn. Decay is slow so this rarely earns its keep
+  // — `'onConsolidation'` (default) is preferred. `'manual'` skips wiring
+  // entirely; the caller invokes `mem.janitor` themselves.
+  //
+  // Episodic-only fallback: when `'onConsolidation'` is set but no semantic
+  // tier is configured, there is no consolidate sequencer to host the
+  // janitor. Wire it onto capture instead so episodic TTL still runs.
+  if (config.hygiene) {
+    const sched = config.hygiene.schedule
+    const wantOnCapture = sched === 'onCapture'
+    const fallbackForEpisodicOnly = sched === 'onConsolidation' && !config.semantic && !!config.episodic
+    if (wantOnCapture || fallbackForEpisodicOnly) {
+      pipeline = pipeline.work(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+    }
   }
 
   return pipeline

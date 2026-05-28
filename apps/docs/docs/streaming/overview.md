@@ -105,6 +105,8 @@ Three views for accessing session items:
 const history = ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
+The limit is turn-aligned: whole turns are kept or dropped together so tool-heavy turns can't evict prior conversation. See [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing).
+
 ## Item lifecycle
 
 Items go through three phases:
@@ -148,4 +150,4 @@ For reference, here's the complete registry:
 
 ## Wire-level heartbeat
 
-`@flow-state-dev/server` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Connection Resilience](/docs/server/connection-resilience) for how heartbeats fit alongside the watchdog and stale-request sweeper.
+`@flow-state-dev/server` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowState({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Connection Resilience](/docs/server/connection-resilience) for how heartbeats fit alongside the watchdog and stale-request sweeper.

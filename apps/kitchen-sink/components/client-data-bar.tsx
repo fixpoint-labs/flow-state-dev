@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { User, Cpu, Wand2 } from "lucide-react";
+import { User, Cpu, Wand2, Workflow } from "lucide-react";
 import { getStyleOption } from "@/components/thinking-style-selector";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +15,11 @@ interface ClientDataBarProps {
   /** The resolved thinking style from the most recent request. */
   thinkingStyle?: string;
   /**
-   * Skills activated by `intentSelector` for the most recent turn (FIX-421).
+   * Skills activated by `skillActivator` for the most recent turn (FIX-421).
    * Each entry carries the skill name and the tier that matched it
    * (`slash` / `keyword` / `classifier`).
    */
-  activeSkills?: Array<{ name: string; source: string }>;
+  activeSkills?: Array<{ name: string; source: string; mode?: "inline" | "fork" | "pattern" }>;
 }
 
 export function ClientDataBar({
@@ -62,13 +62,17 @@ export function ClientDataBar({
         <>
           <Separator orientation="vertical" className="hidden h-4 md:block" />
           <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Wand2 className="h-3.5 w-3.5 text-purple-500" />
+            {activeSkills.some((s) => s.mode === "pattern") ? (
+              <Workflow className="h-3.5 w-3.5 text-blue-500" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5 text-purple-500" />
+            )}
             <span className="hidden sm:inline">Skill{activeSkills.length > 1 ? "s" : ""}:</span>
             <div className="flex flex-wrap items-center gap-1">
               {activeSkills.map((s) => (
                 <Badge key={s.name} variant="outline" className="text-xs">
                   {s.name}
-                  <span className="ml-1 opacity-60">· {s.source}</span>
+                  <span className="ml-1 opacity-60">· {s.mode === "pattern" ? "pattern" : s.source}</span>
                 </Badge>
               ))}
             </div>

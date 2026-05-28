@@ -1,18 +1,26 @@
 /**
  * Output schemas for the Phase 4 risk debate.
  *
- * Three persona generators (aggressive, conservative, neutral) emit a typed
- * critique in a single LLM call. The neutral persona extends the persona
- * shape with `dismissedRisks`. A downstream `riskAssessmentGenerator`
+ * One `personaCritiqueOutputSchema` for all three persona generators —
+ * `posture` carries the persona identity at runtime, and `dismissedRisks`
+ * is always required (aggressive and conservative emit `[]` per their
+ * prompts; neutral populates it). A downstream `riskAssessmentGenerator`
  * synthesizes the three persona memos into a single `RiskAssessment` that
  * Phase 5 consumes.
  *
- * BP-016: every field is required, no `.optional()` / `.default()` /
+ * Why one schema, not three: the writer side reads each persona's output
+ * the same way (commit posture + raisedRisks + proposedAdjustments +
+ * dismissedRisks), so splitting the schema by persona just to lock down
+ * `posture` for each one forces the writer to branch its input schema and
+ * union its output type for no observable gain. The persona-specific
+ * value of `posture` is enforced in the prompts where it's already
+ * spelled out.
+ *
+ * BP-016: every field required, no `.optional()` / `.default()` /
  * `.record()` / `.nullable()` reachable from any output, every enum is a
- * literal-only union. The `metrics` shape is uniform across personas with
- * every key required — personas fill irrelevant keys with `"—"`, explained
- * in their prompts. This stays strict-mode-compatible without forking
- * into three near-identical schemas.
+ * literal-only union. The `metrics` shape is uniform across personas
+ * with every key required — personas fill irrelevant keys with `"—"`,
+ * explained in their prompts.
  */
 import { z } from "zod";
 import { thesisSection } from "../resources";
@@ -23,7 +31,9 @@ const adjustmentShape = z.object({
   invalidation: z.enum(["tighter", "looser", "unchanged"]),
 });
 
-/** Shape shared by the aggressive and conservative persona generators. */
+/** Shape shared by all three persona generators. `dismissedRisks` is
+ *  always required; aggressive and conservative emit `[]`, neutral
+ *  populates it. */
 export const personaCritiqueOutputSchema = z.object({
   label: z.string(),
   headline: z.string(),
@@ -37,7 +47,7 @@ export const personaCritiqueOutputSchema = z.object({
     followOn: z.string(),
   }),
   body: z.array(thesisSection),
-  posture: z.enum(["aggressive", "conservative"]),
+  posture: z.enum(["aggressive", "conservative", "neutral"]),
   raisedRisks: z.array(
     z.object({
       description: z.string(),
@@ -45,24 +55,21 @@ export const personaCritiqueOutputSchema = z.object({
     }),
   ),
   proposedAdjustments: adjustmentShape,
+  dismissedRisks: z.array(
+    z.object({
+      description: z.string(),
+      reason: z.string(),
+      dismissalCategory: z.enum([
+        "already-addressed",
+        "out-of-scope",
+        "no-mechanism",
+        "asymmetric-no-bound",
+      ]),
+    }),
+  ),
 });
 
 export type PersonaCritiqueOutput = z.infer<typeof personaCritiqueOutputSchema>;
-
-/** Neutral persona shape — adds `dismissedRisks` and locks `posture`. */
-export const neutralCritiqueOutputSchema = personaCritiqueOutputSchema
-  .omit({ posture: true })
-  .extend({
-    posture: z.literal("neutral"),
-    dismissedRisks: z.array(
-      z.object({
-        description: z.string(),
-        reason: z.string(),
-      }),
-    ),
-  });
-
-export type NeutralCritiqueOutput = z.infer<typeof neutralCritiqueOutputSchema>;
 
 /** Consolidated `RiskAssessment` — what Phase 5 (PM) reads. */
 export const riskAssessmentOutputSchema = z.object({
@@ -87,6 +94,12 @@ export const riskAssessmentOutputSchema = z.object({
     z.object({
       description: z.string(),
       reason: z.string(),
+      dismissalCategory: z.enum([
+        "already-addressed",
+        "out-of-scope",
+        "no-mechanism",
+        "asymmetric-no-bound",
+      ]),
     }),
   ),
   // `"unchanged"` is included in each direction enum so the consolidator can

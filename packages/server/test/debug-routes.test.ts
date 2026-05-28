@@ -12,6 +12,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { createInMemoryStores, createFlowRegistry } from "../src";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {
@@ -136,11 +137,14 @@ async function setupCtx(opts: {
     flowKind: "debug-flow",
     userId: "user_1",
     state: {},
-    resources: opts.resources ?? {},
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
   await stores.session.set(sessionId, session, "any");
+  // Resource state is canonical in the ResourceStateStore (FIX-689).
+  for (const [key, state] of Object.entries(opts.resources ?? {})) {
+    await stores.resourceState.set("session", sessionId, key, state as JsonObject);
+  }
   const debug = resolveDebugConfig(
     opts.debugConfig ?? { debugEndpointsEnabled: true }
   );

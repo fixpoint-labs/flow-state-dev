@@ -1,4 +1,4 @@
-import type { BlockDefinition } from "../../types/block";
+import type { BlockDefinition, ResponseEmitterHandle } from "../../types/block";
 
 export function toError(value: unknown): Error {
   if (value instanceof Error) {
@@ -39,21 +39,21 @@ export function withTimeout<TValue>(
 }
 
 /**
- * Returns the number of items already emitted on the given response object,
- * by duck-typing the `getItems()` method. Used by block code in this package
- * to assign sequential `itemIndex` values without importing server types.
+ * Returns the number of items already emitted on the given response object.
+ * Used by block code in this package to assign sequential `itemIndex` values
+ * to newly emitted items.
+ *
+ * Prefers the O(1) `getItemCount()` so this stays cheap on the per-emit hot
+ * path (FIX-406 6G). Tolerates partially-implemented mocks (test fixtures
+ * that supply only `emit`/`getItems`) by falling back to `getItems().length`,
+ * then to 0 when neither is present. Production responses always provide
+ * `getItemCount` via `ResponseEmitterHandle`.
  */
-export function getEmitterItemCount(response: unknown): number {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "getItems" in response &&
-    typeof (response as { getItems?: unknown }).getItems === "function"
-  ) {
-    const items = (response as { getItems: () => unknown[] }).getItems();
-    return Array.isArray(items) ? items.length : 0;
-  }
-  return 0;
+export function getEmitterItemCount(response: ResponseEmitterHandle | undefined): number {
+  if (response === undefined) return 0;
+  if (typeof response.getItemCount === "function") return response.getItemCount();
+  if (typeof response.getItems !== "function") return 0;
+  return response.getItems().length;
 }
 
 export function isBlockDefinition(value: unknown): value is BlockDefinition<any, any> {

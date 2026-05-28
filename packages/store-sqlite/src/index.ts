@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
-import type { StoreRegistry } from "@flow-state-dev/server";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/server";
 import { InMemoryContentStore } from "./content-store";
+import { InMemoryResourceStateStore } from "./resource-state-store";
 import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
 import {
@@ -63,6 +64,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     org: createSQLiteOrgStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
+    resourceState: new InMemoryResourceStateStore(),
     checkpoints: createSQLiteCheckpointStore(db),
     traces: createSQLiteTraceStore(db, {
       ...options.traceStore,
@@ -70,6 +72,25 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     }),
     close() {
       db.close();
+    }
+  };
+}
+
+/**
+ * SQLite store adapter for `createFlowState`. Backs the `primary` capability
+ * slot. Wraps `createSQLiteStores` (synchronous), memoizing the registry so
+ * the connection opens once, and disposes it via `close()`.
+ */
+export function sqliteStores(options: SQLiteStoreOptions): StoreAdapter {
+  let registry: SQLiteStoreRegistry | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve() {
+      registry ??= createSQLiteStores(options);
+      return Promise.resolve(registry);
+    },
+    dispose() {
+      registry?.close();
     }
   };
 }
@@ -83,6 +104,8 @@ export {
   createSQLiteCheckpointStore,
   createSQLiteTraceStore
 };
+
+export { createSQLiteScheduleIndex } from "./schedule-index";
 
 export type { SQLiteTraceStoreOptions };
 export type { CreateSQLiteRequestStoreOptions } from "./request-store";

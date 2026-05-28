@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Configuration
 
-`system()` takes a single config object. Every tier is optional, and the factory composes whichever tiers you ask for into a single capture pipeline, recall helper, and context formatter. You won't need every knob on day one. Start with the defaults and tighten things as you learn what your agent forgets.
+Two entry points share the same tier configuration: `createMemoryCapability` builds the capability surface, and `system()` builds that capability plus the auto-capture and lifecycle pipeline. Whichever you pick, the tier configs below are identical. You won't need every knob on day one — start with the defaults and tighten things as you learn what your agent forgets.
 
 ```ts
 import { system } from "@flow-state-dev/memory";
@@ -18,9 +18,68 @@ const mem = system({
 });
 ```
 
-Tier dependencies are validated when you call `system()`: semantic requires episodic, digest requires semantic. Working-only is allowed. If you wire something inconsistent, you'll hear about it at construction, not at runtime.
+Tier dependencies are validated at construction by both entry points: semantic requires episodic, digest requires semantic. Working-only is allowed. If you wire something inconsistent, you'll hear about it when you build, not at runtime.
+
+## Choosing an entry point
+
+| Need | Reach for |
+|------|-----------|
+| Read side: context block, recall tool, typed helpers | `createMemoryCapability` |
+| Read side **plus** auto-capture, consolidation, prune, hygiene | `system()` |
+
+Both accept the same tier configs below. `system()` builds `createMemoryCapability` internally and exposes it as `mem.capability`, so the read surface is identical — `system()` just adds the pipeline that writes new observations back into the tiers.
+
+## `createMemoryCapability` options
+
+`createMemoryCapability(options)` returns the composed capability with the resource maps you register at the flow level. Install it on a generator with `uses: [mem]` and spread its resources into the flow:
+
+```ts
+import { defineFlow, generator } from "@flow-state-dev/core";
+import { createMemoryCapability } from "@flow-state-dev/memory";
+
+const mem = createMemoryCapability({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+});
+
+generator({ uses: [mem] });
+
+defineFlow({
+  kind: "reader",
+  resources: { ...mem.sessionResources, ...mem.userResources },
+  actions: { /* ... */ },
+});
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model` | `string \| string[]` | Model id (or fallback chain) for the recall tool's filter call. Required. |
+| `working` | `WorkingMemorySystemConfig \| true` | Working tier config. Required; `true` for defaults. |
+| `episodic` | `EpisodicMemoryConfig \| true` | Episodic tier. Omit to disable. |
+| `semantic` | `SemanticMemoryConfig \| true` | Semantic tier. Omit to disable. Requires episodic. |
+| `digest` | `DigestSystemConfig \| true` | Digest tier. Omit to disable. Requires semantic. |
+| `tool` | `MemoryToolConfig` | Recall-tool strategy and defaults. |
+| `hygiene` | `HygieneConfig \| true \| false` | Only the `confidenceDecay` slice applies here — it drives recall ranking. Janitor scheduling belongs to `system()`. |
+
+The result is a `DefinedCapability` with `sessionResources` (always `workingMemory` + `memorySystem`), `userResources` (the configured user-scoped tiers), `tiers` (the per-tier capabilities), and `recallToolBlock` attached. For type-safe resource registration use `sessionResources` / `userResources` — the resource references travel with the capability, so the same `defineResource()` reference is used everywhere.
+
+## `system()` options
+
+`system()` accepts every field above plus the capture-pipeline knobs below, and returns the full `MemorySystem` — the capability (`mem.capability`), the capture pipeline (`mem.capture`, `mem.captureFromItems`), consolidation, prune, and the janitor.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `consolidationModel` | `string \| string[]` | Model override for the consolidation generator. Defaults to `model`. |
+| `pruneModel` | `string \| string[]` | Model override for the prune generator. Defaults to `model`. |
+| `source` | `(input, ctx) => string` | Custom source function — overrides reading from `ctx.session.items`. |
+| `maxAssistantChars` | `number` | Max chars of the assistant response captured per turn. Default `500`. |
+| `name` / `inputSchema` | — | Optional naming and input schema for the capture pipeline. |
 
 ## Tier configuration
+
+These configs apply to both entry points.
 
 ### `working`
 
@@ -66,6 +125,14 @@ User-scoped rolling summary that gets regenerated periodically. The digest is th
 | `maxTokens` | `number` | `400` | Hard cap on the regenerated digest |
 | `topN.facts` | `number` | `30` | Top-N semantic facts (by reinforcement count) fed to regeneration |
 | `topN.episodes` | `number` | `10` | Top-N recent-and-significant episodes fed to regeneration |
+
+### `hygiene`
+
+Time-based maintenance for the semantic and episodic stores. On by default. Decays the confidence of stable facts as time-since-reinforcement grows, and applies durability-based TTLs to episodic episodes. See [Hygiene](./hygiene) for the full picture and how to tune it.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hygiene` | `HygieneConfig \| true \| false` | `true` | Pass `false` to revert to pre-hygiene behavior (no decay, unbounded growth) |
 
 ## Capability presets
 

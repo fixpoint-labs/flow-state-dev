@@ -86,6 +86,205 @@ describe("stream resume — event persistence", () => {
     expect(replayable).toHaveLength(3);
     expect(replayable.every((e) => e.type !== "ping" && e.type !== "debug")).toBe(true);
   });
+
+  // The runtime logger fires on every emit. For long-lived polling
+  // patterns it floods stderr — block_trace lifecycle for `claim-task` /
+  // `check-board` runs every `idlePollMs` per worker. Transient items
+  // should suppress the human-readable log line; the wire and persistence
+  // paths still carry every event for devtool / replay.
+  it("suppresses runtime log calls for transient items", async () => {
+    const requestId = "req_transient_log";
+    const logCalls: Array<{ eventType: string }> = [];
+
+    const emitter = createResponseEmitter({ requestId, now: () => 100 });
+    emitter.setLogCallback((eventType) => {
+      logCalls.push({ eventType });
+    });
+
+    // Non-transient item logs as before.
+    await emitter.emitItemAdded(
+      makeMessageItem({ requestId, itemIndex: 0, ts: 100 })
+    );
+    await emitter.emitItemUpdated("item_0", { status: "completed" });
+
+    // Transient item lifecycle should not log.
+    const traceId = "item_trace_1";
+    await emitter.emitItemAdded({
+      id: traceId,
+      type: "block_trace",
+      transient: true,
+      requestId,
+      itemIndex: 1,
+      status: "in_progress",
+      blockName: "check-board",
+      blockKind: "handler",
+      blockInstanceId: "bi_1",
+      agentType: "trace",
+      provenance: {
+        blockName: "check-board",
+        blockInstanceId: "bi_1",
+        phase: "main"
+      },
+      ts: 100,
+      startedAt: 100
+    } as never);
+    await emitter.emitItemUpdated(traceId, { status: "completed" });
+
+    expect(logCalls.map((c) => c.eventType)).toEqual([
+      "item.added",
+      "item.updated"
+    ]);
+  });
+
+  // Long-running patterns like task-board's idle-poll loop fire many
+  // transient block_trace items (one per claimed/check tick, per worker).
+  // Counting their lifecycle events against the in-RAM buffer evicts
+  // non-transient events when the loop runs for any duration. The buffer
+  // bound exists to cap memory; transient events are stream-only by
+  // contract (`docs/architecture/streaming.md`), so they don't belong in
+  // the bounded buffer.
+  it("excludes transient-item events from the in-memory buffer (FIX-450 follow-up)", async () => {
+    const requestId = "req_transient_cap";
+    const persisted: RequestStreamEvent[] = [];
+    const wired: RequestStreamEvent[] = [];
+
+    const emitter = createResponseEmitter({
+      requestId,
+      now: () => 100,
+      maxBufferSize: 10,
+      onEvent: (e) => {
+        wired.push(e);
+      }
+    });
+    emitter.setEventHooks({
+      onEvent: (events) => {
+        persisted.push(...events);
+      }
+    });
+
+    await emitter.emitRequestCreated();
+    await emitter.emitItemAdded(
+      makeMessageItem({ requestId, itemIndex: 0, ts: 100 })
+    );
+
+    // Flood with transient block_trace items — the polling shape that
+    // task-board's claim-task / check-board emit at ~50ms intervals.
+    for (let i = 0; i < 100; i++) {
+      const traceId = `item_trace_${i}`;
+      await emitter.emitItemAdded({
+        id: traceId,
+        type: "block_trace",
+        transient: true,
+        requestId,
+        itemIndex: i + 1,
+        status: "in_progress",
+        blockName: "check-board",
+        blockKind: "handler",
+        blockInstanceId: `bi_${i}`,
+        agentType: "trace",
+        provenance: {
+          blockName: "check-board",
+          blockInstanceId: `bi_${i}`,
+          phase: "main"
+        },
+        ts: 100 + i,
+        startedAt: 100 + i
+      } as never);
+      await emitter.emitItemDone({
+        id: traceId,
+        type: "block_trace",
+        transient: true,
+        requestId,
+        itemIndex: i + 1,
+        status: "completed",
+        blockName: "check-board",
+        blockKind: "handler",
+        blockInstanceId: `bi_${i}`,
+        agentType: "trace",
+        provenance: {
+          blockName: "check-board",
+          blockInstanceId: `bi_${i}`,
+          phase: "main"
+        },
+        ts: 100 + i,
+        startedAt: 100 + i
+      } as never);
+    }
+
+    // The in-RAM buffer keeps only the two non-transient events. The
+    // non-transient item.added is NOT evicted by the transient flood.
+    const buffered = emitter.getEvents();
+    expect(buffered.map((e) => e.type)).toEqual([
+      "request.created",
+      "item.added"
+    ]);
+    expect(buffered[1]!.type).toBe("item.added");
+
+    // Wire delivery is unchanged: live consumers (devtool, ?include=trace)
+    // still see every transient event. 1 request.created + 1 message
+    // item.added + 200 transient events = 202 total.
+    expect(wired).toHaveLength(202);
+
+    // Persistence is unchanged per architecture contract: events log holds
+    // every replayable event, including those for transient items.
+    expect(persisted).toHaveLength(202);
+  });
+
+  it("excludes content events for transient items from the buffer", async () => {
+    const requestId = "req_transient_content";
+    const emitter = createResponseEmitter({
+      requestId,
+      now: () => 100,
+      maxBufferSize: 100
+    });
+
+    await emitter.emitItemAdded({
+      id: "item_transient_msg",
+      type: "message",
+      role: "assistant",
+      transient: true,
+      content: [{ type: "output_text", text: "" }],
+      status: "in_progress",
+      requestId,
+      itemIndex: 0,
+      provenance: {
+        blockName: "test",
+        blockInstanceId: "test_1",
+        phase: "main"
+      },
+      ts: 100
+    } as never);
+    await emitter.emitContentAdded("item_transient_msg", 0, {
+      type: "output_text",
+      text: ""
+    });
+    await emitter.emitContentDelta("item_transient_msg", 0, "hi");
+    await emitter.emitContentDone("item_transient_msg", 0, {
+      type: "output_text",
+      text: "hi"
+    });
+    await emitter.emitItemUpdated("item_transient_msg", { status: "completed" });
+    await emitter.emitItemDone({
+      id: "item_transient_msg",
+      type: "message",
+      role: "assistant",
+      transient: true,
+      content: [{ type: "output_text", text: "hi" }],
+      status: "completed",
+      requestId,
+      itemIndex: 0,
+      provenance: {
+        blockName: "test",
+        blockInstanceId: "test_1",
+        phase: "main"
+      },
+      ts: 100
+    } as never);
+
+    // All six events carry a transient itemId; none should land in the
+    // buffer.
+    expect(emitter.getEvents()).toEqual([]);
+  });
 });
 
 describe("stream resume — memory store event persistence", () => {

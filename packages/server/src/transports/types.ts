@@ -66,6 +66,13 @@ export interface InboundRequestEnvelope {
   orgId?: string;
 
   /**
+   * Optional tenant the request runs under (FIX-406 6D). Extracted by HTTP
+   * adapters from a configurable header (default `x-tenant-id`) and threaded
+   * onto the request/session context identities.
+   */
+  tenantId?: string;
+
+  /**
    * Resolved principal — normally populated by `host.resolvePrincipal`
    * before dispatch. The runtime treats this as authoritative.
    */

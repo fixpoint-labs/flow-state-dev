@@ -58,7 +58,7 @@ When `KITCHEN_SINK_URL` is set, Playwright skips its own dev server.
 Tests don't hit a network or pay tokens. Setting `KITCHEN_SINK_TEST_MODE=1` swaps the model resolver in `apps/kitchen-sink/lib/server.ts` for `createMockModelResolver`. The mocks live in `apps/kitchen-sink/lib/e2e-mock-script.ts`:
 
 - **`assistantMock`** is a hand-rolled dispatcher over `SCENARIO_SCRIPTS` — each entry is `{ match: (json) => boolean, steps: MockGeneratorScriptStep[] }`. Each scenario sends a message with a unique sentinel substring (e.g. `[scenario:smoke]`); the matching entry's `steps` are walked in order across the generator's tool loop.
-- The other generators on the run path (`thinkingStyleClassifierMock`, `intentClassifierMock`, `autoTitleMock`) use the framework's `mockGenerator()` with `{ when, then }` predicate entries because they need a single fixed response per call.
+- The other generators on the run path (`thinkingStyleClassifierMock`, `skillClassifierMock`, `autoTitleMock`) use the framework's `mockGenerator()` with `{ when, then }` predicate entries because they need a single fixed response per call.
 
 ```ts
 // apps/kitchen-sink/lib/e2e-mock-script.ts

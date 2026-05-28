@@ -9,17 +9,25 @@
  */
 import { createRequire } from "node:module";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
-import type { RetryPolicy, GatewayConfig, GatewayEntry, ProviderPreference } from "./types";
+import type {
+  RetryPolicy,
+  GatewayConfig,
+  GatewayEntry,
+  ProviderPreference,
+  IntentDefaults,
+  ModelGroupDefaults,
+} from "./types";
 import {
   detectAvailableProviders,
   parseModelString,
   extractProviderName,
   INTENT_NAME_REGEX,
+  canonicalizeIntentName,
 } from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
 import { reorderByPreference, normalizePreference } from "./reorderByPreference";
-import { warnOnceDev } from "../utils/deprecation";
+import { warnOnceDev } from "../helpers/deprecation";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -62,6 +70,28 @@ export interface CreateModelResolverOptions {
   defaultModel?: string;
   /** Map of intent name → ordered candidate model strings. */
   intents?: Record<string, string[]>;
+  /**
+   * Optional per-intent defaults. Keys must match a key in `intents`.
+   * When a candidate from `intents[name]` wins resolution, the resolver
+   * applies `intentDefaults[name]` to the request before the generator's
+   * own `providerOptions` overrides it.
+   *
+   * Construction throws if a key in `intentDefaults` is not also present
+   * in `intents`. Applies only on successful candidate resolution — when
+   * an intent falls through to `defaultModel`, no intent defaults apply
+   * (`defaultModel` has no associated intent context).
+   */
+  intentDefaults?: Record<string, IntentDefaults>;
+  /**
+   * Optional env-var source for intent overrides. Defaults to `process.env`.
+   * Tests and library callers can pass an explicit object to avoid mutating
+   * the global environment.
+   *
+   * Reads at construction time only — never per-call. See the
+   * `Env-var overrides` section in the package README for the variable
+   * naming convention.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +117,12 @@ const PROVIDER_PACKAGES: Record<string, { pkg: string; factory: string }> = {
 const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
+};
+
+/** Env-var name that supplies the API key for each known gateway. */
+const GATEWAY_ENV_VARS: Record<string, string> = {
+  vercel: "AI_GATEWAY_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 const _require = createRequire(import.meta.url);
@@ -191,6 +227,27 @@ function resolveExplicitProviders(
 }
 
 // ---------------------------------------------------------------------------
+// Intent defaults → fallback model defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps the public {@link IntentDefaults} shape onto the internal
+ * {@link ModelGroupDefaults} shape consumed by `createFallbackModel`.
+ * Returns `undefined` when there are no defaults to apply, so the fallback
+ * model can skip the merge path entirely.
+ */
+function intentDefaultsToFallbackDefaults(
+  intentDefaults: IntentDefaults | undefined
+): ModelGroupDefaults | undefined {
+  if (!intentDefaults) return undefined;
+  const providerOptions = intentDefaults.providerOptions;
+  if (!providerOptions || Object.keys(providerOptions).length === 0) {
+    return undefined;
+  }
+  return { providerOptions };
+}
+
+// ---------------------------------------------------------------------------
 // Construction-time validation
 // ---------------------------------------------------------------------------
 
@@ -223,12 +280,23 @@ function validateOptions(options: CreateModelResolverOptions | undefined): void 
     }
   }
 
+  const canonicalToOriginal = new Map<string, string>();
   for (const [name, candidates] of intentEntries) {
     if (!INTENT_NAME_REGEX.test(name)) {
       throw new Error(
         `createModelResolver: invalid intent name "${name}". Must match ${INTENT_NAME_REGEX.source}.`
       );
     }
+    const canonical = canonicalizeIntentName(name);
+    const existing = canonicalToOriginal.get(canonical);
+    if (existing !== undefined && existing !== name) {
+      throw new Error(
+        `createModelResolver: intent names "${existing}" and "${name}" ` +
+          `both map to environment variable FSDEV_INTENT_${canonical}, which is ambiguous. ` +
+          `Rename one to avoid collisions for env-var overrides.`
+      );
+    }
+    canonicalToOriginal.set(canonical, name);
     for (const candidate of candidates) {
       const parsed = parseModelString(candidate);
       if (parsed.type === "intent") {
@@ -238,6 +306,140 @@ function validateOptions(options: CreateModelResolverOptions | undefined): void 
       }
     }
   }
+
+  if (options.intentDefaults) {
+    const intentKeys = new Set(Object.keys(options.intents ?? {}));
+    for (const key of Object.keys(options.intentDefaults)) {
+      if (!intentKeys.has(key)) {
+        throw new Error(
+          `createModelResolver: intentDefaults key "${key}" is not a defined intent. ` +
+            `Defined intents: ${[...intentKeys].join(", ") || "(none)"}.`
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Env-var overrides
+// ---------------------------------------------------------------------------
+
+const INTENT_ENV_PREFIX = "FSDEV_INTENT_";
+const DEFAULT_MODEL_ENV_VAR = "FSDEV_DEFAULT_MODEL";
+
+interface IntentEnvOverrides {
+  /** intent name (as declared in `options.intents`) → override model string */
+  intentOverrides: Map<string, string>;
+  /** `FSDEV_DEFAULT_MODEL`, if set; replaces `options.defaultModel`. */
+  defaultModelOverride: string | undefined;
+}
+
+/**
+ * Validate a single env-var override value through the existing model-string
+ * parser. Throws with a `createModelResolver: <ENV_VAR>: ...` prefix so the
+ * operator can see which variable failed.
+ */
+function validateOverrideValue(value: string | undefined, envKey: string): void {
+  if (value === undefined || value.trim() === "") {
+    throw new Error(
+      `createModelResolver: ${envKey} must be a non-empty string.`
+    );
+  }
+  let parsed;
+  try {
+    parsed = parseModelString(value);
+  } catch (err) {
+    const inner = err instanceof Error ? err.message : String(err);
+    throw new Error(`createModelResolver: ${envKey}: ${inner}`);
+  }
+  if (parsed.type === "intent") {
+    throw new Error(
+      `createModelResolver: ${envKey} must be a 'provider/model' or 'gateway/provider/model' string; received "${value}".`
+    );
+  }
+}
+
+/**
+ * Scan the env source for `FSDEV_INTENT_*` and `FSDEV_DEFAULT_MODEL` keys,
+ * validate each value, and map them back to declared intent names. Throws if
+ * an `FSDEV_INTENT_<NAME>` doesn't match a declared intent, or if
+ * `FSDEV_DEFAULT_MODEL` is set with no declared intents.
+ *
+ * Iterates `env` (not declared intents) so typo'd env-var names surface as
+ * loud errors rather than being silently ignored.
+ */
+function readIntentEnvOverrides(
+  env: Record<string, string | undefined>,
+  options: CreateModelResolverOptions | undefined
+): IntentEnvOverrides {
+  const declared = new Map<string, string>();
+  for (const name of Object.keys(options?.intents ?? {})) {
+    declared.set(canonicalizeIntentName(name), name);
+  }
+
+  const result: IntentEnvOverrides = {
+    intentOverrides: new Map(),
+    defaultModelOverride: undefined,
+  };
+
+  for (const [envKey, envValue] of Object.entries(env)) {
+    if (envKey === DEFAULT_MODEL_ENV_VAR) {
+      if (declared.size === 0) {
+        throw new Error(
+          `createModelResolver: ${DEFAULT_MODEL_ENV_VAR} was set, but no intents are declared; the override has no effect.`
+        );
+      }
+      validateOverrideValue(envValue, envKey);
+      result.defaultModelOverride = (envValue as string).trim();
+      continue;
+    }
+
+    if (!envKey.startsWith(INTENT_ENV_PREFIX)) continue;
+
+    const canonical = envKey.slice(INTENT_ENV_PREFIX.length);
+    const declaredName = declared.get(canonical);
+    if (!declaredName) {
+      const declaredList = [...declared.values()].join(", ") || "(none)";
+      throw new Error(
+        `createModelResolver: ${envKey} does not match any declared intent. ` +
+          `Declared intents: ${declaredList}.`
+      );
+    }
+    validateOverrideValue(envValue, envKey);
+    result.intentOverrides.set(declaredName, (envValue as string).trim());
+  }
+
+  return result;
+}
+
+/**
+ * Produce a shallow-cloned options object with override values folded into
+ * `intents` (each overridden intent becomes a one-element candidate list) and
+ * `defaultModel` (replaced when `FSDEV_DEFAULT_MODEL` is set). Returns the
+ * original reference unchanged when no overrides apply, so the common path
+ * allocates nothing.
+ */
+function applyOverrides(
+  options: CreateModelResolverOptions | undefined,
+  overrides: IntentEnvOverrides
+): CreateModelResolverOptions | undefined {
+  if (
+    overrides.intentOverrides.size === 0 &&
+    overrides.defaultModelOverride === undefined
+  ) {
+    return options;
+  }
+  const baseIntents = options?.intents ?? {};
+  const nextIntents: Record<string, string[]> = { ...baseIntents };
+  for (const [name, value] of overrides.intentOverrides) {
+    nextIntents[name] = [value];
+  }
+  return {
+    ...(options ?? {}),
+    intents: nextIntents,
+    defaultModel:
+      overrides.defaultModelOverride ?? options?.defaultModel,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +460,27 @@ export function createModelResolver(
   options?: CreateModelResolverOptions
 ): ModelResolver {
   validateOptions(options);
+
+  // Apply env-var overrides before any read sites below pick up `options`.
+  // The parameter is shadowed by the post-override value so every subsequent
+  // read inside this function (including inner closures) sees the overrides.
+  const envSource = options?.env ?? process.env;
+  const overrides = readIntentEnvOverrides(envSource, options);
+  options = applyOverrides(options, overrides);
+
+  for (const [name, value] of overrides.intentOverrides) {
+    const envKey = `${INTENT_ENV_PREFIX}${canonicalizeIntentName(name)}`;
+    warnOnceDev(
+      envKey,
+      `Intent "${name}" overridden by ${envKey}; resolves to "${value}".`
+    );
+  }
+  if (overrides.defaultModelOverride !== undefined) {
+    warnOnceDev(
+      DEFAULT_MODEL_ENV_VAR,
+      `defaultModel overridden by ${DEFAULT_MODEL_ENV_VAR}; resolves to "${overrides.defaultModelOverride}".`
+    );
+  }
 
   const retryPolicy: Required<RetryPolicy> = {
     ...DEFAULT_RETRY_POLICY,
@@ -280,6 +503,11 @@ export function createModelResolver(
 
   // Cache for auto-loaded provider resolvers (by provider name)
   const providerCache = new Map<string, ProviderResolver>();
+
+  // Providers whose direct package load has been attempted and failed
+  // (bundled Next.js: key present in env, but `@ai-sdk/openai` not requireable).
+  // Cached so we don't reprobe on every call.
+  const directLoadFailed = new Set<string>();
 
   // Cache for auto-loaded gateway resolvers (by gateway type)
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
@@ -316,9 +544,59 @@ export function createModelResolver(
     if (!info) return undefined;
 
     if (info.source === "key") {
-      const resolver = loadProviderSync(providerName, info.apiKey!);
-      providerCache.set(providerName, resolver);
-      return resolver;
+      if (directLoadFailed.has(providerName)) return undefined;
+      try {
+        const resolver = loadProviderSync(providerName, info.apiKey!);
+        providerCache.set(providerName, resolver);
+        return resolver;
+      } catch {
+        // Direct package not loadable (e.g. bundled Next.js): mark as failed
+        // and let the caller try a gateway fallback for the same provider.
+        directLoadFailed.add(providerName);
+        return undefined;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find a gateway that can serve a given provider when the direct path is
+   * unavailable. Looks at: (a) the availability map's "gateway" entry for the
+   * provider, (b) any configured `options.gateways` (instance, config, or
+   * env-backed), and (c) env-detected gateways. Returns the first viable
+   * entry; preserves config order. Used purely as fallback when direct
+   * resolution can't proceed.
+   */
+  function findGatewayForProvider(
+    providerName: string
+  ): { gatewayType: string; apiKey?: string } | undefined {
+    const info = availability.get(providerName);
+    if (info?.source === "gateway" && info.gatewayType) {
+      return { gatewayType: info.gatewayType, apiKey: info.apiKey };
+    }
+
+    if (gatewayCache.size > 0) {
+      const first = gatewayCache.keys().next().value as string | undefined;
+      if (first) return { gatewayType: first };
+    }
+
+    if (options?.gateways) {
+      for (const [name, entry] of Object.entries(options.gateways)) {
+        if (entry == null) continue;
+        if (isGatewayConfig(entry)) {
+          const envVar = GATEWAY_ENV_VARS[entry.type];
+          const apiKey = entry.apiKey ?? (envVar ? process.env[envVar] : undefined);
+          if (apiKey) return { gatewayType: entry.type, apiKey };
+        } else {
+          return { gatewayType: name };
+        }
+      }
+    }
+
+    for (const [gwType, envVar] of Object.entries(GATEWAY_ENV_VARS)) {
+      const key = process.env[envVar];
+      if (key) return { gatewayType: gwType, apiKey: key };
     }
 
     return undefined;
@@ -381,20 +659,16 @@ export function createModelResolver(
       }
 
       if (!gatewayCache.has(gwType)) {
-        const gwEnvVars: Record<string, string> = {
-          vercel: "AI_GATEWAY_API_KEY",
-          openrouter: "OPENROUTER_API_KEY",
-        };
         const gwEntry = options?.gateways?.[gwType];
         const apiKey =
           (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
-          process.env[gwEnvVars[gwType] ?? ""] ??
+          process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
           undefined;
 
         if (!apiKey) {
           throw new Error(
             `No API key found for gateway "${gwType}". ` +
-              `Set ${gwEnvVars[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+              `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
           );
         }
 
@@ -416,37 +690,56 @@ export function createModelResolver(
       const modelId = parsed.modelId!;
 
       const resolver = getProviderResolver(providerName);
+      let directLanguageModel: unknown;
+      let directError: unknown;
       if (resolver) {
-        const languageModel = resolver(modelId);
-        model = wrapAiSdkModel(languageModel, modelString, {
+        try {
+          directLanguageModel = resolver(modelId);
+        } catch (err) {
+          // Factory threw. Don't poison directLoadFailed — that set is for
+          // package-load failures caught inside getProviderResolver; this
+          // failure is per-invocation. Preserving the original error lets
+          // the no-gateway branch below surface it instead of the generic
+          // "failed to load" message.
+          directError = err;
+        }
+      }
+      if (resolver && directError === undefined) {
+        model = wrapAiSdkModel(directLanguageModel, modelString, {
           requested: identityOverrides?.requested ?? modelString,
         });
       } else {
-        const info = availability.get(providerName);
-        if (info?.source === "gateway" && info.gatewayType) {
-          if (!gatewayCache.has(info.gatewayType) && info.apiKey) {
-            gatewayCache.set(info.gatewayType, loadGatewaySync(info.gatewayType, info.apiKey));
+        // Direct path unavailable (no package, or package failed to load in a
+        // bundled runtime). Fall through to any configured/auto-detected
+        // gateway that can serve this provider — bare `provider/model`
+        // resolves "however it can".
+        const gw = findGatewayForProvider(providerName);
+        if (gw) {
+          if (!gatewayCache.has(gw.gatewayType)) {
+            if (!gw.apiKey) {
+              throw new Error(
+                `No API key found for gateway "${gw.gatewayType}" while ` +
+                  `falling back from direct "${providerName}".`
+              );
+            }
+            gatewayCache.set(gw.gatewayType, loadGatewaySync(gw.gatewayType, gw.apiKey));
           }
-          if (gatewayCache.has(info.gatewayType)) {
-            const languageModel = resolveViaGateway(
-              info.gatewayType,
-              providerName,
-              modelId
-            );
-            model = wrapAiSdkModel(languageModel, modelString, {
-              requested: identityOverrides?.requested ?? modelString,
-              gateway: info.gatewayType,
-            });
-          } else {
-            throw new Error(
-              `No provider available for "${providerName}". ` +
-                `Set the appropriate API key or install the provider package.`
-            );
-          }
+          const languageModel = resolveViaGateway(gw.gatewayType, providerName, modelId);
+          model = wrapAiSdkModel(languageModel, modelString, {
+            requested: identityOverrides?.requested ?? modelString,
+            gateway: gw.gatewayType,
+          });
         } else {
+          const directFailed = directLoadFailed.has(providerName);
+          if (directError && !directFailed) {
+            throw directError;
+          }
           throw new Error(
-            `No provider available for "${providerName}". ` +
-              `Set the appropriate API key or install the provider package.`
+            `No provider available for "${providerName}". Tried: ` +
+              `${directFailed ? "direct package (failed to load)" : "direct package (not installed)"}` +
+              `, gateways (none configured for this provider). ` +
+              `Install the provider package, set its API key, or configure a gateway ` +
+              `(e.g. AI_GATEWAY_API_KEY).`
           );
         }
       }
@@ -530,6 +823,9 @@ export function createModelResolver(
           groupName: `intent/${name}`,
           models: resolved,
           retryPolicy,
+          defaults: intentDefaultsToFallbackDefaults(
+            options?.intentDefaults?.[name]
+          ),
         });
     intentCache.set(cacheKey, result);
     return result;

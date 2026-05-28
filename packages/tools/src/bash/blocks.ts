@@ -80,7 +80,15 @@ export interface CreateBashBlocksOptions {
   /** Sandbox provider. Default: `{ type: "local" }`. */
   provider?: SandboxProvider;
 
-  /** Virtual workspace root visible to the LLM. Default: `"/workspace"`. */
+  /**
+   * Virtual workspace root visible to the LLM. Defaults to `"/workspace"`
+   * for most providers; for the Vercel adapter the default is
+   * `"/vercel/sandbox/workspace"` because the sandbox's `vercel-sandbox`
+   * runtime user can't `mkdir` outside `/vercel/sandbox` (its home).
+   * `writeFiles` extracts tarballs at `/`, so any absolute path outside
+   * the user's home fails with `Cannot mkdir: Permission denied` at tar
+   * extraction time.
+   */
   destination?: string;
 
   /**
@@ -179,7 +187,7 @@ function isPending(value: RegistryValue): value is { pending: Promise<SandboxEnt
 /** Identity fields available on the block execution context. */
 interface ScopeIdentity {
   sessionId: string;
-  userId: string;
+  userId?: string;
   orgId?: string;
 }
 
@@ -192,6 +200,25 @@ function defaultMoatWorkspace(sessionId: string): string {
 }
 
 /**
+ * Provider-aware default for the virtual workspace root.
+ *
+ * Vercel Sandbox runs as the unprivileged `vercel-sandbox` user whose home
+ * is `/vercel/sandbox`. The SDK's `writeFiles` extracts its tarball at `/`
+ * (see `@vercel/sandbox`'s `Sandbox.writeFiles`), so any absolute path
+ * outside the user's home triggers `tar: <dir>: Cannot mkdir: Permission
+ * denied`. Anchor the workspace inside the home so tar's intermediate
+ * `mkdir`s land somewhere the user owns. Subsequent shell commands run
+ * with `cwd = /vercel/sandbox` so `cd /vercel/sandbox/workspace` works.
+ *
+ * Other providers default to `/workspace` to preserve the existing
+ * convention.
+ */
+export function defaultDestinationFor(provider: SandboxProvider | undefined): string {
+  if (provider?.type === "vercel") return "/vercel/sandbox/workspace";
+  return "/workspace";
+}
+
+/**
  * Resolve the workspace scope ID and registry key from context identity.
  *
  * For the `local` provider, also resolves the `cwd` when not explicitly set:
@@ -199,8 +226,10 @@ function defaultMoatWorkspace(sessionId: string): string {
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   switch (scope) {
-    case "user":
-      return { key: `user:${identity.userId}`, scopeId: identity.userId };
+    case "user": {
+      const id = identity.userId ?? identity.sessionId;
+      return { key: `user:${id}`, scopeId: id };
+    }
     case "org": {
       const id = identity.orgId ?? identity.sessionId;
       return { key: `org:${id}`, scopeId: id };
@@ -231,7 +260,7 @@ function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObj
  * Sort descending by prefix length.
  */
 function discoverMounts(
-  ctx: any,
+  ctx: BlockContext,
   explicit: BashCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
@@ -451,7 +480,7 @@ async function flush(
   // is through the adapter's SDK.
   const filePaths = entry.sandbox.hostMountSource
     ? await walkMountsViaHostFs(entry, entry.sandbox.hostMountSource)
-    : await walkMountsViaExec(entry);
+    : await walkMountsViaExec(entry, destination);
   if (filePaths === null) return;
 
   // Diagnostic: a successful flush that sees ZERO files when writable
@@ -539,19 +568,38 @@ async function flush(
  * Mount-prefix walk via `find` through the sandbox's exec channel.
  * Returns `null` on failure — caller skips flush so a transient walk
  * error never triggers the deletion pass with an empty seen-set.
+ *
+ * Uses absolute paths anchored at `destination` because the sandbox's
+ * default shell cwd is not guaranteed to match the workspace root.
+ * For example, Vercel Sandbox commands run in `/vercel/sandbox` while
+ * the framework anchors the workspace at `/vercel/sandbox/workspace`;
+ * a relative `find ./artifacts` would look in the wrong directory and
+ * silently report zero files, causing every flush to no-op the
+ * agent's `bashCommand`-driven writes back to resource collections.
+ * Local FS sets `cwd` on its `exec()` invocation so the bug never
+ * surfaced there.
  */
-async function walkMountsViaExec(entry: SandboxEntry): Promise<string[] | null> {
-  const walkPrefixes = [...entry.mounts.map((m) => `./${m.prefix}`), `./${TMP_DIR}`];
+async function walkMountsViaExec(
+  entry: SandboxEntry,
+  destination: string,
+): Promise<string[] | null> {
+  const walkPaths = [
+    ...entry.mounts.map((m) => path.posix.join(destination, m.prefix)),
+    path.posix.join(destination, TMP_DIR),
+  ];
   const result = await entry.sandbox.executeCommand(
-    `find ${walkPrefixes.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
+    `find ${walkPaths.map((p) => JSON.stringify(p)).join(" ")} -type f 2>/dev/null`,
   );
   if (result.exitCode !== 0) return null;
   if (!result.stdout.trim()) return [];
+  // Strip the destination prefix so downstream sees workspace-relative
+  // paths (`artifacts/foo.md`), matching what walkMountsViaHostFs returns.
+  const prefix = destination.endsWith("/") ? destination : destination + "/";
   return result.stdout
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((p) => (p.startsWith("./") ? p.slice(2) : p));
+    .map((p) => (p.startsWith(prefix) ? p.slice(prefix.length) : p));
 }
 
 /**
@@ -660,11 +708,11 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     collections,
     exclude,
     provider = { type: "local" },
-    destination = "/workspace",
+    destination = defaultDestinationFor(options.provider),
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 
-  async function getOrCreate(ctx: any): Promise<SandboxEntry> {
+  async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
     const { key: registryKey } = resolveScopeKey(scope, identity);
@@ -724,14 +772,17 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // brief "Preparing…" before the leaf runs.
   const ensureSandbox = needsSetup
     ? handler({
-        name: "bash-ensure-sandbox",
+        // Provider type in the block name so the trace makes it obvious
+        // which sandbox a request is using (esp. helpful when diagnosing
+        // "did the selector pick vercel or fall back to just-bash?").
+        name: `bash-${provider.type}-ensure-sandbox`,
         inputSchema: z.any(),
         outputSchema: z.any(),
         activeStatusMessage:
           provider.type === "moat"
-            ? "Preparing bash sandbox (first run can take 30–60s while the image builds)…"
-            : "Preparing bash sandbox…",
-        execute: async (input: unknown, ctx: any) => {
+            ? "Preparing bash sandbox (moat — first run can take 30–60s while the image builds)…"
+            : `Preparing bash sandbox (${provider.type})…`,
+        execute: async (input: unknown, ctx) => {
           await getOrCreate(ctx);
           return input;
         },
@@ -747,7 +798,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
         outputSchema: z.any(),
-        execute: async (input: unknown, ctx: any) => {
+        execute: async (input: unknown, ctx) => {
           const runName =
             provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
           const { destroyed } = await purgeOldRuns({
@@ -787,11 +838,11 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   const cdPrefix = `${shellQuote(["cd", destination])} && `;
 
   const bashCommandLeaf = handler({
-    name: needsSetup ? "bash-exec" : "bash",
+    name: needsSetup ? `bash-${provider.type}-exec` : "bash",
     description: bashCommandDescription,
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
-    execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
+    execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx) => {
       const entry = await getOrCreate(ctx);
       const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
       await flush(entry, destination, createState);
@@ -800,7 +851,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   });
 
   const bashReadFileLeaf = handler({
-    name: needsSetup ? "bash-read-file-exec" : "bash-read-file",
+    name: needsSetup ? `bash-${provider.type}-read-file-exec` : "bash-read-file",
     description: [
       "Read the contents of a file in the workspace.",
       "`path` is relative to the workspace root (e.g. `artifacts/foo.md`,",
@@ -808,7 +859,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     ].join(" "),
     inputSchema: bashReadFileInputSchema,
     outputSchema: bashReadFileOutputSchema,
-    execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
+    execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx) => {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       const content = await entry.sandbox.readFile(fullPath);
@@ -836,7 +887,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     outputSchema: bashWriteFileOutputSchema,
     execute: async (
       input: z.infer<typeof bashWriteFileInputSchema>,
-      ctx: any,
+      ctx,
     ) => {
       const hostMountSource = resolveHostMountSourceForWrite(provider, ctx)!;
       const hostPath = path.join(hostMountSource, input.path);
@@ -867,13 +918,13 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   });
 
   const bashWriteFileSandboxLeaf = handler({
-    name: needsSetup ? "bash-write-file-exec" : "bash-write-file",
+    name: needsSetup ? `bash-${provider.type}-write-file-exec` : "bash-write-file",
     description: bashWriteFileDescription,
     inputSchema: bashWriteFileInputSchema,
     outputSchema: bashWriteFileOutputSchema,
     execute: async (
       input: z.infer<typeof bashWriteFileInputSchema>,
-      ctx: any,
+      ctx,
     ) => {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
@@ -944,13 +995,13 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
  */
 function resolveHostMountSourceForWrite(
   provider: SandboxProvider,
-  ctx: any,
+  ctx: BlockContext,
 ): string | undefined {
   if (provider.type !== "moat") return undefined;
   return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx).sessionId);
 }
 
-function getIdentity(ctx: any): ScopeIdentity {
+function getIdentity(ctx: BlockContext): ScopeIdentity {
   return {
     sessionId: ctx.session.identity.id,
     userId: ctx.session.identity.userId,
@@ -973,7 +1024,7 @@ function getIdentity(ctx: any): ScopeIdentity {
  */
 export async function releaseBashSandbox(
   provider: SandboxProvider,
-  ctx: any,
+  ctx: BlockContext,
 ): Promise<void> {
   const identity = getIdentity(ctx);
   const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";

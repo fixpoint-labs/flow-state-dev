@@ -1,6 +1,5 @@
 {
   "name": "@flow-state-dev/devtool-app",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {

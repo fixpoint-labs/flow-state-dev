@@ -17,12 +17,13 @@
  *   to a runtime route choice).
  *
  * - **Worker registry.** The user supplies `Record<assignee, block>`.
- *   We build a `router` whose `routes` are the registered workers and
- *   whose `execute` selects by `task.assignee`, returning
- *   `selected.connectInput(() => packWorkerInput(task))`. The
- *   adaptation lives inside the router's `execute` per BP-013 — the
+ *   We pre-connect each worker with the `Task → TaskWorkerInput`
+ *   adaptation (BP-013: pre-connecting at definition time is fine for
+ *   purpose-built pattern adapters) and feed the registry to
+ *   `utility.keyedRouter`, which dispatches by `task.assignee`. The
  *   workers themselves keep their generic `TaskWorkerInput` schema
- *   and stay reusable.
+ *   and stay reusable; only their pattern-side registry entry is
+ *   pre-adapted.
  *
  * Registry-miss errors (assignee absent, or no assignee on the task)
  * throw out of the router. The error propagates up through the
@@ -31,7 +32,7 @@
  * exactly the offending task, never a sibling's concurrently-claimed
  * work.
  */
-import { router } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -61,11 +62,32 @@ export function isUniformWorker(
  * task declares `deps`, this resolves each dep's `output` from the
  * collection and exposes them under `deps: Record<depId, output>` so
  * the worker can read upstream context via `input.deps`.
+ *
+ * When a `flowPolicy` + active ledger view are supplied (FIX-610
+ * Layer A), the policy is consulted to select a `priorWork` slice and
+ * stamped on the worker input. The optional `ctx` is forwarded to the
+ * policy's `select` so policies that need request/session state can
+ * read it. Back-compat: omitting the new parameters yields a
+ * `TaskWorkerInput` with no `priorWork` field — wire-identical to
+ * pre-FIX-610 boards.
  */
-export function packWorkerInput(
+export async function packWorkerInput(
   task: Task,
   collection: TaskCollectionRef,
-): TaskWorkerInput {
+  opts?: {
+    ctx?: BlockContext;
+    flowPolicy?: {
+      name: string;
+      select: (args: {
+        task: Task;
+        ledger: unknown;
+        collection: TaskCollectionRef;
+        ctx: BlockContext;
+      }) => unknown | Promise<unknown>;
+    };
+    ledger?: unknown;
+  },
+): Promise<TaskWorkerInput> {
   const deps: Record<string, unknown> = {};
   if (task.deps !== undefined) {
     for (const depId of task.deps) {
@@ -75,6 +97,23 @@ export function packWorkerInput(
       }
     }
   }
+
+  let priorWork: unknown;
+  if (opts?.flowPolicy !== undefined && opts.ledger !== undefined && opts.ctx !== undefined) {
+    const selected = await opts.flowPolicy.select({
+      task,
+      ledger: opts.ledger,
+      collection,
+      ctx: opts.ctx,
+    });
+    const obs = (selected as { observations?: unknown[]; narrative?: string } | undefined)
+      ?.observations;
+    const narrative = (selected as { narrative?: string } | undefined)?.narrative;
+    if ((Array.isArray(obs) && obs.length > 0) || (typeof narrative === "string" && narrative.length > 0)) {
+      priorWork = selected;
+    }
+  }
+
   return {
     taskId: task.id,
     goal: task.goal,
@@ -83,6 +122,7 @@ export function packWorkerInput(
     feedback: task.feedback,
     metadata: task.metadata,
     ...(Object.keys(deps).length > 0 ? { deps } : {}),
+    ...(priorWork !== undefined ? { priorWork } : {}),
   };
 }
 
@@ -97,58 +137,84 @@ export interface BuildWorkerStepOptions {
    * state.
    */
   collection: (ctx: BlockContext) => TaskCollectionRef;
+  /**
+   * Optional flow-policy resolver (FIX-610). When the resolver returns
+   * a `{ flowPolicy, ledger }` pair, `packWorkerInput` stamps the
+   * worker input's `priorWork` slot with the policy's selection.
+   * Returning `undefined` skips the field entirely (back-compat).
+   */
+  resolveFlowPolicy?: (ctx: BlockContext) => {
+    flowPolicy: {
+      name: string;
+      select: (args: {
+        task: Task;
+        ledger: unknown;
+        collection: TaskCollectionRef;
+        ctx: BlockContext;
+      }) => unknown | Promise<unknown>;
+    };
+    ledger: unknown;
+  } | undefined;
 }
 
 /**
  * Returns a block that takes a `Task` and produces the worker's
  * output. For uniform workers the result is the worker pre-connected
  * with `Task → TaskWorkerInput`. For registries the result is a
- * router that selects by `task.assignee` and connectInputs the
- * selected block per BP-013.
+ * `utility.keyedRouter` over each worker pre-connected with the same
+ * adaptation, selecting by `task.assignee`.
  *
  * The output type is `unknown` because worker outputs are
  * heterogeneous; consumers that need a typed shape should use the
  * uniform-worker path with a worker that declares its own
- * `outputSchema`. The `routes` array is typed as
- * `BlockDefinition<any, any>[]` for the same reason — each worker in
- * a registry can declare its own input/output schemas, and the
- * router's static type can't model that union usefully (matches the
- * convention used by `dispatch-specialist` in the blackboard
- * pattern).
+ * `outputSchema`. Registry workers are typed as
+ * `BlockDefinition<any, any>` — each can declare its own
+ * input/output schemas, and the router's static type can't model
+ * that union usefully (matches the convention used by
+ * `dispatch-specialist` in the blackboard pattern).
  */
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
-): BlockDefinition<any, any> {
-  const { name, workers, collection: collectionFactory } = options;
+) {
+  const { name, workers, collection: collectionFactory, resolveFlowPolicy } = options;
+
+  const packOpts = (ctx: BlockContext) => {
+    if (resolveFlowPolicy === undefined) return { ctx };
+    const resolved = resolveFlowPolicy(ctx);
+    return resolved === undefined
+      ? { ctx }
+      : { ctx, flowPolicy: resolved.flowPolicy, ledger: resolved.ledger };
+  };
 
   if (isUniformWorker(workers)) {
     return workers.connectInput<Task>((task, ctx) =>
-      packWorkerInput(task, collectionFactory(ctx))
-    ) as BlockDefinition<any, any>;
+      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
+    );
   }
 
-  const routes = Object.values(workers) as BlockDefinition<any, any>[];
+  // Pre-connect each worker so the router doesn't have to thread the
+  // adaptation through its `select`. The connectInput closure captures
+  // the inbound `task` so dep-output resolution happens at runtime
+  // against the live collection state.
+  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
+  for (const [assignee, worker] of Object.entries(workers)) {
+    connectedWorkers[assignee] = worker.connectInput<Task>((task, ctx) =>
+      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
+    );
+  }
 
-  return router({
+  return utility.keyedRouter({
     name: `${name}-worker-router`,
     inputSchema: taskSchema,
     outputSchema: z.unknown(),
-    routes,
-    execute: (task: Task) => {
+    blocks: connectedWorkers,
+    select: (task: Task) => {
       if (task.assignee === undefined) {
         throw new Error(
           `[task-board] task "${task.id}" has no assignee, but a worker registry was supplied`
         );
       }
-      const selected = workers[task.assignee];
-      if (selected === undefined) {
-        throw new Error(
-          `[task-board] no worker registered under assignee "${task.assignee}" for task "${task.id}"`
-        );
-      }
-      return selected.connectInput((_input, ctx) =>
-        packWorkerInput(task, collectionFactory(ctx))
-      ) as BlockDefinition<any, any>;
+      return task.assignee;
     },
-  }) as BlockDefinition<any, any>;
+  });
 }

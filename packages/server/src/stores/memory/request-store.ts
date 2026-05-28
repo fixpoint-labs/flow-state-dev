@@ -1,3 +1,4 @@
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   ExpectedVersion,
@@ -10,7 +11,6 @@ import type {
 import {
   applyOffsetLimit,
   casWriteToMap,
-  cloneValue,
   incFieldInMap,
   patchFieldInMap,
   pushToArrayInMap
@@ -29,6 +29,7 @@ export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
   private readonly eventsByRequestId = new Map<string, RequestStreamEvent[]>();
   private readonly subscribersByRequestId = new Map<string, Set<Subscriber>>();
+  private readonly runOnceByRequestId = new Map<string, Map<string, unknown>>();
 
   async get(id: string): Promise<RequestRecord | undefined> {
     const record = this.records.get(id);
@@ -186,6 +187,28 @@ export class InMemoryRequestStore implements RequestStore {
     // death scenario applies; the originating process is the only producer.
   }
 
+  async getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }> {
+    const map = this.runOnceByRequestId.get(requestId);
+    if (map === undefined || !map.has(key)) return { found: false };
+    return { found: true, value: cloneValue(map.get(key)) };
+  }
+
+  async setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void> {
+    let map = this.runOnceByRequestId.get(requestId);
+    if (map === undefined) {
+      map = new Map();
+      this.runOnceByRequestId.set(requestId, map);
+    }
+    map.set(key, cloneValue(value));
+  }
+
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
     const filtered = Array.from(this.records.values()).filter((record) => {
       if (options?.flowKind !== undefined && record.flowKind !== options.flowKind) {
@@ -207,7 +230,11 @@ export class InMemoryRequestStore implements RequestStore {
       return true;
     });
 
-    filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    if (options?.orderBy === "startedAtMs") {
+      filtered.sort((left, right) => right.startedAtMs - left.startedAtMs);
+    } else {
+      filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    }
     return applyOffsetLimit(filtered, options).map((record) =>
       withRequestSourceDefault(cloneValue(record))
     );

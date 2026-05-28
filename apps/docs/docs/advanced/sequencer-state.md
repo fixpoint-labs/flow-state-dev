@@ -67,6 +67,53 @@ const executor = handler({
 
 `ctx.sequencer` resolves to the **nearest enclosing sequencer** that declares a `stateSchema`. If the block isn't inside a sequencer (or the sequencer has no state schema), `ctx.sequencer` is `undefined` — guard with `?.` or assert with `!` when you know the topology.
 
+## Typing sequencer state via declarations
+
+When a sequencer declares `stateSchema`, the framework uses it to type `ctx.sequencer.state` throughout the pipeline — in every block step and in every DSL callback.
+
+Blocks that need to read or write sequencer state declare the fields they depend on via `sequencerStateSchema`. The framework merges these declarations and checks for conflicts at build time. Blocks don't need to redeclare fields they don't touch.
+
+```ts
+import { sequencer, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const pipeline = sequencer({
+  name: "research-pipeline",
+  inputSchema: z.string(),
+  stateSchema: z.object({
+    plan: z.array(z.string()).default([]),
+    currentStep: z.number().default(0),
+    findings: z.record(z.string()).default({}),
+  }),
+});
+
+const planner = handler({
+  name: "planner",
+  sequencerStateSchema: z.object({
+    plan: z.array(z.string()),
+    currentStep: z.number(),
+  }),
+  execute: async (_input, ctx) => {
+    // ctx.sequencer!.state.plan — string[]
+    // ctx.sequencer!.state.currentStep — number
+    await ctx.sequencer!.patchState({
+      plan: ["search", "analyze", "summarize"],
+      currentStep: 0,
+    });
+  },
+});
+
+const research = pipeline
+  .tap(planner)
+  // DSL callbacks also see the typed state
+  .thenIf(
+    (_, ctx) => ctx.sequencer.state.currentStep < 3,
+    executeStep
+  );
+```
+
+DSL callbacks — `.map`, `.tap`, `.tapIf`, `.thenIf`, `.workIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
+
 ## The durability boundary
 
 Sequencer state has a different lifetime from the persistence scopes — but it is **not** purely in-memory.

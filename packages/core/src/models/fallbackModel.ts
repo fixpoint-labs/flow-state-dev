@@ -5,7 +5,7 @@ import type {
   GeneratorSearchConfig,
 } from "../types";
 import type { ModelGroupDefaults, RetryPolicy } from "./types";
-import { deepMerge } from "../utils/deep-merge";
+import { deepMerge } from "../helpers/deep-merge";
 
 // ---------------------------------------------------------------------------
 // Types

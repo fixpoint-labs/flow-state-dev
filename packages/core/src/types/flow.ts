@@ -14,6 +14,7 @@ import type {
   ResourceCollectionRef
 } from "./resource-collection";
 import type { SchedulesConfig } from "./schedules";
+import type { ChatConfig } from "./chat";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
@@ -86,6 +87,15 @@ export type ToolLifecycleEvent = {
   input: unknown;
   output?: unknown;
   error?: Error;
+  /**
+   * True when the tool's result was served from the per-tool memoization
+   * cache (FIX-610) rather than executed against the upstream. Observers
+   * fire on the cache-hit path with the same `onToolStarted` /
+   * `onToolCompleted` ordering as a normal call so consumers can attribute
+   * downstream side-effects either way. `onToolErrored` never fires on
+   * the cache path — errors are never cached.
+   */
+  cached?: boolean;
 };
 
 export type ToolsConfig = {
@@ -226,6 +236,15 @@ export type SessionConfig = {
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
+  /**
+   * Bounds the cross-turn history loaded per request to the most recent
+   * `turns` completed requests (default 50). This caps the store read and
+   * the default generator's in-prompt history; the full session stays
+   * retrievable via the state endpoint. Per-call `history({ limit })`
+   * refines within this window — it cannot widen it. Use a positive
+   * integer; `0` or negative disables cross-turn history entirely.
+   */
+  historyWindow?: { turns: number };
 };
 
 export type RequestConfig = {
@@ -348,6 +367,13 @@ export type FlowDefinition<
   mcp?: McpConfig;
 
   /**
+   * Per-flow chat-transport subscriptions. When set, the
+   * `@flow-state-dev/chat-sdk` adapter discovers these declarations at
+   * mount and dispatches matching inbound chat events to the named actions.
+   */
+  chat?: ChatConfig;
+
+  /**
    * Per-flow scheduled-action config. When set, the
    * `@flow-state-dev/scheduled` adapter mounts
    * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
@@ -396,6 +422,7 @@ export type FlowInstanceOptions<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -433,6 +460,7 @@ export type FlowInstance<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -465,6 +493,7 @@ export type FlowType<
   voice?: VoiceConfig;
   middleware?: Middleware[];
   mcp?: McpConfig;
+  chat?: ChatConfig;
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;

@@ -7,6 +7,11 @@
  * on dispatch logic (fixture vs. live, provider preference).
  */
 import { z } from "zod";
+import { searchProviders } from "@flow-state-dev/tools/search";
+
+/** Re-export so other trading-desk files don't take a direct dep on the
+ *  search package's types module. */
+export { searchProviders };
 
 export class FixtureMissingError extends Error {
   readonly ticker: string;
@@ -30,6 +35,9 @@ export class FixtureMissingError extends Error {
  *   - `"yahoo"`       — live mode, Yahoo answered.
  *   - `"fred"`        — live mode, FRED API answered.
  *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
+ *   - `"xai"`         — live mode, xAI (Grok) answered. Model estimate
+ *                       grounded in xSearch-retrieved X posts, not a
+ *                       measured feed.
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than
@@ -41,6 +49,7 @@ const sourceTag = z.enum([
   "finnhub",
   "fred",
   "polymarket",
+  "xai",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;
@@ -90,7 +99,8 @@ export const fundamentalsSchema = z.object({
   ticker: z.string(),
   asOf: z.string(),
   marketCap: z.number(),
-  forwardPE: z.number(),
+  forwardPE: z.number().nullable(),
+  trailingPE: z.number().nullable(),
   priceToSales: z.number(),
   returnOnEquity: z.number(),
   operatingMargin: z.number(),
@@ -159,6 +169,15 @@ export const macroIndicatorsSchema = z.object({
   oilWtiUsd: z.number(),
 });
 
+/** A single retrieved X post used as evidence for the sentiment score.
+ *  `polarity` reflects the model's classification of THIS post (not overall
+ *  sentiment). Excerpts are one short sentence — no paraphrasing of meaning. */
+const sentimentPost = z.object({
+  handle: z.string(),
+  excerpt: z.string(),
+  polarity: z.enum(["positive", "negative", "neutral"]),
+});
+
 export const socialSentimentSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
@@ -167,7 +186,15 @@ export const socialSentimentSchema = z.object({
   positive: z.number(),
   negative: z.number(),
   neutral: z.number(),
-  shortInterestPct: z.number(),
+  /** Null when the provider can't measure short interest (e.g. xAI/xSearch
+   *  reads X chatter, not exchange short-interest filings). Honest null
+   *  beats a fabricated 0 — analysts must not read 0 as "no shorts." */
+  shortInterestPct: z.number().nullable(),
+  /** Representative posts that grounded the score. Empty in `unavailable`
+   *  mode. Fixture and live (xAI) modes populate this. The sentiment
+   *  analyst should treat these as primary evidence — the score is a
+   *  summary of these quotes, not an independent signal. */
+  posts: z.array(sentimentPost),
 });
 
 const redditMention = z.object({
@@ -199,11 +226,29 @@ const predictionMarket = z.object({
   slug: z.string(),
 });
 
+/**
+ * Two-tier Polymarket coverage (FIX-681). `tickerMarkets` are the direct
+ * ticker matches that feed the sentiment analyst's numeric aggregates;
+ * `backdropMarkets` are sector/macro markets resolved from the company's
+ * sector, usable only as regime framing (never in numeric aggregates).
+ *
+ * `coverageQuality` is computed deterministically from `tickerMarkets`:
+ *   - `"rich"`   — ≥3 ticker markets AND ≥$100k aggregate liquidity.
+ *   - `"thin"`   — ≥1 ticker market, but below the count or liquidity floor.
+ *   - `"absent"` — 0 ticker markets.
+ * On `"thin"`/`"absent"` the sentiment prompt drops the market-derived
+ * metrics to `"n/a"` rather than manufacturing precision from noise.
+ */
 export const predictionMarketsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  markets: z.array(predictionMarket),
+  tickerMarkets: z.array(predictionMarket),
+  backdropMarkets: z.array(predictionMarket),
+  /** The primary sector/macro theme the backdrop markets were queried for
+   *  (e.g. `"AI capex"`). Empty string when no theme was resolved. */
+  backdropTheme: z.string(),
+  coverageQuality: z.enum(["rich", "thin", "absent"]),
 });
 
 const insiderTransactionItem = z.object({
@@ -234,6 +279,94 @@ export const insiderTransactionsSchema = z.object({
   windowDays: z.number(),
 });
 
+/**
+ * Business-identity profile: who the company is, what it does, how big it
+ * is. Factual fields are nullable so partial-coverage provider responses
+ * round-trip cleanly (Finnhub provides no `sector` or `businessDescription`;
+ * Yahoo provides no `exchange` or `ipoDate`). The Company Profile analyst
+ * is a *renderer* of these fields, not a synthesizer.
+ *
+ * `websiteMetaDescription` and `searchSnippets` are web-enrichment backstops
+ * for the description gap when both structured providers leave it null
+ * (common with less-covered tickers). The analyst is prompted to cite which
+ * source each claim traced to.
+ */
+export const companyProfileSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** Empty string only in the `"unavailable"` empty payload. */
+  name: z.string(),
+  sector: z.string().nullable(),
+  industry: z.string().nullable(),
+  country: z.string().nullable(),
+  exchange: z.string().nullable(),
+  currency: z.string().nullable(),
+  businessDescription: z.string().nullable(),
+  marketCapUsd: z.number().nullable(),
+  employees: z.number().nullable(),
+  ipoDate: z.string().nullable(),
+  website: z.string().nullable(),
+  /** Concatenated `<meta name="description">` + `og:description` from the
+   *  company's own homepage, when reachable. The company's self-description. */
+  websiteMetaDescription: z.string().nullable(),
+  /** Top web-search snippets for the company name (provider-agnostic via
+   *  `@flow-state-dev/tools/search`'s auto-detection). Independent
+   *  perspective on what the business is. */
+  searchSnippets: z
+    .array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        snippet: z.string(),
+      }),
+    )
+    .nullable(),
+});
+
+/**
+ * Provenance tag for discovery payloads (web-search wrappers). Distinct
+ * from the data-provider `sourceTag` above — discovery has its own failure
+ * modes:
+ *
+ *   - `"fixture"`     — fixture-mode read.
+ *   - `"web"`         — live mode, any configured search provider answered.
+ *   - `"skipped"`     — `costPreset !== "full"`; no provider call made.
+ *                       The analyst sees an empty items list and the prompt
+ *                       short-circuits investigation entirely.
+ *   - `"unavailable"` — `costPreset === "full"` but the search provider
+ *                       failed or no provider key is configured. Per BP-020
+ *                       discovery never silently falls back to fixture data
+ *                       — false discovery items are worse than none.
+ */
+const discoverySourceTag = z.enum(["fixture", "web", "skipped", "unavailable"]);
+
+/** A single numbered web-search result returned by a discovery tool. The
+ *  `id` is sequential ("1", "2", ...) so the analyst prompt can ask the
+ *  LLM to reference URLs by their numeric tag. `publisher` is best-effort
+ *  domain extraction; null when URL parsing fails. */
+const discoveryItem = z.object({
+  id: z.string(),
+  url: z.string(),
+  title: z.string(),
+  snippet: z.string(),
+  publisher: z.string().nullable(),
+  provider: z.enum(searchProviders),
+});
+
+export const discoveryPayloadSchema = z.object({
+  source: discoverySourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** The composed query string sent to the search provider — kept on the
+   *  payload for auditability. Empty string on `"skipped"` and the
+   *  `"unavailable"` empty payload. */
+  query: z.string(),
+  items: z.array(discoveryItem),
+});
+
+export type DiscoveryPayload = z.infer<typeof discoveryPayloadSchema>;
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -247,6 +380,11 @@ export const toolInputSchemas = {
   get_reddit_mentions: periodInput,
   get_prediction_markets: periodInput,
   get_insider_transactions: periodInput,
+  get_company_profile: periodInput,
+  discover_fundamentals_context: periodInput,
+  discover_sentiment_context: periodInput,
+  discover_technical_context: periodInput,
+  discover_profile_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -262,6 +400,11 @@ export const toolOutputSchemas = {
   get_reddit_mentions: redditMentionsSchema,
   get_prediction_markets: predictionMarketsSchema,
   get_insider_transactions: insiderTransactionsSchema,
+  get_company_profile: companyProfileSchema,
+  discover_fundamentals_context: discoveryPayloadSchema,
+  discover_sentiment_context: discoveryPayloadSchema,
+  discover_technical_context: discoveryPayloadSchema,
+  discover_profile_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -282,6 +425,11 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_reddit_mentions: "reddit-mentions.json",
   get_prediction_markets: "prediction-markets.json",
   get_insider_transactions: "insider-transactions.json",
+  get_company_profile: "company-profile.json",
+  discover_fundamentals_context: "discover-fundamentals-context.json",
+  discover_sentiment_context: "discover-sentiment-context.json",
+  discover_technical_context: "discover-technical-context.json",
+  discover_profile_context: "discover-profile-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

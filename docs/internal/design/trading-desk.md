@@ -1,6 +1,6 @@
 # Design: Trading Desk Example (FIX-564)
 
-The trading desk is a five-phase, twelve-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to four analyst memos, runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
+The trading desk is a five-phase, thirteen-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to five analyst memos (including a Company Profile renderer that grounds the desk in the underlying business identity before signal-oriented synthesis runs), runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
 
 ## 1. Pipeline shape
 
@@ -12,7 +12,7 @@ analyzePipeline
   .then(phase1Pipeline)   // setupPhase1Memos → parallel(4 analysts)
   .then(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
   .then(phase3Pipeline)   // setupPhase3Memos → traderStep
-  .then(phase4Pipeline)   // setupPhase4Memos → deriveRiskGoal → roundRobin(3 personas) → riskAssessmentStep
+  .then(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
   .then(phase5Pipeline)   // setupPhase5Memos → portfolioManagerStep
 ```
 
@@ -20,7 +20,7 @@ See [`flow.ts`](../../../examples/trading-desk/src/flows/trading-desk/flow.ts) f
 
 ## 2. Identity registry
 
-Twelve agents across five phases live in a single `AGENTS` table in [`agents.ts`](../../../examples/trading-desk/src/flows/trading-desk/agents.ts). Each entry carries `role`, `glyph` (two-character badge mark), `hue` (OKLCH degrees for the per-agent accent), and `team`. Every agent ships from day one — Phase 2–5 entries render in `pending` styling before their phases run. `PHASE_GROUPS` buckets them for the sidebar.
+Thirteen agents across five phases live in a single `AGENTS` table in [`agents.ts`](../../../examples/trading-desk/src/flows/trading-desk/agents.ts). Each entry carries `role`, `glyph` (two-character badge mark), `hue` (OKLCH degrees for the per-agent accent), and `team`. Every agent ships from day one — Phase 2–5 entries render in `pending` styling before their phases run. `PHASE_GROUPS` buckets them for the sidebar.
 
 Per-phase registries (`PHASE_1_MEMO_KEYS` through `PHASE_5_MEMO_KEYS`) map a short name (`fundamentals`, `bull`, `trader`, `aggressive`, `portfolioManager`) to `{ agentName, memoKey, collectionKey }`. `memoKey` is the full storage key (`memos/p1/fundamentals`). `collectionKey` is the bare suffix the framework auto-prefixes when you call `collection.create("p1/fundamentals")`. `ALL_MEMO_KEYS` merges every per-phase registry — the navigator iterates this single object.
 
@@ -32,7 +32,7 @@ Every memo is a session-scoped resource in the `memos/**` collection defined in 
 
 Per-phase `setupPhaseNMemos` taps pre-create each memo in `pending` so the navigator shows the correct scaffold from the start of the phase, before any generator runs. The `session.memoStatus[shortName]` mirror is what `useClientData` reads in the navigator to flicker `pending → writing → published` live during a run.
 
-Two `contributions` resources hold the round-robin transcripts: `phase2Contributions` for the bull/bear debate and `phase4Contributions` for the persona critiques. Downstream consolidators read these via the `tradingDesk` capability's `phase2Debate` / `phase4Debate` presets rather than threading them through sequencer state.
+One `contributions` resource holds the Phase 2 bull/bear round-robin transcript: `phase2Contributions`. The downstream Phase 2 consolidators read it via the `tradingDesk` capability's `phase2Debate` preset rather than threading it through sequencer state. Phase 4 doesn't use `roundRobin()` (see §6 below) — its consolidator reads the three persona memos via the `riskCritiques` preset instead.
 
 The collection declares `client.state: { read: true }` with no projection. That deliberate choice ships the whole memo state to the client so the renderer can dispatch on `body`, `metrics`, `headline`, and the per-phase extension fields without a second fetch.
 
@@ -44,13 +44,13 @@ Session state lives in [`state.ts`](../../../examples/trading-desk/src/flows/tra
 
 Every memo state transition is a dual write. `markWriting`, `commitMemo`, and `markError` (see [`memo-writer.ts`](../../../examples/trading-desk/src/flows/trading-desk/memo-writer.ts) for the Phase 1 originals; later phases copy the shape) both patch the resource state and write `session.memoStatus[shortName]`. The reason for both: resource snapshots batch to terminal status, but session state-change items propagate immediately through the stream. The sidebar wants to flicker live, so it reads `memoStatus`. The memo body wants the consolidated terminal snapshot, so it reads the resource.
 
-The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with four concurrent analysts.
+The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with five concurrent analysts.
 
 ## 5. The `tradingDesk` capability
 
 Every generator in the pipeline opts into one capability, defined in [`trading-desk-capability.ts`](../../../examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts). The `core` preset is always on. It selects the model — `intent/utility` on `fast`, `intent/chat` on `full` — and injects `<ticker>` and `<date>` context tags from session state. No generator carries its own `model:` slot.
 
-Opt-in presets bundle resources and context formatters for specific upstream artifacts: `investmentThesis`, `tradeProposal`, `riskAssessment`, `phase1Memos`, `bullThesis`, `bearThesis`, `bullContributions`, `bearContributions`, `phase2Debate`, `phase4Debate`, `riskCritiques`. Each opt-in preset declares the resources it reads, so the generator's `resources:` slot stays empty in most cases.
+Opt-in presets bundle resources and context formatters for specific upstream artifacts: `investmentThesis`, `tradeProposal`, `riskAssessment`, `phase1Memos`, `bullThesis`, `bearThesis`, `bullContributions`, `bearContributions`, `phase2Debate`, `riskCritiques`. Each opt-in preset declares the resources it reads, so the generator's `resources:` slot stays empty in most cases.
 
 Cost-preset gating lives inside the preset, not at the call site. The `*Full` variants (`phase1MemosFull`, `phase2DebateFull`, `riskCritiquesFull`) declare the same resources as their always-on counterparts, but their context formatters render an empty string when `costPreset !== "full"`. Generators list everything they might want in one static call:
 
@@ -86,7 +86,7 @@ A single control-plane surface (`costPreset`) toggles prompt depth, model tier, 
 
 ## 8. Per-step rescue and error isolation
 
-Every per-memo step is its own sub-sequencer: `mark-writing → generator → commit`, wrapped in `.rescue([{ block: markError }])`. The trader step in [`phase-3/index.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-3/index.ts) is the smallest example. Phase 2 uses the same shape three times (bull, bear, research manager). Phase 4 wraps each persona slot of the round-robin in its own rescue, plus a final rescue around the consolidator.
+Every per-memo step is its own sub-sequencer: `mark-writing → generator → commit`, wrapped in `.rescue([{ block: markError }])`. The trader step in [`phase-3/index.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-3/index.ts) is the smallest example. Phase 2 uses the same shape three times (bull, bear, research manager). Phase 4 wraps each persona step (chained in fixed order) in its own rescue, plus a final rescue around the consolidator.
 
 The reason: a single outer rescue over a multi-step chain is undiagnosable. You can't tell which step failed without scanning state, and downstream steps never run after the rescue. Per-step rescue surfaces the failing memo's identity directly via the captured `errorMessage` and keeps the pipeline producing whatever artifacts the surviving steps can still emit.
 
@@ -96,9 +96,9 @@ The `formatMemoBlock` helper renders an "unavailable" sentinel when a memo's `he
 
 ## 9. Why these patterns over alternatives
 
-**Round Robin over Debate in Phase 2.** Both ship in `@flow-state-dev/patterns`. Phase 2 picks Round Robin because the research manager is a synthesizer, not a judge. Round Robin requires a judge slot to terminate the loop. The trading desk fills it with a 3-line stub that always returns `done: false` and leans on `maxRounds` for termination — the documented idiom for fixed-length loops, see [`stub-judge.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-2/stub-judge.ts). Picking Debate instead would mean filling its judge slot with a placeholder when there's no real judging to do. That's reaching for the wrong primitive to dodge a small piece of boilerplate.
+**Round Robin over Debate in Phase 2.** Both ship in `@flow-state-dev/patterns`. Phase 2 picks Round Robin because the research manager is a synthesizer, not a judge. Earlier Round Robin required a judge to terminate the loop; the trading desk filled that with a stub judge that always returned `done: false`. FIX-597 reshaped the pattern: the judge slot is now an optional per-round *referee* focused on argument-quality auditing (not termination), and termination is `maxRounds` plus an optional runtime `terminateWhen` predicate. Phase 2 uses the reshaped factory directly with `terminateWhen` reading `maxDebateRounds` from session state. Debate still differs structurally — its at-end verdict-judge picks a winner over the transcript — and Round Robin's per-round referee is a different concern. Picking Debate here would mean filling its judge slot with a placeholder when there's no real judging to do; the reshape makes the right primitive obvious without any placeholder.
 
-**Structured persona generators plus consolidator in Phase 4.** Same `roundRobin()` primitive, different occupancy. The three roster slots are overridden with custom structured-output sub-sequencers rather than the pattern's default `{ text }` agents. Each persona emits its structured critique in one LLM call and a small adapter maps the structured output to the `{ text }` shape the round-robin's contribution tap consumes. The pattern's synthesizer slot is left empty (`synthesizer: false`) and the `riskAssessmentGenerator` runs as a downstream step in `phase4Pipeline`. The consolidated artifact is its own memo with its own typed schema, not the pattern's return value.
+**Plain sequencer chain plus consolidator in Phase 4.** Phase 4 does not use `roundRobin()`. None of the pattern's distinguishing features fit: single pass (no debate cycling), no referee, heterogeneous roster (the neutral persona has its own output schema), and the personas read prior critiques from the structured persona memos rather than from a shared free-form transcript. The three persona steps run as `aggressiveStep.then(conservativeStep).then(neutralStep)` inside `phase4Pipeline`, each emitting its typed critique in one LLM call and committing it to its persona memo. Conservative and neutral pull prior critiques via memo-backed `context` entries on their generator definitions. The `riskAssessmentGenerator` runs as a downstream step that synthesises the three persona memos into a typed `RiskAssessment` — its own memo with its own typed schema. Phase 2's bull/bear round-robin remains the canonical `roundRobin()` demo in this example.
 
 **Single generator in Phase 5.** No roster. No debate. No consolidator. The weight is in the typed output shape — `PortfolioDecision` carries seven extension fields, structured `acceptedAdjustments` per category, derived `agreesWithTrader` (computed at commit time from `finalRating` vs `trader.direction`), and derived `upstreamReferences`. The orchestration is intentionally trivial. The phase mirrors Phase 3's shape — `setup → markWriting → generator → commit → rescue` — and puts the complexity where it belongs: the schema and the prompt.
 
@@ -106,7 +106,7 @@ The `formatMemoBlock` helper renders an "unavailable" sentinel when a memo's `he
 
 Three classes of work the framework absorbs that would otherwise be a couple thousand lines of plumbing.
 
-*Typed resource pre-creation plus live status mirror.* The pipeline pre-creates 13 memo slots so the navigator scaffolds correctly, then transitions each through `pending → writing → published` with a dual write — resource patch plus session-state mirror — so the sidebar can flicker live mid-stream. Without the framework you'd hand-roll a resource registry, a per-key status map, a state-mutation API that handles concurrent writers without races, and the SSE plumbing to ship state changes mid-stream. The framework gives you `defineResourceCollection`, `setStateRecord`, `client.expose`, and `useClientData`. The example uses all four.
+*Typed resource pre-creation plus live status mirror.* The pipeline pre-creates 14 memo slots so the navigator scaffolds correctly, then transitions each through `pending → writing → published` with a dual write — resource patch plus session-state mirror — so the sidebar can flicker live mid-stream. Without the framework you'd hand-roll a resource registry, a per-key status map, a state-mutation API that handles concurrent writers without races, and the SSE plumbing to ship state changes mid-stream. The framework gives you `defineResourceCollection`, `setStateRecord`, `client.expose`, and `useClientData`. The example uses all four.
 
 *Structured outputs that show up as identity-aware transcript cards.* Setting `agentType: "primary"` with an `agentName` drawn from the canonical `AGENTS` table is the entire mechanism for getting a `TxStruct` card emitted in the transcript with the right glyph and hue. The renderer picks the per-agent accent from the same table. Without the framework you'd reinvent agent identity, manage card emission yourself, and write per-agent rendering rules. With the framework, the only registration step is the `PRIMARY_STRUCT_AGENTS` set on the transcript pane that gates which agents get cards.
 
@@ -117,7 +117,7 @@ This would all be possible without the framework. It would be a couple thousand 
 ## 11. Extension points
 
 - **Live data sources.** Wire `FINNHUB_API_KEY` / `FRED_API_KEY` for live news, sentiment, and macro tools; the per-tool fixture/live branch is already in place under `phase-1/tools/`.
-- **A new risk persona.** Add an entry to `PHASE_4_MEMO_KEYS`, write a new persona generator (copying one of the three in [`phase-4/personas.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-4/personas.ts)), register a roster slot in `phase4RoundRobin`, optionally add a preset to the capability. The touch points are localized.
+- **A new risk persona.** Add an entry to `PHASE_4_MEMO_KEYS`, write a new persona generator (copying one of the three in [`phase-4/personas.ts`](../../../examples/trading-desk/src/flows/trading-desk/phase-4/personas.ts)), add a persona step + commit handler and chain it into `phase4Pipeline`, optionally add a preset to the capability. The touch points are localized.
 - **A different final-decision shape.** Swap `portfolioDecisionOutputSchema`, update the PM prompt, update the PM Hero renderer. Nothing upstream of Phase 5 reads back from the PM memo — PM is the only consumer of itself.
 
 ## 12. References

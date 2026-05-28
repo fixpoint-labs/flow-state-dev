@@ -10,7 +10,7 @@ import {
   commitMemo,
   markError,
   markWriting,
-} from "../src/flows/trading-desk/memo-writer";
+} from "../src/flows/trading-desk/phase-1/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
@@ -87,6 +87,7 @@ describe("memo-writer taps", () => {
         { key: "opMargin", value: "62%" },
         { key: "fcfConv", value: "91%" },
         { key: "forwardPE", value: "32.5x" },
+        { key: "trailingPE", value: "47.2x" },
       ],
       body: [
         { h: "Top of book", p: "Revenue +42% YoY.", items: null },
@@ -94,6 +95,8 @@ describe("memo-writer taps", () => {
         { h: "Composite reading", p: "Fundamentals supportive.", items: null },
         { h: "Material items", p: null, items: ["Cap-ex ramp"] },
       ],
+      citations: null,
+      dataQuality: "full" as const,
     };
     const result = await testBlock(commitBlock, {
       input: thesis,

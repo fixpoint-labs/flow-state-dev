@@ -1,5 +1,28 @@
-export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type {
+  BlockCacheableConfig,
+  BlockContext,
+  BlockDefinition,
+  BlockInput,
+  BlockKind,
+  BlockOutput,
+  BlockResult,
+  DeclaredResources,
+  FlowStateSettings,
+  LooseBlockContext,
+} from "./types/block";
+export type {
+  OrgScopeHandle,
+  RequestScopeHandle,
+  SessionScopeHandle,
+  UserScopeHandle,
+} from "./types/scope";
+export type { ScopeStateOps } from "./types/state";
 export type { AgentType, ItemVisibility } from "./items/types";
+export {
+  whenAnyItem,
+  whenResourceChanged,
+  whenResourceMatching
+} from "./items/predicates";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
@@ -18,20 +41,37 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
+export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
+export {
+  bindToolCacheStore,
+  createInMemoryToolCacheStore,
+  createToolCacheCapability,
+} from "./blocks/tool-cache";
+export type {
+  CreateToolCacheCapabilityOptions,
+  ToolCacheAccessor,
+  ToolCacheEntry,
+  ToolCacheStore,
+} from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
+  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
+  TaskInitYaml,
   ToolCatalog,
+  WorkerSpec,
 } from "./types/skill";
+
+export type { Agent, AgentOverrides, AgentRegistry } from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,
@@ -47,12 +87,15 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
-export { isTraceObservabilityEnabled } from "./utils/trace-observability";
-export { transientSlot } from "./utils/transient-slot";
+export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
+export { resolveTracingLevel } from "./helpers/tracing-level";
+export type { TracingLevel } from "./helpers/tracing-level";
+export { transientSlot } from "./helpers/transient-slot";
 export {
   buildBlockInstanceId,
   blockPathBranch,
   blockPathIteration,
+  blockPathLoop,
   blockPathRescue,
   blockPathSegment,
   blockPathTool,
@@ -98,6 +141,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  InstructionsSlot,
   PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
@@ -138,6 +182,9 @@ export type {
 } from "./types/schedules";
 
 export { validateScheduleConfig, validateSchedulesConfig } from "./types/schedules";
+
+export type { ChatConfig, ChatEventBinding } from "./types/chat";
+export { validateChatConfig } from "./types/chat";
 export type {
   TokenCounter,
 } from "./types/tokens";
@@ -197,7 +244,6 @@ export {
   wrapAiSdkModel,
   createModelResolver,
   createFSDProvider,
-  defaultGroups,
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
@@ -212,6 +258,7 @@ export {
 export type {
   ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
+  IntentDefaults,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,
@@ -240,9 +287,18 @@ export type {
 } from "./execution/request-work-pool";
 export { getRequestWorkPool } from "./execution/request-work-pool";
 
-export { FlowError, OutputValidationError } from "./errors";
+export {
+  FlowError,
+  OutputValidationError,
+  SequencerOutputSchemaError,
+  SequencerSchemaMismatchError,
+  rootCause,
+  isAbortLike
+} from "./errors";
 export type {
   FlowErrorOptions,
   FlowErrorScope,
-  OutputValidationDetails
+  OutputValidationDetails,
+  SequencerOutputSchemaErrorDetails,
+  SequencerSchemaMismatchErrorDetails
 } from "./errors";

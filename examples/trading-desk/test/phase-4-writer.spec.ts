@@ -3,30 +3,53 @@
  * `markErrorP4`, and the four commit handlers flip `session.memoStatus`
  * and patch the resources with the right extension fields.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import {
-  commitAggressiveRiskMemo,
-  commitConservativeRiskMemo,
-  commitNeutralRiskMemo,
+  commitPersonaMemo,
   commitRiskAssessmentMemo,
   markErrorP4,
   markWritingP4,
 } from "../src/flows/trading-desk/phase-4/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import {
+  personaCritiqueOutputSchema,
+  riskAssessmentOutputSchema,
+} from "../src/flows/trading-desk/phase-4/schemas";
+
+// The phase-4 prompts now live as `.md` files; read them raw to assert their
+// prose names every dismissal category (parity with the prior string-export).
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/phase-4/prompts");
+const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
+const RISK_ASSESSMENT_PROMPT = readFileSync(
+  path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),
+  "utf8"
+);
+
+const DISMISSAL_CATEGORIES = [
+  "already-addressed",
+  "out-of-scope",
+  "no-mechanism",
+  "asymmetric-no-bound",
+] as const;
 
 const writeAggressive = markWritingP4("aggressive");
 const errorAggressive = markErrorP4("aggressive");
+const commitAggressive = commitPersonaMemo("aggressive");
+const commitConservative = commitPersonaMemo("conservative");
+const commitNeutral = commitPersonaMemo("neutral");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p4-writer-test",
   actions: {
     writeAggressive: { block: writeAggressive },
-    commitAggressive: { block: commitAggressiveRiskMemo },
-    commitConservative: { block: commitConservativeRiskMemo },
-    commitNeutral: { block: commitNeutralRiskMemo },
+    commitAggressive: { block: commitAggressive },
+    commitConservative: { block: commitConservative },
+    commitNeutral: { block: commitNeutral },
     commitAssessment: { block: commitRiskAssessmentMemo },
     errorAggressive: { block: errorAggressive },
   },
@@ -128,6 +151,7 @@ const aggressiveCritique = {
     holdingPeriod: "unchanged" as const,
     invalidation: "looser" as const,
   },
+  dismissedRisks: [],
 };
 
 const conservativeCritique = {
@@ -158,6 +182,7 @@ const neutralCritique = {
     {
       description: "Generic 'earnings drawdown' risk",
       reason: "Trade exits before earnings.",
+      dismissalCategory: "out-of-scope" as const,
     },
   ],
 };
@@ -190,6 +215,7 @@ const riskAssessment = {
     {
       description: "Generic 'earnings drawdown' risk",
       reason: "Trade exits before earnings.",
+      dismissalCategory: "out-of-scope" as const,
     },
   ],
   recommendedAdjustments: {
@@ -239,8 +265,8 @@ describe("Phase 4 writer taps", () => {
     expect(last.memoStatus.aggressive).toBe("writing");
   });
 
-  it("commitAggressiveRiskMemo flips aggressive to published", async () => {
-    const result = await testBlock(commitAggressiveRiskMemo, {
+  it("commitPersonaMemo('aggressive') flips aggressive to published", async () => {
+    const result = await testBlock(commitAggressive, {
       input: aggressiveCritique,
       flow: fixtureFlow,
       session: {
@@ -257,8 +283,8 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.aggressive).toBe("published");
   });
 
-  it("commitConservativeRiskMemo flips conservative to published", async () => {
-    const result = await testBlock(commitConservativeRiskMemo, {
+  it("commitPersonaMemo('conservative') flips conservative to published", async () => {
+    const result = await testBlock(commitConservative, {
       input: conservativeCritique,
       flow: fixtureFlow,
       session: {
@@ -275,8 +301,8 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.conservative).toBe("published");
   });
 
-  it("commitNeutralRiskMemo writes persona fields plus dismissedRisks", async () => {
-    const result = await testBlock(commitNeutralRiskMemo, {
+  it("commitPersonaMemo('neutral') writes persona fields plus dismissedRisks", async () => {
+    const result = await testBlock(commitNeutral, {
       input: neutralCritique,
       flow: fixtureFlow,
       session: {
@@ -314,6 +340,60 @@ describe("Phase 4 writer taps", () => {
     expect(lastSessionState(result).memoStatus.riskAssessment).toBe(
       "published",
     );
+  });
+
+  for (const category of DISMISSAL_CATEGORIES) {
+    it(`persona schema round-trips dismissalCategory "${category}"`, () => {
+      const parsed = personaCritiqueOutputSchema.safeParse({
+        ...neutralCritique,
+        dismissedRisks: [
+          {
+            description: "A dismissed risk",
+            reason: "Reason for dismissal.",
+            dismissalCategory: category,
+          },
+        ],
+      });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.dismissedRisks[0].dismissalCategory).toBe(category);
+      }
+    });
+
+    it(`risk-assessment schema round-trips dismissalCategory "${category}"`, () => {
+      const parsed = riskAssessmentOutputSchema.safeParse({
+        ...riskAssessment,
+        dismissedRisks: [
+          {
+            description: "A dismissed risk",
+            reason: "Reason for dismissal.",
+            dismissalCategory: category,
+          },
+        ],
+      });
+      expect(parsed.success).toBe(true);
+    });
+  }
+
+  it("persona schema rejects an unknown dismissalCategory", () => {
+    const parsed = personaCritiqueOutputSchema.safeParse({
+      ...neutralCritique,
+      dismissedRisks: [
+        {
+          description: "A dismissed risk",
+          reason: "Reason.",
+          dismissalCategory: "made-up",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("neutral and risk-assessment prompts name every dismissalCategory", () => {
+    for (const category of DISMISSAL_CATEGORIES) {
+      expect(NEUTRAL_PROMPT).toContain(category);
+      expect(RISK_ASSESSMENT_PROMPT).toContain(category);
+    }
   });
 
   it("markErrorP4 flips memo to error and returns a text placeholder", async () => {

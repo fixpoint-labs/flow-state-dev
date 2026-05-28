@@ -1,10 +1,16 @@
 /**
- * trading-desk flow — Phase 1.
+ * The trading-desk flow.
  *
- * Wires the `analyze` action: seed session state, then run the four-analyst
- * fan-out. Each analyst is a sub-sequencer that pre-marks its memo as
- * `writing`, runs a generator with role-specific tools, and commits the
- * structured `Thesis` output to the resource collection.
+ * `analyze` is the main entry point. It seeds session state, runs two
+ * stop-condition guards (unresolvable ticker, then post-Phase-1
+ * all-errored), and finally chains the five phase pipelines. Each guard
+ * patches `stoppedReason` + `stoppedMessage` on session state when it
+ * trips, and the following `.exitIf` bails out before the next phase —
+ * so a stop is a normal terminal state, not an exceptional condition.
+ *
+ * `setInstructions` persists the user's standing special instructions
+ * (global + per-phase). Edits take effect on the next analyze run; the
+ * running session's prompts are already built and untouched.
  *
  * Session-scope client data is exposed via `client.expose` so navigator
  * status (`memoStatus`) reflects mid-stream `state_change` items in the
@@ -12,30 +18,30 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
+import { PHASE_1_MEMO_KEYS } from "./agents";
+import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
-import { phase2Contributions } from "./phase-2/round-robin";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
-import { phase4Contributions } from "./phase-4/round-robin";
 import { phase5Pipeline } from "./phase-5";
-import { memosCollection, type MemoStatus } from "./resources";
+import { resolveTicker } from "./lib/ticker-resolver";
+import {
+  memoResources,
+  memosCollection,
+  phase2Contributions,
+  type MemoStatus,
+} from "./resources";
+import { specialInstructionsStateSchema } from "./special-instructions";
+import { specialInstructionsResource } from "./special-instructions-resource";
 import { sessionStateSchema } from "./state";
 
 export { sessionStateSchema, type SessionState } from "./state";
-
-export const analyzeInputSchema = z.object({
-  ticker: z.string().min(1).default("NVDA"),
-  date: z.string().min(1).default("2026-05-06"),
-  costPreset: z.enum(["fast", "full"]).default("fast"),
-  dataSource: z.enum(["fixture", "live"]).default("fixture"),
-});
-
-export type AnalyzeInput = z.infer<typeof analyzeInputSchema>;
+export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";
 
 /**
- * `seedSession` patches session state from action input and resets the
- * memo-status mirror so a re-run starts from a clean navigator.
+ * Patches session state from action input and resets the memo-status
+ * mirror so a re-run starts from a clean navigator.
  */
 const seedSession = handler({
   name: "seed-session",
@@ -54,30 +60,150 @@ const seedSession = handler({
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       memoStatus: {} as Record<string, MemoStatus>,
       runComplete: false,
+      // Reset terminal stop state from any prior run on this session key
+      // so the navigator doesn't render a stale "stopped" banner.
+      stoppedReason: null,
+      stoppedMessage: null,
     });
     return input;
   },
 });
 
+/**
+ * Pre-flight ticker resolution. Probes the active data source for the
+ * requested ticker; if it can't be resolved (missing fixture / all live
+ * providers down), patches `stoppedReason: "unresolvable-ticker"` so the
+ * following `.exitIf` bails before any model spend.
+ */
+const checkTickerResolvable = handler({
+  name: "check-ticker-resolvable",
+  inputSchema: analyzeInputSchema,
+  outputSchema: z.void(),
+  sessionStateSchema,
+  execute: async (input, ctx) => {
+    const result = await resolveTicker(input);
+    if (!result.resolved) {
+      await ctx.session.patchState({
+        stoppedReason: "unresolvable-ticker",
+        stoppedMessage:
+          result.reason ?? `Could not resolve ticker ${input.ticker}.`,
+        runComplete: true,
+      });
+    }
+  },
+});
+
+/**
+ * Post-Phase-1 data-quality check. If every analyst memo is in `error`,
+ * patches `stoppedReason: "phase-1-no-data"` so the following `.exitIf`
+ * bails before phases 2–5 synthesize on no data.
+ */
+export const checkPhase1HasData = handler({
+  name: "check-phase-1-has-data",
+  inputSchema: z.unknown(),
+  outputSchema: z.void(),
+  sessionStateSchema,
+  resources: memoResources,
+  execute: async (_input, ctx) => {
+    const allErrored = Object.values(PHASE_1_MEMO_KEYS).every(
+      (m) => ctx.resources.memos.getOptional(m.collectionKey)?.state.status === "error",
+    );
+    if (allErrored) {
+      await ctx.session.patchState({
+        stoppedReason: "phase-1-no-data",
+        stoppedMessage:
+          `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
+          "Halting before synthesis — no usable upstream data.",
+        runComplete: true,
+      });
+    }
+  },
+});
+
+/**
+ * Post-Phase-1 primary-analyst check. `fundamentals` and `companyProfile`
+ * are the only non-substitutable analysts — the debate (Phase 2) and every
+ * downstream phase reason from the company's identity and its financials, so
+ * a missing one can't be papered over by the four other memos. If either
+ * errored, patch `stoppedReason: "phase-1-missing-primary"` so the following
+ * `.exitIf` halts before synthesis. This fires on the realistic partial
+ * failure (one provider rate-limited) that `checkPhase1HasData`'s all-error
+ * condition would miss.
+ */
+export const checkPhase1HasFundamentalsAndProfile = handler({
+  name: "check-phase-1-has-fundamentals-and-profile",
+  inputSchema: z.unknown(),
+  outputSchema: z.void(),
+  sessionStateSchema,
+  resources: memoResources,
+  execute: async (_input, ctx) => {
+    const erroredAt = (collectionKey: string) =>
+      ctx.resources.memos.getOptional(collectionKey)?.state.status === "error";
+    const fundamentalsErrored = erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
+    const profileErrored = erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
+    if (!fundamentalsErrored && !profileErrored) return;
+    const which = [
+      fundamentalsErrored && "fundamentals",
+      profileErrored && "companyProfile",
+    ]
+      .filter(Boolean)
+      .join(" + ");
+    await ctx.session.patchState({
+      stoppedReason: "phase-1-missing-primary",
+      stoppedMessage:
+        `Non-substitutable Phase 1 analyst failed (${which}) for ` +
+        `${ctx.session.state.ticker}. Halting before synthesis.`,
+      runComplete: true,
+    });
+  },
+});
+
+/**
+ * The `analyze` pipeline. Three `.tap` + `.exitIf` pairs implement
+ * defense-in-depth against degenerate inputs and upstream data failure (see
+ * the `checkTickerResolvable` / `checkPhase1HasFundamentalsAndProfile` /
+ * `checkPhase1HasData` doc comments). The primary-analyst guard runs before
+ * the all-error backstop: a partial failure that loses a non-substitutable
+ * analyst halts even when the other four succeeded.
+ */
 const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
   inputSchema: analyzeInputSchema,
 })
   .then(seedSession)
+  .tap(checkTickerResolvable)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase1Pipeline)
+  .tap(checkPhase1HasFundamentalsAndProfile)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  .tap(checkPhase1HasData)
+  .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .then(phase2Pipeline)
   .then(phase3Pipeline)
   .then(phase4Pipeline)
   .then(phase5Pipeline);
+
+/**
+ * Persists the user's standing special instructions (global + per-phase) to
+ * the user-scoped, flow-isolated `specialInstructionsResource`.
+ */
+const setInstructions = handler({
+  name: "set-instructions",
+  inputSchema: specialInstructionsStateSchema,
+  outputSchema: z.void(),
+  resources: { specialInstructions: specialInstructionsResource },
+  execute: async (input, ctx) => {
+    await ctx.resources.specialInstructions.patchState(input);
+  },
+});
 
 const tradingDeskFlow = defineFlow({
   kind: "trading-desk",
   requireUser: true,
 
   actions: {
-    analyze: {
-      block: analyzePipeline,
-    },
+    analyze: { block: analyzePipeline },
+    setInstructions: { block: setInstructions },
   },
 
   session: {
@@ -92,18 +218,22 @@ const tradingDeskFlow = defineFlow({
         "maxDebateRounds",
         "memoStatus",
         "runComplete",
+        "stoppedReason",
+        "stoppedMessage",
       ],
     },
   },
 
   resources: {
     memos: memosCollection,
-    // Phase 2 transcript. Registered here so post-loop consolidation
-    // generators can declare it on their own `resources:` slot.
+    // Phase 2 transcript — shared by the round-robin, the consolidator
+    // generators, and the `tradingDesk` capability's stance/debate presets.
     p2Contributions: phase2Contributions,
-    // Phase 4 round-robin transcript. Registered so the riskAssessment
-    // consolidation generator can read the persona contributions.
-    p4Contributions: phase4Contributions,
+    // User-scoped, flow-isolated standing instructions. Declared here so
+    // `resolveUserStorageKey` picks up `flowIsolation: true` for storage-key
+    // derivation; the capability's `core` preset also declares it for
+    // runtime context access.
+    specialInstructions: specialInstructionsResource,
   },
 });
 

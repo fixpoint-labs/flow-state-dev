@@ -1,0 +1,24 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL technical analysis chart breakout support resistance",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.investors.com/research/aapl-stock-technical-analysis.html",
+      "title": "AAPL forms cup-and-handle base; pivot near $215",
+      "snippet": "Technical analysts flag a cup-and-handle pattern that completed last week; pivot point at $215 marks the breakout trigger.",
+      "publisher": "investors.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.tradingview.com/symbols/NASDAQ-AAPL/ideas/",
+      "title": "TradingView consensus: AAPL above all major moving averages",
+      "snippet": "Stock trading above 20-, 50-, and 200-day moving averages. Volume on recent advances has been below 30-day average, drawing skepticism.",
+      "publisher": "tradingview.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

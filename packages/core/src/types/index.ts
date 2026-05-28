@@ -1,4 +1,5 @@
 export type {
+  BlockCacheableConfig,
   BlockConfig,
   BlockContext,
   BlockTraceCapturePayload,
@@ -14,6 +15,7 @@ export type {
   ConnectorFn,
   DeclaredResourceEntry,
   ExecutionParent,
+  FlowStateSettings,
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,
@@ -73,6 +75,10 @@ export type {
 export { validateScheduleConfig, validateSchedulesConfig } from "./schedules";
 
 export type { TTSConfig, VoiceConfig } from "./speech";
+
+export type { ChatConfig, ChatEventBinding } from "./chat";
+
+export { validateChatConfig } from "./chat";
 
 export type {
   CompositeVoiceProviderConfig,
@@ -194,17 +200,22 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
-  IntentSource,
   MatchedSkill,
+  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
+  SkillActivationSource,
   SkillContextMode,
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
+  TaskInitYaml,
   ToolCatalog,
+  WorkerSpec,
 } from "./skill";
+
+export type { Agent, AgentOverrides, AgentRegistry } from "./agent";
 
 export type {
   JsonObject,

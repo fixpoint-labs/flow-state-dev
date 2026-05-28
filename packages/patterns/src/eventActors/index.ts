@@ -28,6 +28,7 @@
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import type { SequencerDefinition } from "@flow-state-dev/core";
 import type {
   BlockContext,
   BlockDefinition,
@@ -189,7 +190,7 @@ export interface EventActorsConfig {
 
 export interface EventActorsHandle {
   /** Sequencer block: appends entry + drains matching actors. */
-  emit: BlockDefinition<any, any>;
+  emit: SequencerDefinition<any, any>;
   /** The workspace resource. Declare on your flow's `resources`. */
   workspace: DefinedResource;
   /** The registered actors (frozen). */
@@ -204,7 +205,12 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const {
     name,
     actors,
-    concurrency = 16,
+    // FIX-660: default lowered from 16 → 4 to align with peer patterns
+    // (taskBoard=4, supervisor=3, parallelTasks=3). The 16 default
+    // predated the `.waitForCondition` wiring; once wake-storm costs
+    // were exposed, 16 was a 4× outlier with no architectural rationale.
+    // Callers who want more can still pass `concurrency: 16` explicitly.
+    concurrency = 4,
     reEmit = false,
     maxDepth = 3,
   } = config;
@@ -276,7 +282,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     workerRegistry[a.name] = buildActorWorker(a);
   }
 
-  function buildActorWorker(a: Actor): BlockDefinition<any, any> {
+  function buildActorWorker(a: Actor) {
     const reEmitTap = handler({
       name: `${name}-${a.name}-reemit`,
       inputSchema: z.any(),

@@ -113,7 +113,7 @@ When a block fails, `block_trace.error` is `{ message: string, code?: string, de
 
 ### `tool_output`
 
-When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns:
+When a generator calls a tool, the runtime emits a `tool_output` placeholder via `item.added` before the tool runs, then patches it via `item.updated` once the tool returns. In LLM-ready history each `tool_output` expands into two protocol messages — an assistant `tool-call` and a `tool` result — which is why history windowing operates on conversational turns rather than raw messages (see [Conversation history windowing](/docs/advanced/generator-context#conversation-history-windowing)):
 
 ```jsonc
 // item.added — tool was called, args known, output not yet.
@@ -330,6 +330,8 @@ type ModelIdentity = {
 ### On items
 
 Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_output`, and the transient `tool_call_progress`. Handler-emitted items (via `ctx.emitMessage`) do not carry `model` — the framework only stamps identity on generator-produced items.
+
+`tool_call_progress` is emitted by both streaming and non-streaming generator paths. When the resolved model implements only `generate()`, the framework synthesises these items from `generation.toolCalls` and `generation.steps[].toolResults`, so observability does not depend on transport capability.
 
 ```jsonc
 // Example message item from an intent-routed generator

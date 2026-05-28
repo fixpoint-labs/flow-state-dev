@@ -12,7 +12,7 @@ import { resolveProvider } from "./resolver";
  * Creates a search tool for use in generator blocks.
  * Auto-detects the best available search provider from env vars.
  *
- * Provider priority: Tavily → Exa → Perplexity → Serper → Brave → Perplexity Sonar
+ * Provider priority: Parallel → Tavily → Exa → Perplexity → Serper → Brave → Perplexity Sonar
  */
 export function search(config: SearchConfig = {}) {
   return handler({
@@ -26,6 +26,7 @@ export function search(config: SearchConfig = {}) {
       return adapter.search(input.query, {
         maxResults: input.maxResults,
         searchDepth: config.searchDepth ?? "basic",
+        searchMode: config.searchMode,
         topic: input.topic,
         apiKey,
       });
@@ -50,6 +51,10 @@ export function braveSearch(config: Omit<SearchConfig, "provider"> = {}) {
   return search({ ...config, provider: "brave" });
 }
 
+export function parallelSearch(config: Omit<SearchConfig, "provider"> = {}) {
+  return search({ ...config, provider: "parallel" });
+}
+
 export function perplexitySearch(config: Omit<SearchConfig, "provider"> = {}) {
   return search({ ...config, provider: "perplexity" });
 }
@@ -68,3 +73,8 @@ export type {
   SearchInput,
 } from "./types";
 export { searchInputSchema, searchOutputSchema, searchResultSchema, searchProviders } from "./types";
+
+/** Resolve the active provider adapter + API key from `SearchConfig` + env
+ *  vars. Exposed for callers that need to run a search outside the
+ *  `search()` tool block (e.g. inside another handler's `execute`). */
+export { resolveProvider } from "./resolver";

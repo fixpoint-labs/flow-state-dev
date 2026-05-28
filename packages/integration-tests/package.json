@@ -1,12 +1,11 @@
 {
   "name": "@flow-state-dev/integration-tests",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/tasks build && pnpm --filter @flow-state-dev/testing build && pnpm --filter @flow-state-dev/patterns build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/tasks build && pnpm --filter @flow-state-dev/testing build && pnpm --filter @flow-state-dev/patterns build && vitest run --root .",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/tasks build && pnpm --filter @flow-state-dev/testing build && pnpm --filter @flow-state-dev/patterns build && pnpm --filter @flow-state-dev/skills build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && pnpm --filter @flow-state-dev/tasks build && pnpm --filter @flow-state-dev/testing build && pnpm --filter @flow-state-dev/patterns build && pnpm --filter @flow-state-dev/skills build && vitest run --root .",
     "test:watch": "vitest --root ."
   },
   "dependencies": {
@@ -14,6 +13,7 @@
     "@flow-state-dev/server": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
+    "@flow-state-dev/skills": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

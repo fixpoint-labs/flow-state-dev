@@ -29,6 +29,14 @@ export type CollectionHookContext = {
   log: (message: string) => void;
   /** The scope type this collection belongs to (session, user, org). */
   scopeType: ScopeType;
+  /**
+   * The identifier of the concrete scope instance the hook fired in:
+   * `userId` for `scope:"user"`, `orgId` for `scope:"org"`,
+   * `sessionId` for `scope:"session"`. Lets hooks correlate collection
+   * mutations back to the entity that owns them (e.g. mirroring a row
+   * into a per-user schedule index).
+   */
+  scopeId: string;
 };
 
 export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
@@ -103,16 +111,47 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** Get an existing instance, or undefined if not found. */
   getOptional(key: string | Record<string, string>): ResourceRef<TState> | undefined;
 
-  /** Create a new instance. Throws if already exists or maxInstances exceeded. */
+  /**
+   * Create a new instance.
+   *
+   * Default behavior: throws if already exists, or if creating would exceed
+   * `maxInstances` (subject to the configured `eviction` policy).
+   *
+   * With `{ replace: true }`: overwrites the instance if it exists
+   * (`setState` semantics — Zod `.default(null)` fills nullable fields the
+   * caller doesn't supply); creates it if missing. Use for setup/reset
+   * paths that want a known initial state regardless of whether the
+   * instance was present before.
+   */
   create(
     key: string | Record<string, string>,
-    initial?: Partial<TState>
+    initial?: Partial<TState>,
+    options?: { replace?: boolean }
   ): Promise<ResourceRef<TState>>;
 
   /** Get or create — returns existing if present, creates if not. */
   getOrCreate(
     key: string | Record<string, string>,
     initial?: Partial<TState>
+  ): Promise<ResourceRef<TState>>;
+
+  /**
+   * Upsert — patch the existing instance with `update` if it exists,
+   * otherwise create with `{ ...createOnly, ...update }` (the create-only
+   * extras provide the fields you only need to supply at creation time
+   * — `update` wins on overlapping keys).
+   *
+   * Fires `onInstanceUpdated` on the patch branch, `onInstanceCreated`
+   * on the create branch. The create branch honors `maxInstances` +
+   * `eviction` like `create()`.
+   *
+   * Use for incremental-update paths that need to handle the
+   * first-touch case in a single call.
+   */
+  upsert(
+    key: string | Record<string, string>,
+    update: Partial<TState>,
+    createOnly?: Partial<TState>
   ): Promise<ResourceRef<TState>>;
 
   /** List all instances, optionally filtered by prefix. */
@@ -133,7 +172,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { validatePattern } from "./collection-patterns";
-import { validateClientProjection } from "../utils/client-projection";
+import { validateClientProjection } from "../helpers/client-projection";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,

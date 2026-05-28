@@ -6,7 +6,7 @@ sidebar_position: 3
 
 `memory/recall` is the agent-invocable side of the memory system. The auto-injected `<memory>` context handles the always-on view. The recall tool is what the model reaches for when that view isn't enough, and it wants to go searching for a past episode or semantic fact tied to what the user just asked.
 
-The tool installs as part of `mem.capability` by default. If you want context-only memory, turn it off with `mem.capability.presets({ recall: false })`.
+The tool installs as part of `mem.capability` by default. If you want context-only memory, turn it off with `mem.capability.presets({ recall: false })`. The same tool is installed by the `recall` preset on the capability returned by [`createMemoryCapability`](./configuration#creatememorycapability-options), so a read-only flow gets it without `system()`.
 
 ## Default behavior
 
@@ -28,6 +28,12 @@ const mem = system({
 Each item gets a content cap of 400 chars by default (`DEFAULT_PER_ITEM_CHAR_CAP`). Anything longer gets truncated with a marker (`TRUNCATION_MARKER`) so the model knows it didn't see the full record. Override with `tool: { defaults: { perItemCharCap } }`.
 
 > **Working-only caveat:** If you configure `system({ working: { ... } })` alone, the recall tool's description still says it searches "semantic facts + past episodes". The description string doesn't currently adapt to the configured tiers. Pre-existing, tracked separately. If you're working-only, leave the recall preset off.
+
+## Ranking and decay
+
+The cross-store `mem.recall()` helper uses each fact's *effective confidence* — the raw confidence decayed by time-since-last-reinforcement (see [Hygiene](./hygiene)). A year-old fact at confidence `0.8` ranks below a freshly-reinforced fact at the same `0.8`. When hygiene is disabled (`hygiene: false`), recall falls back to raw `fact.confidence`.
+
+The default `llm-filter` strategy passes every semantic fact through to the LLM filter unconditionally (the semantic store is already bounded by `pruneThreshold`), so its candidate selection isn't driven by intrinsic scores. The model sees raw `fact.confidence` in the candidate metadata; the time-decay surface is the `effectiveConfidence` helper, exposed for custom strategies that want to apply it.
 
 ## Strategies
 

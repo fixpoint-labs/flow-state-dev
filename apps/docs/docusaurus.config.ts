@@ -77,7 +77,7 @@ const config: Config = {
       title: "flow-state.dev",
       logo: {
         alt: "flow-state.dev logo",
-        src: "img/logo.png",
+        src: "img/mark-color.svg"
       },
       items: [
         {

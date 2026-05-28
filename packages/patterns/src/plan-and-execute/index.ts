@@ -30,25 +30,27 @@
  * legacy status translation.
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import { flowPolicy } from "@flow-state-dev/tasks";
 import type {
   AgentType,
   GeneratorHistoryConfig,
   GeneratorSearchConfig,
   GeneratorSlot,
+  InstructionsSlot,
   ToolsSlot,
   UsesSlot,
   SequencerDefinition,
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard } from "../task-board";
+import { taskBoard, createCascadeSkipDependents } from "../task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
+  type PlanAndExecuteInput,
   type PlanAndExecuteState,
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
-import { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
 import { createApplyReplan } from "./blocks/apply-replan";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
@@ -85,7 +87,9 @@ export {
 
 export { createCaptureAndPlan } from "./blocks/capture-and-plan";
 export { createApplyReplan } from "./blocks/apply-replan";
-export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
+// Re-exported from the task-board substrate (its true home, FIX-631) to
+// preserve plan-and-execute's public subpath API.
+export { createCascadeSkipDependents } from "../task-board";
 export {
   createSynthesize,
   createBuildPlanOutput,
@@ -95,9 +99,6 @@ export {
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
-/** Resolvable string — static or computed at runtime from input and context. */
-type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface PlanAndExecuteConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -163,7 +164,7 @@ export interface PlanAndExecuteConfig<
   // -------------------------------------------------------------------------
 
   /** Overall instructions for the pipeline. Composes with executionInstructions / synthesizeInstructions. */
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<PlanAndExecuteInput>;
   /** Context slot applied to all default blocks. */
   context?: GeneratorSlot<any, any>;
   /** History slot applied to default planner and synthesizer. */
@@ -193,6 +194,17 @@ export interface PlanAndExecuteConfig<
 // Default replanner
 // ---------------------------------------------------------------------------
 
+/** Output schema for the default replanner generator — the new tasks to add. */
+export const replannerOutputSchema = z.object({
+  tasks: z.array(
+    z.object({
+      id: z.string(),
+      goal: z.string(),
+      deps: z.array(z.string()).default([]),
+    }),
+  ),
+});
+
 function createDefaultReplanner(config: {
   name: string;
   model?: string;
@@ -209,15 +221,7 @@ function createDefaultReplanner(config: {
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
-    outputSchema: z.object({
-      tasks: z.array(
-        z.object({
-          id: z.string(),
-          goal: z.string(),
-          deps: z.array(z.string()).default([]),
-        }),
-      ),
-    }),
+    outputSchema: replannerOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     search: true,
     prompt: [
@@ -233,7 +237,7 @@ function createDefaultReplanner(config: {
       // evaluator and synthesizer consult, so all three see one
       // canonical view of progress.
       return JSON.stringify(
-        { goal: (ctx.sequencer!.state as PlanAndExecuteState).goal ?? "" },
+        { goal: ctx.sequencer!.state.goal ?? "" },
         null,
         2,
       );
@@ -244,6 +248,21 @@ function createDefaultReplanner(config: {
 // ---------------------------------------------------------------------------
 // Default executor + legacy worker adapter
 // ---------------------------------------------------------------------------
+
+/** Output schema for the default executor generator — a task finding. */
+export const executorOutputSchema = z.object({
+  summary: z.string(),
+  success: z.boolean(),
+  reason: z.string().default(""),
+  sources: z
+    .array(
+      z.object({
+        title: z.string().default(""),
+        url: z.string(),
+      }),
+    )
+    .default([]),
+});
 
 /**
  * Build the default executor — a research generator returning
@@ -274,19 +293,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       goal: z.string(),
       dependencyResults: z.record(z.unknown()).optional(),
     }),
-    outputSchema: z.object({
-      summary: z.string(),
-      success: z.boolean(),
-      reason: z.string().default(""),
-      sources: z
-        .array(
-          z.object({
-            title: z.string().default(""),
-            url: z.string(),
-          }),
-        )
-        .default([]),
-    }),
+    outputSchema: executorOutputSchema,
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
@@ -366,7 +373,7 @@ function formatDependencyContext(depId: string, value: unknown): string {
 function wrapWorkerForLegacyContract(
   name: string,
   worker: BlockDefinition<any, any>,
-): BlockDefinition<any, any> {
+): SequencerDefinition<any, any> {
   // Pre-connect adapts the substrate's TaskWorkerInput to legacy.
   const adapted = worker.connectInput<unknown>((input: unknown) => {
     const obj = input as {
@@ -409,7 +416,7 @@ function wrapWorkerForLegacyContract(
     name: `${name}-worker-adapted`,
   })
     .then(adapted)
-    .tap(checkSoftFailure) as BlockDefinition<any, any>;
+    .tap(checkSoftFailure);
 }
 
 // ---------------------------------------------------------------------------
@@ -481,7 +488,7 @@ function createDefaultSynthesizer(config: {
   history?: GeneratorHistoryConfig<any, any>;
   tools?: ToolsSlot;
   uses?: UsesSlot;
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<any>;
   synthesizeInstructions?: string;
   agentType?: AgentType;
 }) {
@@ -630,13 +637,10 @@ export function planAndExecute<
   // the planner/replanner contracts don't carry, so we stay on the
   // uniform path even when the spec illustration shows a registry.
   //
-  // `onIdle: "wait"` + `shouldExit` is a deliberate substitute for
-  // `onIdle: "complete"`. With the topological dispatcher, a pending
-  // task whose dep `errored` is never claimable but still counts in
-  // `inFlightCount`, so the default `complete` mode would spin forever
-  // waiting for tasks the dispatcher cannot pick. The custom predicate
-  // exits the drain as soon as no claimable work remains — pendings
-  // with `errored` deps are then cascade-skipped by
+  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
+  // (FIX-626): a pending task whose dep `errored` is never claimable,
+  // and the substrate now exits the drain as soon as no claimable work
+  // remains. Pendings with `errored` deps get cascade-skipped by
   // `cascadeSkipDependents` after the drain.
   const board = taskBoard({
     name: `${name}-board`,
@@ -644,31 +648,14 @@ export function planAndExecute<
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",
-    onIdle: "wait",
     onError: "skip",
-    shouldExit: (collection) => {
-      // No active workers AND no claimable pending tasks → drain done.
-      const active = collection.count({
-        status: ["in_progress", "awaiting_review"],
-      });
-      if (active > 0) return false;
-
-      const pending = collection.list({ status: "pending" });
-      if (pending.length === 0) return true;
-
-      const completedIds = new Set(
-        collection
-          .list({ status: "completed" })
-          .map((t) => t.id),
-      );
-      // A pending task is claimable iff every dep is completed. Note
-      // that `errored` and `cancelled` deps make a pending task
-      // permanently unclaimable until cascade-skip runs.
-      const claimable = pending.some((t) =>
-        (t.deps ?? []).every((d) => completedIds.has(d)),
-      );
-      return !claimable;
-    },
+    // FIX-610: plan-shaped patterns benefit most from seeing prior
+    // tool traffic from anywhere in the run, not just declared deps.
+    // A recent-trajectory window (8 by default) is what lets a later
+    // step skip re-doing a search an earlier step already ran while
+    // staying bounded — callers can override on the underlying
+    // taskBoard if they want a stricter policy.
+    flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });

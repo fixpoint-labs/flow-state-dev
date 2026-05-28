@@ -15,15 +15,15 @@ Update policy:
 
 ## Active Practices
 
-### BP-001: Canonical authority precedence
+### BP-001: Documentation authority precedence
 
 - Status: Active
 - Date: 2026-02-15
 - Rule:
-  - If docs conflict, `preperation/architecture/*` is authoritative.
-  - Planning docs and wave docs must reference canonical architecture sources.
+  - If two in-repo docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
+  - Planning docs and wave docs must reference the relevant `docs/architecture/<area>.md` file rather than restating contracts inline.
 - Why:
-  - Prevents drift between wave execution and architecture contracts.
+  - Prevents drift between wave execution and architecture contracts, and keeps a single source of truth per concept.
 
 ### BP-002: Wave-driven execution
 
@@ -57,13 +57,14 @@ Update policy:
 
 ### BP-005: Dual changelog requirement
 
-- Status: Active
+- Status: Superseded (2026-05-19) by [BP-022: Release notes via Changesets](#bp-022-release-notes-via-changesets)
 - Date: 2026-02-15
-- Rule:
+- Rule (historical):
   - Each wave must maintain wave-local artifacts (`docs/waves/wave-1/wave-1.<letter>-journal.md`, `docs/waves/wave-1/wave-1.<letter>-changelog.md`).
   - Each wave must also add a concise summary entry to root `changelog.md`.
-- Why:
-  - Wave-local docs preserve detail; root changelog preserves project-level continuity.
+- Why (historical):
+  - Wave-local docs preserve detail; root changelog preserved project-level continuity pre-Changesets.
+- Successor: BP-022 replaces the root-changelog half of this rule (the `changelog.md` entry). Wave-local journal and changelog artifacts remain required per AGENTS.md and `wave-process.md`.
 
 ### BP-006: Keep wave labels out of code and tests
 
@@ -255,6 +256,144 @@ Update policy:
   - Hand-curated fixture data is dated and ticker-specific. Serving it as if it were live silently corrupts the LLM's reasoning — the analyst thinks it just got NVDA's Q1 fundamentals and writes a memo around them, when in reality the live API failed and a year-old fixture filled in.
   - "No data" is a recoverable signal the LLM can reason about ("I'm missing fundamentals for this ticker, so I'll lean on technicals and macro"). "Wrong data labeled as right data" is not recoverable.
   - The trading-desk used a fixture floor in its first multi-provider implementation and the resulting analyst memos cited fixture numbers as if they were live for two days before anyone noticed. The empty-payload-with-sentinel pattern landed in FIX-589 to prevent recurrence.
+
+### BP-021: Tool blocks declare `cacheable` deliberately
+
+- Status: Active
+- Date: 2026-05-18
+- Rule:
+  - Opt a tool block into `cacheable` only when the call is functionally a deterministic read of state that won't move underneath the run, or an expensive idempotent computation whose inputs fully determine its output. Examples: reading an artifact by key, resolving a config value, looking up a fixture record, fetching an immutable file by hash.
+  - Do **not** declare `cacheable` on:
+    - Tools that mutate state (writes, deletes, status changes). A cached "write succeeded" is a lie on the second call.
+    - Tools whose result depends on time, randomness, or external mutation not captured in their input arguments. A cached "get current price" returns yesterday's price. Use a short `ttl` only when staleness has bounded blast radius; prefer no cache when the cost of being wrong is high.
+    - Tools whose output the worker needs to observe happening (e.g. a tool whose side-effect on the transcript is the point — a "show user" tool that suppresses on cache hit is broken).
+  - Default to `scope: "run"`. Reach for `"request"` when sibling boards within the same request would benefit; reach for `"session"` only with a concrete reason — session lifetimes are long, and stale entries are hard to reason about across turns.
+  - Pair `cacheable` with a `cacheIf` guard when the same input legitimately produces both cacheable and non-cacheable outputs (e.g. a fetch that returns either a stable document or an error envelope as a successful return value — cache only the document).
+- Why:
+  - Errors are never cached and identical in-flight calls in the same request coalesce to one execution, so opting in is safe for the common deterministic-read case — but those guarantees don't cover the tool's correctness model. A cached mutating tool corrupts state; a cached time-sensitive read corrupts reasoning. Both fail silently and only surface on the second call.
+  - The wrong default is "cache everything that's expensive." Cost reduction is real but is bought with stale-data risk. Make the call per tool, not per package.
+  - Cross-task observation flow (`flowPolicy`) records every tool call regardless of cacheability — the ledger is the substrate's information-sharing channel, the cache is its cost-reduction channel. They're independent. Don't reach for `cacheable` to make a tool's results visible to other workers; reach for the right `flowPolicy` instead.
+
+### BP-022: Release notes via Changesets
+
+- Status: Active
+- Date: 2026-05-19
+- Rule:
+  - Every PR with user-facing impact (new/changed public API, capability, block, CLI command, hook, env var, config key, or behavior end users observe) includes a `.changeset/*.md` fragment listing every affected publishable package.
+  - Pre-1.0 discipline: select `patch` for non-breaking changes and `minor` for new capabilities or breaking changes. Do not use `major` — a `major` changeset against a `0.x.y` package bumps to `1.0.0`, and Changesets has no built-in pre-1.0 mode. If you believe a breaking change warrants `major`, raise it in the PR and a maintainer will decide.
+  - Internal-only changes (refactors, test-only edits, internal helpers, infra) do not need a changeset. Run `pnpm changeset --empty` and commit the resulting empty fragment, or state "no changeset needed" in the PR description.
+  - Do not edit a root `changelog.md`. None exists. Per-package `CHANGELOG.md` files are generated by `pnpm version-packages`.
+- Why:
+  - Eliminates the merge-conflict cost of editing a single root file per PR.
+  - Produces release-shaped per-package CHANGELOGs that ship with npm artifacts.
+  - Locks the launch story before first publish, so contributors form the habit pre-1.0.
+  - The pre-1.0 `major` discipline prevents a premature `1.0.0` bump that would signal stability the packages haven't earned and burn the breaking-change budget before the API surface has settled.
+- See: [`docs/contributing/release-notes-workflow.md`](release-notes-workflow.md)
+- Supersedes: BP-005
+
+### BP-023: Resource state schemas use `.nullable().default(null)` so callers can pass partials
+
+- Status: Active
+- Date: 2026-05-20
+- Rule:
+  - Every nullable field on a resource state schema (anything passed as `stateSchema:` to `defineResourceCollection` or `defineResource`) is `.nullable().default(null)`, not bare `.nullable()`.
+  - With defaults declared, memo creation / reset paths supply only the non-nullable scaffold (e.g. `status`, `agentName`, `ticker`, `date`) and let the framework's `safeParse` fill the rest. Do not maintain a parallel "blank state" helper or per-call-site list of `field: null` literals.
+  - For the "reset on re-run" path where existing state must not bleed through, use `setState(memoStateSchema.parse({...minimal}))` rather than `patchState`. `patchState` merges with prior state; only `setState` (or a `patchState` whose payload happens to overwrite every field) actually replaces it.
+  - This applies only to **resource state schemas**, not to generator output schemas. Generator outputs follow BP-016 (no `.default()` reachable from a generator output — OpenAI strict mode rejects it). Resource state schemas don't go through `makeSchemaStrict`, so defaults are safe and idiomatic.
+- Why:
+  - The framework already calls `stateSchema.safeParse(input)` on every `collection.create()` and `patchState()` (see `packages/server/src/context/createExecutionContext.ts`). When the schema declares `.default(null)`, Zod fills the missing fields. Without `.default(null)`, every caller has to list all nullable fields explicitly — and the list duplicates across `setup.ts`, every `markWriting*` create branch, and any "blank state" helper.
+  - Schema-as-source-of-truth: adding a new nullable field to the schema becomes a one-place edit. Without this BP, the list is duplicated across N files (one per phase per layer) and any audit can miss a copy. The trading-desk example carried ~150 lines of duplicated null-field literals across Phase 1–5 setup and writer files before this BP landed.
+  - This is the practical answer to "why doesn't the framework provide a `defaultState()` helper?" — it already does, via Zod. The lesson is to encode defaults at the schema layer rather than at the call site.
+
+### BP-024: Factor with helpers when the body varies; factor with factories when it doesn't
+
+- Status: Active
+- Date: 2026-05-23
+- Rule:
+  - When several blocks share **identity-only** parameterization (the body
+    is identical across instances; only some key / name / lookup-target
+    varies), express the pattern as a **factory** that takes the identity
+    and returns the block. Trading-desk examples: `defineMemoStateBlocks`
+    (markWriting / markError factories), `defineMemoSetup`, `defineAnalyst`
+    in Phase 1, `commitPersonaMemo` in Phase 4.
+  - When several blocks share **scaffolding only** (the body is unique per
+    instance — different projection, derivation, side effect), express the
+    pattern as a **helper function** the body calls into, NOT a factory
+    that takes the body as a callback. Trading-desk example: `publishMemo`
+    helper + plain `handler()` calls in Phase 2/3/5's commit handlers,
+    instead of a `defineCommit({ inputSchema, project, afterCommit })`
+    factory.
+  - When several blocks share **config but vary in body and identity**
+    (the common case for sibling handlers in one file or package), express
+    the shared config as `handler.withDefaults({...})` (or eventually
+    `generator.withDefaults`, etc.). Trading-desk example: `memoHandler`
+    — used by every commit handler, by `defineMemoStateBlocks` internals,
+    and by `defineMemoSetup` to skip restating `sessionStateSchema`,
+    `resources: memoResources`, `outputSchema: z.void()`. Per-call
+    overrides are supported (`markError` overrides `outputSchema`).
+- Why:
+  - A factory whose body is a callback `({ inputSchema, project }) => handler(...)`
+    becomes a closure-over-closure: it has to thread the caller's input
+    type back to the call site via generics (`<S extends ZodTypeAny>`,
+    `z.infer<S>`, custom ctx aliases). Every callback parameter the
+    factory accepts adds a type-plumbing line. By the time the factory
+    handles 3–4 deltas, the framework-typing complexity outweighs the
+    duplication the factory was eliminating.
+  - A helper function does none of that: it takes `ctx` as a parameter,
+    returns void or a value, and the caller's plain `handler()` retains
+    its full typing chain. The "shared logic" (resource patch, session
+    mirror, derived fields) is the helper; the "unique logic"
+    (LLM-output projection, derived calls, terminal side effects) stays
+    in the handler body where it reads naturally.
+  - `handler.withDefaults` is the cheap middle ground for "shared
+    scaffolding, varied bodies, varied identities" — no callback
+    threading, no generic plumbing, just a partially-applied constructor.
+  - The cost of choosing wrong: the original `defineMemoWriter` in
+    trading-desk took its body as a callback (`defineCommit({ project,
+    afterCommit })`) and required ~80 lines of `CommitCtx` /
+    `CommitOptions` / `CommitPatch` / generic plumbing to thread types
+    through the closure. Splitting into a state-blocks factory +
+    `publishMemo` helper + plain handlers removed all of that scaffolding
+    while making the per-phase writer files _more_ readable.
+  - When in doubt, ask: **does the per-instance variation live in the
+    callback parameter, or in things known at construction time?** If the
+    former, the right tool is a helper.
+
+### BP-025: Declare and validate sequencer output schemas deliberately
+
+- Status: Active
+- Date: 2026-05-23
+- Rule:
+  - Declare `outputSchema` on a sequencer when its composed output is consumed by something that depends on the shape: a downstream block, a flow action, or a client renderer. The declaration is a runtime contract — the framework validates the actual returned value against it on every exit path (the natural tail, an `exitIf` early return, and a `rescue` recovery).
+  - Call `.validate()` at build/setup time on any sequencer that declares `outputSchema`. It catches structural drift between the declared schema and the chain's inferred tail before the flow runs.
+  - Omit `outputSchema` for internal or ephemeral sequencers — scratch pipelines, background fan-out, anything whose composed output nothing downstream reads by shape. There the validation is pure overhead.
+  - The word "deliberately" is the rule. This is a per-sequencer judgment call, not a blanket requirement that every sequencer carry an `outputSchema`.
+  - Know what `.validate()` does NOT catch: it is a conservative one-level structural check. Deep nested shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail schema is erased by `thenAny` / `race` / `thenAll` / `branch`. The runtime gate still catches actual mismatches in those cases — `.validate()` is the early-warning, not the guarantee.
+- Why:
+  - A sequencer's `outputSchema` validates the composed output of the whole chain, which is distinct from a per-block `outputSchema` (that validates one block's own output). When a downstream consumer depends on the composed shape, an undeclared schema means a drift goes silent until the consumer reads a field that isn't there — far from the cause.
+  - The runtime gate is uniform across exit paths, so an `exitIf` or `rescue` that returns the wrong intermediate shape fails the same way the tail does. Without the declaration, those alternate paths are exactly where a wrong shape slips through unnoticed.
+  - Declaring on internal scratch sequencers is the inverse mistake: it adds a `safeParse` on every run and a maintenance burden for a contract nobody consumes. Reserve the declaration for the boundaries that matter.
+- Example (declare + validate at a real boundary):
+  ```ts
+  const summarize = sequencer({
+    name: "summarize",
+    inputSchema: z.object({ text: z.string() }),
+    outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
+  }).then(summarizeBlock); // tail produces { summary, wordCount }
+
+  summarize.validate(); // build-time drift check; throws SequencerSchemaMismatchError on mismatch
+  // Registered as a flow action whose client renderer reads { summary, wordCount }.
+  ```
+- Counter-example (declaring on an internal scratch pipeline):
+  ```ts
+  // Background fan-out — nothing downstream reads the shape.
+  const warmCache = sequencer({
+    name: "warm-cache",
+    inputSchema: z.object({ keys: z.array(z.string()) }),
+    outputSchema: z.object({ warmed: z.number() }), // overhead: no consumer cares
+  }).forEach((input) => input.keys, fetchAndCache);
+  // Omit outputSchema here. The composed output is discarded.
+  ```
 
 ## Template For New Entries
 

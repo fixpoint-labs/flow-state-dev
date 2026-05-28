@@ -20,9 +20,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
+  extractTaskItemWindows,
   fifoDispatcher,
   getOrCreateTaskCollection,
   type TaskWorker,
@@ -498,12 +500,15 @@ describe("taskBoard - failure handling", () => {
     expect(result.error?.message).toContain("boom-err");
   });
 
-  it("downstream pending task with errored deps blocks loop exit until cancelled", async () => {
-    // The topological dispatcher excludes `d` (its dep `u` is errored,
-    // not completed). v1 has no automatic dep-failure propagation —
-    // downstream stays `pending` and the `complete` loop counts it as
-    // in-flight, so workers spin-poll. An external actor must
-    // explicitly cancel the unreachable task to drain the board.
+  it("downstream pending task with errored deps blocks loop exit until cancelled (onIdle: 'complete')", async () => {
+    // Regression for the legacy `onIdle: "complete"` behavior the
+    // FIX-626 default change supersedes. Pinned explicitly: the
+    // topological dispatcher excludes `d` (its dep `u` is errored,
+    // not completed), and `"complete"` mode still counts `d` as
+    // in-flight — workers spin-poll until an external actor cancels
+    // the unreachable task. The new `"complete-or-blocked"` default
+    // covered by a separate test exits cleanly without the manual
+    // cancel.
     let scheduled = false;
     const failingWorker = handler({
       name: "fail-up",
@@ -538,6 +543,7 @@ describe("taskBoard - failure handling", () => {
         { id: "d", goal: "d", deps: ["u"] },
       ],
       onError: "skip",
+      onIdle: "complete",
       idlePollMs: 10,
       maxIterations: 200,
     });
@@ -594,7 +600,11 @@ describe("taskBoard - awaiting_review", () => {
         { id: "trigger", goal: "trigger" },
       ],
       onIdle: "complete",
-      idlePollMs: 20,
+      // FIX-621: prove event-driven wake. With a 50s idle-poll baseline,
+      // the test can only finish in time if `resumeFromReview` fans out
+      // a `task-change` item that wakes `.waitForCondition` directly
+      // rather than waiting for the next tick.
+      idlePollMs: 50_000,
       maxIterations: 500,
     });
 
@@ -667,6 +677,66 @@ describe("taskBoard - onIdle modes", () => {
       );
     });
     expect(lastClaimedEmits).toHaveLength(0);
+  });
+
+  it("onIdle: 'complete-or-blocked' (default) exits cleanly when downstream pending has an errored dep", async () => {
+    // FIX-626: with the new default, a pending task whose dep errored
+    // is detected as structurally unclaimable, so the board exits
+    // without requiring an external cancel. Contrast with the legacy
+    // `"complete"` regression test above which spins until cancelled.
+    const failingWorker = handler({
+      name: "fail-up",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
+        if (input.goal === "u") throw new Error("upstream failed");
+        return null;
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "deps-fail-default",
+      collection: { collectionId: "dfd" },
+      concurrency: 1,
+      dispatcher: "topological",
+      workers: failingWorker,
+      initialTasks: [
+        { id: "u", goal: "u" },
+        { id: "d", goal: "d", deps: ["u"] },
+      ],
+      onError: "skip",
+      idlePollMs: 10,
+      maxIterations: 200,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("u")).toBe("errored");
+    // `d` stays `pending` — the substrate exits without mutating it;
+    // cascade-skip (which lives one layer up in P&E / supervisor)
+    // would transition it to `cancelled` post-drain.
+    expect(final.get("d")).toBe("pending");
+  });
+
+  it("onIdle: 'complete-or-blocked' exits cleanly on a successful drain", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "cob-success",
+      collection: { collectionId: "cob-success" },
+      concurrency: 2,
+      dispatcher: "topological",
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: [
+        { id: "a", goal: "a", input: { topic: "a" } },
+        { id: "b", goal: "b", input: { topic: "b" }, deps: ["a"] },
+      ],
+      onIdle: "complete-or-blocked",
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(trace.length).toBe(2);
   });
 
   it("onIdle: 'wait' continues until shouldExit returns true", async () => {
@@ -1172,6 +1242,62 @@ describe("taskBoard - board-meta emission", () => {
     expect(final?.total).toBe(2);
     expect(final?.completed).toBe(2);
     expect(final?.errored).toBe(0);
+
+    // FIX-626: terminationReason on a fully-succeeded drain.
+    expect(
+      (metaItems[0]?.data as { terminationReason?: string } | undefined)
+        ?.terminationReason
+    ).toBe("all-completed");
+  });
+
+  it("emits terminationReason='blocked-by-failures' when a pending task can't be claimed (FIX-626)", async () => {
+    const failingWorker = handler({
+      name: "fail-up-meta",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
+        if (input.goal === "u") throw new Error("upstream failed");
+        return null;
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "meta-blocked",
+      collection: { collectionId: "meta-blocked" },
+      concurrency: 1,
+      dispatcher: "topological",
+      workers: failingWorker,
+      initialTasks: [
+        { id: "u", goal: "u" },
+        { id: "d", goal: "d", deps: ["u"] },
+      ],
+      onError: "skip",
+      idlePollMs: 10,
+      maxIterations: 200,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    type MetaItem = {
+      type?: string;
+      component?: string;
+      data?: {
+        status?: string;
+        terminationReason?: string;
+        counts?: Record<string, number>;
+      };
+    };
+    const completed = (result.items as MetaItem[]).find(
+      (i) =>
+        i.type === "component" &&
+        i.component === "task-board-meta" &&
+        i.data?.status === "completed"
+    );
+    expect(completed?.data?.terminationReason).toBe("blocked-by-failures");
+    expect(completed?.data?.counts?.completed).toBe(0);
+    expect(completed?.data?.counts?.errored).toBe(1);
+    expect(completed?.data?.counts?.pending).toBe(1);
   });
 
   it("counts errored tasks on completion", async () => {
@@ -1215,6 +1341,10 @@ describe("taskBoard - board-meta emission", () => {
     expect(completed?.data?.counts?.total).toBe(2);
     expect(completed?.data?.counts?.errored).toBe(2);
     expect(completed?.data?.counts?.completed).toBe(0);
+    expect(
+      (completed?.data as { terminationReason?: string } | undefined)
+        ?.terminationReason
+    ).toBe("blocked-by-failures");
   });
 });
 
@@ -1279,4 +1409,114 @@ describe("taskBoard - seed idempotency", () => {
   // block above. The sequencer-backed default still creates fresh
   // state per invocation by design; consumers that need re-entry opt
   // into `collection: { backing: "request", ... }`.
+});
+
+// ---------------------------------------------------------------------------
+// Item attribution under concurrency (FIX-658)
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - item attribution (FIX-658)", () => {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  function messagesFor(map: Map<string, OutputItem[]>, taskId: string): string[] {
+    return (map.get(taskId) ?? [])
+      .filter((i) => i.type === "message")
+      .map((i) => {
+        const c = (i as { content?: Array<{ text?: string }> }).content?.[0];
+        return c?.text ?? "";
+      });
+  }
+
+  it("a sibling spawned mid-run attributes its items to itself, not the queueing task", async () => {
+    // discoverer emits, spawns analyzer, then blocks until analyzer has
+    // emitted — forcing the analyzer's whole lifecycle to overlap the
+    // discoverer's still-open window. The timestamp model put the analyzer's
+    // message inside the discoverer's bucket; emit-time taskId keeps them
+    // disjoint.
+    const analyzerEmitted = deferred();
+    const worker = handler({
+      name: "worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ack: z.string() }),
+      execute: async (input, ctx) => {
+        if (input.goal === "discoverer") {
+          ctx.emit.message("discoverer step 1");
+          const collection = getOrCreateTaskCollection({
+            ctx,
+            backing: "sequencer",
+            collectionId: "fanout",
+            sequencer: ctx.getTarget("fanout")!,
+          });
+          await collection.addTask({ id: "analyzer", goal: "analyzer" });
+          await analyzerEmitted.promise;
+          ctx.emit.message("discoverer step 2");
+        } else {
+          ctx.emit.message("analyzer step 1");
+          analyzerEmitted.resolve();
+        }
+        return { ack: input.goal };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "fanout",
+      collection: { collectionId: "fanout" },
+      concurrency: 2,
+      dispatcher: "fifo",
+      workers: worker,
+      initialTasks: [{ id: "discoverer", goal: "discoverer" }],
+      idlePollMs: 5,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    const windows = extractTaskItemWindows(result.items as OutputItem[], "fanout");
+    expect(messagesFor(windows, "discoverer")).toEqual([
+      "discoverer step 1",
+      "discoverer step 2",
+    ]);
+    expect(messagesFor(windows, "analyzer")).toEqual(["analyzer step 1"]);
+  });
+
+  it("sequential tasks on one worker attribute to their own task", async () => {
+    // One worker (concurrency 1) runs t1 then t2. Their execution paths are
+    // identical (loopBack reuses the path); only the emit-time taskId stamp
+    // separates them.
+    const worker = handler({
+      name: "worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ack: z.string() }),
+      execute: async (input, ctx) => {
+        ctx.emit.message(`work:${input.goal}`);
+        return { ack: input.goal };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "seq",
+      collection: { collectionId: "seq" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: worker,
+      initialTasks: [
+        { id: "t1", goal: "t1" },
+        { id: "t2", goal: "t2" },
+      ],
+      idlePollMs: 5,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    const windows = extractTaskItemWindows(result.items as OutputItem[], "seq");
+    expect(messagesFor(windows, "t1")).toEqual(["work:t1"]);
+    expect(messagesFor(windows, "t2")).toEqual(["work:t2"]);
+  });
 });

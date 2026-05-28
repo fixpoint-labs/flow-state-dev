@@ -1,6 +1,7 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   ExpectedVersion,
+  PersistErrorHandler,
   RequestListOptions,
   RequestRecord,
   RequestStore,
@@ -11,10 +12,11 @@ import {
   createFilesystemRecordStore,
   type FilesystemRecordStore
 } from "./shared";
-import { ensureDirectory, toRecordPath } from "./shared";
+import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
 import { pollEvents } from "../subscribe-helpers";
-import { readFile, writeFile, rename } from "node:fs/promises";
+import { appendFile, readdir, readFile, rm } from "node:fs/promises";
+import path from "node:path";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
@@ -28,12 +30,65 @@ export type FilesystemRequestStoreOptions = {
    * Poll interval for `subscribeToEvents` in milliseconds. Default 100ms.
    */
   subscribePollIntervalMs?: number;
+  /**
+   * Fired on a background write failure before the safety-net log, so
+   * operators can alert on persistence loss (FIX-406 6B).
+   */
+  onPersistError?: PersistErrorHandler;
 };
 
 function toEventsPath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
 }
 
+function toRunOncePath(rootDir: string, requestId: string): string {
+  return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
+}
+
+/**
+ * Encode a path segment, hardening `:` (legal on POSIX but reserved on
+ * Windows/NTFS) so request ids and keys containing `:` stay portable.
+ */
+function encodeSegment(segment: string): string {
+  return encodeURIComponent(segment).replace(/:/g, "%3A");
+}
+
+/**
+ * Per-key runOnce result file path:
+ * `{rootDir}/<enc(requestId)>.runonce.<enc(key)>.json`. One file per
+ * (requestId, key) so persisting one key never rewrites another's bytes.
+ */
+function toRunOnceKeyPath(
+  rootDir: string,
+  requestId: string,
+  key: string
+): string {
+  return path.join(
+    rootDir,
+    `${encodeSegment(requestId)}.runonce.${encodeSegment(key)}.json`
+  );
+}
+
+// Module-scoped so the "warn once per corrupted file" guarantee holds across
+// reads and across store instances within the same process (mirrors the
+// trace store).
+const corruptionWarned = new Set<string>();
+
+/**
+ * Filesystem-backed `RequestStore`.
+ *
+ * The event log is an append-only NDJSON file (`{requestId}.events.json`):
+ * `persistEvents` appends only the new events through a per-request
+ * `SerializedWriteQueue`, so persistence cost is O(new events) rather than
+ * O(total log) per write.
+ *
+ * Multi-process disclaimer: this store assumes a single writer per request.
+ * Ordering and the FIX-399 durability barrier are enforced within one process
+ * by the per-request queue and the per-id write lock. There is NO inter-process
+ * locking — running multiple processes against the same `rootDir` for the same
+ * request is not a supported topology. Use SQLite or Postgres for any
+ * multi-process or production deployment.
+ */
 export class FilesystemRequestStore implements RequestStore {
   private readonly store: FilesystemRecordStore<
     RequestRecord,
@@ -54,15 +109,28 @@ export class FilesystemRequestStore implements RequestStore {
    * propagate persist failures instead of silently swallowing them (FIX-399).
    */
   private readonly lastEventError = new Map<string, Error>();
+  /**
+   * Requests whose event file has had its on-disk format verified (and
+   * migrated from legacy JSON-array to NDJSON if needed) at least once this
+   * process. Migration runs lazily on the first `persistEvents` per request.
+   */
+  private readonly eventsFormatVerified = new Set<string>();
 
   private readonly pollIntervalMs: number;
+  private readonly onPersistError?: PersistErrorHandler;
 
   constructor(options: FilesystemRequestStoreOptions) {
     this.rootDir = options.rootDir;
     this.pollIntervalMs =
       options.subscribePollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.onPersistError = options.onPersistError;
     this.store = createFilesystemRecordStore<RequestRecord, RequestListOptions>({
       rootDir: options.rootDir,
+      skipSidecars: true,
+      sort: (left, right, listOptions) =>
+        listOptions?.orderBy === "startedAtMs"
+          ? right.startedAtMs - left.startedAtMs
+          : right.updatedAt - left.updatedAt,
       filter: (record, listOptions): boolean => {
         if (
           listOptions?.flowKind !== undefined &&
@@ -109,8 +177,82 @@ export class FilesystemRequestStore implements RequestStore {
     return this.store.set(id, value, expectedVersion);
   }
 
+  /**
+   * Delta verbs (`patchField`/`incField`/`pushToArray`) delegate to the shared
+   * CAS record store, which mutates one depth-1 `state` field in place under
+   * the per-id lock instead of rewriting the whole record. Per-verb semantics
+   * are documented on `FilesystemRecordStore`.
+   */
+  async patchField(
+    id: string,
+    path: string[],
+    value: unknown,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.patchField(id, path, value, expectedVersion, updatedAt);
+  }
+
+  async incField(
+    id: string,
+    path: string[],
+    delta: number,
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.incField(id, path, delta, expectedVersion, updatedAt);
+  }
+
+  async pushToArray(
+    id: string,
+    path: string[],
+    values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.pushToArray(id, path, values, expectedVersion, updatedAt);
+  }
+
   async delete(id: string): Promise<void> {
     await this.store.delete(id);
+    await this.deleteSidecars(id);
+  }
+
+  /**
+   * Remove the sidecar files the request store writes alongside the primary
+   * record: the NDJSON event log and every runOnce file (legacy single-map and
+   * per-key). Without this, deleting a request orphans those files on disk and
+   * they accumulate for high-churn deployments. The events/legacy-runonce
+   * paths encode the id with `encodeURIComponent`; per-key runOnce files use
+   * `encodeSegment` (which also escapes `:`). Both agree for framework `req_*`
+   * ids; matching both prefixes keeps the sweep correct for any id.
+   */
+  private async deleteSidecars(id: string): Promise<void> {
+    const exact = new Set([
+      path.basename(toEventsPath(this.rootDir, id)),
+      path.basename(toRunOncePath(this.rootDir, id))
+    ]);
+    const runOncePrefixes = [
+      `${encodeURIComponent(id)}.runonce.`,
+      `${encodeSegment(id)}.runonce.`
+    ];
+    let entries: string[];
+    try {
+      entries = await readdir(this.rootDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    await Promise.all(
+      entries.map(async (name) => {
+        const isPerKeyRunOnce =
+          name.endsWith(".json") &&
+          runOncePrefixes.some((prefix) => name.startsWith(prefix));
+        if (exact.has(name) || isPerKeyRunOnce) {
+          await rm(path.join(this.rootDir, name), { force: true });
+        }
+      })
+    );
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
@@ -179,24 +321,38 @@ export class FilesystemRequestStore implements RequestStore {
       await ensureDirectory(this.rootDir);
       const targetPath = toEventsPath(this.rootDir, requestId);
 
-      // Read existing events and append the new ones.
-      let existing: RequestStreamEvent[] = [];
-      try {
-        const raw = await readFile(targetPath, "utf8");
-        existing = JSON.parse(raw) as RequestStreamEvent[];
-      } catch {
-        // File may not exist yet on first write.
+      // First persist this process for this request: migrate a legacy
+      // JSON-array file to NDJSON before appending. Migration/append errors
+      // propagate to the queue's onError (FIX-399) — never swallowed.
+      if (!this.eventsFormatVerified.has(requestId)) {
+        await this.migrateLegacyEventsIfNeeded(targetPath);
+        this.eventsFormatVerified.add(requestId);
       }
 
-      const merged = [...existing, ...newEvents];
-      const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
-        .toString(16)
-        .slice(2)}`;
-
-      const serialized = JSON.stringify(merged);
-      await writeFile(tempPath, serialized, "utf8");
-      await rename(tempPath, targetPath);
+      const lines = newEvents.map((e) => `${JSON.stringify(e)}\n`).join("");
+      await appendFile(targetPath, lines, "utf8");
     });
+  }
+
+  /**
+   * If `targetPath` holds a legacy JSON-array events file (first non-whitespace
+   * byte is `[`), rewrite it as NDJSON via an atomic temp-write + rename so the
+   * subsequent append lands in a uniform format. No-op for missing files or
+   * files already in NDJSON shape. Errors propagate to the caller.
+   */
+  private async migrateLegacyEventsIfNeeded(targetPath: string): Promise<void> {
+    let raw: string;
+    try {
+      raw = await readFile(targetPath, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    const firstNonWhitespace = raw.match(/\S/);
+    if (firstNonWhitespace?.[0] !== "[") return; // already NDJSON or empty
+    const events = JSON.parse(raw) as RequestStreamEvent[];
+    const ndjson = events.map((e) => `${JSON.stringify(e)}\n`).join("");
+    await atomicWrite(targetPath, ndjson);
   }
 
   async flushEvents(requestId: string): Promise<void> {
@@ -216,10 +372,9 @@ export class FilesystemRequestStore implements RequestStore {
     fromSequence?: number
   ): Promise<RequestStreamEvent[]> {
     const filePath = toEventsPath(this.rootDir, requestId);
-    let events: RequestStreamEvent[];
+    let raw: string;
     try {
-      const raw = await readFile(filePath, "utf8");
-      events = JSON.parse(raw) as RequestStreamEvent[];
+      raw = await readFile(filePath, "utf8");
     } catch (error) {
       const maybeError = error as NodeJS.ErrnoException;
       if (maybeError.code === "ENOENT") {
@@ -227,8 +382,36 @@ export class FilesystemRequestStore implements RequestStore {
       }
       throw error;
     }
-    if (fromSequence === undefined) return events;
-    return events.filter((e) => e.sequence_number > fromSequence);
+
+    const matchInclude = (e: RequestStreamEvent): boolean =>
+      fromSequence === undefined || e.sequence_number > fromSequence;
+
+    // Legacy JSON-array format: first non-whitespace byte is `[`.
+    if (raw.match(/\S/)?.[0] === "[") {
+      const events = JSON.parse(raw) as RequestStreamEvent[];
+      return events.filter(matchInclude);
+    }
+
+    // NDJSON: one event per line. Skip blank lines; on a parse failure (e.g. a
+    // torn final append) skip the line and warn once per file. The store is
+    // single-writer per request, so a malformed line is a partial write, not
+    // a sequence the reader can recover.
+    const out: RequestStreamEvent[] = [];
+    for (const line of raw.split("\n")) {
+      if (line.length === 0) continue;
+      try {
+        const event = JSON.parse(line) as RequestStreamEvent;
+        if (matchInclude(event)) out.push(event);
+      } catch {
+        if (!corruptionWarned.has(filePath)) {
+          corruptionWarned.add(filePath);
+          console.warn(
+            `[flow-state] skipping corrupted event line(s) in ${filePath}`
+          );
+        }
+      }
+    }
+    return out;
   }
 
   subscribeToEvents(
@@ -243,6 +426,58 @@ export class FilesystemRequestStore implements RequestStore {
     );
   }
 
+  async getRunOnceResult(
+    requestId: string,
+    key: string
+  ): Promise<{ found: boolean; value?: unknown }> {
+    // Per-key file is the source of truth post-upgrade.
+    const keyPath = toRunOnceKeyPath(this.rootDir, requestId, key);
+    try {
+      const raw = await readFile(keyPath, "utf8");
+      return { found: true, value: JSON.parse(raw) as unknown };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    // Lazy fallback: a legacy single-map file written by an older version.
+    // Legacy files are read-only after upgrade — never rewritten.
+    const legacyPath = toRunOncePath(this.rootDir, requestId);
+    let map: Record<string, unknown>;
+    try {
+      const raw = await readFile(legacyPath, "utf8");
+      map = JSON.parse(raw) as Record<string, unknown>;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { found: false };
+      }
+      throw error;
+    }
+    if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
+    return { found: true, value: map[key] };
+  }
+
+  async setRunOnceResult(
+    requestId: string,
+    key: string,
+    value: unknown
+  ): Promise<void> {
+    // One file per (requestId, key): no read-merge-write, so concurrent writes
+    // to different keys never collide and persisting one key doesn't rewrite
+    // another. Atomic temp-write + rename guards against torn files.
+    try {
+      await ensureDirectory(this.rootDir);
+      const targetPath = toRunOnceKeyPath(this.rootDir, requestId, key);
+      await atomicWrite(targetPath, JSON.stringify(value));
+    } catch (error) {
+      this.onPersistError?.({
+        store: "request",
+        id: requestId,
+        error: error as Error
+      });
+      throw error;
+    }
+  }
+
   private getOrCreateEventWriteQueue(requestId: string): SerializedWriteQueue {
     let queue = this.eventWriteQueues.get(requestId);
     if (queue === undefined) {
@@ -250,10 +485,10 @@ export class FilesystemRequestStore implements RequestStore {
         label: `request-events:${requestId}`,
         onError: (err) => {
           // Capture so flushEvents can re-throw to the emitter (FIX-399).
-          // Still log here for ops visibility — the emitter's onPersistError
-          // hook is the structured propagation channel; this is the safety net
-          // for callers that haven't wired the hook.
+          // Fire the structured observable (FIX-406 6B) before the safety-net
+          // log so operators can alert on persistence loss.
           this.lastEventError.set(requestId, err);
+          this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] event persistence failed for ${requestId}`,
             err
@@ -271,6 +506,7 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-items:${requestId}`,
         onError: (err) => {
+          this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] item persistence failed for ${requestId}`,
             err

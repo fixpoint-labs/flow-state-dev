@@ -49,7 +49,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     ticker: i.ticker,
     asOf: i.date,
     marketCap: 0,
-    forwardPE: 0,
+    forwardPE: null,
+    trailingPE: null,
     priceToSales: 0,
     returnOnEquity: 0,
     operatingMargin: 0,
@@ -100,7 +101,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     positive: 0,
     negative: 0,
     neutral: 0,
-    shortInterestPct: 0,
+    shortInterestPct: null,
+    posts: [],
   }),
   get_reddit_mentions: (i) => ({
     source: "unavailable",
@@ -113,7 +115,10 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    markets: [],
+    tickerMarkets: [],
+    backdropMarkets: [],
+    backdropTheme: "",
+    coverageQuality: "absent",
   }),
   get_insider_transactions: (i) => ({
     source: "unavailable",
@@ -122,8 +127,74 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     transactions: [],
     windowDays: 90,
   }),
+  get_company_profile: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    name: "",
+    sector: null,
+    industry: null,
+    country: null,
+    exchange: null,
+    currency: null,
+    businessDescription: null,
+    marketCapUsd: null,
+    employees: null,
+    ipoDate: null,
+    website: null,
+    websiteMetaDescription: null,
+    searchSnippets: null,
+  }),
+  discover_fundamentals_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
+  discover_sentiment_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
+  discover_technical_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
+  discover_profile_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
   return (builders[tool] as EmptyBuilder<T>)(input);
+}
+
+/**
+ * Discovery-only cost-gated form: an empty discovery payload tagged
+ * `source: "skipped"` rather than `"unavailable"`. Used by the four
+ * `discover_*_context` tools when `costPreset !== "full"` to communicate to
+ * downstream analysts that investigation was deliberately not run on this
+ * preset, distinct from "tried and failed".
+ */
+type DiscoveryTool =
+  | "discover_fundamentals_context"
+  | "discover_sentiment_context"
+  | "discover_technical_context"
+  | "discover_profile_context";
+
+export function skippedDiscoveryPayload<T extends DiscoveryTool>(
+  tool: T,
+  input: ToolInput<T>,
+): ToolOutput<T> {
+  return { ...emptyPayload(tool, input), source: "skipped" } as ToolOutput<T>;
 }

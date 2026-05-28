@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import type { DebugClientView } from "@flow-state-dev/client";
 import { JsonViewer } from "../shared/json-viewer";
-import { deepEqual } from "../../lib/utils";
+import { looseDeepEqual } from "@flow-state-dev/core/helpers";
 
 type Mode = "server" | "client";
 
@@ -122,7 +122,7 @@ function resolveClientValue(
     return { diverges: false, clientValue: state, hasClientValue: state !== null && state !== undefined, notice: null };
   }
   if (view.ok === true) {
-    const matches = deepEqual(state ?? null, view.value ?? null);
+    const matches = looseDeepEqual(state ?? null, view.value ?? null);
     return {
       diverges: !matches,
       clientValue: view.value,

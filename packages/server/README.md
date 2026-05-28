@@ -1,21 +1,116 @@
 # @flow-state-dev/server
 
-**The runtime. Register flows, execute actions, stream results — three lines to a complete API.**
+**The runtime. Register flows, execute actions, stream results — one config object to a complete API.**
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import myFlow from "./flows/my-flow";
+
+export const flowstate = createFlowState({
+  flows: { myFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+Mount it with a platform adapter (`@flow-state-dev/vercel/next` on Vercel, `@flow-state-dev/next` elsewhere):
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+That's a full API with action execution, session management, SSE streaming with resume, and state snapshots.
+
+## createFlowState
+
+`createFlowState(options)` builds the runtime from one declarative object and returns a `FlowState` handle:
+
+- `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
+- `ready(): Promise<void>` — eager warmup, idempotent.
+- `dispose(): Promise<void>` — release pooled resources across every declared store.
+- `activeProfile`, `settings`, `meta` — read-only diagnostics.
+
+Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Stores and capability profiles
+
+`stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
+
+```ts
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
+import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
+
+createFlowState({
+  flows: { myFlow },
+  stores: {
+    prod: { primary: vercelPostgresStores() },
+    dev: { primary: inMemoryStores() },
+  },
+  defaultProfile: "dev",
+});
+```
+
+Adapter factories: `inMemoryStores()`, `filesystemStores({ rootDir })` (this package), `postgresStores(options)` (`@flow-state-dev/store-postgres`), `sqliteStores(options)` (`@flow-state-dev/store-sqlite`), `vercelPostgresStores()` (`@flow-state-dev/vercel/store`).
+
+### Profile selection
+
+The active profile resolves on first use, first match wins: `process.env.FSD_ENV` → `defaultProfile` → first declared profile. `NODE_ENV` is intentionally not consulted — an explicit selector keeps a production build from silently pointing at production infrastructure.
+
+### Settings
+
+`settings` is instance-level config blocks read via `ctx.settings`. Type it by declaration-merging into `FlowStateSettings`:
+
+```ts
+declare module "@flow-state-dev/core" {
+  interface FlowStateSettings {
+    sandbox: { type: "local" | "vercel" | "memory" };
+  }
+}
+
+createFlowState({
+  flows: { myFlow },
+  stores: { default: { primary: inMemoryStores() } },
+  settings: { sandbox: { type: "local" } },
+});
+```
+
+Then read `const s = ctx.settings.sandbox` inside any block.
+
+### Serverless background work
+
+On platforms that freeze the function after the response (Vercel), pass the platform keep-alive primitive at construction so fire-and-forget work isn't killed:
+
+```ts
+import { after } from "next/server";
+
+createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
+```
+
+It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
+
+### Connection resilience
+
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](../../apps/docs/docs/server/connection-resilience.md) for tuning.
+
+## Lower-level: registry and router
+
+`createFlowApiRouter` and `createFlowRegistry` still exist for custom transports and advanced wiring. Most users want `createFlowState`. The sections below document the lower-level surface.
 
 ```ts
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import myFlow from "./flows/my-flow";
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
-const router = createFlowApiRouter({ registry });
+const router = createFlowApiRouter({ registry, stores });
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = router;
 ```
-
-That's a full API with action execution, session management, SSE streaming with resume, and state snapshots. Drop it into a Next.js catch-all route and you're done.
 
 ## What this package does
 
@@ -63,9 +158,10 @@ adapter.
 ## Authentication
 
 Per-flow `defineFlow({ authentication })` and a host-level
-`createFlowApiRouter({ resolvePrincipal })` configure how the framework
-resolves the caller principal for every inbound transport. The framework
-owns the contract; the host owns credential verification.
+`resolvePrincipal` (on `createFlowState`, or `createFlowApiRouter` for the
+lower-level surface) configure how the framework resolves the caller
+principal for every inbound transport. The framework owns the contract; the
+host owns credential verification.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -209,6 +305,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `createInMemoryStores` — Fast, ephemeral stores for testing
 - `createFilesystemStores` — Persistent stores for development and production
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
+- `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - Scope store factories and CAS/state ops
 
 **Streaming:**
@@ -222,6 +319,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
 - Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
+- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See `apps/docs/docs/advanced/sequencer-side-chains.md` for the two-signal cancellation contract.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
@@ -246,14 +344,21 @@ interface ContentStore {
   set(scopeType, scopeId, resourceKey, content): Promise<void>;
   delete(scopeType, scopeId, resourceKey): Promise<void>;
   getAll(scopeType, scopeId): Promise<Record<string, string>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, string>>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
+Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
+
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
 ```ts
-import { createInMemoryContentStore, createInMemoryCheckpointStore } from "@flow-state-dev/server";
+import {
+  createInMemoryContentStore,
+  createInMemoryResourceStateStore,
+  createInMemoryCheckpointStore
+} from "@flow-state-dev/server";
 
 const stores: StoreRegistry = {
   session: mySessionStore,
@@ -262,6 +367,7 @@ const stores: StoreRegistry = {
   org: myOrgStore,
   activeRequests: myActiveRequestRegistry,
   content: createInMemoryContentStore(),
+  resourceState: createInMemoryResourceStateStore(),
   checkpoints: createInMemoryCheckpointStore(),
 };
 ```
@@ -269,6 +375,23 @@ const stores: StoreRegistry = {
 Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
 
 **Migrating from inline `resourceContent`:** Earlier versions stored content inline on `SessionRecord`/`UserRecord`/`OrgRecord` as a `resourceContent: Record<string, string>` field. That field has been removed. Operators with content already persisted inline must copy it into `ContentStore` before upgrading — for each scope record, walk its old `resourceContent` map and call `stores.content.set(scopeType, scopeId, key, value)` per entry. After the migration the field is silently dropped on the next record write.
+
+## ResourceStateStore
+
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`.
+
+```ts
+interface ResourceStateStore {
+  get(scopeType, scopeId, resourceKey): Promise<JsonObject | undefined>;
+  set(scopeType, scopeId, resourceKey, state): Promise<void>;
+  delete(scopeType, scopeId, resourceKey): Promise<void>;
+  getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  deleteAll(scopeType, scopeId): Promise<void>;
+}
+```
+
+The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
 
 ## CheckpointStore
 

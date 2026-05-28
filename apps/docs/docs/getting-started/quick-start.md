@@ -66,7 +66,9 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). To chain multiple blocks together, you'd compose them with a **sequencer**:
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. See [Generator context > User slot](/docs/advanced/generator-context#user-slot) for the interaction.
+
+To chain multiple blocks together, you'd compose them with a **sequencer**:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
@@ -80,20 +82,27 @@ The quick-start doesn't need one yet. [Your First Flow](/docs/getting-started/yo
 
 ## 4. Mount the server
 
-One catch-all route gives you action dispatch, SSE streaming, and session state:
+Describe the runtime once, then mount it with one catch-all route. That route gives you action dispatch, SSE streaming, and session state:
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import chatFlow from "@/flows/hello-chat/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
 
-const router = createFlowApiRouter({ registry });
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 That's it for the backend. You now have action execution, SSE streaming with resume, and session persistence under `/api/flows/`.
@@ -132,7 +141,7 @@ function Chat() {
       >
         <input name="message" placeholder="Type a message..." />
         <button type="submit" disabled={session.isStreaming}>
-          {session.isStreaming ? "Thinking..." : "Send"}
+          {session.isStreaming ? "Working..." : "Send"}
         </button>
       </form>
     </div>

@@ -46,6 +46,26 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
       return entries;
     },
 
+    async getByPrefix(
+      scopeType: ContentScopeType,
+      scopeId: string,
+      keyPrefix: string
+    ): Promise<Record<string, string>> {
+      // Prefix match via LEFT(...) = prefix rather than LIKE — sidesteps
+      // LIKE wildcard escaping (`%`/`_` are legal in resource keys). An
+      // empty prefix matches every key (LEFT(key, 0) = '').
+      const result = await executor.query(
+        "SELECT resource_key, content FROM resource_content " +
+          "WHERE scope_type = $1 AND scope_id = $2 AND LEFT(resource_key, char_length($3)) = $3",
+        [scopeType, scopeId, keyPrefix]
+      );
+      const entries: Record<string, string> = {};
+      for (const row of result.rows) {
+        entries[row.resource_key as string] = row.content as string;
+      }
+      return entries;
+    },
+
     async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
       await executor.query(
         "DELETE FROM resource_content WHERE scope_type = $1 AND scope_id = $2",

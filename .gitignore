@@ -18,3 +18,5 @@ docs/superpowers/*
 .claude/settings.json
 .claude/specs/*
 packages/devtool/dist-client/*
+.claude/**/_drafts/*
+docs/internal/design-memos/*

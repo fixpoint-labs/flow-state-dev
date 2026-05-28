@@ -1,5 +1,5 @@
 ---
-name: fsd:create_spec
+name: fsd:create-spec
 description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, and produce a comprehensive implementation spec attached to the Linear issue.
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142>"
 ---
@@ -13,6 +13,23 @@ You are a specification research and authoring agent. Given a Linear issue, your
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
+
+**Specs earn their keep by avoiding implementation work, not by producing it.** Some Linear issues describe features that should not be built — the use case is already served by an existing primitive, the proposed API encodes single-vendor knowledge into a multi-vendor surface, or the new code is purely ergonomic over capability that already exists. When the research surfaces any of these patterns or patterns similar to them, your job is to *say so* and propose alternatives, not to mechanically deliver a spec that adds maintenance debt. Step 3.5 is a required gate that forces this question after research lands but before drafting begins. Do not skip it.
+
+## Companion skills
+
+The spec is the input to `fsd:implement-issue`, which auto-routes based on the Linear category label:
+
+- **Bug** → implementation follows `fsd:diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
+- **Feature / Enhancement** → implementation follows `fsd:tdd` (red-green-refactor with vertical tracer-bullet slices).
+
+Shape the spec's Testing Strategy (section 7) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
+
+Other skills the spec author should reach for when relevant:
+
+- **`fsd:zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
+- **`fsd:prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
+- **`fsd:improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in section 8 (Non-Goals) as a follow-up flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `fsd:improve-codebase-architecture`."*
 
 ## Workflow
 
@@ -37,11 +54,12 @@ Launch two sub-agents in parallel:
 #### Agent A: Codebase Analysis
 Launch a `feature-dev:code-explorer` sub-agent to:
 - Trace the relevant code paths that this issue touches
-- Map the current architecture for the affected area (packages, modules, key abstractions)
+- Map the current architecture for the affected area (packages, modules, key abstractions). If the area is genuinely unfamiliar, ask for the map in `fsd:zoom-out` shape first (package / flow / actions / block kinds / capabilities / scopes / items / package boundaries / callers) before diving deeper
 - Identify existing patterns and conventions that the implementation must follow
 - Find related code that might be affected by or inform the implementation
 - Read relevant architecture docs (`docs/architecture/*.md`) and best practices
 - Check `AGENTS.md` for any implementation guardrails
+- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the Non-Goals section as follow-up flags to be handled later via `fsd:improve-codebase-architecture`
 
 #### Agent B: Dependency & PR Context
 Launch an `Explore` sub-agent to:
@@ -120,7 +138,7 @@ The agent must answer, in order:
    - **Cross-links** — which other pages should link to this, and which should this link to? List both directions.
    - **Voice constraints** — explicitly cite the `CLAUDE.md` "Writing Style" rules that are most likely to be violated for this topic (e.g., "watch for em-dashes", "avoid 'powerful' adjective", "introduce term `capability` on first use").
 
-6. **Return a structured docs plan** with one entry per affected file, in the format the spec template requires (see section 8 below).
+6. **Return a structured docs plan** with one entry per affected file, in the format the spec template requires (see section 9 below).
 
 **Heuristics the agent should apply:**
 - A new public function or capability almost always needs at least: a README entry, an API reference entry, and either a Fundamentals/Ecosystem page or an extension to one.
@@ -132,9 +150,93 @@ The agent must answer, in order:
 - Anything that changes streaming, items, or state semantics also requires updating `apps/docs/docs/streaming/` or `apps/docs/docs/state/` pages — these are load-bearing for user mental models and must stay accurate.
 - If the change touches a concept marked in a "deprecated" page, also update the deprecation page with the migration path.
 
+### Step 3.5: Necessity check — should we build this at all?
+
+This step is required, not optional. By now you have codebase analysis (Step 2), pattern matching against existing features (Step 3D), and industry research (Step 3C). That is enough to honestly answer whether the issue describes work that should happen — or whether the existing surface already serves the use case and the spec would add maintenance debt with no new capability.
+
+The incentive gradient of this workflow pulls toward producing a spec: that's the named deliverable, and by this point you have sunk-cost in research. Resist that pull. The deliverable for some issues is a short *case against shipping*, not a spec.
+
+**Answer these in your reasoning before drafting:**
+
+1. **What existing primitive could a user adopt today to solve this in their own code?** Identify the framework feature(s) — block kind, capability, pattern, escape hatch (`providerTools`, raw `tools`, `uses`), connector, slot type, item type. If none exists, say so explicitly. If one exists, write down the minimal code snippet a user would write to use it (no more than 5 lines).
+
+2. **What does the proposed spec add that the existing primitive doesn't?** Be honest. Possible deltas, ranked from strongest to weakest:
+   - **Normalization across providers / variants.** The framework maps one config shape to many provider-specific shapes. Strongest case.
+   - **First-class observability or replay.** DevTool integration, item taxonomy, trace events, time-travel. Strong case — but verify the observability can't be added independently of the proposed field (e.g., extending `BlockTraceItem.generator.providerTools` once instead of one field per tool).
+   - **Composition with framework features.** The new thing has to interact with state scopes, lifecycle hooks, capability resolution, sequencer state in ways a user-space wrapper couldn't. Strong case.
+   - **New vocabulary that shapes user reasoning.** Introduces a term users will search for, teach to teammates, encounter in error messages — the term lives in the framework's mental model. Real case, but examine carefully whether the term *needs* to be at framework level.
+   - **Discoverability only.** Users would find it faster as a config field than in docs. Weak — docs solve discoverability.
+   - **Ergonomic only.** Saves a few characters, bakes in a default. Weakest — a docs recipe or a tiny exported helper captures the same value at far less cost.
+
+3. **Does the cited precedent actually apply?** If the spec mirrors an existing pattern (an analogous field, capability, or block), verify the precedent has the same load-bearing properties. A precedent that normalized across providers does not transfer to a provider-locked feature. A precedent that composed with framework lifecycle does not transfer to a one-shot config flag. Mirroring syntax without mirroring semantics is the most common spec-skill failure mode.
+
+4. **Is the framework being asked to absorb single-vendor knowledge?** Provider-specific identifiers (versioned tool names like `advisor_20260301`, `bash_20250124`, `webSearch_20250305`; provider-only enums; vendor SDK shapes) on the framework's public type surface mean every vendor beta becomes framework API churn. This is sometimes the right call — but only when cross-provider normalization is happening *or* will plausibly happen within the next release window. If the feature is structurally one-vendor-only with no analog elsewhere, treat that as a strong signal to push back toward `providerTools` (or the analogous escape hatch).
+
+5. **Does the "error path" hide the real problem?** If the spec includes a "throws when used on the wrong provider / model / context" decision, ask: *would that error be necessary if the API were at a different level of abstraction?* Often the throw is compensating for putting platform-specific knowledge in a platform-agnostic surface. The right answer in those cases is to move the platform knowledge out (back into the escape hatch where the lock-in is visible at the call site) rather than to add a runtime guard.
+
+6. **Path-of-least-resistance test.** If we ship this, will the next similar issue have a stronger case for shipping the same way? If yes, picture where that path leads — a public config grab-bag of one field per vendor beta, an escape hatch that becomes vestigial. Are we comfortable with that destination? Specs that set a precedent should be evaluated against the precedent's logical extension, not just the immediate ask.
+
+**The required output of this step: a "Necessity verdict"** — one of:
+
+- **Build as scoped.** The spec adds load-bearing value (normalization, observability, composition, vocabulary) the existing primitive cannot provide, and the precedent transfers. Proceed to Step 4.
+- **Build smaller.** Some part of the issue earns its keep (e.g., a DevTool field, a docs entry), but the rest is wrapper-over-primitive. Propose a reduced scope; describe what to drop. Pause for user confirmation before proceeding to Step 4 with the reduced scope.
+- **Don't build — close the issue.** The existing primitive solves the problem; users can adopt it today. Optionally surface the recipe in docs.
+- **Don't build — reshape to docs / recipe.** The existing primitive works but isn't discoverable. Propose a docs-only deliverable with a concrete page placement.
+- **Don't build — reshape to a small helper.** A single exported convenience wrapper over the existing primitive (e.g., `advisorTool({...}): ProviderTool`) captures the value without expanding the public config surface. Propose the helper's signature and where it lives.
+
+**When the verdict is anything other than "Build as scoped," STOP.** Do not draft a spec the user has not agreed to. Present the case to the user in this shape:
+
+```
+Necessity check — recommend [verdict].
+
+Existing primitive: <what already solves this, with the user-space code>.
+Spec would add: <honest list of deltas, weakest to strongest>.
+Why I'd not ship as specced: <2–4 sentences>.
+Alternatives I'd consider:
+  (a) Cancel the issue — <one-line outcome>
+  (b) Reshape to docs/recipe — <one-line outcome>
+  (c) Reshape to helper — <one-line outcome, with helper signature>
+  (d) Build a scoped-down version — <what we keep, what we drop>
+  (e) Proceed with the original scope — <under what argument>
+
+Want me to proceed with one of these, or do you want to override and have me spec the original scope?
+```
+
+Keep it brief — the user shouldn't have to read a page to make a call. If the user says "ship as specced anyway," do so; their judgment overrides yours. If they pick a reshape, restart the workflow with the new scope (you may be able to skip parts of Steps 2–3 if the new scope is narrower).
+
+**Calibration — don't push back for the sake of it.** The gate exists to catch wrapper-feature requests and single-vendor leakage, not to second-guess every framework addition. The verdict should be **"Build as scoped"** when the issue describes any of:
+
+- A feature that normalizes behavior across multiple provider / platform / runtime variants
+- A new vocabulary term that becomes part of how users reason about the system (block kind, scope, item type, capability category)
+- An observability or lifecycle integration that needs framework-side hooks unavailable in user space
+- A composition with existing framework features that wouldn't work outside the framework's resolution path
+- A bug fix or correctness change — those don't go through this gate at all
+
+**Signals that the verdict should be "Don't build" or "Build smaller":**
+
+- The proposed change is mostly a `boolean | Config` toggle that resolves to one factory call
+- The "feature" exists in a single vendor's API and has no analog elsewhere — and the framework would not be doing any translation
+- A user could write the equivalent in 1–3 lines of existing escape-hatch code
+- The cited precedent shares syntax but not semantics (the precedent normalized; this would not)
+- The spec's edge-case table has entries that exist only because of where the API lives, not because of what it does
+- "Defaults baked into the framework" is the main value delta over user-space wiring
+- The spec includes a provider/platform guard error code
+
+If two or more signals fire, that is a strong vote for pushing back.
+
 ### Step 4: Synthesize and Draft Spec
 
-Using the research from all four agents, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
+Before drafting, check whether the research has surfaced a **design question that cannot be resolved from existing code alone**. Examples:
+
+- Two plausible block / pattern / capability shapes that exercise different runtime behaviours
+- A state model that "looks fine on paper" but you can't tell whether scope boundaries handle edge cases correctly
+- A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
+
+If yes, **stop drafting and run `fsd:prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+
+If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
+
+Once design questions are resolved, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
 
 #### Spec Document Structure
 
@@ -142,55 +244,70 @@ Using the research from all four agents, draft the implementation spec. The spec
 
 **Sections:**
 
-1. **Overview**
+1. **TLDR**
+
+   A scan-first summary that anyone opening the document can read to know exactly what's changing without reading further. Three parts, in this order:
+
+   - **One-sentence statement** of what's being built / fixed / changed, in plain terms.
+   - **Bulleted list of concrete deliverables.** Each bullet is one shippable thing — a new file, a modified API, an added capability, a removed function, a docs page. Use the form `<verb> <thing> in <location>` (e.g., *"Add `resumeFromSequence` parameter to `createSSEStream()` in `packages/server/src/streaming/sse.ts`"*). Keep the list to 3–8 bullets; if the change has more deliverables than that, group by area (e.g., *"Server:"*, *"Client:"*, *"Docs:"*) and bullet within each group. Group order should mirror the Implementation Sequence (section 5) so readers can pivot from TLDR to sequence without re-mapping.
+   - **Size estimate.** One of: **Small** (1 file / 1 PR / <100 LOC), **Medium** (multi-file / 1 PR / 100–500 LOC), or **Large** (multi-PR / >500 LOC / multi-package). If multi-PR, name the PR split (e.g., *"Large — split as server changes, then client changes, then docs"*).
+
+   **Write the TLDR last,** after the rest of the spec is drafted. It's a summary of what's below, not an outline of what's coming. Before publishing, verify every TLDR bullet traces to a specific section (3, 4, or 5) — if a bullet has no home in the spec body, either the spec is incomplete or the TLDR overpromised. Reconcile both before publishing.
+
+   The TLDR is not a substitute for any other section — Overview still gives prose context, Implementation Sequence still gives the ordered step list. TLDR is the "if you only read 10 lines, read these" surface.
+
+2. **Overview**
    - Link back to the Linear issue
    - 2-3 sentence summary of what this implements and why
 
-2. **Background & Research**
+3. **Background & Research**
    - Key findings from industry research (with links)
    - How similar problems are solved in the codebase already
    - Why the chosen approach was selected over alternatives
 
-3. **Technical Design**
+4. **Technical Design**
    - Architecture: which packages, modules, and files are involved
    - Data flow: how data moves through the system for this feature
    - API surface: exact function signatures, types, request/response shapes
    - State management: what state is created, modified, or consumed
    - Error handling: specific error cases and how each is handled
 
-4. **Implementation Sequence**
+5. **Implementation Sequence**
    - Ordered list of steps, each independently testable
    - For each step: files to create/modify, what changes, what to test
    - Dependencies between steps (what must complete before what)
 
-5. **Edge Cases & Error Handling**
+6. **Edge Cases & Error Handling**
    - Table of edge cases with expected behavior
    - Error taxonomy: which errors are retryable, which are fatal
    - Fallback behaviors
 
-6. **Testing Strategy**
-   - Unit tests: what to test, which test patterns to follow
-   - Integration tests: if applicable, what end-to-end flows to verify
-   - Existing test files to reference for patterns
+7. **Testing Strategy**
+   - Name the implementation discipline that will apply: **`fsd:tdd`** (red-green-refactor with tracer bullets) for features/enhancements; **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test) for bugs. `fsd:implement-issue` auto-routes by Linear category label — but the spec should match the discipline it'll be executed with.
+   - For features (TDD): list **behaviours** to test in observable terms (items emitted, state changes, return values, lifecycle hooks fired) — not implementation steps. Each behaviour becomes a tracer-bullet cycle.
+   - For bugs (diagnose): name the **seam where the feedback loop will live** (vitest spec at which level, `fsdev block` for single-block isolation, `fsdev run` with NDJSON capture for flow-level, `packages/integration-tests/` for cross-package). Name the regression test seam — Phase 5 of diagnose requires a correct seam, and the spec is where that decision happens.
+   - Existing test files to reference for patterns. For block / pattern / capability tests, the `fsd:write-block-tests` skill encodes the mock-context idiom.
 
-7. **Non-Goals**
+8. **Non-Goals**
    - Explicit list of what this spec does NOT cover
    - Phase 2 / follow-up items (prevents scope creep)
+   - **Deepening opportunities flagged by Agent A** (shallow handlers, capability-shaped wiring, BP-violating patterns in the area being touched) — list them here as follow-ups to be handled later via `fsd:improve-codebase-architecture`. Including them in Non-Goals makes them visible without expanding scope.
+   - **Already-rejected directions** — before adding anything to Non-Goals as a deliberate "won't do," check `docs/internal/out-of-scope/` for an existing rejection. If one matches, reference it rather than restating the reasoning here.
 
-8. **Documentation Plan**
+9. **Documentation Plan**
 
    Synthesize Agent G's output into this section. **Every spec must include this section, even if the conclusion is "no docs changes required" — in which case state that explicitly with a one-line justification.**
 
-   8.1. **Docs change required?** Yes / No, with one-sentence justification grounded in: is this user-facing, does it change observable behavior, does it introduce or alter a concept, does it change a public API surface.
+   9.1. **Docs change required?** Yes / No, with one-sentence justification grounded in: is this user-facing, does it change observable behavior, does it introduce or alter a concept, does it change a public API surface.
 
-   8.2. **Surfaces affected** — checklist:
+   9.2. **Surfaces affected** — checklist:
    - [ ] Reference docs (`apps/docs/docs/`)
    - [ ] Guides (`apps/docs/guides/`)
    - [ ] Package README(s) — list which
    - [ ] Architecture docs (`docs/architecture/`)
    - [ ] Blog post (only if explicitly warranted — announcement, philosophy, migration)
 
-   8.3. **Per-page plan** — one entry per file to create or modify. For each entry:
+   9.3. **Per-page plan** — one entry per file to create or modify. For each entry:
 
    ```
    File: apps/docs/docs/<path>.md
@@ -212,18 +329,18 @@ Using the research from all four agents, draft the implementation spec. The spec
    Voice notes: <which Writing Style rules from CLAUDE.md are most at risk for this topic>
    ```
 
-   8.4. **Sidebar diff summary** — a consolidated view of every change to `sidebars.ts` and `sidebarsGuides.ts`, so the implementer can make all sidebar edits in one pass without re-deriving them from the per-page entries.
+   9.4. **Sidebar diff summary** — a consolidated view of every change to `sidebars.ts` and `sidebarsGuides.ts`, so the implementer can make all sidebar edits in one pass without re-deriving them from the per-page entries.
 
-   8.5. **Cross-link audit** — list of *existing* pages that should be updated to link to any new pages (so new pages aren't orphans).
+   9.5. **Cross-link audit** — list of *existing* pages that should be updated to link to any new pages (so new pages aren't orphans).
 
-   8.6. **What this docs plan deliberately does NOT cover** — explicit non-goals for documentation, mirroring the spec's overall non-goals. (E.g., "Not adding a 'Migration from X' page — that belongs in Phase 2.")
+   9.6. **What this docs plan deliberately does NOT cover** — explicit non-goals for documentation, mirroring the spec's overall non-goals. (E.g., "Not adding a 'Migration from X' page — that belongs in Phase 2.")
 
-9. **Dependencies**
-   - Linear issues that must complete before this starts
-   - Open PRs that must merge first
-   - Any external dependencies (packages, services)
+10. **Dependencies**
+    - Linear issues that must complete before this starts
+    - Open PRs that must merge first
+    - Any external dependencies (packages, services)
 
-10. **Open Questions**
+11. **Open Questions**
     - Anything that needs a decision from the project owner before implementation
     - Options presented with trade-offs for each
 
@@ -248,7 +365,7 @@ Launch a `general-purpose` sub-agent to:
 - Ensure the spec is self-contained enough for an isolated agent session
 
 #### Agent H: Documentation Plan Validation
-Launch an `Explore` sub-agent to review section 8 (Documentation Plan) specifically:
+Launch an `Explore` sub-agent to review section 9 (Documentation Plan) specifically:
 - Does the plan answer "is a docs change required?" with a real justification, or does it punt?
 - For each proposed new page: does the proposed sidebar position actually make sense given sibling pages? Re-read the surrounding category and confirm.
 - For each proposed extension: does the existing page actually exist, and is the proposed insertion point inside it sensible?
@@ -302,6 +419,8 @@ This step is required, not optional. The spec now exists as the authoritative so
 - Anything labeled "design" or "approach" — that's spec territory
 - Long checklists of work items (the spec's Implementation Sequence covers this; the issue's acceptance criteria should be outcome-shaped, not task-shaped)
 
+**Note for borderline issues.** Not every issue warrants a separate spec document. If the work is small enough that the full create-spec workflow would be overkill but still requires agent-ready clarity, the **agent-brief template** at `docs/contributing/agent-brief-template.md` is the right shape for the issue body itself. In that case you're not running create-spec at all — the brief IS the contract. Use create-spec when the implementation needs research, multiple sub-agents, or a documentation plan; use the agent-brief template directly when the issue fits on one screen and the contract is local.
+
 **7.4. What's legitimately allowed to stay even though it's specific:**
 
 - Concrete success criteria that happen to mention public API surface a user will see (e.g., "users can call `defineCapability({...})` to declare a reusable capability") — this is *what users get*, not *how it's built*.
@@ -316,13 +435,15 @@ This step is required, not optional. The spec now exists as the authoritative so
 
 Present the completed spec to the user:
 
-1. **Approach chosen**: 2-3 sentences on what the spec proposes and why
-2. **Key decisions**: any architectural choices made and their rationale
-3. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.
-4. **Issue reshape summary**: one or two sentences on how the Linear issue description was reframed — what implementation detail was moved out, what now leads, and whether anything was found stale/contradicted. If the issue needed no reshape because it was already PM/business-shaped, say so explicitly.
-5. **Dependencies identified**: what must land before this can start
-6. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
-7. **Links**: the Linear issue and the spec document
+1. **Necessity verdict** (one line): "Build as scoped" or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
+2. **TLDR**: paste the spec's TLDR section verbatim. This is the scan-first surface — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, the TLDR itself is wrong; fix it in the spec and then paste here.
+3. **Approach chosen**: 2-3 sentences on what the spec proposes and why
+4. **Key decisions**: any architectural choices made and their rationale
+5. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.
+6. **Issue reshape summary**: one or two sentences on how the Linear issue description was reframed — what implementation detail was moved out, what now leads, and whether anything was found stale/contradicted. If the issue needed no reshape because it was already PM/business-shaped, say so explicitly.
+7. **Dependencies identified**: what must land before this can start
+8. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
+9. **Links**: the Linear issue and the spec document
 
 If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
 
@@ -334,7 +455,8 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
-- **Documentation is part of the spec, not an afterthought.** Every spec must include section 8 (Documentation Plan) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
+- **Documentation is part of the spec, not an afterthought.** Every spec must include section 9 (Documentation Plan) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
 - **Reframing the issue is part of the spec workflow, not a post-script.** Step 7 is required. The moment the spec is published, any solution detail still living in the issue is duplicate or stale. Removing it preserves the issue/spec separation and prevents future readers from following the wrong source. Do not skip it because the issue "looks fine" — re-read it through the PM/business lens and prune.
 - **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
+- **Push back when you should.** Your job is not to produce a spec on every issue; it is to produce specs for the issues that warrant them. When Step 3.5 surfaces a wrapper-over-primitive shape, single-vendor leakage into framework surface, or a precedent-mirror that doesn't transfer semantically, the right deliverable is a concise case for *not* shipping and one or more proposed alternatives. The user can override — but you have to actually present the case. A spec the user later cancels is more expensive than five minutes of "should we even build this?"

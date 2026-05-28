@@ -81,6 +81,29 @@ fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
 
 Options: `--seed-session`, `--seed-user`, `--seed-project`. Accept inline JSON or a file path. Simulates scenarios like "user has already sent 5 messages" or "project has existing config."
 
+### Intent overrides in CI and testing
+
+Swap the model an intent resolves to from the environment, without touching resolver code. Useful when you want to run the real flow against a cheap model in dev or CI, then ship production with the same source.
+
+```bash
+# .env.test
+FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
+FSDEV_INTENT_UTILITY=openai/gpt-5.4-mini
+FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+```
+
+```yaml
+# GitHub Actions
+- name: Run integration tests
+  env:
+    FSDEV_INTENT_CHAT: openai/gpt-5.4-mini
+    FSDEV_INTENT_UTILITY: openai/gpt-5.4-mini
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  run: pnpm test:integration
+```
+
+The resolver prints a one-line dev log per override at construction (`[flow-state-dev] Intent "chat" overridden by FSDEV_INTENT_CHAT; ...`), so you can confirm the override took effect. Production deploys leave the env vars unset and use the declared candidates. Full reference: [Models › Env-var overrides](/docs/fundamentals/models#env-var-overrides).
+
 ---
 
 ## The DevTool

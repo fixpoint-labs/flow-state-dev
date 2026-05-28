@@ -6,12 +6,12 @@
  * resources, clientData, and tool-use.
  *
  * Pipeline:
- *   applyRequestedMode → intentSelector → resolveThinkingStyle → thinkingStyleRouter
+ *   applyRequestedMode → skillActivator → resolveThinkingStyle → thinkingStyleRouter
  *     ├─ default (or auto-classified default) → assistantGenerator (direct generation)
  *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
  *     └─ supervisor         → supervisor wrapping the assistant
  *
- * `intentSelector` (FIX-421) decides which skills (if any) apply to the
+ * `skillActivator` (FIX-421) decides which skills (if any) apply to the
  * turn before the main generator runs; matched skills are activated into
  * session state and injected into the system prompt by the skills
  * capability's active-skill body formatter.
@@ -27,7 +27,7 @@ import {
 import { system as memorySystem } from "@flow-state-dev/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
-import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
+import { AnalyzerResultSchema, responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
 import {
   updateArtifact,
@@ -37,9 +37,10 @@ import {
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
+  thinkingStyleInputSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
-  intentSelectorBlock,
+  skillActivatorBlock,
   bashCap,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
@@ -72,9 +73,9 @@ const mem = memorySystem({
   semantic: true,
   // Enables the rolling-summary digest tier. Without this the unified
   // memory formatter has nothing to render in the system prompt's
-  // <memory> section once working memory drifts past capacity. The capture
-  // pipeline also runs `digestRegenerate` after each turn so the digest
-  // stays fresh as new facts and episodes accumulate.
+  // <memory> section once working memory drifts past capacity. The digest
+  // refreshes after consolidation/prune actually mutate the semantic store
+  // (see `withDigestRegenerate`), not on every turn.
   digest: true,
 });
 
@@ -105,10 +106,6 @@ const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
-
-const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists", "evented-actors"])
-  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -162,7 +159,10 @@ const assistantGenerator = generator({
   // system message. Capabilities (mem, perspective) contribute their own
   // tags; same-key contributions across sources aggregate cleanly. See
   // docs/fundamentals/generator-context.md for the full contract.
-  context: { voice: voiceContext },
+  context: { 
+    todaysDate: new Date().toLocaleDateString(),
+    voice: voiceContext
+  },
 
   inputSchema,
   history: { limit: 8 },
@@ -247,7 +247,6 @@ const applyRequestedMode = handler({
 const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
-  outputSchema: z.never(),
 })
   .tapIf(
     (input) => input.thinkingStyle !== "auto",
@@ -305,6 +304,11 @@ const applyFeatures = handler({
 const biasAnalyzerAdapter = sequencer({
   name: "bias-adapter",
   inputSchema: z.object({ userInput: z.string(), response: z.string() }),
+  // responseAuditor collects each analyzer's output as an AnalyzerResult.
+  // The terminal `.map` below hand-builds that shape; declaring it here
+  // makes the sequencer's runtime exit gate reject any drift (e.g. a score
+  // outside [0,1], or a renamed field) before it reaches the auditor.
+  outputSchema: AnalyzerResultSchema,
 })
   .map((input: { userInput: string; response: string }) => ({
     userInput: input.userInput,
@@ -411,7 +415,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   // FIX-421: up-front skill router. Decides activeSkills before the
   // generator runs; results land on `session.state.activeSkills` for
   // the skills capability's active-skill formatter to render.
-  .tap(intentSelectorBlock)
+  .tap(skillActivatorBlock)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
@@ -474,8 +478,9 @@ const chatAgentFlow = defineFlow({
           // registration). Project to the surface shape the top-bar UI
           // wants — name + source tier, drop the rest.
           const activeSkills =
-            (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
-              .activeSkills ?? [];
+            (ctx.state as {
+              activeSkills?: Array<{ name: string; source?: string; mode?: string }>;
+            }).activeSkills ?? [];
           return {
             currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
             thinkingStyle:
@@ -485,6 +490,7 @@ const chatAgentFlow = defineFlow({
             activeSkills: activeSkills.map((s) => ({
               name: s.name,
               source: s.source ?? "tool",
+              ...(s.mode !== undefined ? { mode: s.mode } : {}),
             })),
           };
         },

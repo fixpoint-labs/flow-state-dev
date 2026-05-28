@@ -53,11 +53,26 @@ export function blockPathSegment(op: string, index: number): string {
 
 /**
  * Formats an iteration segment for iterative sequencer ops (forEach,
- * loopBack, doUntil, doWhile). Iterations are identity-bearing, so they
- * get their own segment after the op segment — e.g. `forEach[0]/iter[2]`.
+ * doUntil, doWhile). Iterations are identity-bearing, so they get their own
+ * segment after the op segment — e.g. `forEach[0]/iter[2]`. (`loopBack`
+ * re-executions use the `loop[N]` prefix segment instead; see `blockPathLoop`.)
  */
 export function blockPathIteration(iteration: number): string {
   return `iter[${iteration}]`;
+}
+
+/**
+ * Formats a loop-generation segment for `loopBack` re-executions. Unlike
+ * `iter[N]` (which `doUntil`/`doWhile`/`forEach` append after the op segment
+ * for a single looped block), this is a parent-scope prefix: a `loopBack` jump
+ * re-runs a *range* of steps, so the marker wraps the whole pass. Inserting it
+ * before the op segment gives every block re-executed in generation N a shared
+ * `loop[N]` ancestor, so their `blockInstanceId`s are distinct per iteration.
+ * Generation 0 (the first pass) emits no segment, so non-looping code and first
+ * iterations are byte-for-byte unchanged.
+ */
+export function blockPathLoop(generation: number): string {
+  return `loop[${generation}]`;
 }
 
 /**

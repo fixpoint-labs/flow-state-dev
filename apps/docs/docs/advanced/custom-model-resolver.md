@@ -90,6 +90,138 @@ Per-call provider preference flows through the resolver callable's optional thir
 resolver("intent/chat", "block-name", { preferProvider: "openai" });
 ```
 
+## Env-var overrides
+
+Env vars overlay `intents` and `defaultModel` at construction. The `env` option lets tests inject a custom source instead of mutating `process.env`. The concept-level walkthrough lives in [Models › Env-var overrides](/docs/fundamentals/models#env-var-overrides); the sections below are the resolver-author reference.
+
+### Format
+
+| Variable | Effect | Value shape |
+| --- | --- | --- |
+| `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `gateway/provider/model`. |
+| `FSDEV_DEFAULT_MODEL` | Replaces `defaultModel`. | Same as above. |
+
+`<NAME>` is `intentName.toUpperCase().replace(/-/g, "_")`. Disallowed values: `intent/*`, `preset/*`, empty / whitespace-only strings, and anything `parseModelString` rejects.
+
+### Semantics
+
+- **Replace, not prepend.** The original candidate list is discarded for that intent.
+- **Read once at construction.** Mutating the env source later in the process has no effect; per-call reads would invalidate the resolver's intent cache.
+- **Throw on bad input.** Construction surfaces malformed values, typo'd `FSDEV_INTENT_*` names, and `FSDEV_DEFAULT_MODEL` set with no intents declared. The path after `applyOverrides` is the existing resolution path — no override-specific branches downstream.
+
+### Validation
+
+Each env-var value passes through the same `parseModelString` parser used for in-code intent candidates. Errors are construction-time and name the offending env var:
+
+```
+createModelResolver: FSDEV_INTENT_CHAT: Invalid model format: "garbage". ...
+createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'gateway/provider/model' string; received "intent/foo".
+createModelResolver: FSDEV_INTENT_NOSUCH does not match any declared intent. Declared intents: chat, plan, utility.
+```
+
+### The `env` option
+
+Tests and library callers can pass an explicit env source:
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "anthropic/claude-sonnet-4.6",
+  intents: { chat: ["anthropic/claude-sonnet-4.6"] },
+  env: { FSDEV_INTENT_CHAT: "openai/gpt-5.4-mini" },
+});
+```
+
+When `env` is passed, the resolver does not read `process.env` for intent overrides — the explicit object shadows the global. This mirrors the existing `detectAvailableProviders` injection seam.
+
+### Precedence
+
+1. A hard-coded `provider/model` or `gateway/provider/model` string passed to a generator (no env-var hook at this layer).
+2. An intent's env override (`FSDEV_INTENT_<NAME>`).
+3. The intent's in-code candidate list.
+4. The `FSDEV_DEFAULT_MODEL` override.
+5. The in-code `defaultModel`.
+
+### Intent-name canonical collisions
+
+`my-custom` and `my_custom` both canonicalize to `FSDEV_INTENT_MY_CUSTOM`. If both names are declared, construction throws with both names and the canonical form so the operator can rename one. The check fires regardless of whether the env var is actually set, because the ambiguity is latent in the configuration itself.
+
+### Interaction with `intentDefaults`
+
+An override replaces the candidate list, not `intentDefaults`. At call time, `mergeDefaults` still drops any provider key bucket whose provider didn't win — so if `intent/chat` originally targets Anthropic with `intentDefaults: { chat: { providerOptions: { anthropic: {...} } } }` and an override pins it to OpenAI, the Anthropic block is dropped silently. No special-casing in the override path.
+
+### Observability
+
+Each applied override emits one `warnOnceDev` call (via `[flow-state-dev] ...`). The dedup key is the env-var name, so two resolvers constructed with the same override emit one warning total in the process. Suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`.
+
+## Intent defaults
+
+`intentDefaults` lets you attach configuration to an intent so generators that resolve through it don't have to repeat it at each call site. The most common use is `providerOptions` — Anthropic thinking budgets, OpenAI reasoning effort, prompt caching. Treat these as defaults, not overrides: the call site still wins.
+
+### Shape
+
+```ts
+interface IntentDefaults {
+  providerOptions?: Record<string, Record<string, unknown>>;
+}
+```
+
+The shape is intentionally open. Future fields (`reasoning`, caching presets, max-token defaults) will land here without a breaking change.
+
+### Provider filtering
+
+When the resolved candidate's provider doesn't match a key in `providerOptions`, that key is dropped silently. If `intent/plan` ships with `providerOptions: { anthropic: { thinking: {...} } }` and the OpenAI fallback wins, the request goes out without the `anthropic` block — matching the underlying AI SDK's per-provider namespace behavior. Power users who want the silent drop surfaced can wrap the resolved model in their own middleware.
+
+### Precedence
+
+From lowest to highest priority, for a request that resolves through an intent:
+
+1. **Intent default** — `intentDefaults[name].providerOptions[<resolvedProvider>]`.
+2. **Generator-level `providerOptions`** — whatever the generator passes at call time. Wins on key collisions; non-conflicting nested keys (intent default sets `thinking.type`, call-site sets `thinking.budgetTokens`) survive together because the merge is deep.
+3. **Prompt caching** — applied with set-if-absent semantics, so it never overwrites either of the above.
+
+When an intent has no available candidate and falls through to `defaultModel`, no intent defaults apply: `defaultModel` has no intent context.
+
+### Worked example
+
+```ts
+const resolver = createModelResolver({
+  defaultModel: "openai/gpt-5.4",
+  intents: {
+    plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"],
+    utility: ["openai/gpt-5.4-mini"],
+  },
+  intentDefaults: {
+    plan: {
+      providerOptions: {
+        anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      },
+    },
+    utility: {
+      providerOptions: {
+        openai: { reasoning: { effort: "low" } },
+      },
+    },
+  },
+});
+```
+
+A generator can still override at the call site:
+
+```ts
+generator({
+  name: "deep-plan",
+  model: "intent/plan",
+  providerOptions: { anthropic: { thinking: { budgetTokens: 32000 } } },
+  // ...
+});
+```
+
+The merged Anthropic block is `{ thinking: { type: "enabled", budgetTokens: 32000 } }` — the intent's `type: "enabled"` survives, and the call site's `budgetTokens` wins on the collision.
+
+### Validation
+
+`createModelResolver` throws at construction if an `intentDefaults` key isn't also present in `intents`. Catches typos eagerly rather than at first call.
+
 ## Array Fallback
 
 Generators support array fallback directly. The resolver tries models in order:

@@ -356,6 +356,19 @@ const result = await dispatchAndExecute(
 // result.taskId, result.output, result.error (per outcome)
 ```
 
+### `onTaskChangeFor(collectionId)`
+
+Wake filter for `.waitForCondition`'s `wakeOn` option. Matches `task-change` component items targeting the given collection and rejects everything else (other collections, `resource_change`, `block_trace`, etc.). Pair it with `whenBoardClaimable` (or any collection-bound predicate) so high-fanout patterns skip predicate evaluation on irrelevant events.
+
+```ts
+import { onTaskChangeFor } from "@flow-state-dev/tasks";
+
+sequencer.waitForCondition(whenBoardClaimable(collection), {
+  timeoutMs: 5_000,
+  wakeOn: onTaskChangeFor(collection.collectionId),
+});
+```
+
 ## `task-change` component items
 
 Every lifecycle mutation emits a `task-change` component item on the active
@@ -445,6 +458,16 @@ Wave 2 follow-ons (not in this package): `reviewPolicy` config field,
 worker-explicit `awaiting_review` return shape, inline `<Plan />` review
 affordances, `tasks.review.requested` cross-flow event topic, default review
 inbox surface.
+
+## Flow policy
+
+Per-task selection policies that shape `TaskWorkerInput.priorWork` for Task Board worker dispatches, plus the observation ledger they read from.
+
+- `flowPolicy` — Built-in selector namespace: `none()`, `declaredDepsOnly()`, `ancestors({ transitive? })`, `recentTrajectory({ n, maxTokens? })`, `allCompleted({ maxTokens? })`, `compact({ recentN })`, `custom(fn, label?)`. The default for every Task Board topology is `declaredDepsOnly`; `planAndExecute` pins `recentTrajectory({ n: 8 })`.
+- `createObservationLedger(options?)` / `createObservationLedgerCapability(options?)` / `bindObservationLedger(ctx, ledger, attribution?)` — Standalone ledger primitives. Task Board wires its own per-run ledger automatically; the capability is for bare generators that want flow-policy semantics without a board.
+- `formatPriorWork(priorWork)` — Render the structured `TaskPriorWork` as a Markdown-ish list for direct injection into a worker prompt.
+- Types: `TaskFlowPolicy`, `TaskPriorWork`, `Observation`, `ObservationLedger`, `ObservationLedgerView`, `ObservationLedgerAccessor`, `CreateObservationLedgerCapabilityOptions`.
+- See [Flow policy](https://flow-state.dev/docs/patterns/flow-policy) for the full guide, including when to override the default and how to write a custom policy.
 
 ## What's not in this package
 

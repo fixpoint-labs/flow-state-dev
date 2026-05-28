@@ -23,7 +23,7 @@ import type {
   ScopeStateOps,
   StateContainer
 } from "@flow-state-dev/core/types";
-import { deepEqual } from "@flow-state-dev/core/utils";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import {
   runWithCAS,
   type CASMutationHint,

@@ -43,6 +43,8 @@ function analystThesis(label: string, headline: string) {
         { h: "Composite reading", p: "Synthesis holds.", items: null },
         { h: "Material items", p: null, items: ["Watch item A", "Watch item B"] },
       ],
+      citations: null,
+      dataQuality: "full" as const,
     },
   };
 }
@@ -125,8 +127,7 @@ function rmStructuredOutput() {
 /**
  * Build the standard generator-mock map. The Phase 2 round-robin agents are
  * `sub`-typed roster generators created by `roundRobin({...})` with names
- * `${instanceName}-roster-${agentName}`. Cheap preset (`fast`,
- * `maxDebateRounds: 1`) selects the `1r-fast` instance.
+ * `${instanceName}-roster-${agentName}`.
  */
 function makeAnalystAndRosterMocks() {
   return {
@@ -146,15 +147,19 @@ function makeAnalystAndRosterMocks() {
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
     }),
+    "company-profile-analyst-generator": mockGenerator({
+      name: "company-profile-analyst-generator",
+      script: [analystThesis("Company Profile memo", "Identity resolved from provider data.")],
+    }),
     // Roster agents stream plain text now (no structured outputSchema) so
     // they emit `message` items visible in the transcript. Mock text matches
     // that shape; record-contribution coerces strings via `coerceText`.
-    "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bullResearcher",
+    "p2-research-debate-roster-bullResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bullResearcher",
       script: [{ text: "Bull round 1 contribution." }],
     }),
-    "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bearResearcher",
+    "p2-research-debate-roster-bearResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
     }),
   };
@@ -168,7 +173,7 @@ const analyzeInput = {
 };
 
 describe("Phase 2 end-to-end", () => {
-  it("happy path — all 7 memos publish and the RM memo carries unresolvedDisagreements", async () => {
+  it("happy path — all 8 memos publish and the RM memo carries unresolvedDisagreements", async () => {
     const stores = createInMemoryStores();
     const sessionId = "p2-e2e-happy";
 
@@ -211,11 +216,12 @@ describe("Phase 2 end-to-end", () => {
     expect(memoStatus.sentiment).toBe("published");
     expect(memoStatus.news).toBe("published");
     expect(memoStatus.technical).toBe("published");
+    expect(memoStatus.companyProfile).toBe("published");
     expect(memoStatus.bull).toBe("published");
     expect(memoStatus.bear).toBe("published");
     expect(memoStatus.researchManager).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const rmMemo = memoResources["memos/p2/research-manager"] as
       | { status?: string; unresolvedDisagreements?: string[] | null }
       | undefined;
@@ -280,7 +286,7 @@ describe("Phase 2 end-to-end", () => {
     expect(memoStatus.bear).toBe("published");
     expect(memoStatus.researchManager).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const bullMemo = memoResources["memos/p2/bull"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

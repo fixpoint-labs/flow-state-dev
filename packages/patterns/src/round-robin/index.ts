@@ -1,23 +1,24 @@
 /**
- * Round Robin pattern — fixed-roster, deterministic-order turn-taking
- * with a judge as the loop terminator.
+ * Round Robin pattern — fixed-roster, deterministic-order turn-taking.
  *
- * Each round runs every roster agent in declared order. After the round
- * completes, a judge inspects the transcript and returns
- * `{ done, summary }`. The pattern cycles until the judge sets
- * `done: true` or `maxRounds` is reached.
+ * Each round runs every roster agent in declared order. An optional
+ * per-round referee audits the round's contributions for argument quality
+ * and emits a critique that subsequent rounds can read; it does not
+ * control termination. The loop exits when `maxRounds` is reached or the
+ * optional `terminateWhen(ctx)` predicate returns true. A synthesizer
+ * runs as the terminal step by default; pass `synthesizer: false` to
+ * skip it and return the raw `RoundRobinFinalShape`.
  *
  * Pipeline:
  *   sequencer
  *     .tap(initContributions)    // clear resource + prime task collection
  *     .tap(stampGoal)            // outer state .goal = input.goal
- *     .tap(incrementRound)       // round++ — loopBack target
+ *     .then(incrementRound)      // round++ — loopBack target
  *     .then(roster[0]).tap(record[0])
  *     ...
  *     .then(roster[N-1]).tap(record[N-1])
- *     .then(judge)               // → { done, summary }
- *     .tap(stashJudgeVerdict)    // patch outer state
- *     .loopBack(incrementRound, { when: !done, maxIterations: maxRounds-1 })
+ *     [.then(referee).tap(stashRefereeCritique)]   // only when referee is provided
+ *     .loopBack(incrementRound, { when: round < maxRounds && !terminateWhen(ctx) })
  *     .map(buildFinalShape)
  *     [.then(synthesizer)]
  */
@@ -25,11 +26,13 @@ import { sequencer, handler } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  InstructionsSlot,
   SequencerDefinition,
   ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
 import type {
+  BlockContext,
   BlockDefinition,
   DefinedResource,
 } from "@flow-state-dev/core/types";
@@ -40,40 +43,38 @@ import {
   createRoundRobinContributions,
   type RoundRobinContributionsState,
   type RoundRobinFinalShape,
-  type RoundRobinJudgeOutput,
+  type RoundRobinInput,
+  type RoundRobinRefereeOutput,
   type RoundRobinState,
 } from "./schemas";
 import { createInitContributions } from "./blocks/init-contributions";
 import { createRecordContribution } from "./blocks/record-contribution";
 import { createRosterAgent } from "./blocks/default-roster-agent";
-import { createJudge } from "./blocks/default-judge";
 import { createSynthesize } from "./blocks/default-synthesizer";
 
 export {
   roundRobinInputSchema,
   roundRobinStateSchema,
   roundRobinContributionEntrySchema,
-  roundRobinJudgeOutputSchema,
   roundRobinContributionsStateSchema,
+  roundRobinRefereeOutputSchema,
+  roundRobinRefereeCritiqueSchema,
   createRoundRobinContributions,
 } from "./schemas";
 export type {
   RoundRobinInput,
   RoundRobinState,
   RoundRobinContributionEntry,
-  RoundRobinJudgeOutput,
   RoundRobinContributionsState,
+  RoundRobinRefereeOutput,
+  RoundRobinRefereeCritique,
   RoundRobinFinalShape,
 } from "./schemas";
 export { createRosterAgent } from "./blocks/default-roster-agent";
-export { createJudge } from "./blocks/default-judge";
+export { createReferee } from "./blocks/default-referee";
 export { createSynthesize } from "./blocks/default-synthesizer";
 export { createInitContributions } from "./blocks/init-contributions";
 export { createRecordContribution } from "./blocks/record-contribution";
-
-type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
 
 /** A single seat in the round-robin roster. */
 export interface RosterEntry {
@@ -100,47 +101,50 @@ export interface RoundRobinConfig<
 > {
   name: string;
   roster: RosterEntry[];
-  /** Default 5. Hard cap on round cycling regardless of judge verdict. */
+  /** Default 5. Hard cap on round cycling. */
   maxRounds?: number;
+  /**
+   * Optional runtime predicate evaluated after each round completes. Return
+   * `true` to exit the loop before `maxRounds` is reached. Reads from
+   * `ctx.sequencer.state` (round counter, referee critiques) and
+   * `ctx.session.state` (consumer-driven termination conditions).
+   *
+   * Should be a pure, total function. A throwing predicate surfaces as a
+   * loop runtime error.
+   */
+  terminateWhen?: (ctx: BlockContext) => boolean;
   /**
    * Optional shared contributions resource. When omitted, the pattern
    * creates its own internal instance via `createRoundRobinContributions()`.
    *
-   * Pass an external instance when:
-   * - Multiple `roundRobin()` instances need to share state — e.g. behind
-   *   a `router()` that picks one at runtime. The pattern allocates the
-   *   resource per call, so without a shared reference the router's
-   *   resource-merge would reject with `Resource conflict: "contributions"`.
-   * - Consumer blocks outside the pattern need to read the running
-   *   transcript via `ctx.resources` instead of threading it through
-   *   `RoundRobinFinalShape.contributions`.
-   *
-   * Register the shared resource on the flow's `resources` map so
-   * external consumers can declare it on their own `resources:` slot.
+   * Pass an external instance when consumer blocks outside the pattern need
+   * to read the running transcript via `ctx.resources` instead of threading
+   * it through `RoundRobinFinalShape.contributions`. Register the shared
+   * resource on the flow's `resources` map so external consumers can declare
+   * it on their own `resources:` slot.
    */
   contributions?: DefinedResource;
   /**
-   * Judge override. Must produce `{ done: boolean, summary: string }`.
-   * Pass `false` is NOT permitted — Round Robin requires a terminator.
-   * Use a stub judge that always returns `{ done: false }` to lean on
-   * `maxRounds`.
+   * Optional per-round argument-quality auditor. When provided, runs after
+   * every roster round; its `{ critique }` output is appended to outer
+   * state as a `RoundRobinRefereeCritique` and rendered into subsequent
+   * rounds' default roster-agent prompts. Does NOT control termination.
    */
-  judge?: BlockDefinition<any, any>;
-  /** Optional final synthesizer. Pass `false` to return the raw final shape. */
+  referee?: BlockDefinition<any, any>;
+  /** Terminal synthesis step. Pass `false` to return the raw final shape. */
   synthesizer?: BlockDefinition<any, any> | false;
   /** Output schema applied to the synthesizer's output. */
   outputSchema?: TOutputSchema;
   /** Pattern-level instructions injected into default blocks only. */
-  instructions?: InstructionsSlot;
+  instructions?: InstructionsSlot<RoundRobinInput>;
   /** Default model for internal generators. Default `"intent/chat"`. */
   model?: string;
-  /** Capabilities forwarded to default roster agents, judge, synthesizer. */
+  /** Capabilities forwarded to default roster agents, referee, synthesizer. */
   uses?: UsesSlot;
-  /** Tools forwarded to default roster agents, judge, synthesizer. */
+  /** Tools forwarded to default roster agents, referee, synthesizer. */
   tools?: ToolsSlot;
   /** Generator context slot forwarded to defaults. */
   context?: GeneratorSlot<any, any>;
-  judgeAgentType?: AgentType;
   synthesizerAgentType?: AgentType;
   /** Stable id for the audit `TaskCollection`. Defaults to `name`. */
   collectionId?: string;
@@ -169,12 +173,12 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     roster,
     maxRounds = 5,
+    terminateWhen,
     instructions,
     model,
     uses,
     tools,
     context,
-    judgeAgentType,
     synthesizerAgentType,
     outputSchema,
   } = config;
@@ -233,42 +237,32 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     outputSchema: z.object({ round: z.number() }),
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       const next = state.round + 1;
       await ctx.sequencer!.patchState({ round: next });
       return { round: next };
     },
   });
 
-  const judgeBlock =
-    config.judge ??
-    createJudge({
-      name,
-      contributions,
-      accessorKey,
-      ...(model !== undefined ? { model } : {}),
-      ...(context !== undefined ? { context } : {}),
-      ...(uses !== undefined ? { uses } : {}),
-      ...(tools !== undefined ? { tools } : {}),
-      ...(instructions !== undefined ? { instructions } : {}),
-      ...(judgeAgentType !== undefined ? { agentType: judgeAgentType } : {}),
-    });
-
-  const stashJudgeVerdict = handler({
-    name: `${name}-stash-judge`,
+  const stashRefereeCritique = handler({
+    name: `${name}-stash-referee`,
     inputSchema: z.any(),
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
-      const verdict = input as RoundRobinJudgeOutput;
+      const out = input as RoundRobinRefereeOutput;
+      const state = ctx.sequencer!.state;
       await ctx.sequencer!.patchState({
-        done: verdict.done,
-        lastJudgeSummary: verdict.summary ?? "",
+        refereeCritiques: [
+          ...state.refereeCritiques,
+          { round: state.round, critique: out.critique },
+        ],
       });
     },
   });
 
   // Build the pipeline. Start with init + stamp + increment, then chain
-  // (roster[i] → record[i]) for each entry, then judge + stash.
+  // (roster[i] → record[i]) for each entry, optionally append the referee
+  // + stash, then close the loop.
   let pipeline: any = sequencer({
     name,
     inputSchema: roundRobinInputSchema,
@@ -305,22 +299,30 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     pipeline = pipeline.then(agentBlock).tap(recordTap);
   }
 
+  if (config.referee !== undefined) {
+    pipeline = pipeline.then(config.referee).tap(stashRefereeCritique);
+  }
+
   pipeline = pipeline
-    .then(judgeBlock)
-    .tap(stashJudgeVerdict)
     .loopBack(incrementRound.name, {
-      when: (out: any) => !(out as RoundRobinJudgeOutput).done,
+      when: (_value: unknown, ctx: any) => {
+        const state = ctx.sequencer!.state;
+        if (state.round >= maxRounds) return false;
+        if (terminateWhen !== undefined && terminateWhen(ctx as BlockContext)) {
+          return false;
+        }
+        return true;
+      },
       maxIterations: Math.max(0, maxRounds - 1),
     })
     .map((_value: unknown, ctx: any) => {
-      const state = ctx.sequencer!.state as RoundRobinState;
+      const state = ctx.sequencer!.state;
       const contribState = ctx.resources?.[accessorKey]
         ?.state as RoundRobinContributionsState | undefined;
       const final: RoundRobinFinalShape = {
         rounds: state.round,
-        done: state.done,
-        summary: state.lastJudgeSummary ?? "",
         contributions: contribState?.entries ?? [],
+        refereeCritiques: state.refereeCritiques,
       };
       return final;
     });

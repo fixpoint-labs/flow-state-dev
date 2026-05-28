@@ -1,21 +1,29 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
 import { shortId, tokenOverlap } from './internal/helpers.js'
+import { effectiveConfidence } from './janitor.js'
 
 type SemRef = ResourceContext<SemanticMemoryState>
 
 /**
- * Add a new semantic fact. Generates ID and sets extractedAt.
+ * Add a new semantic fact. Generates ID and sets `extractedAt` and
+ * `lastReinforced` to the same ISO timestamp (creation counts as the first
+ * reinforcement). The dual-timestamp seeding is what lets the
+ * `effectiveConfidence` decay model anchor every fact from day zero — facts
+ * created before this fix have `lastReinforced: undefined` and fall back to
+ * `extractedAt` at read time.
  */
 export async function addFact(
   ref: SemRef,
   fact: Omit<SemanticFact, 'id' | 'extractedAt' | 'lastReinforced' | 'reinforcementCount' | 'subject'> & { subject?: string },
 ): Promise<SemanticFact> {
+  const now = new Date().toISOString()
   const newFact: SemanticFact = {
     ...fact,
     subject: fact.subject ?? 'user',
     id: `sf_${shortId(6)}`,
-    extractedAt: new Date().toISOString(),
+    extractedAt: now,
+    lastReinforced: now,
     reinforcementCount: 1,
   }
 
@@ -135,6 +143,37 @@ export function allFacts(ref: SemRef, subject?: string): SemanticFact[] {
  */
 export function topFacts(ref: SemRef, limit: number, subject?: string): SemanticFact[] {
   return allFacts(ref, subject).slice(0, limit)
+}
+
+/**
+ * Cull facts whose effective (time-decayed) confidence has dropped below
+ * `cullFloor`. Returns the IDs of removed facts so callers can record what
+ * the janitor pass evicted.
+ *
+ * Decay anchor and formula live in `effectiveConfidence`. Facts whose
+ * `lastReinforced` is missing (created before the V1 bug fix) decay from
+ * `extractedAt`.
+ */
+export async function cullByEffectiveConfidence(
+  ref: SemRef,
+  now: number,
+  halfLife: number,
+  cullFloor: number,
+): Promise<string[]> {
+  const culled: string[] = []
+  await ref.updateState((s: SemanticMemoryState) => {
+    const surviving: SemanticFact[] = []
+    for (const fact of s.facts) {
+      if (effectiveConfidence(fact, now, halfLife) >= cullFloor) {
+        surviving.push(fact)
+      } else {
+        culled.push(fact.id)
+      }
+    }
+    if (culled.length === 0) return s
+    return { ...s, facts: surviving }
+  })
+  return culled
 }
 
 /**

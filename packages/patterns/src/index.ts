@@ -1,3 +1,5 @@
+export { defaultPatternRegistry } from "./skill-registry";
+
 export * from "./rlm";
 export {
   parallelTasks,
@@ -22,7 +24,6 @@ export {
   createLLMEvaluator,
   createCaptureAndPlan,
   createApplyReplan,
-  createCascadeSkipDependents,
   createSynthesize,
   createBuildPlanOutput,
   normalizeOutputStatus,
@@ -132,6 +133,7 @@ export {
   createRecordSuccess,
   createRecordError,
   createCheckBoard,
+  createCascadeSkipDependents,
 } from "./task-board";
 export type {
   TaskBoardConfig,
@@ -159,11 +161,12 @@ export {
   roundRobinInputSchema,
   roundRobinStateSchema,
   roundRobinContributionEntrySchema,
-  roundRobinJudgeOutputSchema,
   roundRobinContributionsStateSchema,
+  roundRobinRefereeOutputSchema,
+  roundRobinRefereeCritiqueSchema,
   createRoundRobinContributions,
   createRosterAgent,
-  createJudge as createRoundRobinJudge,
+  createReferee as createRoundRobinReferee,
   createSynthesize as createRoundRobinSynthesize,
   createInitContributions as createRoundRobinInitContributions,
   createRecordContribution as createRoundRobinRecordContribution,
@@ -174,7 +177,8 @@ export type {
   RoundRobinInput,
   RoundRobinState,
   RoundRobinContributionEntry,
-  RoundRobinJudgeOutput,
+  RoundRobinRefereeOutput,
+  RoundRobinRefereeCritique,
   RoundRobinContributionsState,
   RoundRobinFinalShape,
 } from "./round-robin";

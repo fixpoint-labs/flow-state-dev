@@ -14,6 +14,7 @@ import type {
   WorkResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
+import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import type { DeclaredResources } from "../types/block";
@@ -21,17 +22,21 @@ import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./
 import {
   blockPathBranch,
   blockPathIteration,
+  blockPathLoop,
   blockPathRescue,
   blockPathSegment,
   buildBlockInstanceId,
   extendBlockPath,
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
-import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level";
 import { getRequestWorkPool } from "../execution/request-work-pool";
-import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
+import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
+
+/** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
+const waitForConditionOutputSchema = z.object({ timedOut: z.boolean() });
 
 let inlineBlockCounter = 0;
 let sequencerScopeCounter = 0;
@@ -125,13 +130,15 @@ function findEmittedBlockTraceId(
   ctx: BlockContext,
   childInstanceId: string
 ): string | undefined {
-  const response = ctx.response as unknown as { getItems?: () => Array<OutputItem | { id: string; type: string; provenance?: { blockInstanceId?: string } }> } | undefined;
-  if (response === undefined || typeof response.getItems !== "function") return undefined;
-  const items = response.getItems();
+  if (ctx.response === undefined) return undefined;
+  // Defensive: some legacy test fixtures construct partial `ctx.response`
+  // mocks without `getItems`. Returning undefined falls back to inline refs.
+  if (typeof ctx.response.getItems !== "function") return undefined;
+  const items = ctx.response.getItems();
   for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item.type === "block_trace" && (item as { provenance?: { blockInstanceId?: string } }).provenance?.blockInstanceId === childInstanceId) {
-      return (item as { id: string }).id;
+    const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };
+    if (item.type === "block_trace" && item.provenance?.blockInstanceId === childInstanceId) {
+      return item.id;
     }
   }
   return undefined;
@@ -285,10 +292,10 @@ type GeneratorModelUsageMeta = {
  * idle steps from cutting needless events. The first call (`lastStateJson`
  * undefined) always emits so the durability writer sees a baseline frame.
  *
- * Non-durable sequencers gate on `isTraceObservabilityEnabled()` — there's
- * no consumer for the snapshot in production unless the operator opted in.
- * Durable sequencers always emit because the snapshot drives the persistence
- * write; gating on observability would silently break checkpointing.
+ * Non-durable sequencers gate on the effective `tracingLevel` (FIX-406 6H) —
+ * there's no consumer for the snapshot in production unless the operator opted
+ * in. Durable sequencers always emit because the snapshot drives the
+ * persistence write; gating it would silently break checkpointing.
  *
  * `terminal: true` signals the final emission for this sequencer's run
  * (success / error / cancellation). The durability hook treats terminal
@@ -304,9 +311,20 @@ async function emitStateSnapshot(
   stateSchema: ZodTypeAny | undefined,
   terminal: boolean = false
 ): Promise<string | undefined> {
-  // Non-durable snapshots are stream-only and gated on the observability
-  // flag. Durable snapshots must always emit — they're the persistence path.
-  if (!durable && !isTraceObservabilityEnabled()) return lastStateJson;
+  // Non-durable snapshots are observability-only and gated by tracingLevel
+  // (FIX-406 6H). Durable snapshots must always emit — they're the crash-resume
+  // checkpoint path, independent of tracing verbosity.
+  //   - minimal: suppress all observability snapshots
+  //   - normal:  block boundaries only (initial + terminal), skip per-step
+  //   - verbose: emit everything
+  if (!durable) {
+    const level = resolveTracingLevel(
+      (ctx as { _tracingLevel?: TracingLevel })._tracingLevel
+    );
+    if (level === "minimal") return lastStateJson;
+    const isPerStep = !terminal && stepIndex >= 0;
+    if (level === "normal" && isPerStep) return lastStateJson;
+  }
 
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
@@ -412,14 +430,24 @@ function currentPath(ctx: BlockContext): string {
  * Builds the child path for a block invoked by a sequencer operation.
  * The op segment identifies the structural position; an optional iteration
  * segment distinguishes individual iterations of an iterative op.
+ *
+ * When a `loopBack` jump is active (`runtime.activeLoopGeneration > 0`), a
+ * `loop[N]` segment is inserted *before* the op segment so the whole
+ * re-executed pass groups under one iteration scope and each pass yields a
+ * distinct `blockInstanceId` (FIX-643). Generation 0 inserts nothing.
  */
 function childBlockPath(
   ctx: BlockContext,
+  runtime: SequencerRuntimeState,
   op: string,
   stepIndex: number,
   iteration?: number
 ): string {
-  let path = extendBlockPath(currentPath(ctx), blockPathSegment(op, stepIndex));
+  let path = currentPath(ctx);
+  if (runtime.activeLoopGeneration > 0) {
+    path = extendBlockPath(path, blockPathLoop(runtime.activeLoopGeneration));
+  }
+  path = extendBlockPath(path, blockPathSegment(op, stepIndex));
   if (iteration !== undefined) {
     path = extendBlockPath(path, blockPathIteration(iteration));
   }
@@ -431,7 +459,7 @@ async function executeBlock(
   input: unknown,
   ctx: BlockContext,
   path: string,
-  options?: { phase?: "main" | "work" }
+  options?: { phase?: "main" | "work"; signalOverride?: AbortSignal }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
@@ -449,7 +477,7 @@ async function executeBlock(
     if (pendingInputHint !== undefined) {
       (scopedCtx as { _blockInputHint?: BlockValueInternal<unknown> })._blockInputHint = pendingInputHint;
     }
-    scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+    scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input, block.transient);
     resolveActiveStatusMessage(block, input, scopedCtx);
 
     // For generator blocks, intercept onGeneratorModelResult to capture token usage.
@@ -503,7 +531,7 @@ async function executeBlock(
     // `onBlockTraceCapture` firing the `added` phase from build-block.ts.
     try {
       const output = await asRuntime(block).run(input, execCtx);
-      scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
+      scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt, block.transient);
 
       // FIX-573: stash captured generator modelUsage on the scoped ctx so
       // `_withExecutionScope`'s `output` phase capture picks it up. The
@@ -523,7 +551,7 @@ async function executeBlock(
 
       return output;
     } catch (error) {
-      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient);
 
       // FIX-573: forward partial modelUsage on the failure path too. The
       // `output` phase in `_withExecutionScope` reads it and patches the
@@ -537,6 +565,9 @@ async function executeBlock(
   };
 
   if (ctx._withExecutionScope === undefined) {
+    // No server scope hook (unit-test context). `ctx.signal` was already
+    // substituted by the caller's `taskCtx` spread when dispatching `.work()`,
+    // so the override is implicit here. Nothing more to thread.
     return run(ctx);
   }
 
@@ -570,7 +601,10 @@ async function executeBlock(
                   : containerConfig.metadata
             }
     },
-    run
+    run,
+    // FIX-663: thread the background signal override (set at `.work()`
+    // dispatch) into the child scope so the entire descendant tree sees it.
+    options?.signalOverride
   );
 }
 
@@ -627,7 +661,8 @@ function createRuntimeState(): SequencerRuntimeState {
     stateVersion: 0,
     scopeId: `seq_scope_${sequencerScopeCounter}`,
     lastChildPath: undefined,
-    lastChildInputHint: undefined
+    lastChildInputHint: undefined,
+    activeLoopGeneration: 0
   };
 }
 
@@ -637,6 +672,26 @@ function createRuntimeState(): SequencerRuntimeState {
  * absent (unit-test contexts), fall back to the per-sequencer work list so
  * the inner-sequencer auto-await path keeps working unchanged.
  */
+/**
+ * Build the context for a background `.work()` / `.workIf()` /
+ * `.forEachBackground()` task. FIX-663: when the request executor supplied a
+ * `_requestBackgroundSignal`, substitute it for `ctx.signal` so the task tree
+ * survives transport teardown and aborts only on explicit user cancellation.
+ * Returns the parent ctx unchanged in unit-test contexts (no background
+ * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
+ * threaded into `executeBlock` so descendant scopes inherit the same signal.
+ */
+function backgroundTaskCtx(ctx: BlockContext): {
+  taskCtx: BlockContext;
+  signalOverride: AbortSignal | undefined;
+} {
+  const bgSignal = ctx._requestBackgroundSignal;
+  if (bgSignal === undefined) {
+    return { taskCtx: ctx, signalOverride: undefined };
+  }
+  return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
+}
+
 function dispatchWorkTask(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,
@@ -656,13 +711,20 @@ function dispatchWorkTask(
   runtime.workTasks.push({ name, promise: wrapped });
 }
 
+/**
+ * Result of running a sequencer's operation chain. Carries the computed value
+ * alongside the last state-mutating step's name, so the output-validation
+ * wrapper can attribute a failure without re-deriving it.
+ */
+type SequencerInnerResult = { value: unknown; lastStepName: string | undefined };
+
 function runSequencerOperations(
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
   durable: boolean,
   stateSchema: ZodTypeAny | undefined
-): (input: unknown, ctx: BlockContext) => Promise<unknown> {
-  return async (input: unknown, ctx: BlockContext): Promise<unknown> => {
+): (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult> {
+  return async (input: unknown, ctx: BlockContext): Promise<SequencerInnerResult> => {
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
     // Running BlockValue descriptor for the sequencer's output (FIX-413).
@@ -767,7 +829,7 @@ function runSequencerOperations(
           (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
         }
 
-        return currentValue;
+        return { value: currentValue, lastStepName };
       } catch (error) {
         const normalizedError = toError(error);
         for (let i = 0; i < rescueHandlers.length; i += 1) {
@@ -785,7 +847,12 @@ function runSequencerOperations(
           if (rescueDescriptor.kind !== "inline") {
             (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
           }
-          return rescued;
+          // Record the recovery out-of-band so a downstream block can ask
+          // `ctx.wasRescued(...)` without the rescued value carrying a marker.
+          // Read post-execution by `_withExecutionScope` to stamp this block's
+          // sibling-registry result.
+          (ctx as { _didRescue?: boolean })._didRescue = true;
+          return { value: rescued, lastStepName: handler.block.config.name ?? "rescue" };
         }
 
         throw normalizedError;
@@ -820,7 +887,119 @@ function runSequencerOperations(
   };
 }
 
-function createSequencer<TInput, TOutput>(
+/**
+ * Single-chokepoint runtime gate for a sequencer's declared `outputSchema`.
+ *
+ * Unwraps the inner `{ value, lastStepName }` result unconditionally — every
+ * exit path (natural tail, `exitIf`, `rescue`) flows through here, so the
+ * unwrap must happen even when no schema is declared, or `buildBlock` would
+ * receive the tuple as the block's output. When `outputSchema` is set the
+ * value is validated; on failure a `SequencerOutputSchemaError` is thrown,
+ * on success the (possibly `.transform()`-ed) parsed value is returned.
+ *
+ * Uses `safeParseAsync` — the wrapper is already async, so this costs nothing
+ * extra and correctly runs async refinements (`.refineAsync`, async
+ * `superRefine`) that `safeParse` would silently skip.
+ */
+function wrapWithOutputValidation(
+  inner: (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult>,
+  outputSchema: ZodTypeAny | undefined,
+  sequencerName: string
+): (input: unknown, ctx: BlockContext) => Promise<unknown> {
+  return async (input, ctx) => {
+    const { value, lastStepName } = await inner(input, ctx);
+    if (outputSchema === undefined) {
+      return value;
+    }
+    const result = await outputSchema.safeParseAsync(value);
+    if (result.success) {
+      return result.data;
+    }
+    const issue = result.error.issues[0];
+    const path = issue?.path?.join(".") ?? "";
+    const suffix = path.length > 0 ? ` at "${path}"` : "";
+    const message = issue?.message ?? "schema validation failed";
+    throw new SequencerOutputSchemaError(
+      `Sequencer "${sequencerName}" output validation failed${suffix}: ${message}`,
+      {
+        sequencerName,
+        lastStepName,
+        rawOutput: value,
+        issues: result.error.issues
+      },
+      result.error
+    );
+  };
+}
+
+/** Read a zod schema's discriminating `_def.typeName` (e.g. `"ZodObject"`). */
+function getZodTypeName(schema: ZodTypeAny): string | undefined {
+  return (schema as any)._def?.typeName;
+}
+
+/**
+ * Conservative one-level structural comparison between a sequencer's declared
+ * `outputSchema` and the schema its chain infers. Returns the first
+ * incompatibility (with the specific kinds that differ at the point of the
+ * mismatch), or `null` when structurally compatible.
+ *
+ * `declaredKind`/`inferredKind` report the kinds at the level where the
+ * mismatch was found: the value kinds for an object-value mismatch, the element
+ * kinds for an array mismatch, otherwise the top-level kinds. For a key-set
+ * mismatch the kinds are equal (both objects); `reason` carries the key detail.
+ *
+ * Checks: top-level kind, object key sets, one level of object value kinds, and
+ * array element kind. Deliberately does NOT recurse into nested shapes,
+ * refinements, brands, or union variants — see `.validate()`'s JSDoc.
+ */
+function compareSchemasStructurally(
+  declared: ZodTypeAny,
+  inferred: ZodTypeAny
+): { reason: string; declaredKind: string | undefined; inferredKind: string | undefined } | null {
+  const dKind = getZodTypeName(declared);
+  const iKind = getZodTypeName(inferred);
+  if (dKind !== iKind) {
+    return { reason: `declared ${dKind} but chain produces ${iKind}`, declaredKind: dKind, inferredKind: iKind };
+  }
+  if (dKind === "ZodObject") {
+    const dShape = (declared as any)._def.shape() as Record<string, ZodTypeAny>;
+    const iShape = (inferred as any)._def.shape() as Record<string, ZodTypeAny>;
+    const dKeys = Object.keys(dShape).sort();
+    const iKeys = Object.keys(iShape).sort();
+    if (dKeys.length !== iKeys.length || dKeys.some((k, idx) => k !== iKeys[idx])) {
+      return {
+        reason: `object key sets differ — declared [${dKeys.join(", ")}] vs chain [${iKeys.join(", ")}]`,
+        declaredKind: dKind,
+        inferredKind: iKind
+      };
+    }
+    for (const k of dKeys) {
+      const dvKind = getZodTypeName(dShape[k]);
+      const ivKind = getZodTypeName(iShape[k]);
+      if (dvKind !== ivKind) {
+        return {
+          reason: `object value kind differs at "${k}" — declared ${dvKind} vs chain ${ivKind}`,
+          declaredKind: dvKind,
+          inferredKind: ivKind
+        };
+      }
+    }
+  }
+  if (dKind === "ZodArray") {
+    const dElemKind = getZodTypeName((declared as any)._def.type);
+    const iElemKind = getZodTypeName((inferred as any)._def.type);
+    if (dElemKind !== iElemKind) {
+      return {
+        reason: `array element kind differs — declared ${dElemKind} vs chain ${iElemKind}`,
+        declaredKind: dElemKind,
+        inferredKind: iElemKind
+      };
+    }
+  }
+  return null;
+}
+
+function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | undefined = undefined>(
   config: SequencerConfig<any>,
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
@@ -829,7 +1008,7 @@ function createSequencer<TInput, TOutput>(
   accumulatedResources?: DeclaredResources,
   capabilityRefs?: import("../capability/types").CapabilityRef[],
   accumulatedRequiresOrg?: boolean
-): SequencerDefinition<TInput, TOutput> {
+): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
   // individual blocks in the chain already validate their own outputs.
@@ -851,10 +1030,11 @@ function createSequencer<TInput, TOutput>(
       container: config.container,
       activeStatusMessage: config.activeStatusMessage
     },
-    execute: runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema) as (
-      input: unknown,
-      ctx: BlockContext
-    ) => Promise<unknown>,
+    execute: wrapWithOutputValidation(
+      runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
+      config.outputSchema,
+      config.name
+    ),
     declaredResources: accumulatedResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
@@ -893,8 +1073,8 @@ function createSequencer<TInput, TOutput>(
     newInputSchema?: ZodTypeAny,
     newResources?: DeclaredResources,
     newRequiresOrg?: boolean
-  ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
+  ): SequencerDefinition<TInput, TNext, TStateSchema> =>
+    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -908,11 +1088,11 @@ function createSequencer<TInput, TOutput>(
     return undefined;
   };
 
-  const definition: SequencerDefinition<TInput, TOutput> = Object.assign(baseBlock, {
+  const definition = Object.assign(baseBlock, {
     then<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg2?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       // Path 1: then(factory, inlineConfig) — inline block definition
       if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
         const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
@@ -921,7 +1101,7 @@ function createSequencer<TInput, TOutput>(
           {
             name: block.name,
             run: async (value, ctx, runtime, stepIndex) => {
-              const path = childBlockPath(ctx, "then", stepIndex);
+              const path = childBlockPath(ctx, runtime, "then", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, value, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -945,7 +1125,7 @@ function createSequencer<TInput, TOutput>(
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-            const path = childBlockPath(ctx, "then", stepIndex);
+            const path = childBlockPath(ctx, runtime, "then", stepIndex);
             prepareSequentialChild(ctx, runtime, path);
             const output = await executeBlock(block, nextInput, ctx, path);
             return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -962,11 +1142,11 @@ function createSequencer<TInput, TOutput>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg3?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TOutput | TNext> {
+    ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
       // Path 1: thenIf(condition, factory, inlineConfig) — inline block definition
       if (typeof arg2 === "function" && !isBlockDefinition(arg2) && arg3 !== undefined && isInlineConfig(arg3)) {
         const block = buildInlineBlock(arg2 as InlineBlockFactory, arg3 as Record<string, unknown>, lastOutputSchema);
-        return createSequencer<TInput, TOutput | TNext>(
+        return createSequencer<TInput, TOutput | TNext, TStateSchema>(
           config,
           [
             ...operations,
@@ -979,7 +1159,7 @@ function createSequencer<TInput, TOutput>(
                   return { value };
                 }
 
-                const path = childBlockPath(ctx, "thenIf", stepIndex);
+                const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
                 prepareSequentialChild(ctx, runtime, path);
                 const output = await executeBlock(block, value, ctx, path);
                 return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1000,7 +1180,7 @@ function createSequencer<TInput, TOutput>(
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
-      return createSequencer<TInput, TOutput | TNext>(
+      return createSequencer<TInput, TOutput | TNext, TStateSchema>(
         config,
         [
           ...operations,
@@ -1013,7 +1193,7 @@ function createSequencer<TInput, TOutput>(
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const path = childBlockPath(ctx, "thenIf", stepIndex);
+              const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, nextInput, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1029,7 +1209,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext> {
+    map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext, TStateSchema> {
       return extend<TNext>(
         {
           name: "map",
@@ -1046,7 +1226,7 @@ function createSequencer<TInput, TOutput>(
     parallel<TSteps extends Record<string, ParallelStep<TOutput>>>(
       steps: TSteps,
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema> {
       // Build composite output schema: { key: step.outputSchema, ... }
       const schemaShape: Record<string, ZodTypeAny> = {};
       const stepBlocks: BlockDefinition<any, any>[] = [];
@@ -1064,7 +1244,7 @@ function createSequencer<TInput, TOutput>(
           name: "parallel",
           run: async (value, ctx, runtime, stepIndex) => {
             const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
-            const parallelPath = childBlockPath(ctx, "parallel", stepIndex);
+            const parallelPath = childBlockPath(ctx, runtime, "parallel", stepIndex);
             const branchPaths: string[] = [];
             // Each branch sees the same upstream input — capture the shared
             // hint once before dispatching so every branch stamps the same
@@ -1138,7 +1318,7 @@ function createSequencer<TInput, TOutput>(
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | { maxConcurrency?: number },
       arg3?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, TStepOut[]> {
+    ): SequencerDefinition<TInput, TStepOut[], TStateSchema> {
       const hasConnector =
         arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
@@ -1174,7 +1354,7 @@ function createSequencer<TInput, TOutput>(
                   ? blockOrFactory(item, index, ctx)
                   : (blockOrFactory as BlockDefinition<any, any>);
 
-              const path = childBlockPath(ctx, "forEach", stepIndex, index);
+              const path = childBlockPath(ctx, runtime, "forEach", stepIndex, index);
               iterationPaths[index] = path;
               // Each iteration's child sees the element inline (FIX-573 §5).
               stashInputHint(ctx, { kind: "inline", value: item });
@@ -1220,7 +1400,7 @@ function createSequencer<TInput, TOutput>(
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | { concurrency?: number },
       arg3?: { concurrency?: number }
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector =
         arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
@@ -1249,6 +1429,12 @@ function createSequencer<TInput, TOutput>(
 
             const concurrency = Math.max(1, options?.concurrency ?? DEFAULT_BACKGROUND_CONCURRENCY);
 
+            // FIX-663: iterations are fire-and-forget, so substitute the
+            // background signal. The per-iteration abort check below and each
+            // executeBlock then break only on explicit user cancellation, not
+            // on transport teardown — consistent with `.work()`.
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+
             // Dispatch all iterations as background work with concurrency limiting.
             // Each iteration's failure is isolated — one failing doesn't stop others
             // or propagate to the parent sequencer.
@@ -1256,7 +1442,7 @@ function createSequencer<TInput, TOutput>(
             const iterationResults: WorkResult[] = [];
             const worker = async (): Promise<void> => {
               while (nextIndex < items.length) {
-                if (ctx.signal?.aborted) break;
+                if (taskCtx.signal?.aborted) break;
                 const currentIndex = nextIndex;
                 nextIndex += 1;
                 const item = items[currentIndex];
@@ -1267,14 +1453,14 @@ function createSequencer<TInput, TOutput>(
                     : (blockOrFactory as BlockDefinition<any, any>);
 
                 const iterName = `${block.name}[${currentIndex}]`;
-                const path = childBlockPath(ctx, "forEachBackground", stepIndex, currentIndex);
+                const path = childBlockPath(ctx, runtime, "forEachBackground", stepIndex, currentIndex);
                 try {
                   // Background iterations run in the "work" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
                   // position-based default role (work → "trace"). Element is
                   // the iteration's input — stamp it inline (FIX-573 §5).
                   stashInputHint(ctx, { kind: "inline", value: item });
-                  const result = await executeBlock(block, item, ctx, path, { phase: "work" });
+                  const result = await executeBlock(block, item, taskCtx, path, { phase: "work", signalOverride });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -1314,7 +1500,7 @@ function createSequencer<TInput, TOutput>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
@@ -1331,7 +1517,7 @@ function createSequencer<TInput, TOutput>(
             let pendingHint: BlockValueInternal<unknown> = sequentialInputHint(ctx, runtime);
 
             while (true) {
-              const path = childBlockPath(ctx, "doUntil", stepIndex, iteration);
+              const path = childBlockPath(ctx, runtime, "doUntil", stepIndex, iteration);
               stashInputHint(ctx, pendingHint);
               const output = await executeBlock(block, nextInput, ctx, path);
               const done = await condition(output as TNext, ctx);
@@ -1364,7 +1550,7 @@ function createSequencer<TInput, TOutput>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TNext> {
+    ): SequencerDefinition<TInput, TNext, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
@@ -1375,7 +1561,7 @@ function createSequencer<TInput, TOutput>(
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let iteration = 0;
-            let lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+            let lastPath = childBlockPath(ctx, runtime, "doWhile", stepIndex, iteration);
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
             let output = await executeBlock(block, nextInput, ctx, lastPath);
             let guard = 0;
@@ -1389,7 +1575,7 @@ function createSequencer<TInput, TOutput>(
               iteration += 1;
               nextInput = output;
               const prevPath = lastPath;
-              lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+              lastPath = childBlockPath(ctx, runtime, "doWhile", stepIndex, iteration);
               stashInputHint(ctx, inputDescriptorFromPrevPath(ctx, prevPath));
               output = await executeBlock(block, nextInput, ctx, lastPath);
             }
@@ -1413,23 +1599,30 @@ function createSequencer<TInput, TOutput>(
         when?: (value: unknown, ctx: BlockContext) => boolean | Promise<boolean>;
         maxIterations: number;
       }
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: `loopBack:${targetStepName}`,
           run: async (value, ctx, runtime, stepIndex) => {
             const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
             if (!shouldLoop) {
+              // Loop exits: steps after this op run unsegmented (FIX-643).
+              runtime.activeLoopGeneration = 0;
               return { value };
             }
 
             const key = `${targetStepName}:${stepIndex}`;
             const currentCount = runtime.loopCounts.get(key) ?? 0;
             if (currentCount >= options.maxIterations) {
+              runtime.activeLoopGeneration = 0;
               return { value };
             }
 
-            runtime.loopCounts.set(key, currentCount + 1);
+            // The upcoming re-execution is generation `currentCount + 1`; carry
+            // it on runtime so re-run children get a distinct `loop[N]` prefix.
+            const nextGeneration = currentCount + 1;
+            runtime.loopCounts.set(key, nextGeneration);
+            runtime.activeLoopGeneration = nextGeneration;
             return { value, jumpTo: targetStepName };
           }
         },
@@ -1441,7 +1634,7 @@ function createSequencer<TInput, TOutput>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg2?: BlockDefinition<any, any> | WorkOptions,
       arg3?: WorkOptions
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector = isBlockDefinition(arg2);
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn>) : undefined;
       const block = (hasConnector ? arg2 : arg1) as BlockDefinition<any, any>;
@@ -1455,12 +1648,13 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const path = childBlockPath(ctx, "work", stepIndex);
+            const path = childBlockPath(ctx, runtime, "work", stepIndex);
             // work() dispatches run in the "work" phase so nested generators
             // see phase === "work" and apply the trace default for emissions.
             // The work block's input is the parent step's output (FIX-573 §5).
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }
@@ -1479,7 +1673,7 @@ function createSequencer<TInput, TOutput>(
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any> | WorkOptions,
       arg4?: WorkOptions
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const hasConnector = isBlockDefinition(arg3);
       const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
       const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
@@ -1502,10 +1696,11 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const path = childBlockPath(ctx, "workIf", stepIndex);
+            const path = childBlockPath(ctx, runtime, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
             stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const rawPromise = executeBlock(block, input, ctx, path, { phase: "work" });
+            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
             dispatchWorkTask(ctx, runtime, name, rawPromise);
             return { value };
           }
@@ -1517,7 +1712,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
+    waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: "waitForWork",
@@ -1580,7 +1775,7 @@ function createSequencer<TInput, TOutput>(
         | ConnectorFn<TOutput, TStepIn>
         | InlineBlockFactory,
       arg2?: BlockDefinition<any, any> | Record<string, unknown>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Path 1: tap(factory, inlineConfig) — inline block as side effect
       if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
         const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
@@ -1588,7 +1783,7 @@ function createSequencer<TInput, TOutput>(
           {
             name: `tap:${block.name}`,
             run: async (value, ctx, runtime, stepIndex) => {
-              const path = childBlockPath(ctx, "tap", stepIndex);
+              const path = childBlockPath(ctx, runtime, "tap", stepIndex);
               // .tap is a side-effect — its child sees the upstream sequencer
               // value, but the sequencer's running output is unchanged. Stash
               // the hint without rewriting `lastChildPath`/`lastChildInputHint`
@@ -1619,7 +1814,7 @@ function createSequencer<TInput, TOutput>(
         {
           name: "tap",
           run: async (value, ctx, runtime, stepIndex) => {
-            const path = childBlockPath(ctx, "tap", stepIndex);
+            const path = childBlockPath(ctx, runtime, "tap", stepIndex);
             const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
@@ -1654,7 +1849,7 @@ function createSequencer<TInput, TOutput>(
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
         | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const tapTarget = (arg3 ?? arg2) as
         | BlockDefinition<any, any>
@@ -1671,7 +1866,7 @@ function createSequencer<TInput, TOutput>(
               return { value };
             }
 
-            const path = childBlockPath(ctx, "tapIf", stepIndex);
+            const path = childBlockPath(ctx, runtime, "tapIf", stepIndex);
             const tapHint = sequentialInputHint(ctx, runtime);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
@@ -1699,7 +1894,7 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput> {
+    rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Collect resources from rescue handler blocks
       const rescueResources = handlers.reduce<DeclaredResources | undefined>(
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
@@ -1710,12 +1905,12 @@ function createSequencer<TInput, TOutput>(
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
       branches: TBranches
-    ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>> {
+    ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema> {
       // Branch output schema is ambiguous (depends on which branch matches at runtime),
       // so we take the first branch block's outputSchema as a best-effort propagation.
       const branchEntries = Object.values(branches) as Array<BranchStep<TOutput>>;
@@ -1730,7 +1925,7 @@ function createSequencer<TInput, TOutput>(
         {
           name: "branch",
           run: async (value, ctx, runtime, stepIndex) => {
-            const basePath = childBlockPath(ctx, "branch", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "branch", stepIndex);
             const branchHint = sequentialInputHint(ctx, runtime);
             for (const key of Object.keys(branches) as Array<keyof TBranches>) {
               const [connector, condition, block] = branches[key];
@@ -1763,7 +1958,7 @@ function createSequencer<TInput, TOutput>(
     thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
       steps: [...TSteps],
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema> {
       const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
         isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
       );
@@ -1772,7 +1967,7 @@ function createSequencer<TInput, TOutput>(
         {
           name: "thenAll",
           run: async (value, ctx, runtime, stepIndex) => {
-            const basePath = childBlockPath(ctx, "thenAll", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "thenAll", stepIndex);
             const branchPaths: string[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
             const outputs = await mapWithConcurrency(
@@ -1823,7 +2018,7 @@ function createSequencer<TInput, TOutput>(
 
     thenAny(
       blocks: BlockDefinition<any, any>[]
-    ): SequencerDefinition<TInput, unknown> {
+    ): SequencerDefinition<TInput, unknown, TStateSchema> {
       return extend<unknown>(
         {
           name: "thenAny",
@@ -1833,7 +2028,7 @@ function createSequencer<TInput, TOutput>(
             }
 
             // Try each block sequentially; return the first that succeeds.
-            const basePath = childBlockPath(ctx, "thenAny", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "thenAny", stepIndex);
             const errors: Error[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
 
@@ -1864,7 +2059,7 @@ function createSequencer<TInput, TOutput>(
     race(
       blocks: BlockDefinition<any, any>[],
       options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, unknown> {
+    ): SequencerDefinition<TInput, unknown, TStateSchema> {
       return extend<unknown>(
         {
           name: "race",
@@ -1873,7 +2068,7 @@ function createSequencer<TInput, TOutput>(
               throw new Error("race called with no blocks");
             }
 
-            const basePath = childBlockPath(ctx, "race", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "race", stepIndex);
             const branchInputHint = sequentialInputHint(ctx, runtime);
 
             if (blocks.length === 1) {
@@ -1982,9 +2177,105 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
+    waitForCondition(
+      predicate: (items: readonly OutputItem[]) => boolean,
+      options: {
+        timeoutMs: number;
+        wakeOn?: (
+          item: OutputItem,
+          kind: "added" | "updated" | "done"
+        ) => boolean;
+      }
+    ): SequencerDefinition<TInput, { timedOut: boolean }, TStateSchema> {
+      return extend<{ timedOut: boolean }>(
+        {
+          name: "waitForCondition",
+          run: async (_value, ctx) => {
+            const response = ctx.response;
+            if (response === undefined) {
+              throw new Error("waitForCondition requires a response emitter on the context");
+            }
+
+            // Initial synchronous eval — if already satisfied, no subscription
+            // and no timer. Predicate throws here propagate directly.
+            if (predicate(response.getItems())) {
+              return { value: { timedOut: false } };
+            }
+
+            // Derived abort controller so timer/parent abort can stop the wait
+            // without abusing the parent signal.
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+            // AbortSignal.addEventListener does not fire for listeners
+            // registered after `aborted` already flipped true. Without this
+            // sync check, an already-aborted parent would still cost a full
+            // `timeoutMs` of waiting before the timer fired.
+            if (ctx.signal?.aborted === true) controller.abort();
+
+            let timedOut = false;
+            let evaluationError: unknown = undefined;
+            let unsubscribe: undefined | (() => void) = undefined;
+            let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+
+            try {
+              await new Promise<void>((resolve) => {
+                // Resolve once on first satisfaction (predicate true / timeout / abort).
+                let settled = false;
+                const settle = (): void => {
+                  if (settled) return;
+                  settled = true;
+                  resolve();
+                };
+
+                controller.signal.addEventListener("abort", settle);
+                // Parent may have aborted synchronously above; in that
+                // case the listener we just registered never fires because
+                // `controller.signal.aborted` was already true. Settle now
+                // and skip subscribing/timing.
+                if (controller.signal.aborted) {
+                  settle();
+                  return;
+                }
+
+                timer = setTimeout(() => {
+                  timedOut = true;
+                  controller.abort();
+                }, options.timeoutMs);
+
+                unsubscribe = response.subscribeToItems(
+                  (_item, _kind) => {
+                    if (settled) return;
+                    try {
+                      if (predicate(response.getItems())) {
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      evaluationError = error;
+                      controller.abort();
+                    }
+                  },
+                  options.wakeOn !== undefined ? { filter: options.wakeOn } : undefined
+                );
+              });
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+              if (timer !== undefined) clearTimeout(timer);
+              const unsub = unsubscribe as (() => void) | undefined;
+              if (unsub !== undefined) unsub();
+            }
+
+            if (evaluationError !== undefined) throw evaluationError;
+            return { value: { timedOut } };
+          }
+        },
+        waitForConditionOutputSchema
+      );
+    },
+
     exitIf(
       condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
-    ): SequencerDefinition<TInput, TOutput> {
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
           name: "exitIf",
@@ -2000,7 +2291,26 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
+    throwIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+      error: Error | ((value: TOutput, ctx: BlockContext) => Error | Promise<Error>)
+    ): SequencerDefinition<TInput, TOutput, TStateSchema> {
+      return extend<TOutput>(
+        {
+          name: "throwIf",
+          run: async (value, ctx) => {
+            const shouldThrow = await condition(value as TOutput, ctx);
+            if (shouldThrow) {
+              throw typeof error === "function" ? await error(value as TOutput, ctx) : error;
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
+      );
+    },
+
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput, TStateSchema> {
       const connectOp: SequencerOperation = {
         name: `${config.name}/connect-input`,
         run: async (value, ctx) => {
@@ -2012,7 +2322,7 @@ function createSequencer<TInput, TOutput>(
         }
       };
 
-      return createSequencer<TFrom, TOutput>(
+      return createSequencer<TFrom, TOutput, TStateSchema>(
         { ...config, inputSchema: undefined },
         [connectOp, ...operations],
         rescueHandlers,
@@ -2020,21 +2330,46 @@ function createSequencer<TInput, TOutput>(
         undefined,
         accumulatedResources
       );
+    },
+
+    validate() {
+      // No-op when there's nothing to compare: schema-less sequencers, or
+      // chains whose tail erased the tracked schema (thenAny/race/thenAll/branch).
+      if (config.outputSchema === undefined || lastOutputSchema === undefined) {
+        return;
+      }
+      // Same schema instance → trivially compatible.
+      if (config.outputSchema === lastOutputSchema) {
+        return;
+      }
+      const mismatch = compareSchemasStructurally(config.outputSchema, lastOutputSchema);
+      if (mismatch !== null) {
+        throw new SequencerSchemaMismatchError(
+          `Sequencer "${config.name}" .validate() failed: ${mismatch.reason}`,
+          {
+            sequencerName: config.name,
+            declaredKind: mismatch.declaredKind ?? "unknown",
+            inferredKind: mismatch.inferredKind,
+            reason: mismatch.reason
+          }
+        );
+      }
     }
   });
 
-  return definition;
+  return definition as unknown as SequencerDefinition<TInput, TOutput, TStateSchema>;
 }
 
 export function sequencer<
-  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  const TInputSchema extends ZodTypeAny = ZodTypeAny,
+  const TStateSchema extends ZodTypeAny | undefined = undefined,
   TInput = z.infer<TInputSchema>,
 >(
-  config: SequencerConfig<TInputSchema, TInput>
-): SequencerDefinition<TInput, TInput> {
+  config: SequencerConfig<TInputSchema, TInput, TStateSchema>
+): SequencerDefinition<TInput, TInput, TStateSchema> {
   const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
 
-  return createSequencer<TInput, TInput>(
+  return createSequencer<TInput, TInput, TStateSchema>(
     config as SequencerConfig<any>,
     [],
     [],

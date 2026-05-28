@@ -52,6 +52,15 @@ const agent = generator({
 });
 ```
 
+`history: true` includes every prior conversational item in the session. To bound the window, pass an object form like `history: { limit: 8 }` — see [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing) for the turn-based semantics and the token-aware variant.
+
+A generator's input is assembled from four slots, which a developer configures on the block:
+
+- **`prompt`** — the system prose. Static string or a function of input. You can also author it in a separate `.md` file and load it back in; see [Prompts as Markdown](../advanced/generator-prompts-markdown.md).
+- **`context`** — dynamic per-turn material (documents, retrieved memory, tool descriptions). Array or object form; see [Generator context](../advanced/generator-context.md).
+- **`history`** — prior conversational items, windowed by turn. See above.
+- **`user`** — the current turn's user-role message. See [Generator context > User slot](../advanced/generator-context.md#user-slot) for how it relates to `action.userMessage`.
+
 What the framework handles for you:
 - **Prompt assembly** from four slots: system prompt, context entries, conversation history, and user message
 - **Tool execution loops** — tools are blocks, auto-compiled to provider-native format (see below)
@@ -419,6 +428,31 @@ const modeRouter = router({
 });
 ```
 
+#### `utility.keyedRouter` — dispatch by string key
+
+When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
+
+```ts
+import { utility } from "@flow-state-dev/core";
+
+const specialists = {
+  research: researchPipeline,
+  draft: draftPipeline,
+  review: reviewPipeline,
+};
+
+const dispatch = utility.keyedRouter({
+  name: "dispatch",
+  inputSchema: controllerOutputSchema,
+  blocks: specialists,
+  select: (input) => input.specialist,
+});
+```
+
+If `select` returns a key that isn't in `blocks`, the router throws with the list of registered keys. Pass `fallback` to route unknown keys to a default block instead.
+
+Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `keyedRouter`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
+
 ## The block context
 
 Every block's `execute` function receives a context object with access to scoped state, resources, and framework services:
@@ -616,6 +650,6 @@ See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full 
 ## Key rules
 
 - **Let the framework run your blocks** — compose blocks into sequencers, register them as flow actions, or pass them as tools. The framework handles validation, retry, lifecycle, and streaming. Don't call block internals directly.
-- **Schemas are contracts** — `inputSchema` and `outputSchema` are validated at runtime. TypeScript catches mismatches at compile time.
+- **Schemas are contracts** — `inputSchema` and `outputSchema` are validated at runtime. TypeScript catches mismatches at compile time. Sequencers can also declare an `outputSchema` as a runtime contract about their composed output — see [Declaring and validating output schemas](../sequencers/overview.md#declaring-and-validating-output-schemas).
 - **Names must be unique** — within a flow, each block needs a unique `name` for provenance tracking and debugging.
 - **Partial state schemas** — each block declares only the state fields it touches, not the full flow-level schema. This keeps blocks reusable.

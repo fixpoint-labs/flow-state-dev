@@ -2,13 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { createSessionClient, type SessionSummary } from "@flow-state-dev/client";
-import { FlowProvider, useFlow, useSession, useClientData } from "@flow-state-dev/react";
+import {
+  FlowProvider,
+  useFlow,
+  useSession,
+  useClientData,
+  useResource,
+} from "@flow-state-dev/react";
 import { TopBar, type CostPreset, type DataSourceMode } from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
+import {
+  EMPTY_INSTRUCTIONS,
+  type SpecialInstructionsState,
+} from "@/src/flows/trading-desk/special-instructions";
 
 const DEFAULT_TICKER = "NVDA";
 const FLOW_KIND = "trading-desk";
@@ -66,6 +77,25 @@ function TradingDeskApp(): ReactElement {
   // race with the lookup and silently create an unkeyed session on first mount.
   const flow = useFlow({ autoCreateSession: false });
   const session = useSession(flow.activeSessionId);
+
+  // The settings dialog reads the user-scoped instructions resource via
+  // `useResource`, which projects from a session snapshot. Use the active
+  // session when one is bound; otherwise fall back to whatever session is
+  // first in `flow.sessions`. When no sessions exist, the gear is disabled.
+  const readSessionId =
+    flow.activeSessionId ?? flow.sessions[0]?.id ?? undefined;
+  const readSession = useSession(readSessionId);
+  const { clientData: instructionsClientData } = useResource(
+    readSession,
+    "specialInstructions",
+  );
+  const instructions =
+    (instructionsClientData as SpecialInstructionsState | null) ??
+    EMPTY_INSTRUCTIONS;
+  const activeInstructionCount = Object.values(instructions).filter(
+    (v) => typeof v === "string" && v.trim().length > 0,
+  ).length;
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
 
   // Direct session client for create-with-title. `flow.createSession` only
   // forwards `metadata`; persisted sessions need a `title` to be browsable.
@@ -187,7 +217,17 @@ function TradingDeskApp(): ReactElement {
         state={runState}
         eventCount={session.items.length}
         preset={liveCostPreset}
+        activeInstructionCount={activeInstructionCount}
+        onOpenSettings={() => setInstructionsOpen(true)}
+        settingsDisabled={readSessionId === undefined}
       />
+      {readSessionId !== undefined ? (
+        <SettingsDialog
+          open={instructionsOpen}
+          onClose={() => setInstructionsOpen(false)}
+          session={readSession}
+        />
+      ) : null}
     </div>
   );
 }

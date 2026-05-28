@@ -126,27 +126,34 @@ export default chatFlow({ id: "default" });
 
 - **`kind`** — The flow identifier. Becomes the URL path: `/api/flows/hello-chat/actions/chat`. Clients use it to target this flow.
 - **`actions`** — The flow's public API. Each action is an entry point. Clients invoke them by name: `sendAction("chat", { message: "Hello" })`. The framework validates input against `inputSchema`, resolves the session, and executes the block.
-- **`userMessage: (input) => input.message`** — Before block execution, the framework emits a user-role message item with this text. That way the conversation stream shows what the user said. Without it, you'd only see assistant messages.
+- **`userMessage: (input) => input.message`** — Before block execution, the framework emits a user-role message item with this text. That way the conversation stream shows what the user said. Without it, you'd only see assistant messages. The generator above also sets `user: (input) => input.message`. Both being wired to the same source is intentional: they are complementary contracts (the action item is durable and feeds future history; the generator slot resolves this turn's LLM input), and the framework deduplicates equivalent content so the model sees the user's turn exactly once. See [Generator context > User slot](/docs/advanced/generator-context#user-slot) for the full explanation.
 - **`client`** — The sole gateway for exposing server state to clients. Raw state never leaves the server. Each scope's `client` block declares what crosses to the browser via `expose` (verbatim by name) and `derived` (computed projections). Here we expose `messageCount` so the UI can display it. The client view is rebuilt when the framework produces a state snapshot (e.g. after `request.completed`). The client fetches snapshots via `GET /api/flows/sessions/:sessionId/state`.
 
 ---
 
 ## 3. Set up the server
 
-Register the flow. Get a complete REST API.
+List the flow in one config object. Get a complete REST API.
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import chatFlow from "@/flows/hello-chat/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: { default: "openai/gpt-5.4-mini" },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
 
-const router = createFlowApiRouter({ registry });
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 **What you get:** Action execution, session management, SSE streaming with resume, and state snapshots. No route wiring.
@@ -156,7 +163,7 @@ export const DELETE = router.DELETE;
 - `GET /api/flows/hello-chat/requests/:requestId/stream` — SSE stream for that request
 - `GET /api/flows/sessions/:sessionId/state` — State snapshot (clientData)
 
-The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You can add a custom model resolver, store adapters, or middleware by passing options to `createFlowApiRouter`. See [Server Setup](/docs/server/setup) for details.
+The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Server Setup](/docs/server/setup) for details.
 
 ---
 
@@ -221,7 +228,7 @@ function ChatUI() {
           autoComplete="off"
         />
         <button type="submit" disabled={session.isStreaming}>
-          {session.isStreaming ? "Thinking..." : "Send"}
+          {session.isStreaming ? "Working..." : "Send"}
         </button>
       </form>
     </div>

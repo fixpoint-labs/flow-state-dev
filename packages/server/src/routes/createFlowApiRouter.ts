@@ -8,11 +8,13 @@
  * shape and behavior is unchanged for callers that don't pass `adapters`.
  */
 import type {
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   SpeechResolver,
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
@@ -47,10 +49,29 @@ export type CreateFlowApiRouterOptions = {
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   transcriptionResolver?: TranscriptionResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
   middleware?: Middleware[];
+  /**
+   * Tracing verbosity for observability (non-durable) state snapshots
+   * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block
+   * boundaries only), or `"minimal"` (none). Durable resume checkpoints are
+   * unaffected. Unset → the runtime falls back to `resolveTracingLevel()`
+   * (`FSDEV_TRACING_LEVEL`, else `"verbose"` in dev / `"minimal"` in prod).
+   * Recommended: `"normal"` for production servers, `"verbose"` for `fsdev dev`.
+   */
+  tracingLevel?: TracingLevel;
+  /**
+   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * The extracted value is exposed on request/session/block context identities
+   * (`ctx.request.identity.tenantId`). Optional — single-tenant apps ignore it.
+   * Note: tenant-scoped store-key isolation is a separate, deferred change;
+   * this only threads the axis through context.
+   */
+  tenantIdHeader?: string;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   /**
    * Whether to detect interrupted requests from previous runs on startup.

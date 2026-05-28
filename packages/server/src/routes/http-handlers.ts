@@ -6,12 +6,14 @@
  * and state-routes.
  */
 import type {
+  FlowStateSettings,
   Middleware,
   ModelResolver,
   SpeechResolver,
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
@@ -129,6 +131,8 @@ export type CreateFlowRouteHandlersOptions = {
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   transcriptionResolver?: TranscriptionResolver;
+  /** Instance-level settings threaded onto every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
@@ -160,6 +164,17 @@ export type CreateFlowRouteHandlersOptions = {
    */
   defaultSseHeartbeatMs?: number;
   /**
+   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded to
+   * the host and onto every block context. Unset → the runtime falls back to
+   * `resolveTracingLevel()` (env / observability default).
+   */
+  tracingLevel?: TracingLevel;
+  /**
+   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * The extracted value is threaded onto request/session context identities.
+   */
+  tenantIdHeader?: string;
+  /**
    * Resolved debug-endpoint configuration. Threaded into the debug route
    * handlers; consult `resolveDebugConfig` in `debug-routes.ts` for the
    * env-fallback + defaults logic.
@@ -188,6 +203,7 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
     content: partial?.content ?? fallback.content,
+    resourceState: partial?.resourceState ?? fallback.resourceState,
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces
   };
@@ -231,11 +247,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     modelResolver: options.modelResolver,
     speechResolver: options.speechResolver,
     transcriptionResolver: options.transcriptionResolver,
+    settings: options.settings,
     middleware: options.middleware,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     onBackgroundWork: options.onBackgroundWork,
     maxResponseBufferSize: options.maxResponseBufferSize,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    tracingLevel: options.tracingLevel
   });
 
   // Detect interrupted requests from previous runs on startup
@@ -306,7 +324,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           seams,
           bootstrapMetadata,
-          requestContext
+          requestContext,
+          tenantIdHeader: options.tenantIdHeader
         });
       }
 

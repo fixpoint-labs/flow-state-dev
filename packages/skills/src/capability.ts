@@ -15,15 +15,22 @@
  *   - **Preset `runSkill`** (default-on): the mid-flow activation path —
  *     the `runSkill` tool plus the catalog listing the model reads to
  *     decide when to call it. Drop with `cap.presets({ runSkill: false })`
- *     when using up-front activation via `createIntentSelector`.
+ *     when using up-front activation via `createSkillActivator`.
  */
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
+  BlockDefinition,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
-import type { AgentType, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
+import type {
+  AgentRegistry,
+  AgentType,
+  DefinedCapability as DefCap,
+  InitialSkill,
+  ToolCatalog,
+} from "@flow-state-dev/core";
 import {
   defineSkillsCollection,
   type DefineSkillsCollectionOptions,
@@ -34,6 +41,8 @@ import {
   buildSkillsCatalogContext,
 } from "./context-fn";
 import { createRunSkillTool } from "./run-skill-tool";
+import type { PatternRegistry } from "./pattern-registry";
+import { taskTools as taskToolsCapability } from "./task-tools-capability";
 
 // ---------------------------------------------------------------------------
 // Public options
@@ -72,6 +81,42 @@ export interface SkillsCapabilityOptions {
    * context on every step. See CapabilityConfig.agentType.
    */
   agentType?: AgentType | readonly AgentType[];
+
+  /**
+   * Optional pattern registry. When supplied, skills declaring `pattern:`
+   * frontmatter dispatch through the pattern route and the `taskTools`
+   * capability is composed in by default; when absent, those skills fail
+   * with a clear configuration error at activation.
+   */
+  patternRegistry?: PatternRegistry;
+
+  /**
+   * Optional block-ref registry threaded to pattern workers using
+   * `block-ref:`. Unknown refs fail at activation with a clear error.
+   */
+  blockRegistry?: Record<string, BlockDefinition>;
+
+  /**
+   * Default-on when `patternRegistry` is supplied. Set `false` to skip
+   * composing the `taskTools` capability — agents lose the runtime
+   * mutation surface (`addTask`, `completeTask`, etc.) but the
+   * declarative pattern dispatch still works.
+   */
+  taskTools?: boolean;
+
+  /**
+   * Optional AgentRegistry for pattern workers using `agent-ref:`.
+   * Wired by the Agents primitive (Wave 2); declared today so the
+   * forward-compat slot is typed end-to-end.
+   */
+  agentRegistry?: AgentRegistry;
+
+  /**
+   * Optional capability catalog forwarded to the Agents primitive's
+   * `materializeAgent` for resolving an agent's `uses-capabilities`.
+   * Not read by this work; declared today for the forward-compat slot.
+   */
+  capabilityCatalog?: Record<string, DefCap>;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +158,11 @@ export function createSkillsCapability(
     catalog,
     initialSkills,
     mountPath,
-    forkModelId: options.forkModelId,
+    ...(options.forkModelId !== undefined ? { forkModelId: options.forkModelId } : {}),
+    ...(options.patternRegistry ? { patternRegistry: options.patternRegistry } : {}),
+    ...(options.blockRegistry ? { blockRegistry: options.blockRegistry } : {}),
+    ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
+    ...(options.capabilityCatalog ? { capabilityCatalog: options.capabilityCatalog } : {}),
   });
 
   const catalogTools = Object.values(catalog);
@@ -131,9 +180,13 @@ export function createSkillsCapability(
     mountPath,
   });
 
+  const composesTaskTools =
+    options.patternRegistry !== undefined && options.taskTools !== false;
+
   return defineCapability({
     name: "skills",
     agentType: options.agentType,
+    ...(composesTaskTools ? { uses: [taskToolsCapability] as const } : {}),
 
     // Always-on surface: the resource collection and the session-state slice
     // active-skills writes into. The collection's intrinsic `scope` (set via
@@ -149,7 +202,7 @@ export function createSkillsCapability(
 
       // Active-skill body formatter — required for any matched skill to
       // appear in the system prompt. Both activation paths (up-front via
-      // intentSelector, mid-flow via runSkill) feed it via
+      // skillActivator, mid-flow via runSkill) feed it via
       // session.state.activeSkills. Aggregates under the `<skills>`
       // tag with the runSkill catalog when both presets are on.
       context: { context: { skills: [activeContext] } },
@@ -157,7 +210,7 @@ export function createSkillsCapability(
       // Mid-flow activation: the runSkill tool + the catalog listing the
       // model reads to decide when to call it. Drop with
       // `cap.presets({ runSkill: false })` when using up-front activation
-      // via createIntentSelector — the active-skills formatter above
+      // via createSkillActivator — the active-skills formatter above
       // still injects the matched skill's body.
       runSkill: {
         tools: [runSkillTool],

@@ -41,7 +41,7 @@ Before declaring a wave complete, all of these must pass:
 - [ ] Lint/static checks pass
 - [ ] Architecture contract spot-check against `docs/architecture/`
 - [ ] Wave changelog and journal updated
-- [ ] Root `changelog.md` updated with concise summary
+- [ ] Changesets present for all packages with user-facing impact (verify via `pnpm changeset status`; see [`release-notes-workflow.md`](release-notes-workflow.md))
 
 ## Wave Completion Record
 
@@ -70,4 +70,3 @@ Current state (Phase 1):
 - Every implementation change must map to a wave task (BP-002)
 - Wave labels must NOT appear in runtime code or tests (BP-006)
 - Documentation updates ship in the same change set as code changes
-- The `preperation/architecture/IMPLEMENTATION_PLAN.md` tracks the canonical wave sequence

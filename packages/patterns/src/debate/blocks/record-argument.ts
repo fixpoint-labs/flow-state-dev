@@ -8,27 +8,11 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
 import { z } from "zod";
+import { coerceText } from "../../shared/coerce";
 import {
   debateStateSchema,
-  type DebateState,
   type DebateTranscriptState,
 } from "../schemas";
-
-function coerceText(out: unknown, agentName: string, warned: Set<string>): string {
-  if (typeof out === "string") return out;
-  if (out !== null && typeof out === "object") {
-    const obj = out as { text?: unknown };
-    if (typeof obj.text === "string") return obj.text;
-  }
-  if (!warned.has(agentName)) {
-    warned.add(agentName);
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[debate] debater "${agentName}" returned a non-string/non-{text} value; coerced via String().`,
-    );
-  }
-  return String(out);
-}
 
 export function createRecordArgument(opts: {
   name: string;
@@ -45,8 +29,11 @@ export function createRecordArgument(opts: {
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     execute: async (input, ctx) => {
-      const text = coerceText(input, opts.agentName, opts.warnedAgents);
-      const state = ctx.sequencer!.state as DebateState;
+      const text = coerceText(input, opts.agentName, opts.warnedAgents, {
+        tag: "debate",
+        noun: "debater",
+      });
+      const state = ctx.sequencer!.state;
       const round = state.round;
 
       const current = ctx.resources.transcript.state as DebateTranscriptState;
@@ -72,6 +59,14 @@ export function createRecordArgument(opts: {
         eligibility: (t) => t.id === task.id,
       });
       await collection.complete(task.id, { text });
+
+      // Surface the turn as a renderable component item. The renderer
+      // groups these by round to draw the transcript timeline.
+      ctx.emit.component(
+        "debate-turn",
+        { round, agentName: opts.agentName, stance: opts.stance, text },
+        { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}` },
+      );
 
       return input;
     },

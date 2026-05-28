@@ -1,7 +1,9 @@
 import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
+import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
 import type {
+  BlockCacheableConfig,
   BlockConfig,
   BlockContext,
   BlockDefinition,
@@ -11,7 +13,7 @@ import type {
   RetryPolicy
 } from "../types/block";
 import { asRuntime } from "../types/block";
-import type { ItemQuery } from "../types/scope";
+import type { ItemQuery, MessageLimit } from "../types/scope";
 import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
@@ -30,16 +32,34 @@ import type { ModelSelection } from "../models/selectModel";
 import { isModelSelection } from "../models/selectModel";
 import type { ProviderPreference } from "../models/types";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
+import type {
+  CapabilityRef,
+  InferCapabilities,
+  InferCapabilityResources,
+  InferCapabilitySequencerState,
+  InferCapabilitySessionState,
+  MergeTargetSchemas,
+  Prettify,
+  UsesEntry,
+} from "../capability/types";
+
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { sanitizeToolName } from "../utils/tool-name";
+import { sanitizeToolName } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   aggregateContextEntries,
   objectFormHasNestedFunction,
 } from "./context-aggregator";
-import { renderTaggedContext } from "../prompt";
+import { renderTaggedContext, type TagAccumulator } from "../prompt";
+import {
+  definePromptFile,
+  getPromptFileBrand,
+  isPromptFile,
+  type PromptFile,
+  type PromptFileBrand,
+  type PromptFileConfigView,
+} from "../prompt/prompt-file";
 import {
   blockPathTool,
   buildBlockInstanceId,
@@ -49,7 +69,16 @@ import {
 
 import { getEmitterItemCount, toError, withTimeout } from "./internal/utils";
 import { emitToolOutputAround } from "./internal/emit-tool-output";
-import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import {
+  buildCacheKey,
+  getInFlightMap,
+  isFresh,
+  normalizeCacheable,
+  resolveCacheSourceTask,
+  resolveToolCacheStore,
+  writeToolObservation,
+  type ToolCacheStore,
+} from "./internal/cache-tool-call";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -216,7 +245,7 @@ export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
   missing?: "error" | "empty";
-  limit?: number | { tokens: number };
+  limit?: MessageLimit;
   as?: string;
 };
 
@@ -255,6 +284,11 @@ export type GeneratorTool = BlockDefinition<any, any>;
 
 /** Tools slot accepted by generators and pattern factories — static array or context-aware function. */
 export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorTool[]>);
+
+/** Instructions slot accepted by pattern factories — static string or context-aware function returning a prompt string. */
+export type InstructionsSlot<TInput = unknown> =
+  | string
+  | ((input: TInput, ctx: any) => MaybePromise<string>);
 
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
@@ -310,22 +344,26 @@ export interface GeneratorConfig<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  // Derive-once: evaluate z.infer exactly once per provided schema
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference — declared above the derived state/resource
+  // params so their defaults can intersect capability contributions.
+  TUses extends readonly UsesEntry[] = readonly [],
+  // Derive-once: evaluate z.infer exactly once per provided schema, then
+  // intersect with capability-declared shapes (block-own on the LEFT of `&`
+  // so its property declaration wins on a valid-object collision).
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
-  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
-  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  // Capability type inference
-  TUses extends readonly UsesEntry[] = readonly [],
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
@@ -373,7 +411,15 @@ export interface GeneratorConfig<
    * the capability's. Missing on both is a runtime error at construction.
    */
   model?: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
+  /**
+   * Prompt slot. Accepts an inline string, a resolver function, an array of
+   * those, a branded PromptFile slot (`pf.prompt`), or a whole
+   * {@link PromptFile} (`prompt: loadPromptFile(...)`). Passing the PromptFile
+   * directly expands its `user` / `caching` / `maxTokens` / `temperature` /
+   * `name` / `description` into this config — any sibling field set explicitly
+   * here wins, matching `...definePromptFile(pf), <overrides>`.
+   */
+  prompt: PromptSlot<NoInfer<TInput>, TCtx> | PromptFile;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
@@ -582,25 +628,88 @@ function asSystemMessage(value: unknown): unknown {
 }
 
 /**
- * Build the system-message prefix from a resolved prompt and a list of
+ * Post-resolution generator-config values exposed to PromptFile templates as
+ * the `config` render variable. Distinct from `ctx`: this is "what the
+ * generator will run with" (resolved model/tools/caching), not "what the call
+ * brought" (state/resources). The aggregated context tag map is added per
+ * call (it depends on resolved context entries).
+ */
+interface PromptFileConfigMeta {
+  model?: string;
+  intent?: string;
+  tools?: string[];
+  caching?: CachingConfig;
+  maxTokens?: number;
+  temperature?: number;
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * Flatten an aggregated tag tree into the `config.context` map templates read:
+ * each top-level tag name maps to the rendered string the framework would
+ * otherwise have placed inside `<tagName>...</tagName>`.
+ */
+function flattenAggregatedContext(tagged: TagAccumulator): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(tagged)) {
+    const value = tagged[key]!;
+    out[key] = Array.isArray(value)
+      ? value.filter((s) => s.length > 0).join("\n")
+      : renderTaggedContext(value, []);
+  }
+  return out;
+}
+
+/**
+ * Build the system-message prefix from a prompt slot and a list of
  * already-resolved context entries.
  *
- * Aggregates object-form entries under their normalized tag keys, renders
- * the result as a single XML block, and prepends it (with a blank-line
- * separator) to the prompt to form one combined system message. String
- * entries and pre-built `{role, content}` messages are emitted as their
- * own additional system messages, in author order, after the combined one.
+ * Aggregates object-form context entries under their normalized tag keys.
+ * For inline prompts, resolves the prompt as today and renders the aggregated
+ * context as a single XML block appended (blank-line-separated) to the prompt.
  *
- * Returns an empty array when both prompt and context are empty.
+ * For PromptFile prompts (`promptFileBrand` present), renders the `<system>`
+ * template against `{ input, ctx, config }` where `config` carries the resolved
+ * model/tools/caching plus the aggregated context map. When the template
+ * declares a `<context>` block, it owns context rendering: the default XML-tag
+ * append is suppressed and the rendered block is wrapped in `<context>...
+ * </context>`. The constructed `config` view is returned so the caller can
+ * render a PromptFile `<user>` slot against the same scope.
+ *
+ * Returns an empty `messages` array when both prompt and context are empty.
  */
 async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
-  promptStr: string,
+  promptValue: PromptSlot<TInput, TCtx>,
+  promptFileBrand: PromptFileBrand | undefined,
   contextValues: unknown[],
   input: TInput,
-  ctx: TCtx
-): Promise<unknown[]> {
+  ctx: TCtx,
+  configMeta: PromptFileConfigMeta
+): Promise<{ messages: unknown[]; configView: PromptFileConfigView | undefined; promptText: string }> {
   const aggregated = await aggregateContextEntries(contextValues, input, ctx);
-  const xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+
+  let promptStr: string;
+  let xmlBlock: string;
+  let configView: PromptFileConfigView | undefined;
+
+  if (promptFileBrand) {
+    const config: PromptFileConfigView = {
+      ...configMeta,
+      context: flattenAggregatedContext(aggregated.tagged),
+    };
+    configView = config;
+    const scope = { input, ctx, config };
+    promptStr = await promptFileBrand.renderSystem(scope);
+    if (promptFileBrand.hasContextBlock) {
+      const ctxStr = (await promptFileBrand.renderContext(scope)) ?? "";
+      xmlBlock = `<context>\n${ctxStr}\n</context>`;
+    } else {
+      xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+    }
+  } else {
+    promptStr = await resolvePrompt(promptValue, input, ctx);
+    xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+  }
 
   const combinedParts: string[] = [];
   if (promptStr.length > 0) combinedParts.push(promptStr);
@@ -614,7 +723,7 @@ async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
   for (const pt of aggregated.passThrough) {
     messages.push(asSystemMessage(pt));
   }
-  return messages;
+  return { messages, configView, promptText: promptStr };
 }
 
 function asUserMessage(value: unknown): unknown {
@@ -623,6 +732,64 @@ function asUserMessage(value: unknown): unknown {
   }
 
   return value;
+}
+
+/**
+ * Whether two values represent the same user-role LLM message. Used at
+ * message-assembly time to avoid double-emitting the current turn's user
+ * input when both `action.userMessage` (via live items in historyValues)
+ * and the generator's `user` slot resolve to identical content.
+ *
+ * Tolerates the two shapes the codebase produces today:
+ *   - { role: "user", content: string }      (asUserMessage; itemToLLMMessages on output_text)
+ *   - { role: "user", content: Array<...> }  (multipart future-proofing)
+ *
+ * If either side is not a recognizable user message, returns false (do not
+ * dedup). Equality on content uses a stable stringified key so the helper
+ * is robust to shape evolution without re-deriving normalization rules
+ * across the two production paths (asUserMessage and itemToLLMMessages).
+ */
+function isEquivalentUserMessage(a: unknown, b: unknown): boolean {
+  if (!isUserRoleMessage(a) || !isUserRoleMessage(b)) return false;
+  return userMessageContentKey(a) === userMessageContentKey(b);
+}
+
+function isUserRoleMessage(value: unknown): value is { role: "user"; content: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { role?: unknown }).role === "user" &&
+    "content" in (value as object)
+  );
+}
+
+function userMessageContentKey(msg: { content: unknown }): string {
+  const c = msg.content;
+  if (typeof c === "string") return c;
+  // Sort object keys recursively so equivalence is independent of key
+  // insertion order across the two producers (asUserMessage and
+  // itemToLLMMessages). Without this, two semantically equal multipart
+  // parts whose keys were inserted in different orders would stringify
+  // differently and dedup would silently fail.
+  try {
+    const serialized = stableStringify(c);
+    return serialized !== undefined ? serialized : String(c);
+  } catch {
+    return String(c);
+  }
+}
+
+function stableStringify(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
+        sorted[k] = (val as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return val;
+  });
 }
 
 async function resolveSlotValues<TInput, TCtx extends BlockContext>(
@@ -705,6 +872,11 @@ function compileToolsWithExecute(
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
+  // Snapshot the request-scoped status slot when the first tool in a
+  // (possibly parallel) round starts; restore when the last one exits.
+  // Without this, a finished tool's `activeStatusMessage` lingers as a
+  // stale "still running" indicator after the tool itself returns.
+  const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
     // Pluck the model-output mapper off the tool's runtime view (set by
     // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
@@ -726,19 +898,92 @@ function compileToolsWithExecute(
         }
       : {}),
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
+      // FIX-610: opt-in tool-result memoization. The cache wrapping
+      // composes around the rest of this closure. On a hit we skip the
+      // entire scope/retry/timeout machinery and emit a `tool_output`
+      // carrying `cached: true`; observers fire with `cached: true` so
+      // downstream consumers see the same lifecycle pair. Errors are
+      // never cached. Misses fall through to the normal path and write
+      // the cache afterward unless `cacheIf` returned false.
+      const cacheable = tool.config.cacheable;
+      let cacheMiss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore } | undefined;
+      if (cacheable !== undefined) {
+        const cacheResult = await tryServeFromCache(
+          tool,
+          args,
+          ctx,
+          flowTools,
+          generatorBlockName,
+          agentType,
+          agentName,
+          options?.toolCallId,
+        );
+        if (cacheResult.kind === "hit") return cacheResult.output;
+        if (cacheResult.kind === "in-flight") return cacheResult.promise;
+        if (
+          cacheResult.kind === "miss" &&
+          cacheResult.key !== undefined &&
+          cacheResult.cfg !== undefined &&
+          cacheResult.store !== undefined
+        ) {
+          cacheMiss = {
+            key: cacheResult.key,
+            cfg: cacheResult.cfg,
+            store: cacheResult.store,
+          };
+        }
+      }
+
       // FIX-573 Path A: when invoked through the model loop with a
       // `toolCallId`, emit a `tool_output` placeholder around the called
       // block's run. The called block's own `block_trace.output` is set to a
       // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
       // result is stored once and surfaced in two places.
       const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-        return output;
+        if (statusGuard.active === 0) {
+          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
+        }
+        statusGuard.active++;
+        // Surface the tool's run in the status slot so the in-flight indicator
+        // reflects "what's happening now". Routing through emit.status (rather
+        // than emitting a raw status item) updates the slot, which is what
+        // makes the restore in `finally` actually publish a clearing item
+        // instead of being deduped against an unchanged slot.
+        scopedCtx.emit.status(`Using ${tool.name}…`);
+        // FSDEV_DEBUG_TOOLS=1 prints per-tool start/end with timing. Used
+        // to localize tool-dispatch hangs (e.g. when a tool_output envelope
+        // emits but the handler never completes). Off by default.
+        const debugTools = typeof process !== "undefined" && process.env?.FSDEV_DEBUG_TOOLS === "1";
+        const toolStartedAt = debugTools ? Date.now() : 0;
+        if (debugTools) {
+          // eslint-disable-next-line no-console
+          console.error(`[fsd-tool] start ${tool.name} callId=${options?.toolCallId ?? "-"}`);
+        }
+        try {
+          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          if (debugTools) {
+            // eslint-disable-next-line no-console
+            console.error(`[fsd-tool] done  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms`);
+          }
+          return output;
+        } catch (err) {
+          if (debugTools) {
+            const msg = err instanceof Error ? err.message : String(err);
+            // eslint-disable-next-line no-console
+            console.error(`[fsd-tool] fail  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms err=${msg}`);
+          }
+          throw err;
+        } finally {
+          statusGuard.active--;
+          if (statusGuard.active === 0) {
+            scopedCtx.emit.status(statusGuard.saved);
+          }
+        }
       };
 
       // `_withExecutionScope` is the durable-runtime hook that disambiguates
@@ -772,10 +1017,54 @@ function compileToolsWithExecute(
         }
       };
 
+      // Wrap the chosen execute path in cache + observation bookkeeping.
+      // - Single-flight: when this is a cacheable miss, register the
+      //   executing promise on the in-flight map so concurrent identical
+      //   calls in the same request join this one execution instead of
+      //   each kicking off their own.
+      // - Observation: write a ledger entry on both success and error so
+      //   flow policies can see every tool call, including failures.
+      // - Cache write: only on success, gated by `cacheIf`.
+      const runAndRecord = async (runOnce: () => Promise<unknown>): Promise<unknown> => {
+        const inFlightMap = cacheMiss !== undefined ? getInFlightMap(ctx) : undefined;
+        const execute = runOnce();
+        if (inFlightMap !== undefined && cacheMiss !== undefined) {
+          inFlightMap.set(cacheMiss.key, execute);
+        }
+        try {
+          const output = await execute;
+          if (cacheMiss !== undefined) {
+            maybeWriteCache(tool, args, output, ctx, cacheMiss);
+          }
+          writeToolObservation(ctx, {
+            toolName: tool.name,
+            args,
+            result: output,
+            cached: false,
+          });
+          return output;
+        } catch (err) {
+          // Errors are never cached. Record the failure as an
+          // observation so flow policies can surface it on a retry's
+          // priorWork. The original throw still propagates.
+          writeToolObservation(ctx, {
+            toolName: tool.name,
+            args,
+            error: err instanceof Error ? err.message : String(err),
+            cached: false,
+          });
+          throw err;
+        } finally {
+          if (inFlightMap !== undefined && cacheMiss !== undefined) {
+            inFlightMap.delete(cacheMiss.key);
+          }
+        }
+      };
+
       // No `toolCallId` → no stable envelope callId; run the tool directly
       // with retry + observer hooks (matches prior behavior).
       if (options?.toolCallId === undefined) {
-        return await withScope(callToolWithErrorObserver);
+        return await runAndRecord(() => withScope(callToolWithErrorObserver));
       }
       const attribution = {
         callId: options.toolCallId,
@@ -788,15 +1077,145 @@ function compileToolsWithExecute(
         // chunk that carries a resolvedIdentity.
         model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
       };
-      return await emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
-        withScope((scopedCtx) => {
-          (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-            ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
-          return callToolWithErrorObserver(scopedCtx);
-        })
+      return await runAndRecord(() =>
+        emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
+          withScope((scopedCtx) => {
+            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
+              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
+            return callToolWithErrorObserver(scopedCtx);
+          })
+        )
       );
     }
     };
+  });
+}
+
+/**
+ * Cache-lookup helper for `compileToolsWithExecute`. Returns:
+ *  - `{ kind: "hit", output }` when the call was served from the cache
+ *    (observers fired, `tool_output` item emitted if a `toolCallId` is
+ *    present, observation hook called).
+ *  - `{ kind: "in-flight", promise }` when an identical call is already
+ *    running in this request; the caller awaits the shared promise.
+ *  - `{ kind: "miss" }` when the call should fall through to the normal
+ *    execute path. The miss path registers an in-flight entry so
+ *    siblings can join it.
+ *
+ * Cache attribution (`sourceTask`) flows through via the Task Board
+ * `_resolveCacheSourceTask` hook installed by board wiring. When no
+ * cache store is installed, returns `miss` immediately — caching is
+ * a no-op for non-board generators.
+ */
+async function tryServeFromCache(
+  tool: GeneratorTool,
+  args: unknown,
+  ctx: BlockContext,
+  flowTools: ToolsConfig | undefined,
+  generatorBlockName: string,
+  agentType: AgentType | undefined,
+  agentName: string | undefined,
+  toolCallId: string | undefined,
+): Promise<
+  | { kind: "hit"; output: unknown }
+  | { kind: "in-flight"; promise: Promise<unknown> }
+  | { kind: "miss"; key?: string; cfg?: BlockCacheableConfig; store?: ToolCacheStore }
+> {
+  const cacheable = tool.config.cacheable;
+  if (cacheable === undefined) return { kind: "miss" };
+  const store = resolveToolCacheStore(ctx);
+  if (store === undefined) return { kind: "miss" };
+
+  const cfg = normalizeCacheable(cacheable);
+  let key: string;
+  try {
+    key = buildCacheKey(tool.name, args, ctx, cfg, store);
+  } catch (err) {
+    // Canonicalize failure → fall back to executing the call (no
+    // caching). The thrown message names the offending tool.
+    // eslint-disable-next-line no-console
+    console.warn((err as Error).message);
+    return { kind: "miss" };
+  }
+
+  const inFlightMap = getInFlightMap(ctx);
+  const inFlight = inFlightMap.get(key);
+  if (inFlight !== undefined) return { kind: "in-flight", promise: inFlight };
+
+  const entry = store.get(key);
+  if (entry !== undefined && isFresh(entry, cfg, store)) {
+    const ageMs = Date.now() - entry.storedAt;
+    await runToolObserver(
+      flowTools?.onToolStarted,
+      { toolName: tool.name, input: args, cached: true },
+      ctx,
+    );
+    await runToolObserver(
+      flowTools?.onToolCompleted,
+      { toolName: tool.name, input: args, output: entry.output, cached: true },
+      ctx,
+    );
+
+    if (toolCallId !== undefined) {
+      const attribution = {
+        callId: toolCallId,
+        generatorBlock: generatorBlockName,
+        agentType,
+        agentName,
+        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
+        cached: {
+          ageMs,
+          ...(entry.sourceTask !== undefined ? { sourceTask: entry.sourceTask } : {}),
+        },
+      };
+      await emitToolOutputAround(
+        tool,
+        ctx,
+        args,
+        attribution,
+        async () => entry.output,
+      );
+    }
+
+    writeToolObservation(ctx, {
+      toolName: tool.name,
+      args,
+      result: entry.output,
+      cached: true,
+    });
+
+    return { kind: "hit", output: entry.output };
+  }
+
+  // Miss: hand back the key+cfg+store so the caller can register the
+  // executing promise in the in-flight map (single-flight) and write
+  // through after the call resolves.
+  return { kind: "miss", key, cfg, store };
+}
+
+/**
+ * Post-execute cache write. Invoked from the call site only on the
+ * success path — errors are never cached, by contract. Honors
+ * `cacheIf` and stamps the active source-task attribution if any
+ * board wiring resolved one.
+ */
+function maybeWriteCache(
+  tool: GeneratorTool,
+  args: unknown,
+  output: unknown,
+  ctx: BlockContext,
+  miss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore },
+): void {
+  const shouldCache = miss.cfg.cacheIf === undefined ? true : miss.cfg.cacheIf(output, args);
+  if (!shouldCache) return;
+  const ttl = miss.cfg.ttl ?? miss.store.defaultTtl;
+  const sourceTask = resolveCacheSourceTask(ctx);
+  miss.store.set(miss.key, {
+    output,
+    storedAt: Date.now(),
+    ...(ttl !== undefined ? { ttl } : {}),
+    toolName: tool.name,
+    ...(sourceTask !== undefined ? { sourceTask } : {}),
   });
 }
 
@@ -1053,6 +1472,7 @@ function buildSourceItem(
     provenance,
     ts: Date.now(),
     ownedBy: ctx._blockIdentity?.ownedBy,
+    taskId: ctx._blockIdentity?.taskId,
     agentType,
     agentName,
     sourceType: "url" as const,
@@ -1077,6 +1497,27 @@ function buildSourceItem(
  * schema validation runs), but reasoning, messages, tool-call progress,
  * and source items are all suppressed.
  */
+/**
+ * FIX-663: rewrites a rejected model call into a legible failure. When the
+ * error is abort-like and this block's signal aborted (explicit user
+ * cancellation propagated to a background `.work()` task, or a foreground
+ * `/abort`), surface the unwrapped root-cause text instead of the AI
+ * Gateway's doubly-wrapped "Invalid error response format" noise, and log
+ * concisely rather than dumping the wrap chain. The error is still thrown so
+ * the existing `block_trace` failure surface fires unchanged — only its
+ * message gets clearer. Genuine non-abort errors pass through untouched.
+ */
+function surfaceModelCallError(err: unknown, ctx: BlockContext, blockName: string): never {
+  if (isAbortLike(err) && ctx.signal?.aborted) {
+    const root = rootCause(err);
+    const message = root instanceof Error ? root.message : String(root);
+    // eslint-disable-next-line no-console
+    console.warn(`[generator] "${blockName}" model call aborted: ${message}`);
+    throw new Error(message, { cause: err });
+  }
+  throw err;
+}
+
 async function executeStreamingGeneration<TInput, TOutput>(
   model: GeneratorModel,
   messages: unknown[],
@@ -1104,6 +1545,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     phase: identity?.phase ?? ("main" as const)
   };
   const ownedBy = identity?.ownedBy;
+  const taskId = identity?.taskId;
   let reasoningAccumulated = "";
   // Resolved model identity stamped on each emitted item and propagated to
   // BlockTraceItem.model via onGeneratorModelResult. Initialized from the
@@ -1154,6 +1596,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1194,6 +1637,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1214,6 +1658,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            taskId,
             agentType,
             agentName,
             model: resolvedIdentity,
@@ -1238,26 +1683,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
           delta: chunk.textDelta
         });
       }
-    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      if (emit) {
-        const toolName = chunk.toolInput.toolName;
-        const statusItem = {
-          id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          type: "status" as const,
-          status: "completed" as const,
-          transient: true,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          agentType,
-          agentName,
-          message: `Using ${toolName}…`,
-          detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
-        };
-        await ctx.response.emit({ type: "item.added", item: statusItem });
-        await ctx.response.emit({ type: "item.done", item: statusItem });
-      }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
       if (emit) {
         const delta = chunk.toolCallDelta;
@@ -1271,6 +1696,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           provenance,
           ts: Date.now(),
           ownedBy,
+          taskId,
           agentType,
           agentName,
           model: resolvedIdentity,
@@ -1294,6 +1720,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           provenance,
           ts: Date.now(),
           ownedBy,
+          taskId,
           agentType,
           agentName,
           model: resolvedIdentity,
@@ -1338,6 +1765,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        taskId,
         agentType,
         agentName,
         model: resolvedIdentity,
@@ -1357,6 +1785,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        taskId,
         agentType,
         agentName,
         model: resolvedIdentity,
@@ -1436,28 +1865,29 @@ export function generator<
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
-  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
-  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
-  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TOrgState,
-    TResources, TSequencerState, unknown, TTargetSchemas,
+    TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TResourceDefs, TResources, TTargetSchemas,
-    TUses, TCapabilities, TCtx
+    TResources, TMergedTargetSchemas, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
@@ -1468,6 +1898,23 @@ export function generator<
     ...config,
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
+
+  // A whole PromptFile passed as `prompt` (`prompt: loadPromptFile(...)`)
+  // expands into the same spreadable fields `definePromptFile` produces. Any
+  // sibling field the author set explicitly wins, matching the spread form
+  // `...definePromptFile(pf), <overrides>`. After this, `prompt` is the bare
+  // branded slot the rest of the generator already understands.
+  if (isPromptFile(config.prompt)) {
+    const expanded = definePromptFile(config.prompt);
+    const target = normalizedConfig as unknown as Record<string, unknown>;
+    const authored = config as unknown as Record<string, unknown>;
+    for (const key of ["name", "description", "user", "caching", "maxTokens", "temperature"] as const) {
+      if (expanded[key] !== undefined && authored[key] === undefined) {
+        target[key] = expanded[key];
+      }
+    }
+    target.prompt = expanded.prompt;
+  }
 
   // -----------------------------------------------------------------------
   // Merge all capability contributions (static + dynamic) into the
@@ -1614,7 +2061,20 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
 
-      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
+      const promptFileBrand = getPromptFileBrand(normalizedConfig.prompt);
+      const configMeta: PromptFileConfigMeta = {
+        model: modelId,
+        intent: promptFileBrand?.frontmatter.intent as string | undefined,
+        tools: toolBlocks.map((t) => t.name),
+        caching: resolvedCaching,
+        maxTokens: normalizedConfig.maxTokens,
+        // Read from the resolved config (not frontmatter) so a `temperature`
+        // override placed after `...definePromptFile(pf)` wins, matching how
+        // `maxTokens` and `prompt` overrides behave. `temperature` is not a
+        // typed GeneratorConfig field today; `definePromptFile` spreads it in.
+        temperature: (normalizedConfig as { temperature?: number }).temperature,
+        providerOptions: resolvedProviderOpts,
+      };
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1627,24 +2087,56 @@ export function generator<
 
       const historySlot = normalizeHistorySlot(normalizedConfig.history);
       const historyValues = await resolveSlotValues(historySlot, input, ctx);
-      const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)
       // separately so prepareStep can replace it with freshly resolved values.
       // Object-form context entries are aggregated under shared XML tag keys
       // and rendered into a single combined system message alongside the
-      // prompt; string entries follow as their own messages.
-      const systemPrefix: unknown[] = await buildSystemPrefix(
-        prompt,
-        contextValues,
-        input,
-        ctx
-      );
+      // prompt; string entries follow as their own messages. PromptFile
+      // generators render their `<system>`/`<context>`/`<user>` templates here
+      // against the resolved `config` view.
+      const {
+        messages: systemPrefix,
+        configView,
+        promptText: prompt,
+      } = await buildSystemPrefix(
+          normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
+          promptFileBrand,
+          contextValues,
+          input,
+          ctx,
+          configMeta
+        );
+
+      // A PromptFile `<user>` block fills the user slot — but only when the
+      // author left it in place. If `user` was overridden after the spread
+      // (`...definePromptFile(pf), user: "..."`), the override carries no
+      // PromptFile brand, so it resolves through the normal slot path and
+      // wins, consistent with `prompt` spread precedence.
+      const userBrand = getPromptFileBrand(normalizedConfig.user);
+      const userValues = userBrand?.hasUserBlock && configView !== undefined
+        ? [await userBrand.renderUser({ input, ctx, config: configView })].filter(
+            (v): v is string => v != null
+          )
+        : await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
       const systemPrefixCount = systemPrefix.length;
+      // FIX-662: when action.userMessage emits a runtime user item, it lands
+      // in live items and flows through historyValues. If the generator's
+      // `user` slot resolves to equivalent content, drop the leading
+      // userValues entry so the model does not see the user's turn twice.
+      // Anthropic silently merges adjacent same-role messages, which is the
+      // visible symptom this guards against. The drop is on userValues (not
+      // historyValues) because historyValues is the retry/resume contract
+      // surface and live items must remain visible to retried turns.
+      const userMessages = userValues.map(asUserMessage);
+      const dropLeadingUserDuplicate =
+        userMessages.length > 0 &&
+        historyValues.length > 0 &&
+        isEquivalentUserMessage(historyValues[historyValues.length - 1], userMessages[0]);
       const messages: unknown[] = [
         ...systemPrefix,
         ...historyValues,
-        ...userValues.map(asUserMessage)
+        ...(dropLeadingUserDuplicate ? userMessages.slice(1) : userMessages)
       ];
 
       // Build prepareStep callback when prompt, context, or tools contain
@@ -1679,17 +2171,18 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);
           }
 
-          const freshSystemPrefix: unknown[] = await buildSystemPrefix(
-            freshPrompt,
+          const { messages: freshSystemPrefix } = await buildSystemPrefix(
+            normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
+            promptFileBrand,
             freshContext,
             input,
-            ctx
+            ctx,
+            configMeta
           );
 
           // Replace the system prefix with fresh values; keep conversation
@@ -1756,6 +2249,12 @@ export function generator<
               tools: toolBlocks.map((t) => t.name),
               user: debugUserMessages,
               history: historyValues,
+              ...(promptFileBrand
+                ? {
+                    templateSource: promptFileBrand.rawText,
+                    templateFrontmatter: promptFileBrand.frontmatter,
+                  }
+                : {}),
             },
           },
         },
@@ -1763,22 +2262,26 @@ export function generator<
       );
 
       if (canStream) {
-        return await executeStreamingGeneration(
-          model,
-          messages,
-          compiledTools,
-          resolvedProviderTools,
-          normalizedConfig,
-          outputSchema,
-          blockName,
-          maxSteps,
-          ctx,
-          agentType,
-          agentName,
-          prepareStepFn,
-          resolvedProviderOpts,
-          resolvedCaching
-        );
+        try {
+          return await executeStreamingGeneration(
+            model,
+            messages,
+            compiledTools,
+            resolvedProviderTools,
+            normalizedConfig,
+            outputSchema,
+            blockName,
+            maxSteps,
+            ctx,
+            agentType,
+            agentName,
+            prepareStepFn,
+            resolvedProviderOpts,
+            resolvedCaching
+          );
+        } catch (err) {
+          surfaceModelCallError(err, ctx, blockName);
+        }
       }
 
       // Prime `_currentModelIdentity` with the requested model id so tools
@@ -1789,18 +2292,23 @@ export function generator<
         actual: model.modelId,
       };
       // Non-streaming: single call, model handles multi-step loop via maxSteps.
-      const generation = await model.generate({
-        messages,
-        tools: compiledTools.length > 0 ? compiledTools : undefined,
-        providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
-        outputSchema,
-        maxTokens: normalizedConfig.maxTokens,
-        signal: ctx.signal,
-        maxSteps,
-        providerOptions: resolvedProviderOpts,
-        caching: resolvedCaching,
-        prepareStep: prepareStepFn
-      });
+      let generation: GeneratorModelResult;
+      try {
+        generation = await model.generate({
+          messages,
+          tools: compiledTools.length > 0 ? compiledTools : undefined,
+          providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
+          outputSchema,
+          maxTokens: normalizedConfig.maxTokens,
+          signal: ctx.signal,
+          maxSteps,
+          providerOptions: resolvedProviderOpts,
+          caching: resolvedCaching,
+          prepareStep: prepareStepFn
+        });
+      } catch (err) {
+        surfaceModelCallError(err, ctx, blockName);
+      }
 
       const candidate = resolveGenerationCandidate(generation);
       const nonStreamingIdentity = generation.resolvedIdentity;
@@ -1830,6 +2338,90 @@ export function generator<
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
       }
+
+      // FIX-661: emit `tool_call_progress` items for tool calls that happened
+      // inside the model's internal multi-step loop. Streaming providers
+      // produce these via the chunk stream above; non-streaming providers
+      // return them on the generation result and we synthesise the same
+      // items here so observability is independent of transport. Mirrors the
+      // streaming branch's emission shape (lines 1518-1562).
+      //
+      // Ordering caveat: on the streaming branch the interleave is
+      // `tool_call_progress { in_progress }` → `tool_output` (durable, from
+      // `emitToolOutputAround` inside the AI SDK's tool loop) →
+      // `tool_call_progress { completed }`. Here the tool runs *during*
+      // `model.generate()`, so any `tool_output` items have already been
+      // emitted by the time this block runs. Subscribers that key UI state
+      // off the `in_progress` transient must tolerate the durable
+      // `tool_output` arriving first on non-streaming providers.
+      if (agentType !== undefined) {
+        const toolIdentity = ctx._blockIdentity;
+        const toolProvenance = {
+          blockName: toolIdentity?.blockName ?? blockName,
+          blockInstanceId: toolIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: toolIdentity?.parentBlockInstanceId,
+          phase: toolIdentity?.phase ?? ("main" as const)
+        };
+        const toolOwnedBy = toolIdentity?.ownedBy;
+        const toolTaskId = toolIdentity?.taskId;
+
+        // Prefer per-step pairing when available — preserves call ordering and
+        // matches each call to its result. Fall back to top-level toolCalls
+        // when steps are absent (custom resolvers, older provider shapes); in
+        // that case only `in_progress` items emit (no result to pair).
+        const stepCalls = generation.steps?.flatMap((s) => s.toolCalls ?? []) ?? [];
+        const stepResults = generation.steps?.flatMap((s) => s.toolResults ?? []) ?? [];
+        const sourceCalls = stepCalls.length > 0 ? stepCalls : (generation.toolCalls ?? []);
+        const resultByCallId = new Map(stepResults.map((r) => [r.toolCallId, r] as const));
+
+        for (const call of sourceCalls) {
+          const inProgressItem = {
+            id: `item_toolcall_${call.toolCallId}`,
+            type: "tool_call_progress" as const,
+            status: "in_progress" as const,
+            transient: true,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance: toolProvenance,
+            ts: Date.now(),
+            ownedBy: toolOwnedBy,
+            taskId: toolTaskId,
+            agentType,
+            agentName,
+            model: nonStreamingIdentity,
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            argsDelta: JSON.stringify(call.args ?? {})
+          };
+          await ctx.response.emit({ type: "item.added", item: inProgressItem });
+          await ctx.response.emit({ type: "item.done", item: inProgressItem });
+
+          const result = resultByCallId.get(call.toolCallId);
+          if (result !== undefined) {
+            const completedItem = {
+              id: `item_toolresult_${call.toolCallId}`,
+              type: "tool_call_progress" as const,
+              status: "completed" as const,
+              transient: true,
+              requestId: ctx.request.identity.id,
+              itemIndex: getEmitterItemCount(ctx.response),
+              provenance: toolProvenance,
+              ts: Date.now(),
+              ownedBy: toolOwnedBy,
+              taskId: toolTaskId,
+              agentType,
+              agentName,
+              model: nonStreamingIdentity,
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              result: result.result
+            };
+            await ctx.response.emit({ type: "item.added", item: completedItem });
+            await ctx.response.emit({ type: "item.done", item: completedItem });
+          }
+        }
+      }
+
       if (candidate === undefined) {
         throw new Error(`Generator "${blockName}" did not produce output after ${maxSteps} step(s)`);
       }
@@ -1862,6 +2454,7 @@ export function generator<
           phase: outputIdentity?.phase ?? ("main" as const)
         };
         const nsOwnedBy = outputIdentity?.ownedBy;
+        const nsTaskId = outputIdentity?.taskId;
         const messageItem = {
           id: itemId,
           type: "message" as const,
@@ -1873,6 +2466,7 @@ export function generator<
           provenance,
           ts: Date.now(),
           ownedBy: nsOwnedBy,
+          taskId: nsTaskId,
           agentType,
           agentName,
           model: nonStreamingIdentity,

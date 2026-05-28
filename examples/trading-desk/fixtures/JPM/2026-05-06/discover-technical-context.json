@@ -1,0 +1,24 @@
+{
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "query": "JPM technical analysis chart breakout support resistance",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.investors.com/research/jpm-stock-relative-strength.html",
+      "title": "JPM holds relative-strength leadership within financials",
+      "snippet": "Relative-strength rating remains in the top decile of the financial sector despite broader sector consolidation.",
+      "publisher": "investors.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.tradingview.com/symbols/NYSE-JPM/ideas/",
+      "title": "JPM trading in well-defined range; watch $215 / $235 boundaries",
+      "snippet": "Range-bound for roughly four months. Break above $235 or below $215 likely sets the next directional trend.",
+      "publisher": "tradingview.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

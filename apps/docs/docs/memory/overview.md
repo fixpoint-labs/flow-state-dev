@@ -38,13 +38,26 @@ Memory here is a composed system, not a single store. Each tier has its own scop
 
 Working is always present. Episodic, semantic, and digest are opt-in via config. Working-only is a real configuration. A chat that just needs to remember the last few turns can wire in working alone and stop there.
 
+Once you have semantic or episodic configured, the system also runs a periodic [hygiene pass](./hygiene): semantic confidence decays over time so stale facts rank below freshly-reinforced ones, and old persistent episodes are evicted. The pass is on by default and tunable — turn it off entirely with `hygiene: false` if you'd rather keep raw confidence and unbounded growth.
+
+## Choosing an entry point
+
+There are two ways into memory. They take the same tier configs; they differ in what they wire up.
+
+- **`createMemoryCapability()`** builds the read side: the `<memory>` context block, the recall tool, and typed helpers. It does not build the capture pipeline, so nothing writes into memory on its own.
+- **`system()`** builds that same capability and adds the write side: auto-capture, consolidation, prune, and the hygiene janitor.
+
+The decision is about writes. If your flow never feeds turns back into memory — a rewrite step, a summariser, a personalisation read — reach for `createMemoryCapability`. If it captures what happened so memory grows over time, reach for `system()`.
+
 ## Quickest start
+
+This flow only reads memory, so it uses `createMemoryCapability`:
 
 ```ts
 import { defineFlow, generator } from "@flow-state-dev/core";
-import { system } from "@flow-state-dev/memory";
+import { createMemoryCapability } from "@flow-state-dev/memory";
 
-const mem = system({
+const mem = createMemoryCapability({
   model: "openai/gpt-5.4-mini",
   working: { capacity: 7 },
   episodic: true,
@@ -52,20 +65,21 @@ const mem = system({
 });
 
 const reply = generator({
-  uses: [mem.capability],
+  uses: [mem],
   // The capability injects a <memory> context block, installs the recall tool,
   // and exposes typed mem.* helpers on ctx.cap.
 });
 
 export const myFlow = defineFlow({
   kind: "my-flow",
-  sessionResources: mem.sessionResources,
-  userResources: mem.userResources,
+  resources: { ...mem.sessionResources, ...mem.userResources },
   actions: { /* ... */ },
 });
 ```
 
 That's enough to give the agent a per-turn `<memory>` summary and a recall tool it can call when the auto-injected context isn't enough.
+
+`system()` gives you the same generator surface — swap `createMemoryCapability(...)` for `system(...)` and `uses: [mem]` for `uses: [mem.capability]` — plus the capture pipeline that writes new observations back into the tiers. See [Configuration](./configuration#choosing-an-entry-point) for the side-by-side.
 
 ## How it integrates
 

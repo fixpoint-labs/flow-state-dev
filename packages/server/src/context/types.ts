@@ -1,10 +1,12 @@
 import type {
   BlockContext,
   FlowInstance,
+  FlowStateSettings,
   JsonObject,
   ModelResolver,
   ResponseEmitterHandle
 } from "@flow-state-dev/core/types";
+import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 
@@ -42,6 +44,8 @@ export type CreateExecutionContextOptions<
   userId?: string;
   sessionId?: string;
   orgId?: string;
+  /** Optional tenant the request runs under (FIX-406 6D). */
+  tenantId?: string;
   /**
    * Inbound transport provenance written to the initial `RequestRecord`.
    * Defaults to `"http"` for callers that don't supply one (FIX-438).
@@ -54,8 +58,23 @@ export type CreateExecutionContextOptions<
   metadata?: Record<string, unknown>;
   input?: unknown;
   signal?: AbortSignal;
+  /**
+   * Background-work abort signal (FIX-663). Attached to every context as
+   * `_requestBackgroundSignal` and substituted for `ctx.signal` inside
+   * `.work()` task trees. Fires only on explicit user-requested abort, not
+   * on transport-level teardown. Absent for non-server callers.
+   */
+  backgroundSignal?: AbortSignal;
   response?: ResponseEmitterHandle;
   modelResolver?: ModelResolver;
+  /** Instance-level settings exposed on every block as `ctx.settings`. */
+  settings?: FlowStateSettings;
   stores: StoreRegistry;
   logger?: RuntimeLogger;
+  /**
+   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded onto
+   * every block context as `_tracingLevel`. Unset → the runtime falls back to
+   * `resolveTracingLevel()` (env / observability default).
+   */
+  tracingLevel?: TracingLevel;
 };

@@ -11,10 +11,10 @@
  * from.
  */
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { loadFixture } from "../../services/fixtures";
-import { fetchYahooChart } from "../../services/yahoo";
-import { fetchFinnhubCandles, hasFinnhubKey } from "../../services/finnhub";
+import { getOrFetch } from "../../lib/cache";
+import { loadFixture } from "../../lib/fixtures";
+import { fetchYahooChart } from "../../providers/yahoo";
+import { fetchFinnhubCandles, hasFinnhubKey } from "../../providers/finnhub";
 import { emptyPayload } from "./empty-payloads";
 import { computeIndicators, type Bar } from "./indicators-math";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";

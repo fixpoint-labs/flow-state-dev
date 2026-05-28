@@ -33,6 +33,8 @@ function analystThesis(label: string, headline: string) {
         { h: "Composite reading", p: "Synthesis holds.", items: null },
         { h: "Material items", p: null, items: ["Watch item A", "Watch item B"] },
       ],
+      citations: null,
+      dataQuality: "full" as const,
     },
   };
 }
@@ -163,13 +165,21 @@ function makeAnalystAndRosterMocks() {
       name: "technical-analyst-generator",
       script: [analystThesis("Technical memo", "Technicals supportive.")],
     }),
-    "p2-research-debate-1r-fast-roster-bullResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bullResearcher",
+    "company-profile-analyst-generator": mockGenerator({
+      name: "company-profile-analyst-generator",
+      script: [analystThesis("Company Profile memo", "Identity resolved from provider data.")],
+    }),
+    "p2-research-debate-roster-bullResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bullResearcher",
       script: [{ text: "Bull round 1 contribution." }],
     }),
-    "p2-research-debate-1r-fast-roster-bearResearcher": mockGenerator({
-      name: "p2-research-debate-1r-fast-roster-bearResearcher",
+    "p2-research-debate-roster-bearResearcher": mockGenerator({
+      name: "p2-research-debate-roster-bearResearcher",
       script: [{ text: "Bear round 1 contribution." }],
+    }),
+    "trader-approach-generator": mockGenerator({
+      name: "trader-approach-generator",
+      script: [{ text: "I'll weigh the thesis stance against the analyst evidence." }],
     }),
   };
 }
@@ -225,7 +235,7 @@ describe("Phase 3 end-to-end", () => {
       ?.memoStatus ?? {};
     expect(memoStatus.trader).toBe("published");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as
       | {
           status?: string;
@@ -254,6 +264,16 @@ describe("Phase 3 end-to-end", () => {
     expect(trader.calls).toHaveLength(1);
     const promptText = JSON.stringify(trader.calls[0]?.input ?? "");
     expect(promptText).toContain("Investment thesis");
+
+    // Approach preamble streams as a `message` item with
+    // `agentName: "trader"` — the transcript-pane signal that the
+    // trader is "thinking out loud" before its structured memo lands.
+    const traderMessages = result.items.filter(
+      (item) =>
+        (item as { agentName?: string }).agentName === "trader" &&
+        (item as { type?: string }).type === "message",
+    );
+    expect(traderMessages.length).toBeGreaterThan(0);
   });
 
   it("trader failure isolates: only trader errors, prior phases still publish", async () => {
@@ -299,7 +319,7 @@ describe("Phase 3 end-to-end", () => {
     expect(memoStatus.researchManager).toBe("published");
     expect(memoStatus.trader).toBe("error");
 
-    const memoResources = session?.resources ?? {};
+    const memoResources = await stores.resourceState.getAll("session", sessionId);
     const traderMemo = memoResources["memos/p3/trader"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

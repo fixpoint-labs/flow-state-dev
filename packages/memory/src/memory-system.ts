@@ -1,8 +1,7 @@
-import { defineResource, defineCapability } from '@flow-state-dev/core'
-import type { ResourceContext, CapabilityRef } from '@flow-state-dev/core'
+import { defineResource } from '@flow-state-dev/core'
+import type { CapabilityRef } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
-import { tokenOverlap } from './internal/helpers.js'
 import type {
   MemoryProvider,
   RankedMemoryItem as ProviderRankedMemoryItem,
@@ -10,11 +9,9 @@ import type {
 } from './provider.js'
 import {
   workingMemoryResource,
-  type WorkingMemoryState,
   type WorkingMemoryEntry,
 } from './working-memory.js'
 import {
-  DEFAULT_WORKING_MEMORY_CONFIG,
   items as wmItems,
   computeSalience,
   formatForContext,
@@ -26,10 +23,9 @@ import {
   advance,
   computeDecay,
 } from './working-memory-helpers.js'
-import type { WorkingMemoryDecayConfig, WorkingMemoryHelperConfig } from './working-memory-helpers.js'
+import type { WorkingMemoryDecayConfig } from './working-memory-helpers.js'
 import {
   createEpisodicMemoryResource,
-  type EpisodicMemoryState,
   type Episode,
 } from './episodic-memory.js'
 import {
@@ -39,7 +35,6 @@ import {
 } from './episodic-memory-helpers.js'
 import {
   createSemanticMemoryResource,
-  type SemanticMemoryState,
   type SemanticFact,
 } from './semantic-memory.js'
 import {
@@ -51,12 +46,11 @@ import {
   query,
 } from './semantic-memory-helpers.js'
 import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
+import { memorySystemJanitor } from './janitor-blocks.js'
 import {
-  createWorkingMemoryCapability,
-  createEpisodicMemoryCapability,
-  createSemanticMemoryCapability,
-  createDigestMemoryCapability,
-} from './capabilities.js'
+  janitorResource,
+  DEFAULT_HYGIENE_CONFIG,
+} from './janitor.js'
 import {
   createDigestMemoryResource,
   type DigestMemoryState,
@@ -67,15 +61,9 @@ import {
   isStale as digestIsStale,
 } from './digest-helpers.js'
 import { digestRegenerate } from './digest-blocks.js'
-import {
-  createMemoryContextFormatter,
-  createDigestEntry,
-  createWorkingEntry,
-  createSemanticEntry,
-  createEpisodicEntry,
-} from './formatter.js'
+import { createMemoryContextFormatter } from './formatter.js'
 import { createRecallTool } from './tools/recall-tool.js'
-import { resolveStrategy } from './tools/strategies/index.js'
+import { buildMemoryCapability } from './memory-capability.js'
 import type { BuiltInStrategyName } from './tools/strategies/index.js'
 import type { RetrievalStrategy } from './tools/types.js'
 
@@ -242,6 +230,58 @@ export interface SemanticMemoryConfig {
   pruneThreshold?: number
 }
 
+/**
+ * Configuration for the memory hygiene pass (FIX-411).
+ *
+ * Drives the janitor block that decays semantic-fact confidence over time
+ * and applies durability-based TTL to episodic episodes. Default-on:
+ * omitting `hygiene` from `memory.system()` opts into
+ * `DEFAULT_HYGIENE_CONFIG`. Pass `false` to revert to pre-FIX-411 behaviour
+ * — no decay, unbounded growth.
+ */
+export interface HygieneConfig {
+  /**
+   * Confidence-decay configuration. `true` uses defaults; an object
+   * overrides selected fields; `false` disables the semantic branch
+   * entirely (recall ranking falls back to raw `fact.confidence`).
+   */
+  confidenceDecay?: boolean | {
+    /** Half-life in days. Default 180. */
+    halfLife?: number
+    /** Effective-confidence threshold below which facts are culled. Default 0.1. */
+    cullFloor?: number
+  }
+  /**
+   * Episodic TTL configuration. `true` uses defaults; an object overrides
+   * selected fields; `false` disables the episodic branch entirely.
+   */
+  episodicTTL?: boolean | {
+    /** Cull persistent episodes encoded more than this many turns ago. Default 500. */
+    persistentTurns?: number
+    /** Cull persistent episodes encoded more than this many days ago. Default 90. */
+    persistentDays?: number
+    /** `'OR'` (default) — cull when either threshold fires. `'AND'` — require both. */
+    operator?: 'OR' | 'AND'
+    /** Days of silence after which permanent episodes pick up `stale: true`. Default 180. */
+    permanentStaleDays?: number
+  }
+  /**
+   * When the janitor runs.
+   *
+   * - `'onConsolidation'` (default): appended to the consolidation chain;
+   *   runs whenever consolidation runs (matches the cadence of fact updates).
+   * - `'onCapture'`: appended to the capture pipeline; runs every turn.
+   *   Decay is slow, so this is rarely worth the cost — reserved for
+   *   high-churn deployments.
+   * - `'manual'`: never auto-wired. Invoke `mem.janitor` directly when
+   *   custom scheduling is required.
+   */
+  schedule?: 'onConsolidation' | 'onCapture' | 'manual'
+}
+
+/** Default hygiene configuration. Mirrors `DEFAULT_HYGIENE_CONFIG` in `./janitor.ts`. */
+export { DEFAULT_HYGIENE_CONFIG } from './janitor.js'
+
 /** Configuration for the agent-invocable recall tool (FIX-409). */
 export interface MemoryToolConfig {
   /**
@@ -305,6 +345,12 @@ export interface MemorySystemConfig {
   maxAssistantChars?: number
   /** Recall-tool config. Omit to use defaults (`llm-filter` strategy). */
   tool?: MemoryToolConfig
+  /**
+   * Memory hygiene configuration (FIX-411). Default-on. Pass `false` to
+   * revert to pre-FIX-411 behaviour: no confidence decay, no episodic TTL,
+   * stores grow without bound.
+   */
+  hygiene?: HygieneConfig | true | false
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +375,15 @@ export interface MemorySystem extends MemoryProvider {
   consolidate?: ReturnType<typeof memorySystemConsolidate>
   /** Standalone prune sequencer (when semantic configured). */
   prune?: ReturnType<typeof memorySystemPrune>
+  /**
+   * Memory hygiene janitor block (when `hygiene !== false` and at least one
+   * of semantic/episodic is configured). State-mutation-only — invoke
+   * directly via `.tap()`/`.work()` for custom scheduling, or rely on the
+   * auto-wiring driven by `hygiene.schedule`.
+   */
+  janitor?: ReturnType<typeof memorySystemJanitor>
+  /** Session-scoped janitor tracking resource (when janitor is configured). */
+  janitorResource?: typeof janitorResource
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
   /**
@@ -415,6 +470,8 @@ export interface MemorySystem extends MemoryProvider {
   sessionResources: {
     workingMemory: typeof workingMemoryResource
     memorySystem: typeof memorySystemResource
+    /** Session-scoped janitor resource — included when hygiene is enabled. */
+    janitor?: typeof janitorResource
   }
   /**
    * User-scoped resources for this memory system. Spread into `defineFlow`'s
@@ -513,128 +570,6 @@ export interface MemorySystem extends MemoryProvider {
   tool: {
     /** Recall-tool factory — returns the handler block, ready to install. */
     recall: () => ReturnType<typeof createRecallTool>
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Recall helper
-// ---------------------------------------------------------------------------
-
-/**
- * Unified cross-store recall.
- *
- * Queries working memory, (if installed) episodic memory, and (if installed) semantic memory.
- * Deduplication priority: semantic > working > episodic.
- * Returns ranked by relevance descending.
- */
-function createRecall(
-  episodicConfig?: { scope: 'user' | 'org' },
-  semanticConfig?: { scope: 'user' | 'org' },
-) {
-  return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
-    const results: RankedMemoryItem[] = []
-
-    // 1. Read semantic facts first (highest authority)
-    if (semanticConfig) {
-      try {
-        const semRef = semanticConfig.scope === 'user'
-          ? ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-          : ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-
-        if (semRef) {
-          const facts = allFacts(semRef)
-          for (const fact of facts) {
-            // Relevance: confidence × (0.5 + 0.5 × normalizedReinforcement)
-            const normalizedReinforcement = Math.min(1, fact.reinforcementCount / 10)
-            let relevance = fact.confidence * (0.5 + 0.5 * normalizedReinforcement)
-
-            if (cue) {
-              const overlap = tokenOverlap(cue, fact.content)
-              if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.4)
-            }
-
-            results.push({
-              content: fact.content,
-              source: 'semantic',
-              relevance,
-              category: fact.category,
-              id: fact.id,
-              subject: fact.subject,
-            })
-          }
-        }
-      } catch { /* semantic not available */ }
-    }
-
-    // 2. Read working memory
-    try {
-      const wmRef = ctx.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
-      if (wmRef) {
-        const entries = wmItems(wmRef)
-        for (const entry of entries) {
-          // Dedup: skip if semantic already has similar content
-          const isDupOfSemantic = results.some(
-            (r) => r.source === 'semantic' && tokenOverlap(entry.content, r.content) > 0.6,
-          )
-          if (isDupOfSemantic) continue
-
-          let relevance = entry.salience
-          if (cue) {
-            const overlap = tokenOverlap(cue, entry.content)
-            if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.2)
-          }
-          results.push({
-            content: entry.content,
-            source: 'working',
-            relevance,
-            category: entry.category ?? 'identity',
-            id: entry.id,
-          })
-        }
-      }
-    } catch { /* working memory not available */ }
-
-    // 3. Read episodic memory (if installed)
-    if (episodicConfig) {
-      try {
-        const epRef = episodicConfig.scope === 'user'
-          ? ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-
-        if (epRef) {
-          const episodes = recent(epRef)
-          const maxTurn = episodes.length > 0 ? Math.max(...episodes.map((e) => e.occurredAtTurn)) : 1
-
-          for (const ep of episodes) {
-            // Dedup: skip if semantic or WM already has similar content
-            const isDuplicate = results.some(
-              (r) => (r.source === 'working' || r.source === 'semantic') &&
-                tokenOverlap(ep.content, r.content) > 0.6,
-            )
-            if (isDuplicate) continue
-
-            const recencyFactor = maxTurn > 0 ? (ep.occurredAtTurn / maxTurn) : 1
-            let relevance = ep.significance * (0.5 + 0.5 * recencyFactor)
-
-            if (cue) {
-              const overlap = tokenOverlap(cue, ep.content)
-              if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.3)
-            }
-
-            results.push({
-              content: ep.content,
-              source: 'episodic',
-              relevance,
-              category: ep.category,
-              id: ep.id,
-            })
-          }
-        }
-      } catch { /* episodic not available */ }
-    }
-
-    // Sort by relevance descending
-    return results.sort((a, b) => b.relevance - a.relevance)
   }
 }
 
@@ -751,112 +686,51 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  * ```
  */
 export function system(config: MemorySystemConfig): MemorySystem {
-  // Validate: semantic requires episodic
-  if (config.semantic && !config.episodic) {
-    throw new Error('Semantic memory requires episodic memory to be configured')
+  // Build the composed memory capability first. It validates tier
+  // dependencies and the required model, resolves the tier configs, and owns
+  // the resource references. system() reuses its resources, tiers, and recall
+  // tool below so the same defineResource() references flow everywhere
+  // (FIX-435) and `mem.capability === memCap` holds by construction.
+  const built = buildMemoryCapability({
+    model: config.model,
+    working: config.working,
+    episodic: config.episodic,
+    semantic: config.semantic,
+    digest: config.digest,
+    tool: config.tool,
+    hygiene: config.hygiene,
+  })
+  const memCap = built.capability
+
+  // Reuse the resolved tier configs, hygiene, and recall helper the capability
+  // already produced — single resolution pass, no drift between the capability
+  // and the lifecycle blocks below.
+  const { resolvedWorking, episodicConfig, semanticConfig, digestConfig } = built.resolved
+  const hygiene = built.hygiene
+
+  // Operator-visibility warning: the janitor is being asked to run but
+  // there's nothing for it to operate on. Only fires when the caller
+  // EXPLICITLY opted into hygiene — silent for the default-on path on
+  // working-only configurations (spec §10.3).
+  const hygieneExplicit = config.hygiene !== undefined && config.hygiene !== false
+  if (
+    hygieneExplicit &&
+    hygiene &&
+    hygiene.schedule !== 'manual' &&
+    !config.semantic &&
+    !config.episodic
+  ) {
+    console.warn(
+      '[memory] hygiene is enabled but neither semantic nor episodic memory is configured — janitor will no-op.',
+    )
   }
 
-  // Validate: digest requires semantic (the digest summarises stable knowledge,
-  // and semantic owns that store).
-  if (config.digest && !config.semantic) {
-    throw new Error('Digest requires semantic memory to be configured')
-  }
-
-  // Resolve working memory config
-  const workingConfig: WorkingMemorySystemConfig = config.working === true
-    ? {}
-    : config.working
-
-  const resolvedWorking: WorkingMemoryHelperConfig = {
-    capacity: workingConfig.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
-    maxPinnedSlots: workingConfig.maxPinnedSlots ?? DEFAULT_WORKING_MEMORY_CONFIG.maxPinnedSlots,
-    decay: {
-      strategy: workingConfig.decay?.strategy ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.strategy,
-      rate: workingConfig.decay?.rate ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.rate,
-    },
-  }
-
-  // Resolve episodic config
-  const episodicConfig = config.episodic
-    ? {
-        scope: (config.episodic === true ? DEFAULT_EPISODIC_CONFIG.scope : config.episodic.scope) ?? DEFAULT_EPISODIC_CONFIG.scope,
-        significanceThreshold: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.significanceThreshold : (config.episodic.significanceThreshold ?? DEFAULT_EPISODIC_CONFIG.significanceThreshold),
-        maxEpisodes: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.maxEpisodes : (config.episodic.maxEpisodes ?? DEFAULT_EPISODIC_CONFIG.maxEpisodes),
-      }
-    : undefined
-
-  // Resolve semantic config
-  const semanticConfig = config.semantic
-    ? {
-        scope: ((config.semantic === true
-          ? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)
-          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'org',
-        consolidation: {
-          episodicThreshold: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold : (config.semantic.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold),
-          onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
-          minInterval: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.minInterval : (config.semantic.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval),
-        },
-        pruneThreshold: config.semantic === true ? DEFAULT_PRUNE_CONFIG.pruneThreshold : (config.semantic.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold),
-      }
-    : undefined
-
-  // Resolve digest config. Scope is inherited from semantic — there is no
-  // separate digest.scope knob ([FIX-408] simplification).
-  const digestConfig = config.digest && semanticConfig
-    ? {
-        scope: semanticConfig.scope,
-        maxTokens: config.digest === true
-          ? DEFAULT_DIGEST_CONFIG.maxTokens
-          : (config.digest.maxTokens ?? DEFAULT_DIGEST_CONFIG.maxTokens),
-        topN: {
-          facts: config.digest === true
-            ? DEFAULT_DIGEST_CONFIG.topN.facts
-            : (config.digest.topN?.facts ?? DEFAULT_DIGEST_CONFIG.topN.facts),
-          episodes: config.digest === true
-            ? DEFAULT_DIGEST_CONFIG.topN.episodes
-            : (config.digest.topN?.episodes ?? DEFAULT_DIGEST_CONFIG.topN.episodes),
-        },
-      }
-    : undefined
-
-  // Create tier capabilities FIRST — these own the resource references.
-  // Blocks and the system both derive resources from capabilities to avoid
-  // resource conflicts (same defineResource() reference everywhere).
-  const wmCapability = createWorkingMemoryCapability(resolvedWorking)
-
-  const epCapability = episodicConfig
-    ? createEpisodicMemoryCapability({
-        scope: episodicConfig.scope,
-        maxEpisodes: episodicConfig.maxEpisodes,
-      })
-    : undefined
-
-  const semCapability = semanticConfig
-    ? createSemanticMemoryCapability({
-        scope: semanticConfig.scope,
-      })
-    : undefined
-
-  const digestCapability = digestConfig
-    ? createDigestMemoryCapability({ scope: digestConfig.scope })
-    : undefined
-
-  // Extract resource references from capabilities for shared use by blocks.
-  // Cast required: capability types store resources as DeclaredResourceEntry
-  // (broad), but the MemorySystem interface uses specific resource types.
-  // Resources live on the flat `resources` map (FIX-435); the resource's
-  // intrinsic scope determines storage placement.
-  const episodicResource = epCapability
-    ? epCapability.resources!.episodicMemory as ReturnType<typeof createEpisodicMemoryResource>
-    : undefined
-
-  const semanticResource = semCapability
-    ? semCapability.resources!.semanticMemory as ReturnType<typeof createSemanticMemoryResource>
-    : undefined
-
-  const digestResource = digestCapability
-    ? digestCapability.resources!.digestMemory as ReturnType<typeof createDigestMemoryResource>
-    : undefined
+  // Source the typed resource references from the composed capability so the
+  // lifecycle blocks below share the exact same defineResource() references
+  // the capability bundled (FIX-435 — no divergent refs for one accessor key).
+  const episodicResource = memCap.userResources.episodicMemory
+  const semanticResource = memCap.userResources.semanticMemory
+  const digestResource = memCap.userResources.digestMemory
 
   // Build blocks config — pass shared resources to avoid resource conflicts
   const blocksConfig = {
@@ -872,7 +746,18 @@ export function system(config: MemorySystemConfig): MemorySystem {
     digest: digestConfig,
     _digestResource: digestResource,
     source: config.source,
+    hygiene: hygiene === false ? undefined : hygiene,
   }
+
+  // Build the janitor block exposed as `mem.janitor` (manual scheduling /
+  // direct invocation). Auto-wired pipelines (consolidation, capture) build
+  // their own janitor instances from `blocksConfig.hygiene`. All instances
+  // share the session-scoped `janitorResource`, so their writes converge on
+  // the same snapshot. Skipped when `hygiene: false` or when neither
+  // semantic nor episodic is configured.
+  const janitorBlock = hygiene && (semanticConfig || episodicConfig)
+    ? memorySystemJanitor({ ...blocksConfig, hygiene })
+    : undefined
 
   // Create capture pipeline
   const capture = memorySystemCapture(blocksConfig)
@@ -886,11 +771,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? memorySystemPrune(blocksConfig)
     : undefined
 
-  // Create recall and contextFormatter
-  const recallFn = createRecall(
-    episodicConfig ? { scope: episodicConfig.scope } : undefined,
-    semanticConfig ? { scope: semanticConfig.scope } : undefined,
-  )
+  // Standalone recall helper exposed as `mem.recall` — the same instance the
+  // capability wired into `fns.recall`.
+  const recallFn = built.recall
   // The bundled formatter retains the previous default behaviour (digest +
   // working) for direct consumers of `mem.contextFormatter`. Capability
   // presets register their own per-section entries below so each toggle is
@@ -903,89 +786,6 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Create captureFromItems — self-serving variant that reads from session items
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
   const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
-
-  // Build the recall tool (FIX-409). Constructed once and reused across
-  // every generator that installs it. Strategy is created here so the
-  // underlying generator block (for llm-filter) is cached.
-  const toolConfig = config.tool ?? {}
-  // The recall-tool strategy uses a single model id (no fallback chain). When
-  // the caller supplied an array on `config.model`, pick the primary entry as
-  // the strategy's model — they can override explicitly via `tool.model`.
-  const fallbackPrimary = Array.isArray(config.model) ? config.model[0] : config.model
-  const recallStrategy = resolveStrategy(toolConfig.strategy ?? 'llm-filter', {
-    model: toolConfig.model ?? fallbackPrimary,
-  })
-  const recallToolBlock = createRecallTool({
-    strategy: recallStrategy,
-    defaults: toolConfig.defaults,
-  })
-
-  // Compose the unified memory capability
-  const capUses: CapabilityRef[] = [wmCapability]
-  if (epCapability) capUses.push(epCapability)
-  if (semCapability) capUses.push(semCapability)
-  if (digestCapability) capUses.push(digestCapability)
-
-  const composedCapability = defineCapability({
-    name: 'memory' as const,
-    uses: capUses,
-    resources: { memorySystem: memorySystemResource },
-    fns: (ctx: any) => ({
-      /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
-      recall: (cue?: string) => recallFn(ctx, cue),
-    }),
-    presets: {
-      /**
-       * Inject the rolling digest into the prompt under
-       * `<memory><digest>…</digest></memory>`. Default-on. No-op when no
-       * digest tier is configured on `memorySystem({...})` — the entry's
-       * function returns `undefined` and the framework drops the section.
-       */
-      digest: digestConfig
-        ? { context: { memory: createDigestEntry() } }
-        : {},
-      /**
-       * Inject working-memory entries under
-       * `<memory><working>…</working></memory>`. Default-on. Working memory
-       * is the base tier, so this is always wired when memory is enabled.
-       */
-      working: {
-        context: { memory: createWorkingEntry() },
-      },
-      /**
-       * Inject the top-N semantic facts under
-       * `<memory><semantic>…</semantic></memory>`. Default-off — opt in for
-       * generators that benefit from a flat fact list alongside the digest.
-       * Uses a fixed default top-N; reach for `createMemoryContextFormatter`
-       * directly for a custom limit. No-op when no semantic tier is
-       * configured.
-       */
-      semantic: semanticConfig
-        ? { context: { memory: createSemanticEntry() } }
-        : {},
-      /**
-       * Inject the most-recent episodes under
-       * `<memory><episodic>…</episodic></memory>`. Default-off. Uses a fixed
-       * default count; reach for `createMemoryContextFormatter` directly
-       * for a custom limit. No-op when no episodic tier is configured.
-       */
-      episodic: episodicConfig
-        ? { context: { memory: createEpisodicEntry() } }
-        : {},
-      /**
-       * Install the `memory/recall` tool so the model can search semantic
-       * facts and past episodes on demand. Default-on. No-op when neither
-       * episodic nor semantic is configured (recall has nothing to search).
-       */
-      recall: {
-        context: { memory: { 
-          additional: "There are additional memories available then what are included within this context. Use the memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available. Before saying you don’t know, check memory for any relevant context first."
-        }},
-        tools: () => [recallToolBlock],
-      },
-      default: ['digest', 'working', 'recall'],
-    },
-  })
 
   // Assemble the system
   const result: MemorySystem = {
@@ -1009,23 +809,24 @@ export function system(config: MemorySystemConfig): MemorySystem {
       },
     },
     sessionResources: {
-      workingMemory: workingMemoryResource,
-      memorySystem: memorySystemResource,
+      ...memCap.sessionResources,
+      ...(janitorBlock ? { janitor: janitorResource } : {}),
     },
-    userResources: {
-      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
-      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
-      ...(digestResource ? { digestMemory: digestResource } : {}),
-    },
-    capability: composedCapability,
-    workingMemoryCapability: wmCapability,
+    userResources: memCap.userResources,
+    capability: memCap,
+    workingMemoryCapability: memCap.tiers.working,
     tool: {
-      recall: () => recallToolBlock,
+      recall: () => memCap.recallToolBlock,
     },
   }
 
   if (consolidate) {
     result.consolidate = consolidate
+  }
+
+  if (janitorBlock) {
+    result.janitor = janitorBlock
+    result.janitorResource = janitorResource
   }
 
   if (prune) {
@@ -1043,8 +844,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }
   }
 
-  if (epCapability) {
-    result.episodicMemoryCapability = epCapability
+  if (memCap.tiers.episodic) {
+    result.episodicMemoryCapability = memCap.tiers.episodic
   }
 
   if (semanticConfig && semanticResource) {
@@ -1061,8 +862,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }
   }
 
-  if (semCapability) {
-    result.semanticMemoryCapability = semCapability
+  if (memCap.tiers.semantic) {
+    result.semanticMemoryCapability = memCap.tiers.semantic
   }
 
   if (digestConfig && digestResource) {
@@ -1080,8 +881,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
     result.regenerateDigest = manualBlock.connectInput(() => ({ force: true })) as any
   }
 
-  if (digestCapability) {
-    result.digestMemoryCapability = digestCapability
+  if (memCap.tiers.digest) {
+    result.digestMemoryCapability = memCap.tiers.digest
   }
 
   return result

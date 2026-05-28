@@ -1,7 +1,6 @@
 export { applyOffsetLimit } from "../shared";
-export { cloneValue } from "../../utils/clone";
 
-import { cloneValue as clone } from "../../utils/clone";
+import { cloneValue as clone } from "@flow-state-dev/core/helpers";
 import type { ExpectedVersion, SetResult } from "../types";
 
 /**

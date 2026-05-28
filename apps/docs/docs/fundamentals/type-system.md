@@ -32,6 +32,8 @@ const processOrder = handler({
 
 You didn't write a single type annotation. The Zod schemas are the single source of truth — they define the runtime validation AND the compile-time types. If you return the wrong shape from `execute`, TypeScript catches it. If you access a state field that doesn't exist, TypeScript catches it.
 
+Sequencers also accept an optional `outputSchema` declaration that the framework enforces at runtime; see [Declaring and validating output schemas](../sequencers/overview.md#declaring-and-validating-output-schemas).
+
 ## Types flow through sequencers
 
 The sequencer DSL tracks types through the chain. Each `.then()` captures the output schema of the current step and threads it as the input type of the next:
@@ -118,6 +120,40 @@ const docReader = handler({
 });
 ```
 
+## Capability-declared schemas
+
+Capabilities can declare schemas alongside their resources and helpers. When a block lists a capability in `uses`, those schemas are reflected into the block's `ctx` types at factory time — no re-declaration on the block is needed.
+
+The four axes: `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision.
+
+```ts
+import { defineCapability, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const marketCapability = defineCapability({
+  name: "market",
+  sessionStateSchema: z.object({
+    ticker: z.string(),
+    lastPrice: z.number().nullable(),
+  }),
+});
+
+const priceLogger = handler({
+  name: "price-logger",
+  uses: [marketCapability],
+  execute: async (_input, ctx) => {
+    // ctx.session.state.ticker — string
+    // ctx.session.state.lastPrice — number | null
+    // Both typed from the capability. No sessionStateSchema on this handler.
+    const ticker = ctx.session.state.ticker;
+  },
+});
+```
+
+Two constraints to know. First, this is **direct-only**: if a capability internally `uses` another, the inner capability's schemas do not flow to the consuming block. Each layer exposes only what it declares directly. Second, **dynamic `uses` entries** (functions that return capability arrays at runtime) contribute nothing to types — only static `CapabilityRef` entries are reflected.
+
+For the full discussion of capability type flow, see [Type inference from capability declarations](/docs/fundamentals/capabilities#type-inference-from-capability-declarations).
+
 ## Generators infer tool types
 
 When you pass blocks as tools to a generator, the framework compiles their schemas into the model's tool format automatically. The tool's `inputSchema` becomes the function parameters the model sees, and the `outputSchema` types the result fed back into the conversation:
@@ -180,6 +216,10 @@ Here's what the framework infers so you don't have to:
 | Block in `.then()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
 | Scope `stateSchema` in flow | `client.derived` compute function types |
+| Capability `sessionStateSchema` (via `uses`) | `ctx.session.state` (merged with block's own) |
+| Capability `sessionResources` (via `uses`) | `ctx.session.resources.*` (merged with block's own) |
+| Capability `targetStateSchemas` (via `uses`) | `ctx.targets.*` (merged with block's own) |
+| Capability `sequencerStateSchema` preset (via `uses`) | `ctx.sequencer.state` (merged with block's own) |
 
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
 
@@ -226,5 +266,74 @@ type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title:
 | `StateOf<T>` | State type from a schema, resource, or scope config |
 | `ContextOf<T, Kind>` | Context handle type for a scope or resource |
 | `ResourceContext<T>` | Resource context type |
+| `BlockDefinition` | The block interface itself — return type of `handler()`, `generator()`, `sequencer()`, and `router()`. Use when an app-level factory needs to accept or return "any block" without restating the framework's generics. |
+| `BlockKind` | `"handler" \| "generator" \| "sequencer" \| "router"` — the discriminant on `block.kind`. |
+| `BlockContext` | The full block-context interface — what `ctx` resolves to inside `execute`. |
+| `BlockResult<TOutput>` | The handler `execute` return-value union. |
+| `SessionScopeHandle<TState>` | The shape of `ctx.session` — typed `state`, `patchState`, `setStateRecord`, etc. `UserScopeHandle`, `OrgScopeHandle`, and `RequestScopeHandle` are siblings for the other scopes. |
+| `ScopeStateOps<TState>` | The state-mutation interface every scope handle exposes (`patchState`, `setState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). |
+| `LooseBlockContext<TSessionState>` | Variance-friendly alias for `BlockContext` — typed on session, permissive on resources. Use for helper functions that take a block's `ctx` as a parameter. |
 
-These all use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately.
+The `*Input` / `*Output` / `StateOf` helpers use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately. The block-shape and scope-handle types are useful when *writing* factories: they let you type "any block" or "a ctx slice with a typed session" structurally, instead of falling back to `any` or hand-rolling `{ session: { patchState: ... } }` shapes.
+
+### When to reach for `LooseBlockContext`
+
+The full `BlockContext<...>` is invariant on its `TResources` parameter. That means a handler whose `ctx.resources` is inferred as the narrow `ResourceRegistry<{ memos: ... }>` (from `resources: memoResources` in the block config) **can't be assigned** to a parameter typed `BlockContext<unknown, MyState>` (whose default `ResourceRegistry<Record<string, AnyResourceRef>>` isn't a supertype of the narrow inferred form).
+
+This bites whenever you pull `ctx` into a helper:
+
+```ts
+// Won't compile — variance trap on TResources
+async function publishMemo(ctx: BlockContext<unknown, MySessionState>, ...) {}
+
+handler({
+  resources: { memos: memosCollection },
+  execute: async (input, ctx) => {
+    await publishMemo(ctx, ...); // Error: TResources mismatch
+  },
+});
+```
+
+`LooseBlockContext<TSessionState>` solves it by leaving `resources` permissive (`any`):
+
+```ts
+import type { LooseBlockContext } from "@flow-state-dev/core";
+
+async function publishMemo(ctx: LooseBlockContext<MySessionState>, ...) {
+  // ctx.session.state is typed Readonly<MySessionState>
+  // ctx.resources is `any` — narrow at the call site if needed
+}
+```
+
+Use `LooseBlockContext` when your helper only touches `ctx.session` (or doesn't care about resource typing). Use a hand-typed slice (`{ session: SessionScopeHandle<MySessionState>; resources: { memos: ... } }`) when the helper needs typed resources.
+
+### Sharing config across handlers with `handler.withDefaults`
+
+When a family of handlers shares config (same `sessionStateSchema`, same declared `resources`, same `outputSchema`), `handler.withDefaults` lets each handler omit the shared fields:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const memoHandler = handler.withDefaults({
+  sessionStateSchema,
+  resources: { memos: memosCollection },
+  outputSchema: z.void(),
+});
+
+export const commitBullMemo = memoHandler({
+  name: "commit-memo-p2-bull",
+  inputSchema: bullThesisSchema,
+  execute: async (thesis, ctx) => {
+    // ctx is typed from the defaults — session.state is MySessionState,
+    // resources.memos is the typed collection ref.
+    await ctx.resources.memos.get("p2/bull").patchState({ ... });
+  },
+});
+```
+
+Per-call overrides win — pass any defaulted field again to replace it (e.g. `outputSchema: z.object({...})` when one handler needs a non-void return).
+
+Defaultable: `sessionStateSchema`, `userStateSchema`, `orgStateSchema`, `requestStateSchema`, `sequencerStateSchema`, `resources`, `outputSchema`, `uses`. Excluded: `name`, `inputSchema`, `execute`, `description` (those vary per block).
+
+This is the framework's "scaffolding-only sharing" tool. For "body sharing" (the same execute body parameterized by identity), write a factory function. For "shared logic called from unique bodies," extract a helper function and use `LooseBlockContext` to type its `ctx` parameter.

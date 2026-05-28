@@ -25,6 +25,14 @@
       "types": "./dist/prompt/index.d.ts",
       "default": "./dist/prompt/index.js"
     },
+    "./prompt-file": {
+      "types": "./dist/prompt/prompt-file.d.ts",
+      "default": "./dist/prompt/prompt-file.js"
+    },
+    "./prompt-file/node": {
+      "types": "./dist/prompt/load-prompt-file.node.d.ts",
+      "default": "./dist/prompt/load-prompt-file.node.js"
+    },
     "./models": {
       "types": "./dist/models/index.d.ts",
       "default": "./dist/models/index.js"
@@ -33,9 +41,9 @@
       "types": "./dist/capability/index.d.ts",
       "default": "./dist/capability/index.js"
     },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "default": "./dist/utils/index.js"
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "default": "./dist/helpers/index.js"
     }
   },
   "license": "MIT",
@@ -48,6 +56,8 @@
   "dependencies": {
     "ai": "^6.0.93",
     "cron-parser": "^5.0.0",
+    "gray-matter": "^4.0.3",
+    "liquidjs": "^10.21.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

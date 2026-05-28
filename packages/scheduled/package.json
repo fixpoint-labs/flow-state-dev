@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "license": "MIT",
@@ -20,12 +24,21 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
-    "cron-parser": "^5.0.0"
+    "cron-parser": "^5.0.0",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "vitest": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "zod": "^3.25.76"
+    "vitest": "^3.0.0"
   },
   "scripts": {
     "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",

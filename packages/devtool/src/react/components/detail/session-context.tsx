@@ -12,7 +12,7 @@ import { ErrorAlert } from "../shared/error-alert";
 import type { SessionDetail } from "@flow-state-dev/client";
 import { useSessionState } from "../../hooks/use-session-state";
 import { useRelativeTime } from "../../hooks/use-relative-time";
-import { deepEqual } from "../../lib/utils";
+import { looseDeepEqual } from "@flow-state-dev/core/helpers";
 import { ResourcesPanel } from "./resources-panel";
 
 type SessionContextPanelProps = {
@@ -248,7 +248,7 @@ function sectionStats(
     if (previous) {
       const prevData = previous[scope] as ScopeData;
       for (const key of keys) {
-        if (!prevData || !deepEqual(data[key], prevData[key])) {
+        if (!prevData || !looseDeepEqual(data[key], prevData[key])) {
           changed++;
         }
       }

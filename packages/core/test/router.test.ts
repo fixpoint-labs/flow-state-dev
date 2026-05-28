@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handler, router } from "../src";
+import { handler, router, utility } from "../src";
 import { createMockContext, runForTest } from "./helpers";
 describe("router builder", () => {
   it("executes selected route", async () => {
@@ -82,5 +82,69 @@ describe("router builder", () => {
 
     const ctx = createMockContext();
     await expect(runForTest(block, 1, ctx)).rejects.toThrow("not a function");
+  });
+});
+
+describe("utility.keyedRouter", () => {
+  it("dispatches to the block keyed by select()", async () => {
+    const alpha = handler({ name: "alpha", execute: () => "A" });
+    const beta = handler({ name: "beta", execute: () => "B" });
+
+    const block = utility.keyedRouter({
+      name: "by-name",
+      blocks: { alpha, beta },
+      select: (input: { which: string }) => input.which,
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, { which: "alpha" }, ctx)).resolves.toBe("A");
+    await expect(runForTest(block, { which: "beta" }, ctx)).resolves.toBe("B");
+  });
+
+  it("throws with the registered key list when no match and no fallback", async () => {
+    const alpha = handler({ name: "alpha", execute: () => "A" });
+    const beta = handler({ name: "beta", execute: () => "B" });
+
+    const block = utility.keyedRouter({
+      name: "missing-key",
+      blocks: { alpha, beta },
+      select: (input: { which: string }) => input.which,
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, { which: "gamma" }, ctx)).rejects.toThrow(
+      /no block registered under key "gamma"[\s\S]*Available: alpha, beta/,
+    );
+  });
+
+  it("uses fallback when select() returns an unregistered key", async () => {
+    const alpha = handler({ name: "alpha", execute: () => "A" });
+    const otherwise = handler({ name: "otherwise", execute: () => "X" });
+
+    const block = utility.keyedRouter({
+      name: "with-fallback",
+      blocks: { alpha },
+      fallback: otherwise,
+      select: (input: { which: string }) => input.which,
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, { which: "alpha" }, ctx)).resolves.toBe("A");
+    await expect(runForTest(block, { which: "anything-else" }, ctx)).resolves.toBe("X");
+  });
+
+  it("propagates errors thrown from select() without wrapping", async () => {
+    const alpha = handler({ name: "alpha", execute: () => "A" });
+
+    const block = utility.keyedRouter({
+      name: "select-throws",
+      blocks: { alpha },
+      select: () => {
+        throw new Error("select bailed");
+      },
+    });
+
+    const ctx = createMockContext();
+    await expect(runForTest(block, undefined, ctx)).rejects.toThrow("select bailed");
   });
 });

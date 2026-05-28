@@ -119,6 +119,15 @@ There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
 - **Event log** — every SSE event in order, including transient items and intermediate states, used for SSE resume and devtool replay
 
+### Storage by adapter
+
+The item record's physical layout varies per adapter:
+
+- **Memory, filesystem, SQLite** — items live inline in the request record as `data.items`.
+- **Postgres** — items live in a dedicated `request_items` table, one row per item, written via batched UPSERT (see [`@flow-state-dev/store-postgres` README](../../packages/store-postgres/README.md#items-storage)). The same `RequestStore.persistItems` interface is used everywhere; the diff and per-row write happen inside the adapter. The framework code does not care.
+
+The Postgres shape sidesteps a write-amplification pathology that affected long-running requests on serverless deployments. The semantics are identical from the framework's perspective — `get(requestId)` returns the same `RequestRecord` shape regardless of adapter.
+
 ### Streaming-text contract (FIX-479)
 
 `content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.
@@ -131,9 +140,11 @@ Streaming TTS audio (FIX-523, `content.audio.delta`) follows the same rule for t
 
 Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) often want a slice of the item log: "what did worker X emit while it held its claim?". Since FIX-480, that's first-class via `TaskHandle.items()` on the `TaskCollectionRef.list / get` returns.
 
-The window is bounded by the substrate's `task-change` lifecycle events for the task — `kind: "claimed"` opens it, terminal `kind: "completed" | "errored" | "cancelled"` closes it. Retries do NOT reset the start; all attempts append. Bookend `task-change` and `task-board-meta` items are excluded — they're substrate scaffolding, not worker emissions.
+Attribution is by **execution scope** — which worker/turn produced the item — captured at emit time, not by a timestamp range. A worker scope marks itself with the task it claimed (`ctx._markTaskScope`), and every item that scope and its descendants emit is stamped with that task id (`OutputItem.taskId`) as it is produced. The earlier timestamp-window approach could not separate concurrent producers — while a worker was still looping, its window stayed open, so a sibling worker that ran inside that interval was wrongly absorbed into it. Stamping the origin at emit time removes the ambiguity.
 
-The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from `@flow-state-dev/tasks` for any consumer that wants the same window logic without going through a `TaskCollection`. The kitchen-sink renderer's per-task expansion uses the same algorithm.
+The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or resuming after `awaiting_review` — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded. Bookend `task-change` and `task-board-meta` items are excluded too — they drive status grouping / mount the board, they aren't worker emissions.
+
+One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / `itemsForTask` / `collectAttributedItemIds`) backs both the substrate (`extractTaskItems` → `task.items()`) and the UI (`<TaskPlan />` per-task expansion and the chat-thread renderer's dedup), so the two agree by construction. The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from `@flow-state-dev/tasks` for any consumer that wants the same attribution without going through a `TaskCollection`.
 
 ## The full registry
 
@@ -178,7 +189,9 @@ generator({
 });
 ```
 
-There's no corresponding "on complete clear." The next block that sets a status overwrites the previous one; otherwise the last message lingers until the request ends. This matches the "treat status as a global value" intent and avoids flicker back to "Thinking..." between adjacent blocks.
+There's no corresponding "on complete clear." The next block that sets a status overwrites the previous one; otherwise the last message lingers until the request ends. This matches the "treat status as a global value" intent and avoids flicker back to "Working..." between adjacent blocks.
+
+**Generator/tool exception.** A generator's tool-call dispatch is the one place that does scope status to the inner block's lifetime. When the generator's AI-SDK loop invokes a tool, the slot is snapshotted on the first tool entry of a round and restored when the last tool exits. Tools compete on the slot while they run — the latest emit wins as elsewhere — but a finished tool's `activeStatusMessage` cannot linger past its own execution as a stale "still running" indicator. If the generator itself had set `activeStatusMessage`, that value is what gets restored; otherwise the slot clears and the indicator falls back to "Working...".
 
 Prefer `activeStatusMessage` when a block has one meaningful status for its whole execution. Reserve `ctx.emitStatus()` for blocks that genuinely need to update status mid-execution (e.g. per-file upload progress). Don't wrap multi-phase logic in a single handler with multiple `emitStatus` calls — that's a symptom of a handler that should be a sequencer of distinct blocks (BP-011).
 

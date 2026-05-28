@@ -7,9 +7,20 @@
  * sentinel.
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { SubscribeToEventsOptions } from "./types";
+import type { RequestStatus, SubscribeToEventsOptions } from "./types";
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
+
+/** Whether a request status is past the in-flight phase. */
+export function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "incomplete" ||
+    status === "interrupted" ||
+    status === "aborted"
+  );
+}
 
 /**
  * Whether an event marks the end of the per-request stream. Iterators

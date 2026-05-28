@@ -14,7 +14,7 @@ The `@flow-state-dev/tools` package ships four built-in tools:
 
 | Tool | What it does | Always works? |
 |------|-------------|---------------|
-| `tools.search()` | Web search via Tavily, Exa, Serper, or Brave | No — requires at least one search API key |
+| `tools.search()` | Web search via any configured provider | No — requires at least one search API key |
 | `tools.fetch()` | Fetch a single web page as markdown | Yes — built-in fallback always available |
 | `tools.crawl()` | Crawl a website (BFS), returning markdown for each page | Yes — built-in fallback always available |
 | `createBashTool()` | Execute bash commands in a sandboxed workspace with resource sync | Yes — in-memory fallback always available |
@@ -66,10 +66,46 @@ A common workflow the LLM will discover on its own: search for a topic, then fet
 | `EXA_API_KEY` | Exa search |
 | `SERPER_API_KEY` | Serper search |
 | `BRAVE_SEARCH_API_KEY` | Brave search |
+| `PERPLEXITY_API_KEY` | Perplexity search and Sonar grounding |
+| `PARALLEL_API_KEY` | Parallel search |
 | `FIRECRAWL_API_KEY` | Firecrawl fetch + crawl (best quality) |
 | `JINA_API_KEY` | Jina Reader fetch (optional — works without key at 20 RPM) |
 
 With zero environment variables, `tools.fetch()` and `tools.crawl()` still work using the built-in fallback (Node.js fetch + Readability + Turndown). Only `tools.search()` requires at least one configured provider.
+
+## Marking tools cacheable
+
+A tool block can opt into result memoization by declaring `cacheable` on its config. When the tool runs under a Task Board with caching enabled, identical calls within the configured scope serve from cache instead of re-executing.
+
+Two shorthands. Pass `true` for defaults, or a config object to tune scope, TTL, key derivation, or a per-call guard:
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const readArtifact = handler({
+  name: "read-artifact",
+  inputSchema: z.object({ key: z.string() }),
+  outputSchema: z.object({ content: z.string() }),
+  cacheable: { ttl: 60_000 },   // 60 seconds, "run" scope
+  execute: async (input, ctx) => {
+    const artifact = await ctx.resources.artifacts.get(input.key);
+    return { content: artifact.content };
+  },
+});
+```
+
+Scope choices:
+
+- `run` (default) — entries live for the current Task Board run.
+- `request` — entries live for the lifetime of the request.
+- `session` — entries persist across requests within the same session.
+
+Errors are never cached. If `execute` throws, no entry is written and the next caller re-runs the block. Identical in-flight calls within the same request coalesce into one execution, so two workers asking for the same key at the same time share the result instead of racing.
+
+Don't mark a tool cacheable if it mutates state, depends on time or randomness not captured in its arguments, or if a stale result would cause real harm. A cache hit isn't always a correct hit.
+
+The cross-task observation flow that pairs with this layer is documented in the [Flow policy](/docs/patterns/flow-policy) guide — observations get recorded whether or not the tool is cacheable.
 
 ## Installation
 

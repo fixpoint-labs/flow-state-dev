@@ -10,6 +10,16 @@
 import { z } from "zod";
 import { thesisSection } from "../resources";
 
+/** A single auditable citation. `url` and `title` only — inline `[n]`
+ *  markers and per-claim source IDs are deferred (FIX-612 v1 is body-
+ *  section citations only). */
+export const citation = z.object({
+  url: z.string(),
+  title: z.string(),
+});
+
+export type Citation = z.infer<typeof citation>;
+
 /**
  * Output schema enforced on the analyst generators.
  *
@@ -26,6 +36,20 @@ export const thesisOutputSchema = z.object({
   rating: z.enum(["constructive", "neutral", "cautious"]),
   metrics: z.array(z.object({ key: z.string(), value: z.string() })),
   body: z.array(thesisSection),
+  /** URLs the analyst actually fetched and relied on, with their titles.
+   *  Required (no default) so the LLM is forced to emit the key — `null`
+   *  when nothing was fetched (cheap preset, no material context found),
+   *  or an array when investigation produced citable sources. */
+  citations: z.array(citation).nullable(),
+  /** Honest signal about how much real data backed this memo, so downstream
+   *  phases don't synthesize on hollow input (FIX-681). Driven by the
+   *  analyst's `source` fields per the prompt contract:
+   *    - `"full"`        — primary and all secondary sources returned data.
+   *    - `"partial"`     — primary returned data; ≥1 secondary unavailable.
+   *    - `"unavailable"` — the primary data source returned
+   *                        `source: "unavailable"`; the memo is a minimal
+   *                        skeleton and must not be synthesized from. */
+  dataQuality: z.enum(["full", "partial", "unavailable"]),
 });
 
 export type ThesisOutput = z.infer<typeof thesisOutputSchema>;

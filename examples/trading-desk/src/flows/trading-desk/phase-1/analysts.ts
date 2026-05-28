@@ -1,43 +1,40 @@
 /**
- * Phase 1 analyst sub-sequencers — one per role (fundamentals, technical,
- * news, sentiment).
+ * The five Phase 1 analyst sub-sequencers.
  *
- * Shape: each analyst pre-fetches its data deterministically (`.parallel`
- * over the tool blocks the role needs, with `.map` to derive their
- * `{ ticker, date }` input from session state) and hands the result to a
- * tools-free generator that just synthesizes the `Thesis`. Phase 1 tool
- * inputs are entirely derivable from session state — there is no judgment
- * work for the LLM in tool selection, so the LLM does synthesis only.
+ * Each one is the same recipe — `defineAnalyst` captures it. The role
+ * differences live in two places per analyst: the generator (which tools'
+ * outputs it reads, which prompt it runs) and the `tools` record (which
+ * deterministic fetches its parallel branch performs).
  *
- * The news analyst is the one exception: it pre-fetches headlines + macro
- * data deterministically, then keeps the `fetch` tool agent-callable so
- * the model picks 2–3 article URLs from the headline window to read in
- * depth (a real judgment call).
+ * The fundamentals / sentiment / technical / company-profile analysts
+ * are pure synthesis: tool inputs are derivable from session state, so
+ * the LLM does no tool selection. The news analyst is the one exception:
+ * it pre-fetches headlines + macro deterministically, then keeps the
+ * `fetch` tool agent-callable so the model picks 2–3 article URLs from
+ * the headline window to read in depth.
  *
- * `agentType: "sub"` keeps each analyst's items off the conversation
- * history but lets them flow to the client for live observability.
+ * `agentType: "sub"` on every generator keeps each analyst's items off
+ * the conversation history while still flowing to the client for live
+ * observability.
  */
-import { generator, sequencer } from "@flow-state-dev/core";
-import { fetch as createFetchTool } from "@flow-state-dev/tools";
+import { generator } from "@flow-state-dev/core";
+import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import {
-  AGENTS,
-  PHASE_1_MEMO_KEYS,
-  type AgentName,
-} from "../agents";
-import { commitMemo, markError, markWriting } from "../memo-writer";
-import { tradingDesk } from "../services/trading-desk-capability";
-import {
-  fundamentalsPrompt,
-  newsPrompt,
-  sentimentPrompt,
-  technicalPrompt,
-} from "./prompts";
+import { PHASE_1_MEMO_KEYS } from "../agents";
+import { tradingDesk } from "../capability";
+import { asDataBlock } from "../lib/helpers";
+import { loadPrompt } from "../lib/prompt";
+import { defineAnalyst } from "./analyst";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
+  discover_fundamentals_context,
+  discover_profile_context,
+  discover_sentiment_context,
+  discover_technical_context,
   get_balance_sheet,
   get_cashflow,
+  get_company_profile,
   get_fundamentals,
   get_income_statement,
   get_insider_transactions,
@@ -50,214 +47,168 @@ import {
 } from "./tools";
 import { toolOutputSchemas } from "./tools/schemas";
 
-const ANALYST_INSTRUCTION =
-  "Synthesize the Thesis from the data provided above. Return the JSON object only.";
-
-// One reshape: pull ticker+date out of session state for every analyst's
-// `.parallel` branches. Each Phase 1 tool block has `inputSchema =
-// periodInput` (`{ ticker, date }`), so a single `.map` covers every branch
-// without per-tool connectors. Ctx is untyped here because the sequencer
-// pre-`.map` doesn't carry the `tradingDesk` capability's session-state
-// typing yet — the values are runtime-validated by each tool's input schema
-// downstream.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const tickerDate = (_input: unknown, ctx: any) => ({
-  ticker: ctx.session.state.ticker as string,
-  date: ctx.session.state.date as string,
-});
-
-// Render the pre-fetched data bundle as a fenced JSON block so the LLM
-// reads it as one cohesive payload rather than scattered tags.
-const asDataBlock = (data: unknown): string =>
-  "```json\n" + JSON.stringify(data, null, 2) + "\n```";
-
-const memoLabel = (name: AgentName) => `${AGENTS[name].role} memo`;
-
-// Bind `.asTool()` to a given analyst's agentName so each analyst's tool
-// pills attribute to that analyst's card.
-const toolFor = (agentName: AgentName) =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (block: any): any => block.asTool({ agentType: "sub", agentName });
+const fundamentalsPrompt = loadPrompt(
+  "phase-1/prompts/fundamentals.prompt.md"
+);
+const technicalPrompt = loadPrompt("phase-1/prompts/technical.prompt.md");
+const newsPrompt = loadPrompt("phase-1/prompts/news.prompt.md");
+const sentimentPrompt = loadPrompt("phase-1/prompts/sentiment.prompt.md");
+const companyProfilePrompt = loadPrompt(
+  "phase-1/prompts/company-profile.prompt.md"
+);
 
 // ---------------------------------------------------------------------------
-// Fundamentals — four independent fetches, all keyed by { ticker, date }.
+// Fundamentals
 // ---------------------------------------------------------------------------
 
 const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.fundamentals.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     balanceSheet: toolOutputSchemas.get_balance_sheet,
     incomeStatement: toolOutputSchemas.get_income_statement,
     cashflow: toolOutputSchemas.get_cashflow,
     fundamentals: toolOutputSchemas.get_fundamentals,
+    fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
-  prompt: fundamentalsPrompt,
-  context: {
-    data: (input) => asDataBlock(input),
-  },
-  user: ANALYST_INSTRUCTION,
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,
 });
 
-export const fundamentalsAnalyst = sequencer({
-  name: "analyst-fundamentals",
-  container: {
-    component: "analyst-card",
-    label: memoLabel(PHASE_1_MEMO_KEYS.fundamentals.agentName),
+export const fundamentalsAnalyst = defineAnalyst({
+  shortName: "fundamentals",
+  tools: {
+    balanceSheet: get_balance_sheet,
+    incomeStatement: get_income_statement,
+    cashflow: get_cashflow,
+    fundamentals: get_fundamentals,
+    fundamentalsContext: discover_fundamentals_context,
   },
-})
-  .tap(markWriting("fundamentals"))
-  .map(tickerDate)
-  .parallel((() => {
-    const t = toolFor(PHASE_1_MEMO_KEYS.fundamentals.agentName);
-    return {
-      balanceSheet: t(get_balance_sheet),
-      incomeStatement: t(get_income_statement),
-      cashflow: t(get_cashflow),
-      fundamentals: t(get_fundamentals),
-    };
-  })())
-  .then(fundamentalsGenerator)
-  .tap(commitMemo("fundamentals"))
-  .rescue([{ block: markError("fundamentals") }]);
+  generator: fundamentalsGenerator,
+});
 
 // ---------------------------------------------------------------------------
-// Technical — price history and indicators run in parallel. `compute_indicators`
-// fetches its own 1-year window internally (see compute_indicators.ts:30-37),
-// independent of the analyst's 1-month price_history call.
+// Technical — price history and indicators run in parallel.
+// `compute_indicators` fetches its own 1-year window internally, independent
+// of the analyst's 1-month price_history call.
 // ---------------------------------------------------------------------------
 
 const technicalGenerator = generator({
   name: "technical-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.technical.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     priceHistory: toolOutputSchemas.get_price_history,
     indicators: toolOutputSchemas.compute_indicators,
+    technicalContext: toolOutputSchemas.discover_technical_context,
   }),
-  prompt: technicalPrompt,
-  context: {
-    data: (input) => asDataBlock(input),
-  },
-  user: ANALYST_INSTRUCTION,
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(technicalPrompt),
   outputSchema: thesisOutputSchema,
 });
 
-export const technicalAnalyst = sequencer({
-  name: "analyst-technical",
-  container: {
-    component: "analyst-card",
-    label: memoLabel(PHASE_1_MEMO_KEYS.technical.agentName),
+export const technicalAnalyst = defineAnalyst({
+  shortName: "technical",
+  tools: {
+    priceHistory: get_price_history,
+    indicators: compute_indicators,
+    technicalContext: discover_technical_context,
   },
-})
-  .tap(markWriting("technical"))
-  .map(tickerDate)
-  .parallel((() => {
-    const t = toolFor(PHASE_1_MEMO_KEYS.technical.agentName);
-    return {
-      priceHistory: t(get_price_history),
-      indicators: t(compute_indicators),
-    };
-  })())
-  .then(technicalGenerator)
-  .tap(commitMemo("technical"))
-  .rescue([{ block: markError("technical") }]);
+  generator: technicalGenerator,
+});
 
 // ---------------------------------------------------------------------------
 // News — pre-fetch headlines + macro deterministically; keep `fetch` as an
-// LLM-callable tool so the model picks 2–3 article URLs to read deeply
-// (genuine judgment work, see newsPrompt). This is the only Phase 1 analyst
-// that still does tool calls.
+// LLM-callable tool so the model picks 2–3 article URLs to read deeply.
+// This is the only Phase 1 analyst that still does tool calls.
 // ---------------------------------------------------------------------------
-
-const fetchArticle = createFetchTool();
 
 const newsGenerator = generator({
   name: "news-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.news.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     news: toolOutputSchemas.search_news,
     macro: toolOutputSchemas.get_macro_indicators,
     insiderTransactions: toolOutputSchemas.get_insider_transactions,
   }),
-  prompt: newsPrompt,
-  context: {
-    data: (input) => asDataBlock(input),
-  },
-  user:
-    "Pick 2–3 of the most material article URLs from the news data above and " +
-    "call `fetch` to read their bodies, then synthesize the Thesis. Return " +
-    "the JSON object only.",
-  tools: [fetchArticle],
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(newsPrompt),
   outputSchema: thesisOutputSchema,
 });
 
-export const newsAnalyst = sequencer({
-  name: "analyst-news",
-  container: {
-    component: "analyst-card",
-    label: memoLabel(PHASE_1_MEMO_KEYS.news.agentName),
+export const newsAnalyst = defineAnalyst({
+  shortName: "news",
+  tools: {
+    news: search_news,
+    macro: get_macro_indicators,
+    insiderTransactions: get_insider_transactions,
   },
-})
-  .tap(markWriting("news"))
-  .map(tickerDate)
-  .parallel((() => {
-    const t = toolFor(PHASE_1_MEMO_KEYS.news.agentName);
-    return {
-      news: t(search_news),
-      macro: t(get_macro_indicators),
-      insiderTransactions: t(get_insider_transactions),
-    };
-  })())
-  .then(newsGenerator)
-  .tap(commitMemo("news"))
-  .rescue([{ block: markError("news") }]);
+  generator: newsGenerator,
+});
 
 // ---------------------------------------------------------------------------
-// Sentiment — three independent fetches, all keyed by { ticker, date }.
+// Sentiment
 // ---------------------------------------------------------------------------
 
 const sentimentGenerator = generator({
   name: "sentiment-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.sentiment.agentName,
-  uses: [tradingDesk],
+  uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     socialSentiment: toolOutputSchemas.get_social_sentiment,
     redditMentions: toolOutputSchemas.get_reddit_mentions,
     predictionMarkets: toolOutputSchemas.get_prediction_markets,
+    sentimentContext: toolOutputSchemas.discover_sentiment_context,
   }),
-  prompt: sentimentPrompt,
-  context: {
-    data: (input) => asDataBlock(input),
-  },
-  user: ANALYST_INSTRUCTION,
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(sentimentPrompt),
   outputSchema: thesisOutputSchema,
 });
 
-export const sentimentAnalyst = sequencer({
-  name: "analyst-sentiment",
-  container: {
-    component: "analyst-card",
-    label: memoLabel(PHASE_1_MEMO_KEYS.sentiment.agentName),
+export const sentimentAnalyst = defineAnalyst({
+  shortName: "sentiment",
+  tools: {
+    socialSentiment: get_social_sentiment,
+    redditMentions: get_reddit_mentions,
+    predictionMarkets: get_prediction_markets,
+    sentimentContext: discover_sentiment_context,
   },
-})
-  .tap(markWriting("sentiment"))
-  .map(tickerDate)
-  .parallel((() => {
-    const t = toolFor(PHASE_1_MEMO_KEYS.sentiment.agentName);
-    return {
-      socialSentiment: t(get_social_sentiment),
-      redditMentions: t(get_reddit_mentions),
-      predictionMarkets: t(get_prediction_markets),
-    };
-  })())
-  .then(sentimentGenerator)
-  .tap(commitMemo("sentiment"))
-  .rescue([{ block: markError("sentiment") }]);
+  generator: sentimentGenerator,
+});
+
+// ---------------------------------------------------------------------------
+// Company Profile — single deterministic fetch; the LLM is a renderer of
+// the structured identity fields, not a synthesizer. The prompt's "every
+// claim must trace to a field in <data>" rule plus the shared grounding
+// clause from `tradingDesk` are the no-fabrication defenses.
+// ---------------------------------------------------------------------------
+
+const companyProfileGenerator = generator({
+  name: "company-profile-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.companyProfile.agentName,
+  uses: [tradingDesk.presets({ investigate: true })],
+  inputSchema: z.object({
+    companyProfile: toolOutputSchemas.get_company_profile,
+    profileContext: toolOutputSchemas.discover_profile_context,
+  }),
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(companyProfilePrompt),
+  outputSchema: thesisOutputSchema,
+});
+
+export const companyProfileAnalyst = defineAnalyst({
+  shortName: "companyProfile",
+  tools: {
+    companyProfile: get_company_profile,
+    profileContext: discover_profile_context,
+  },
+  generator: companyProfileGenerator,
+});

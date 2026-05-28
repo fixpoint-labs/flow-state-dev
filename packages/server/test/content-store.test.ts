@@ -86,6 +86,40 @@ function runContentStoreTests(
       expect(all).toEqual({});
     });
 
+    it("getByPrefix returns only keys matching the prefix", async () => {
+      const s = await setup();
+      await s.set("session", "s1", "files/a.ts", "a");
+      await s.set("session", "s1", "files/b.ts", "b");
+      await s.set("session", "s1", "notes", "n");
+
+      const matched = await s.getByPrefix("session", "s1", "files/");
+      expect(matched).toEqual({ "files/a.ts": "a", "files/b.ts": "b" });
+    });
+
+    it("getByPrefix with an empty prefix returns all keys in scope", async () => {
+      const s = await setup();
+      await s.set("session", "s1", "notes", "n");
+      await s.set("session", "s1", "files/a.ts", "a");
+
+      const all = await s.getByPrefix("session", "s1", "");
+      expect(all).toEqual({ notes: "n", "files/a.ts": "a" });
+    });
+
+    it("getByPrefix returns empty object when nothing matches", async () => {
+      const s = await setup();
+      await s.set("session", "s1", "notes", "n");
+      expect(await s.getByPrefix("session", "s1", "files/")).toEqual({});
+    });
+
+    it("getByPrefix isolates by scope type and id", async () => {
+      const s = await setup();
+      await s.set("session", "s1", "k/1", "session");
+      await s.set("user", "s1", "k/1", "user");
+      await s.set("session", "s2", "k/1", "other");
+
+      expect(await s.getByPrefix("session", "s1", "k/")).toEqual({ "k/1": "session" });
+    });
+
     it("deleteAll removes all content for a scope instance", async () => {
       const s = await setup();
       await s.set("session", "s1", "a", "1");

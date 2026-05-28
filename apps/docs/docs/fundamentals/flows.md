@@ -126,6 +126,18 @@ session: {
 },
 ```
 
+### History windowing
+
+`session.historyWindow` bounds how much cross-turn history each request loads:
+
+```ts
+session: {
+  historyWindow: { turns: 50 },
+},
+```
+
+`turns` (default 50) caps the number of recent completed turns the execution context loads per request, so per-turn cost stays flat as a conversation grows. A generator's `history` slot and `ctx.session.items.history()` see at most this many turns; a per-call `history({ limit })` narrows within the window but cannot widen it. The full session remains retrievable through the state endpoint. See [Flow-level history bounds](../advanced/generator-context.md#flow-level-history-bounds).
+
 ### Automatic resource collection
 
 Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `orgResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/org scope configs automatically:

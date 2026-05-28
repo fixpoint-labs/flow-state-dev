@@ -14,7 +14,7 @@ The methods below are grouped by what you're trying to do, not alphabetically. R
 | [Looping](#looping) | `doUntil`, `doWhile`, `loopBack` |
 | [Conditional sub-cases](#conditional-sub-cases) | `tapIf`, `workIf`, `exitIf` |
 | [Specialization](#specialization) | `thenAny`, `race`, `branch` |
-| [Side-chain coordination](#side-chain-coordination) | `waitForWork` |
+| [Side-chain coordination](#side-chain-coordination) | `waitForWork`, `waitForCondition` |
 | [Connector adaptation](#connector-adaptation) | `connectInput` |
 
 Each entry has a signature, one example, and a "when to reach for this" note.
@@ -284,6 +284,23 @@ pipeline
 By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForWork()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently.
 
 **When to reach for this**: a later step needs to read state that a `.work()` task wrote, or you want explicit failure semantics on background work. See [Side Chains](/docs/advanced/sequencer-side-chains) for the full story.
+
+### `waitForCondition(predicate, { timeoutMs })`
+
+Suspend the sequencer until a predicate over the request's item stream returns true (or the timeout fires). The predicate is evaluated once synchronously on entry, and then again on every subsequent item event until it settles.
+
+```ts
+import { whenResourceChanged } from "@flow-state-dev/core/items";
+
+pipeline.waitForCondition(
+  whenResourceChanged({ scope: "session", path: "artifacts/spec.md" }),
+  { timeoutMs: 30_000 }
+);
+```
+
+Output is `{ timedOut: boolean }`. The sequencer does not throw on timeout; downstream steps decide what to do with it. The block listens via `ResponseEmitter.subscribeToItems` and unsubscribes on exit (timeout, satisfaction, or parent abort). An optional `wakeOn` filter narrows which items wake the predicate — see [Wake filtering](/docs/sequencers/wait-for-condition#wake-filtering).
+
+**When to reach for this**: coordinating with side-channel state — a worker pattern that writes an artifact, a task-board that flips a task status, an external actor that resumes a paused review. Cheaper than polling and event-driven, but the predicate must be a pure synchronous function over `readonly OutputItem[]`. See the full [waitForCondition reference](/docs/sequencers/wait-for-condition) for predicate helpers and custom-predicate guidance.
 
 ## Connector adaptation
 

@@ -42,6 +42,18 @@ export type {
 export { resolveItemVisibility } from "./resolve-visibility";
 
 export {
+  attributeItemsToTasks,
+  itemsForTask,
+  collectAttributedItemIds
+} from "./task-attribution";
+
+export {
+  whenAnyItem,
+  whenResourceChanged,
+  whenResourceMatching
+} from "./predicates";
+
+export {
   buildItemLookup,
   inlineBlockValue,
   isBlockValue,
