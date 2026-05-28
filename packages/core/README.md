@@ -310,6 +310,17 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
+**`prefetchMode` (server-side loading).** Distinct from `prefetchWindow`. `prefetchWindow` shapes the *client snapshot*; `prefetchMode` shapes *server-side execution-context loading* — how many instances are read into memory when a scope starts.
+
+- `defineResourceCollection` accepts `prefetchMode?: 'eager' | 'lazy' | 'partial'` (default `'eager'`):
+  - `eager` — load every matching instance at scope startup (the prior behavior).
+  - `lazy` — load nothing; `get` / `getOptional` / `list` / `scan` / `count` fetch from the store on demand.
+  - `partial` — eagerly load the `recentLimit` lexicographically highest keys (descending), leave the rest lazy. Pair with a sortable key convention (zero-padded counters or ISO-timestamp prefixes) for "most-recent N" semantics.
+- `recentLimit?: number` is required for `'partial'` and ignored otherwise. Positive integer, must not exceed `maxInstances` when set, hard-capped at 10000 (throws above), warns above 1000.
+- `defineResource` accepts `prefetchMode?: 'eager' | 'lazy'` (no `'partial'` — a single resource has one state; passing `'partial'` throws). `'lazy'` fetches state on the first `state()` call, cached for the rest of the request.
+
+**Async accessor surface.** Reads on the resource accessor handle are async so lazy/partial can fetch on demand: `await ref.state()` (was a sync property), `await coll.get(key)` / `await coll.getOptional(key)`, `await coll.count()`, and the cursor-paginated `await coll.list({ limit?, cursor?, prefix? }) → { items, nextCursor? }` plus the auto-paging `for await (const ref of coll.scan({ prefix?, signal?, pageSize? }))`. `list` defaults `limit` to 50 (clamped `[1, 1000]`); end of pages is `nextCursor === undefined`. Write helpers (`patchState` / `setState` / `updateState` / content reads and writes) and `create` / `getOrCreate` / `upsert` were already async. The handler-facing per-resource context (`ctx.state`) stays a synchronous property.
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.

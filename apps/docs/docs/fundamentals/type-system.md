@@ -113,8 +113,9 @@ const docReader = handler({
     }),
   }),
   execute: async (input, ctx) => {
-    // ctx.session.resources.documents.state.byId — fully typed
-    const doc = ctx.session.resources.documents.state.byId["doc-1"];
+    // ctx.session.resources.documents — fully typed; state() is async
+    const docs = await ctx.session.resources.documents.state();
+    const doc = docs.byId["doc-1"];
     return doc.content; // string
   },
 });
@@ -189,10 +190,11 @@ const myFlow = defineFlow({
     },
     client: {
       derived: {
-        summary: (ctx) => {
+        summary: async (ctx) => {
           // ctx.state — typed as { mode: string; count: number }
-          // ctx.resources.docs.state.byId — typed as Record<string, Doc>
-          return { mode: ctx.state.mode, docCount: Object.keys(ctx.resources.docs.state.byId).length };
+          // ctx.resources.docs.state() — async; resolves Record<string, Doc>
+          const docs = await ctx.resources.docs.state();
+          return { mode: ctx.state.mode, docCount: Object.keys(docs.byId).length };
         },
       },
     },

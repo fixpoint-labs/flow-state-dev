@@ -6,6 +6,8 @@ sidebar_position: 5
 
 The manifest is a description of every public resource a session's flow exposes. For each resource it carries the kind (single vs. collection), the scope, the storage pattern (collections only), the configured `prefetchWindow`, and the declared client permissions.
 
+The manifest carries `prefetchWindow` (which shapes the client snapshot) but not `prefetchMode` (which shapes server-side execution-context loading). `prefetchMode` is a server-only concern and never crosses to the client. See [Prefetch modes](/docs/resources/collections#prefetch-modes).
+
 It's static per `flowKind`. Two sessions on the same flow share the same manifest, so it's safe to fetch once and cache.
 
 ## When to use it

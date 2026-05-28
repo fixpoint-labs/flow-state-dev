@@ -106,17 +106,21 @@ If the helpers don't fit, write your own. Constraints:
 - Cheap. The predicate runs on entry and on every item event for the lifetime of the wait — if the request emits a thousand items, your predicate runs a thousand times.
 - Truthy means "wake up", not "exit successfully". The step still yields `{ timedOut: false }` and the next step decides what to do.
 
-A common pattern is closing over an external read source — say, a collection ref — and consulting that source from inside the predicate. The items array is the wake signal; the source of truth lives elsewhere.
+A common pattern is closing over an external read source and consulting it from inside the predicate. The items array is the wake signal; the source of truth lives elsewhere.
+
+The predicate is synchronous, so it can't await. Resource-collection accessors (`count`, `get`, `list`) are async, so don't call them from inside the predicate. Read a synchronous source instead — for example a counter you keep in scope state, refreshed by the block that mutates the collection:
 
 ```ts
-function whenCollectionDrained(collection: CollectionRef) {
-  return () => collection.count() === 0;
+function whenInFlightDrained(ctx: BlockContext) {
+  return () => ctx.session.state.inFlightTasks === 0;
 }
 
-pipeline.waitForCondition(whenCollectionDrained(myCollection), {
+pipeline.waitForCondition(whenInFlightDrained(ctx), {
   timeoutMs: 60_000,
 });
 ```
+
+If you need a live collection count, fetch it with `await collection.count()` in the surrounding block and stash it in scope state before the wait; the predicate reads that synchronous snapshot.
 
 If the predicate throws, the wait aborts and the error propagates out of the step. Don't throw on bad items — return false.
 

@@ -110,20 +110,21 @@ The two stores are parallel but independent — a resource can have state with n
 
 The lifecycle mirrors content exactly:
 
-1. **Execution context** — declared resource state is eagerly loaded from `ResourceStateStore` into an in-memory cache at context creation. Reads during block execution are synchronous against the cache.
+1. **Execution context** — declared resource state is loaded from `ResourceStateStore` into an in-memory cache at context creation. How much loads is governed by `prefetchMode` (see [Prefetch modes](./resource-collections.md#prefetch-modes)): `eager` (default) loads everything declared, `lazy` loads nothing, `partial` loads a recent window. Cached reads are served from memory; uncached reads under `lazy`/`partial` issue a one-time store fetch and cache the result for the rest of the request.
 2. **State writes persist per-key.** A mutation to one resource writes only that resource's key via `ResourceStateStore.set` — it never loads or rewrites the whole scope record. This removes the write amplification a collection of N instances previously paid (the whole `resources` map was rewritten on every single-instance change).
 3. **State routes / debug snapshot** — read resource state fresh from `ResourceStateStore`.
 
-The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
+The resource accessor handle's read surface is async to support lazy loading: `await ref.state()`, `await coll.get(key)`, `await coll.count()`, and the cursor-paginated `await coll.list({ ... })` / `coll.scan({ ... })`. Write helpers (`patchState`, `setState`, `updateState`, content reads/writes) were already async. The handler-facing per-resource context (`ctx.state`) and the scope-state handles (`ctx.session.state`, `ctx.user.state`, `ctx.org.state`) stay synchronous.
 
 ### Accessing Resources
 
 Resources are accessed through the flat `ctx.resources` registry — the resource's intrinsic `scope` routes reads and writes to the right storage layer.
 
 ```ts
-// Read resource state — same shape regardless of scope
+// Read resource state — same shape regardless of scope.
+// `state()` is async on the resource accessor handle.
 const plan = ctx.resources.plan;
-const steps = plan.state.steps;
+const steps = (await plan.state()).steps;
 
 // Mutate resource state
 await plan.patchState({ status: "active" });
@@ -231,7 +232,7 @@ Client data entries are derived views — computed from state and resources with
 ```ts
 session: {
   clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    activePlan: async (ctx) => (await ctx.resources.plan?.state())?.steps ?? [],
     messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 }
@@ -263,8 +264,8 @@ defineFlow({
   kind: "my-app",
   session: {
     clientData: {
-      artifactsList: (ctx) => {
-        const artifacts = ctx.resources.artifacts?.state;
+      artifactsList: async (ctx) => {
+        const artifacts = await ctx.resources.artifacts?.state();
         return artifacts?.order.map(id => ({
           id,
           title: artifacts.byId[id]?.title ?? "Untitled",
@@ -299,14 +300,11 @@ Generators use `contextFn()` to pull typed data from scopes into model context �
 ```ts
 import { contextFn } from "@flow-state-dev/core";
 
-const myContext = contextFn({
-  sessionStateSchema: z.object({ mode: z.string() }),
-  sessionResources: { plan: planResource },
-  fn: (ctx) => {
-    const steps = ctx.session.resources.plan?.state.steps ?? [];
-    return `Current mode: ${ctx.session.state.mode}\nPlan steps: ${steps.join(", ")}`;
-  },
-});
+const myContext = contextFn(
+  { session: z.object({ mode: z.string(), planSteps: z.array(z.string()).default([]) }) },
+  ({ session }) =>
+    `Current mode: ${session.mode}\nPlan steps: ${session.planSteps.join(", ")}`,
+);
 
 const chatGenerator = generator({
   name: "chat",

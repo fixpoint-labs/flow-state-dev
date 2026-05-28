@@ -128,7 +128,8 @@ const readDoc = handler({
   inputSchema: z.object({ docId: z.string() }),
   outputSchema: z.string(),
   execute: async (input, ctx) => {
-    const doc = ctx.session.resources.get("docs")?.state.byId[input.docId];
+    const docs = await ctx.session.resources.get("docs")?.state();
+    const doc = docs?.byId[input.docId];
     return doc?.content ?? "Document not found.";
   },
 });

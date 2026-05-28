@@ -133,6 +133,10 @@ The schema uses:
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 
+## Keyset pagination for collection state
+
+`ContentStore` and `ResourceStateStore` implement `getByPrefixPaged`, the cursor-paginated read that backs lazy and partial collection loading. The Postgres adapter implements it as a keyset query against the `resource_content` / `resource_state` primary key: it filters `scope_type`, `scope_id`, and a `resource_key` prefix, orders by `resource_key` (`ASC` by default, `DESC` for `partial`'s recent window), applies the exclusive cursor bound (`resource_key > :after` for asc, `< :after` for desc), and `LIMIT`s the page. Keyset paging keeps each page O(limit) regardless of how deep into the collection you are, unlike `OFFSET`. The returned `nextCursor` is the last row's `resource_key`, returned unchanged so callers can treat it as opaque; `nextCursor` is omitted once a page comes back shorter than `limit`.
+
 ## Items storage
 
 Output items produced by a request are stored one row per item in the `request_items` table, separate from the `requests` record:

@@ -81,6 +81,10 @@ The store auto-applies schema changes on connection open via `initializeSchema`.
 
 The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
 
+## Keyset pagination for collection state
+
+The `ContentStore` and `ResourceStateStore` implementations expose `getByPrefixPaged`, the cursor-paginated read that backs lazy and partial collection loading. The SQLite adapter implements it as a keyset query: it filters on `scope_type`, `scope_id`, and a `resource_key` prefix, orders by `resource_key` (`ASC` by default, `DESC` for `partial`'s recent window), applies the exclusive cursor bound (`resource_key > ?` for asc, `< ?` for desc), and limits the page. The returned `nextCursor` is the last row's `resource_key`, returned unchanged so callers treat it as opaque, and is omitted once a page comes back shorter than `limit`. Keyset paging keeps each page O(limit) no matter how deep into the collection you read, unlike `OFFSET`.
+
 ## Individual Store Constructors
 
 For advanced use cases, individual store constructors are also exported:

@@ -56,24 +56,52 @@ execute: async (input, ctx) => {
   const ref = await files.create("readme.md", { language: "markdown" });
 
   // Get existing instance (throws if not found)
-  const existing = files.get("utils.ts");
+  const existing = await files.get("utils.ts");
 
   // Get or create — returns existing if present, creates with defaults if not
   const safe = await files.getOrCreate("config.json", { language: "json" });
 
-  // List all instances, optionally filtered by prefix
-  const allFiles = files.list();
-  const srcFiles = files.list("src/");
+  // List one page of instances, optionally filtered by prefix
+  const page = await files.list({ prefix: "src/", limit: 50 });
+  for (const f of page.items) { /* ... */ }
+
+  // Or iterate every instance with the auto-paging async iterator
+  for await (const f of files.scan({ prefix: "src/" })) { /* ... */ }
 
   // Delete an instance (no-op if not found)
   await files.delete("old-file.ts");
 
   // Current instance count
-  const count = files.count();
+  const count = await files.count();
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+Each returned `ResourceRef` supports the same operations as a static resource: `await ref.state()`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+
+The collection's read accessors are async: `get`, `getOptional`, `list`, `scan`, and `count` all return promises or async iterators. That's what lets a collection load instances on demand instead of all at once. Inside a handler the per-resource handler context (`ctx.state`) stays synchronous — only this standalone accessor surface is async.
+
+#### Paginating with `list` and `scan`
+
+`list` returns one page plus an opaque cursor:
+
+```ts
+let cursor: string | undefined;
+do {
+  const page = await files.list({ prefix: "src/", limit: 50, cursor });
+  for (const ref of page.items) { /* ... */ }
+  cursor = page.nextCursor;
+} while (cursor !== undefined);
+```
+
+`limit` defaults to 50, clamped to `[1, 1000]`. The end of the list is `nextCursor === undefined`. An empty `items` page with a defined `nextCursor` is legitimate — a `prefix` filter can empty a page while more remain, so keep paging until `nextCursor` is undefined.
+
+`scan` is the same loop as an async iterator over every matching instance in key order. It accepts `prefix`, `pageSize`, and an `AbortSignal`:
+
+```ts
+for await (const ref of files.scan({ prefix: "src/" })) {
+  // process each instance
+}
+```
 
 ### `create({ replace })` and `upsert` — handling the exists/missing branches
 
@@ -133,7 +161,7 @@ const notes = ctx.session.resources.notes;
 const ref = await notes.create({ topic: "react" }, { entries: [] });
 // Storage key: "react/notes"
 
-const existing = notes.get({ topic: "rust" });
+const existing = await notes.get({ topic: "rust" });
 ```
 
 The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
@@ -151,6 +179,35 @@ When `maxInstances` is set, the collection enforces a cap on live instances:
 Setting `eviction` to `"lru"` or `"oldest"` without `maxInstances` throws at definition time. Without `maxInstances`, the collection is unbounded.
 
 Set `maxInstances` for any collection that could grow without limit. An AI creating files in a loop with no cap will cause memory and storage pressure. `"lru"` is the safest default — it keeps the working set and discards stale entries.
+
+## Prefetch modes
+
+`prefetchMode` decides how much of a collection loads into the execution context when a scope starts up. It's a server-side loading knob. (It's separate from `prefetchWindow`, which shapes the client snapshot — covered under [Lazy state](#lazy-state-by-default).)
+
+```ts
+defineResourceCollection({
+  pattern: "memos/**",
+  stateSchema: memoSchema,
+  prefetchMode: "partial",
+  recentLimit: 20,
+});
+```
+
+| Mode | Loads at startup | Reads after startup |
+|------|------------------|---------------------|
+| `"eager"` (default) | Every matching instance. | Served from memory. |
+| `"lazy"` | Nothing. | `get` / `getOptional` / `list` / `scan` / `count` read from the store on demand. |
+| `"partial"` | The `recentLimit` highest keys (loaded lexicographically descending). | Cached instances from memory; the rest on demand. |
+
+The tradeoff is startup cost versus per-access cost. `eager` pays the full load up front so every later read is in-memory. `lazy` trades a per-access store read for a near-zero startup cost — good when a collection holds thousands of instances but a request touches only a few, or when it's shared across sessions and most never read it. `partial` preloads a recent working set and leaves the long tail lazy.
+
+`recentLimit` is required for `"partial"` and ignored otherwise. It must be a positive integer, must not exceed `maxInstances` when set, and is capped at 10000 (above that, definition throws). Above 1000 it warns, since loading that many instances at startup costs latency and memory.
+
+### Sortable keys for `partial`
+
+`partial` loads the highest keys, sorted descending. To turn that into "most-recent N," encode order into the storage key — zero-padded counters (`memos/00042`) or ISO-timestamp prefixes (`memos/2026-05-28T14:00:00Z|spec`). Both make the newest entries sort highest. Without a sortable convention, "highest key" is an arbitrary slice, not a recency window.
+
+Single resources accept `prefetchMode?: 'eager' | 'lazy'` as well. `'lazy'` fetches state on the first `state()` call and caches it for the request. `'partial'` is collection-only; passing it to a single resource throws.
 
 ## Lifecycle hooks
 
@@ -234,7 +291,7 @@ There's no `items` map anymore. Clients fetch a page when they need one.
 
 Two surfaces, same data:
 
-- **HTTP**: `GET /sessions/:sessionId/resources/:ref?limit=&offset=&topicPrefix=` returns one page.
+- **HTTP**: `GET /sessions/:sessionId/resources/:ref?limit=&cursor=&topicPrefix=` returns one page. Pagination is cursor-based: the response carries the next page's cursor, and you pass it back as `?cursor=` until there's no next cursor. `limit` defaults to 50. (The exact response field names are finalized in the route slice; the model is "items plus an opaque next cursor.")
 - **React**: [`useResourceCollectionList`](/docs/client/react) wraps that endpoint and handles the React state lifecycle.
 
 A minimal example:
@@ -254,16 +311,16 @@ return (
 
 Each item is a `CollectionItemHandle` with `topic`, `clientData`, and a lazy `fetchContent()` that hits the existing content endpoint.
 
-The page response shape mirrors the rest of the framework:
+The page response carries a list of items plus an opaque cursor for the next page:
 
 ```ts
 {
   items: [{ topic: string, clientData?: unknown }],
-  pagination: { offset, limit, total, hasMore, nextOffset }
+  pagination: { limit, nextCursor? }   // nextCursor absent ⇒ last page
 }
 ```
 
-`limit` defaults to 50 and is capped at 200.
+You request the next page by passing the previous `nextCursor` back as `?cursor=`; pagination ends when no `nextCursor` is returned. `limit` defaults to 50. (The pagination field names are finalized in the route slice; the model is "items plus an opaque next cursor," matching the `list`/`scan` accessors above.)
 
 ### Filtering with topicPrefix
 
@@ -278,6 +335,8 @@ useResourceCollectionList(session, "artifacts", {
 This pairs with the namespacing convention from parameterized patterns — `[topic]/observations` keys naturally compose into prefix queries.
 
 ### prefetchWindow
+
+`prefetchWindow` is the client-snapshot twin of [`prefetchMode`](#prefetch-modes). `prefetchMode` controls server-side loading (what's in the execution context); `prefetchWindow` controls the client snapshot (what's inlined for the browser). They're independent — a `lazy` collection can still set `prefetchWindow`, and an `eager` one can leave it at `0`.
 
 For small, always-needed collections, the snapshot can carry the first N items inline. Set `prefetchWindow` on the collection definition:
 
@@ -301,7 +360,7 @@ The default is `0` (no prefetched window).
 
 ### Server-side projections still work
 
-Scope-level `clientData` functions that call `collection.list()` continue to work. Lazy snapshots changed what the server *emits*, not what it *loads* — the full `persisted` map is still available to the projection function.
+Scope-level `clientData` functions that page through a collection with `await collection.list({ ... })` (or `collection.scan(...)`) continue to work. Lazy snapshots changed what the server *emits*, not what it *loads*. Note that under `prefetchMode: "lazy"` or `"partial"` these reads may hit the store rather than an in-memory cache, so a projection that walks the whole collection pays that cost; reach for `prefetchMode: "eager"` if a projection must read every instance on every request.
 
 ### Migration from earlier versions
 

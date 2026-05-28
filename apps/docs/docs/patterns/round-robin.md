@@ -104,8 +104,8 @@ defineFlow({
 const consolidate = generator({
   // ...
   resources: { debateContributions },
-  user: (_input, ctx) =>
-    formatTranscript(ctx.resources.debateContributions.state.entries),
+  user: async (_input, ctx) =>
+    formatTranscript((await ctx.resources.debateContributions.state()).entries),
 });
 ```
 
@@ -162,8 +162,8 @@ const strictReferee = generator({
     "Audit the round for unsupported numeric claims and unhedged predictions.",
     "Return a short critique naming the contributor and quoting the passage.",
   ].join(" "),
-  user: (_input, ctx) => {
-    const entries = ctx.resources.contributions.state.entries;
+  user: async (_input, ctx) => {
+    const entries = (await ctx.resources.contributions.state()).entries;
     return entries
       .map((e) => `[Round ${e.round}] ${e.agentName}: ${e.text}`)
       .join("\n");

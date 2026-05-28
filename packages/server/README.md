@@ -344,11 +344,17 @@ interface ContentStore {
   delete(scopeType, scopeId, resourceKey): Promise<void>;
   getAll(scopeType, scopeId): Promise<Record<string, string>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, string>>;
+  getByPrefixPaged(
+    scopeType, scopeId, keyPrefix,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: string }>; nextCursor?: string }>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
 Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
+
+`getByPrefixPaged` is the keyset-paginated read backing lazy/partial collection loading, `list`, and `scan`. It sorts lexicographically by key (`asc` by default, `desc` for `partial`'s "recent window"), applies the exclusive `after` bound (`key > after` for asc, `key < after` for desc), and slices to `limit`. The returned `nextCursor` is the raw last-yielded key (adapters return it unchanged; callers treat it as opaque) and follows the uniform rule `items.length === limit ? lastKey : undefined`. A full page implies there may be more; a short or empty page signals the end. This can yield one extra empty page at an exact boundary, which the contract permits. `partial` prefetch passes `order: "desc"` to load the highest keys first.
 
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
@@ -386,11 +392,15 @@ interface ResourceStateStore {
   delete(scopeType, scopeId, resourceKey): Promise<void>;
   getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  getByPrefixPaged(
+    scopeType, scopeId, keyPrefix,
+    opts: { limit: number; after?: string; order?: "asc" | "desc" }
+  ): Promise<{ items: Array<{ key: string; value: JsonObject }>; nextCursor?: string }>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
-The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
+The interface and loading semantics mirror `ContentStore` exactly, including the keyset-paginated `getByPrefixPaged` (same cursor contract described above) that backs lazy/partial collection state loading: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` or `getByPrefixPaged` for collections depending on `prefetchMode`), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
 
 ## CheckpointStore
 

@@ -59,12 +59,12 @@ Read content with `readContent()` (renders templates) or `readContentRaw()` (ret
 execute: async (input, ctx) => {
   const artifact = ctx.session.resources.get("artifact");
 
-  // Read the content body
-  const raw = artifact.readContentRaw();     // "# {{ title }}\n\nDraft content..."
-  const rendered = artifact.readContent();   // "# My Document\n\nDraft content..."
+  // Read the content body (async on the resource accessor handle)
+  const raw = await artifact.readContentRaw();     // "# {{ title }}\n\nDraft content..."
+  const rendered = await artifact.readContent();   // "# My Document\n\nDraft content..."
 
   // Read structured metadata
-  const { title, status, tags } = artifact.state;
+  const { title, status, tags } = await artifact.state();
 }
 ```
 

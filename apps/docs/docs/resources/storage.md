@@ -78,8 +78,9 @@ const search = handler({
   },
   execute: async (input, ctx) => {
     const cache = ctx.session.resources.searchCache;
-    if (cache.state.lastQuery === input.query && Date.now() - cache.state.cachedAt < 60_000) {
-      return { results: cache.state.results };
+    const cached = await cache.state();
+    if (cached.lastQuery === input.query && Date.now() - cached.cachedAt < 60_000) {
+      return { results: cached.results };
     }
     const results = await performSearch(input.query);
     await cache.setState({ lastQuery: input.query, results, cachedAt: Date.now() });
