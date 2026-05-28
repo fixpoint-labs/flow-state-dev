@@ -3,7 +3,6 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores } from "../src";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { JsonObject } from "@flow-state-dev/core/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -85,11 +84,11 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.create("readme.md", { language: "markdown" });
-    expect(ref.state.language).toBe("markdown");
+    expect((await ref.state()).language).toBe("markdown");
     expect(ref.name).toBe("files/readme.md");
 
-    const got = ns.get("readme.md");
-    expect(got.state.language).toBe("markdown");
+    const got = await ns.get("readme.md");
+    expect((await got.state()).language).toBe("markdown");
   });
 
   it("create() throws on duplicate key", async () => {
@@ -103,13 +102,13 @@ describe("collection CRUD", () => {
   it("get() throws for non-existent key", async () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
-    expect(() => ns.get("nope.ts")).toThrow("not found");
+    await expect(ns.get("nope.ts")).rejects.toThrow("not found");
   });
 
   it("getOptional() returns undefined for non-existent", async () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
-    expect(ns.getOptional("nope.ts")).toBeUndefined();
+    expect(await ns.getOptional("nope.ts")).toBeUndefined();
   });
 
   it("getOrCreate() creates if absent", async () => {
@@ -117,8 +116,8 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.getOrCreate("new.ts", { language: "typescript" });
-    expect(ref.state.language).toBe("typescript");
-    expect(ns.count()).toBe(1);
+    expect((await ref.state()).language).toBe("typescript");
+    expect(await ns.count()).toBe(1);
   });
 
   it("getOrCreate() returns existing if present", async () => {
@@ -127,8 +126,8 @@ describe("collection CRUD", () => {
 
     await ns.create("exist.ts", { language: "typescript" });
     const ref = await ns.getOrCreate("exist.ts", { language: "DIFFERENT" });
-    expect(ref.state.language).toBe("typescript"); // original value
-    expect(ns.count()).toBe(1);
+    expect((await ref.state()).language).toBe("typescript"); // original value
+    expect(await ns.count()).toBe(1);
   });
 
   it("delete() removes instance", async () => {
@@ -136,10 +135,10 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("del.ts", { language: "typescript" });
-    expect(ns.count()).toBe(1);
+    expect(await ns.count()).toBe(1);
     await ns.delete("del.ts");
-    expect(ns.count()).toBe(0);
-    expect(ns.getOptional("del.ts")).toBeUndefined();
+    expect(await ns.count()).toBe(0);
+    expect(await ns.getOptional("del.ts")).toBeUndefined();
   });
 
   it("delete() is idempotent — no-op on non-existent", async () => {
@@ -153,13 +152,13 @@ describe("collection CRUD", () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
-    expect(ns.count()).toBe(0);
+    expect(await ns.count()).toBe(0);
     await ns.create("a.ts", { language: "typescript" });
-    expect(ns.count()).toBe(1);
+    expect(await ns.count()).toBe(1);
     await ns.create("b.ts", { language: "typescript" });
-    expect(ns.count()).toBe(2);
+    expect(await ns.count()).toBe(2);
     await ns.delete("a.ts");
-    expect(ns.count()).toBe(1);
+    expect(await ns.count()).toBe(1);
   });
 
   it("deep nested paths work with ** pattern", async () => {
@@ -167,9 +166,9 @@ describe("collection CRUD", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("src/utils/helpers.ts", { language: "typescript" });
-    const ref = ns.get("src/utils/helpers.ts");
+    const ref = await ns.get("src/utils/helpers.ts");
     expect(ref.name).toBe("files/src/utils/helpers.ts");
-    expect(ref.state.language).toBe("typescript");
+    expect((await ref.state()).language).toBe("typescript");
   });
 });
 
@@ -188,9 +187,9 @@ describe("create({ replace })", () => {
       { language: "python" },
       { replace: true },
     );
-    expect(replaced.state.language).toBe("python");
+    expect((await replaced.state()).language).toBe("python");
     // Original metadata is dropped — replace is setState semantics, not merge
-    expect(replaced.state.metadata).toBeUndefined();
+    expect((await replaced.state()).metadata).toBeUndefined();
   });
 
   it("creates if missing — same as create() without the option", async () => {
@@ -202,8 +201,8 @@ describe("create({ replace })", () => {
       { language: "typescript" },
       { replace: true },
     );
-    expect(ref.state.language).toBe("typescript");
-    expect(ns.count()).toBe(1);
+    expect((await ref.state()).language).toBe("typescript");
+    expect(await ns.count()).toBe(1);
   });
 
   it("does not double-count toward maxInstances when replacing", async () => {
@@ -214,12 +213,12 @@ describe("create({ replace })", () => {
     for (let i = 0; i < 5; i++) {
       await ns.create(`f${i}.ts`, { language: "typescript" });
     }
-    expect(ns.count()).toBe(5);
+    expect(await ns.count()).toBe(5);
 
     // Replace one of them — must not trip the maxInstances guard.
     await ns.create("f3.ts", { language: "python" }, { replace: true });
-    expect(ns.count()).toBe(5);
-    expect(ns.get("f3.ts").state.language).toBe("python");
+    expect(await ns.count()).toBe(5);
+    expect((await (await ns.get("f3.ts")).state()).language).toBe("python");
   });
 
   it("fires onInstanceUpdated on the replace branch", async () => {
@@ -273,8 +272,8 @@ describe("upsert", () => {
     const ns = getFilesNs(ctx);
 
     const ref = await ns.upsert("new.ts", { language: "typescript" });
-    expect(ref.state.language).toBe("typescript");
-    expect(ns.count()).toBe(1);
+    expect((await ref.state()).language).toBe("typescript");
+    expect(await ns.count()).toBe(1);
   });
 
   it("2-arg form patches when exists — preserves untouched fields", async () => {
@@ -283,10 +282,10 @@ describe("upsert", () => {
 
     await ns.create("a.ts", { language: "typescript", metadata: { kept: true } });
     await ns.upsert("a.ts", { language: "python" });
-    const got = ns.get("a.ts");
-    expect(got.state.language).toBe("python");
+    const got = await ns.get("a.ts");
+    expect((await got.state()).language).toBe("python");
     // metadata was NOT in the update, so it must persist (patch semantics)
-    expect(got.state.metadata).toEqual({ kept: true });
+    expect((await got.state()).metadata).toEqual({ kept: true });
   });
 
   it("3-arg form creates with { ...createOnly, ...update } on missing", async () => {
@@ -298,9 +297,9 @@ describe("upsert", () => {
       { language: "typescript" },
       { metadata: { initOnly: true } },
     );
-    const ref = ns.get("new.ts");
-    expect(ref.state.language).toBe("typescript");
-    expect(ref.state.metadata).toEqual({ initOnly: true });
+    const ref = await ns.get("new.ts");
+    expect((await ref.state()).language).toBe("typescript");
+    expect((await ref.state()).metadata).toEqual({ initOnly: true });
   });
 
   it("3-arg form: update wins over createOnly on overlapping keys (create branch)", async () => {
@@ -312,9 +311,9 @@ describe("upsert", () => {
       { language: "python" },
       { language: "typescript", metadata: { kept: true } },
     );
-    const ref = ns.get("new.ts");
-    expect(ref.state.language).toBe("python");
-    expect(ref.state.metadata).toEqual({ kept: true });
+    const ref = await ns.get("new.ts");
+    expect((await ref.state()).language).toBe("python");
+    expect((await ref.state()).metadata).toEqual({ kept: true });
   });
 
   it("3-arg form: createOnly is ignored on the patch branch", async () => {
@@ -327,11 +326,11 @@ describe("upsert", () => {
       { language: "python" },
       { metadata: { shouldNotAppear: true } },
     );
-    const ref = ns.get("a.ts");
-    expect(ref.state.language).toBe("python");
+    const ref = await ns.get("a.ts");
+    expect((await ref.state()).language).toBe("python");
     // createOnly was supplied but the resource already existed, so the
     // extras are not applied — only the update is patched in.
-    expect(ref.state.metadata).toBeUndefined();
+    expect((await ref.state()).metadata).toBeUndefined();
   });
 
   it("fires onInstanceCreated on create branch, onInstanceUpdated on patch branch", async () => {
@@ -384,7 +383,7 @@ describe("upsert", () => {
 
     // Resource must remain at its prior valid state — failed patch
     // must not have written anything.
-    expect(ns.get("k").state.count).toBe(1);
+    expect((await (await ns.get("k")).state()).count).toBe(1);
   });
 
   it("honors maxInstances on the create branch only", async () => {
@@ -395,11 +394,11 @@ describe("upsert", () => {
     for (let i = 0; i < 5; i++) {
       await ns.upsert(`f${i}.ts`, { language: "typescript" });
     }
-    expect(ns.count()).toBe(5);
+    expect(await ns.count()).toBe(5);
 
     // Patch existing — must not trip the maxInstances guard.
     await ns.upsert("f3.ts", { language: "python" });
-    expect(ns.count()).toBe(5);
+    expect(await ns.count()).toBe(5);
 
     // Try to upsert a new key — maxInstances is hit and eviction is "none",
     // so this throws.
@@ -419,11 +418,11 @@ describe("collection instance state mutations", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     await ref.patchState({ language: "javascript" });
 
-    const updated = ns.get("a.ts");
-    expect(updated.state.language).toBe("javascript");
+    const updated = await ns.get("a.ts");
+    expect((await updated.state()).language).toBe("javascript");
   });
 
   it("setState replaces entire state", async () => {
@@ -431,11 +430,11 @@ describe("collection instance state mutations", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript", metadata: { old: true } });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     await ref.setState({ language: "python" } as any);
 
-    const updated = ns.get("a.ts");
-    expect(updated.state.language).toBe("python");
+    const updated = await ns.get("a.ts");
+    expect((await updated.state()).language).toBe("python");
   });
 
   it("updateState uses functional updater", async () => {
@@ -443,11 +442,11 @@ describe("collection instance state mutations", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     await ref.updateState((s) => ({ ...s, language: s.language + "!" }));
 
-    const updated = ns.get("a.ts");
-    expect(updated.state.language).toBe("typescript!");
+    const updated = await ns.get("a.ts");
+    expect((await updated.state()).language).toBe("typescript!");
   });
 });
 
@@ -461,7 +460,7 @@ describe("collection instance content", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     expect(await ref.readContent()).toBeNull();
     expect(await ref.readContentRaw()).toBeNull();
   });
@@ -471,11 +470,11 @@ describe("collection instance content", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     await ref.writeContent("const x = 1;");
 
     // Re-get to ensure persistence
-    const ref2 = ns.get("a.ts");
+    const ref2 = await ns.get("a.ts");
     expect(await ref2.readContent()).toBe("const x = 1;");
     expect(await ref2.readContentRaw()).toBe("const x = 1;");
   });
@@ -485,14 +484,14 @@ describe("collection instance content", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    const ref = ns.get("a.ts");
+    const ref = await ns.get("a.ts");
     await ref.writeContent("hello");
 
     await ns.delete("a.ts");
 
     // Re-create and check content is gone
     await ns.create("a.ts", { language: "typescript" });
-    const ref2 = ns.get("a.ts");
+    const ref2 = await ns.get("a.ts");
     expect(await ref2.readContent()).toBeNull();
   });
 });
@@ -510,8 +509,8 @@ describe("collection list() prefix filtering", () => {
     await ns.create("b.ts", { language: "typescript" });
     await ns.create("src/c.ts", { language: "typescript" });
 
-    const all = ns.list();
-    expect(all).toHaveLength(3);
+    const all = await ns.list();
+    expect(all.items).toHaveLength(3);
   });
 
   it("list(prefix) filters by prefix", async () => {
@@ -523,16 +522,16 @@ describe("collection list() prefix filtering", () => {
     await ns.create("src/utils/c.ts", { language: "typescript" });
     await ns.create("docs/readme.md", { language: "markdown" });
 
-    const srcFiles = ns.list("src/");
-    expect(srcFiles).toHaveLength(2);
-    expect(srcFiles.map((r) => r.name).sort()).toEqual([
+    const srcFiles = await ns.list({ prefix: "src/" });
+    expect(srcFiles.items).toHaveLength(2);
+    expect(srcFiles.items.map((r) => r.name).sort()).toEqual([
       "files/src/b.ts",
       "files/src/utils/c.ts",
     ]);
 
-    const docFiles = ns.list("docs/");
-    expect(docFiles).toHaveLength(1);
-    expect(docFiles[0]!.name).toBe("files/docs/readme.md");
+    const docFiles = await ns.list({ prefix: "docs/" });
+    expect(docFiles.items).toHaveLength(1);
+    expect(docFiles.items[0]!.name).toBe("files/docs/readme.md");
   });
 
   it("list(prefix) returns empty when no match", async () => {
@@ -540,7 +539,7 @@ describe("collection list() prefix filtering", () => {
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
-    expect(ns.list("src/")).toHaveLength(0);
+    expect((await ns.list({ prefix: "src/" })).items).toHaveLength(0);
   });
 });
 
@@ -554,8 +553,8 @@ describe("parameterized collection", () => {
     const ns = ctx.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
 
     await ns.create({ topic: "react" }, { entries: ["first"] });
-    const ref = ns.get({ topic: "react" });
-    expect(ref.state.entries).toEqual(["first"]);
+    const ref = await ns.get({ topic: "react" });
+    expect((await ref.state()).entries).toEqual(["first"]);
     expect(ref.name).toBe("react/observations");
   });
 
@@ -566,8 +565,8 @@ describe("parameterized collection", () => {
     await ns.create({ topic: "react" }, {});
     await ns.create({ topic: "rust" }, {});
 
-    const all = ns.list();
-    expect(all).toHaveLength(2);
+    const all = await ns.list();
+    expect(all.items).toHaveLength(2);
   });
 });
 
@@ -583,7 +582,7 @@ describe("maxInstances with eviction: none", () => {
     for (let i = 0; i < 5; i++) {
       await ns.create(`f${i}.ts`, { language: "typescript" });
     }
-    expect(ns.count()).toBe(5);
+    expect(await ns.count()).toBe(5);
 
     await expect(ns.create("overflow.ts", { language: "typescript" })).rejects.toThrow("maxInstances");
   });
@@ -598,17 +597,17 @@ describe("maxInstances with eviction: lru", () => {
     await ns.create("a.ts", { language: "a" });
     await ns.create("b.ts", { language: "b" });
     await ns.create("c.ts", { language: "c" });
-    expect(ns.count()).toBe(3);
+    expect(await ns.count()).toBe(3);
 
     // Access b and c but not a — a should be LRU
-    ns.get("b.ts");
-    ns.get("c.ts");
+    await ns.get("b.ts");
+    await ns.get("c.ts");
 
     // Create one more — should evict a
     await ns.create("d.ts", { language: "d" });
-    expect(ns.count()).toBe(3);
-    expect(ns.getOptional("a.ts")).toBeUndefined();
-    expect(ns.getOptional("d.ts")).toBeDefined();
+    expect(await ns.count()).toBe(3);
+    expect(await ns.getOptional("a.ts")).toBeUndefined();
+    expect(await ns.getOptional("d.ts")).toBeDefined();
 
     // Verify persistence — collection-instance state lives in the
     // ResourceStateStore (FIX-689), not inline in the scope record.
@@ -625,13 +624,13 @@ describe("maxInstances with eviction: oldest", () => {
 
     await ns.create("first.ts", { language: "first" });
     await ns.create("second.ts", { language: "second" });
-    expect(ns.count()).toBe(2);
+    expect(await ns.count()).toBe(2);
 
     // This should evict first.ts
     await ns.create("third.ts", { language: "third" });
-    expect(ns.count()).toBe(2);
-    expect(ns.getOptional("first.ts")).toBeUndefined();
-    expect(ns.getOptional("third.ts")).toBeDefined();
+    expect(await ns.count()).toBe(2);
+    expect(await ns.getOptional("first.ts")).toBeUndefined();
+    expect(await ns.getOptional("third.ts")).toBeDefined();
   });
 });
 
@@ -716,7 +715,7 @@ describe("lifecycle hooks with context", () => {
     const ns = ctx.resources.hookfiles as any as ResourceCollectionRef<any>;
 
     await ns.create("test.ts", { language: "typescript" });
-    const ref = ns.get("test.ts");
+    const ref = await ns.get("test.ts");
     await ref.patchState({ language: "javascript" });
 
     expect(updated).toBe(true);
@@ -843,7 +842,7 @@ describe("per-key state write routing", () => {
     spy.stateSetKeys.length = 0;
     const sessionSetsBefore = spy.sessionSetCount;
 
-    await ns.get("a.ts").patchState({ language: "typescript" });
+    await (await ns.get("a.ts")).patchState({ language: "typescript" });
 
     expect(spy.stateSetKeys).toEqual(["files/a.ts"]);
     expect(spy.sessionSetCount).toBe(sessionSetsBefore);

@@ -187,6 +187,17 @@ function normalizeScopeResources(
 
     const storageKey = storageKeys[accessor]!;
     if (storageKey in normalized) continue; // dual-registered alias
+    // FIX-688: a lazy single resource is intentionally absent from the cache
+    // until its first read, so the registry's `ensureLoaded` can distinguish
+    // "not yet loaded" from "loaded as default". Materializing a default here
+    // would defeat the lazy fetch. A value already present in `seed` (a loaded
+    // or prior-seeded state) is always preserved.
+    if (
+      (config as ResourceConfig).prefetchMode === "lazy" &&
+      !(storageKey in (seed ?? {}))
+    ) {
+      continue;
+    }
     normalized[storageKey] = normalizeResourceState(
       config,
       seed?.[storageKey]
@@ -336,9 +347,27 @@ async function loadDeclaredResourceState(
 
   for (const [accessor, config] of accessors) {
     if (isCollectionConfig(config)) {
+      // FIX-688 prefetch modes select how much collection state preloads here:
+      // - 'lazy': preload nothing; the registry fetches instances on demand.
+      // - 'partial': preload the `recentLimit` lex-HIGHEST keys (descending),
+      //   leaving the rest lazy.
+      // - 'eager' (default): preload every instance under the pattern prefix.
+      const mode = config.prefetchMode ?? "eager";
+      if (mode === "lazy") {
+        continue;
+      }
       const prefix = getPatternPrefix(config.pattern);
       const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-      collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
+      if (mode === "partial") {
+        collectionReads.push(
+          loadRecentInstances(resourceState, scopeType, scopeId, keyPrefix, config.recentLimit ?? 1)
+        );
+      } else {
+        collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
+      }
+    } else if ((config as ResourceConfig).prefetchMode === "lazy") {
+      // Single-resource lazy: skip preload; state() fetches on first call.
+      continue;
     } else {
       fixedKeys.add(storageKeys[accessor]!);
     }
@@ -361,6 +390,30 @@ async function loadDeclaredResourceState(
     if (value !== undefined) seed[key] = value;
   }
   return seed;
+}
+
+/**
+ * Eagerly load the `limit` lexicographically-highest instance states under
+ * `keyPrefix` for `prefetchMode: 'partial'`. Issues a single descending-order
+ * `getByPrefixPaged` and returns a key→state map. Used at scope startup; the
+ * remaining (older) instances stay lazy.
+ */
+async function loadRecentInstances(
+  resourceState: ResourceStateStore,
+  scopeType: ContentScopeType,
+  scopeId: string,
+  keyPrefix: string,
+  limit: number
+): Promise<Record<string, JsonObject>> {
+  const page = await resourceState.getByPrefixPaged(scopeType, scopeId, keyPrefix, {
+    limit,
+    order: "desc"
+  });
+  const out: Record<string, JsonObject> = {};
+  for (const { key, value } of page.items) {
+    out[key] = value;
+  }
+  return out;
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -409,6 +462,20 @@ function updateObjectState(
   return next;
 }
 
+/**
+ * Store-backed loader the registry uses to satisfy lazy/partial reads
+ * (FIX-688). Bundles the resource-state store with this scope's `(scopeType,
+ * scopeId)` so collection accessors can fetch instances on demand without
+ * re-plumbing those values through every call site. `null` (e.g. for a
+ * `"request"` scope, which has no state store) disables lazy loading and the
+ * registry falls back to the in-memory cache only.
+ */
+type ScopeResourceLoader = {
+  scopeType: ContentScopeType;
+  scopeId: string;
+  resourceState: ResourceStateStore;
+};
+
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
@@ -422,8 +489,21 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
+    /**
+     * Merge store-loaded instance state into the scope cache WITHOUT marking it
+     * dirty (FIX-688). The single-source-of-truth seed path: lazily fetched
+     * instances become visible to subsequent `readResources()` reads but are
+     * never written back through `persistResources` (which diffs next-vs-cache).
+     * A later real mutation goes through the normal persist path.
+     */
+    seedResources: (seed: Record<string, JsonObject>) => void;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
+    /**
+     * Store loader for on-demand reads. Absent for scopes without a state store
+     * (e.g. `"request"`); the registry then serves only what is already cached.
+     */
+    loader?: ScopeResourceLoader;
     /** Called after any resource mutation so the streaming layer can push change events to clients. */
     onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
   }
@@ -515,7 +595,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       name: storageKey,
       scope: options.scope,
       config: nsConfig as unknown as ResourceConfig,
-      get state() {
+      // Async per the FIX-688 contract. The instance ref is only handed out
+      // after its state was seeded into the cache (via get/getOptional/list/
+      // scan/create), so this resolves synchronously against the cache.
+      async state(): Promise<Readonly<JsonObject>> {
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
@@ -604,25 +687,78 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         scopeId: options.scopeId,
       };
 
+      // FIX-688: the lex prefix all this collection's storage keys share.
+      // Empty for a bare wildcard pattern (e.g. `[topic]/observations`), in
+      // which case every key in the scope is a candidate instance.
+      const patternPrefix = getPatternPrefix(nsConfig.pattern);
+      const keyPrefix = patternPrefix === "" ? "" : `${patternPrefix}/`;
+
+      // Single-flight (FIX-688): concurrent loads of the same storage key share
+      // one store read. The entry clears in a `finally` so a later re-access
+      // (e.g. after eviction) re-fetches. Keys present here are "mid-fetch" and
+      // are protected from eviction.
+      const inflightLoads = new Map<string, Promise<JsonObject | undefined>>();
+
+      /**
+       * Resolve a single instance's state, preferring the in-memory cache and
+       * falling back to a single-flighted store read. On a store hit the value
+       * is seeded into the scope cache (non-persisting) so subsequent reads —
+       * and the instance ref's own `state()` — observe it without re-fetching.
+       * Returns `undefined` when the instance exists in neither place.
+       */
+      const loadInstanceState = async (
+        storageKey: string
+      ): Promise<JsonObject | undefined> => {
+        const cached = options.readResources()[storageKey];
+        if (cached !== undefined) return cached;
+        if (options.loader === undefined) return undefined;
+
+        const existing = inflightLoads.get(storageKey);
+        if (existing !== undefined) return existing;
+
+        const loader = options.loader;
+        const promise = (async () => {
+          // Re-check the cache inside the flight: a concurrent mutation may
+          // have populated it after we sampled above.
+          const recheck = options.readResources()[storageKey];
+          if (recheck !== undefined) return recheck;
+          const value = await loader.resourceState.get(
+            loader.scopeType,
+            loader.scopeId,
+            storageKey
+          );
+          if (value !== undefined) {
+            options.seedResources({ [storageKey]: value });
+          }
+          return value;
+        })();
+        inflightLoads.set(storageKey, promise);
+        try {
+          return await promise;
+        } finally {
+          inflightLoads.delete(storageKey);
+        }
+      };
+
       const nsHandle: ResourceCollectionRef<JsonObject> = {
         pattern: nsConfig.pattern,
         scope: options.scope,
         config: nsConfig,
 
-        get(key: string | Record<string, string>): ResourceRef<JsonObject> {
+        async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          const resources = options.readResources();
-          if (!(storageKey in resources)) {
+          const state = await loadInstanceState(storageKey);
+          if (state === undefined) {
             throw new Error(`Resource instance "${storageKey}" not found in collection "${nsConfig.pattern}"`);
           }
           lruAccess.set(storageKey, Date.now());
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
-        getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
+        async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          const resources = options.readResources();
-          if (!(storageKey in resources)) {
+          const state = await loadInstanceState(storageKey);
+          if (state === undefined) {
             return undefined;
           }
           lruAccess.set(storageKey, Date.now());
@@ -643,8 +779,13 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             );
           }
 
+          // Existence must consult the store (FIX-688): under lazy/partial the
+          // instance may be persisted but not yet cached, and a blind cache
+          // miss would wrongly let `create` clobber it. `loadInstanceState`
+          // seeds the cache on a store hit so the branches below see it.
+          const loadedState = await loadInstanceState(storageKey);
           const resources = options.readResources();
-          const exists = storageKey in resources;
+          const exists = loadedState !== undefined || storageKey in resources;
           const replace = createOptions?.replace === true;
 
           if (exists && !replace) {
@@ -663,8 +804,17 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
                   `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
                 );
               }
-              // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
+              // Evict one instance — persists the deletion. Mid-fetch keys are
+              // excluded via the inflight-loads set (FIX-688).
+              await evictInstance(
+                nsConfig,
+                resources,
+                eviction,
+                lruAccess,
+                options.persistResources,
+                hookCtx,
+                new Set(inflightLoads.keys())
+              );
             }
           }
 
@@ -719,8 +869,11 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           initial?: Partial<JsonObject>
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          const resources = options.readResources();
-          if (storageKey in resources) {
+          // Consult the store so a persisted-but-uncached instance is returned
+          // rather than re-created (FIX-688). `loadInstanceState` seeds the
+          // cache on a store hit.
+          const state = await loadInstanceState(storageKey);
+          if (state !== undefined) {
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
@@ -743,8 +896,11 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             );
           }
 
+          // Consult the store so a persisted-but-uncached instance takes the
+          // patch branch rather than being re-created (FIX-688).
+          const loadedState = await loadInstanceState(storageKey);
           const resources = options.readResources();
-          const exists = storageKey in resources;
+          const exists = loadedState !== undefined || storageKey in resources;
 
           if (exists) {
             // Patch branch: merge `update` over existing state, validate the
@@ -790,28 +946,103 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return nsHandle.create(key, initial);
         },
 
-        list(prefix?: string): ResourceRef<JsonObject>[] {
-          const resources = options.readResources();
-          const instances: ResourceRef<JsonObject>[] = [];
+        async list(
+          listOpts?: { limit?: number; cursor?: string; prefix?: string }
+        ): Promise<{ items: ResourceRef<JsonObject>[]; nextCursor?: string }> {
+          // Clamp limit to [1, 1000], default 50 (FIX-688 locked contract).
+          const rawLimit = listOpts?.limit ?? 50;
+          const limit = Math.max(1, Math.min(1000, rawLimit));
+          const fullPrefix = combinePrefix(keyPrefix, listOpts?.prefix);
 
-          for (const storageKey of Object.keys(resources)) {
-            if (!matchesPattern(nsConfig.pattern, storageKey)) continue;
-            if (prefix !== undefined) {
-              const nsPrefix = getPatternPrefix(nsConfig.pattern);
-              const fullPrefix = nsPrefix.length > 0 ? `${nsPrefix}/${prefix}` : prefix;
-              if (!storageKey.startsWith(fullPrefix)) continue;
-            }
-            instances.push(createNamespaceInstanceRef(storageKey, nsConfig, hookCtx));
+          if (options.loader === undefined) {
+            // No store: page over the in-memory cache deterministically.
+            return listFromCache(
+              options.readResources(),
+              nsConfig,
+              fullPrefix,
+              limit,
+              listOpts?.cursor,
+              (k) => createNamespaceInstanceRef(k, nsConfig, hookCtx)
+            );
           }
 
-          return instances;
+          const loader = options.loader;
+          const page = await loader.resourceState.getByPrefixPaged(
+            loader.scopeType,
+            loader.scopeId,
+            fullPrefix,
+            { limit, after: listOpts?.cursor, order: "asc" }
+          );
+
+          // Reconcile each store row with the in-memory cache: a cached value
+          // (freshly created / mutated / seeded) supersedes the store snapshot,
+          // and seeding it keeps the instance ref's own state() in sync. We do
+          // NOT inject cache-only keys here — pagination is anchored to the
+          // store's key ordering, and a write-through mutation persists to the
+          // store, so it surfaces on the page it lexically belongs to.
+          const items: ResourceRef<JsonObject>[] = [];
+          for (const { key, value } of page.items) {
+            if (options.readResources()[key] === undefined) {
+              options.seedResources({ [key]: value });
+            }
+            lruAccess.set(key, Date.now());
+            items.push(createNamespaceInstanceRef(key, nsConfig, hookCtx));
+          }
+          return page.nextCursor === undefined
+            ? { items }
+            : { items, nextCursor: page.nextCursor };
+        },
+
+        async *scan(
+          scanOpts?: { prefix?: string; signal?: AbortSignal; pageSize?: number }
+        ): AsyncIterableIterator<ResourceRef<JsonObject>> {
+          const fullPrefix = combinePrefix(keyPrefix, scanOpts?.prefix);
+          const signal = scanOpts?.signal;
+          const pageSize = Math.max(1, Math.min(1000, scanOpts?.pageSize ?? 100));
+
+          if (options.loader === undefined) {
+            // No store: traverse the cache in lex-ascending key order.
+            const keys = matchingCacheKeys(options.readResources(), nsConfig, fullPrefix).sort();
+            for (const key of keys) {
+              if (signal?.aborted) throw new Error("scan aborted");
+              lruAccess.set(key, Date.now());
+              yield createNamespaceInstanceRef(key, nsConfig, hookCtx);
+            }
+            return;
+          }
+
+          const loader = options.loader;
+          let cursor: string | undefined;
+          // Page the store ascending until exhausted (nextCursor === undefined).
+          // Same cache-wins reconciliation as `list`. Abort is checked before
+          // each yield so cancellation is observed promptly at the next item.
+          for (;;) {
+            const page = await loader.resourceState.getByPrefixPaged(
+              loader.scopeType,
+              loader.scopeId,
+              fullPrefix,
+              { limit: pageSize, after: cursor, order: "asc" }
+            );
+            for (const { key, value } of page.items) {
+              if (signal?.aborted) throw new Error("scan aborted");
+              if (options.readResources()[key] === undefined) {
+                options.seedResources({ [key]: value });
+              }
+              lruAccess.set(key, Date.now());
+              yield createNamespaceInstanceRef(key, nsConfig, hookCtx);
+            }
+            if (page.nextCursor === undefined) break;
+            cursor = page.nextCursor;
+          }
         },
 
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          const resources = options.readResources();
-          if (!(storageKey in resources)) {
-            // Idempotent — no-op if instance doesn't exist
+          // Under lazy/partial the instance may be persisted but not cached;
+          // seed it first so the delete is not a false no-op (FIX-688).
+          const state = await loadInstanceState(storageKey);
+          if (state === undefined && !(storageKey in options.readResources())) {
+            // Idempotent — no-op if instance doesn't exist anywhere.
             return;
           }
 
@@ -825,9 +1056,34 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           options.onResourceChanged?.(storageKey, "deleted");
         },
 
-        count(): number {
-          const resources = options.readResources();
-          return countInstances(nsConfig.pattern, resources);
+        async count(): Promise<number> {
+          if (options.loader === undefined) {
+            return countInstances(nsConfig.pattern, options.readResources());
+          }
+          // Page the store counting keys, then union with cache-only keys that
+          // match the pattern (freshly created instances not yet reflected on a
+          // store read this request might see, plus any seeded ones already
+          // counted in the store — deduped via a set).
+          const loader = options.loader;
+          const seen = new Set<string>();
+          let cursor: string | undefined;
+          for (;;) {
+            const page = await loader.resourceState.getByPrefixPaged(
+              loader.scopeType,
+              loader.scopeId,
+              keyPrefix,
+              { limit: 500, after: cursor, order: "asc" }
+            );
+            for (const { key } of page.items) {
+              if (matchesPattern(nsConfig.pattern, key)) seen.add(key);
+            }
+            if (page.nextCursor === undefined) break;
+            cursor = page.nextCursor;
+          }
+          for (const key of matchingCacheKeys(options.readResources(), nsConfig, keyPrefix)) {
+            seen.add(key);
+          }
+          return seen.size;
         }
       };
 
@@ -846,14 +1102,46 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           normalizeResourceDefault(config)
       );
 
+    // FIX-688: single-resource lazy mode. `loadDeclaredResourceState` skips the
+    // preload for `prefetchMode: 'lazy'`, so the cache has no entry until the
+    // first read. `ensureLoaded` fetches once from the store and seeds the
+    // cache (non-persisting), single-flighted so concurrent reads share it.
+    // Eager resources never hit this (the cache is already populated).
+    const isLazy = config.prefetchMode === "lazy";
+    let lazyInflight: Promise<void> | undefined;
+    const ensureLoaded = async (): Promise<void> => {
+      if (!isLazy || options.loader === undefined) return;
+      if (storageKey in options.readResources()) return;
+      if (lazyInflight !== undefined) return lazyInflight;
+      const loader = options.loader;
+      lazyInflight = (async () => {
+        if (storageKey in options.readResources()) return;
+        const value = await loader.resourceState.get(
+          loader.scopeType,
+          loader.scopeId,
+          storageKey
+        );
+        if (value !== undefined) {
+          options.seedResources({ [storageKey]: value });
+        }
+      })();
+      try {
+        await lazyInflight;
+      } finally {
+        lazyInflight = undefined;
+      }
+    };
+
     handles[resourceName] = {
       name: storageKey,
       scope: options.scope,
       config,
-      get state() {
+      async state(): Promise<Readonly<JsonObject>> {
+        await ensureLoaded();
         return readState();
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
+        await ensureLoaded();
         await persistResourceState(
           storageKey,
           config,
@@ -868,6 +1156,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           state: JsonObject
         ) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
+        await ensureLoaded();
         const next = await updater(readState());
         await persistResourceState(storageKey, config, next);
       },
@@ -885,6 +1174,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return raw;
         }
 
+        await ensureLoaded();
         return await config.render(raw, readState());
       },
       async writeContent(content: string): Promise<void> {
@@ -924,16 +1214,75 @@ function countInstances(
   return count;
 }
 
+/**
+ * Combine a collection's own pattern prefix with a caller-supplied relative
+ * `prefix` (FIX-688). The collection prefix already ends in `/` (or is empty);
+ * the relative prefix narrows within it. Used by `list`/`scan` to build the
+ * store query prefix.
+ */
+function combinePrefix(keyPrefix: string, relative: string | undefined): string {
+  if (relative === undefined || relative === "") return keyPrefix;
+  return `${keyPrefix}${relative}`;
+}
+
+/**
+ * Storage keys in the in-memory cache that belong to `nsConfig`'s collection
+ * and fall under `fullPrefix`. Used to reconcile cache-only instances into
+ * store-backed `count`/`scan`/`list` results (FIX-688).
+ */
+function matchingCacheKeys(
+  resources: Record<string, JsonObject>,
+  nsConfig: ResourceCollectionConfig,
+  fullPrefix: string
+): string[] {
+  const out: string[] = [];
+  for (const key of Object.keys(resources)) {
+    if (!matchesPattern(nsConfig.pattern, key)) continue;
+    if (fullPrefix !== "" && !key.startsWith(fullPrefix)) continue;
+    out.push(key);
+  }
+  return out;
+}
+
+/**
+ * Page `list` over the in-memory cache when no store loader is available
+ * (e.g. a scope with no resource-state store). Sorts matching keys
+ * lex-ascending, applies the opaque key cursor, and returns one `limit`-sized
+ * page with a `nextCursor` of the last key iff a full page was produced.
+ */
+function listFromCache(
+  resources: Record<string, JsonObject>,
+  nsConfig: ResourceCollectionConfig,
+  fullPrefix: string,
+  limit: number,
+  cursor: string | undefined,
+  makeRef: (key: string) => ResourceRef<JsonObject>
+): { items: ResourceRef<JsonObject>[]; nextCursor?: string } {
+  const keys = matchingCacheKeys(resources, nsConfig, fullPrefix)
+    .filter((k) => cursor === undefined || k > cursor)
+    .sort();
+  const pageKeys = keys.slice(0, limit);
+  const items = pageKeys.map((k) => makeRef(k));
+  if (pageKeys.length === limit && limit > 0 && keys.length > limit) {
+    return { items, nextCursor: pageKeys[pageKeys.length - 1] };
+  }
+  return { items };
+}
+
 async function evictInstance(
   nsConfig: ResourceCollectionConfig,
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
   persistResources: (next: Record<string, JsonObject>) => Promise<void>,
-  hookCtx: CollectionHookContext
+  hookCtx: CollectionHookContext,
+  // FIX-688 eviction-during-fetch guard: keys currently being loaded from the
+  // store are excluded from eviction candidates so we never evict an instance
+  // a concurrent read is mid-fetch on (which would leave a torn cache entry).
+  protectedKeys?: ReadonlySet<string>
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
-    matchesPattern(nsConfig.pattern, k)
+    matchesPattern(nsConfig.pattern, k) && !(protectedKeys?.has(k) ?? false)
   );
 
   if (keys.length === 0) return;
@@ -2500,6 +2849,14 @@ export async function createExecutionContext<
   const readSessionResources = (): Record<string, JsonObject> =>
     sessionStateRef.current;
 
+  // FIX-688 non-persisting seed: merge a store-loaded instance into the scope
+  // cache so lazy reads see it, WITHOUT marking it dirty. The seeded value
+  // becomes the persist-diff baseline, so a subsequent no-op write won't
+  // re-persist (it's already in the store) while a real mutation still does.
+  const seedSessionResources = (seed: Record<string, JsonObject>): void => {
+    sessionStateRef.current = { ...sessionStateRef.current, ...seed };
+  };
+
   // Content refs: eagerly loaded from ContentStore at initialization.
   // All reads during execution use the in-memory cache (synchronous).
   // Writes update the cache and persist to ContentStore (async, per-key).
@@ -2513,11 +2870,19 @@ export async function createExecutionContext<
   const readUserResources = (): Record<string, JsonObject> =>
     userStateRef.current;
 
+  const seedUserResources = (seed: Record<string, JsonObject>): void => {
+    userStateRef.current = { ...userStateRef.current, ...seed };
+  };
+
   const readUserResourceContent = (): Record<string, string> =>
     userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
     orgStateRef.current;
+
+  const seedProjectResources = (seed: Record<string, JsonObject>): void => {
+    orgStateRef.current = { ...orgStateRef.current, ...seed };
+  };
 
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
@@ -2766,8 +3131,10 @@ export async function createExecutionContext<
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
+    seedResources: seedUserResources,
     readResourceContent: readUserResourceContent,
     persistResourceContent: persistUserResourceContent,
+    loader: { scopeType: "user", scopeId: userKey, resourceState: stores.resourceState },
     onResourceChanged: makeResourceChangeHandler("user"),
   });
 
@@ -2777,8 +3144,10 @@ export async function createExecutionContext<
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     persistResources: persistSessionResources,
+    seedResources: seedSessionResources,
     readResourceContent: readSessionResourceContent,
     persistResourceContent: persistSessionResourceContent,
+    loader: { scopeType: "session", scopeId: sessionId, resourceState: stores.resourceState },
     onResourceChanged: makeResourceChangeHandler("session"),
   });
 
@@ -2791,8 +3160,12 @@ export async function createExecutionContext<
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
+          seedResources: seedProjectResources,
           readResourceContent: readProjectResourceContent,
           persistResourceContent: persistProjectResourceContent,
+          loader: resolvedOrgKey === undefined
+            ? undefined
+            : { scopeType: "org", scopeId: resolvedOrgKey, resourceState: stores.resourceState },
           onResourceChanged: makeResourceChangeHandler("org"),
         });
 
