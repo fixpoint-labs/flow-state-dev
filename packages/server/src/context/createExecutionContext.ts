@@ -727,6 +727,11 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             loader.scopeId,
             storageKey
           );
+          // A mutation may have populated the cache while the store read was in
+          // flight. The fresher cached value wins — seeding the store snapshot
+          // here would clobber it (seedResources merges seed over current).
+          const afterAwait = options.readResources()[storageKey];
+          if (afterAwait !== undefined) return afterAwait;
           if (value !== undefined) {
             options.seedResources({ [storageKey]: value });
           }
@@ -1057,7 +1062,12 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         },
 
         async count(): Promise<number> {
-          if (options.loader === undefined) {
+          // Eager collections hold every instance in the cache (preloaded at
+          // scope start, kept current by write-through), so the cache count is
+          // exact — no need to scan the whole store. Lazy/partial must page the
+          // store since uncached instances exist only there.
+          const isEager = (nsConfig.prefetchMode ?? "eager") === "eager";
+          if (options.loader === undefined || isEager) {
             return countInstances(nsConfig.pattern, options.readResources());
           }
           // Page the store counting keys, then union with cache-only keys that

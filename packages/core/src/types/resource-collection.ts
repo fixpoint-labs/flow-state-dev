@@ -53,6 +53,13 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   flowIsolation?: boolean;
   stateSchema: ZodTypeAny;
+  /**
+   * Cap on the number of instances. Enforced against *loaded* (cached)
+   * instances: exact under the default `prefetchMode: 'eager'` (every instance
+   * is cached), but best-effort under `'lazy'`/`'partial'`, where persisted-
+   * but-uncached instances are not counted and LRU/oldest eviction can only
+   * act on what's loaded. Use eager mode if you need a hard cardinality bound.
+   */
   maxInstances?: number;
   eviction?: EvictionPolicy;
 
