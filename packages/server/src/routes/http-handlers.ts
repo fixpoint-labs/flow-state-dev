@@ -381,9 +381,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRetryRequest(request, route, {
           registry: options.registry,
           stores,
-          modelResolver: runtimeConfig.modelResolver,
-          speechResolver: runtimeConfig.speechResolver,
-          middleware: runtimeConfig.middleware
+          runtimeConfig
         });
       }
 
@@ -402,14 +400,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "active_requests") {
         return await handleListActiveRequests(request, {
           registry: options.registry,
-          stores
+          stores,
+          runtimeConfig
         });
       }
 
       if (route.kind === "check_interrupted_requests") {
         return await handleCheckInterruptedRequests(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          runtimeConfig
         });
       }
 

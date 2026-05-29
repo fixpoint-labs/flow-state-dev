@@ -1,21 +1,18 @@
 /**
  * HTTP route handlers for request recovery (retry + active request listing).
  */
-import type { Middleware, ModelResolver, SpeechResolver } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import type { RuntimeLogger } from "../execution/logging";
+import type { RuntimeConfig } from "../runtime-config";
 
 type RecoveryRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  middleware?: Middleware[];
-  logger?: RuntimeLogger;
+  /** Instance-level runtime options (resolvers, middleware, logger, …). */
+  runtimeConfig: RuntimeConfig;
 };
 
 export async function handleRetryRequest(
@@ -83,10 +80,7 @@ export async function handleRetryRequest(
             lastHeartbeatAt: Date.now()
           }
         : undefined,
-      modelResolver: ctx.modelResolver,
-      speechResolver: ctx.speechResolver,
-      middleware: ctx.middleware,
-      logger: ctx.logger
+      runtimeConfig: ctx.runtimeConfig
     });
 
     return jsonResponse(202, {
@@ -166,7 +160,7 @@ export async function handleCheckInterruptedRequests(
     stores: ctx.stores,
     userId,
     staleThresholdMs,
-    logger: ctx.logger
+    logger: ctx.runtimeConfig.logger
   });
 
   const interrupted = swept

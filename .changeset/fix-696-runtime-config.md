@@ -1,4 +1,5 @@
 ---
+"@flow-state-dev/server": patch
 ---
 
-Internal refactor: bundle the server execution chain's forwarded instance-level options into a single `RuntimeConfig` struct (FIX-696). No public API or behavior change.
+Retried requests now honor the same instance-level `settings`, tracing level, and background-work hook as the original dispatch, instead of running without them.
