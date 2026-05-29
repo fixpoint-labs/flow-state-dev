@@ -15,7 +15,7 @@
  *   `onError`: `"skip"` swallows the error after writing the failure;
  *   `"fail"` rethrows so the parent forEach rejects.
  *
- * The split lets the worker run as a plain `.then(workerStep)` step in
+ * The split lets the worker run as a plain `.step(workerStep)` step in
  * the sequencer — no handler wrapper around the worker, no manual
  * try/catch. The framework's rescue mechanism owns failure flow
  * (BP-011 conformance: the worker block is composed, not invoked from

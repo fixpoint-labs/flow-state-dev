@@ -99,7 +99,7 @@ const result = await auditor.run({ content: 'The response to evaluate...' }, ctx
 
 // As .tap() sidechain in a pipeline
 const pipeline = sequencer({ name: 'chat-with-audit' })
-  .then(chat)
+  .step(chat)
   .tap(auditor)
 ```
 
@@ -242,7 +242,7 @@ const observe = handler({
 // Or use the bundled capture sequencer (analyze → observe)
 const pipeline = sequencer({ name: 'review' })
   .work((input) => ({ content: input.proposal }), sec.capture)
-  .then(nextBlock)
+  .step(nextBlock)
 
 // Wire resources in the flow
 const flow = defineFlow({

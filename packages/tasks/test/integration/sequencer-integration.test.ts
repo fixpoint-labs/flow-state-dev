@@ -70,9 +70,9 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       stateSchema: tasksStateSchema,
     })
-      .then(seedTasks)
-      .then(dispatchOne)
-      .then(dispatchOne);
+      .step(seedTasks)
+      .step(dispatchOne)
+      .step(dispatchOne);
 
     const result = await testBlock(pipeline, { input: undefined });
 
@@ -119,7 +119,7 @@ describe("sequencer-state integration", () => {
       inputSchema: z.any(),
       outputSchema: z.any(),
       stateSchema: tasksStateSchema,
-    }).then(body);
+    }).step(body);
 
     const result = await testBlock(block, { input: undefined });
 
@@ -181,8 +181,8 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       stateSchema: tasksStateSchema,
     })
-      .then(seedTasks)
-      .then(noop);
+      .step(seedTasks)
+      .step(noop);
 
     const result = await testBlock(block, { input: undefined });
 

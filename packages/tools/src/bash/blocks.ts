@@ -397,7 +397,7 @@ function isUnderTmp(relativePath: string): boolean {
  * `upstash` need to spin up a container or instance.
  *
  * Drives the block-factory decision: setup-needing providers compose
- * their blocks as `sequencer().tapIf(isCold, ensureSandbox).then(leaf)`
+ * their blocks as `sequencer().tapIf(isCold, ensureSandbox).step(leaf)`
  * so the user sees status updates during the cold path. Other providers
  * return leaf handlers directly — no sequencer wrapper, no extra trace
  * node, no per-call probe.
@@ -960,7 +960,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       inputSchema: bashCommandInputSchema,
       outputSchema: bashCommandOutputSchema,
     }),
-  ).then(bashCommandLeaf);
+  ).step(bashCommandLeaf);
 
   const bashReadFile = withColdSetup(
     sequencer({
@@ -969,7 +969,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       inputSchema: bashReadFileInputSchema,
       outputSchema: bashReadFileOutputSchema,
     }),
-  ).then(bashReadFileLeaf);
+  ).step(bashReadFileLeaf);
 
   // MOAT can write to host-fs directly; Vercel/Upstash need the
   // sandbox up first.
@@ -982,7 +982,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           inputSchema: bashWriteFileInputSchema,
           outputSchema: bashWriteFileOutputSchema,
         }),
-      ).then(bashWriteFileSandboxLeaf);
+      ).step(bashWriteFileSandboxLeaf);
 
   return { bashCommand, bashReadFile, bashWriteFile };
 }

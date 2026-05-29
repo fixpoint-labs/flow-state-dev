@@ -12,8 +12,8 @@
  *     → board.block                   ← loopBack target
  *     → cascadeSkipDependents
  *     → evaluatePlanProgress
- *     → .thenIf(decision === "replan", replanner)
- *     → .thenIf(Array.isArray(tasks), applyReplan)
+ *     → .stepIf(decision === "replan", replanner)
+ *     → .stepIf(Array.isArray(tasks), applyReplan)
  *     → .map(d => { decision: d.decision ?? "continue" })
  *     → .loopBack(board.block.name, { when: decision !== "complete" })
  *     → synthesize
@@ -415,7 +415,7 @@ function wrapWorkerForLegacyContract(
   return sequencer({
     name: `${name}-worker-adapted`,
   })
-    .then(adapted)
+    .step(adapted)
     .tap(checkSoftFailure);
 }
 
@@ -682,20 +682,20 @@ export function planAndExecute<
     stateSchema: planAndExecuteStateSchema,
   })
     .tap(stampOuterGoal)
-    .then(captureAndPlan)
-    .then(board.block)
+    .step(captureAndPlan)
+    .step(board.block)
     .tap(cascadeSkipDependents)
-    .then(evaluator)
+    .step(evaluator)
     // Replanner only runs when the evaluator asked for a replan AND
     // didn't pre-bake the new tasks. Pre-baked `tasks` bypasses the
     // LLM call and goes straight to applyReplan.
-    .thenIf(
+    .stepIf(
       (d) =>
         (d as { decision?: string }).decision === "replan" &&
         !Array.isArray((d as { tasks?: unknown }).tasks),
       replanner,
     )
-    .thenIf(
+    .stepIf(
       (d) => Array.isArray((d as { tasks?: unknown }).tasks),
       applyReplan,
     )
@@ -706,7 +706,7 @@ export function planAndExecute<
       when: (r) => (r as { decision?: string }).decision !== "complete",
       maxIterations,
     })
-    .then(synthesize) as SequencerDefinition<any, any>;
+    .step(synthesize) as SequencerDefinition<any, any>;
 
   return pipeline;
 }

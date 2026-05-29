@@ -74,8 +74,8 @@ To chain multiple blocks together, you'd compose them with a **sequencer**:
 import { sequencer } from "@flow-state-dev/core";
 
 const pipeline = sequencer({ name: "pipeline", inputSchema })
-  .then(chat)
-  .then(otherBlock);
+  .step(chat)
+  .step(otherBlock);
 ```
 
 The quick-start doesn't need one yet. [Your First Flow](/docs/getting-started/your-first-flow) walks through composing blocks step-by-step.

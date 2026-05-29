@@ -206,7 +206,7 @@ import { skillActivator } from "./lib/capabilities";
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(skillActivator) // <-- new
-  .then(assistant);
+  .step(assistant);
 ```
 
 That's it. Run the app and try the three tiers:

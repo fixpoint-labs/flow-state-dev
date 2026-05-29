@@ -80,7 +80,7 @@ export type ExecutionParent = {
   /**
    * Structural path locator for deterministic instance IDs. Format is a
    * slash-delimited sequence of `{op}[{index}]` segments rooted at `root`
-   * (e.g. `root/then[0]/iter[2]`). Propagated to the child's
+   * (e.g. `root/step[0]/iter[2]`). Propagated to the child's
    * `_blockIdentity.blockPath` so nested blocks can derive their own paths.
    */
   path?: string;
@@ -262,7 +262,7 @@ export interface BlockContext<
    * the most recent (current-iteration) run of a named block is consulted.
    *
    * Returns `false` when the block ran without rescuing, was never dispatched
-   * (e.g. skipped by `.thenIf`), is not found in the current scope, or when
+   * (e.g. skipped by `.stepIf`), is not found in the current scope, or when
    * called outside a sequencer. Never throws.
    */
   wasRescued(target: string | BlockDefinition<any, any>): boolean;

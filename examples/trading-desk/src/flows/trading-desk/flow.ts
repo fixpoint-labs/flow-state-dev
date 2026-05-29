@@ -187,21 +187,21 @@ const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
   inputSchema: analyzeInputSchema,
 })
-  .then(seedSession)
+  .step(seedSession)
   .tap(checkTickerResolvable)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
-  .then(phase1Pipeline)
+  .step(phase1Pipeline)
   .tap(checkPhase1HasFundamentalsAndProfile)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
-  .then(phase2Pipeline)
-  .then(phase3Pipeline)
-  .then(phase4Pipeline)
-  .then(phase5Pipeline)
+  .step(phase2Pipeline)
+  .step(phase3Pipeline)
+  .step(phase4Pipeline)
+  .step(phase5Pipeline)
   // Phase 6 — post-decision thesis audit. Only runs when the caller supplied
   // a usable thesis at seed time; otherwise the pipeline ends at the PM.
-  .thenIf(
+  .stepIf(
     (_v, ctx) => ctx.session.state.userThesis !== null,
     phase6Pipeline,
   );

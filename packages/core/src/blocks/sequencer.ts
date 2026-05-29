@@ -98,9 +98,9 @@ type SequencerOpResult = {
    * BlockValue hint for the sequencer's output after this op runs (FIX-413).
    * - Unset: op did not change the sequencer's output kind. The running
    *   descriptor from prior ops carries over (e.g., `.tap`, `.work`, no-op
-   *   `.thenIf`).
-   * - Set: replaces the running descriptor. `.then` produces a ref to the
-   *   child item, `.map` produces inline, `.thenAll` produces structure.
+   *   `.stepIf`).
+   * - Set: replaces the running descriptor. `.step` produces a ref to the
+   *   child item, `.map` produces inline, `.stepAll` produces structure.
    */
   descriptor?: BlockOutputHint;
 };
@@ -175,7 +175,7 @@ function inputDescriptorFromPrevPath(
 }
 
 /**
- * Compute the `input.source` descriptor for an aggregator step (`.thenAll`,
+ * Compute the `input.source` descriptor for an aggregator step (`.stepAll`,
  * `.parallel`, `.forEach`) whose input is structurally composed from a set of
  * branch paths. Each entry is a ref to the matching branch trace when present,
  * falling back to inline-undefined otherwise.
@@ -235,7 +235,7 @@ function sequentialInputHint(
 /**
  * Stash a sequential input hint and record the child's path on runtime state
  * so the next op can chain. Centralises the bookkeeping for ops that dispatch
- * a single child block (`.then`, `.thenIf`, `.tap`, `.tapIf`, `.branch`, etc.).
+ * a single child block (`.step`, `.stepIf`, `.tap`, `.tapIf`, `.branch`, etc.).
  * Clears any aggregator-set `lastChildInputHint` after consuming it.
  */
 function prepareSequentialChild(
@@ -1098,11 +1098,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   };
 
   const definition = Object.assign(baseBlock, {
-    then<TStepIn, TNext>(
+    step<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg2?: BlockDefinition<any, any> | Record<string, unknown>
     ): SequencerDefinition<TInput, TNext, TStateSchema> {
-      // Path 1: then(factory, inlineConfig) — inline block definition
+      // Path 1: step(factory, inlineConfig) — inline block definition
       if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
         const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
         const capturedInput = inferFirstBlockInput(block);
@@ -1110,7 +1110,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           {
             name: block.name,
             run: async (value, ctx, runtime, stepIndex) => {
-              const path = childBlockPath(ctx, runtime, "then", stepIndex);
+              const path = childBlockPath(ctx, runtime, "step", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, value, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1123,8 +1123,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         );
       }
 
-      // Path 2: then(block) — pre-defined block
-      // Path 3: then(connector, block) — connector + pre-defined block
+      // Path 2: step(block) — pre-defined block
+      // Path 3: step(connector, block) — connector + pre-defined block
       const connector = arg2 === undefined ? undefined : (arg1 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg2 ?? arg1) as BlockDefinition<any, any>;
       const capturedInput = inferFirstBlockInput(block);
@@ -1134,7 +1134,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-            const path = childBlockPath(ctx, runtime, "then", stepIndex);
+            const path = childBlockPath(ctx, runtime, "step", stepIndex);
             prepareSequentialChild(ctx, runtime, path);
             const output = await executeBlock(block, nextInput, ctx, path);
             return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1147,12 +1147,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       );
     },
 
-    thenIf<TStepIn, TNext>(
+    stepIf<TStepIn, TNext>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
       arg3?: BlockDefinition<any, any> | Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
-      // Path 1: thenIf(condition, factory, inlineConfig) — inline block definition
+      // Path 1: stepIf(condition, factory, inlineConfig) — inline block definition
       if (typeof arg2 === "function" && !isBlockDefinition(arg2) && arg3 !== undefined && isInlineConfig(arg3)) {
         const block = buildInlineBlock(arg2 as InlineBlockFactory, arg3 as Record<string, unknown>, lastOutputSchema);
         return createSequencer<TInput, TOutput | TNext, TStateSchema>(
@@ -1168,7 +1168,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                   return { value };
                 }
 
-                const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
+                const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
                 prepareSequentialChild(ctx, runtime, path);
                 const output = await executeBlock(block, value, ctx, path);
                 return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1185,8 +1185,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         );
       }
 
-      // Path 2: thenIf(condition, block) — pre-defined block
-      // Path 3: thenIf(condition, connector, block) — connector + pre-defined block
+      // Path 2: stepIf(condition, block) — pre-defined block
+      // Path 3: stepIf(condition, connector, block) — connector + pre-defined block
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
@@ -1203,7 +1203,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const path = childBlockPath(ctx, runtime, "thenIf", stepIndex);
+              const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
               prepareSequentialChild(ctx, runtime, path);
               const output = await executeBlock(block, nextInput, ctx, path);
               return { value: output, descriptor: refDescriptorForPath(ctx, path) };
@@ -1966,7 +1966,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       );
     },
 
-    thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+    stepAll<TSteps extends Array<ParallelStep<TOutput>>>(
       steps: [...TSteps],
       options?: { maxConcurrency?: number }
     ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema> {
@@ -1976,9 +1976,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
-          name: "thenAll",
+          name: "stepAll",
           run: async (value, ctx, runtime, stepIndex) => {
-            const basePath = childBlockPath(ctx, runtime, "thenAll", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "stepAll", stepIndex);
             const branchPaths: string[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
             const outputs = await mapWithConcurrency(
@@ -1998,7 +1998,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               }
             );
 
-            // `.thenAll` aggregates an array of existing branch outputs.
+            // `.stepAll` aggregates an array of existing branch outputs.
             // Emit a structure BlockValue whose entries ref each branch's item.
             const entries: BlockValueInternal<unknown>[] = branchPaths.map((path, i) => {
               const ref = refDescriptorForPath(ctx, path);
@@ -2027,19 +2027,19 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       );
     },
 
-    thenAny(
+    stepAny(
       blocks: BlockDefinition<any, any>[]
     ): SequencerDefinition<TInput, unknown, TStateSchema> {
       return extend<unknown>(
         {
-          name: "thenAny",
+          name: "stepAny",
           run: async (value, ctx, runtime, stepIndex) => {
             if (blocks.length === 0) {
-              throw new AggregateError([], "thenAny called with no blocks");
+              throw new AggregateError([], "stepAny called with no blocks");
             }
 
             // Try each block sequentially; return the first that succeeds.
-            const basePath = childBlockPath(ctx, runtime, "thenAny", stepIndex);
+            const basePath = childBlockPath(ctx, runtime, "stepAny", stepIndex);
             const errors: Error[] = [];
             const branchInputHint = sequentialInputHint(ctx, runtime);
 
@@ -2057,7 +2057,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               }
             }
 
-            throw new AggregateError(errors, "All blocks in thenAny failed");
+            throw new AggregateError(errors, "All blocks in stepAny failed");
           }
         },
         undefined,
@@ -2350,7 +2350,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
 
     validate() {
       // No-op when there's nothing to compare: schema-less sequencers, or
-      // chains whose tail erased the tracked schema (thenAny/race/thenAll/branch).
+      // chains whose tail erased the tracked schema (stepAny/race/stepAll/branch).
       if (config.outputSchema === undefined || lastOutputSchema === undefined) {
         return;
       }

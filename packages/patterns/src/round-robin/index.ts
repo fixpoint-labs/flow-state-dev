@@ -13,14 +13,14 @@
  *   sequencer
  *     .tap(initContributions)    // clear resource + prime task collection
  *     .tap(stampGoal)            // outer state .goal = input.goal
- *     .then(incrementRound)      // round++ — loopBack target
- *     .then(roster[0]).tap(record[0])
+ *     .step(incrementRound)      // round++ — loopBack target
+ *     .step(roster[0]).tap(record[0])
  *     ...
- *     .then(roster[N-1]).tap(record[N-1])
- *     [.then(referee).tap(stashRefereeCritique)]   // only when referee is provided
+ *     .step(roster[N-1]).tap(record[N-1])
+ *     [.step(referee).tap(stashRefereeCritique)]   // only when referee is provided
  *     .loopBack(incrementRound, { when: round < maxRounds && !terminateWhen(ctx) })
  *     .map(buildFinalShape)
- *     [.then(synthesizer)]
+ *     [.step(synthesizer)]
  */
 import { sequencer, handler } from "@flow-state-dev/core";
 import type {
@@ -228,7 +228,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // Returns the new round number so this is a real `.then()` step (BP-014:
+  // Returns the new round number so this is a real `.step()` step (BP-014:
   // never return input as output). The roster agents ignore this input
   // and read goal + round from the outer sequencer state.
   const incrementRound = handler({
@@ -271,7 +271,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   })
     .tap(initContributions)
     .tap(stampGoal)
-    .then(incrementRound);
+    .step(incrementRound);
 
   for (const entry of roster) {
     const agentBlock =
@@ -296,11 +296,11 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       warnedAgents,
       accessorKey,
     });
-    pipeline = pipeline.then(agentBlock).tap(recordTap);
+    pipeline = pipeline.step(agentBlock).tap(recordTap);
   }
 
   if (config.referee !== undefined) {
-    pipeline = pipeline.then(config.referee).tap(stashRefereeCritique);
+    pipeline = pipeline.step(config.referee).tap(stashRefereeCritique);
   }
 
   pipeline = pipeline
@@ -346,5 +346,5 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         : {}),
     });
 
-  return pipeline.then(synth) as SequencerDefinition<any, any>;
+  return pipeline.step(synth) as SequencerDefinition<any, any>;
 }

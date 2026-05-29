@@ -194,8 +194,9 @@ export function router<
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
       )(input, ctx);
 
-      // Sequencer definitions expose a `.then()` DSL method and can be mistaken
-      // for thenables. Detect concrete blocks before awaiting route selection.
+      // A route selector may return a concrete block synchronously or a
+      // promise of one. Detect the concrete block before awaiting so a
+      // synchronously-returned block (e.g. a sequencer) is used as-is.
       const selected = isBlockDefinition(candidate)
         ? (candidate as BlockDefinition<TInputSchema, TOutputSchema>)
         : await candidate;

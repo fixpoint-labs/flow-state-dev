@@ -426,12 +426,12 @@ describe("buildTraceTree", () => {
     // each pass carrying a distinct loop[N] path segment. Each iteration issues
     // its own tool call, which must cluster under that iteration's row.
     const items = [
-      makeItem({ id: "m0", type: "message", provenance: makeProvenance("executor", "req-1:root/then[0]:0") }),
-      makeItem({ id: "t0", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/then[0]:0") }),
-      makeItem({ id: "m1", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[1]/then[0]:0") }),
-      makeItem({ id: "t1", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[1]/then[0]:0") }),
-      makeItem({ id: "m2", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[2]/then[0]:0") }),
-      makeItem({ id: "t2", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[2]/then[0]:0") }),
+      makeItem({ id: "m0", type: "message", provenance: makeProvenance("executor", "req-1:root/step[0]:0") }),
+      makeItem({ id: "t0", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/step[0]:0") }),
+      makeItem({ id: "m1", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[1]/step[0]:0") }),
+      makeItem({ id: "t1", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[1]/step[0]:0") }),
+      makeItem({ id: "m2", type: "message", provenance: makeProvenance("executor", "req-1:root/loop[2]/step[0]:0") }),
+      makeItem({ id: "t2", type: "tool_output", provenance: makeProvenance("executor", "req-1:root/loop[2]/step[0]:0") }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);
@@ -452,11 +452,11 @@ describe("buildTraceTree", () => {
   });
 
   it("does not label distinct same-name siblings that are not loop iterations (FIX-643)", () => {
-    // Two separate `.then(foo)` steps share a name but neither is a loopBack
+    // Two separate `.step(foo)` steps share a name but neither is a loopBack
     // re-execution — they must stay unlabeled.
     const items = [
-      makeItem({ id: "a", type: "message", provenance: makeProvenance("foo", "req-1:root/then[0]:0") }),
-      makeItem({ id: "b", type: "message", provenance: makeProvenance("foo", "req-1:root/then[1]:0") }),
+      makeItem({ id: "a", type: "message", provenance: makeProvenance("foo", "req-1:root/step[0]:0") }),
+      makeItem({ id: "b", type: "message", provenance: makeProvenance("foo", "req-1:root/step[1]:0") }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);

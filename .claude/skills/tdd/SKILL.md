@@ -74,7 +74,7 @@ This is your tracer bullet — proves the path works end-to-end through the FSD 
 
 For generators specifically: the tracer test should use `mockGenerator` (from `@flow-state-dev/testing`) so the LLM call is deterministic. The first test exercises the model loop's happy path; later tests exercise tool invocation, retry, rescue.
 
-For sequencers and patterns: the tracer test runs the composition through a real context and asserts on the *terminal* output / items emitted / state changes — not on individual `.then()` step results.
+For sequencers and patterns: the tracer test runs the composition through a real context and asserts on the *terminal* output / items emitted / state changes — not on individual `.step()` step results.
 
 ### 3. Incremental loop
 
@@ -91,7 +91,7 @@ Rules:
 - Only enough code to pass the current test
 - Don't anticipate future tests
 - Each test asserts on **observable** behaviour through the public surface — items emitted, state mutated, return values, lifecycle hooks fired. Not internal data shape, not call order, not private intermediate values
-- For sequencer/router behaviour: assert on the terminal output or stream, not the intermediate `.then()` step shapes
+- For sequencer/router behaviour: assert on the terminal output or stream, not the intermediate `.step()` step shapes
 - For generator behaviour: assert on emitted items (`message`, `block_output`, `step_error`, `state_change`) and on the final `output` — not on which model call was made or the order of mocked responses
 
 ### 4. Refactor
@@ -102,7 +102,7 @@ After all tests pass, look for:
 - [ ] Repeated tool / context / resource wiring → extract a capability (`defineCapability`)
 - [ ] Shallow handlers whose `execute` is a single transform → fold into the sequencer via `.map()` or a connector
 - [ ] Handlers that just return their input → replace with `.tap()` (BP-012, BP-014)
-- [ ] Wrapper sequencers gating a single step → replace with `.thenIf` / `.workIf` / `.tapIf` (BP-015)
+- [ ] Wrapper sequencers gating a single step → replace with `.stepIf` / `.workIf` / `.tapIf` (BP-015)
 - [ ] Generator output schemas with `z.optional` / `z.default` / `z.record` / heterogeneous `z.union` → collapse to fixed + nullable (BP-016)
 - [ ] Shallow modules in the broader area → use `fsd:improve-codebase-architecture` for deepening
 - [ ] Run tests after each refactor step. **Never refactor while red.** Get to green first.

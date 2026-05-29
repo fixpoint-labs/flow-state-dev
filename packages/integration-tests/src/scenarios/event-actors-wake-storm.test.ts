@@ -103,7 +103,7 @@ describe("FIX-660: eventActors at high concurrency with reEmit", () => {
           block: sequencer({
             name: "ws-root",
             inputSchema: z.any(),
-          }).then(handle.emit),
+          }).step(handle.emit),
         },
       },
     })({ id: "default" });

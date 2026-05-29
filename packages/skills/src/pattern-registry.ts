@@ -61,10 +61,10 @@ export interface PatternRegistryDeps {
 }
 
 /**
- * Result of materializing a pattern factory. Wrapped (rather than the
- * bare block) so async resolution doesn't trip on `SequencerDefinition`'s
- * `.then(...)` chain method — JS would otherwise treat the sequencer as
- * a thenable and feed `resolve` into the sequencer's `.then` as a block.
+ * Result of materializing a pattern factory. The materialized block is
+ * returned alongside its collection metadata (id, backing, resource key)
+ * so the runSkill router can stamp the active-skill entry without
+ * re-deriving it.
  */
 export interface MaterializedPattern {
   block: BlockDefinition;

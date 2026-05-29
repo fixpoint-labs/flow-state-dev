@@ -587,12 +587,12 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
  * trigger a digest refresh. The digest's own staleness guard short-circuits
  * when the source signature is unchanged — second-level no-op.
  */
-function withDigestRegenerate<S extends { then: (b: any) => any }>(
+function withDigestRegenerate<S extends { step: (b: any) => any }>(
   chain: S,
   config: MemorySystemBlocksConfig,
 ): S {
   if (!config.digest) return chain
-  return chain.then(
+  return chain.step(
     digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }),
   ) as S
 }
@@ -933,8 +933,8 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
     name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'memory/consolidate/generate-and-persist',
     inputSchema: z.any(),
   })
-    .then(generateBlock)
-    .then(persistBlock)
+    .step(generateBlock)
+    .step(persistBlock)
 
   if (config.hygiene && config.hygiene.schedule === 'onConsolidation') {
     chain = chain.tap(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
@@ -946,8 +946,8 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
     name: config.name ? `${config.name}/consolidate` : 'memory/consolidate',
     inputSchema: z.any(),
   })
-    .then(guardBlock)
-    .thenIf((result) => result.triggered, generateAndPersist)
+    .step(guardBlock)
+    .stepIf((result) => result.triggered, generateAndPersist)
 }
 
 // ---------------------------------------------------------------------------
@@ -1174,8 +1174,8 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
       name: config.name ? `${config.name}/prune/generate-and-persist` : 'memory/prune/generate-and-persist',
       inputSchema: z.any(),
     })
-      .then(generateBlock)
-      .then(persistBlock),
+      .step(generateBlock)
+      .step(persistBlock),
     pruneConfig,
   )
 
@@ -1183,8 +1183,8 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
     name: config.name ? `${config.name}/prune` : 'memory/prune',
     inputSchema: z.any(),
   })
-    .then(guardBlock)
-    .thenIf((result) => result.triggered, generateAndPersist)
+    .step(guardBlock)
+    .stepIf((result) => result.triggered, generateAndPersist)
 }
 
 /**
@@ -1206,8 +1206,8 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
     name: config.name ?? 'memory/capture',
     inputSchema: z.any(),
   })
-    .then(observeBlock)
-    .then(reflectBlock)
+    .step(observeBlock)
+    .step(reflectBlock)
     .tap(tickBlock)
 
   if (config.semantic) {

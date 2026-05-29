@@ -252,7 +252,7 @@ export function biasScore(_config?: BiasAnalyzerBlockConfig) {
  *
  * If the score is below threshold, passes through with an empty
  * counterArguments array (no LLM call needed). This conditional behavior
- * is handled inside the execute path via `.thenIf()` in the sequencer.
+ * is handled inside the execute path via `.stepIf()` in the sequencer.
  *
  * Input: scoring output.
  * Output: scoring output + `counterArguments` array.
@@ -359,11 +359,11 @@ export function biasFormat() {
  *
  * // As a sequencer step:
  * const pipeline = sequencer({ name: 'audit-response' })
- *   .then(audit)
+ *   .step(audit)
  *
  * // As a .work() sidechain alongside a chat block:
  * const pipeline = sequencer({ name: 'chat-with-audit' })
- *   .then(chat)
+ *   .step(chat)
  *   .work(audit)
  * ```
  *
@@ -390,9 +390,9 @@ export function biasAnalyzer(config?: BiasAnalyzerBlockConfig) {
   })
 
   return sequencer({ name: prefix, inputSchema: biasAnalyzerInputSchema })
-    .then(detectBlock)
-    .then(classifyBlock)
-    .then(scoreBlock)
+    .step(detectBlock)
+    .step(classifyBlock)
+    .step(scoreBlock)
     .branch({
       withCounterpoints: [
         (input) => input,
@@ -405,5 +405,5 @@ export function biasAnalyzer(config?: BiasAnalyzerBlockConfig) {
         skipCounterpoints,
       ],
     })
-    .then(formatBlock)
+    .step(formatBlock)
 }

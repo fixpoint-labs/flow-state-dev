@@ -56,7 +56,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "prefetch",
       inputSchema: z.object({ q: z.string() }),
-    }).then(inner.asTool());
+    }).step(inner.asTool());
 
     const { ctx, emitted } = ctxWithRecorder();
     const output = await runForTest(seq, { q: "hello" }, ctx);
@@ -100,7 +100,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "ns",
       inputSchema: z.object({ q: z.string() }),
-    }).then(namespaced.asTool());
+    }).step(namespaced.asTool());
 
     const { ctx, emitted } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
@@ -124,7 +124,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "fail-prefetch",
       inputSchema: z.object({ q: z.string() }),
-    }).then(boom.asTool());
+    }).step(boom.asTool());
 
     const { ctx, emitted } = ctxWithRecorder();
     await expect(runForTest(seq, { q: "x" }, ctx)).rejects.toThrow("kaboom");
@@ -152,7 +152,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "attr",
       inputSchema: z.object({ q: z.string() }),
-    }).then(inner.asTool({ agentType: "sub", agentName: "fundamentals" }));
+    }).step(inner.asTool({ agentType: "sub", agentName: "fundamentals" }));
 
     const { ctx, emitted } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
@@ -173,7 +173,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "no-attr",
       inputSchema: z.object({ q: z.string() }),
-    }).then(inner.asTool());
+    }).step(inner.asTool());
 
     const { ctx, emitted } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
@@ -231,7 +231,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "probe-seq",
       inputSchema: z.object({ q: z.string() }),
-    }).then(inner.asTool());
+    }).step(inner.asTool());
 
     const { ctx, emitted } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
@@ -280,7 +280,7 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "hook-seq",
       inputSchema: z.object({ q: z.string() }),
-    }).then(inner.asTool());
+    }).step(inner.asTool());
 
     const { ctx } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
@@ -299,7 +299,7 @@ describe("BlockDefinition.asTool", () => {
     const s = sequencer({
       name: "s",
       inputSchema: z.object({ q: z.string() }),
-    }).then(h);
+    }).step(h);
     expect(typeof s.asTool).toBe("function");
 
     const hitRoute = handler({

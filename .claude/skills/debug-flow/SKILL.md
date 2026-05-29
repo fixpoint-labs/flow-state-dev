@@ -49,7 +49,7 @@ Find the flow definition and its blocks:
    - What state schemas are declared (session, request, user, project)
    - What resources and clientData are configured
 3. Read each block referenced by the action's root block
-4. For sequencers, trace the full `.then()` chain to understand the execution order
+4. For sequencers, trace the full `.step()` chain to understand the execution order
 
 ### Step 3: Execute the Flow via CLI
 
@@ -161,8 +161,8 @@ Based on the trace evidence, classify the problem:
 
 | Pattern | Trace Signal | Likely Cause | Fix Direction |
 |---------|-------------|--------------|---------------|
-| **Schema mismatch** | `schemaValidation.input.passed: false` in block output | Previous block output doesn't match next block's `inputSchema` | Check sequencer `.then()` chain — may need a connector function |
-| **Missing connector** | Block receives raw previous output instead of transformed input | Sequencer step lacks a connector: `.then(block)` vs `.then(connector, block)` | Add connector: `.then((v) => ({ field: v }), nextBlock)` |
+| **Schema mismatch** | `schemaValidation.input.passed: false` in block output | Previous block output doesn't match next block's `inputSchema` | Check sequencer `.step()` chain — may need a connector function |
+| **Missing connector** | Block receives raw previous output instead of transformed input | Sequencer step lacks a connector: `.step(block)` vs `.step(connector, block)` | Add connector: `.step((v) => ({ field: v }), nextBlock)` |
 | **Generator model error** | `[flow-state] block execution failed` on a generator + `code: "model_error"` | LLM API failure (rate limit, auth, invalid model ID) | Check `.env.local` for API keys, verify model ID with `--model` flag |
 | **Tool execution failure** | `block_output` with `toolCall` status `"failed"` | A block used as a tool inside a generator threw | Isolate the tool block with `fsdev block` and test directly |
 | **State not persisted** | `state_change` events missing or state reads return defaults | State ops not awaited, wrong scope, or ephemeral session | Check `await ctx.session.patchState(...)` calls, verify `--session` flag for persistence |
@@ -205,15 +205,15 @@ Summarize for the user:
 |------|---------|-------------|
 | **handler** | Arbitrary logic | `execute(input, ctx) → output`. No model integration. |
 | **generator** | AI/LLM integration | Multi-step model loop with tool execution. Resolves model via `ctx.resolveModel()`. Streams text via `content.delta`. |
-| **sequencer** | Block composition | Chains blocks via `.then()`. Supports `.parallel()`, `.forEach()`, `.rescue()`, `.branch()`, `.doWhile()`, `.work()`. |
+| **sequencer** | Block composition | Chains blocks via `.step()`. Supports `.parallel()`, `.forEach()`, `.rescue()`, `.branch()`, `.doWhile()`, `.work()`. |
 | **router** | Dynamic dispatch | `execute(input, ctx)` returns one of N `routes` blocks to run. |
 
 ### Sequencer DSL Quick Reference
 
 ```
-.then(block)                    — Chain: output → next block's input
-.then(connector, block)         — Chain with transform: output → connector() → input
-.thenIf(condition, block)       — Conditional step
+.step(block)                    — Chain: output → next block's input
+.step(connector, block)         — Chain with transform: output → connector() → input
+.stepIf(condition, block)       — Conditional step
 .parallel({ a: blockA, ... })   — Run blocks concurrently, output is { a: outputA, ... }
 .forEach(block)                 — Iterate array input, run block per item
 .rescue([{ when: [...], block }]) — Error recovery
@@ -315,7 +315,7 @@ Tools are compiled from block definitions and auto-executed in the model loop (u
 - **Run it first.** Never diagnose from code alone when you can execute and observe.
 - **Read both streams.** Stderr logs show execution flow; stdout NDJSON shows data flow. You need both.
 - **Isolate before fixing.** Use `fsdev block` to test suspected failing blocks in isolation before touching code.
-- **Check the connector.** Most sequencer bugs are missing or wrong connector functions between `.then()` steps.
+- **Check the connector.** Most sequencer bugs are missing or wrong connector functions between `.step()` steps.
 - **Check the schema.** Schema validation errors are the most common failure. Always check `inputSchema`/`outputSchema` compatibility.
 - **Verify environment.** Missing API keys in `.env.local` cause cryptic generator failures. Check `OPENAI_API_KEY` and similar.
 - **Report with evidence.** Every diagnosis should cite specific trace lines — block names, error codes, durations, item IDs.

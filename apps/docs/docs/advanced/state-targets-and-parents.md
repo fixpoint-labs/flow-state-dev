@@ -137,14 +137,14 @@ const processChunk = handler({
 
 // Nested sequencer uses the reporter.
 const chunkProcessor = sequencer({ name: "chunk-processor" })
-  .then(splitIntoChunks)
+  .step(splitIntoChunks)
   .forEach(processChunk, { maxConcurrency: 3 });
 
 // Wire into the outer pipeline.
 researchPipeline
-  .then(fetchSources)
-  .then(chunkProcessor)   // process-chunk inside reaches up to research-pipeline
-  .then(synthesize);
+  .step(fetchSources)
+  .step(chunkProcessor)   // process-chunk inside reaches up to research-pipeline
+  .step(synthesize);
 ```
 
 The point: `processChunk` doesn't know how many sequencers wrap it, only that an ancestor named `"research-pipeline"` carries a `{ progress: number }` shape. It works regardless of nesting depth, and the type system catches schema drift on either side.

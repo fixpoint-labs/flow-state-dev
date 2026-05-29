@@ -263,12 +263,12 @@ const pipeline = sequencer({
   name: "full-pipeline",
   inputSchema: z.object({ goal: z.string() }),
 })
-  .then(planAndExecute({ name: "research", synthesizer: false }))
+  .step(planAndExecute({ name: "research", synthesizer: false }))
   .map((plan) => ({
     // transform research output into writing goal
     goal: `Write a report based on: ${plan.tasks.map((t) => t.result?.summary).join("; ")}`,
   }))
-  .then(planAndExecute({ name: "writing" }));
+  .step(planAndExecute({ name: "writing" }));
 ```
 
 ### Parallel goals

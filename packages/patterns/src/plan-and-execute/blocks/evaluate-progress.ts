@@ -209,7 +209,7 @@ export interface CreateEvaluateProgressOptions {
  *   no LLM, no sequencer overhead).
  * - `enableReplanning: true` → a sequencer composition:
  *
- *     `preflight` → `.thenIf(!skipLLM, llmEvaluator)` → `.map(normalize)`
+ *     `preflight` → `.stepIf(!skipLLM, llmEvaluator)` → `.map(normalize)`
  *     → `.tap(emitReplanningMeta)`
  *
  *   The preflight handler increments `iteration`, applies the
@@ -290,11 +290,11 @@ export function createEvaluateProgress(
     name: `${options.name}-evaluate`,
     inputSchema: z.unknown(),
   })
-    .then(preflight)
+    .step(preflight)
     // The LLM evaluator reads `goal` / `iteration` / `tasks` from `ctx`,
     // not from input — so no input adapter is needed. We just pass the
     // preflight output through; the evaluator ignores it.
-    .thenIf((r) => r.skipLLM === false, llmEvaluator)
+    .stepIf((r) => r.skipLLM === false, llmEvaluator)
     // Normalise the union back to the verdict shape the outer pipeline
     // consumes (`{ decision, reasoning, tasks? }`).
     .map((r) => {

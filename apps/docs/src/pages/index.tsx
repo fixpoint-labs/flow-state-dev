@@ -9,13 +9,13 @@ import styles from "./index.module.css";
 /* ── Code example ── */
 
 const researchBlockExample = `const researchBlock = sequencer({ name: "research" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web:  searchWeb,
     docs: searchDocs,
     past: recall,            // reads ctx.user.resources.pastFindings and locates relevant items
   })
-  .then(synthesize)          // generator — reads ctx.session.state.query and parallel output
+  .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
   .work(handler, {
     name: "save-draft",
     sessionResources: { draft: draftResource },

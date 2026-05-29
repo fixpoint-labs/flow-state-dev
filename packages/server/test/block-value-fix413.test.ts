@@ -83,7 +83,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect((out as { value: unknown }).value).toEqual({ y: 10 });
   });
 
-  it(".then pass-through: outer sequencer emits a ref to the inner block's item", async () => {
+  it(".step pass-through: outer sequencer emits a ref to the inner block's item", async () => {
     const inner = handler({
       name: "inner",
       inputSchema: z.string(),
@@ -94,7 +94,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const pipeline = sequencer({
       name: "outer",
       inputSchema: z.string()
-    }).then(inner);
+    }).step(inner);
 
     const flow = defineFlow({
       kind: "ref-then",
@@ -132,7 +132,7 @@ describe("FIX-413 BlockValue on block_output", () => {
       name: "map-outer",
       inputSchema: z.number()
     })
-      .then(inner)
+      .step(inner)
       .map((n) => n * 100);
 
     const flow = defineFlow({
@@ -153,7 +153,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect((outerVal as { value: unknown }).value).toBe(600);
   });
 
-  it(".thenAll emits a structure BlockValue whose entries ref each branch", async () => {
+  it(".stepAll emits a structure BlockValue whose entries ref each branch", async () => {
     const branchA = handler({
       name: "branch-a",
       inputSchema: z.string(),
@@ -170,10 +170,10 @@ describe("FIX-413 BlockValue on block_output", () => {
     const pipeline = sequencer({
       name: "fanout",
       inputSchema: z.string()
-    }).thenAll([branchA, branchB]);
+    }).stepAll([branchA, branchB]);
 
     const flow = defineFlow({
-      kind: "thenAll-structure",
+      kind: "stepAll-structure",
       actions: {
         run: { inputSchema: z.string(), block: pipeline }
       }
@@ -208,7 +208,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const pipeline = sequencer({
       name: "fanout2",
       inputSchema: z.string()
-    }).thenAll([leaf, leaf]);
+    }).stepAll([leaf, leaf]);
 
     const flow = defineFlow({
       kind: "resolve-roundtrip",
@@ -240,10 +240,10 @@ describe("FIX-413 BlockValue on block_output", () => {
       execute: (input) => `LEAF:${input}`
     });
 
-    const s4 = sequencer({ name: "s4", inputSchema: z.string() }).then(leaf);
-    const s3 = sequencer({ name: "s3", inputSchema: z.string() }).then(s4);
-    const s2 = sequencer({ name: "s2", inputSchema: z.string() }).then(s3);
-    const s1 = sequencer({ name: "s1", inputSchema: z.string() }).then(s2);
+    const s4 = sequencer({ name: "s4", inputSchema: z.string() }).step(leaf);
+    const s3 = sequencer({ name: "s3", inputSchema: z.string() }).step(s4);
+    const s2 = sequencer({ name: "s2", inputSchema: z.string() }).step(s3);
+    const s1 = sequencer({ name: "s1", inputSchema: z.string() }).step(s2);
 
     const flow = defineFlow({
       kind: "flatten-depth-4",
@@ -288,10 +288,10 @@ describe("FIX-413 BlockValue on block_output", () => {
       execute: () => PAYLOAD
     });
 
-    const s4 = sequencer({ name: "deep4", inputSchema: z.string() }).then(leaf);
-    const s3 = sequencer({ name: "deep3", inputSchema: z.string() }).then(s4);
-    const s2 = sequencer({ name: "deep2", inputSchema: z.string() }).then(s3);
-    const s1 = sequencer({ name: "deep1", inputSchema: z.string() }).then(s2);
+    const s4 = sequencer({ name: "deep4", inputSchema: z.string() }).step(leaf);
+    const s3 = sequencer({ name: "deep3", inputSchema: z.string() }).step(s4);
+    const s2 = sequencer({ name: "deep2", inputSchema: z.string() }).step(s3);
+    const s1 = sequencer({ name: "deep1", inputSchema: z.string() }).step(s2);
 
     const flow = defineFlow({
       kind: "depth-n-payload",
@@ -371,7 +371,7 @@ describe("FIX-413 BlockValue on block_output", () => {
       name: "tap-seq",
       inputSchema: z.string()
     })
-      .then(main)
+      .step(main)
       .tap((v) => {
         tapped = v;
       });
@@ -389,7 +389,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const outer = items.find((i) => i.blockName === "tap-seq")!;
     const mainItem = items.find((i) => i.blockName === "main")!;
     const outerVal = outer.output as BlockValue<unknown>;
-    // `.tap` doesn't change the descriptor; the running ref from `.then(main)`
+    // `.tap` doesn't change the descriptor; the running ref from `.step(main)`
     // carries through.
     expect(outerVal.kind).toBe("ref");
     expect((outerVal as { sourceItemId: string }).sourceItemId).toBe(mainItem.id);

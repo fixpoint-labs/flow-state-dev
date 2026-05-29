@@ -264,7 +264,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 **Handlers must not call blocks using block.run** (BP-011)
 
 - Never instantiate or call a block inside a handler's `execute`.
-- Compose as a sequencer: `.then(generator).then(handler)`.
+- Compose as a sequencer: `.step(generator).step(handler)`.
 
 **Handlers must never return input as output** (BP-014)
 
@@ -277,9 +277,9 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 **Use conditional step variants instead of wrapper sequencers** (BP-015)
 
-- `.workIf(condition, connector, block)` — not a wrapper sequencer with `.thenIf` inside `.work()`.
+- `.workIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.work()`.
 - `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
-- `.thenIf(condition, block)` — not a wrapper sequencer with a `.map` + `.then`.
+- `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
 - All conditional variants accept an inline connector as a second argument for input adaptation. Don't create an intermediate sequencer just to `.map()` before a block.
 
 **Input/output adaptation belongs inside the router** (BP-013)

@@ -871,7 +871,7 @@ describe("taskBoard - remix blocks", () => {
           });
         }
       })
-      .thenIf(
+      .stepIf(
         (out) => out.claimed,
         (out) => ({
           taskId: out.task!.id,
@@ -894,12 +894,12 @@ describe("taskBoard - remix blocks", () => {
       stateSchema: taskBoardStateSchema,
     })
       .tap(seed)
-      .then(select)
+      .step(select)
       .tap((preview) => {
         expect((preview as { ready: boolean }).ready).toBe(true);
       })
-      .then(claim)
-      .then(remixBody);
+      .step(claim)
+      .step(remixBody);
 
     const result = await testBlock(pipeline, { input: undefined });
     expect(result.error).toBeNull();

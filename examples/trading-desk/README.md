@@ -285,29 +285,29 @@ analyze
              └─ companyProfileAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
-        ├─ deriveDebateGoal       (.then — { goal } from session state)
-        ├─ phase2RoundRobinRouter (.then — picks one of four pre-built
+        ├─ deriveDebateGoal       (.step — { goal } from session state)
+        ├─ phase2RoundRobinRouter (.step — picks one of four pre-built
         │                            roundRobin instances by
         │                            (maxDebateRounds, costPreset))
-        ├─ consolidateBullMemo    (.then — write `BullThesis`)
-        ├─ consolidateBearMemo    (.then — write `BearThesis`)
-        └─ researchManagerGenerator (.then — write `InvestmentThesis`)
+        ├─ consolidateBullMemo    (.step — write `BullThesis`)
+        ├─ consolidateBearMemo    (.step — write `BearThesis`)
+        └─ researchManagerGenerator (.step — write `InvestmentThesis`)
   └─ phase-3-trader               (sub-sequencer, container item)
         ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
         └─ traderStep
              ├─ markWritingP3
              ├─ traderApproachGenerator (sub, streams message item)
-             ├─ traderGenerator   (.then — write `TradeProposal`)
+             ├─ traderGenerator   (.step — write `TradeProposal`)
              ├─ commitTraderMemo  (.tap)
              └─ markErrorP3       (.rescue)
   └─ phase-4-risk-debate          (sub-sequencer, container item)
         ├─ setupPhase4Memos       (.tap — pre-create 4 p4 memos in `pending`)
-        ├─ aggressiveStep         (.then — markWriting + approach preamble +
+        ├─ aggressiveStep         (.step — markWriting + approach preamble +
         │                            generator + commit; rescue → markError)
-        ├─ conservativeStep       (.then — symmetric; reads aggressive memo)
-        ├─ neutralStep            (.then — symmetric, neutral schema; reads
+        ├─ conservativeStep       (.step — symmetric; reads aggressive memo)
+        ├─ neutralStep            (.step — symmetric, neutral schema; reads
         │                            aggressive + conservative memos)
-        └─ riskAssessmentStep     (.then — approach preamble + consolidator,
+        └─ riskAssessmentStep     (.step — approach preamble + consolidator,
                                      write `RiskAssessment`; rescue → markError)
   └─ phase-5-portfolio-manager    (sub-sequencer, container item)
         ├─ setupPhase5Memos       (.tap — pre-create p5/portfolio-manager
@@ -315,7 +315,7 @@ analyze
         └─ portfolioManagerStep
              ├─ markWritingP5
              ├─ portfolioManagerApproachGenerator (sub, streams message item)
-             ├─ portfolioManagerGenerator (.then — write `PortfolioDecision`)
+             ├─ portfolioManagerGenerator (.step — write `PortfolioDecision`)
              ├─ commitPortfolioManagerMemo (.tap — also flips
              │                                `session.runComplete = true`)
              └─ markErrorP5           (.rescue)
@@ -360,7 +360,7 @@ memo-backed read is the richer source — using `roundRobin()` here
 would force every persona through an adapter that flattens the typed
 output to text and then read that text back instead of the typed
 fields. The three persona steps run as
-`aggressiveStep.then(conservativeStep).then(neutralStep)` inside
+`aggressiveStep.step(conservativeStep).step(neutralStep)` inside
 `phase4Pipeline`, and the `riskAssessmentGenerator` runs as a separate
 downstream step that synthesizes the three persona memos into a single
 `RiskAssessment` that Phase 5 reads.

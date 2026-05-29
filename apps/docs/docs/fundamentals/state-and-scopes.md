@@ -118,7 +118,7 @@ import { modeSwitch } from "@shared/blocks";
 const pipeline = sequencer({ name: "chat" })
   .tap(counter)        // bubbles up { messageCount }
   .tap(modeSwitch)     // bubbles up { mode }
-  .then(agent);
+  .step(agent);
 ```
 
 If two blocks declare the same field with incompatible types, the framework catches it as a type error during flow construction. Schema conflicts surface at build time, not runtime.

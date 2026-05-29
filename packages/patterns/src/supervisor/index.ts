@@ -355,9 +355,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     stateSchema: supervisorStateSchema,
   })
     .tap(stampOuterGoal)
-    .then(captureAndPlan)
-    .then(board.block)
+    .step(captureAndPlan)
+    .step(board.block)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
-    .then(synthesize);
+    .step(synthesize);
 }

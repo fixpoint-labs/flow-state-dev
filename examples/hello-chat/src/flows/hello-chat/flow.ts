@@ -70,8 +70,8 @@ const incrementMessageCount = handler({
 // Pipeline: generator → counter. The sequencer pipes the generator's
 // text output directly into the handler's input.
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
-  .then(chatGenerator)
-  .then(incrementMessageCount);
+  .step(chatGenerator)
+  .step(incrementMessageCount);
 
 // Flow definition: one action ("chat"), session-scoped state.
 // userMessage extracts the display text from the action input so the

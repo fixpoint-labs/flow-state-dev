@@ -27,14 +27,14 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Sequencer Surface (21 methods)
 
-`then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race`, `exitIf`
+`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
-- `.thenAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
-- `.thenAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
+- `.stepAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
+- `.stepAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
 - `.race([...blocks])`: run blocks concurrently, return first successful result, abort the rest; throws `AggregateError` if all fail
 - `.exitIf(condition)`: break out of sequencer chain early when condition is true; auto-await of background work still runs
 
-- `.work(...)` / `.background(...)`: non-aborting by default (`.background()` is an alias for `.work()`)
+- `.work(...)`: non-aborting by default
 - `.workIf(condition, block)`: conditional variant of `.work()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
 - `.forEachBackground(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
 - `.waitForWork({ failOnError: true })`: promote background failures to terminal request error

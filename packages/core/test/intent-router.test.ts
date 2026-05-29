@@ -171,7 +171,7 @@ describe("utility.intentRouter", () => {
   it("supports nested sequencer category handlers", async () => {
     const nested = sequencer({ name: "nested-technical" })
       .map(() => "nested")
-      .then(
+      .step(
         handler({
           name: "nested-final",
           execute: (input) => ({ route: input })
