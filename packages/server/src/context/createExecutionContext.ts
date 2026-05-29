@@ -2647,6 +2647,27 @@ export async function createExecutionContext<
     user: new Set<string>(),
     org: new Set<string>()
   };
+  // Negative cache for lazy single-row reads: a key confirmed absent by a
+  // `resourceState.get` returning undefined. Caps each missing key at one store
+  // round-trip per request instead of re-reading on every `get`/`getOptional`.
+  // The existence check (`storageKey in stateRef.current`) is always consulted
+  // first, so a later create/upsert that writes the key wins over a stale entry
+  // here — no active invalidation needed.
+  const missingResourceKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  // A cache miss is *authoritative* (no store read needed) when the key falls
+  // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
+  // materialized, so an absent key is definitively absent. Prefixes end in `/`
+  // (or are `""`, the whole-scope load), so `startsWith` is the coverage test.
+  const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
+    for (const prefix of loadedCollectionPrefixes[scope]) {
+      if (storageKey.startsWith(prefix)) return true;
+    }
+    return false;
+  };
   const seedLoadedPrefixes = (
     scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
@@ -2705,7 +2726,12 @@ export async function createExecutionContext<
     const contentRef = scopeContentRef(scope);
     return {
       async getInstance(storageKey: string): Promise<void> {
-        if (storageKey in stateRef.current) return;
+        if (storageKey in stateRef.current) return; // already loaded
+        // A miss under an already-bulk-loaded prefix is authoritative, and a
+        // key confirmed absent earlier this request stays absent — skip the
+        // store round-trip in both cases.
+        if (isMissAuthoritative(scope, storageKey)) return;
+        if (missingResourceKeys[scope].has(storageKey)) return;
         await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
           if (storageKey in stateRef.current) return;
           const [state, content] = await Promise.all([
@@ -2714,6 +2740,9 @@ export async function createExecutionContext<
           ]);
           if (state !== undefined) {
             stateRef.current = { [storageKey]: state, ...stateRef.current };
+          } else {
+            // Negatively cache: one round-trip caps repeated reads of an absent key.
+            missingResourceKeys[scope].add(storageKey);
           }
           if (typeof content === "string") {
             contentRef.current = { [storageKey]: content, ...contentRef.current };

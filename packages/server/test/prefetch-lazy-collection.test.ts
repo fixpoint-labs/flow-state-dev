@@ -108,6 +108,30 @@ describe("FIX-688: lazy collection accessor", () => {
     expect(await coll(ctx).getOptional("missing")).toBeUndefined();
   });
 
+  it("negatively caches a missing key — one store read across repeated misses", async () => {
+    const { stores, get } = spyStores();
+    const ctx = await ctxFor(stores);
+    get.mockClear();
+
+    await expect(coll(ctx).get("missing")).rejects.toThrow(/not found/);
+    expect(await coll(ctx).getOptional("missing")).toBeUndefined();
+    await expect(coll(ctx).get("missing")).rejects.toThrow(/not found/);
+
+    expect(get.mock.calls.filter((c) => c[2] === "lz/missing").length).toBe(1);
+  });
+
+  it("treats a miss as authoritative after the prefix is bulk-loaded — zero extra reads", async () => {
+    const { stores, get } = spyStores();
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
+    const ctx = await ctxFor(stores);
+
+    await coll(ctx).list(); // bulk-loads the "lz/" prefix
+    get.mockClear();
+
+    expect(await coll(ctx).getOptional("missing")).toBeUndefined();
+    expect(get.mock.calls.filter((c) => c[2] === "lz/missing").length).toBe(0);
+  });
+
   it("create() persists and is readable without an extra store read", async () => {
     const { stores, get } = spyStores();
     const ctx = await ctxFor(stores);
