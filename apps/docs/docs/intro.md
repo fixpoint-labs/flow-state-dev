@@ -22,8 +22,8 @@ const chat = generator({
 });
 
 const pipeline = sequencer({ name: "pipeline" })
-  .then(chat)
-  .then(trackUsage)
+  .step(chat)
+  .step(trackUsage)
   .rescue([{ when: [ModelError], block: fallback }]);
 
 export default defineFlow({
@@ -52,7 +52,7 @@ Every block shares the same typed contract: typed input in, typed output out. An
 
 The sequencer is the orchestration primitive at the center of every flow. It chains methods that read like the logic they encode:
 
-- `.then()` — sequential steps, full type safety from input to output
+- `.step()` — sequential steps, full type safety from input to output
 - `.parallel()` — fan out to multiple blocks simultaneously; results merge into a single typed payload
 - `.work()` — background workers that run async alongside the main pipeline without blocking the stream
 - `.doUntil()` / `.doWhile()` — iterative loops with configurable exit conditions
@@ -62,13 +62,13 @@ Sequencers compose inside sequencers to any depth. Every nested flow is a reusab
 
 ```typescript
 const researchPipeline = sequencer({ name: "research-pipeline" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web:  searchWeb,
     docs: searchDocs,
     past: recall,
   })
-  .then(synthesize)          // generator — reads ctx.session.state.query and parallel output
+  .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
   .work(handler, {
     name: "save-draft",
     sessionResources: { draft: draftResource },

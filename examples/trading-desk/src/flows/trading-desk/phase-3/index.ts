@@ -22,8 +22,8 @@ import {
 
 const traderStep = sequencer({ name: "phase-3-trader-step" })
   .tap(markWritingP3("trader"))
-  .then(traderApproachGenerator)
-  .then(traderGenerator)
+  .step(traderApproachGenerator)
+  .step(traderGenerator)
   .tap(commitTraderMemo)
   .rescue([{ block: markErrorP3("trader") }]);
 
@@ -35,4 +35,4 @@ export const phase3Pipeline = sequencer({
   },
 })
   .tap(setupPhase3Memos)
-  .then(traderStep);
+  .step(traderStep);

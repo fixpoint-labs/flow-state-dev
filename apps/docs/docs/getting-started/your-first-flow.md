@@ -123,15 +123,15 @@ import { generator, handler, sequencer } from "@flow-state-dev/core";
 // ...keep the previous code...
 
 export const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(chat)
+  .step(chat)
   .tap(bumpCounter);
 ```
 
-`.then(chat)` says "run `chat` next, with the upstream value as its input." The sequencer carries types through the chain, so TypeScript knows `bumpCounter` will be called with the generator's output (a string).
+`.step(chat)` says "run `chat` next, with the upstream value as its input." The sequencer carries types through the chain, so TypeScript knows `bumpCounter` will be called with the generator's output (a string).
 
-`.tap(bumpCounter)` runs the handler for its effect and forwards the upstream value to the next step. Compare to `.then`, which would replace the value with whatever the handler returned.
+`.tap(bumpCounter)` runs the handler for its effect and forwards the upstream value to the next step. Compare to `.step`, which would replace the value with whatever the handler returned.
 
-Sequencers have more methods — `.parallel`, `.work`, `.doUntil`, `.rescue` — but you only need `.then` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
+Sequencers have more methods — `.parallel`, `.work`, `.doUntil`, `.rescue` — but you only need `.step` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
 
 ## Step 4. Wrap it as a flow
 

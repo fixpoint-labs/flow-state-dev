@@ -34,9 +34,9 @@ function buildThreeStepFlow() {
     stateSchema: STATE_SCHEMA,
     durable: false // exercise the observability path, not the checkpoint path
   })
-    .then(bump("a"))
-    .then(bump("b"))
-    .then(bump("c"));
+    .step(bump("a"))
+    .step(bump("b"))
+    .step(bump("c"));
 
   return defineFlow({
     kind: "tracing-flow",

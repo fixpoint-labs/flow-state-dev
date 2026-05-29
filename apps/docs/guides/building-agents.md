@@ -53,8 +53,8 @@ const pipeline = sequencer({
   name: "deterministic-pipeline",
   inputSchema: z.object({ raw: z.string() }),
 })
-  .then(parseInput)
-  .then(validate);
+  .step(parseInput)
+  .step(validate);
 ```
 
 Nothing here calls an LLM. Given the same input, you get the same output. This is a perfectly valid flow. Not every workflow needs AI.
@@ -103,8 +103,8 @@ const trackTopic = handler({
 });
 
 const chatPipeline = sequencer({ name: "chat", inputSchema })
-  .then(enrichContext)
-  .then(respond)
+  .step(enrichContext)
+  .step(respond)
   .tap(trackTopic);
 ```
 
@@ -203,9 +203,9 @@ const multiAgent = sequencer({
   name: "plan-and-execute",
   inputSchema: z.object({ message: z.string() }),
 })
-  .then(planner)
+  .step(planner)
   .forEach((plan) => plan.steps, worker, { maxConcurrency: 3 })
-  .then((results) => ({ results }), synthesizer);
+  .step((results) => ({ results }), synthesizer);
 ```
 
 Three models, three roles. The planner produces a structured plan. The worker processes each step in parallel (up to 3 at a time), with its own tool loop per step. The synthesizer combines everything. The sequencer coordinates. Each generator is independently testable and replaceable.
@@ -263,13 +263,13 @@ const analyzeData = handler({
 
 ```ts
 const deepResearch = sequencer({ name: "deep-research" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web: searchWeb,
     docs: searchInternalDocs,
     memory: searchMemory,
   })
-  .then(mergeAndRank)
+  .step(mergeAndRank)
   .doUntil((result) => result.confidence > 0.9, refineResults);
 
 // The model calls "deep-research" as a tool.
@@ -348,18 +348,18 @@ const agent = generator({
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
-  .then(validateInput)
-  .then(generateResponse)
-  .then(formatOutput);
+  .step(validateInput)
+  .step(generateResponse)
+  .step(formatOutput);
 ```
 
 **Use nested sequencers with multiple generators** when different parts of the task need different models or different tool sets. A planner that uses a capable model, workers that use a fast model, a synthesizer that combines results. Each generator is scoped to its role. The sequencer coordinates.
 
 ```ts
 const system = sequencer({ name: "system" })
-  .then(planner)                         // capable model, no tools
+  .step(planner)                         // capable model, no tools
   .forEach(plan => plan.steps, worker)   // fast model, task-specific tools
-  .then(synthesizer);                    // capable model, final synthesis
+  .step(synthesizer);                    // capable model, final synthesis
 ```
 
 **Use a router** when the right approach depends on runtime state. Different modes need different pipelines. The router inspects state or input and dispatches to the right one.

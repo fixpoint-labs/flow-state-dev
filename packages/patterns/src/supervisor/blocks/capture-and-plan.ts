@@ -1,7 +1,7 @@
 /**
  * `captureAndPlan` — entry sequencer for the supervisor pattern.
  *
- * BP-011 conformance: planner runs as a `.then(planner)` step, not via
+ * BP-011 conformance: planner runs as a `.step(planner)` step, not via
  * `block.run` inside a handler. Steps:
  *   1. setInitialState — stamp goal / status / iteration on outer state
  *   2. emitPlanningMeta — fire `task-board-meta` "planning" component
@@ -106,6 +106,6 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
   })
     .tap(setInitialState)
     .tap(emitPlanningMeta)
-    .then(planner)
+    .step(planner)
     .tap(seedTasksFromPlan);
 }

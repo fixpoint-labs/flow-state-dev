@@ -33,7 +33,7 @@ analysts (x5 in parallel)
         → portfolio manager
 ```
 
-Each arrow above is a `.then()` in a sequencer. The whole flow is one chain.
+Each arrow above is a `.step()` in a sequencer. The whole flow is one chain.
 
 ## Phase 1: Parallel sub-agents
 
@@ -46,7 +46,7 @@ sequencer({ name: "analyst-fundamentals" })
   .tap(markWriting("fundamentals"))         // mark memo as in-progress
   .map(tickerDate)                          // pull ticker+date from session
   .parallel({ /* pre-fetch tools */ })
-  .then(fundamentalsGenerator)              // LLM call → typed Thesis
+  .step(fundamentalsGenerator)              // LLM call → typed Thesis
   .tap(commitMemo("fundamentals"))          // write to memo resource
   .rescue([{ block: markError("fundamentals") }]);
 ```
@@ -95,13 +95,13 @@ uses: [tradingDesk.presets({ investmentThesis: true })]
 
 That one line means: install the resource that the investment thesis lives in, and format it into the generator's prompt context. No manual wiring of `context: { ... }` functions, no threading the resource through sequencer state. Adding a new generator that needs the thesis is one preset flag.
 
-The preamble lives in the same step sequencer as the trader, inserted with one `.then()`:
+The preamble lives in the same step sequencer as the trader, inserted with one `.step()`:
 
 ```ts
 sequencer({ name: "phase-3-trader-step" })
   .tap(markWritingP3("trader"))
-  .then(traderApproachGenerator)   // ← fast-model preamble, streams
-  .then(traderGenerator)            // structured TradeProposal
+  .step(traderApproachGenerator)   // ← fast-model preamble, streams
+  .step(traderGenerator)            // structured TradeProposal
   .tap(commitTraderMemo)
   .rescue([{ block: markErrorP3("trader") }]);
 ```

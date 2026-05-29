@@ -139,45 +139,17 @@ export function createPatternRunRoute(
 
       // The materialized block is typically a SequencerDefinition (taskBoard,
       // planAndExecute, supervisor, parallelTasks, routedSpecialists all
-      // return one). Sequencers expose a `.then(...)` DSL method that the
-      // JS Promise machinery treats as the thenable protocol — returning a
-      // sequencer directly from this async execute would cause
-      // `Promise.resolve(sequencer)` to invoke `sequencer.then(resolve,
-      // reject)`, which the sequencer interprets as a chained block step
-      // and crashes on `resolve.config.outputSchema`.
-      //
-      // Wrap the sequencer in a passthrough router that returns it from a
-      // SYNC execute. The router itself is a plain BlockDefinition without
-      // a `.then` method, so Promise.resolve is safe. The framework's
-      // `isBlockDefinition` check in the outer router catches the sync
-      // route-return before any await, completing the dispatch normally.
-      return wrapMaterializedBlock(
-        materialized.block,
-        input.skillName,
-      ) as BlockDefinition<typeof patternRunInputSchema, typeof patternRunOutputSchema>;
+      // return one). The sequencer DSL's sequential-step method is `.step()`,
+      // not `.then()`, so a SequencerDefinition is not a thenable and can be
+      // returned directly from this async execute — `Promise.resolve` won't
+      // mistake it for a promise. The outer router's `isBlockDefinition` check
+      // catches it as a route-return and completes the dispatch normally.
+      return materialized.block as BlockDefinition<
+        typeof patternRunInputSchema,
+        typeof patternRunOutputSchema
+      >;
     },
   });
-}
-
-/**
- * Wrap a materialized pattern block in a passthrough router so it can
- * be returned from an async function without triggering the
- * SequencerDefinition `.then(...)` thenable trap. The wrapper's sync
- * execute returns the inner block, where the router framework's
- * `isBlockDefinition` check catches it before any await touches it.
- */
-function wrapMaterializedBlock(
-  block: BlockDefinition,
-  skillName: string,
-): BlockDefinition {
-  return router({
-    name: `skillPattern_${skillName}`,
-    inputSchema: patternRunInputSchema,
-    outputSchema: patternRunOutputSchema,
-    routes: [block as never],
-    validateRoute: () => true,
-    execute: () => block as never,
-  }) as unknown as BlockDefinition;
 }
 
 /**

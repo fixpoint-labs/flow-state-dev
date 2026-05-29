@@ -61,7 +61,7 @@ const executor = handler({
 });
 ```
 
-`planner` and `executor` only mutate `ctx.sequencer.state`; they have no transformation to feed downstream. They declare no `outputSchema` and chain into a sequencer with `.tap()` rather than `.then()`.
+`planner` and `executor` only mutate `ctx.sequencer.state`; they have no transformation to feed downstream. They declare no `outputSchema` and chain into a sequencer with `.tap()` rather than `.step()`.
 
 `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/org schemas, these bubble up — the framework merges them and catches conflicts at build time.
 
@@ -106,13 +106,13 @@ const planner = handler({
 const research = pipeline
   .tap(planner)
   // DSL callbacks also see the typed state
-  .thenIf(
+  .stepIf(
     (_, ctx) => ctx.sequencer.state.currentStep < 3,
     executeStep
   );
 ```
 
-DSL callbacks — `.map`, `.tap`, `.tapIf`, `.thenIf`, `.workIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
+DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.workIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
 
 ## The durability boundary
 

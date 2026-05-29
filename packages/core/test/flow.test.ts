@@ -466,7 +466,7 @@ describe("defineFlow", () => {
         resources: { observations: observationsResource },
         execute: (v) => v
       });
-      const seq = sequencer({ name: "pipeline" }).then(innerBlock);
+      const seq = sequencer({ name: "pipeline" }).step(innerBlock);
 
       const flow = defineFlow({
         kind: "seq-res",

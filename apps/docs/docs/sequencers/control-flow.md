@@ -4,16 +4,16 @@ sidebar_position: 3
 
 # Control Flow Reference
 
-This is the reference for everything in the sequencer DSL beyond the day-one set. If you haven't read [Composing Blocks](/docs/sequencers/composing-blocks) yet, start there — `then`, `map`, `tap`, `thenIf`, `work`, and `rescue` cover most pipelines.
+This is the reference for everything in the sequencer DSL beyond the day-one set. If you haven't read [Composing Blocks](/docs/sequencers/composing-blocks) yet, start there — `step`, `map`, `tap`, `stepIf`, `work`, and `rescue` cover most pipelines.
 
 The methods below are grouped by what you're trying to do, not alphabetically. Reach for them when the day-one set isn't enough.
 
 | Group | Methods |
 |-------|---------|
-| [Parallelism](#parallelism) | `parallel`, `forEach`, `forEachBackground`, `thenAll` |
+| [Parallelism](#parallelism) | `parallel`, `forEach`, `forEachBackground`, `stepAll` |
 | [Looping](#looping) | `doUntil`, `doWhile`, `loopBack` |
 | [Conditional sub-cases](#conditional-sub-cases) | `tapIf`, `workIf`, `exitIf` |
-| [Specialization](#specialization) | `thenAny`, `race`, `branch` |
+| [Specialization](#specialization) | `stepAny`, `race`, `branch` |
 | [Side-chain coordination](#side-chain-coordination) | `waitForWork`, `waitForCondition` |
 | [Connector adaptation](#connector-adaptation) | `connectInput` |
 
@@ -53,12 +53,12 @@ pipeline.parallel({
 
 Each branch still returns its typed output to the next step. The added cost is one `tool_output` item per branch.
 
-### `thenAll([block, ...], options?)`
+### `stepAll([block, ...], options?)`
 
 Run a list of blocks concurrently. Results come back as an array, in the same order as the input.
 
 ```ts
-pipeline.thenAll(
+pipeline.stepAll(
   [
     analysisBlock,
     summaryBlock,
@@ -135,8 +135,8 @@ Jump back to a named earlier step. The named step's output position becomes the 
 
 ```ts
 pipeline
-  .then(generateBlock)        // step name: "generate-block"
-  .then(validateBlock)
+  .step(generateBlock)        // step name: "generate-block"
+  .step(validateBlock)
   .loopBack("generate-block", {
     when: (value, ctx) => !value.isValid,
     maxIterations: 3,
@@ -166,7 +166,7 @@ pipeline.tapIf(
 
 A `work` that only fires when the condition is true. When false, it's a complete no-op — no block, no items emitted.
 
-The condition function receives `(value, ctx)` — the running step value first, then the `BlockContext` — matching `.thenIf` and `.tapIf`.
+The condition function receives `(value, ctx)` — the running step value first, then the `BlockContext` — matching `.stepIf` and `.tapIf`.
 
 ```ts
 pipeline.workIf(
@@ -189,11 +189,11 @@ Terminate the chain early. The current value becomes the sequencer's output. Ste
 
 ```ts
 pipeline
-  .then(generateBlock)
-  .then(validateBlock)
+  .step(generateBlock)
+  .step(validateBlock)
   .exitIf((value, ctx) => value.confidence > 0.95)
-  .then(refineBlock)     // skipped if confidence is high enough
-  .then(finalizeBlock);  // also skipped
+  .step(refineBlock)     // skipped if confidence is high enough
+  .step(finalizeBlock);  // also skipped
 ```
 
 The condition can be async. You can place multiple `exitIf` calls in a chain — each acts as a checkpoint.
@@ -206,12 +206,12 @@ Outstanding `.work()` tasks are still awaited before the sequencer returns. The 
 
 Rarely needed. Reach for these only when the simpler methods don't fit.
 
-### `thenAny([block, ...])`
+### `stepAny([block, ...])`
 
 Try blocks one at a time, in order. Returns the result of the first one that succeeds. Remaining blocks are never executed.
 
 ```ts
-pipeline.thenAny([
+pipeline.stepAny([
   primaryProvider,
   fallbackProviderA,
   fallbackProviderB,
@@ -237,9 +237,9 @@ If all blocks fail, throws an `AggregateError`.
 
 **When to reach for this**: you want the fastest answer regardless of source.
 
-### `thenAny` vs `race`
+### `stepAny` vs `race`
 
-| | `thenAny` | `race` |
+| | `stepAny` | `race` |
 |--|-----------|--------|
 | **Execution** | Sequential: try A, then B, then C | Concurrent: start all at once |
 | **Use case** | Ordered fallback chain | Fastest-wins |
@@ -265,7 +265,7 @@ pipeline.branch({
 });
 ```
 
-**When to reach for this**: rarely. A chain of `thenIf` is usually clearer for two cases. `branch` makes sense when you have three or more mutually exclusive paths and want them visible as named cases. For runtime-determined dispatch with state types, a [router block](/docs/fundamentals/blocks) is often the better fit.
+**When to reach for this**: rarely. A chain of `stepIf` is usually clearer for two cases. `branch` makes sense when you have three or more mutually exclusive paths and want them visible as named cases. For runtime-determined dispatch with state types, a [router block](/docs/fundamentals/blocks) is often the better fit.
 
 ## Side-chain coordination
 
@@ -278,7 +278,7 @@ pipeline
   .work(taskA)
   .work(taskB)
   .waitForWork({ failOnError: false })
-  .then(nextStep);
+  .step(nextStep);
 ```
 
 By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForWork()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently.
@@ -313,10 +313,10 @@ const searchFromText = searchBlock.connectInput(
   (text: string) => ({ query: text, limit: 10 })
 );
 
-pipeline.then(searchFromText);
+pipeline.step(searchFromText);
 ```
 
-**When to reach for this**: you reuse the same block in multiple pipelines with different upstream shapes. For one-off shape adaptation between two specific steps, pass a connector function inline to `.then()` instead — see [Connectors](/docs/sequencers/connectors).
+**When to reach for this**: you reuse the same block in multiple pipelines with different upstream shapes. For one-off shape adaptation between two specific steps, pass a connector function inline to `.step()` instead — see [Connectors](/docs/sequencers/connectors).
 
 A matching `connectOutput` exists on blocks for output shaping.
 

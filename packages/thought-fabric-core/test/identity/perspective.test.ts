@@ -1399,7 +1399,7 @@ describe('identity/perspective — system() factory', () => {
   it('capture accepts empty content without rejecting at the schema boundary', () => {
     // Capture is wired into `.work()` background slots that may receive an
     // empty assistant response when an upstream call short-circuits. The
-    // outer schema must allow empty content; the inner `thenIf` skips the
+    // outer schema must allow empty content; the inner `stepIf` skips the
     // analyze→observe pipeline so an empty input is a true no-op rather than
     // an LLM call followed by silent failure.
     const p = system(makeInstance())

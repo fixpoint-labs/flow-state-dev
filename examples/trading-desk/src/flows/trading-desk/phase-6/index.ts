@@ -27,8 +27,8 @@ import {
 
 const validatorStep = sequencer({ name: "phase-6-validator-step" })
   .tap(markWritingP6("thesisAlignment"))
-  .then(thesisValidatorApproachGenerator)
-  .then(thesisValidatorGenerator)
+  .step(thesisValidatorApproachGenerator)
+  .step(thesisValidatorGenerator)
   .tap(commitThesisAlignmentMemo)
   .rescue([{ block: markErrorP6("thesisAlignment") }]);
 
@@ -40,4 +40,4 @@ export const phase6Pipeline = sequencer({
   },
 })
   .tap(setupPhase6Memos)
-  .then(validatorStep);
+  .step(validatorStep);

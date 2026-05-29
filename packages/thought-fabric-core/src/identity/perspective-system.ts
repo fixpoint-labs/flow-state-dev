@@ -145,7 +145,7 @@ export interface PerspectiveSystem {
  * // Or use the bundled capture sequencer to analyze + record observations
  * const pipeline = sequencer({ name: 'review' })
  *   .work((input) => ({ content: input.proposal }), sec.capture)
- *   .then(nextBlock)
+ *   .step(nextBlock)
  *
  * // Read accumulated state directly
  * const state = sec.recall(ctx)  // { observations, positions, turnCounter }
@@ -231,13 +231,13 @@ export function system(
     name: `${namePrefix}/capture/run`,
     inputSchema: perspectiveInputSchema,
   })
-    .then(analyze)
+    .step(analyze)
     .tap(observe)
   const capture = sequencer({
     name: `${namePrefix}/capture`,
     inputSchema: captureInputSchema,
   })
-    .thenIf((input) => input.content.length > 0, captureCore)
+    .stepIf((input) => input.content.length > 0, captureCore)
 
   const capability = createPerspectiveCapability(instance, { positionScope, positionsResource })
 

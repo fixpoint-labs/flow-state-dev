@@ -22,9 +22,9 @@ What you can actually build with that turns out to be much more interesting than
 ```ts
 // A multi-step research pipeline used as a single tool call
 const deepResearch = sequencer({ name: "deep-research" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({ web: searchWeb, docs: searchInternalDocs, memory: searchMemory })
-  .then(mergeAndRank)
+  .step(mergeAndRank)
   .doUntil((result) => result.confidence > 0.9, refineResults);
 
 // The agent doesn't know deepResearch is a whole pipeline. It's just a tool.
@@ -179,12 +179,12 @@ This also gave us somewhere to put type safety. The pipeline DSL infers types ac
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
-  .then(parseQuery)          // output: ParsedQuery
+  .step(parseQuery)          // output: ParsedQuery
   .parallel({                // output: { web: WebResults, docs: DocResults }
     web: searchWeb,
     docs: searchInternalDocs,
   })
-  .then(mergeAndRank)        // expects the parallel output, infers RankedResults
+  .step(mergeAndRank)        // expects the parallel output, infers RankedResults
   .doUntil(
     (result) => result.confidence > 0.9,
     refineResults
@@ -201,8 +201,8 @@ The DSL is designed so types travel automatically through the chain. Each step i
 
 ```ts
 const pipeline = sequencer({ name: "research" })
-  .then(parseQuery)    // infers: input from sequencer, output ParsedQuery
-  .then(
+  .step(parseQuery)    // infers: input from sequencer, output ParsedQuery
+  .step(
     // inline definition — input is inferred as ParsedQuery, no annotation needed
     handler, {
       name: "enrich",
@@ -212,7 +212,7 @@ const pipeline = sequencer({ name: "research" })
       }),
     }
   )
-  .then(searchAndRank); // infers enriched output as its input
+  .step(searchAndRank); // infers enriched output as its input
 ```
 
 Schema bubbling works the same way. A block only needs to declare the state fields it actually uses, not the full flow-level schema. The framework merges declarations upward — the block sees only what it asked for, fully typed.
@@ -238,7 +238,7 @@ const adapted = communityBlock.connectInput(
   (output: MyOutput) => ({ query: output.searchText, limit: 10 })
 );
 
-pipeline.then(adapted);
+pipeline.step(adapted);
 ```
 
 The goal is to make the type system work with your composition, not against it.

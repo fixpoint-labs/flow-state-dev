@@ -7,7 +7,7 @@
  * the claimed task. Side-channels the claim outcome onto the worker's
  * sequencer state (`currentTaskId`, `lastClaimed`) so downstream
  * `recordSuccess` / `recordError` / `checkBoard` can read it without
- * threading the value through `.thenIf` branches.
+ * threading the value through `.stepIf` branches.
  *
  * The substrate's CAS retry inside `collection.claim` guarantees
  * exactly-once dispatch under contention; this block simply surfaces

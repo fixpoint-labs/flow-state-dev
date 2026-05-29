@@ -126,7 +126,7 @@ describe("utility.memoryExtractor", () => {
       inputSchema: z.object({ content: z.string() })
     })
       .map((input) => ({ transcript: input.content }))
-      .then(extract);
+      .step(extract);
 
     const ctx = createMockContext({
       resolveModel: () => ({

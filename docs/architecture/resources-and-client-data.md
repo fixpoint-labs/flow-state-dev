@@ -198,7 +198,7 @@ Declared resources surface on `BlockDefinition.declaredResources` as a flat `Rec
 
 #### Sequencer Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.then()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward into the same flat map.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.step()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward into the same flat map.
 
 #### Flow-Level Resource Merge
 

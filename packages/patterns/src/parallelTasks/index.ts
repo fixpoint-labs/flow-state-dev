@@ -162,9 +162,9 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     inputSchema: parallelTasksInputSchema,
     activeStatusMessage: "Planning tasks",
   })
-    .then(activePlanner)
+    .step(activePlanner)
     .tap(seedTasksFromPlan)
-    .then(board.block)
-    .then(collectResults)
-    .then(finalize) as SequencerDefinition<any, any>;
+    .step(board.block)
+    .step(collectResults)
+    .step(finalize) as SequencerDefinition<any, any>;
 }

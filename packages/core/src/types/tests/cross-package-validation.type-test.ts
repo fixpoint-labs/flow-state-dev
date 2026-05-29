@@ -47,9 +47,9 @@ const scale = handler({
 });
 
 const stage = sequencer({ name: "cross-package-validation", inputSchema: z.string() })
-  .then(parse)
-  .then(toNumber)
-  .thenIf((value) => value > 0, toLabel)
+  .step(parse)
+  .step(toNumber)
+  .stepIf((value) => value > 0, toLabel)
   .map((value) => [value])
   .forEach((entry) =>
     handler({

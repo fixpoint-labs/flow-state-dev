@@ -217,11 +217,11 @@ const agentNoTools = generator({
 
 #### Critical Rules
 
-- **BP-011**: Handlers must NOT call `block.run()` inside `execute`. Compose with a sequencer instead: `.then(generator).then(handler)`.
-- **Sequencer DSL methods** beyond `.then()`:
+- **BP-011**: Handlers must NOT call `block.run()` inside `execute`. Compose with a sequencer instead: `.step(generator).step(handler)`.
+- **Sequencer DSL methods** beyond `.step()`:
   - `workIf(condition, block)` — conditional background work
-  - `thenAll(blocks)` — parallel execution, collect all results
-  - `thenAny(blocks)` — try each in order, first success wins
+  - `stepAll(blocks)` — parallel execution, collect all results
+  - `stepAny(blocks)` — try each in order, first success wins
   - `race(blocks)` — parallel execution, first to finish wins
   - `exitIf(condition)` — early exit from the sequence
 - **BP-012**: If the block only mutates state, use `.tap()`. No `outputSchema`, no `return input`.
@@ -300,4 +300,4 @@ If typecheck fails with TS6305, run `pnpm --filter @flow-state-dev/core build` f
 - **Minimal config surface.** Only expose config options that users will actually need. Start small, expand later.
 - **No invented APIs.** Verify every method you call exists in the source. `ctx.session.appendJournal()` does not exist.
 - **Schemas are the contract.** The `inputSchema` and `outputSchema` define the block's public API. Get them right.
-- **Generators are not handlers.** If you need LLM output, use a generator. If you need to transform data, use a handler. If you need both, use a sequencer with `.then(generator).then(handler)`.
+- **Generators are not handlers.** If you need LLM output, use a generator. If you need to transform data, use a handler. If you need both, use a sequencer with `.step(generator).step(handler)`.

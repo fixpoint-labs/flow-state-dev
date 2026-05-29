@@ -14,15 +14,15 @@
  * Pipeline:
  *   sequencer
  *     .tap(initWorkspace)
- *     .then(controller)              // → { specialist, done, reasoning }
- *     .then(recordIteration)         // creates a Task, patches control state
- *     .thenIf(!done, dispatch)       // routes to specialist by name
+ *     .step(controller)              // → { specialist, done, reasoning }
+ *     .step(recordIteration)         // creates a Task, patches control state
+ *     .stepIf(!done, dispatch)       // routes to specialist by name
  *     .tap(recordCompletion)         // collection.complete(taskId, output)
  *     .tap(emitSnapshot)
- *     .then(checkLoop)
+ *     .step(checkLoop)
  *     .loopBack(controller)
  *     .map(toSynthesizerInput)
- *     [.then(synthesizer)]
+ *     [.step(synthesizer)]
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import type {
@@ -446,7 +446,7 @@ export function routedSpecialists<
     inputSchema: z.any(),
     stateSchema: routedSpecialistsControlSchema,
   })
-    .then(dispatchRouter)
+    .step(dispatchRouter)
     .rescue([{ block: recordError }]);
 
   // 5. RecordCompletion: writes the specialist's output back as the task
@@ -513,12 +513,12 @@ export function routedSpecialists<
     container: { component: "routedSpecialists" },
   })
     .tap(initWorkspace)
-    .then(controller)
+    .step(controller)
     .tap(recordIteration)
-    .thenIf((r: ControllerOutput) => !r.done, dispatch)
+    .stepIf((r: ControllerOutput) => !r.done, dispatch)
     .tap(recordCompletion)
     .tap(emitSnapshot)
-    .then(checkLoop)
+    .step(checkLoop)
     .loopBack(controller.name, {
       when: (v: { continue: boolean }) => v.continue,
       maxIterations,
@@ -547,6 +547,6 @@ export function routedSpecialists<
     });
 
   return finalSynthesizer
-    ? base.then(finalSynthesizer)
+    ? base.step(finalSynthesizer)
     : base;
 }

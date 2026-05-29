@@ -21,7 +21,7 @@ Before diagnosing, orient yourself:
 
 | Symptom | Use |
 |---------|-----|
-| Flow execution misbehaves (wrong items, failed block, schema mismatch in a `.then()` chain, generator/tool errors during a run) | **`fsd:debug-flow`** — it has the NDJSON trace reader, `fsdev block` isolation workflow, and the FSD failure-pattern lookup table. |
+| Flow execution misbehaves (wrong items, failed block, schema mismatch in a `.step()` chain, generator/tool errors during a run) | **`fsd:debug-flow`** — it has the NDJSON trace reader, `fsdev block` isolation workflow, and the FSD failure-pattern lookup table. |
 | Anything else (typecheck regression, build break, store adapter bug, devtool UI bug, CLI bug, perf regression, flaky test, package boundary violation) | **This skill.** |
 | Mixed — flow is broken *and* the root cause is upstream (e.g. a core builder regression breaking many flows) | Start here for the discipline; use `fsd:debug-flow` inside Phase 1 to build the loop. |
 

@@ -192,14 +192,14 @@ With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire
 ```ts
 // Chain sequentially
 const pipeline = sequencer({ name: "full-pipeline", inputSchema })
-  .then(parallelTasks({ name: "research", worker: researchWorker }))
-  .then(parallelTasks({ name: "synthesis", worker: synthesisWorker }));
+  .step(parallelTasks({ name: "research", worker: researchWorker }))
+  .step(parallelTasks({ name: "synthesis", worker: synthesisWorker }));
 
 // Use as a step inside another sequencer
 const outer = sequencer({ name: "outer", inputSchema })
-  .then(preprocess)
-  .then(parallelTasks({ name: "parallel-work", worker: taskWorker }))
-  .then(postprocess);
+  .step(preprocess)
+  .step(parallelTasks({ name: "parallel-work", worker: taskWorker }))
+  .step(postprocess);
 ```
 
 ## See also

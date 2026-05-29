@@ -78,7 +78,7 @@ const pipeline = sequencer({
   name: "chat-with-audit",
   inputSchema: z.object({ message: z.string() }),
 })
-  .then(chat)
+  .step(chat)
   .work(
     (chatOutput, ctx) => ({
       userInput: String(ctx.parent?.input?.message ?? ""),
@@ -136,7 +136,7 @@ const biasAdapter = sequencer({
     userInput: input.userInput,
     aiResponse: input.response,   // biasAnalyzer expects "aiResponse", not "response"
   }))
-  .then(biasAnalyzer({ model: "preset/fast" }))
+  .step(biasAnalyzer({ model: "preset/fast" }))
   .map((output: Record<string, unknown>) => {
     const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
     const severity = output.severity as string;
@@ -215,8 +215,8 @@ const format = handler({
 });
 
 const toneAnalyzer = sequencer({ name: "tone", inputSchema: auditorInputSchema })
-  .then(detect)
-  .then(format);
+  .step(detect)
+  .step(format);
 ```
 
 Then compose it alongside the bias adapter:
@@ -257,12 +257,12 @@ pipeline.work(auditor);
 
 // Chain audit into a conditional revision
 const selfCorrectingChat = sequencer({ name: "self-correct", inputSchema: chatInput })
-  .then(chat)
+  .step(chat)
   .work(
     (output, ctx) => ({ userInput: ctx.parent?.input?.message, response: output }),
     auditor,
   )
-  .thenIf(
+  .stepIf(
     (_output, ctx) => {
       const audit = ctx.getBlockOutput(auditor);
       return audit?.overallScore >= 0.7;

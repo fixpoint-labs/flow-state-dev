@@ -18,7 +18,7 @@ function getTraces(items: ReadonlyArray<{ type: string }>): BlockTraceItem[] {
 }
 
 describe("block_trace input descriptor wiring", () => {
-  it("sequential .then: child input.source is a ref to the prior step's trace", async () => {
+  it("sequential .step: child input.source is a ref to the prior step's trace", async () => {
     const stepA = handler({
       name: "step-a",
       inputSchema: z.object({ x: z.number() }),
@@ -36,8 +36,8 @@ describe("block_trace input descriptor wiring", () => {
       name: "seq-then",
       inputSchema: z.object({ x: z.number() })
     })
-      .then(stepA)
-      .then(stepB);
+      .step(stepA)
+      .step(stepB);
 
     const flow = defineFlow({
       kind: "input-desc-then-flow",
@@ -75,7 +75,7 @@ describe("block_trace input descriptor wiring", () => {
     }
   });
 
-  it("fan-in .thenAll: branch inputs share the upstream ref; downstream sees a structure", async () => {
+  it("fan-in .stepAll: branch inputs share the upstream ref; downstream sees a structure", async () => {
     const head = handler({
       name: "head",
       inputSchema: z.object({ x: z.number() }),
@@ -105,9 +105,9 @@ describe("block_trace input descriptor wiring", () => {
       name: "seq-thenall",
       inputSchema: z.object({ x: z.number() })
     })
-      .then(head)
-      .thenAll([left, right])
-      .then(after);
+      .step(head)
+      .stepAll([left, right])
+      .step(after);
 
     const flow = defineFlow({
       kind: "input-desc-thenall-flow",
