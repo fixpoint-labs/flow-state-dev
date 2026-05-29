@@ -18,13 +18,13 @@
  *   sequencer
  *     .tap(appendEntry)            // append the seed entry to workspace
  *     .tap(spawnInitialTasks)      // one Task per matching actor (depth=1)
- *     .then(taskBoard.block)       // drain — workers re-emit recursively
+ *     .step(taskBoard.block)       // drain — workers re-emit recursively
  *
  * Each worker (the actor body wrapped):
  *
  *   .tap(stashDepth)               // remember `task.metadata.depth`
  *   .map(unwrapToEntry)            // pass entry to user actor body
- *   .then(actor.block)             // user code
+ *   .step(actor.block)             // user code
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
  */
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -352,9 +352,9 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       inputSchema: taskWorkerInputSchema,
       stateSchema: actorWrapperStateSchema,
     })
-      .then(stashTaskId)
+      .step(stashTaskId)
       .map((input: TaskWorkerInput) => input.input)
-      .then(a.block)
+      .step(a.block)
       .tap(reEmitTap);
   }
 
@@ -374,7 +374,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   })
     .tap(appendEntry)
     .tap(spawnInitialTasks)
-    .then(board.block);
+    .step(board.block);
 
   return {
     emit,

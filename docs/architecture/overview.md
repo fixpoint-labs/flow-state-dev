@@ -20,8 +20,8 @@ const track = handler({ name: "track", execute: async (input, ctx) => {
 
 // Compose into a pipeline
 const pipeline = sequencer({ name: "pipeline" })
-  .then(chat)
-  .then(track)
+  .step(chat)
+  .step(track)
   .rescue([{ when: [Error], block: fallback }]);
 
 // Expose as a flow
@@ -145,8 +145,8 @@ const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
 const analyze = utility.analyzer({ name: "check", criteria: ["accuracy"] });
 
 const pipeline = sequencer({ name: "review" })
-  .then(summarize)
-  .then(analyze);
+  .step(summarize)
+  .step(analyze);
 ```
 
 Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).

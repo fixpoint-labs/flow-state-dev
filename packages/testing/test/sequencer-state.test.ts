@@ -46,13 +46,13 @@ describe("sequencer state testing utilities", () => {
       name: "inner",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(11) })
-    }).then(leaf);
+    }).step(leaf);
 
     const outer = sequencer({
       name: "outer",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(7) })
-    }).then(inner);
+    }).step(inner);
 
     const result = await testSequencer(outer, { input: 1 });
     expect(result.output).toEqual({ nearest: "inner", count: 11 });

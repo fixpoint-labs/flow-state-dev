@@ -156,6 +156,6 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     stateSchema: planAndExecuteStateSchema,
     activeStatusMessage: "Putting it all together",
   })
-    .then(buildPlanOutput)
-    .then(synthesizer);
+    .step(buildPlanOutput)
+    .step(synthesizer);
 }

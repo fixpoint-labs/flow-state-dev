@@ -185,8 +185,8 @@ describe("utility.analyzer", () => {
       inputSchema: z.object({ artifact: z.string() })
     })
       .map((input) => input.artifact)
-      .then(analyze)
-      .then(route);
+      .step(analyze)
+      .step(route);
 
     const ctx = createMockContext({
       resolveModel: () => ({

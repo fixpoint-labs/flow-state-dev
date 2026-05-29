@@ -20,7 +20,7 @@ const paeBlock = planAndExecute({
 });
 
 const pipeline = sequencer({ name: "pae-pipeline", inputSchema })
-  .then(paeBlock);
+  .step(paeBlock);
 
 const planAndExecuteFlow = defineFlow({
   kind: "test-pae",

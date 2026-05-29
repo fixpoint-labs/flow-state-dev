@@ -1,7 +1,7 @@
 /**
  * Type-level tests for FIX-616 Step 4: sequencer-level `stateSchema` flows
  * into the `ctx.sequencer.state` typing observed inside every DSL callback
- * (`.map`, `.tap`, `.tapIf`, `.thenIf`, `.doUntil`, inline configs, branch
+ * (`.map`, `.tap`, `.tapIf`, `.stepIf`, `.doUntil`, inline configs, branch
  * conditions, etc.). When `stateSchema` is absent, `ctx.sequencer.state`
  * remains the loose `Record<string, unknown>` default — no regression.
  *
@@ -52,10 +52,10 @@ sequencer({ name: "tap-state", inputSchema: z.number(), stateSchema })
     void ctx.sequencer!.state.count;
   });
 
-// ---------- 3. Inline `.then(handler, { execute })` sees typed state ----------
+// ---------- 3. Inline `.step(handler, { execute })` sees typed state ----------
 sequencer({ name: "inline-then-state", inputSchema: z.number(), stateSchema })
-  .then(addOne)
-  .then(handler, {
+  .step(addOne)
+  .step(handler, {
     outputSchema: z.number(),
     execute: (input, ctx) => {
       type State = NonNullable<typeof ctx.sequencer>["state"];
@@ -66,7 +66,7 @@ sequencer({ name: "inline-then-state", inputSchema: z.number(), stateSchema })
 
 // ---------- 4. `.branch` condition sees typed state ----------
 sequencer({ name: "branch-state", inputSchema: z.number(), stateSchema })
-  .then(addOne)
+  .step(addOne)
   .branch({
     big: [
       (value) => value,
@@ -80,9 +80,9 @@ sequencer({ name: "branch-state", inputSchema: z.number(), stateSchema })
     small: [(value) => value, (_input, ctx) => ctx.sequencer!.state.count > 0, addOne]
   });
 
-// ---------- 4b. `.thenIf` condition sees typed state ----------
+// ---------- 4b. `.stepIf` condition sees typed state ----------
 sequencer({ name: "then-if-state", inputSchema: z.number(), stateSchema })
-  .thenIf(
+  .stepIf(
     (input, ctx) => {
       type State = NonNullable<typeof ctx.sequencer>["state"];
       type _check = Assert<Equal<State["count"], number>>;
@@ -135,7 +135,7 @@ const childRouter = router({
 });
 
 sequencer({ name: "router-in-seq", inputSchema: z.number(), stateSchema })
-  .then(childRouter)
+  .step(childRouter)
   .map((input, ctx) => {
     type State = NonNullable<typeof ctx.sequencer>["state"];
     type _check = Assert<Equal<State["count"], number>>;
@@ -144,7 +144,7 @@ sequencer({ name: "router-in-seq", inputSchema: z.number(), stateSchema })
 
 // ---------- 7. Chain preservation: TStateSchema survives every operator ----------
 sequencer({ name: "chain-preserve", inputSchema: z.number(), stateSchema })
-  .then(addOne)
+  .step(addOne)
   .map((value, ctx) => {
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["count"], number>>;
     return value;
@@ -153,7 +153,7 @@ sequencer({ name: "chain-preserve", inputSchema: z.number(), stateSchema })
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["count"], number>>;
     void value;
   })
-  .then(square)
+  .step(square)
   .map((value, ctx) => {
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["count"], number>>;
     return value;
@@ -181,7 +181,7 @@ const deepStateSchema = z.object({
 });
 
 sequencer({ name: "deep", inputSchema: z.number(), stateSchema: deepStateSchema })
-  .then(addOne)
+  .step(addOne)
   .map((value, ctx) => {
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["f1"], number>>;
     return value;
@@ -190,7 +190,7 @@ sequencer({ name: "deep", inputSchema: z.number(), stateSchema: deepStateSchema 
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["f5"]["nested"], string>>;
     void value;
   })
-  .then(square)
+  .step(square)
   .map((value, ctx) => {
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["f3"], boolean>>;
     return value;
@@ -199,6 +199,6 @@ sequencer({ name: "deep", inputSchema: z.number(), stateSchema: deepStateSchema 
     type _check = Assert<Equal<NonNullable<typeof ctx.sequencer>["state"]["f8"], boolean>>;
     void value;
   })
-  .then(addOne);
+  .step(addOne);
 
 export const sequencerStateTypingSmoke = true;

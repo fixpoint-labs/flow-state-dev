@@ -235,7 +235,7 @@ export function createInstallBoardFlowState(
 
 /**
  * Build the teardown handler that runs both on completion (via
- * `.tap(boardMetaCompleted).then(teardown)`) and on error (the outer
+ * `.tap(boardMetaCompleted).step(teardown)`) and on error (the outer
  * sequencer adds it under `.rescue`). Clears both stores so a board
  * that loops within the same request starts each run fresh.
  */

@@ -137,7 +137,7 @@ function packWorkerInput(
 
 /**
  * Build a block that performs one claim → execute → record cycle.
- * Patterns compose this via `.then(dispatchAndExecuteBlock(...))` in
+ * Patterns compose this via `.step(dispatchAndExecuteBlock(...))` in
  * their own sequencer chains. Replaces the pre-FIX-503 free-function
  * helper that callers invoked from inside their own handler bodies
  * (BP-011 violation).

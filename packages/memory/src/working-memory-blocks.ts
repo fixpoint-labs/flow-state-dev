@@ -254,7 +254,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
  *   .work((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
- *   .then(chat)
+ *   .step(chat)
  * ```
  *
  * Input: `z.string()` — the user's message (where new facts, preferences,
@@ -288,7 +288,7 @@ export function workingMemoryCapture(config?: WorkingMemoryCaptureConfig) {
   })
 
   return sequencer({ name: config?.name ?? 'workingMemory/capture', inputSchema: z.string() })
-    .then(observeBlock)
-    .then(rememberBlock)
+    .step(observeBlock)
+    .step(rememberBlock)
     .tap(tickBlock)
 }

@@ -153,7 +153,7 @@ describe("utility.synthesizer", () => {
       inputSchema: z.object({ artifacts: z.array(z.string()) })
     })
       .map((input) => input.artifacts)
-      .then(synthesize);
+      .step(synthesize);
 
     const ctx = createMockContext({
       resolveModel: () => ({

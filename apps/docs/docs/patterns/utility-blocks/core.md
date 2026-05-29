@@ -152,7 +152,7 @@ const manageContext = sequencer({
   }),
 })
   .map((input) => input.history)
-  .then(compressHistory)
+  .step(compressHistory)
   .tap(async (result, ctx) => {
     await ctx.session.setState("compressedHistory", result.compressed);
   });
@@ -252,7 +252,7 @@ export const learnUser = sequencer({
   inputSchema: z.object({ transcript: z.string() }),
 })
   .map((input) => input.transcript)
-  .then(extract)
+  .step(extract)
   .tap(persist);
 ```
 
@@ -340,7 +340,7 @@ export const planProject = sequencer({
   inputSchema: z.object({ brief: z.string() }),
 })
   .map((input) => input.brief)
-  .then(decompose)
+  .step(decompose)
   .map((output) => output.tasks.map((t) => `Task ${t.id}: ${t.goal}`))
   .forEach(summarizeTask);
 ```
@@ -424,7 +424,7 @@ export const buildReport = sequencer({
     ],
     constraints: { ordering: ["findings", "risks"] },
   }))
-  .then(compose);
+  .step(compose);
 ```
 
 ---
@@ -523,7 +523,7 @@ export const standupDigest = sequencer({
       .map((u) => `**${u.author}:**\n${u.content}`)
       .join("\n\n")
   )
-  .then(summarize);
+  .step(summarize);
 ```
 
 ---
@@ -593,7 +593,7 @@ export const searchAndMerge = sequencer({
     docs: searchDocs,
   })
   .map((results) => [results.web, results.docs])
-  .then(merge);
+  .step(merge);
 ```
 
 ---
@@ -639,7 +639,7 @@ const saveNote = utility.upsertResource({
 
 `getOrCreate` is called first (passing initial state for new instances), then `patchState` is always called — so state updates apply on both create and update.
 
-**Composing with .tap():** Use `.tap(upsertBlock)` in a sequencer when you want to write to a collection without changing the chain value. Use `.then(upsertBlock)` when you want the chain to continue on a transformed value returned by a downstream step.
+**Composing with .tap():** Use `.tap(upsertBlock)` in a sequencer when you want to write to a collection without changing the chain value. Use `.step(upsertBlock)` when you want the chain to continue on a transformed value returned by a downstream step.
 
 **Passing id through a transformer:** When you need a resource key after a downstream step has transformed the chain value (for example, after a summarizer), declare a `sequencerStateSchema` on the outer sequencer and stash the id in a `.tap()` before the transformer runs.
 
@@ -689,8 +689,8 @@ export const writeArtifact = sequencer({
     await ctx.sequencer!.patchState({ artifactId: input.id });
   })
   .tap(upsertArtifact)
-  .then((input) => input.content, summarizer)
-  .then(saveSummary);
+  .step((input) => input.content, summarizer)
+  .step(saveSummary);
 ```
 
 Note: `upsertArtifact` is used with `.tap()` here so the original input (including `id` and `content`) remains the chain value for the connector on the next step.
@@ -764,7 +764,7 @@ export const reconcileReviews = sequencer({
   .map((input) =>
     input.reviews.map((r) => `## ${r.analyst}\n${r.report}`).join("\n\n")
   )
-  .then(synthesize);
+  .step(synthesize);
 ```
 
 ---
@@ -875,8 +875,8 @@ export const codeReview = sequencer({
   inputSchema: z.object({ diff: z.string() }),
 })
   .map((input) => input.diff)
-  .then(analyze)
-  .then(decisionRouter);
+  .step(analyze)
+  .step(decisionRouter);
 ```
 
 ---
@@ -984,8 +984,8 @@ export const supportTriage = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .map((input) => input.message)
-  .then(classify)
-  .then(teamRouter);
+  .step(classify)
+  .step(teamRouter);
 ```
 
 For most classification-to-dispatch workflows, `intentRouter` (below) eliminates this boilerplate entirely.
@@ -1095,7 +1095,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .map((input) => input.message)
-  .then(helpdesk);
+  .step(helpdesk);
 ```
 
 Compare this to the manual `intentClassifier` + `router` approach above — the same behavior with significantly less wiring.
@@ -1146,7 +1146,7 @@ const researchPipeline = sequencer({
 })
   // Decompose
   .map((input) => input.question)
-  .then(decompose)
+  .step(decompose)
 
   // Summarize each subtask in parallel
   .map((plan) => plan.tasks.map((task) => task.goal))
@@ -1156,14 +1156,14 @@ const researchPipeline = sequencer({
   .map((summaries) =>
     summaries.map((s) => s.summary).join("\n\n")
   )
-  .then(qualityGate)
+  .step(qualityGate)
 
   // Synthesize the final answer
   .map((analysis) => ({
     findings: analysis.findings,
     recommendation: analysis.recommendation,
   }))
-  .then(synthesize);
+  .step(synthesize);
 
 const researchFlow = defineFlow({
   kind: "research",
@@ -1259,7 +1259,7 @@ const autoTitle = utility.sessionTitleGenerator({
 });
 
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(mainGenerator)
+  .step(mainGenerator)
   .work(autoTitle);      // runs in background after main generator
 ```
 

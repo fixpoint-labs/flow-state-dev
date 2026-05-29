@@ -144,8 +144,8 @@ export function <patternName><
     name: config.name,
     stateSchema,
   })
-    .then(step1)
-    .then(step2)
+    .step(step1)
+    .step(step2)
     .doUntil(
       (result) => result.done,
       step3
@@ -205,7 +205,7 @@ export function <patternName>(config: <PatternName>Config) {
     ...(userResources ? { userResources } : {}),
     ...(projectResources ? { projectResources } : {}),
   })
-    .then(executor)
+    .step(executor)
     // ...
 }
 ```
@@ -240,16 +240,16 @@ This is the less common case. Most patterns just forward `uses` from their confi
 
 #### Sequencer DSL Reference
 
-Beyond the basics (`.then()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequencer provides additional composition methods useful in patterns:
+Beyond the basics (`.step()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequencer provides additional composition methods useful in patterns:
 
 | Method | Behavior |
 |--------|----------|
 | `workIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
-| `thenAll(blocks)` | Parallel execution of multiple blocks with the same input. Collects all results (like `Promise.all`). |
-| `thenAny(blocks)` | Sequential attempt through blocks in order. Returns the first success, skips the rest. Throws `AggregateError` if all fail. |
+| `stepAll(blocks)` | Parallel execution of multiple blocks with the same input. Collects all results (like `Promise.all`). |
+| `stepAny(blocks)` | Sequential attempt through blocks in order. Returns the first success, skips the rest. Throws `AggregateError` if all fail. |
 | `race(blocks)` | Parallel execution, returns the first success, aborts the rest. Throws `AggregateError` if all fail. |
 | `exitIf(condition)` | Early exit from the sequencer chain. Current value becomes the sequencer output. |
-| `thenIf(condition, block)` | Conditional step execution. Passthrough when condition is false. |
+| `stepIf(condition, block)` | Conditional step execution. Passthrough when condition is false. |
 | `work(block)` / `background(block)` | Fire-and-forget sidechain. Main chain continues immediately. |
 | `rescue(handlers)` | Error recovery. Matches thrown errors to handler blocks. |
 | `branch(branches)` | Multi-way conditional dispatch with connectors. |
@@ -324,7 +324,7 @@ Pair with `<TaskPlan collectionId={config.name} />` in the UI registry. The lega
 
 - **Prefix all internal block names** with `${config.name}-` to avoid collisions when multiple pattern instances exist.
 - **BP-011**: Internal handlers must not call `block.run()`. Use sequencer composition.
-- **BP-012**: State-mutation-only steps use `.tap()`, not `.then()`.
+- **BP-012**: State-mutation-only steps use `.tap()`, not `.step()`.
 - **Sequencer state is the default** for pattern-internal state. Only use session resources when state must be shared outside the pattern.
 - **Export internal factories** so users can remix them:
   ```typescript
@@ -405,7 +405,7 @@ Pattern factories have failure modes that only emerge from full `runAction` comp
 - Composes multiple sub-blocks whose interaction can deadlock or cycle.
 - Passes data between sub-agents through scope state or resources.
 
-Skip this step if the pattern is a thin sequencer (e.g., a static `.then` chain with no loops). Authoring pattern: synthetic fixture flow under `src/scenarios/fixtures/` + scenario file under `src/scenarios/`. Use `unmockedGeneratorPolicy: "error"` so missing mocks surface loudly. See `apps/docs/docs/testing/flow-integration-tests.md` and `packages/integration-tests/README.md`.
+Skip this step if the pattern is a thin sequencer (e.g., a static `.step` chain with no loops). Authoring pattern: synthetic fixture flow under `src/scenarios/fixtures/` + scenario file under `src/scenarios/`. Use `unmockedGeneratorPolicy: "error"` so missing mocks surface loudly. See `apps/docs/docs/testing/flow-integration-tests.md` and `packages/integration-tests/README.md`.
 
 ### Step 8: Update Documentation
 

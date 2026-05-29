@@ -168,6 +168,6 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
   });
 
   return sequencer({ name: "skill-classifier-tier", inputSchema })
-    .then((input) => ({ message: (input as { message: string }).message }), classifier)
+    .step((input) => ({ message: (input as { message: string }).message }), classifier)
     .tap(apply);
 }

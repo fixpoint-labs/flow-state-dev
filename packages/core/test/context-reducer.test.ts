@@ -161,7 +161,7 @@ describe("utility.contextReducer", () => {
       inputSchema: z.object({ source: z.string() })
     })
       .map((input) => input.source)
-      .then(reduce);
+      .step(reduce);
 
     const ctx = createMockContext({
       resolveModel: () => ({

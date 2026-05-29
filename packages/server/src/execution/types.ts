@@ -32,7 +32,7 @@ export type ExecutionMetadata = {
   parentBlockInstanceId?: string;
   /**
    * Structural path of this block in the request's execution tree (e.g.
-   * `root/then[0]/iter[2]`). Combined with `requestId` and `attempt`, this
+   * `root/step[0]/iter[2]`). Combined with `requestId` and `attempt`, this
    * uniquely and deterministically identifies the block instance.
    */
   blockPath?: string;

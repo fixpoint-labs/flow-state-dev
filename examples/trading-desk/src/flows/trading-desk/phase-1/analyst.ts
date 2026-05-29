@@ -6,7 +6,7 @@
  *   .tap(markWriting)              // pre-mark memo + stamp startedAt
  *   .map(tickerDate)               // reshape to { ticker, date } from session state
  *   .parallel(attributedTools)     // fan-out the role's tools, attributed
- *   .then(generator)               // synthesize the Thesis
+ *   .step(generator)               // synthesize the Thesis
  *   .tap(commitMemo)               // publish memo + flip status
  *   .rescue([markError])           // localized failure handling
  *
@@ -51,7 +51,7 @@ export function defineAnalyst(config: AnalystConfig): BlockDefinition {
     .tap(markWriting(shortName))
     .map(tickerDate)
     .parallel(attributedTools(agentName, tools))
-    .then(generator)
+    .step(generator)
     .tap(commitMemo(shortName))
     .rescue([{ block: markError(shortName) }]);
 }

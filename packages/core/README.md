@@ -45,10 +45,10 @@ const counter = handler({
 
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(analyzeInput)
-  .thenIf((result) => result.needsContext, enrichWithContext)
-  .then(agent)
-  .then(counter)
+  .step(analyzeInput)
+  .stepIf((result) => result.needsContext, enrichWithContext)
+  .step(agent)
+  .step(counter)
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
@@ -61,7 +61,7 @@ const summarize = sequencer({
   name: "summarize",
   inputSchema: z.object({ text: z.string() }),
   outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
-}).then(summarizeBlock);
+}).step(summarizeBlock);
 
 summarize.validate(); // throws if the tail shape drifts from the declared schema
 ```
@@ -113,7 +113,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
-- `sequencer(config)` — Fluent composition DSL (22 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `waitForCondition`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
+- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
 **Block methods** (available on every `BlockDefinition`):
@@ -314,7 +314,7 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
 
-**`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.thenAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
+**`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
 ### Helpers (`@flow-state-dev/core/helpers`)
 
@@ -341,7 +341,7 @@ const counter = sequencer({
     // schema default on resume.
     lastClaimed: transientSlot(z.boolean().default(false)),
   }),
-}).then(/* ... */);
+}).step(/* ... */);
 ```
 
 **No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Idempotent writes are now free — callers no longer need to guard with manual identity checks. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.

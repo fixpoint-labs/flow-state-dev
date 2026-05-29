@@ -38,7 +38,7 @@ const chatGenerator = generator({
 });
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
-  .then(chatGenerator);
+  .step(chatGenerator);
 
 const chatFlow = defineFlow({
   kind: "test-chat",

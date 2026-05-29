@@ -91,7 +91,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
           name: options.sequencer.name ?? `${block.name}-sequencer`,
           inputSchema: z.any(),
           stateSchema: z.record(z.string(), z.unknown())
-        }).then(block)
+        }).step(block)
       : block;
 
   const result = await executeBlock({

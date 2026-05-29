@@ -16,7 +16,7 @@ A multi-modal AI assistant — the flagship flow. Showcases:
 - Generator tool loop with handler-backed tools (`readArtifact`, `updateArtifact`)
 - Generator slots: `prompt`, `context`, `history`, `user`
 - Emission API: `ctx.emitMessage()`, `ctx.emitComponent()`, `ctx.emitStatus()`
-- Sequencer DSL: `.then()`, `.thenIf()`, `.map()`, `.tap()`, `.rescue()`
+- Sequencer DSL: `.step()`, `.stepIf()`, `.map()`, `.tap()`, `.rescue()`
 - Session resources (`artifacts`) with typed resource reads/writes
 - clientData on `session` and `user` scopes
 - Action-level `userMessage` for automatic user message emission

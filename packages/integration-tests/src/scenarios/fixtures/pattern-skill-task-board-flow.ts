@@ -71,7 +71,7 @@ const pipeline = sequencer({
   name: "pattern-skill-task-board-pipeline",
   inputSchema,
   stateSchema: taskBoardStateSchema
-}).then(board.block);
+}).step(board.block);
 
 const flow = defineFlow({
   kind: "test-pattern-skill-task-board",

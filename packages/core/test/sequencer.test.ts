@@ -15,22 +15,22 @@ function addHandler(name: string, delta = 1) {
 }
 
 describe("sequencer builder", () => {
-  it("supports then and connector overload", async () => {
+  it("supports step and connector overload", async () => {
     const one = addHandler("one", 1);
     const two = addHandler("two", 2);
     const chain = sequencer({ name: "then-chain", inputSchema: z.number() })
-      .then(one)
-      .then((value) => value * 2, two);
+      .step(one)
+      .step((value) => value * 2, two);
 
     const ctx = createMockContext();
     await expect(runForTest(chain, 1, ctx)).resolves.toBe(6);
   });
 
-  it("supports thenIf", async () => {
+  it("supports stepIf", async () => {
     const plusTen = addHandler("plus-ten", 10);
     const seq = sequencer({ name: "then-if", inputSchema: z.number() })
-      .thenIf((value) => value > 0, plusTen)
-      .thenIf((value) => value > 100, (value) => value, plusTen);
+      .stepIf((value) => value > 0, plusTen)
+      .stepIf((value) => value > 100, (value) => value, plusTen);
 
     const ctx = createMockContext();
     await expect(runForTest(seq, 1, ctx)).resolves.toBe(11);
@@ -85,7 +85,7 @@ describe("sequencer builder", () => {
   it("supports loopBack", async () => {
     const inc = addHandler("inc", 1);
     const seq = sequencer({ name: "loop-back", inputSchema: z.number() })
-      .then(inc)
+      .step(inc)
       .loopBack("inc", {
         when: (value) => (value as number) < 3,
         maxIterations: 5
@@ -98,7 +98,7 @@ describe("sequencer builder", () => {
   it("gives loopBack re-executions distinct child blockInstanceIds per iteration (FIX-643)", async () => {
     const inc = addHandler("inc", 1);
     const seq = sequencer({ name: "loop-id", inputSchema: z.number() })
-      .then(inc)
+      .step(inc)
       .loopBack("inc", {
         when: (value) => (value as number) < 3,
         maxIterations: 5
@@ -393,7 +393,7 @@ describe("sequencer builder", () => {
     });
 
     const seq = sequencer({ name: "rescue-seq", inputSchema: z.number() })
-      .then(failing)
+      .step(failing)
       .rescue([{ block: rescueBlock }]);
 
     const ctx = createMockContext();
@@ -416,7 +416,7 @@ describe("sequencer builder", () => {
       execute: (error: Error) => `recovered:${error.message}`
     });
     const seq = sequencer({ name: "rescue-flag-seq", inputSchema: z.number() })
-      .then(failing)
+      .step(failing)
       .rescue([{ block: rescueBlock }]);
 
     const ctx = createMockContext();
@@ -432,7 +432,7 @@ describe("sequencer builder", () => {
       execute: (value) => value + 1
     });
     const seq = sequencer({ name: "no-rescue-flag-seq", inputSchema: z.number() })
-      .then(ok)
+      .step(ok)
       .rescue([{ block: ok }]);
 
     const ctx = createMockContext();
@@ -469,8 +469,8 @@ describe("sequencer builder", () => {
   });
 
   describe("inline block definitions", () => {
-    it("supports then(handler, config) basic execution", async () => {
-      const seq = sequencer({ name: "inline-then", inputSchema: z.number() }).then(handler, {
+    it("supports step(handler, config) basic execution", async () => {
+      const seq = sequencer({ name: "inline-then", inputSchema: z.number() }).step(handler, {
         outputSchema: z.string(),
         execute: (input: number) => `value:${input}`
       });
@@ -488,8 +488,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "schema-injection", inputSchema: z.string() })
-        .then(parseNumber)
-        .then(handler, {
+        .step(parseNumber)
+        .step(handler, {
           outputSchema: z.string(),
           execute: (input: number) => `#${input}`
         });
@@ -499,7 +499,7 @@ describe("sequencer builder", () => {
     });
 
     it("auto-generates name when name omitted", async () => {
-      const seq = sequencer({ name: "auto-name", inputSchema: z.number() }).then(handler, {
+      const seq = sequencer({ name: "auto-name", inputSchema: z.number() }).step(handler, {
         outputSchema: z.number(),
         execute: (input: number) => input * 2
       });
@@ -509,7 +509,7 @@ describe("sequencer builder", () => {
     });
 
     it("uses provided name when name is given", async () => {
-      const seq = sequencer({ name: "named-inline", inputSchema: z.number() }).then(handler, {
+      const seq = sequencer({ name: "named-inline", inputSchema: z.number() }).step(handler, {
         name: "my-doubler",
         outputSchema: z.number(),
         execute: (input: number) => input * 2
@@ -521,11 +521,11 @@ describe("sequencer builder", () => {
 
     it("supports chained inline blocks", async () => {
       const seq = sequencer({ name: "chained-inline", inputSchema: z.number() })
-        .then(handler, {
+        .step(handler, {
           outputSchema: z.object({ doubled: z.number() }),
           execute: (input: number) => ({ doubled: input * 2 })
         })
-        .then(handler, {
+        .step(handler, {
           outputSchema: z.string(),
           execute: (input: { doubled: number }) => `result:${input.doubled}`
         });
@@ -538,7 +538,7 @@ describe("sequencer builder", () => {
       const sideEffects: number[] = [];
 
       const seq = sequencer({ name: "inline-tap", inputSchema: z.number() })
-        .then(handler, {
+        .step(handler, {
           outputSchema: z.number(),
           execute: (input: number) => input * 3
         })
@@ -554,9 +554,9 @@ describe("sequencer builder", () => {
       expect(sideEffects).toEqual([12]);
     });
 
-    it("supports thenIf(condition, handler, config) conditional", async () => {
+    it("supports stepIf(condition, handler, config) conditional", async () => {
       const seq = sequencer({ name: "inline-then-if", inputSchema: z.number() })
-        .thenIf((value) => value > 10, handler, {
+        .stepIf((value) => value > 10, handler, {
           outputSchema: z.string(),
           execute: (input: number) => `big:${input}`
         });
@@ -577,12 +577,12 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "mixed-chain", inputSchema: z.number() })
-        .then(addOne)
-        .then(handler, {
+        .step(addOne)
+        .step(handler, {
           outputSchema: z.number(),
           execute: (input: number) => input * 10
         })
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       // (5 + 1) * 10 + 1 = 61
@@ -591,7 +591,7 @@ describe("sequencer builder", () => {
 
     it("falls back to z.any() when no previous schema is available", async () => {
       // First step in chain — no previous block to inherit from
-      const seq = sequencer({ name: "no-prev-schema", inputSchema: z.number() }).then(handler, {
+      const seq = sequencer({ name: "no-prev-schema", inputSchema: z.number() }).step(handler, {
         outputSchema: z.string(),
         execute: (input: number) => `first:${input}`
       });
@@ -610,7 +610,7 @@ describe("sequencer builder", () => {
         execute: (value) => value + 1
       });
 
-      const seq = sequencer({ name: "output-prop", inputSchema: z.number() }).then(addOne);
+      const seq = sequencer({ name: "output-prop", inputSchema: z.number() }).step(addOne);
 
       // The sequencer's outputSchema should reflect the last step (z.number()), not z.any()
       expect((seq.outputSchema as any)._def?.typeName).toBe("ZodNumber");
@@ -630,10 +630,10 @@ describe("sequencer builder", () => {
         execute: (value) => value + 1
       });
 
-      const step1 = sequencer({ name: "chain-prop", inputSchema: z.number() }).then(addOne);
+      const step1 = sequencer({ name: "chain-prop", inputSchema: z.number() }).step(addOne);
       expect((step1.outputSchema as any)._def?.typeName).toBe("ZodNumber");
 
-      const step2 = step1.then((value: number) => value, toStr);
+      const step2 = step1.step((value: number) => value, toStr);
       expect((step2.outputSchema as any)._def?.typeName).toBe("ZodString");
     });
 
@@ -646,7 +646,7 @@ describe("sequencer builder", () => {
       });
 
       // No inputSchema on sequencer — should infer from first block
-      const seq = sequencer({ name: "input-infer" }).then(parseStr);
+      const seq = sequencer({ name: "input-infer" }).step(parseStr);
       expect((seq.inputSchema as any)._def?.typeName).toBe("ZodString");
     });
 
@@ -660,7 +660,7 @@ describe("sequencer builder", () => {
 
       // Explicit inputSchema should be preserved, not overridden by first block
       const seq = sequencer({ name: "input-explicit", inputSchema: z.number() })
-        .then((value: number) => String(value), parseStr);
+        .step((value: number) => String(value), parseStr);
       expect((seq.inputSchema as any)._def?.typeName).toBe("ZodNumber");
     });
 
@@ -720,12 +720,12 @@ describe("sequencer builder", () => {
     it("returns a SequencerDefinition with DSL methods", () => {
       const addOne = addHandler("add-one", 1);
       const seq = sequencer({ name: "ci-dsl", inputSchema: z.number() })
-        .then(addOne);
+        .step(addOne);
 
       const connected = seq.connectInput((s: string) => Number(s));
 
       // Should have sequencer DSL methods — not a bare BlockDefinition
-      expect(typeof connected.then).toBe("function");
+      expect(typeof connected.step).toBe("function");
       expect(typeof connected.tap).toBe("function");
       expect(typeof connected.map).toBe("function");
       expect(typeof connected.work).toBe("function");
@@ -735,7 +735,7 @@ describe("sequencer builder", () => {
     it("mapper runs before sequencer operations", async () => {
       const addOne = addHandler("add-one", 1);
       const seq = sequencer({ name: "ci-mapper", inputSchema: z.number() })
-        .then(addOne);
+        .step(addOne);
 
       const connected = seq.connectInput((s: string) => Number(s));
       const ctx = createMockContext();
@@ -759,7 +759,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "ci-resources", inputSchema: z.number() })
-        .then(step);
+        .step(step);
 
       const connected = seq.connectInput((s: string) => Number(s));
 
@@ -776,9 +776,9 @@ describe("sequencer builder", () => {
       });
 
       const connected = sequencer({ name: "ci-chain", inputSchema: z.number() })
-        .then(addOne)
+        .step(addOne)
         .connectInput((s: string) => Number(s))
-        .then(double);
+        .step(double);
 
       const ctx = createMockContext();
       // "3" → 3 → 3 + 1 = 4 → 4 * 2 = 8
@@ -787,21 +787,21 @@ describe("sequencer builder", () => {
 
     it("preserves name from original sequencer config", () => {
       const seq = sequencer({ name: "my-seq", inputSchema: z.number() })
-        .then(addHandler("step", 1));
+        .step(addHandler("step", 1));
 
       const connected = seq.connectInput((s: string) => Number(s));
       expect(connected.name).toBe("my-seq");
     });
   });
 
-  describe("thenAll", () => {
+  describe("stepAll", () => {
     it("runs blocks concurrently and returns ordered array", async () => {
       const addOne = addHandler("add-one", 1);
       const addTwo = addHandler("add-two", 2);
       const addThree = addHandler("add-three", 3);
 
       const seq = sequencer({ name: "then-all", inputSchema: z.number() })
-        .thenAll([addOne, addTwo, addThree]);
+        .stepAll([addOne, addTwo, addThree]);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 10, ctx)).resolves.toEqual([11, 12, 13]);
@@ -812,7 +812,7 @@ describe("sequencer builder", () => {
       const addTwo = addHandler("add-two", 2);
 
       const seq = sequencer({ name: "then-all-conn", inputSchema: z.number() })
-        .thenAll([
+        .stepAll([
           addOne,
           { connector: (value: number) => value * 2, block: addTwo },
         ]);
@@ -832,7 +832,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-all-fail", inputSchema: z.number() })
-        .thenAll([addOne, failing]);
+        .stepAll([addOne, failing]);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 1, ctx)).rejects.toThrow("boom");
@@ -856,7 +856,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-all-conc", inputSchema: z.number() })
-        .thenAll([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
+        .stepAll([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
 
       const ctx = createMockContext();
       await runForTest(seq, 1, ctx);
@@ -865,7 +865,7 @@ describe("sequencer builder", () => {
 
     it("returns empty array for empty blocks", async () => {
       const seq = sequencer({ name: "then-all-empty", inputSchema: z.number() })
-        .thenAll([]);
+        .stepAll([]);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 1, ctx)).resolves.toEqual([]);
@@ -887,19 +887,19 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-all-res", inputSchema: z.number() })
-        .thenAll([step]);
+        .stepAll([step]);
 
       expect(seq.declaredResources).toEqual({ myResource: resource });
     });
   });
 
-  describe("thenAny", () => {
+  describe("stepAny", () => {
     it("returns first successful result (sequential)", async () => {
       const addOne = addHandler("add-one", 1);
       const addTwo = addHandler("add-two", 2);
 
       const seq = sequencer({ name: "then-any", inputSchema: z.number() })
-        .thenAny([addOne, addTwo]);
+        .stepAny([addOne, addTwo]);
 
       const ctx = createMockContext();
       // Sequential: addOne runs first and succeeds → returns its result, addTwo never runs
@@ -922,7 +922,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-any-skip", inputSchema: z.number() })
-        .thenAny([failing, success]);
+        .stepAny([failing, success]);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 1, ctx)).resolves.toBe(43);
@@ -946,7 +946,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-any-skip-rest", inputSchema: z.number() })
-        .thenAny([first, second]);
+        .stepAny([first, second]);
 
       const ctx = createMockContext();
       await runForTest(seq, 5, ctx);
@@ -969,25 +969,25 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "then-any-all-fail", inputSchema: z.number() })
-        .thenAny([fail1, fail2]);
+        .stepAny([fail1, fail2]);
 
       const ctx = createMockContext();
-      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("All blocks in thenAny failed");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("All blocks in stepAny failed");
     });
 
     it("throws AggregateError with empty blocks array", async () => {
       const seq = sequencer({ name: "then-any-empty", inputSchema: z.number() })
-        .thenAny([]);
+        .stepAny([]);
 
       const ctx = createMockContext();
-      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("thenAny called with no blocks");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("stepAny called with no blocks");
     });
 
     it("works with a single block", async () => {
       const addOne = addHandler("add-one", 1);
 
       const seq = sequencer({ name: "then-any-single", inputSchema: z.number() })
-        .thenAny([addOne]);
+        .stepAny([addOne]);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
@@ -1139,9 +1139,9 @@ describe("sequencer builder", () => {
       const addOne = addHandler("add-one", 1);
 
       const seq = sequencer({ name: "exit-true", inputSchema: z.number() })
-        .then(addTen)
+        .step(addTen)
         .exitIf((value) => value > 5)
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       // 0 + 10 = 10, exitIf(10 > 5) → exits, skips addOne
@@ -1153,9 +1153,9 @@ describe("sequencer builder", () => {
       const addOne = addHandler("add-one", 1);
 
       const seq = sequencer({ name: "exit-false", inputSchema: z.number() })
-        .then(addTen)
+        .step(addTen)
         .exitIf((value) => value > 100)
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       // 0 + 10 = 10, exitIf(10 > 100) → false, continues → 10 + 1 = 11
@@ -1203,7 +1203,7 @@ describe("sequencer builder", () => {
       const seq = sequencer({ name: "exit-work", inputSchema: z.number() })
         .work(sideEffect)
         .exitIf((value) => value > 0)
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 5, ctx);
@@ -1216,11 +1216,11 @@ describe("sequencer builder", () => {
       const addTen = addHandler("add-ten", 10);
 
       const seq = sequencer({ name: "exit-multi", inputSchema: z.number() })
-        .then(addOne)
+        .step(addOne)
         .exitIf((value) => value > 3)
-        .then(addTen)
+        .step(addTen)
         .exitIf((value) => value > 50)
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       // 5 + 1 = 6, exitIf(6 > 3) → true → exits with 6
@@ -1241,9 +1241,9 @@ describe("sequencer builder", () => {
     it("throws the supplied static error when condition is true", async () => {
       const addOne = addHandler("add-one", 1);
       const seq = sequencer({ name: "throw-static", inputSchema: z.number() })
-        .then(addOne)
+        .step(addOne)
         .throwIf((value) => value > 0, new GuardError("positive"))
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 0, ctx)).rejects.toThrow("positive");
@@ -1266,9 +1266,9 @@ describe("sequencer builder", () => {
     it("passes through unchanged when condition is false", async () => {
       const addOne = addHandler("add-one", 1);
       const seq = sequencer({ name: "throw-pass", inputSchema: z.number() })
-        .then(addOne)
+        .step(addOne)
         .throwIf((value) => value > 100, new GuardError("never"))
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 0, ctx)).resolves.toBe(2);
@@ -1530,7 +1530,7 @@ describe("sequencer builder", () => {
       const addOne = addHandler("add-one", 1);
       const seq = sequencer({ name: "workIf-passthrough", inputSchema: z.number() })
         .workIf(() => true, workBlock)
-        .then(addOne);
+        .step(addOne);
 
       const ctx = createMockContext();
       // workIf returns unchanged value (5), then addOne → 6
@@ -1656,7 +1656,7 @@ describe("sequencer builder", () => {
         inputSchema: z.number(),
         outputSchema: z.string()
       })
-        .then(failing)
+        .step(failing)
         .rescue([{ block: rescueNum }]);
 
       const ctx = createMockContext();
@@ -1692,7 +1692,7 @@ describe("sequencer builder", () => {
         inputSchema: z.number(),
         outputSchema: z.string()
       })
-        .then(child)
+        .step(child)
         .rescue([{ when: [SequencerOutputSchemaError], block: fallback }]);
 
       const ctx = createMockContext();
@@ -1718,7 +1718,7 @@ describe("sequencer builder", () => {
         inputSchema: z.number(),
         outputSchema: z.string()
       })
-        .then(child)
+        .step(child)
         .rescue([{ when: [SequencerOutputSchemaError], block: badFallback }]);
 
       const ctx = createMockContext();
@@ -1766,7 +1766,7 @@ describe("sequencer builder", () => {
         name: "bt-match",
         inputSchema: z.number(),
         outputSchema: z.string()
-      }).then(strBlock);
+      }).step(strBlock);
       expect(() => seq.validate()).not.toThrow();
     });
 
@@ -1782,7 +1782,7 @@ describe("sequencer builder", () => {
         name: "bt-ref",
         inputSchema: z.number(),
         outputSchema: schema
-      }).then(sharedBlock);
+      }).step(sharedBlock);
       expect(() => seq.validate()).not.toThrow();
     });
 
@@ -1791,7 +1791,7 @@ describe("sequencer builder", () => {
         name: "bt-kind",
         inputSchema: z.number(),
         outputSchema: z.number()
-      }).then(strBlock);
+      }).step(strBlock);
 
       let caught: any;
       try {
@@ -1815,7 +1815,7 @@ describe("sequencer builder", () => {
         name: "bt-keys",
         inputSchema: z.number(),
         outputSchema: z.object({ a: z.number() })
-      }).then(objBlock);
+      }).step(objBlock);
 
       let caught: any;
       try {
@@ -1838,7 +1838,7 @@ describe("sequencer builder", () => {
         name: "bt-valkind",
         inputSchema: z.number(),
         outputSchema: z.object({ a: z.string() })
-      }).then(objBlock);
+      }).step(objBlock);
 
       let caught: any;
       try {
@@ -1864,7 +1864,7 @@ describe("sequencer builder", () => {
         name: "bt-arr",
         inputSchema: z.number(),
         outputSchema: z.array(z.string())
-      }).then(arrBlock);
+      }).step(arrBlock);
 
       let caught: any;
       try {
@@ -1881,13 +1881,13 @@ describe("sequencer builder", () => {
         name: "bt-erased",
         inputSchema: z.number(),
         outputSchema: z.string()
-      }).thenAny([strBlock]);
-      // thenAny erases lastOutputSchema → nothing to compare against.
+      }).stepAny([strBlock]);
+      // stepAny erases lastOutputSchema → nothing to compare against.
       expect(() => seq.validate()).not.toThrow();
     });
 
     it(".validate() no-ops when no outputSchema is declared", () => {
-      const seq = sequencer({ name: "bt-noschema", inputSchema: z.number() }).then(strBlock);
+      const seq = sequencer({ name: "bt-noschema", inputSchema: z.number() }).step(strBlock);
       expect(() => seq.validate()).not.toThrow();
     });
   });

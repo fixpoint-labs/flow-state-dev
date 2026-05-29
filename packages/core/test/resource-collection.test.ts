@@ -539,7 +539,7 @@ describe("sequencer with collection resources", () => {
       execute: (v) => v,
     });
 
-    const seq = sequencer({ name: "coll-seq" }).then(blockA).then(blockB);
+    const seq = sequencer({ name: "coll-seq" }).step(blockA).step(blockB);
     expect(seq.declaredResources).toEqual({
       files: filesCollection,
       observations: observationsResource,
@@ -552,8 +552,8 @@ describe("sequencer with collection resources", () => {
       resources: { files: filesCollection },
       execute: (v) => v,
     });
-    const inner = sequencer({ name: "inner" }).then(block);
-    const outer = sequencer({ name: "outer" }).then(inner);
+    const inner = sequencer({ name: "inner" }).step(block);
+    const outer = sequencer({ name: "outer" }).step(inner);
 
     expect(outer.declaredResources).toEqual({ files: filesCollection });
   });

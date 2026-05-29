@@ -193,8 +193,8 @@ const summarizeArtifact = sequencer({
   name: "summarize-artifact",
   inputSchema: updateArtifactInputSchema,
 })
-  .then((input) => input.content, artifactSummarizer)
-  .then(saveSummary);
+  .step((input) => input.content, artifactSummarizer)
+  .step(saveSummary);
 
 export const writeArtifact = sequencer({
   name: "write-artifact",

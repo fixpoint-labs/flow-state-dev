@@ -2,10 +2,10 @@
  * `synthesize` — final step in the supervisor pipeline.
  *
  *   .tap(boardMetaSynthesizing)  — fire `task-board-meta` "synthesizing"
- *   .then(buildResults)          — `{ goal, results: <completed outputs> }`
- *   .then(synthesizer)           — produces the supervisor's final output
+ *   .step(buildResults)          — `{ goal, results: <completed outputs> }`
+ *   .step(synthesizer)           — produces the supervisor's final output
  *
- * BP-011 / BP-012 clean: synthesizer is composed as `.then(...)`,
+ * BP-011 / BP-012 clean: synthesizer is composed as `.step(...)`,
  * `boardMetaSynthesizing` is `.tap()`-shaped (no return).
  */
 import { sequencer, handler } from "@flow-state-dev/core";
@@ -77,6 +77,6 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     stateSchema: supervisorStateSchema,
     activeStatusMessage: "Putting it all together",
   })
-    .then(buildResults)
-    .then(synthesizer);
+    .step(buildResults)
+    .step(synthesizer);
 }

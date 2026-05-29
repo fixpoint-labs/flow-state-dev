@@ -7,18 +7,19 @@
  * against here only fires inside that route, when its async `execute`
  * returns a SequencerDefinition.
  *
- * The SequencerDefinition has a `.then(...)` DSL method (used for
- * `seq.then(block).then(block)` chaining). When an async function
- * returns a value, JS wraps it via `Promise.resolve`, which recursively
- * unwraps thenables — so `Promise.resolve(sequencer)` calls
- * `sequencer.then(resolve, reject)`. The sequencer interprets `resolve`
- * as a block step and crashes on `resolve.config.outputSchema`,
- * surfacing as: `Cannot read properties of undefined (reading 'outputSchema')`.
+ * Historically the SequencerDefinition's sequential-step method was named
+ * `.then(...)`, which collided with the JS Promise/thenable protocol: when an
+ * async function returns a value, JS wraps it via `Promise.resolve`, which
+ * recursively unwraps thenables — so `Promise.resolve(sequencer)` would call
+ * `sequencer.then(resolve, reject)`, interpret `resolve` as a block step, and
+ * crash on `resolve.config.outputSchema` (`Cannot read properties of undefined
+ * (reading 'outputSchema')`).
  *
- * `pattern-run.ts` mitigates this with `wrapMaterializedBlock(...)`, a
- * passthrough router that returns the sequencer from a SYNC execute so
- * the framework's `isBlockDefinition` check catches it before any
- * await touches the `.then` method.
+ * The DSL method is now `.step(...)` (FIX-595), so a SequencerDefinition is no
+ * longer a thenable. `pattern-run.ts` returns the materialized sequencer
+ * directly from its async execute; the defensive `wrapMaterializedBlock`
+ * passthrough router that previously dodged the trap has been removed. This
+ * test pins that the trap stays closed.
  */
 import { describe, expect, it, vi } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";

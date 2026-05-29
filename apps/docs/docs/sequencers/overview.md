@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Overview
 
-Most frameworks force a choice: Agent (the LLM decides what to do next) or Workflow (your code decides). flow-state.dev rejects that split. Sequencers are the composition model. You chain blocks with `.then()`, `.thenIf()`, `.tap()`, and other DSL methods. Each step's output feeds into the next step's input. Type inference flows through the whole chain.
+Most frameworks force a choice: Agent (the LLM decides what to do next) or Workflow (your code decides). flow-state.dev rejects that split. Sequencers are the composition model. You chain blocks with `.step()`, `.stepIf()`, `.tap()`, and other DSL methods. Each step's output feeds into the next step's input. Type inference flows through the whole chain.
 
 You can interleave deterministic and non-deterministic steps. Validate input with a handler, generate a response with a generator, extract structured data with a handler, refine with another generator. All in one pipeline. No artificial boundary between "AI steps" and "logic steps."
 
@@ -49,9 +49,9 @@ const pipeline = sequencer({
   inputSchema: chatInputSchema,
 })
   .tap(validate)
-  .then(agent)
+  .step(agent)
   .map((out) => out.text)
-  .then(extractJson);
+  .step(extractJson);
 ```
 
 Here, a handler validates as a tap (it throws on bad input but produces no output of its own), a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
@@ -66,10 +66,10 @@ The DSL has 21 methods. You'll only use six on day one. The rest are there when 
 
 | Method | Purpose |
 |--------|---------|
-| `then` | Run a block, pass output to the next step |
+| `step` | Run a block, pass output to the next step |
 | `map` | Inline transform between steps (no block) |
 | `tap` | Run a block for side effects, payload passes through |
-| `thenIf` | Run a block only when a condition holds |
+| `stepIf` | Run a block only when a condition holds |
 | `work` | Fire a block in the background, don't wait |
 | `rescue` | Catch errors and route to recovery blocks |
 
@@ -77,14 +77,14 @@ The DSL has 21 methods. You'll only use six on day one. The rest are there when 
 
 | Group | Methods |
 |-------|---------|
-| Parallelism | `parallel`, `forEach`, `forEachBackground`, `thenAll` |
+| Parallelism | `parallel`, `forEach`, `forEachBackground`, `stepAll` |
 | Looping | `doUntil`, `doWhile`, `loopBack` |
 | Conditional sub-cases | `tapIf`, `workIf`, `exitIf` |
-| Specialization (rarely needed) | `thenAny`, `race`, `branch` |
+| Specialization (rarely needed) | `stepAny`, `race`, `branch` |
 | Side-chain coordination | `waitForWork` |
 | Connector adaptation | `connectInput` |
 
-Each method returns a sequencer. You chain them: `.then(a).thenIf(cond, b).tap(c).then(d)`.
+Each method returns a sequencer. You chain them: `.step(a).stepIf(cond, b).tap(c).step(d)`.
 
 ## Declaring and validating output schemas
 
@@ -124,7 +124,7 @@ Be clear about what it does NOT catch:
 - Refinements and brands.
 - Union variants.
 
-`.validate()` is a no-op in two cases: when no `outputSchema` is declared, and when the tail schema has been erased by a schema-erasing op (`thenAny`, `race`, `thenAll`, `branch`). In the erased case there is nothing to compare against at build time, but the runtime gate still catches an actual mismatch. `.validate()` returns `void` and is terminal, not fluent. Operations added after the `.validate()` call are not covered by that call.
+`.validate()` is a no-op in two cases: when no `outputSchema` is declared, and when the tail schema has been erased by a schema-erasing op (`stepAny`, `race`, `stepAll`, `branch`). In the erased case there is nothing to compare against at build time, but the runtime gate still catches an actual mismatch. `.validate()` returns `void` and is terminal, not fluent. Operations added after the `.validate()` call are not covered by that call.
 
 ```ts
 const pipeline = sequencer({
@@ -132,7 +132,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ text: z.string() }),
   outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
 })
-  .then(summarizeBlock); // produces { summary, wordCount }
+  .step(summarizeBlock); // produces { summary, wordCount }
 
 pipeline.validate(); // no throw — declared shape matches the tail
 ```
@@ -146,10 +146,10 @@ const inner = sequencer({
   name: "extract",
   inputSchema: z.object({ raw: z.string() }),
   outputSchema: z.object({ id: z.string() }),
-}).then(extractBlock);
+}).step(extractBlock);
 
 const outer = sequencer({ name: "outer" })
-  .then(inner)
+  .step(inner)
   .rescue([
     { when: [SequencerOutputSchemaError], block: handleBadShape },
   ]);
@@ -165,10 +165,10 @@ const flow = sequencer({
   inputSchema: z.object({ draft: z.string() }),
   outputSchema: z.object({ draft: z.string(), approved: z.boolean() }),
 })
-  .then(scoreBlock) // produces { draft, approved, score }
+  .step(scoreBlock) // produces { draft, approved, score }
   .map(({ draft, approved }) => ({ draft, approved })) // drop the extra score field
   .exitIf((value) => value.approved)
-  .then(reviseBlock);
+  .step(reviseBlock);
 ```
 
 The `.map()` reshapes the value to the declared output shape before the early exit. Without it, the early-exit value would carry the extra `score` field and trip the gate.
@@ -190,10 +190,10 @@ The pipeline is linear: step 1 output → step 2 input → step 2 output → ste
 A sequencer is a block. It composes with any other block. You can nest sequencers, use a sequencer as a generator tool, or register it as a flow action:
 
 ```ts
-const inner = sequencer({ name: "inner" }).then(blockA).then(blockB);
+const inner = sequencer({ name: "inner" }).step(blockA).step(blockB);
 const outer = sequencer({ name: "outer" })
-  .then(inner)
-  .then(blockC);
+  .step(inner)
+  .step(blockC);
 
 // As a tool
 const agent = generator({

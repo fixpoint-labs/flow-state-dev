@@ -2,10 +2,10 @@
  * Build the per-iteration worker step for the Task Board pipeline.
  *
  * The worker step takes a `Task` (piped from `claimTask` via the
- * pipeline's `.thenIf` connector) and produces whatever the worker
+ * pipeline's `.stepIf` connector) and produces whatever the worker
  * returns. The worker block runs as a first-class step in the
  * sequencer — it is NOT invoked from inside another block's `execute`
- * (BP-011). The pipeline composes it directly via `.then(workerStep)`.
+ * (BP-011). The pipeline composes it directly via `.step(workerStep)`.
  *
  * Two shapes:
  *

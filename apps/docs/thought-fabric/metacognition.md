@@ -145,11 +145,11 @@ import {
 } from '@thought-fabric/core/metacognition'
 
 const quickAudit = sequencer({ name: 'quick-audit', inputSchema: biasAnalyzerInputSchema })
-  .then(biasDetectAgreement())
-  .then(biasClassify())
-  .then(biasScore())
+  .step(biasDetectAgreement())
+  .step(biasClassify())
+  .step(biasScore())
   .map((input) => ({ ...input, counterArguments: [] }))
-  .then(biasFormat())
+  .step(biasFormat())
 ```
 
 Or use `biasDetectAgreement` alone for a lightweight agreement check without full classification:
@@ -177,7 +177,7 @@ const chat = generator({ name: 'chat', model: 'preset/default', prompt: '...' })
 const audit = biasAnalyzer({ model: 'preset/fast' })
 
 const pipeline = sequencer({ name: 'chat-with-audit', inputSchema: chatInput })
-  .then(chat)
+  .step(chat)
   .work(
     (chatOutput) => ({
       userInput: chatOutput.userMessage,

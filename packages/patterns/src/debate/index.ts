@@ -19,26 +19,26 @@
  *   sequencer
  *     .tap(initTranscript)
  *     .tap(stampQuestion)
- *     .then(incrementRound)                          ← loopBack target
- *     .then(debater[0]).tap(record[0])
+ *     .step(incrementRound)                          ← loopBack target
+ *     .step(debater[0]).tap(record[0])
  *     ...
- *     .then(debater[N-1]).tap(record[N-1])
+ *     .step(debater[N-1]).tap(record[N-1])
  *     .loopBack(incrementRound, { when: round < maxRounds && !terminateWhen })
- *     .then(judge)
+ *     .step(judge)
  *     .map(buildRawOutput)
- *     [.then(synthesizer)]
+ *     [.step(synthesizer)]
  *
  * Pipeline (with moderator):
  *   sequencer
  *     .tap(initTranscript)
  *     .tap(stampQuestion)
- *     .then(incrementRound)                          ← loopBack target
- *     .then(moderator).tap(stashModeratorDecision)   // opens the round
+ *     .step(incrementRound)                          ← loopBack target
+ *     .step(moderator).tap(stashModeratorDecision)   // opens the round
  *     .forEach(speakersForRound, dispatchByName, { maxConcurrency: 1 })
  *     .loopBack(incrementRound, { when: round < maxRounds && !last.done && !terminateWhen })
- *     .then(judge)
+ *     .step(judge)
  *     .map(buildRawOutput)
- *     [.then(synthesizer)]
+ *     [.step(synthesizer)]
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type {
@@ -293,7 +293,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // Returns the new round number so this is a real `.then()` step
+  // Returns the new round number so this is a real `.step()` step
   // (BP-014: never return input as output). Debaters ignore this input
   // and read question + round from the outer sequencer state.
   const incrementRound = handler({
@@ -387,7 +387,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     judge: BlockDefinition<any, any>,
   ): SequencerDefinition<any, any> => {
     const withJudge = pipeline
-      .then(judge)
+      .step(judge)
       .tap(emitVerdictTap)
       .map((value: unknown, ctx: any) => buildRawOutput(value, ctx));
     if (config.synthesizer === false) {
@@ -407,7 +407,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           ? { agentType: synthesizerAgentType }
           : {}),
       });
-    return withJudge.then(synth) as SequencerDefinition<any, any>;
+    return withJudge.step(synth) as SequencerDefinition<any, any>;
   };
 
   // ---------------------------------------------------------------------
@@ -422,7 +422,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     })
       .tap(initTranscript)
       .tap(stampQuestion)
-      .then(incrementRound);
+      .step(incrementRound);
 
     for (const entry of debaters) {
       const debaterBlock =
@@ -453,7 +453,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       });
       pipeline = pipeline
         .tap(makePendingTurnTap(entry.name, entry.stance))
-        .then(debaterBlock)
+        .step(debaterBlock)
         .tap(recordTap);
     }
 
@@ -524,7 +524,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       inputSchema: z.any(),
     })
       .tap(makePendingTurnTap(entry.name, entry.stance))
-      .then(debaterBlock)
+      .step(debaterBlock)
       .tap(recordTap);
     speakerBlocks[entry.name] = speakerStep as BlockDefinition<any, any>;
   }
@@ -588,12 +588,12 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   })
     .tap(initTranscript)
     .tap(stampQuestion)
-    .then(incrementRound)
+    .step(incrementRound)
     // Moderator opens each round: it picks speakers, optionally supplies
     // a briefing and angle for the debaters, and may flag this as the
     // last round. With the moderator at the top, every decision drives
     // a real round — there are no orphan decisions before the judge.
-    .then(config.moderator)
+    .step(config.moderator)
     .tap(stashModeratorDecision)
     // `maxConcurrency: 1` is load-bearing: it makes within-round speakers
     // sequential, so later speakers see the freshly recorded transcript

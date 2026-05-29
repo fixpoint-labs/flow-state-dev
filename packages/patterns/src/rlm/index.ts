@@ -170,8 +170,8 @@ export const rlmPipeline = sequencer({
   // would silently change what consumers receive.
   outputSchema: rlmOutputSchema,
 })
-  .then(storeContext)
-  .then(rootGenerator);
+  .step(storeContext)
+  .step(rootGenerator);
 
 // Re-export schemas and blocks for consumers that need finer-grained access.
 export {

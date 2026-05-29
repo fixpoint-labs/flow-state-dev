@@ -2,7 +2,7 @@
  * `buildReviewedWorker` — wraps a worker block in a per-task review
  * sequencer.
  *
- * The reviewer is composed as a `.then(reviewerGenerator)` step in the
+ * The reviewer is composed as a `.step(reviewerGenerator)` step in the
  * worker's own sequencer chain (BP-011 — reviewer is composed, not
  * invoked from inside a handler's `execute`). `applyVerdict` is a
  * pure handler that synchronously decides "throw or return" based on
@@ -11,13 +11,13 @@
  * Pipeline (per registered worker):
  *
  *   .tap(stashTaskId)         — capture taskId/goal/attempts on inner state
- *   .then(adaptedWorker)       — runs the user's worker (legacy adapter applied)
+ *   .step(adaptedWorker)       — runs the user's worker (legacy adapter applied)
  *   .tap(stashWorkerOutput)    — capture worker output for applyVerdict
  *                                AND stamp reviewMetadata[taskId].entered=true
  *                                on the supervisor sequencer state
  *   .map(buildReviewerInput)   — adapt workerOutput → ReviewerInput
- *   .then(reviewerGenerator)   — produces ReviewerVerdict
- *   .then(applyVerdict)        — approve flows workerOutput through; reject throws
+ *   .step(reviewerGenerator)   — produces ReviewerVerdict
+ *   .step(applyVerdict)        — approve flows workerOutput through; reject throws
  *
  * Reviewer audit-state (`entered`, `lastVerdict`) lives on the supervisor
  * sequencer's outer state (`reviewMetadata[taskId]`) — not on the task
@@ -202,10 +202,10 @@ export function buildReviewedWorker(
     stateSchema: reviewedWorkerStateSchema,
   })
     .tap(stashTaskId)
-    .then(adaptedWorker)
+    .step(adaptedWorker)
     .tap(stashWorkerOutput)
     .tap(emitReviewingStatus)
     .map(buildReviewerInput)
-    .then(reviewerGenerator)
-    .then(applyVerdict);
+    .step(reviewerGenerator)
+    .step(applyVerdict);
 }

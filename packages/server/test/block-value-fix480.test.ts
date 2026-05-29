@@ -135,8 +135,8 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
       name: "outer-seq",
       inputSchema: z.unknown(),
     })
-      .then(gen)
-      .then(passThrough);
+      .step(gen)
+      .step(passThrough);
 
     const flow = defineFlow({
       kind: "fix480-nested",
@@ -202,7 +202,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const seq = sequencer({ name: "worker-then-record", inputSchema: z.unknown() })
-      .then(gen)
+      .step(gen)
       .tap(recordHandler);
 
     const flow = defineFlow({

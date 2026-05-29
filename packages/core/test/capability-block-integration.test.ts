@@ -209,7 +209,7 @@ describe("sequencer with uses", () => {
       execute: (v) => v,
     });
 
-    const pipeline = sequencer({ name: "test", uses: [cap] }).then(step);
+    const pipeline = sequencer({ name: "test", uses: [cap] }).step(step);
 
     expect(pipeline.declaredResources?.res1).toBe(res1);
     expect(pipeline.declaredResources?.res2).toBe(res2);
@@ -227,7 +227,7 @@ describe("sequencer with uses", () => {
       execute: (v) => v,
     });
 
-    const pipeline = sequencer({ name: "test", uses: [cap] }).then(step);
+    const pipeline = sequencer({ name: "test", uses: [cap] }).step(step);
 
     expect(pipeline.declaredResources?.res1).toBe(res1);
     // Same reference, so only one entry

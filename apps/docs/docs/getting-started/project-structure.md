@@ -43,7 +43,7 @@ import { chatGen } from "./blocks/chat-gen";
 const pipeline = sequencer({
   name: "chat-pipeline",
   inputSchema: z.object({ message: z.string() }),
-}).then(chatGen);
+}).step(chatGen);
 
 const myChat = defineFlow({
   kind: "my-chat",

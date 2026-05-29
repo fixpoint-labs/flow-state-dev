@@ -39,7 +39,7 @@ const supervisorBlock = supervisor({
 });
 
 const pipeline = sequencer({ name: "supervisor-pipeline", inputSchema })
-  .then(supervisorBlock);
+  .step(supervisorBlock);
 
 const supervisorFlow = defineFlow({
   kind: "test-supervisor",

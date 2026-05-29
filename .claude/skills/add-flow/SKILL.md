@@ -119,8 +119,8 @@ const incrementCount = handler({
 });
 
 export const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
-  .then(chatGenerator)
-  .then(incrementCount);
+  .step(chatGenerator)
+  .step(incrementCount);
 ```
 
 #### Flow Definition

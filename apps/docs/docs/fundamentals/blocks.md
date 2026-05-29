@@ -28,7 +28,7 @@ const counter = handler({
 });
 ```
 
-`counter` only mutates state — it has no transformation to feed downstream. So it declares no `outputSchema` and returns nothing, and it gets chained with `.tap()` rather than `.then()`. A handler that exists purely for its side effect should never echo its input back as output. See [Composing Blocks](/docs/sequencers/composing-blocks).
+`counter` only mutates state — it has no transformation to feed downstream. So it declares no `outputSchema` and returns nothing, and it gets chained with `.tap()` rather than `.step()`. A handler that exists purely for its side effect should never echo its input back as output. See [Composing Blocks](/docs/sequencers/composing-blocks).
 
 Handlers are **silent by default** — they don't emit anything to the client unless you explicitly call `ctx.emitMessage()` or `ctx.emitComponent()`. This gives you precise control over what the user sees.
 
@@ -135,9 +135,9 @@ const readDoc = handler({
 
 // A full pipeline as a tool — search, rank, summarize
 const deepResearch = sequencer({ name: "deep-research" })
-  .then(searchIndex)
-  .then(rankResults)
-  .then(summarize);
+  .step(searchIndex)
+  .step(rankResults)
+  .step(summarize);
 
 // Both work as tools — the framework compiles them for the LLM
 const agent = generator({
@@ -162,7 +162,7 @@ const dataBundle = sequencer({ name: "prefetch" })
     balanceSheet: get_balance_sheet.asTool({ agentType: "sub", agentName: "fundamentals" }),
     incomeStatement: get_income_statement.asTool({ agentType: "sub", agentName: "fundamentals" }),
   })
-  .then(synthesizeFundamentals);
+  .step(synthesizeFundamentals);
 ```
 
 Each branch emits a `tool_output` with the same envelope shape as a generator-driven tool call. The `agentType` / `agentName` opts control grouping under the parent agent's card; both are optional. When omitted, the fields are not stamped on the emitted item.
@@ -268,10 +268,10 @@ The basics — chain blocks in order, conditionally skip steps, or transform val
 
 ```ts
 const pipeline = sequencer({ name: "pipeline", inputSchema })
-  .then(analyzeInput)                                            // always runs
-  .thenIf((result) => result.needsContext, enrichWithContext)     // conditional
+  .step(analyzeInput)                                            // always runs
+  .stepIf((result) => result.needsContext, enrichWithContext)     // conditional
   .map((result) => ({ ...result, timestamp: Date.now() }))       // inline transform
-  .then(agent);
+  .step(agent);
 ```
 
 #### Parallel execution
@@ -280,14 +280,14 @@ Run multiple blocks concurrently with a single step. Output is an object keyed b
 
 ```ts
 const enriched = sequencer({ name: "enrich" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web: searchWeb,
     docs: searchInternalDocs,
     memory: { connector: (input) => input.userId, block: searchUserHistory },
   }, { maxConcurrency: 3 })
   // output: { web: WebResults, docs: DocResults, memory: HistoryResults }
-  .then(mergeResults);
+  .step(mergeResults);
 ```
 
 #### Collection processing
@@ -314,8 +314,8 @@ pipeline
   .doWhile((result) => result.remaining > 0, processNextBatch)
 
   // Jump back to a named step — requires explicit max iterations
-  .then(generateBlock)
-  .then(validateBlock)
+  .step(generateBlock)
+  .step(validateBlock)
   .loopBack("generate-block", {
     when: (result) => !result.isValid,
     maxIterations: 3,
@@ -328,10 +328,10 @@ Queue non-blocking tasks that run alongside the main pipeline. The main chain co
 
 ```ts
 pipeline
-  .then(coreLogic)
+  .step(coreLogic)
   .work(logAnalytics)                          // fire and forget
   .work((output) => output.metrics, reportMetrics)  // with connector
-  .then(moreWork)
+  .step(moreWork)
   .waitForWork({ timeoutMs: 5000 });           // optionally converge later
 ```
 
@@ -390,16 +390,16 @@ These compose into sophisticated workflows that would be painful to build from s
 
 ```ts
 const researchAgent = sequencer({ name: "research-agent" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web: searchWeb,
     docs: searchDocs,
     memory: searchMemory,
   })
-  .then(mergeAndRank)
+  .step(mergeAndRank)
   .doUntil((r) => r.confidence > 0.9, refineResults)
   .work(logAnalytics)
-  .then(synthesize)
+  .step(synthesize)
   .tapIf((r) => r.citations.length > 5, notifyReviewer)
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
 ```
@@ -526,13 +526,13 @@ A sequencer is a block. A router is a block. This means you can nest them freely
 
 ```ts
 const innerPipeline = sequencer({ name: "inner" })
-  .then(blockA)
-  .then(blockB);
+  .step(blockA)
+  .step(blockB);
 
 const outerPipeline = sequencer({ name: "outer" })
-  .then(innerPipeline)    // Sequencer inside sequencer
-  .then(modeRouter)       // Router inside sequencer
-  .then(blockC);
+  .step(innerPipeline)    // Sequencer inside sequencer
+  .step(modeRouter)       // Router inside sequencer
+  .step(blockC);
 ```
 
 ## Connecting blocks with different shapes
@@ -547,8 +547,8 @@ The most common pattern. Pass a transform function before the block in any seque
 const pipeline = sequencer({ name: "pipeline", inputSchema })
   // Block A outputs { text: string, metadata: {...} }
   // Block B expects { query: string }
-  .then(blockA)
-  .then(
+  .step(blockA)
+  .step(
     (output) => ({ query: output.text }),  // Connector: reshape the data
     blockB
   );
@@ -558,8 +558,8 @@ Connectors receive the previous step's output and the block context, and return 
 
 ```ts
 pipeline
-  .then((output) => ({ query: output.text }), searchBlock)         // then
-  .thenIf(needsReview, (output) => output.results, reviewBlock)    // thenIf
+  .step((output) => ({ query: output.text }), searchBlock)         // step
+  .stepIf(needsReview, (output) => output.results, reviewBlock)    // stepIf
   .parallel({                                                       // parallel
     summary: summaryBlock,
     tags: { connector: (output) => output.text, block: tagBlock },
@@ -580,7 +580,7 @@ const searchFromText = searchBlock.connectInput(
 );
 
 // Now it fits directly in the pipeline without a sequencer connector
-pipeline.then(searchFromText);
+pipeline.step(searchFromText);
 ```
 
 ### Why this matters for portability
@@ -588,7 +588,7 @@ pipeline.then(searchFromText);
 Connectors are how blocks from different packages work together. A community search block expects `{ query: string, limit: number }`. Your pipeline produces `{ text: string, metadata: object }`. A one-line connector bridges the gap — no wrapper blocks, no adapters, no type gymnastics:
 
 ```ts
-pipeline.then(
+pipeline.step(
   (output) => ({ query: output.text, limit: 5 }),
   communitySearchBlock
 );

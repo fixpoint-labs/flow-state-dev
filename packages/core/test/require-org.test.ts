@@ -49,8 +49,8 @@ describe("requireOrg bubbling", () => {
     });
 
     const seq = sequencer({ name: "mixed-seq" })
-      .then(noOrgChild)
-      .then(orgChild);
+      .step(noOrgChild)
+      .step(orgChild);
 
     expect(seq.requiresOrg).toBe(true);
 
@@ -70,8 +70,8 @@ describe("requireOrg bubbling", () => {
       execute: (input) => input
     });
 
-    const middle = sequencer({ name: "middle-seq" }).then(inner);
-    const outer = sequencer({ name: "outer-seq" }).then(middle);
+    const middle = sequencer({ name: "middle-seq" }).step(inner);
+    const outer = sequencer({ name: "outer-seq" }).step(middle);
 
     expect(middle.requiresOrg).toBe(true);
     expect(outer.requiresOrg).toBe(true);
@@ -105,7 +105,7 @@ describe("requireOrg bubbling", () => {
     // (no top-level field), but the bubble works through any block author who
     // composes a single requireOrg leaf. Assert that the absence of any
     // requireOrg leaf yields false.
-    const seq = sequencer({ name: "no-req" }).then(block);
+    const seq = sequencer({ name: "no-req" }).step(block);
     expect(seq.requiresOrg).toBe(false);
   });
 

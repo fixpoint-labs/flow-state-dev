@@ -8,12 +8,12 @@ The flow is one outer sequencer that chains five sub-sequencers. Each phase is a
 
 ```
 analyzePipeline
-  .then(seedSession)
-  .then(phase1Pipeline)   // setupPhase1Memos → parallel(4 analysts)
-  .then(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
-  .then(phase3Pipeline)   // setupPhase3Memos → traderStep
-  .then(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
-  .then(phase5Pipeline)   // setupPhase5Memos → portfolioManagerStep
+  .step(seedSession)
+  .step(phase1Pipeline)   // setupPhase1Memos → parallel(4 analysts)
+  .step(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
+  .step(phase3Pipeline)   // setupPhase3Memos → traderStep
+  .step(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
+  .step(phase5Pipeline)   // setupPhase5Memos → portfolioManagerStep
 ```
 
 See [`flow.ts`](../../../examples/trading-desk/src/flows/trading-desk/flow.ts) for the actual composition. Each phase pre-creates its memo slots in `pending` so the sidebar can scaffold every entry before any generator runs. The cheap preset (`costPreset: "fast"`) finishes well under a minute. The full preset (`costPreset: "full"`) takes longer-form generations and an extra round of bull/bear debate.
@@ -98,7 +98,7 @@ The `formatMemoBlock` helper renders an "unavailable" sentinel when a memo's `he
 
 **Round Robin over Debate in Phase 2.** Both ship in `@flow-state-dev/patterns`. Phase 2 picks Round Robin because the research manager is a synthesizer, not a judge. Earlier Round Robin required a judge to terminate the loop; the trading desk filled that with a stub judge that always returned `done: false`. FIX-597 reshaped the pattern: the judge slot is now an optional per-round *referee* focused on argument-quality auditing (not termination), and termination is `maxRounds` plus an optional runtime `terminateWhen` predicate. Phase 2 uses the reshaped factory directly with `terminateWhen` reading `maxDebateRounds` from session state. Debate still differs structurally — its at-end verdict-judge picks a winner over the transcript — and Round Robin's per-round referee is a different concern. Picking Debate here would mean filling its judge slot with a placeholder when there's no real judging to do; the reshape makes the right primitive obvious without any placeholder.
 
-**Plain sequencer chain plus consolidator in Phase 4.** Phase 4 does not use `roundRobin()`. None of the pattern's distinguishing features fit: single pass (no debate cycling), no referee, heterogeneous roster (the neutral persona has its own output schema), and the personas read prior critiques from the structured persona memos rather than from a shared free-form transcript. The three persona steps run as `aggressiveStep.then(conservativeStep).then(neutralStep)` inside `phase4Pipeline`, each emitting its typed critique in one LLM call and committing it to its persona memo. Conservative and neutral pull prior critiques via memo-backed `context` entries on their generator definitions. The `riskAssessmentGenerator` runs as a downstream step that synthesises the three persona memos into a typed `RiskAssessment` — its own memo with its own typed schema. Phase 2's bull/bear round-robin remains the canonical `roundRobin()` demo in this example.
+**Plain sequencer chain plus consolidator in Phase 4.** Phase 4 does not use `roundRobin()`. None of the pattern's distinguishing features fit: single pass (no debate cycling), no referee, heterogeneous roster (the neutral persona has its own output schema), and the personas read prior critiques from the structured persona memos rather than from a shared free-form transcript. The three persona steps run as `aggressiveStep.step(conservativeStep).step(neutralStep)` inside `phase4Pipeline`, each emitting its typed critique in one LLM call and committing it to its persona memo. Conservative and neutral pull prior critiques via memo-backed `context` entries on their generator definitions. The `riskAssessmentGenerator` runs as a downstream step that synthesises the three persona memos into a typed `RiskAssessment` — its own memo with its own typed schema. Phase 2's bull/bear round-robin remains the canonical `roundRobin()` demo in this example.
 
 **Single generator in Phase 5.** No roster. No debate. No consolidator. The weight is in the typed output shape — `PortfolioDecision` carries seven extension fields, structured `acceptedAdjustments` per category, derived `agreesWithTrader` (computed at commit time from `finalRating` vs `trader.direction`), and derived `upstreamReferences`. The orchestration is intentionally trivial. The phase mirrors Phase 3's shape — `setup → markWriting → generator → commit → rescue` — and puts the complexity where it belongs: the schema and the prompt.
 

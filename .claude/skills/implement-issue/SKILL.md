@@ -206,7 +206,7 @@ Launch a `Plan` sub-agent to:
 - Check if any code could be simplified without losing functionality
 - Verify the implementation follows existing codebase patterns rather than inventing new ones
 - Check for YAGNI violations — features or flexibility that wasn't requested
-- Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.then()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
+- Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
 - **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
 
 #### Agent 3: Quality and Impact Review

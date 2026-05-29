@@ -1,10 +1,10 @@
 /**
  * Pattern-skill runSkill dispatch fixture (bisection step 4).
  *
- * Mirrors production's full wrapping chain: an outer `assistant` generator
+ * Mirrors production's full dispatch chain: an outer `assistant` generator
  * with `uses: [skillsCap]` invokes `runSkill` which routes through
- * `skillPatternRun` → `wrapMaterializedBlock` → the materialized
- * `taskBoard` containing a `discoverer` worker.
+ * `skillPatternRun` → the materialized `taskBoard` (returned directly)
+ * containing a `discoverer` worker.
  *
  * The skill is declared inline (one `SKILL.md` string + the
  * `defaultPatternRegistry`) so the test exercises every layer of the
@@ -65,7 +65,7 @@ const assistant = generator({
 const pipeline = sequencer({
   name: "pattern-skill-runskill-pipeline",
   inputSchema
-}).then(assistant);
+}).step(assistant);
 
 const flow = defineFlow({
   kind: "test-pattern-skill-runskill",
