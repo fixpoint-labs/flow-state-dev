@@ -91,17 +91,22 @@ export type GetOrCreateTaskCollectionOptions =
  *
  * Example (sequencer-backed):
  * ```ts
- * const tasks = getOrCreateTaskCollection({
+ * const tasks = await getOrCreateTaskCollection({
  *   ctx,
  *   backing: "sequencer",
  *   collectionId: "my-plan",
  *   sequencer: ctx.sequencer!,
  * });
  * ```
+ *
+ * Async: the resource backing hydrates a sync read-mirror at construction
+ * (see `createResourceBackedTaskCollection`). The sequencer/request
+ * backings build synchronously, but the factory is uniformly `async` so
+ * callers `await` it regardless of backing.
  */
-export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
+export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
-): TaskCollectionRef<TInput, TOutput> {
+): Promise<TaskCollectionRef<TInput, TOutput>> {
   // Item-log accessor for `TaskHandle.items()` (FIX-480). Duck-typed
   // against `ctx.response` — same access pattern as
   // `getEmitterItemCount` in `packages/core/src/blocks/generator.ts`.
@@ -152,7 +157,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
     });
   }
 
-  return createResourceBackedTaskCollection<TInput, TOutput>({
+  return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection: options.collection,
     onChange,

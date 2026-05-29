@@ -66,8 +66,14 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit a
  * `task-change` component item via the configured `onChange` callback (the
  * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`).
+ *
  * Queries (`get`, `list`, `count`) are synchronous reads of the latest
- * committed view.
+ * committed view. For the resource backing — whose underlying
+ * `ResourceCollectionRef` reads are async — this synchronous view is a
+ * mirror of resource refs hydrated once at construction time over the
+ * collection. Because resource refs are live getters, reads through the
+ * mirror still reflect the latest committed state for every task the
+ * mirror knows about.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */

@@ -34,7 +34,11 @@
  * the prefix carries the board name.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
+import type {
+  BlockContext,
+  MaybePromise,
+  StateRef,
+} from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
   type TaskCollectionRef,
@@ -89,9 +93,10 @@ export interface TaskBoardRequestCapabilityOptions {
 
 /**
  * Factory-backed options. The capability defers entirely to the
- * caller-supplied `(ctx) => TaskCollectionRef` factory — used for
- * resource-collection-backed boards or any custom backing the pattern
- * itself doesn't understand.
+ * caller-supplied factory — used for resource-collection-backed boards
+ * or any custom backing the pattern itself doesn't understand. The
+ * factory may be sync or async (`getOrCreateTaskCollection` is now
+ * async, so a factory that wraps it returns a Promise).
  *
  * The capability does NOT declare a state schema in this mode, since
  * the storage is opaque. Schema declaration is the caller's
@@ -102,7 +107,7 @@ export interface TaskBoardFactoryCapabilityOptions {
   backing: "factory";
   boardName: string;
   collectionId: string;
-  factory: (ctx: BlockContext) => TaskCollectionRef;
+  factory: (ctx: BlockContext) => MaybePromise<TaskCollectionRef>;
 }
 
 export type TaskBoardCapabilityOptions =
@@ -121,13 +126,18 @@ export type TaskBoardCapabilityOptions =
  * constrains `fns` to a record of functions — capabilities expose
  * helpers, not values. Calling `ctx.cap.taskBoard_<name>.tasks()`
  * resolves the collection lazily through the active block context.
+ * Collection construction is async (`getOrCreateTaskCollection` now
+ * returns a Promise), so `tasks()` returns a Promise — consumers must
+ * `await ctx.cap.taskBoard_<name>.tasks()`. The resolved
+ * `TaskCollectionRef`'s own reads (`get`/`list`/`count`) stay
+ * synchronous.
  *
  * The intersection with `Record<string, (...args) => any>` satisfies
  * `defineCapability`'s `TFns` generic constraint without forcing the
  * consumer to widen `ctx: any` to the same shape.
  */
 export type TaskBoardCapabilityAccessor = {
-  tasks: () => TaskCollectionRef;
+  tasks: () => Promise<TaskCollectionRef>;
 } & Record<string, (...args: any[]) => any>;
 
 /**
@@ -160,7 +170,10 @@ export function createTaskBoardCapability(
     return defineCapability({
       name: capabilityName,
       fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-        tasks: () => userFactory(ctx),
+        // `Promise.resolve` normalizes a sync user factory to a Promise so
+        // the accessor's `() => Promise<TaskCollectionRef>` contract holds
+        // regardless of whether the caller's factory is sync or async.
+        tasks: () => Promise.resolve(userFactory(ctx)),
       }),
     });
   }

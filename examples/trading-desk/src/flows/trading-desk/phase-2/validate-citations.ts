@@ -46,7 +46,7 @@ export const validateCitations = handler({
     // the stored body and a re-typed quote.
     const memos: Record<string, string> = {};
     for (const [shortName, info] of Object.entries(PHASE_1_MEMO_KEYS)) {
-      const state = ctx.resources.memos.getOptional(info.collectionKey)?.state;
+      const state = (await ctx.resources.memos.getOptional(info.collectionKey))?.state;
       memos[shortName] = normalizeWhitespace(memoSectionTexts(state).join(" "));
     }
 

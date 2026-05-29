@@ -15,7 +15,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores, runAction } from "../src";
+
+function createStubModelResolver(): ModelResolver {
+  const resolver = ((modelId: string): GeneratorModel => ({
+    modelId,
+    generate: async () => ({
+      text: `stub response from ${modelId}`,
+      finishReason: "stop",
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    }),
+  })) as ModelResolver;
+  resolver.resolveId = (modelId: string) => modelId;
+  return resolver;
+}
 
 // Flow-level single resource — always loaded at request start.
 const flowRes = defineResource({
@@ -83,7 +97,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r1",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     const prefixes = getByPrefix.mock.calls.map((c) => c[2]);
     expect(prefixes).toContain("colA/");
@@ -98,7 +113,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r1",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     const prefixes = getByPrefix.mock.calls.map((c) => c[2]);
     expect(prefixes).toContain("colB/");
@@ -113,7 +129,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r1",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     expect(get.mock.calls.map((c) => c[2])).toContain("flowRes");
   });
@@ -128,7 +145,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r1",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     expect(get.mock.calls.map((c) => c[2])).not.toContain("lazyS");
   });
@@ -144,7 +162,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r2",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     expect(result.error).toBeUndefined();
     expect(result.output).toEqual({ lazyV: 42 });
@@ -160,7 +179,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r1",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      modelResolver: createStubModelResolver()
     });
     get.mockClear();
     await Promise.all([

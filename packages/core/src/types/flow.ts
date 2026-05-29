@@ -23,18 +23,17 @@ import type { VoiceConfig } from "./speech";
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
-  // Forward the collection's `prefetchMode` (M) so lazy collections surface the
-  // async-read ref shape and eager ones stay synchronous (FIX-688).
-  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S, infer M>
-    ? ResourceCollectionRef<S, M>
+  // All collection refs expose async reads regardless of prefetchMode
+  // — FIX-700 collapsed the eager/lazy type split.
+  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S>
+    ? ResourceCollectionRef<S>
     : TResources[K] extends DefinedResource<infer S>
       ? ResourceRef<S>
       : ResourceRef<StateOf<TResources[K]>>;
 };
 
 /** Union of handle types that can appear in a resource registry. */
-// Include collection refs of either prefetch mode (FIX-688); see AnyResourceRef.
-export type AnyResourceHandle = ResourceRef<any> | ResourceCollectionRef<any, "eager" | "lazy">;
+export type AnyResourceHandle = ResourceRef<any> | ResourceCollectionRef<any>;
 
 /**
  * Context provided to a clientData compute function.

@@ -401,7 +401,7 @@ describe("taskBoard - mid-drain enqueue", () => {
       outputSchema: z.object({ ack: z.string() }),
       execute: async (input, ctx) => {
         processed.push(input.goal);
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "fanout",
@@ -517,7 +517,7 @@ describe("taskBoard - failure handling", () => {
       execute: async (input, ctx) => {
         if (!scheduled) {
           scheduled = true;
-          const collection = getOrCreateTaskCollection({
+          const collection = await getOrCreateTaskCollection({
             ctx,
             backing: "sequencer",
             collectionId: "df",
@@ -575,7 +575,7 @@ describe("taskBoard - awaiting_review", () => {
       execute: async (input, ctx) => {
         if (input.goal === "trigger" && !scheduled) {
           scheduled = true;
-          const collection = getOrCreateTaskCollection({
+          const collection = await getOrCreateTaskCollection({
             ctx,
             backing: "sequencer",
             collectionId: "review",
@@ -751,7 +751,7 @@ describe("taskBoard - onIdle modes", () => {
         trace.push(input.goal);
         if (!added) {
           added = true;
-          const collection = getOrCreateTaskCollection({
+          const collection = await getOrCreateTaskCollection({
             ctx,
             backing: "sequencer",
             collectionId: "wm",
@@ -819,7 +819,7 @@ describe("taskBoard - remix blocks", () => {
       name: "remix-seed",
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const c = collectionFactory(ctx);
+        const c = await collectionFactory(ctx);
         await c.addTask({ id: "a", goal: "alpha" });
         await c.addTask({ id: "b", goal: "beta", deps: ["a"] });
       },
@@ -1044,7 +1044,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
       name: "enqueue-between",
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "request",
           collectionId: "reentry-basic",
@@ -1102,7 +1102,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
         name,
         inputSchema: z.unknown(),
         execute: async (_input, ctx) => {
-          const collection = getOrCreateTaskCollection({
+          const collection = await getOrCreateTaskCollection({
             ctx,
             backing: "request",
             collectionId: "reentry-three-rounds",
@@ -1159,7 +1159,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
       name: "enqueue-round-2",
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "request",
           collectionId: "reentry-concurrent",
@@ -1447,7 +1447,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
       execute: async (input, ctx) => {
         if (input.goal === "discoverer") {
           ctx.emit.message("discoverer step 1");
-          const collection = getOrCreateTaskCollection({
+          const collection = await getOrCreateTaskCollection({
             ctx,
             backing: "sequencer",
             collectionId: "fanout",

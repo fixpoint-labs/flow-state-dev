@@ -213,10 +213,7 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
 export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
 
 /** Union of handle types that can appear in a resource registry. */
-// Include collection refs of either prefetch mode (FIX-688) — a lazy ref's
-// async read methods are not assignable to the eager (default) ref, so the
-// registry's element type must admit both.
-export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any, "eager" | "lazy">;
+export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any>;
 
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>

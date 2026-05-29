@@ -46,7 +46,7 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     }),
     sequencerStateSchema: supervisorStateSchema,
     execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

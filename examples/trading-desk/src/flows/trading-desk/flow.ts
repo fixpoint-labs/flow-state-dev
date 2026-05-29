@@ -122,9 +122,12 @@ export const checkPhase1HasData = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (_input, ctx) => {
-    const allErrored = Object.values(PHASE_1_MEMO_KEYS).every(
-      (m) => ctx.resources.memos.getOptional(m.collectionKey)?.state.status === "error",
+    const memoStatuses = await Promise.all(
+      Object.values(PHASE_1_MEMO_KEYS).map(
+        async (m) => (await ctx.resources.memos.getOptional(m.collectionKey))?.state.status,
+      ),
     );
+    const allErrored = memoStatuses.every((status) => status === "error");
     if (allErrored) {
       await ctx.session.patchState({
         stoppedReason: "phase-1-no-data",
@@ -154,10 +157,10 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (_input, ctx) => {
-    const erroredAt = (collectionKey: string) =>
-      ctx.resources.memos.getOptional(collectionKey)?.state.status === "error";
-    const fundamentalsErrored = erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
-    const profileErrored = erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
+    const erroredAt = async (collectionKey: string) =>
+      (await ctx.resources.memos.getOptional(collectionKey))?.state.status === "error";
+    const fundamentalsErrored = await erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
+    const profileErrored = await erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
     if (!fundamentalsErrored && !profileErrored) return;
     const which = [
       fundamentalsErrored && "fundamentals",

@@ -26,7 +26,7 @@ import { emitToolOutputAround } from "./emit-tool-output";
  * registry-construction time.
  */
 export function extractDeclaredResources(config: {
-  resources?: Record<string, DefinedResource | DefinedResourceCollection<JsonObject, "eager" | "lazy">>;
+  resources?: Record<string, DefinedResource | DefinedResourceCollection<JsonObject>>;
 }): DeclaredResources | undefined {
   if (config.resources === undefined || Object.keys(config.resources).length === 0) {
     return undefined;

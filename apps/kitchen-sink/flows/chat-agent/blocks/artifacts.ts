@@ -63,13 +63,13 @@ export const artifactResources = {
  * Context formatter that shows the artifact inventory (title + summary)
  * so the LLM knows what artifacts exist without reading full content.
  */
-const artifactListContext = (_input: unknown, ctx: any) => {
+const artifactListContext = async (_input: unknown, ctx: any) => {
   const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
     title: string;
     summary: string;
     updatedAt: number;
   }>;
-  const instances = artifacts.list();
+  const instances = await artifacts.list();
   if (instances.length === 0) {
     return "No artifacts exist yet in this session.";
   }
@@ -115,8 +115,7 @@ export const readArtifact = handler({
   cacheable: { ttl: 60_000 },
 
   execute: async (input, ctx) => {
-    const ref = ctx.resources.artifacts.getOptional(input.artifactId);
-
+    const ref = await ctx.resources.artifacts.getOptional(input.artifactId);
     if (ref === undefined) {
       return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
     }
@@ -183,7 +182,7 @@ const saveSummary = handler({
   resources: artifactResources,
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input;
-    const ref = ctx.resources.artifacts.getOptional(id);
+    const ref = await ctx.resources.artifacts.getOptional(id);
     if (ref) await ref.patchState({ summary: input.summary });
     return { success: true, id };
   }

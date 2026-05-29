@@ -32,7 +32,7 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       sequencerStateSchema: tasksStateSchema,
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "plan",
@@ -50,7 +50,7 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       sequencerStateSchema: tasksStateSchema,
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "plan",
@@ -101,7 +101,7 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       sequencerStateSchema: tasksStateSchema,
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "plan",
@@ -157,7 +157,7 @@ describe("sequencer-state integration", () => {
       outputSchema: z.any(),
       sequencerStateSchema: tasksStateSchema,
       execute: async (_input, ctx) => {
-        const collection = getOrCreateTaskCollection({
+        const collection = await getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "plan",

@@ -183,14 +183,15 @@ export function buildReviewedWorker(
     sequencerStateSchema: reviewedWorkerStateSchema,
     execute: async (_input, ctx) => {
       const taskId = ctx.sequencer!.state.taskId;
-      const goal =
-        taskId !== undefined
-          ? getOrCreateTaskCollection({
-              ctx,
-              backing: "request",
-              collectionId,
-            }).get(taskId)?.goal
-          : undefined;
+      let goal: string | undefined;
+      if (taskId !== undefined) {
+        const collection = await getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId,
+        });
+        goal = collection.get(taskId)?.goal;
+      }
       ctx.emitStatus(
         goal !== undefined ? `Reviewing: ${goal}` : "Reviewing the result",
       );

@@ -123,7 +123,7 @@ export function defineMemoStateBlocks<Keys extends Record<string, KeyEntry>>(
             : typeof error === "string"
               ? error
               : errorMessageFallback;
-        const ref = ctx.resources.memos.getOptional(collectionKey);
+        const ref = await ctx.resources.memos.getOptional(collectionKey);
         if (ref !== undefined) {
           await ref.patchState({
             status: "error",

@@ -513,7 +513,8 @@ const saveResult = handler({
   parentInputSchema: z.object({ id: z.string(), title: z.string() }),
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input; // typed as { id: string, title: string }
-    await ctx.session.resources.results.get(id).patchState({ summary: input.summary });
+    const result = await ctx.session.resources.results.get(id);
+    await result.patchState({ summary: input.summary });
   },
 });
 ```

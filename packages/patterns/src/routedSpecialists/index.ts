@@ -191,7 +191,7 @@ function buildDefaultController(config: {
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "sequencer",
         collectionId: config.collectionId,
@@ -293,10 +293,10 @@ function buildDefaultSynthesizer(config: {
 // Internal: per-iteration helpers (closures over the collection factory)
 // ---------------------------------------------------------------------------
 
-function getCollection(
+async function getCollection(
   ctx: BlockContext,
   collectionId: string
-): TaskCollectionRef {
+): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({
     ctx,
     backing: "sequencer",
@@ -379,7 +379,7 @@ export function routedSpecialists<
 
       let currentTaskId: string | undefined;
       if (!input.done && input.specialist) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         const task = await collection.addTask({
           goal: input.reasoning || `iteration ${nextIteration}`,
           assignee: input.specialist,
@@ -432,7 +432,7 @@ export function routedSpecialists<
         `[routedSpecialists:${name}] specialist failed: ${message}`
       );
       if (state.currentTaskId) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         await collection.fail(state.currentTaskId, message);
       }
       // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
@@ -459,7 +459,7 @@ export function routedSpecialists<
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
       if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         await collection.complete(state.currentTaskId, input);
       }
     },
@@ -523,10 +523,10 @@ export function routedSpecialists<
       when: (v: { continue: boolean }) => v.continue,
       maxIterations,
     })
-    .map((_value: unknown, ctx: any) => {
+    .map(async (_value: unknown, ctx: any) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
-      const collection = getCollection(ctx, collectionId);
+      const collection = await getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });
       const history = completed
         .slice()

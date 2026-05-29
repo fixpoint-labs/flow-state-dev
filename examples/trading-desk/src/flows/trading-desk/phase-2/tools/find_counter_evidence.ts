@@ -94,8 +94,10 @@ export const find_counter_evidence = handler({
     const candidates: Candidate[] = [];
 
     // 1. The opposing analyst memo, one candidate per body section.
-    const memoState = ctx.resources.memos.getOptional(
-      PHASE_1_MEMO_KEYS[input.opposingMemo].collectionKey,
+    const memoState = (
+      await ctx.resources.memos.getOptional(
+        PHASE_1_MEMO_KEYS[input.opposingMemo].collectionKey,
+      )
     )?.state;
     for (const text of memoSectionTexts(memoState)) {
       candidates.push({ source: `memo:${input.opposingMemo}`, text });
