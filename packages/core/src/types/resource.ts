@@ -150,6 +150,15 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * When this resource's state/content is loaded relative to a request
+   * (FIX-688). `'eager'` (default when omitted) loads it up front when the
+   * scope's resource registry is constructed. `'lazy'` defers loading until
+   * first access. Lazy single resources are only valid when declared on the
+   * specific block that needs them — a per-block load trigger; declaring a
+   * lazy single at flow level throws at `defineFlow` build time.
+   */
+  prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
 };
@@ -204,7 +213,10 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
 export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
 
 /** Union of handle types that can appear in a resource registry. */
-export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any>;
+// Include collection refs of either prefetch mode (FIX-688) — a lazy ref's
+// async read methods are not assignable to the eager (default) ref, so the
+// registry's element type must admit both.
+export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any, "eager" | "lazy">;
 
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>

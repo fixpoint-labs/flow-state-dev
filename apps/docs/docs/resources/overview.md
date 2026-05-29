@@ -51,6 +51,31 @@ Config options:
 
 Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 
+## When resources load
+
+A request doesn't load every resource the flow knows about. It loads what the dispatched action and its blocks actually declare, in three tiers.
+
+**Flow-level resources** are declared in `defineFlow({ resources })`. They load at the start of every request, before any action runs. Use this tier for data every action needs.
+
+**Action-level resources** are declared somewhere inside a dispatched action's block tree (a block's `resources` field, or a sequencer that bubbles them up). They load when that action runs. If a request dispatches the `chat` action, only `chat`'s resources load — a sibling `summarize` action's resources stay untouched.
+
+So a `userProfile` declared at flow level loads on every request, while a `chatHistory` collection declared on the chat handler block loads only when the chat action dispatches:
+
+```ts
+defineFlow({
+  kind: "assistant",
+  // Loads on every request:
+  resources: { userProfile: userProfileResource },
+  actions: {
+    // chatHistory (declared on chatHandler) loads only when chat dispatches:
+    chat: { block: chatHandler },
+    summarize: { block: summarizeHandler },
+  },
+});
+```
+
+There's a third tier for resources you want to defer even further. A `prefetchMode: 'lazy'` resource skips the action-level burst: a lazy single resource loads when the specific block that declares it dispatches, and a lazy collection loads per access (one store read per key you touch). The default is `'eager'`, so existing flows are unchanged. Lazy is worth reaching for on large or unbounded collections where you only read a handful of keys per request. See [Eager vs lazy collections](/docs/resources/collections#eager-vs-lazy-collections) for the read semantics and tradeoffs.
+
 ## Working with content
 
 Read content with `readContent()` (renders templates) or `readContentRaw()` (returns the stored body):

@@ -157,6 +157,17 @@ Hook context (`CollectionHookContext`) provides `log(message)` and `scopeType`. 
 
 Collection instances and single resources share one flat keyspace for state. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. Resource state — single and collection-instance alike — is persisted per-resource in the keyed `ResourceStateStore`, separate from the scope record (see [State Storage](./resources-and-client-data.md#state-storage)). The in-execution view is still a flat map, so accessors are unchanged; the difference is that a write to one instance touches only that instance's key instead of rewriting the whole scope record.
 
+## Lazy mode internals
+
+A collection declared with `prefetchMode: 'lazy'` is not bulk-loaded by the resource waves (see [Three-wave loading](./resources-and-client-data.md#three-wave-loading)). Instead its `ResourceCollectionRef` is built around a lazy accessor that wraps the eager collection body.
+
+On each read, the accessor first ensures the target is loaded into the per-scope cache, then delegates to the eager body:
+
+- A keyed read (`get`, `getOptional`, instance access) calls `lazyLoad.getInstance(storageKey)` to load that one instance.
+- A whole-collection read (`list`, `count`) calls `lazyLoad.getByPrefix(prefix)` to load the collection's pattern-prefix.
+
+Both go through the shared single-flight map, so a key loaded here dedupes against a wave or a concurrent block dispatch that loaded the same key. Once the cache is populated, the eager body runs unchanged against it. The consequence is that reads become async (the caller awaits the load), while mutations (`create` / `getOrCreate` / `upsert` / `delete`) were already async and keep their signatures. The accessor and the eager collection body both live in `createExecutionContext`.
+
 ## Block declarations
 
 Collections work with block-level resource declarations the same way static resources do:

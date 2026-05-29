@@ -164,6 +164,17 @@ export function router<
       )
     : routerResources;
 
+  // The router's OWN declarations (FIX-688): its capability-injected resources
+  // plus its own `resources` config, EXCLUDING the resources that bubble up
+  // from route blocks. `capResources` already folds in the router's own
+  // `resources` (via resolveCapabilities → extractDeclaredResources); merging
+  // `extractDeclaredResources(config)` again is a reference-equal no-op that
+  // also covers the no-capabilities case.
+  const ownDeclaredResources = mergeDeclaredResources(
+    capResources ? { ...capResources } : undefined,
+    extractDeclaredResources(config)
+  );
+
   // Bubble `requireOrg` up from any route block. Without this, a route
   // declaring `requireOrg: true` would be silently lost — the router's
   // requiresOrg would stay `false`, and the flow's HTTP layer wouldn't
@@ -175,6 +186,7 @@ export function router<
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
+    ownDeclaredResources,
     resolvedCapabilities,
     requiresOrg: routesRequireOrg,
     execute: async (input, ctx) => {
