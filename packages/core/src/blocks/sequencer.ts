@@ -17,6 +17,7 @@ import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
+import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import type { DeclaredResources } from "../types/block";
 import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./internal/utils";
 import {
@@ -116,42 +117,13 @@ type SequencerOperation = {
 };
 
 /**
- * Looks up the id of the most recently emitted `block_trace` item whose
- * provenance matches a given block instance. Used by sequencer ops to build
- * `ref` descriptors pointing at their child's emitted item (FIX-413).
- *
- * Returns undefined if no item emitter is installed (unit tests, non-tracing
- * harnesses) or no matching item was found. Callers fall back to `inline`.
- *
- * Safe under concurrency because each parallel branch is invoked at a unique
- * path and therefore has a unique `blockInstanceId`.
- */
-function findEmittedBlockTraceId(
-  ctx: BlockContext,
-  childInstanceId: string
-): string | undefined {
-  if (ctx.response === undefined) return undefined;
-  // Defensive: some legacy test fixtures construct partial `ctx.response`
-  // mocks without `getItems`. Returning undefined falls back to inline refs.
-  if (typeof ctx.response.getItems !== "function") return undefined;
-  const items = ctx.response.getItems();
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };
-    if (item.type === "block_trace" && item.provenance?.blockInstanceId === childInstanceId) {
-      return item.id;
-    }
-  }
-  return undefined;
-}
-
-/**
  * Build a `ref` descriptor pointing at the child invoked at a given path. Falls
  * back to `{ kind: "inline" }` if the child did not emit a trace (e.g., when a
  * sequencer runs without a response emitter in a unit test).
  */
 function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint {
   const instanceId = buildBlockInstanceId(ctx.request.identity.id, path, 0);
-  const itemId = findEmittedBlockTraceId(ctx, instanceId);
+  const itemId = findBlockTraceIdByInstance(ctx, instanceId);
   if (itemId === undefined) return { kind: "inline" };
   return { kind: "ref", sourceItemId: itemId };
 }
