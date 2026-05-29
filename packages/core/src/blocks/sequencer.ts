@@ -18,6 +18,7 @@ import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../err
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
+import { isConcurrencyOptions, isInlineConfig } from "./internal/arg-shapes";
 import type { DeclaredResources } from "../types/block";
 import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./internal/utils";
 import {
@@ -45,33 +46,6 @@ let sequencerScopeCounter = 0;
 function autoInlineName(): string {
   inlineBlockCounter += 1;
   return `inline-${inlineBlockCounter}`;
-}
-
-/**
- * Detects inline config objects passed to sequencer DSL methods.
- * Primary discriminator: outputSchema (a Zod type with _def property).
- * Secondary discriminator: execute function (for tap where outputSchema is optional).
- * Rejects BlockDefinition objects (which also have properties but are identified by kind/name/config).
- */
-function isInlineConfig(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || isBlockDefinition(value)) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-
-  // Primary: has a Zod outputSchema
-  if (
-    record.outputSchema !== undefined &&
-    typeof record.outputSchema === "object" &&
-    record.outputSchema !== null &&
-    (record.outputSchema as Record<string, unknown>)._def !== undefined
-  ) {
-    return true;
-  }
-
-  // Secondary: has execute function (for tap where outputSchema is optional)
-  return typeof record.execute === "function";
 }
 
 /**
@@ -228,19 +202,6 @@ type WaitForWorkOptions = {
   failOnError?: boolean;
   timeoutMs?: number;
 };
-
-function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: number } {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  if (isBlockDefinition(value)) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return "maxConcurrency" in record || "concurrency" in record || Object.keys(record).length === 0;
-}
 
 type GeneratorModelUsageMeta = {
   model: string;
