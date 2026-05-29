@@ -37,7 +37,8 @@ function buildHost(extras?: { source?: string }) {
   const host = createInboundTransportHost({
     registry,
     stores,
-    resolvePrincipal: defaultBodyUserIdPrincipalResolver
+    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    runtimeConfig: {}
   });
   return { host, stores };
 }

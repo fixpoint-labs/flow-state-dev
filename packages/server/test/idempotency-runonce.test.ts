@@ -111,7 +111,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
         sessionId: "sess",
         requestId,
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -160,7 +161,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
         sessionId: "sess",
         requestId,
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -204,7 +206,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
         sessionId: "sess",
         requestId,
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -247,7 +250,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
         sessionId: "sess",
         requestId: firstReq,
         stores,
-        responseEmitter: r1
+        responseEmitter: r1,
+        runtimeConfig: {}
       });
 
       const secondReq = "req_second";
@@ -260,7 +264,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
         sessionId: "sess",
         requestId: secondReq,
         stores,
-        responseEmitter: r2
+        responseEmitter: r2,
+        runtimeConfig: {}
       });
 
       expect(log).toEqual(["ran", "ran"]);
@@ -319,7 +324,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
       sessionId: "sess",
       requestId,
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -367,7 +373,8 @@ describe("FIX-402: idempotency key + runOnce", () => {
       sessionId: "sess",
       requestId,
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();

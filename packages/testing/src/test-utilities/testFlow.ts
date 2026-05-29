@@ -209,13 +209,15 @@ export async function testFlow<TInput = unknown>(
     orgId,
     userId: options.userId,
     requestId,
-    modelResolver: createMockModelResolver({
-      generators: options.generators,
-      models: options.models,
-      policy: options.unmockedGeneratorPolicy
-    }),
-    settings: options.settings,
-    stores
+    stores,
+    runtimeConfig: {
+      modelResolver: createMockModelResolver({
+        generators: options.generators,
+        models: options.models,
+        policy: options.unmockedGeneratorPolicy
+      }),
+      settings: options.settings
+    }
   });
 
   const persistedRequest = await stores.request.get(requestId);

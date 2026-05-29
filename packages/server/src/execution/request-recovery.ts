@@ -151,12 +151,14 @@ export async function retryRequest(
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId
     },
-    modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
-    middleware: options.middleware,
     stores,
     responseEmitter: liveStream.emitter,
-    logger
+    runtimeConfig: {
+      modelResolver: options.modelResolver,
+      speechResolver: options.speechResolver,
+      middleware: options.middleware,
+      logger
+    }
   }).finally(() => {
     liveStream.close();
   });

@@ -144,7 +144,8 @@ describe("FIX-688: three-wave loading", () => {
       requestId: "r2",
       sessionId: "s1",
       userId: "u1",
-      stores
+      stores,
+      runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
     expect(result.output).toEqual({ lazyV: 42 });

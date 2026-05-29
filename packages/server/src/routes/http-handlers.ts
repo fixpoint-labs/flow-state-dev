@@ -5,16 +5,9 @@
  * domain-specific modules: session-routes, action-routes, stream-routes,
  * and state-routes.
  */
-import type {
-  FlowStateSettings,
-  Middleware,
-  ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
-} from "@flow-state-dev/core/types";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
-import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
+import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests } from "../execution/request-recovery";
@@ -128,17 +121,15 @@ export const NOOP_INTERNAL_ROUTE_SEAMS: InternalRouteSeams = {};
 export type CreateFlowRouteHandlersOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
-  modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
-  /** Instance-level settings threaded onto every block as `ctx.settings`. */
-  settings?: FlowStateSettings;
-  maxResponseBufferSize?: number;
+  /**
+   * Instance-level options forwarded verbatim through the execution chain
+   * (resolvers, settings, middleware, logger, tracing, SSE buffering). See
+   * {@link RuntimeConfig}.
+   */
+  runtimeConfig: RuntimeConfig;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
-  middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
-  onBackgroundWork?: (promise: Promise<unknown>) => void;
   /**
    * Host-level fallback resolver. Per-flow `authentication.resolvePrincipal`
    * always wins over this when set. Defaults to the body-userId stub.
@@ -155,20 +146,6 @@ export type CreateFlowRouteHandlersOptions = {
    * Default: true.
    */
   detectInterruptedOnStartup?: boolean;
-  /**
-   * Default SSE heartbeat interval in milliseconds. Applied to every live
-   * stream when the per-flow `request.sseHeartbeatMs` is unset. The wire
-   * heartbeat keeps NAT/proxy idle timeouts from closing the SSE
-   * connection and gives clients a robust inactivity signal.
-   * Default: 15000 (15 seconds). Set to 0 to disable.
-   */
-  defaultSseHeartbeatMs?: number;
-  /**
-   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded to
-   * the host and onto every block context. Unset → the runtime falls back to
-   * `resolveTracingLevel()` (env / observability default).
-   */
-  tracingLevel?: TracingLevel;
   /**
    * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
    * The extracted value is threaded onto request/session context identities.
@@ -236,24 +213,23 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   void options.staleStreamTtlMs;
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
+  // Resolve the host-level SSE heartbeat default once, then thread the
+  // resolved value back onto the runtime config so the host and the
+  // GET-attach stream handler share the same value.
   const defaultSseHeartbeatMs =
-    options.defaultSseHeartbeatMs !== undefined
-      ? options.defaultSseHeartbeatMs
+    options.runtimeConfig.defaultSseHeartbeatMs !== undefined
+      ? options.runtimeConfig.defaultSseHeartbeatMs
       : DEFAULT_SSE_HEARTBEAT_MS;
+  const runtimeConfig: RuntimeConfig = {
+    ...options.runtimeConfig,
+    defaultSseHeartbeatMs
+  };
 
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
     stores,
-    modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
-    transcriptionResolver: options.transcriptionResolver,
-    settings: options.settings,
-    middleware: options.middleware,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-    onBackgroundWork: options.onBackgroundWork,
-    maxResponseBufferSize: options.maxResponseBufferSize,
-    defaultSseHeartbeatMs,
-    tracingLevel: options.tracingLevel
+    runtimeConfig
   });
 
   // Detect interrupted requests from previous runs on startup
@@ -333,7 +309,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRequestStream(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: options.transcriptionResolver,
+          transcriptionResolver: runtimeConfig.transcriptionResolver,
           defaultSseHeartbeatMs
         });
       }
@@ -397,7 +373,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleTranscribe(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: options.transcriptionResolver
+          transcriptionResolver: runtimeConfig.transcriptionResolver
         });
       }
 
@@ -405,9 +381,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRetryRequest(request, route, {
           registry: options.registry,
           stores,
-          modelResolver: options.modelResolver,
-          speechResolver: options.speechResolver,
-          middleware: options.middleware
+          modelResolver: runtimeConfig.modelResolver,
+          speechResolver: runtimeConfig.speechResolver,
+          middleware: runtimeConfig.middleware
         });
       }
 

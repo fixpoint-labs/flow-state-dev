@@ -105,8 +105,10 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
     userId: "u",
     input: undefined,
     signal,
-    modelResolver: createMockModelResolver({ policy: "allow" }),
-    stores: createInMemoryStores()
+    stores: createInMemoryStores(),
+    runtimeConfig: {
+      modelResolver: createMockModelResolver({ policy: "allow" })
+    }
   });
 }
 
