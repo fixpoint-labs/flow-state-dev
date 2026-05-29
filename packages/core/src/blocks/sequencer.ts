@@ -1007,7 +1007,15 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   resolvedInputSchema?: ZodTypeAny,
   accumulatedResources?: DeclaredResources,
   capabilityRefs?: import("../capability/types").CapabilityRef[],
-  accumulatedRequiresOrg?: boolean
+  accumulatedRequiresOrg?: boolean,
+  // The sequencer's OWN declared resources — only its capability-injected
+  // resources (a sequencer has no direct `resources` config field). Captured
+  // once at the `sequencer()` entry point, before any child resources merge
+  // into `accumulatedResources`, and threaded unchanged through every rebuild.
+  // Surfaced as `BlockDefinition.ownDeclaredResources` for the block-dispatch
+  // prefetch hook (FIX-688), which must load this block's own declarations
+  // without re-loading descendants'.
+  ownDeclaredResources?: DeclaredResources
 ): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -1036,6 +1044,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       config.name
     ),
     declaredResources: accumulatedResources,
+    ownDeclaredResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
   });
@@ -1074,7 +1083,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     newResources?: DeclaredResources,
     newRequiresOrg?: boolean
   ): SequencerDefinition<TInput, TNext, TStateSchema> =>
-    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
+    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1171,7 +1180,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           resolvedInputSchema,
           mergeFrom(block),
           capabilityRefs,
-          mergeRequiresOrgFrom(block)
+          mergeRequiresOrgFrom(block),
+          ownDeclaredResources
         );
       }
 
@@ -1205,7 +1215,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         resolvedInputSchema,
         mergeFrom(block),
         capabilityRefs,
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        ownDeclaredResources
       );
     },
 
@@ -1905,7 +1916,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -2328,7 +2339,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         rescueHandlers,
         lastOutputSchema,
         undefined,
-        accumulatedResources
+        accumulatedResources,
+        // Preserve the prior implicit positional defaults for capabilityRefs /
+        // accumulatedRequiresOrg; forward only the constant own-resources set.
+        undefined,
+        undefined,
+        ownDeclaredResources
       );
     },
 
@@ -2369,6 +2385,11 @@ export function sequencer<
 ): SequencerDefinition<TInput, TInput, TStateSchema> {
   const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
 
+  // A sequencer has no direct `resources` config field — its OWN declarations
+  // are exactly its capability-injected resources, which `resolveCapabilities`
+  // returns here before any child resources merge in. Capture this as the
+  // sequencer's `ownDeclaredResources` (FIX-688): identical to the initial
+  // accumulator, but it stays fixed as children bubble into the accumulator.
   return createSequencer<TInput, TInput, TStateSchema>(
     config as SequencerConfig<any>,
     [],
@@ -2376,6 +2397,8 @@ export function sequencer<
     config.inputSchema,
     config.inputSchema,
     declaredResources,
-    resolvedCapabilities
+    resolvedCapabilities,
+    undefined,
+    declaredResources
   );
 }

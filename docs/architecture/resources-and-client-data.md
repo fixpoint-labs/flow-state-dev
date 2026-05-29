@@ -116,6 +116,26 @@ The lifecycle mirrors content exactly:
 
 The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
 
+### Three-Wave Loading
+
+A request loads only the resources its dispatched action and blocks declare, partitioned into three waves. The partition is computed from where each resource is declared:
+
+- **Flow-level** — declared in `defineFlow({ resources })`. Available to every action.
+- **Action-tree** — declared anywhere inside the dispatched action's block tree, but not at flow level.
+- **Per-block (lazy)** — `prefetchMode: 'lazy'` resources, which opt out of the action-tree burst.
+
+Where each wave fires:
+
+- **Wave 1 (flow-level, request start)** — `createExecutionContext` loads the flow-level eager subset when the context is created, before any action runs.
+- **Wave 2 (action-tree, dispatch)** — also in `createExecutionContext`. A context is always bound to exactly one action, so the context loads that action's declared resources in one parallel burst at creation time. This lives in `createExecutionContext`, not in `runAction`, precisely because the binding is one-context-per-action — there's no separate point where the action "starts" that the context doesn't already know about. Sibling actions' resources never load.
+- **Wave 3 (per-block dispatch)** — the block runtime's `run` loads a block's `prefetchMode: 'lazy'` single resources when that block dispatches, through `_loadDeclaredResources`. Lazy collections defer further: they load per access through the on-demand accessor (below) rather than at block dispatch.
+
+**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.work()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
+
+**Lazy collection reads.** A `prefetchMode: 'lazy'` collection reads through a per-scope on-demand accessor. `getInstance(storageKey)` and `getByPrefix(prefix)` fill the same per-scope cache and reuse the same single-flight map and `loadedCollectionPrefixes` set as the eager waves, so a key fetched on demand and one fetched by a wave dedupe against each other. The underlying reads go to the per-key `ResourceStateStore` (and `ContentStore` for content). See [Resource Collections — lazy mode internals](./resource-collections.md#lazy-mode-internals).
+
+**Validation.** `prefetchMode: 'lazy'` on a single resource declared at flow level throws at build time — a flow-level declaration has no per-block dispatch to act as a load trigger. `prefetchMode: 'lazy'` combined with a non-`'none'` eviction policy throws — a lazy cache is partial, so eviction can't see the full set to evict correctly. `maxInstances` and eviction are exact under eager and best-effort under lazy (they only see loaded instances).
+
 ### Accessing Resources
 
 Resources are accessed through the flat `ctx.resources` registry — the resource's intrinsic `scope` routes reads and writes to the right storage layer.

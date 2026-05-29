@@ -48,6 +48,8 @@ Collection entries on scope resource registries are `ResourceCollectionRef` inst
 
 ### Core operations
 
+These examples use an eager collection (the default), so `get`, `list`, and `count` are synchronous. On a lazy collection those reads are async — see [Eager vs lazy collections](#eager-vs-lazy-collections).
+
 ```ts
 execute: async (input, ctx) => {
   const files = ctx.session.resources.files;
@@ -151,6 +153,65 @@ When `maxInstances` is set, the collection enforces a cap on live instances:
 Setting `eviction` to `"lru"` or `"oldest"` without `maxInstances` throws at definition time. Without `maxInstances`, the collection is unbounded.
 
 Set `maxInstances` for any collection that could grow without limit. An AI creating files in a loop with no cap will cause memory and storage pressure. `"lru"` is the safest default — it keeps the working set and discards stale entries.
+
+## Eager vs lazy collections
+
+A collection's `prefetchMode` controls when its instances load and whether reads are synchronous. The default is `"eager"`.
+
+### Eager (default)
+
+An eager collection loads its whole prefix into the per-request cache before any block reads it. Reads are synchronous:
+
+```ts
+const files = ctx.session.resources.files; // eager
+
+const one = files.get("readme.md");  // sync, returns a ResourceRef
+const all = files.list();            // sync
+const n = files.count();             // sync
+```
+
+This is the right default for collections with a bounded, predictable size. The whole set is in memory, so `list()` and `count()` are exact and cheap.
+
+### Lazy
+
+Set `prefetchMode: "lazy"` to defer loading. Nothing loads up front; each access reads from the store on demand and caches the result. Reads become async:
+
+```ts
+const docs = defineResourceCollection({
+  pattern: "docs/**",
+  stateSchema: z.object({ title: z.string().default("") }),
+  prefetchMode: "lazy",
+});
+
+// At runtime:
+const docs = ctx.session.resources.docs;
+
+const one = await docs.get("guide.md");      // async — one store read on miss, then cached
+const maybe = await docs.getOptional("x.md"); // async
+const all = await docs.list();                // async
+const n = await docs.count();                 // async
+```
+
+The `ResourceRef` you get back from a lazy `get` still has a synchronous `.state` getter. You await the lookup, not the read of an already-loaded instance:
+
+```ts
+const ref = await docs.get("guide.md");
+const title = ref.state.title; // sync
+```
+
+Mutations (`create`, `getOrCreate`, `upsert`, `delete`) were already async on every collection, so those signatures don't change.
+
+Reach for lazy when a collection is large or unbounded and a typical request only touches a few keys by name. You pay one store read per key instead of scanning the whole prefix up front.
+
+### The cost of `list()` and `count()` on a lazy collection
+
+A lazy `list()` or `count()` reads the entire collection prefix in one unbounded scan. There's no pagination today. That's fine for an occasional full scan, but on a large collection it defeats the point of going lazy. Prefer `get(key)` by key on lazy collections, and fall back to `list()`/`count()` only when you genuinely need the whole set.
+
+### Lazy requires `eviction: "none"`
+
+A lazy collection only ever holds a partial cache, so eviction can't see the full set to make a correct decision. Combining `prefetchMode: "lazy"` with any eviction policy other than `"none"` throws at definition time. `maxInstances` and eviction still apply under eager mode exactly; under lazy they're best-effort and only see the instances that have been loaded.
+
+A lazy single resource is also restricted: declaring `prefetchMode: "lazy"` on a single resource at flow level throws, because a flow-level declaration has no per-block dispatch to trigger the load. Declare it on the block that needs it instead.
 
 ## Lifecycle hooks
 

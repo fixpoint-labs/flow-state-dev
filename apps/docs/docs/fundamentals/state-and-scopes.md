@@ -166,7 +166,7 @@ await ctx.session.appendJournal({
 const recent = await ctx.session.getJournal({ limit: 10 });
 ```
 
-**Resources** — named typed containers for structured data and rich content. See [Resources](/docs/resources/overview).
+**Resources** — named typed containers for structured data and rich content. A request loads only the resources its dispatched action and blocks declare, not every resource in the scope. See [Resources](/docs/resources/overview) and [When resources load](/docs/resources/overview#when-resources-load).
 
 ### Creating sessions
 

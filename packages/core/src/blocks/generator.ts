@@ -2021,6 +2021,9 @@ export function generator<
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
+    // A generator is a leaf — its OWN declarations equal its bubble-up set
+    // (own `resources` + capability-injected resources, no descendants).
+    ownDeclaredResources: declaredResources,
     resolvedCapabilities,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
