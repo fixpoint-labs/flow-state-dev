@@ -215,7 +215,7 @@ describe("BlockDefinition.ownDeclaredResources", () => {
       execute: (v) => v,
     });
 
-    const seq = sequencer({ name: "seq" }).then(handlerA).then(handlerB);
+    const seq = sequencer({ name: "seq" }).step(handlerA).step(handlerB);
 
     // Bubble-up: declaredResources contains both children's resources.
     expect(seq.declaredResources?.a).toBe(resA);
