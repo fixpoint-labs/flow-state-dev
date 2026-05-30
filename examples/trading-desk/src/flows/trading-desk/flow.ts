@@ -25,6 +25,7 @@ import { phase2Pipeline } from "./phase-2";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase5Pipeline } from "./phase-5";
+import { phase6Pipeline } from "./phase-6";
 import { resolveTicker } from "./lib/ticker-resolver";
 import {
   memoResources,
@@ -49,6 +50,19 @@ const seedSession = handler({
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
   execute: async (input, ctx) => {
+    // Freeze the per-run thesis at seed time so editing the form mid-run
+    // can't affect the session that's already analyzing. A non-null
+    // `userThesis` gates Phase 6; a sub-threshold (< 20 chars) thesis is
+    // treated as no thesis — Phase 6 is skipped and a soft warning is
+    // surfaced rather than halting.
+    const rawThesis = input.userThesis?.trim() ?? "";
+    const hasUsableThesis = rawThesis.length >= 20;
+    const userThesis = hasUsableThesis ? rawThesis : null;
+    const userThesisWarning =
+      rawThesis.length > 0 && !hasUsableThesis
+        ? "Thesis too short to audit (under 20 characters) — Phase 6 skipped."
+        : null;
+
     await ctx.session.patchState({
       ticker: input.ticker,
       date: input.date,
@@ -64,6 +78,9 @@ const seedSession = handler({
       // so the navigator doesn't render a stale "stopped" banner.
       stoppedReason: null,
       stoppedMessage: null,
+      userThesis,
+      userThesisRationale: userThesis === null ? null : input.userThesisRationale,
+      userThesisWarning,
     });
     return input;
   },
@@ -105,9 +122,12 @@ export const checkPhase1HasData = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (_input, ctx) => {
-    const allErrored = Object.values(PHASE_1_MEMO_KEYS).every(
-      (m) => ctx.resources.memos.getOptional(m.collectionKey)?.state.status === "error",
+    const memoStatuses = await Promise.all(
+      Object.values(PHASE_1_MEMO_KEYS).map(
+        async (m) => (await ctx.resources.memos.getOptional(m.collectionKey))?.state.status,
+      ),
     );
+    const allErrored = memoStatuses.every((status) => status === "error");
     if (allErrored) {
       await ctx.session.patchState({
         stoppedReason: "phase-1-no-data",
@@ -137,10 +157,10 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
   sessionStateSchema,
   resources: memoResources,
   execute: async (_input, ctx) => {
-    const erroredAt = (collectionKey: string) =>
-      ctx.resources.memos.getOptional(collectionKey)?.state.status === "error";
-    const fundamentalsErrored = erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
-    const profileErrored = erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
+    const erroredAt = async (collectionKey: string) =>
+      (await ctx.resources.memos.getOptional(collectionKey))?.state.status === "error";
+    const fundamentalsErrored = await erroredAt(PHASE_1_MEMO_KEYS.fundamentals.collectionKey);
+    const profileErrored = await erroredAt(PHASE_1_MEMO_KEYS.companyProfile.collectionKey);
     if (!fundamentalsErrored && !profileErrored) return;
     const which = [
       fundamentalsErrored && "fundamentals",
@@ -170,18 +190,24 @@ const analyzePipeline = sequencer({
   name: "trading-desk-analyze",
   inputSchema: analyzeInputSchema,
 })
-  .then(seedSession)
+  .step(seedSession)
   .tap(checkTickerResolvable)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
-  .then(phase1Pipeline)
+  .step(phase1Pipeline)
   .tap(checkPhase1HasFundamentalsAndProfile)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
-  .then(phase2Pipeline)
-  .then(phase3Pipeline)
-  .then(phase4Pipeline)
-  .then(phase5Pipeline);
+  .step(phase2Pipeline)
+  .step(phase3Pipeline)
+  .step(phase4Pipeline)
+  .step(phase5Pipeline)
+  // Phase 6 — post-decision thesis audit. Only runs when the caller supplied
+  // a usable thesis at seed time; otherwise the pipeline ends at the PM.
+  .stepIf(
+    (_v, ctx) => ctx.session.state.userThesis !== null,
+    phase6Pipeline,
+  );
 
 /**
  * Persists the user's standing special instructions (global + per-phase) to
@@ -220,6 +246,9 @@ const tradingDeskFlow = defineFlow({
         "runComplete",
         "stoppedReason",
         "stoppedMessage",
+        "userThesis",
+        "userThesisRationale",
+        "userThesisWarning",
       ],
     },
   },

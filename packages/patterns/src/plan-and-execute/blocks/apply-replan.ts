@@ -69,7 +69,7 @@ export function createApplyReplan(options: ApplyReplanOptions) {
     sequencerStateSchema: planAndExecuteStateSchema,
 
     execute: async (input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

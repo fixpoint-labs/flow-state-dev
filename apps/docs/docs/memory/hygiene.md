@@ -127,7 +127,7 @@ const mem = system({
 
 // Inside a flow or scheduled handler:
 const cleanup = sequencer({ name: 'cleanup', inputSchema: z.any() })
-  .then(mem.janitor!)
+  .step(mem.janitor!)
 ```
 
 ## Operator visibility

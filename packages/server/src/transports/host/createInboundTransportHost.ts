@@ -6,17 +6,10 @@
  * (HTTP, MCP, webhook, scheduled, custom) sees — adapters never touch
  * `runAction` directly.
  */
-import type {
-  FlowStateSettings,
-  Middleware,
-  ModelResolver,
-  VoiceProvider
-} from "@flow-state-dev/core/types";
-import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
-import type { RuntimeLogger } from "../../execution/logging";
+import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
@@ -34,29 +27,15 @@ import type {
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  modelResolver?: ModelResolver;
-  /**
-   * Router-level voice provider for TTS and STT. A per-flow `voice.provider`
-   * on the flow definition overrides this at dispatch time.
-   */
-  voiceProvider?: VoiceProvider;
-  /** Instance-level settings threaded onto every block as `ctx.settings`. */
-  settings?: FlowStateSettings;
-  middleware?: Middleware[];
-  logger?: RuntimeLogger;
   resolvePrincipal: PrincipalResolver;
-  /** Forwarded to runAction so serverless platforms can keep work alive. */
-  onBackgroundWork?: (promise: Promise<unknown>) => void;
-  /** Maximum buffered SSE bytes per request — see `createLiveRequestStream`. */
-  maxResponseBufferSize?: number;
   /**
-   * Default SSE wire-level heartbeat interval in milliseconds applied to
-   * every live stream when the per-flow `request.sseHeartbeatMs` is unset.
-   * When 0 or undefined, no host-level default is applied.
+   * Instance-level options forwarded verbatim through the execution chain.
+   * The host reads `maxResponseBufferSize` / `defaultSseHeartbeatMs` /
+   * `onBackgroundWork` for live-stream wiring, exposes the resolvers /
+   * middleware / logger on the returned host, and passes the bundle to
+   * `runAction`. See {@link RuntimeConfig}.
    */
-  defaultSseHeartbeatMs?: number;
-  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
-  tracingLevel?: TracingLevel;
+  runtimeConfig: RuntimeConfig;
 };
 
 /**
@@ -70,20 +49,9 @@ export type CreateInboundTransportHostOptions = {
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
-  const {
-    registry,
-    stores,
-    modelResolver,
-    voiceProvider,
-    settings,
-    middleware,
-    logger,
-    resolvePrincipal,
-    onBackgroundWork,
-    maxResponseBufferSize,
-    defaultSseHeartbeatMs,
-    tracingLevel
-  } = options;
+  const { registry, stores, resolvePrincipal, runtimeConfig } = options;
+  const { onBackgroundWork, maxResponseBufferSize, defaultSseHeartbeatMs } =
+    runtimeConfig;
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
@@ -95,8 +63,10 @@ export function createInboundTransportHost(
 
     // Per-flow `voice.provider` wins over the router-level provider, mirroring
     // the principal-resolver override pattern below. Merged once here so
-    // `runAction` receives the effective value and never re-merges.
-    const effectiveVoiceProvider = flow.voice?.provider ?? voiceProvider;
+    // `runAction` receives the effective value (via `runtimeConfig.voiceProvider`)
+    // and never re-merges.
+    const effectiveVoiceProvider =
+      flow.voice?.provider ?? runtimeConfig.voiceProvider;
 
     // Per-flow SSE heartbeat override wins over the host default.
     const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
@@ -139,14 +109,11 @@ export function createInboundTransportHost(
       source: envelope.source,
       metadata: envelope.metadata,
       signal: envelope.signal,
-      modelResolver,
-      voiceProvider: effectiveVoiceProvider,
-      settings,
-      middleware,
       stores,
       responseEmitter,
-      logger,
-      tracingLevel
+      // Override the router-level provider with the per-flow effective value
+      // for this dispatch; everything else forwards verbatim.
+      runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
     }).finally(() => {
       if (liveStream !== null) {
         liveStream.close();
@@ -224,14 +191,14 @@ export function createInboundTransportHost(
     registry,
     stores,
     resolvers: {
-      model: modelResolver,
+      model: runtimeConfig.modelResolver,
       // Router-level provider only — the per-action effective provider (which
       // may be a per-flow override) is merged in `dispatch` and not mirrored
       // here. This bag exists for adapter introspection.
-      voice: voiceProvider
+      voice: runtimeConfig.voiceProvider
     },
-    middleware,
-    logger,
+    middleware: runtimeConfig.middleware,
+    logger: runtimeConfig.logger,
     dispatch,
     resolvePrincipal: resolve
   };

@@ -143,7 +143,7 @@ describe("utility.summarizer", () => {
       inputSchema: z.object({ source: z.string() })
     })
       .map((input) => input.source)
-      .then(summarize);
+      .step(summarize);
 
     const ctx = createMockContext({
       resolveModel: () => ({

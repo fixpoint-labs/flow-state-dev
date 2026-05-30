@@ -12,6 +12,7 @@ import type {
 import { asRuntime } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
+import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
 import { toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -25,7 +26,7 @@ import { emitToolOutputAround } from "./emit-tool-output";
  * registry-construction time.
  */
 export function extractDeclaredResources(config: {
-  resources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  resources?: Record<string, DefinedResource | DefinedResourceCollection<JsonObject>>;
 }): DeclaredResources | undefined {
   if (config.resources === undefined || Object.keys(config.resources).length === 0) {
     return undefined;
@@ -84,6 +85,15 @@ export type BuildBlockOptions<
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   execute?: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  /**
+   * This block's OWN declared resources — its own `resources` config plus its
+   * own capability-injected resources, EXCLUDING resources that bubble up from
+   * descendant/child blocks. For leaf blocks (handler/generator) this equals
+   * `declaredResources`. For composites (sequencer/router) it is the strict
+   * subset the block itself contributes. Used by the block-dispatch prefetch
+   * hook (FIX-688) to load just this block's declarations.
+   */
+  ownDeclaredResources?: DeclaredResources;
   /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */
   resolvedCapabilities?: CapabilityRef[];
   /**
@@ -168,10 +178,22 @@ export function buildBlock<
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
     declaredResources: options.declaredResources,
+    ownDeclaredResources: options.ownDeclaredResources,
     requiresOrg,
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
+        // FIX-688 Wave 3: load this block's OWN declared resources into the
+        // per-scope cache before it runs, so single resources (eager or lazy)
+        // read synchronously inside execute(). Lazy collections are skipped —
+        // their async accessor fetches on demand. No-op when the runtime does
+        // not provide the loader (mock/unit contexts).
+        if (options.ownDeclaredResources !== undefined) {
+          await ctx._loadDeclaredResources?.(options.ownDeclaredResources, {
+            loadLazySingles: true
+          });
+        }
+
         // Fire the `added` phase trace hook before running connectInput. The
         // server constructs the in_progress block_trace item from this and
         // emits item.added — establishes the row that subsequent phases patch.
@@ -246,6 +268,7 @@ export function buildBlock<
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
+        ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         // `connectInput` preserves `TOutputSchema`, so any installed
@@ -262,6 +285,7 @@ export function buildBlock<
         config: runtimeConfig,
         execute: internalExecute,
         declaredResources: definition.declaredResources,
+        ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         modelOutputMapper: mapper,
@@ -331,6 +355,7 @@ export function buildBlock<
         config: wrappedConfig,
         execute: wrappedExecute,
         declaredResources: definition.declaredResources,
+        ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
       });
@@ -359,6 +384,7 @@ export function buildBlock<
         config: nextConfig,
         execute: mappedExecute,
         declaredResources: definition.declaredResources,
+        ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
       });

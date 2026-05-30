@@ -28,7 +28,6 @@ export function createRecordContribution(opts: {
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
@@ -49,7 +48,7 @@ export function createRecordContribution(opts: {
         ],
       });
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,
         backing: "sequencer",
         collectionId: opts.collectionId,
@@ -64,8 +63,6 @@ export function createRecordContribution(opts: {
         eligibility: (t) => t.id === task.id,
       });
       await collection.complete(task.id, { text });
-
-      return input;
     },
   });
 }

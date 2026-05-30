@@ -31,9 +31,9 @@ const pipeline = sequencer({
   name: "pipeline",
   inputSchema: z.object({ message: z.string() }),
 })
-  .then(mainBlock)
+  .step(mainBlock)
   .work((output) => ({ event: "processed", payload: output }), logAnalytics)
-  .then(nextStep);
+  .step(nextStep);
 ```
 
 `nextStep` receives the same output as `mainBlock` produced. The analytics call runs in the background and doesn't block. If `logAnalytics` throws, the pipeline keeps going.
@@ -71,9 +71,9 @@ Two siblings each calling `.work()` finish in roughly the time of the slower one
 
 ```ts
 const root = sequencer({ name: "root", inputSchema: z.unknown() })
-  .then(branchA) // .work(slowA) inside
-  .then(branchB) // .work(slowB) inside — starts immediately, doesn't wait for slowA
-  .then(thirdStep); // also starts immediately
+  .step(branchA) // .work(slowA) inside
+  .step(branchB) // .work(slowB) inside — starts immediately, doesn't wait for slowA
+  .step(thirdStep); // also starts immediately
 ```
 
 If you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier *in the dispatching sequencer*. It drains only the calling sequencer's tasks, not unrelated siblings'.
@@ -82,7 +82,7 @@ If you need a downstream step to read state mutated by a queued task, use `.wait
 const memoryPipeline = sequencer({ name: "memory", inputSchema: z.unknown() })
   .work(persistMemoryEntry)
   .waitForWork() // wait for persistence before reading state below
-  .then(readPersistedEntries);
+  .step(readPersistedEntries);
 ```
 
 Before this change, every sequencer auto-awaited its own background work before returning, which serialized sibling work that should have run concurrently. If you have code that previously relied on the inner-sequencer auto-await for ordering — e.g. an inner `.work(setupBlock)` followed by a parent step that read state mutated by `setupBlock` — add an explicit `.waitForWork()` at the inner sequencer boundary.
@@ -96,7 +96,7 @@ pipeline
   .work(taskA)
   .work(taskB)
   .waitForWork()
-  .then(nextStep);
+  .step(nextStep);
 ```
 
 `nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote work failures:
@@ -139,22 +139,22 @@ You can queue several work tasks; they run concurrently:
 
 ```ts
 pipeline
-  .then(coreLogic)
+  .step(coreLogic)
   .work(logUsage)
   .work(cacheWarm)
   .work(sendNotification)
-  .then(moreWork);
+  .step(moreWork);
 ```
 
 All three run in parallel. The main chain proceeds to `moreWork` immediately. Call `.waitForWork()` when you need to converge:
 
 ```ts
 pipeline
-  .then(coreLogic)
+  .step(coreLogic)
   .work(logUsage)
   .work(cacheWarm)
   .waitForWork()
-  .then(moreWork);
+  .step(moreWork);
 ```
 
 ## Realistic example
@@ -164,8 +164,8 @@ const chatPipeline = sequencer({
   name: "chat",
   inputSchema: z.object({ message: z.string() }),
 })
-  .then(validateInput)
-  .then(agent)
+  .step(validateInput)
+  .step(agent)
   .work(
     (output) => ({
       event: "response_generated",
@@ -179,7 +179,7 @@ const chatPipeline = sequencer({
     warmCacheHandler
   )
   .tap(logToJournal)
-  .then(formatResponse);
+  .step(formatResponse);
 ```
 
 Analytics and cache warming run in parallel. `logToJournal` runs inline (tap) because we want it done before formatting. The pipeline only continues after the tap completes.
@@ -195,12 +195,12 @@ const pipeline = sequencer({
   name: "chat",
   inputSchema: z.object({ message: z.string() }),
 })
-  .then(agent)
+  .step(agent)
   .workIf(
     (_response, ctx) => ctx.session.state.features.memory,
     memoryObserveBlock
   )
-  .then(formatResponse);
+  .step(formatResponse);
 ```
 
 When `features.memory` is disabled, the pipeline behaves as if the `.workIf()` call didn't exist. No block is dispatched and no promise is queued.
@@ -235,7 +235,7 @@ When the condition is falsy, the connector is never called.
 ### Condition signature
 
 The condition function receives the running step value first and the
-`BlockContext` second — matching `.thenIf` and `.tapIf`. Authors can gate
+`BlockContext` second — matching `.stepIf` and `.tapIf`. Authors can gate
 dispatch on either the upstream output or live session/request state:
 
 ```ts
@@ -337,7 +337,7 @@ A memory capture backgrounded with `.work()` survives the user closing their tab
 
 ```ts
 const turn = sequencer({ name: "turn", inputSchema: z.unknown() })
-  .then(respondToUser)        // foreground — aborts if the user clicks stop
+  .step(respondToUser)        // foreground — aborts if the user clicks stop
   .work(memory.captureFromItems); // background — completes even if the tab closes
 ```
 

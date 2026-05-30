@@ -29,7 +29,7 @@ const cappedDiscoverer = generator({
 });
 
 const pipeline = sequencer({ name: "pattern-skill-task-tools-pipeline", inputSchema })
-  .then(cappedDiscoverer);
+  .step(cappedDiscoverer);
 
 const flow = defineFlow({
   kind: "test-pattern-skill-task-tools",

@@ -56,7 +56,8 @@ describe("tenantId context axis", () => {
       sessionId: "s",
       stores: createInMemoryStores(),
       responseEmitter: createResponseEmitter({ requestId: "req_tenant" }),
-      tenantId: "tenant-a"
+      tenantId: "tenant-a",
+      runtimeConfig: {}
     });
 
     expect(capture.tenantId).toBe("tenant-a");
@@ -72,7 +73,8 @@ describe("tenantId context axis", () => {
       userId: "u",
       sessionId: "s",
       stores: createInMemoryStores(),
-      responseEmitter: createResponseEmitter({ requestId: "req_no_tenant" })
+      responseEmitter: createResponseEmitter({ requestId: "req_no_tenant" }),
+      runtimeConfig: {}
     });
 
     expect(capture.tenantId).toBeUndefined();

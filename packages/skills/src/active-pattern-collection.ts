@@ -10,6 +10,10 @@
  * Returns `undefined` when no pattern is active so callers can surface
  * a structured error rather than throwing — agents should be able to
  * recover gracefully from misuse.
+ *
+ * Resolution is async: `getOrCreateTaskCollection` awaits one
+ * `collection.list()` to hydrate its sync task mirror (FIX-700), so this
+ * helper and its callers must `await` the result.
  */
 
 import type {
@@ -29,9 +33,9 @@ import { getCollection } from "./internal/get-collection";
  * Returns `undefined` when no `mode: "pattern"` entry is active or
  * the resource backing for a session-scoped collection isn't wired.
  */
-export function getActivePatternCollection(
+export async function getActivePatternCollection(
   ctx: BlockContext,
-): TaskCollectionRef | undefined {
+): Promise<TaskCollectionRef | undefined> {
   const meta = getActivePatternMeta(ctx);
   if (!meta) return undefined;
   return resolveCollection(ctx, meta);
@@ -50,10 +54,10 @@ export function getActivePatternMeta(ctx: BlockContext): ActivePatternMeta | und
   return undefined;
 }
 
-function resolveCollection(
+async function resolveCollection(
   ctx: BlockContext,
   meta: ActivePatternMeta,
-): TaskCollectionRef | undefined {
+): Promise<TaskCollectionRef | undefined> {
   if (meta.backing === "request") {
     return getOrCreateTaskCollection({
       backing: "request",

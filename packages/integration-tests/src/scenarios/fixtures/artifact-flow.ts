@@ -70,7 +70,7 @@ const writeArtifact = sequencer({
   inputSchema: writeArtifactInputSchema
 })
   .tap(upsertArtifact)
-  .then(writeArtifactConfirm);
+  .step(writeArtifactConfirm);
 
 const builderGenerator = generator({
   name: "builder-generator",
@@ -86,7 +86,7 @@ const builderGenerator = generator({
 });
 
 const buildPipeline = sequencer({ name: "build-pipeline", inputSchema: buildInputSchema })
-  .then(builderGenerator);
+  .step(builderGenerator);
 
 const artifactFlow = defineFlow({
   kind: "test-artifact",

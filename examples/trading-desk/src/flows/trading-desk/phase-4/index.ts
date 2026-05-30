@@ -3,7 +3,7 @@
  *
  * Runs after Phase 3: pre-creates four P4 memos in `pending`, then runs
  * three persona steps in fixed order (aggressive → conservative → neutral)
- * as a plain `.then()` chain, then runs the consolidation
+ * as a plain `.step()` chain, then runs the consolidation
  * `riskAssessmentGenerator` as a final step.
  *
  * Each persona step is built by the local `personaStep()` factory and
@@ -54,8 +54,8 @@ import {
 function personaStep(shortName: Phase4PersonaShortName, approach: any, gen: any) {
   return sequencer({ name: `phase-4-${shortName}-step` })
     .tap(markWritingP4(shortName))
-    .then(approach)
-    .then(gen)
+    .step(approach)
+    .step(gen)
     .tap(commitPersonaMemo(shortName))
     .rescue([{ block: markErrorP4(shortName) }]);
 }
@@ -82,8 +82,8 @@ const riskAssessmentStep = sequencer({
   name: "phase-4-risk-assessment-step",
 })
   .tap(markWritingP4("riskAssessment"))
-  .then(riskAssessmentApproachGenerator)
-  .then(riskAssessmentGenerator)
+  .step(riskAssessmentApproachGenerator)
+  .step(riskAssessmentGenerator)
   .tap(commitRiskAssessmentMemo)
   .rescue([{ block: markErrorP4("riskAssessment") }]);
 
@@ -95,7 +95,7 @@ export const phase4Pipeline = sequencer({
   },
 })
   .tap(setupPhase4Memos)
-  .then(aggressiveStep)
-  .then(conservativeStep)
-  .then(neutralStep)
-  .then(riskAssessmentStep);
+  .step(aggressiveStep)
+  .step(conservativeStep)
+  .step(neutralStep)
+  .step(riskAssessmentStep);

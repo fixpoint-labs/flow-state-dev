@@ -25,8 +25,8 @@ const portfolioManagerStep = sequencer({
   name: "phase-5-portfolio-manager-step",
 })
   .tap(markWritingP5("portfolioManager"))
-  .then(portfolioManagerApproachGenerator)
-  .then(portfolioManagerGenerator)
+  .step(portfolioManagerApproachGenerator)
+  .step(portfolioManagerGenerator)
   .tap(commitPortfolioManagerMemo)
   .rescue([{ block: markErrorP5("portfolioManager") }]);
 
@@ -38,4 +38,4 @@ export const phase5Pipeline = sequencer({
   },
 })
   .tap(setupPhase5Memos)
-  .then(portfolioManagerStep);
+  .step(portfolioManagerStep);

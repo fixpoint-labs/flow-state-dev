@@ -79,6 +79,9 @@ export * from "./execution";
 export * from "./registry";
 export * from "./routes";
 export * from "./transports";
+// Internal runtime-config bundle (type only — see runtime-config.ts). The
+// factory stays unexported; sibling packages construct the bundle inline.
+export type { RuntimeConfig } from "./runtime-config";
 // Model infrastructure — re-exported from core.
 // Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
 // Note: core's `isRetryableError` is intentionally NOT re-exported here — it

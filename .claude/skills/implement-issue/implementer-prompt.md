@@ -146,7 +146,7 @@ Correct order:
 4. **Refactor while green.** After all tests pass, look for: shallow
    handlers (BP-013 connector functions instead), handlers that just
    return their input (BP-014, use `.tap()`), wrapper sequencers
-   gating a single step (BP-015, use `.thenIf` / `.workIf` / `.tapIf`),
+   gating a single step (BP-015, use `.stepIf` / `.workIf` / `.tapIf`),
    repeated tool / context / resource wiring (extract a capability).
    Never refactor while red.
 

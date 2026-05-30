@@ -365,8 +365,8 @@ export function digestRegenerate(config: DigestRegenerateConfig) {
     name: config.name ? `${config.name}/digest/regenerate` : 'memory/digest/regenerate',
     inputSchema: digestRegenerateInputSchema,
   })
-    .then(guardBlock)
+    .step(guardBlock)
     .exitIf((result: DigestGuardOutput) => !result.triggered)
-    .then(generateBlock)
-    .then(persistBlock)
+    .step(generateBlock)
+    .step(persistBlock)
 }

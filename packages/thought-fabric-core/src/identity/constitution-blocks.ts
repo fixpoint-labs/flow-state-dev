@@ -220,11 +220,11 @@ export function constitutionEnforce(config: ConstitutionEnforceBlockConfig) {
  *
  * // As a sequencer step:
  * const pipeline = sequencer({ name: 'review-content' })
- *   .then(auditor)
+ *   .step(auditor)
  *
  * // As a .tap() sidechain:
  * const pipeline = sequencer({ name: 'chat-with-audit' })
- *   .then(chat)
+ *   .step(chat)
  *   .tap(auditor)
  * ```
  */
@@ -244,6 +244,6 @@ export function constitutionAuditor(config: ConstitutionAuditorBlockConfig) {
   })
 
   return sequencer({ name: prefix, inputSchema: constitutionReviewInputSchema })
-    .then(reviewBlock)
-    .then(enforceBlock)
+    .step(reviewBlock)
+    .step(enforceBlock)
 }

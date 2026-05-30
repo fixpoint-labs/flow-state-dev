@@ -44,8 +44,8 @@ describe("FIX-554: request-scoped work pool", () => {
       .work(sleepHandler("slow-b", SLEEP_MS, bDone));
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .then(branchA)
-      .then(branchB);
+      .step(branchA)
+      .step(branchB);
 
     const flow = defineFlow({
       kind: "fix554-flow",
@@ -88,7 +88,7 @@ describe("FIX-554: request-scoped work pool", () => {
       .work(slow);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .then(inner);
+      .step(inner);
 
     const flow = defineFlow({
       kind: "fix554-stream",
@@ -142,8 +142,8 @@ describe("FIX-554: request-scoped work pool", () => {
       .work(fast("sibling-slow", 100));
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .then(sibling)
-      .then(inner);
+      .step(sibling)
+      .step(inner);
 
     const flow = defineFlow({
       kind: "fix554-scope",

@@ -36,13 +36,13 @@ Sequencers also accept an optional `outputSchema` declaration that the framework
 
 ## Types flow through sequencers
 
-The sequencer DSL tracks types through the chain. Each `.then()` captures the output schema of the current step and threads it as the input type of the next:
+The sequencer DSL tracks types through the chain. Each `.step()` captures the output schema of the current step and threads it as the input type of the next:
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
-  .then(parseInput)        // output: { query: string, filters: Filter[] }
-  .then(searchDocs)        // input: ↑ that type. output: SearchResult[]
-  .then(rankResults)       // input: SearchResult[]. output: RankedResult[]
+  .step(parseInput)        // output: { query: string, filters: Filter[] }
+  .step(searchDocs)        // input: ↑ that type. output: SearchResult[]
+  .step(rankResults)       // input: SearchResult[]. output: RankedResult[]
   .map((results) =>        // results is typed as RankedResult[]
     results.slice(0, 10)
   );
@@ -52,7 +52,7 @@ const pipeline = sequencer({ name: "pipeline" })
 If `searchDocs` expects a different input shape than what `parseInput` produces, TypeScript flags it immediately. The fix is a connector — a one-line transform function between steps:
 
 ```ts
-.then(
+.step(
   (output) => ({ query: output.query, limit: 10 }),  // connector
   searchDocs
 )
@@ -66,14 +66,14 @@ When you use `.parallel()`, the output is a typed object with a key for each nam
 
 ```ts
 const enriched = sequencer({ name: "enrich" })
-  .then(parseQuery)
+  .step(parseQuery)
   .parallel({
     web: searchWeb,         // output: WebResult[]
     docs: searchDocs,       // output: DocResult[]
     memory: searchMemory,   // output: MemoryResult[]
   })
   // output type: { web: WebResult[], docs: DocResult[], memory: MemoryResult[] }
-  .then((results) => {
+  .step((results) => {
     // results.web, results.docs, results.memory — all typed
     return merge(results.web, results.docs, results.memory);
   });
@@ -213,7 +213,7 @@ Here's what the framework infers so you don't have to:
 | `userStateSchema` | `ctx.user.state` type |
 | `sessionResourceSchemas` | `ctx.session.resources.*` handle types |
 | `sessionResources` (with `defineResource`) | `BlockDefinition.declaredResources` + automatic flow merge |
-| Block in `.then()` | Next step's input type |
+| Block in `.step()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
 | Scope `stateSchema` in flow | `client.derived` compute function types |
 | Capability `sessionStateSchema` (via `uses`) | `ctx.session.state` (merged with block's own) |

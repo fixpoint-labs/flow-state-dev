@@ -127,8 +127,8 @@ export interface PerspectiveAnalyzeConfig extends PerspectiveBlockConfig {
  * })
  *
  * const pipeline = sequencer({ name: 'review' })
- *   .then(applySecurityLens)
- *   .then(myCustomGenerator)
+ *   .step(applySecurityLens)
+ *   .step(myCustomGenerator)
  * ```
  *
  * Input: `{ content: string, context?: string }`
@@ -176,7 +176,7 @@ export function perspectiveApply(config: PerspectiveBlockConfig) {
  * const pipeline = sequencer({
  *   name: 'analyze-proposal',
  *   inputSchema: z.object({ content: z.string() }),
- * }).then(securityAnalysis)
+ * }).step(securityAnalysis)
  * // pipeline output → { analysis, salienceNotes, recommendations, ... }
  * ```
  *
@@ -242,13 +242,13 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
  * // As a sequencer step
  * const pipeline = sequencer({ name: 'review-proposal' })
  *   .map((input) => ({ content: input.proposal }))
- *   .then(securityAudit)
+ *   .step(securityAudit)
  *
  * // As a .work() sidechain
  * const pipeline = sequencer({ name: 'review' })
- *   .then(mainBlock)
+ *   .step(mainBlock)
  *   .work((input) => ({ content: input.proposal }), securityAudit)
- *   .then(nextBlock)
+ *   .step(nextBlock)
  * ```
  */
 export function perspectiveAuditor(config: PerspectiveAnalyzeConfig) {
@@ -259,8 +259,8 @@ export function perspectiveAuditor(config: PerspectiveAnalyzeConfig) {
   const analyzeBlock = perspectiveAnalyze(config)
 
   return sequencer({ name: blockName, inputSchema: perspectiveInputSchema })
-    .then(applyBlock)
-    .then(analyzeBlock)
+    .step(applyBlock)
+    .step(analyzeBlock)
 }
 
 // ===========================================================================

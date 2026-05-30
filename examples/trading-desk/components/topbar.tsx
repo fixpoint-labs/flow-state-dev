@@ -29,6 +29,9 @@ type TopBarProps = {
   onDataSourceChange: (value: DataSourceMode) => void;
   onRun: () => void;
   isRunning: boolean;
+  /** Whether the current inputs map to an existing session. Drives the button
+   *  label: "re-run" for an existing run, "Run" for a fresh tuple. */
+  isExistingSession: boolean;
   theme: "light" | "dark";
   onThemeToggle: () => void;
 };
@@ -59,6 +62,7 @@ export function TopBar({
   onDataSourceChange,
   onRun,
   isRunning,
+  isExistingSession,
   theme,
   onThemeToggle,
 }: TopBarProps): ReactElement {
@@ -145,7 +149,7 @@ export function TopBar({
           )}
         >
           <Play className="h-3 w-3" aria-hidden />
-          {isRunning ? "running…" : "re-run"}
+          {isRunning ? "running…" : isExistingSession ? "re-run" : "Run"}
         </button>
       </form>
 

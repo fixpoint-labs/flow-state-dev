@@ -17,7 +17,7 @@ import { depsSatisfied } from "../shared";
 
 export interface SelectNextReadyTaskOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
 }
 
 export const selectNextReadyTaskOutputSchema = z.object({
@@ -40,7 +40,7 @@ export function createSelectNextReadyTask(options: SelectNextReadyTaskOptions) {
     inputSchema: z.unknown(),
     outputSchema: selectNextReadyTaskOutputSchema,
     execute: async (_input, ctx): Promise<SelectNextReadyTaskOutput> => {
-      const collection = collectionFactory(ctx);
+      const collection = await collectionFactory(ctx);
       const pending = collection.list({ status: "pending" });
       const eligible = pending.filter((task) => depsSatisfied(task, collection));
       if (eligible.length === 0) return { ready: false };

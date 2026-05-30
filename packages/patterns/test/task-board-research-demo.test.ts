@@ -74,8 +74,8 @@ function makeSynthesizer(): TaskWorker {
     name: "synthesizer",
     inputSchema: synthWorkerInputSchema,
     outputSchema: synthesisOutputSchema,
-    execute: (input, ctx: BlockContext) => {
-      const collection = getOrCreateTaskCollection({
+    execute: async (input, ctx: BlockContext) => {
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "sequencer",
         collectionId: "research",

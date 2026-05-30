@@ -73,7 +73,7 @@ export function createBuildPlanOutput(options: { name: string }) {
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,
@@ -156,6 +156,6 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     stateSchema: planAndExecuteStateSchema,
     activeStatusMessage: "Putting it all together",
   })
-    .then(buildPlanOutput)
-    .then(synthesizer);
+    .step(buildPlanOutput)
+    .step(synthesizer);
 }

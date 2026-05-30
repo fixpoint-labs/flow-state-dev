@@ -47,7 +47,7 @@ Handler-emitted messages do not carry the `model` field. The framework only stam
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
-  .then(handler({
+  .step(handler({
     name: "fetch-data",
     execute: async (input, ctx) => {
       ctx.emitStatus("Fetching data from external API...");
@@ -56,7 +56,7 @@ const pipeline = sequencer({ name: "pipeline" })
       return processData(data);
     },
   }))
-  .then(analyzer);
+  .step(analyzer);
 ```
 
 Status messages are fire-and-forget. They're lightweight by design — emit them freely to keep the user informed without cluttering session history.
@@ -221,9 +221,9 @@ const pipeline = sequencer({
   name: "research",
   container: { component: "research-panel" },
 })
-  .then(searchBlock)     // emits component items
-  .then(analyzeBlock)    // emits more component items
-  .then(summarizeBlock); // emits the final summary
+  .step(searchBlock)     // emits component items
+  .step(analyzeBlock)    // emits more component items
+  .step(summarizeBlock); // emits the final summary
 ```
 
 The framework emits a `container` item when the sequencer starts executing. Every item emitted by child blocks carries an `ownedBy` tag pointing back to this container. On the client, your container renderer receives all owned items and decides how to display them:

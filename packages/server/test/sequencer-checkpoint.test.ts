@@ -60,8 +60,8 @@ function buildSimpleFlow(opts: { durable?: boolean; cleanupCheckpointsOnTerminal
     stateSchema: STATE_SCHEMA,
     durable: opts.durable
   })
-    .then(incrementHandler)
-    .then(finalizeHandler);
+    .step(incrementHandler)
+    .step(finalizeHandler);
 
   return defineFlow({
     kind: "checkpoint-test-flow",
@@ -100,7 +100,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -146,7 +147,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());
@@ -178,7 +180,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: { ...stores, checkpoints: wrappedCheckpoints },
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     // At least the initial baseline + one per step that actually mutated
@@ -215,7 +218,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(writeCount).toBeGreaterThan(0);
@@ -245,7 +249,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(writeCount).toBe(0);
@@ -271,7 +276,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(getStateSnapshots(response.getItems())).toHaveLength(0);
@@ -305,7 +311,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
           await ctx.sequencer!.setState({ outer: 7 });
         }
       }))
-      .then(innerSeq);
+      .step(innerSeq);
 
     const flow = defineFlow({
       kind: "nested-checkpoint-flow",
@@ -340,7 +346,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probed,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const writtenInstanceIds = new Set(writes.map((w) => w.blockInstanceId));
@@ -413,7 +420,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores: probedStores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       const snapshots = getStateSnapshots(response.getItems());
@@ -488,7 +496,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeDefined();
 
@@ -560,7 +569,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       sessionId: "sess_1",
       stores: probedStores,
       responseEmitter: response,
-      signal: abortController.signal
+      signal: abortController.signal,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());
@@ -585,7 +595,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());
@@ -684,10 +695,10 @@ describe("FIX-401 CheckpointStore implementations — round trip and overwrite",
 
     it(`${name}: long blockInstanceId round trip (FIX-654)`, async () => {
       const LONG_BLOCK_INSTANCE_ID =
-        "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+        "req_1779230206704_89c8331161094:root/step[4]/branch[assistant-generator]" +
         "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
         "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
-        "/forEach[3]/iter[0]/thenIf[1]:0";
+        "/forEach[3]/iter[0]/stepIf[1]:0";
       await store.write({
         requestId: "req_1779230206704_89c8331161094",
         blockInstanceId: LONG_BLOCK_INSTANCE_ID,
@@ -705,10 +716,10 @@ describe("FIX-401 CheckpointStore implementations — round trip and overwrite",
 
     it(`${name}: distinct long blockInstanceIds do not collide (FIX-654)`, async () => {
       const BASE =
-        "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+        "req_1779230206704_89c8331161094:root/step[4]/branch[assistant-generator]" +
         "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
         "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
-        "/forEach[3]/iter[0]/thenIf[1]:";
+        "/forEach[3]/iter[0]/stepIf[1]:";
       const idA = `${BASE}0`;
       const idB = `${BASE}1`;
       await store.write({
@@ -775,10 +786,10 @@ describe("FIX-654 filesystem checkpoint filename is hash-derived", () => {
     const store = createFilesystemCheckpointStore(tempDir);
     const requestId = "req_1779230206704_89c8331161094";
     const blockInstanceId =
-      "req_1779230206704_89c8331161094:root/then[4]/branch[assistant-generator]" +
+      "req_1779230206704_89c8331161094:root/step[4]/branch[assistant-generator]" +
       "/tool[runSkill][toolu_01BxPX5qsWhhWbDwYbefeWgS]/branch[skillPatternRun]" +
       "/branch[skillPattern_competitor-analysis]/branch[skill_competitor-analysis]" +
-      "/forEach[3]/iter[0]/thenIf[1]:0";
+      "/forEach[3]/iter[0]/stepIf[1]:0";
     await store.write({
       requestId,
       blockInstanceId,

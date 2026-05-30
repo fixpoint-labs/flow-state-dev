@@ -17,6 +17,7 @@ import {
 } from "@flow-state-dev/core";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
+import { createRuntimeConfig } from "../runtime-config";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
@@ -198,20 +199,28 @@ class InternalFlowState<TSettings extends object>
       createModelResolver(toModelResolverOptions(this.#options.models));
     const voiceProvider = this.#options.voice?.provider;
 
-    return createFlowApiRouter({
-      registry: this.#registry,
-      stores,
+    // Bundle the forwarded instance-level options here, at the public
+    // boundary. The intermediate execution-chain layers take this bundle
+    // verbatim — adding a new forwarded field means one line here, not a
+    // per-layer signature change.
+    const runtimeConfig = createRuntimeConfig({
       modelResolver,
       voiceProvider,
       settings: this.#options.settings as FlowStateSettings | undefined,
-      onError: this.#options.onError,
-      onBackgroundWork: this.#options.onBackgroundWork,
-      detectInterruptedOnStartup: this.#options.detectInterruptedOnStartup,
       middleware: this.#options.middleware,
+      onBackgroundWork: this.#options.onBackgroundWork,
+      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs
+    });
+
+    return createFlowApiRouter({
+      registry: this.#registry,
+      stores,
+      runtimeConfig,
+      onError: this.#options.onError,
+      detectInterruptedOnStartup: this.#options.detectInterruptedOnStartup,
       adapters: this.#options.adapters,
       resolvePrincipal: this.#options.resolvePrincipal,
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
-      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs
     });

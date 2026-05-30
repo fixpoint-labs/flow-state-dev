@@ -353,6 +353,8 @@ interface ContentStore {
 
 Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
 
+That scoped load runs in three waves. `createExecutionContext` fires Wave 1 (flow-level resources, at context creation) and Wave 2 (the dispatched action's declared resources, in one parallel burst — a context is bound to exactly one action, so this lives in the context rather than `runAction`). Wave 3 fires in the block runtime's `run`: a block's `prefetchMode: 'lazy'` single resources load when that block dispatches, and lazy collections defer further to a per-access on-demand accessor. A per-scope cache plus a single-flight in-flight map dedupe loads across all three waves and concurrent block dispatch. See the [resources-and-client-data architecture doc](../../docs/architecture/resources-and-client-data.md#three-wave-loading) for the full model.
+
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
 ```ts

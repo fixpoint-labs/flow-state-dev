@@ -115,34 +115,34 @@ export interface SequencerDefinition<
   TOutput,
   TStateSchema extends ZodTypeAny | undefined = undefined,
 > extends BlockDefinition<any, any> {
-  // then(block) — infer output from block's output schema
-  then<TOutSchema extends ZodTypeAny>(
+  // step(block) — infer output from block's output schema
+  step<TOutSchema extends ZodTypeAny>(
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
-  // then(factory, inlineConfig) — inline block definition
-  then<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
+  // step(factory, inlineConfig) — inline block definition
+  step<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
     factory: TFactory,
     config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema>
   ): SequencerDefinition<TInput, z.infer<TOutputSchema>, TStateSchema>;
-  // then(connector, block) — connector transforms, block output inferred
-  then<TStepIn, TOutSchema extends ZodTypeAny>(
+  // step(connector, block) — connector transforms, block output inferred
+  step<TStepIn, TOutSchema extends ZodTypeAny>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
 
-  // thenIf(condition, block) — conditional, union of current | block output
-  thenIf<TOutSchema extends ZodTypeAny>(
+  // stepIf(condition, block) — conditional, union of current | block output
+  stepIf<TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
-  // thenIf(condition, factory, inlineConfig) — conditional inline
-  thenIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
+  // stepIf(condition, factory, inlineConfig) — conditional inline
+  stepIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     factory: TFactory,
     config: InlineConfig<TFactory, TOutput, TOutputSchema, TStateSchema>
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutputSchema>, TStateSchema>;
-  // thenIf(condition, connector, block) — conditional with connector
-  thenIf<TStepIn, TOutSchema extends ZodTypeAny>(
+  // stepIf(condition, connector, block) — conditional with connector
+  stepIf<TStepIn, TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
@@ -232,7 +232,7 @@ export interface SequencerDefinition<
    *
    * The condition is evaluated once per execution before dispatching. The
    * function form receives the running step value first and the
-   * `BlockContext` second — matching `.thenIf` and `.tapIf` — so authors can
+   * `BlockContext` second — matching `.stepIf` and `.tapIf` — so authors can
    * gate dispatch on either the upstream output or live session/request
    * state.
    */
@@ -290,13 +290,13 @@ export interface SequencerDefinition<
   ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema>;
 
   /** Run an array of blocks concurrently with the same input, collect all results as an ordered array. Like Promise.all. */
-  thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+  stepAll<TSteps extends Array<ParallelStep<TOutput>>>(
     steps: [...TSteps],
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }, TStateSchema>;
 
   /** Try blocks sequentially in order. Return the first successful result; skip remaining blocks. Throws AggregateError if all fail. */
-  thenAny(
+  stepAny(
     blocks: BlockDefinition<any, any>[]
   ): SequencerDefinition<TInput, unknown, TStateSchema>;
 
@@ -455,7 +455,7 @@ export type SequencerRuntimeState = {
    * into the next op (FIX-573 §3.3). Mirrors the running output descriptor at
    * sequencer level, but expressed as a `BlockValueInternal` source so it can
    * be stamped directly onto the next child's `input.source`. Aggregator ops
-   * (`.parallel`, `.thenAll`, `.forEach`) write a `structure` here so the
+   * (`.parallel`, `.stepAll`, `.forEach`) write a `structure` here so the
    * downstream sequential op stamps a structure-shaped input rather than a
    * single ref.
    */

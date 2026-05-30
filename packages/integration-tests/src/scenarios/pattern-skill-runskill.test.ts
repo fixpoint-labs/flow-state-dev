@@ -6,8 +6,7 @@
  * routes through the full production wrapping chain:
  *
  *   assistant generator → runSkill tool → skillPatternRun router →
- *   wrapMaterializedBlock router → skill_<name> task board → forEach
- *   workers → discoverer worker generator
+ *   skill_<name> task board → forEach workers → discoverer worker generator
  *
  * The discoverer worker is mocked by name (`skillWorker_test-discoverer_discoverer`
  * — the materializer's canonical naming) so the test can drive its tool
@@ -27,13 +26,13 @@ import { itemsByType } from "../helpers/assertions";
 // `response.getItems()` carries a non-cloneable function, and the
 // in-memory store's structured-clone path chokes on it.
 //
-// Plausible source: `wrapMaterializedBlock` in
-// `packages/skills/src/pattern-run.ts` makes its router's `execute`
-// return a `BlockDefinition` (which contains functions). If that return
-// value lands on a `block_trace.output` slot that ends up in
-// `response.getItems()`, the eventual persistence pass will hit this
-// error. Worth a fix, but it's a different bug from the one this test
-// was meant to exercise.
+// Plausible source: `skillPatternRun` in
+// `packages/skills/src/pattern-run.ts` returns the materialized
+// `BlockDefinition` (which contains functions) directly from its async
+// `execute`. If that return value lands on a `block_trace.output` slot
+// that ends up in `response.getItems()`, the eventual persistence pass
+// will hit this error. Worth a fix, but it's a different bug from the one
+// this test was meant to exercise.
 //
 // Marked `.skip` so the suite stays green. Flip to `.fails` (or remove
 // the skip) once the DataCloneError is addressed — the assertions below

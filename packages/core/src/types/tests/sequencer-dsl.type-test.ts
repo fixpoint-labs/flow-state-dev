@@ -41,15 +41,15 @@ const toStringBlock = handler({
 });
 
 const thenAndTap = sequencer({ name: "then-and-tap", inputSchema: z.string() })
-  .then(parseNumber)
-  .then(toLabel)
-  .then((value) => value.value, addOne)
+  .step(parseNumber)
+  .step(toLabel)
+  .step((value) => value.value, addOne)
   .tap((value) => {
     void value;
   })
   .tap((value) => value, addOne)
-  .thenIf((value) => value > 0, square)
-  .thenIf((value) => value > 0, (value) => value, square);
+  .stepIf((value) => value > 0, square)
+  .stepIf((value) => value > 0, (value) => value, square);
 
 const looping = sequencer({ name: "looping", inputSchema: z.number() })
   .doWhile((value) => value < 10, addOne)
@@ -80,37 +80,37 @@ const collections = sequencer({ name: "collections", inputSchema: z.number() })
 
 // then(handler, { outputSchema, execute }) — inline handler after a block
 const inlineThen = sequencer({ name: "inline-then", inputSchema: z.string() })
-  .then(parseNumber)
-  .then(handler, {
+  .step(parseNumber)
+  .step(handler, {
     outputSchema: z.string(),
     execute: (input) => `#${input}`
   });
 
 // Chained inline blocks — output from first inline flows into second
 const inlineChain = sequencer({ name: "inline-chain", inputSchema: z.string() })
-  .then(parseNumber)
-  .then(handler, {
+  .step(parseNumber)
+  .step(handler, {
     outputSchema: z.object({ doubled: z.number() }),
     execute: (input) => ({ doubled: input * 2 })
   })
-  .then(handler, {
+  .step(handler, {
     outputSchema: z.string(),
     execute: (input) => `doubled: ${input.doubled}`
   });
 
 // tap(handler, { execute }) — no outputSchema required, chain type unchanged
 const inlineTap = sequencer({ name: "inline-tap", inputSchema: z.number() })
-  .then(addOne)
+  .step(addOne)
   .tap(handler, {
     execute: (input) => {
       void input;
     }
   });
 
-// thenIf(condition, handler, { outputSchema, execute }) — conditional inline, union output
+// stepIf(condition, handler, { outputSchema, execute }) — conditional inline, union output
 const inlineThenIf = sequencer({ name: "inline-then-if", inputSchema: z.string() })
-  .then(parseNumber)
-  .thenIf(
+  .step(parseNumber)
+  .stepIf(
     (input) => input > 0,
     handler,
     {
@@ -121,13 +121,13 @@ const inlineThenIf = sequencer({ name: "inline-then-if", inputSchema: z.string()
 
 // Mixed inline + pre-defined blocks in same chain
 const mixedChain = sequencer({ name: "mixed", inputSchema: z.string() })
-  .then(parseNumber)
-  .then(handler, {
+  .step(parseNumber)
+  .step(handler, {
     outputSchema: z.number(),
     execute: (input) => input * 2
   })
-  .then(toLabel)
-  .then(handler, {
+  .step(toLabel)
+  .step(handler, {
     outputSchema: z.string(),
     execute: (input) => input.label
   });

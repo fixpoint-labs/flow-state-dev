@@ -19,15 +19,15 @@ import {
   createFakeSequencerState,
 } from "../helpers";
 
-type BackingFactory = () => {
+type BackingFactory = () => Promise<{
   collection: TaskCollectionRef;
   events: TaskChangeEvent[];
   /** Advance the test clock — both backings accept an injected `now`. */
   setNow: (n: number) => void;
-};
+}>;
 
 function sequencerBacking(): BackingFactory {
-  return () => {
+  return async () => {
     let clock = 1000;
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
     const captured = createCapturedChanges();
@@ -47,12 +47,12 @@ function sequencerBacking(): BackingFactory {
 }
 
 function resourceBacking(): BackingFactory {
-  return () => {
+  return async () => {
     let clock = 1000;
     const collection = createFakeResourceCollection();
     const captured = createCapturedChanges();
     return {
-      collection: createResourceBackedTaskCollection({
+      collection: await createResourceBackedTaskCollection({
         collectionId: "tasks",
         collection,
         onChange: captured.onChange,
@@ -74,8 +74,8 @@ describe.each([
   let events: TaskChangeEvent[];
   let setNow: (n: number) => void;
 
-  beforeEach(() => {
-    const setup = factory();
+  beforeEach(async () => {
+    const setup = await factory();
     collection = setup.collection;
     events = setup.events;
     setNow = setup.setNow;
@@ -474,5 +474,84 @@ describe.each([
       expect(claimed.kind).toBe("claimed");
       expect(claimed.prevStatus).toBe("pending");
     });
+  });
+});
+
+// Async-construction + sync-mirror contract for the resource backing.
+// The factory awaits one `collection.list()` to hydrate a mirror of
+// resource refs; afterwards `list/get/count` read that mirror
+// synchronously. These tests pin both the hydration behavior and the
+// synchronous-read contract (no Promise leaks through the query surface).
+describe("resource-backed sync mirror", () => {
+  it("hydrates pre-existing instances so sync list() returns them without await", async () => {
+    // Seed the underlying fake via a first resource-backed ref, then build
+    // a SECOND ref over the same fake: its mirror must hydrate from the
+    // instances already present at construction.
+    const fake = createFakeResourceCollection();
+    const seeder = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: fake,
+      now: () => 1000,
+    });
+    await seeder.addTasks([
+      { id: "a", goal: "A" },
+      { id: "b", goal: "B" },
+    ]);
+
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: fake,
+      now: () => 1000,
+    });
+
+    // Sync read — no await — reflects the seeded instances via the mirror.
+    const ids = tasks.list().map((t) => t.id).sort();
+    expect(ids).toEqual(["a", "b"]);
+    expect(tasks.count()).toBe(2);
+    expect(tasks.get("a")?.goal).toBe("A");
+  });
+
+  it("reflects an awaited addTask in subsequent sync list()", async () => {
+    const fake = createFakeResourceCollection();
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: fake,
+      now: () => 1000,
+    });
+
+    expect(tasks.list()).toHaveLength(0);
+    await tasks.addTask({ id: "new", goal: "fresh" });
+    const ids = tasks.list().map((t) => t.id);
+    expect(ids).toEqual(["new"]);
+    expect(tasks.get("new")?.goal).toBe("fresh");
+  });
+
+  it("query methods return synchronous values, not Promises", async () => {
+    const fake = createFakeResourceCollection();
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: fake,
+      now: () => 1000,
+    });
+    await tasks.addTask({ id: "x", goal: "X" });
+
+    // Defensive runtime guard: the sync-mirror contract must not leak the
+    // underlying async ResourceCollectionRef reads through the query
+    // surface. If a future change forwards to `collection.list()` again,
+    // these become Promises and the assertions fail loudly.
+    expect(tasks.list()).not.toBeInstanceOf(Promise);
+    expect(tasks.count()).not.toBeInstanceOf(Promise);
+    expect(tasks.get("x")).not.toBeInstanceOf(Promise);
+
+    // Compile-time guard: ReturnType of the query methods is not a Promise.
+    type ListReturn = ReturnType<TaskCollectionRef["list"]>;
+    type CountReturn = ReturnType<TaskCollectionRef["count"]>;
+    type GetReturn = ReturnType<TaskCollectionRef["get"]>;
+    const _listNotPromise: ListReturn extends Promise<unknown> ? false : true = true;
+    const _countNotPromise: CountReturn extends Promise<unknown> ? false : true = true;
+    const _getNotPromise: GetReturn extends Promise<unknown> ? false : true = true;
+    void _listNotPromise;
+    void _countNotPromise;
+    void _getNotPromise;
   });
 });

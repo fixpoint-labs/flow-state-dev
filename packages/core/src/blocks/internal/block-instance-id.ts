@@ -8,7 +8,7 @@
  * checkpoint correlation, debugging).
  *
  * Format: `${requestId}:${path}:${attempt}`
- *   - `path` is a slash-delimited structural locator (e.g. `root/then[0]/iter[2]`).
+ *   - `path` is a slash-delimited structural locator (e.g. `root/step[0]/iter[2]`).
  *   - `attempt` is a 0-indexed retry counter scoped to `(requestId, path)`.
  *
  * Neither component is URL-encoded; requestId and path are expected to
@@ -35,8 +35,8 @@ export function buildBlockInstanceId(
 /**
  * Extends a parent path with a child segment.
  *
- * The parent is a slash-delimited path (e.g. `root/then[0]`); the segment
- * is appended as a new structural step (`then[1]`, `iter[3]`, `branch[cold]`).
+ * The parent is a slash-delimited path (e.g. `root/step[0]`); the segment
+ * is appended as a new structural step (`step[1]`, `iter[3]`, `branch[cold]`).
  */
 export function extendBlockPath(parentPath: string, segment: string): string {
   return `${parentPath}/${segment}`;
@@ -44,7 +44,7 @@ export function extendBlockPath(parentPath: string, segment: string): string {
 
 /**
  * Formats a structural segment for a sequencer operation. The operation
- * name is the op kind (`then`, `parallel`, `forEach`, `rescue`, etc.) and
+ * name is the op kind (`step`, `parallel`, `forEach`, `rescue`, etc.) and
  * the index disambiguates sibling positions within the same sequencer.
  */
 export function blockPathSegment(op: string, index: number): string {

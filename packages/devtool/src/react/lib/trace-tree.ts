@@ -220,7 +220,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
     // appears once per task as a sibling under the same parent. Label such a
     // group `[iter N]` only when at least one member carries a `loop[N]`
     // segment, so genuinely distinct same-name siblings (e.g. two separate
-    // `.then(foo)` steps) stay unlabeled and the loop's first pass reads
+    // `.step(foo)` steps) stay unlabeled and the loop's first pass reads
     // `[iter 0]`.
     assignIterationLabels(rootBlocks);
     for (const blockNode of blockMap.values()) {

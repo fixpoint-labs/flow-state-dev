@@ -430,7 +430,7 @@ export async function runActionInternal<
     requestId,
     internalSeams: undefined
   });
-  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+  const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
   const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
 
   response.setLogCallback((eventType, detail) => {
@@ -710,7 +710,7 @@ export async function runActionInternal<
   // for TTS but the provider can't synthesize, log a warning and continue
   // text-only rather than constructing a pipeline that would always fail.
   if (voiceConfig?.tts !== undefined && ttsEnabled) {
-    const provider = options.voiceProvider;
+    const provider = options.runtimeConfig.voiceProvider;
     if (provider !== undefined && (canSpeak(provider) || canSpeakStream(provider))) {
       // Either batch (`speak`) or streaming (`speakStream`) is enough — the
       // pipeline branches on `canSpeakStream` per sentence.
@@ -785,12 +785,12 @@ export async function runActionInternal<
       input: options.input,
       signal: composedSignal,
       backgroundSignal: backgroundController.signal,
-      modelResolver: options.modelResolver,
-      settings: options.settings,
+      modelResolver: options.runtimeConfig.modelResolver,
+      settings: options.runtimeConfig.settings,
       response,
       stores: options.stores,
       logger,
-      tracingLevel: options.tracingLevel
+      tracingLevel: options.runtimeConfig.tracingLevel
     });
   } catch (setupError) {
     deregisterAbortController(requestId);
@@ -823,7 +823,7 @@ export async function runActionInternal<
     // Compose middleware: global (from caller) → flow-level.
     // Block-level middleware is added inside executeBlock from block.config.
     const actionMiddleware = mergeMiddlewareStacks(
-      options.middleware,
+      options.runtimeConfig.middleware,
       options.flow.middleware
     );
 

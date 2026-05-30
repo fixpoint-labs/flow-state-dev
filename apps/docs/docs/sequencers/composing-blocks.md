@@ -10,10 +10,10 @@ The six methods are:
 
 | Method | What it does |
 |--------|-------------|
-| `then(block)` | Run a block. Its output becomes the next step's input. |
+| `step(block)` | Run a block. Its output becomes the next step's input. |
 | `map(fn)` | Inline transform. No block. Reshape the value between steps. |
 | `tap(block)` | Run a block for its side effect. The pipeline value passes through unchanged. |
-| `thenIf(cond, block)` | Run a block only when a condition is true. |
+| `stepIf(cond, block)` | Run a block only when a condition is true. |
 | `work(block)` | Fire a block in the background. The chain continues immediately. |
 | `rescue(handlers)` | Catch errors and route to recovery blocks. |
 
@@ -80,17 +80,17 @@ const recordOrder = handler({
 
 `recordOrder` declares a `sessionStateSchema` so TypeScript types `ctx.session.state` to those fields. See [State and scopes](/docs/fundamentals/state-and-scopes) for the full state API.
 
-## `then` — sequential steps
+## `step` — sequencing blocks
 
-Chain blocks with `.then()`. Each block's output is the next block's input. TypeScript checks the types between steps.
+Chain blocks with `.step()`. Each block's output is the next block's input. TypeScript checks the types between steps.
 
 ```ts
 const orderPipeline = sequencer({
   name: "order-pipeline",
   inputSchema: orderInput,
 })
-  .then(priceOrder)
-  .then(recordOrder);
+  .step(priceOrder)
+  .step(recordOrder);
 ```
 
 `priceOrder` produces `{ total, discounted }`. `recordOrder` consumes that shape and produces `{ orderId }`. The sequencer's output type is whatever the last step returns.
@@ -98,7 +98,7 @@ const orderPipeline = sequencer({
 If the next block expects a different shape, pass a connector function as the first argument:
 
 ```ts
-.then((output) => ({ amount: output.total }), chargeBlock)
+.step((output) => ({ amount: output.total }), chargeBlock)
 ```
 
 The connector receives the previous output and returns the input the next block expects. See [Connectors](/docs/sequencers/connectors).
@@ -110,13 +110,13 @@ Some blocks exist to do something — log, validate, mutate state — without tr
 ```ts
 sequencer({ name: "order-pipeline", inputSchema: orderInput })
   .tap(validateOrder)   // throws if invalid; otherwise no-op
-  .then(priceOrder)     // still receives the original orderInput
-  .then(recordOrder);
+  .step(priceOrder)     // still receives the original orderInput
+  .step(recordOrder);
 ```
 
 `priceOrder` gets the original input, not anything from `validateOrder`. `validateOrder` has no output to merge in — it either throws or it doesn't.
 
-This is the right shape for a validator. Don't write a handler that returns its input back out just to satisfy `.then()` — that pollutes the items log with a redundant echo. If a block has no meaningful output, drop the `outputSchema` and use `.tap()`.
+This is the right shape for a validator. Don't write a handler that returns its input back out just to satisfy `.step()` — that pollutes the items log with a redundant echo. If a block has no meaningful output, drop the `outputSchema` and use `.tap()`.
 
 The same applies to logging, telemetry, and state mutation. If the only purpose is the side effect, it's a tap.
 
@@ -125,16 +125,16 @@ The same applies to logging, telemetry, and state mutation. If the only purpose 
 Sometimes you need to reshape a value between steps without running a block. Use `.map()`. It's a pure function, not a block, so it doesn't show up as its own step in the items log.
 
 ```ts
-.then(priceOrder)
+.step(priceOrder)
 .map((priced) => ({ ...priced, totalCents: Math.round(priced.total * 100) }))
-.then(recordOrder)
+.step(recordOrder)
 ```
 
-`map` is for cheap synchronous reshaping. If the transform has side effects, hits the network, or you want it to appear as a step in the trace, use a handler block with `.then()` instead.
+`map` is for cheap synchronous reshaping. If the transform has side effects, hits the network, or you want it to appear as a step in the trace, use a handler block with `.step()` instead.
 
-## `thenIf` — run a step only when a condition holds
+## `stepIf` — run a step only when a condition holds
 
-What if you only want to apply a discount on larger orders that aren't already discounted? Wrap the discount step in `.thenIf()`:
+What if you only want to apply a discount on larger orders that aren't already discounted? Wrap the discount step in `.stepIf()`:
 
 ```ts
 const applyVolumeDiscount = handler({
@@ -149,12 +149,12 @@ const applyVolumeDiscount = handler({
 
 sequencer({ name: "order-pipeline", inputSchema: orderInput })
   .tap(validateOrder)
-  .then(priceOrder)
-  .thenIf(
+  .step(priceOrder)
+  .stepIf(
     (value) => value.total > 100 && !value.discounted,
     applyVolumeDiscount
   )
-  .then(recordOrder);
+  .step(recordOrder);
 ```
 
 The condition gets the current pipeline value and the block context. It can be sync or async. When it returns false the step is skipped and the pipeline value passes through unchanged — the next step still receives `priceOrder`'s output.
@@ -162,16 +162,16 @@ The condition gets the current pipeline value and the block context. It can be s
 You can also reach into the context to read state from any scope the surrounding block has declared:
 
 ```ts
-.thenIf(
+.stepIf(
   (value, ctx) => ctx.session.state.features.discountsEnabled,
   applyVolumeDiscount
 )
 ```
 
-`thenIf` also accepts a static boolean if the condition is known at build time:
+`stepIf` also accepts a static boolean if the condition is known at build time:
 
 ```ts
-.thenIf(ENABLE_DISCOUNTS, applyVolumeDiscount)
+.stepIf(ENABLE_DISCOUNTS, applyVolumeDiscount)
 ```
 
 For conditional side effects (a tap that runs only when something is true) use `tapIf`. For conditional background work, `workIf`. Both are in the [Control Flow Reference](/docs/sequencers/control-flow).
@@ -195,8 +195,8 @@ const trackOrder = handler({
 
 orderPipeline
   .tap(validateOrder)
-  .then(priceOrder)
-  .then(recordOrder)
+  .step(priceOrder)
+  .step(recordOrder)
   .work(trackOrder);     // dispatched, not awaited
 ```
 
@@ -235,8 +235,8 @@ const recordFailedOrder = handler({
 
 orderPipeline
   .tap(validateOrder)
-  .then(priceOrder)
-  .then(recordOrder)
+  .step(priceOrder)
+  .step(recordOrder)
   .rescue([
     { when: [NetworkError], block: retryWithDifferentProvider },
     { when: [PaymentDeclinedError], block: recordFailedOrder },
@@ -253,18 +253,18 @@ For throwing structured errors with machine-readable codes and `details` that su
 
 Rescue catches an error and routes it to a recovery block. Sometimes a later step needs to know that happened: did the block before me throw and get recovered, or did it run cleanly? `ctx.wasRescued(...)` answers that without the recovered value having to carry a marker.
 
-Pass it a block name or a block definition — usually a step that wraps a risky operation in its own `.rescue()`. It returns `true` only when that block ran as a prior step in the current sequencer and recovered an error through its own `.rescue()`. It returns `false` for a clean run, a step that never ran (skipped by `.thenIf`), an unknown name, or a call from outside a sequencer. It never throws.
+Pass it a block name or a block definition — usually a step that wraps a risky operation in its own `.rescue()`. It returns `true` only when that block ran as a prior step in the current sequencer and recovered an error through its own `.rescue()`. It returns `false` for a clean run, a step that never ran (skipped by `.stepIf`), an unknown name, or a call from outside a sequencer. It never throws.
 
 ```ts
 const primarySearch = sequencer({ name: "primary-search", inputSchema: query })
-  .then(callSearchApi)
+  .step(callSearchApi)
   .rescue([{ block: fallbackSearch }]);
 
 sequencer({ name: "search-pipeline", inputSchema: query })
-  .then(primarySearch)
+  .step(primarySearch)
   // Ranking assumes fresh API results, so skip it when the fallback ran.
-  .thenIf((results, ctx) => !ctx.wasRescued(primarySearch), rankResults)
-  .then(renderResults);
+  .stepIf((results, ctx) => !ctx.wasRescued(primarySearch), rankResults)
+  .step(renderResults);
 ```
 
 The status is transient: it lives for the current sequencer run and is resolved by name, the same way `getBlockResult` resolves a prior block. Under a loop it reflects the current iteration, not an earlier one. Reach for it when a downstream step should adapt to a fallback being taken, and you'd otherwise be tempted to thread a flag through state.
@@ -279,13 +279,13 @@ const orderPipeline = sequencer({
   inputSchema: orderInput,
 })
   .tap(validateOrder)
-  .then(priceOrder)
+  .step(priceOrder)
   .map((priced) => ({ ...priced, totalCents: Math.round(priced.total * 100) }))
-  .thenIf(
+  .stepIf(
     (value) => value.total > 100 && !value.discounted,
     applyVolumeDiscount
   )
-  .then(recordOrder)
+  .step(recordOrder)
   .work(trackOrder)
   .rescue([
     { when: [NetworkError], block: retryWithDifferentProvider },
@@ -299,10 +299,10 @@ Read top to bottom: validate (throws on bad input), price, normalize the shape, 
 
 The six methods above handle the common cases. The DSL has more once you need it:
 
-- **Run several blocks at once** → [`parallel`, `thenAll`, `forEach`](/docs/sequencers/control-flow#parallelism)
+- **Run several blocks at once** → [`parallel`, `stepAll`, `forEach`](/docs/sequencers/control-flow#parallelism)
 - **Loop until a condition is met** → [`doUntil`, `doWhile`, `loopBack`](/docs/sequencers/control-flow#looping)
 - **Conditional taps and work** → [`tapIf`, `workIf`, `exitIf`](/docs/sequencers/control-flow#conditional-sub-cases)
-- **Fallback chains and races** → [`thenAny`, `race`, `branch`](/docs/sequencers/control-flow#specialization)
+- **Fallback chains and races** → [`stepAny`, `race`, `branch`](/docs/sequencers/control-flow#specialization)
 - **Wait on background work before continuing** → [`waitForWork`](/docs/sequencers/control-flow#side-chain-coordination)
 - **Wait for a condition over the item stream** → [`waitForCondition`](/docs/sequencers/wait-for-condition)
 - **Per-block input adaptation** → [`connectInput`](/docs/sequencers/control-flow#connector-adaptation)

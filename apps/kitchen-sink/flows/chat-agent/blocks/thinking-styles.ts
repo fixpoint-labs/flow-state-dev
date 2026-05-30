@@ -262,7 +262,7 @@ const llmClassifySequencer = sequencer({
   name: "llm-classify-style",
   inputSchema: messageSchema,
 })
-  .then((input) => input.message, classifierBlock)
+  .step((input) => input.message, classifierBlock)
   .tap(applyClassifiedStyle);
 
 // -------------------------------------------------------------------------
@@ -461,8 +461,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     });
 
     return sequencer({ name: specConfig.name, inputSchema: z.any() })
-      .then(gen)
-      .then(writeBack);
+      .step(gen)
+      .step(writeBack);
   }
 
   const bbResearcher = bbSpecialist({
@@ -736,8 +736,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       topic: "query",
       body: input.message ?? input,
     }))
-    .then(rbMesh.emit)
-    .then(rbSynthesizer);
+    .step(rbMesh.emit)
+    .step(rbSynthesizer);
 
   // -----------------------------------------------------------------------
   // Moderated Debate — two agents argue opposing positions, a moderator

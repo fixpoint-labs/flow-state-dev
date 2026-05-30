@@ -84,8 +84,8 @@ const filterBlock = attention.filterRelevance({
 
 // Assume you have a handler that returns { task, items }
 const pipeline = sequencer({ name: 'assistant', inputSchema: z.object({ task: z.string(), items: z.array(z.any()) }) })
-  .then(filterBlock)
-  .then((ctx, input) => {
+  .step(filterBlock)
+  .step((ctx, input) => {
     // input.items = only the relevant items
     // input.excluded = IDs of filtered-out items
     return doSomethingWith(input)
@@ -178,8 +178,8 @@ const pipeline = sequencer({
     activeGoal: z.string().optional(),
   }),
 })
-  .then(salienceBlock)
-  .then((ctx, output) => {
+  .step(salienceBlock)
+  .step((ctx, output) => {
     // output.ranking = ["item-3", "item-1", "item-2"]
     // output.itemScores has per-item scores and optional reasoning
     return useRankedItems(output)
@@ -220,9 +220,9 @@ const adaptToSalience = handler({
 })
 
 const pipeline = sequencer({ name: 'filter-then-score', inputSchema })
-  .then(filterBlock)
-  .then(adaptToSalience)
-  .then(salienceBlock)
+  .step(filterBlock)
+  .step(adaptToSalience)
+  .step(salienceBlock)
 ```
 
 **Score first, then filter.** More expensive but finer control. The salience block adds `scores` and `composite` to each item. When those items flow into `filterRelevance`, it uses the LLM scores instead of recomputing keyword overlap. You need to map salience output back to filter input format. The trick: the original items (with content) live in the pipeline input. Store them in session state before salience, or use a wrapper sequencer that keeps both in scope. See the working-memory guide for session resource patterns.

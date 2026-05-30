@@ -150,6 +150,15 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * When this resource's state/content is loaded relative to a request
+   * (FIX-688). `'eager'` (default when omitted) loads it up front when the
+   * scope's resource registry is constructed. `'lazy'` defers loading until
+   * first access. Lazy single resources are only valid when declared on the
+   * specific block that needs them — a per-block load trigger; declaring a
+   * lazy single at flow level throws at `defineFlow` build time.
+   */
+  prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
 };

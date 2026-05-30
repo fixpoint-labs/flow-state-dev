@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Connectors
 
-Blocks have typed inputs and outputs. When adjacent steps don't match, you need a transform. Connectors are lightweight functions that sit between blocks and reshape data. They work across the sequencer DSL: `.then()`, `.thenIf()`, `.parallel()`, and more.
+Blocks have typed inputs and outputs. When adjacent steps don't match, you need a transform. Connectors are lightweight functions that sit between blocks and reshape data. They work across the sequencer DSL: `.step()`, `.stepIf()`, `.parallel()`, and more.
 
 ## Connector functions
 
@@ -12,8 +12,8 @@ A connector receives the previous step's output and the block context, and retur
 
 ```ts
 const pipeline = sequencer({ name: "pipeline", inputSchema: inputSchema })
-  .then(blockA)
-  .then(
+  .step(blockA)
+  .step(
     (output, ctx) => ({ query: output.text, limit: 10 }),
     searchBlock
   );
@@ -23,11 +23,11 @@ Here, `blockA` produces `{ text: string }`. `searchBlock` expects `{ query: stri
 
 ## Connectors in sequencer methods
 
-### then and thenIf
+### step and stepIf
 
 ```ts
-.then(connector, block)
-.thenIf(condition, connector, block)
+.step(connector, block)
+.stepIf(condition, connector, block)
 ```
 
 The connector runs before the block. Its return value is the block's input.
@@ -72,7 +72,7 @@ const searchFromText = searchBlock.connectInput(
   (text: string) => ({ query: text, limit: 10 })
 );
 
-pipeline.then(searchFromText);
+pipeline.step(searchFromText);
 ```
 
 The block always receives the adapted input. Useful when you reuse the same block in multiple pipelines with different upstream shapes.
@@ -125,7 +125,7 @@ When a tool block declares `mapModelOutput`, the model-visible string flows to t
 Connectors can read from scope state or sequencer state when shaping input:
 
 ```ts
-.then(
+.step(
   (output, ctx) => ({
     query: output.text,
     userId: ctx.user.identity.id,
@@ -145,7 +145,7 @@ Community or shared blocks often have fixed input shapes. Your pipeline may prod
 // Community block expects { query: string, limit: number }
 import { communitySearchBlock } from "@vendor/search";
 
-pipeline.then(
+pipeline.step(
   (output) => ({ query: output.userMessage, limit: 5 }),
   communitySearchBlock
 );
@@ -159,13 +159,13 @@ TypeScript infers types through the chain. The connector's return type must matc
 
 ```ts
 // searchBlock expects { query: string }
-.then(
+.step(
   (output) => ({ query: output.text }),  // ✓
   searchBlock
 );
 
 // This would error: missing required 'query'
-.then(
+.step(
   (output) => ({ limit: 10 }),
   searchBlock
 );
@@ -184,8 +184,8 @@ const agent = generator({
 });
 
 const researchPipeline = sequencer({ name: "research" })
-  .then(searchBlock)
-  .then(
+  .step(searchBlock)
+  .step(
     (results) => ({
       prompt: `Summarize these findings: ${results.summary}`,
       context: results.snippets,
@@ -213,7 +213,7 @@ const researchPipeline = sequencer({ name: "research" })
 ### Conditional connector
 
 ```ts
-.thenIf(
+.stepIf(
   (output) => output.needsEnrichment,
   (output, ctx) => ({
     ...output,

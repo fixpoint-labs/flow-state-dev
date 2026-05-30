@@ -257,21 +257,21 @@ const notesResource = defineResource({
 describe("sequencer resource collection", () => {
   it("has undefined declaredResources when no child blocks declare resources", () => {
     const noResBlock = handler({ name: "plain", execute: (v) => v });
-    const seq = sequencer({ name: "no-res" }).then(noResBlock);
+    const seq = sequencer({ name: "no-res" }).step(noResBlock);
     expect(seq.declaredResources).toBeUndefined();
   });
 
-  it("collects resources from a single .then() block", () => {
+  it("collects resources from a single .step() block", () => {
     const block = handler({
       name: "step",
       resources: { observations: observationsResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "single-then" }).then(block);
+    const seq = sequencer({ name: "single-then" }).step(block);
     expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
-  it("merges resources from multiple .then() blocks", () => {
+  it("merges resources from multiple .step() blocks", () => {
     const blockA = handler({
       name: "a",
       resources: { observations: observationsResource },
@@ -282,7 +282,7 @@ describe("sequencer resource collection", () => {
       resources: { artifacts: artifactsResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "multi-then" }).then(blockA).then(blockB);
+    const seq = sequencer({ name: "multi-then" }).step(blockA).step(blockB);
     expect(seq.declaredResources).toEqual({
       observations: observationsResource,
       artifacts: artifactsResource
@@ -300,7 +300,7 @@ describe("sequencer resource collection", () => {
       resources: { notes: notesResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "same-scope" }).then(blockA).then(blockB);
+    const seq = sequencer({ name: "same-scope" }).step(blockA).step(blockB);
     expect(seq.declaredResources).toEqual({
       observations: observationsResource,
       notes: notesResource
@@ -318,7 +318,7 @@ describe("sequencer resource collection", () => {
       resources: { observations: observationsResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "dup-ok" }).then(blockA).then(blockB);
+    const seq = sequencer({ name: "dup-ok" }).step(blockA).step(blockB);
     expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
@@ -337,16 +337,16 @@ describe("sequencer resource collection", () => {
       resources: { observations: otherObservations },
       execute: (v) => v
     });
-    expect(() => sequencer({ name: "conflict" }).then(blockA).then(blockB)).toThrow("Resource conflict");
+    expect(() => sequencer({ name: "conflict" }).step(blockA).step(blockB)).toThrow("Resource conflict");
   });
 
-  it("collects resources from .thenIf()", () => {
+  it("collects resources from .stepIf()", () => {
     const block = handler({
       name: "cond",
       resources: { observations: observationsResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "then-if" }).thenIf(() => true, block);
+    const seq = sequencer({ name: "then-if" }).stepIf(() => true, block);
     expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
@@ -458,10 +458,10 @@ describe("sequencer resource collection", () => {
       resources: { observations: observationsResource },
       execute: (v) => v
     });
-    const inner = sequencer({ name: "inner" }).then(block);
+    const inner = sequencer({ name: "inner" }).step(block);
     expect(inner.declaredResources).toEqual({ observations: observationsResource });
 
-    const outer = sequencer({ name: "outer" }).then(inner);
+    const outer = sequencer({ name: "outer" }).step(inner);
     expect(outer.declaredResources).toEqual({ observations: observationsResource });
   });
 
@@ -477,8 +477,8 @@ describe("sequencer resource collection", () => {
       execute: (v) => v
     });
 
-    const inner = sequencer({ name: "inner" }).then(blockA);
-    const outer = sequencer({ name: "outer" }).then(inner).then(blockB);
+    const inner = sequencer({ name: "inner" }).step(blockA);
+    const outer = sequencer({ name: "outer" }).step(inner).step(blockB);
 
     expect(outer.declaredResources).toEqual({
       observations: observationsResource,
@@ -499,8 +499,8 @@ describe("sequencer resource collection", () => {
     });
 
     const seq = sequencer({ name: "exec-test", inputSchema: z.number() })
-      .then(blockA)
-      .then(blockB);
+      .step(blockA)
+      .step(blockB);
 
     const ctx = createMockContext();
     await expect(runForTest(seq, 5, ctx)).resolves.toBe(12);

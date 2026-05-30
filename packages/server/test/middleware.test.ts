@@ -384,7 +384,9 @@ describe("middleware integration with runAction", () => {
       input: { message: "hello" },
       userId: "user_1",
       stores,
-      middleware: [globalMw]
+      runtimeConfig: {
+        middleware: [globalMw]
+      }
     });
 
     expect(result.error).toBeUndefined();
@@ -448,7 +450,9 @@ describe("middleware integration with runAction", () => {
       input: { message: "hello" },
       userId: "user_1",
       stores,
-      middleware: [globalMw]
+      runtimeConfig: {
+        middleware: [globalMw]
+      }
     });
 
     expect(result.error).toBeUndefined();
@@ -494,7 +498,9 @@ describe("middleware integration with runAction", () => {
       input: { value: 42 },
       userId: "user_1",
       stores,
-      middleware: [inspectorMw]
+      runtimeConfig: {
+        middleware: [inspectorMw]
+      }
     });
 
     expect(capturedContext.blockName).toBe("inspectable");
@@ -534,7 +540,9 @@ describe("middleware integration with runAction", () => {
       input: { message: "hello" },
       userId: "user_1",
       stores,
-      middleware: [failingMw]
+      runtimeConfig: {
+        middleware: [failingMw]
+      }
     });
 
     expect(result.error).toBeDefined();

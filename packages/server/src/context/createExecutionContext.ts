@@ -363,6 +363,27 @@ async function loadDeclaredResourceState(
   return seed;
 }
 
+/**
+ * FIX-688 Wave 1: narrow a scope's declared resources to the flow-level,
+ * non-lazy subset that loads at request start. Resources declared inside an
+ * action's block tree load at action/block dispatch (Waves 2 & 3); lazy
+ * resources load on first access. When `flowLevelKeys` covers every accessor
+ * (the back-compat default), this returns the full set — preserving the
+ * pre-FIX-688 "load everything at request start" behaviour.
+ */
+function filterFlowLevelEager(
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
+  flowLevelKeys: ReadonlySet<string>
+): Record<string, ResourceConfig | ResourceCollectionConfig> {
+  const out: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  for (const [accessor, config] of Object.entries(configs)) {
+    if (!flowLevelKeys.has(accessor)) continue;
+    if ((config as { prefetchMode?: string }).prefetchMode === "lazy") continue;
+    out[accessor] = config;
+  }
+  return out;
+}
+
 function asJsonValue(value: unknown): JsonValue {
   if (
     value === null ||
@@ -409,6 +430,18 @@ function updateObjectState(
   return next;
 }
 
+/**
+ * FIX-688: on-demand loaders backing a scope's lazy collection accessors.
+ * `getInstance` loads a single instance (state + content) into the per-scope
+ * cache so the ref handed back reads synchronously; `getByPrefix` bulk-loads a
+ * collection's prefix for `list`/`count`. Both single-flight and merge
+ * cache-wins so a concurrent mutation is never clobbered by an in-flight read.
+ */
+type ScopeLazyLoad = {
+  getInstance(storageKey: string): Promise<void>;
+  getByPrefix(keyPrefix: string): Promise<void>;
+};
+
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
@@ -426,6 +459,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
     /** Called after any resource mutation so the streaming layer can push change events to clients. */
     onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
+    /**
+     * FIX-688: on-demand loaders for `prefetchMode: 'lazy'` collections. When
+     * present, lazy collection accessors ensure the target instance/prefix is
+     * loaded into the cache before delegating to the eager method body. Omitted
+     * for scopes/contexts that don't support lazy loading (mock registries),
+     * where a lazy collection falls back to the eager cache-only behaviour.
+     */
+    lazyLoad?: ScopeLazyLoad;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -609,7 +650,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         scope: options.scope,
         config: nsConfig,
 
-        get(key: string | Record<string, string>): ResourceRef<JsonObject> {
+        async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
@@ -619,7 +660,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
-        getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
+        async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
@@ -790,7 +831,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return nsHandle.create(key, initial);
         },
 
-        list(prefix?: string): ResourceRef<JsonObject>[] {
+        async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {
           const resources = options.readResources();
           const instances: ResourceRef<JsonObject>[] = [];
 
@@ -825,11 +866,78 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           options.onResourceChanged?.(storageKey, "deleted");
         },
 
-        count(): number {
+        async count(): Promise<number> {
           const resources = options.readResources();
           return countInstances(nsConfig.pattern, resources);
         }
       };
+
+      // FIX-688/FIX-700: lazy collections hold only a partial cache and need
+      // to load instances on demand before reads. The eager nsHandle already
+      // has async reads (FIX-700), so we only need to inject the load-first
+      // wrapper for lazy collections — the API contract is the same either way.
+      if (nsConfig.prefetchMode === "lazy" && options.lazyLoad !== undefined) {
+        const lazyLoad = options.lazyLoad;
+        const nsPrefix = getPatternPrefix(nsConfig.pattern);
+        const collectionKeyPrefix = nsPrefix === "" ? "" : `${nsPrefix}/`;
+        const ensureInstance = (key: string | Record<string, string>): Promise<void> =>
+          lazyLoad.getInstance(resolveCollectionKey(nsConfig.pattern, key));
+        const ensurePrefix = (): Promise<void> => lazyLoad.getByPrefix(collectionKeyPrefix);
+
+        const lazyHandle: ResourceCollectionRef<JsonObject> = {
+          pattern: nsConfig.pattern,
+          scope: options.scope,
+          config: nsConfig,
+          async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
+            await ensureInstance(key);
+            return nsHandle.get(key);
+          },
+          async getOptional(
+            key: string | Record<string, string>
+          ): Promise<ResourceRef<JsonObject> | undefined> {
+            await ensureInstance(key);
+            return nsHandle.getOptional(key);
+          },
+          async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {
+            await ensurePrefix();
+            return nsHandle.list(prefix);
+          },
+          async count(): Promise<number> {
+            await ensurePrefix();
+            return nsHandle.count();
+          },
+          async create(
+            key: string | Record<string, string>,
+            initial?: Partial<JsonObject>,
+            createOptions?: { replace?: boolean }
+          ): Promise<ResourceRef<JsonObject>> {
+            await ensureInstance(key);
+            return nsHandle.create(key, initial, createOptions);
+          },
+          async getOrCreate(
+            key: string | Record<string, string>,
+            initial?: Partial<JsonObject>
+          ): Promise<ResourceRef<JsonObject>> {
+            await ensureInstance(key);
+            return nsHandle.getOrCreate(key, initial);
+          },
+          async upsert(
+            key: string | Record<string, string>,
+            update: Partial<JsonObject>,
+            createOnly?: Partial<JsonObject>
+          ): Promise<ResourceRef<JsonObject>> {
+            await ensureInstance(key);
+            return nsHandle.upsert(key, update, createOnly);
+          },
+          async delete(key: string | Record<string, string>): Promise<void> {
+            await ensureInstance(key);
+            return nsHandle.delete(key);
+          }
+        };
+
+        handles[resourceName] = lazyHandle as unknown as ResourceRef<JsonObject>;
+        continue;
+      }
 
       handles[resourceName] = nsHandle as unknown as ResourceRef<JsonObject>;
       continue;
@@ -2404,24 +2512,35 @@ export async function createExecutionContext<
   // collections by pattern prefix — so reads during the run are synchronous
   // against the in-memory cache without over-fetching the whole scope. The
   // full-scope view stays available via the state endpoint.
+  // FIX-688 Wave 1: load only the flow-level eager resources at request start.
+  // Action-tree and lazy resources load later (Waves 2 & 3) via
+  // `_loadDeclaredResources`. `flowLevelResourceKeys` is the set of accessors
+  // declared in the flow's own `resources` map (pre bubble-up); a flow without
+  // it falls back to "every accessor", reproducing the prior behaviour.
+  const flowLevelResourceKeys: ReadonlySet<string> =
+    flow.flowLevelResourceKeys ?? new Set(Object.keys(flatFlowResources));
+  const sessionFlowLevelConfigs = filterFlowLevelEager(sessionResourceConfigs, flowLevelResourceKeys);
+  const userFlowLevelConfigs = filterFlowLevelEager(userResourceConfigs, flowLevelResourceKeys);
+  const orgFlowLevelConfigs = filterFlowLevelEager(orgResourceConfigs, flowLevelResourceKeys);
+
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionResourceConfigs),
-    loadDeclaredScopeContent(stores.content, "user", userKey, userResourceConfigs),
+    loadDeclaredScopeContent(stores.content, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredScopeContent(stores.content, "user", userKey, userFlowLevelConfigs),
     resolvedOrgKey !== undefined
-      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgResourceConfigs)
+      ? loadDeclaredScopeContent(stores.content, "org", resolvedOrgKey, orgFlowLevelConfigs)
       : Promise.resolve<Record<string, string>>({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
-    sessionResourceConfigs,
+    sessionFlowLevelConfigs,
     sessionContentFromStore
   );
   const initialUserContent = normalizeScopeResourceContent(
-    userResourceConfigs,
+    userFlowLevelConfigs,
     userContentFromStore
   );
   const initialOrgContent = normalizeScopeResourceContent(
-    orgResourceConfigs,
+    orgFlowLevelConfigs,
     resolvedOrgId !== undefined ? orgContentFromStore : undefined
   );
 
@@ -2431,17 +2550,17 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionResourceConfigs),
-    loadDeclaredResourceState(stores.resourceState, "user", userKey, userResourceConfigs),
+    loadDeclaredResourceState(stores.resourceState, "session", sessionId, sessionFlowLevelConfigs),
+    loadDeclaredResourceState(stores.resourceState, "user", userKey, userFlowLevelConfigs),
     resolvedOrgKey !== undefined
-      ? loadDeclaredResourceState(stores.resourceState, "org", resolvedOrgKey, orgResourceConfigs)
+      ? loadDeclaredResourceState(stores.resourceState, "org", resolvedOrgKey, orgFlowLevelConfigs)
       : Promise.resolve<Record<string, JsonObject>>({})
   ]);
 
-  const initialSessionState = normalizeScopeResources(sessionResourceConfigs, sessionStateFromStore);
-  const initialUserState = normalizeScopeResources(userResourceConfigs, userStateFromStore);
+  const initialSessionState = normalizeScopeResources(sessionFlowLevelConfigs, sessionStateFromStore);
+  const initialUserState = normalizeScopeResources(userFlowLevelConfigs, userStateFromStore);
   const initialOrgState = normalizeScopeResources(
-    orgResourceConfigs,
+    orgFlowLevelConfigs,
     resolvedOrgId !== undefined ? orgStateFromStore : undefined
   );
 
@@ -2506,6 +2625,234 @@ export async function createExecutionContext<
   const sessionContentRef = { current: initialSessionContent };
   const userContentRef = { current: initialUserContent };
   const orgContentRef = { current: initialOrgContent };
+
+  // FIX-688 Waves 2 & 3: top up the per-scope caches above with resources
+  // declared inside the dispatched action's block tree, on demand. Wave 1
+  // (request start) already loaded the flow-level eager subset; everything
+  // else loads at action dispatch (`runAction`) and per-block dispatch (the
+  // block runtime's `run`) through `_loadDeclaredResources` below.
+  //
+  // `loadedCollectionPrefixes` records which collection pattern-prefixes have
+  // been bulk-loaded so a re-dispatch never re-scans; it is seeded with the
+  // flow-level collections Wave 1 already loaded. Single resources are tracked
+  // implicitly by presence in the state cache. `inflightLoads` single-flights
+  // concurrent loads of the same key/prefix across parallel block dispatch
+  // (e.g. a sequencer's `.work()` fan-out), and clears entries in `finally`
+  // so a failed load retries on the next attempt instead of poisoning the map.
+  const loadedCollectionPrefixes: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  // Negative cache for lazy single-row reads: a key confirmed absent by a
+  // `resourceState.get` returning undefined. Caps each missing key at one store
+  // round-trip per request instead of re-reading on every `get`/`getOptional`.
+  // The existence check (`storageKey in stateRef.current`) is always consulted
+  // first, so a later create/upsert that writes the key wins over a stale entry
+  // here — no active invalidation needed.
+  const missingResourceKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  // A cache miss is *authoritative* (no store read needed) when the key falls
+  // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
+  // materialized, so an absent key is definitively absent. Prefixes end in `/`
+  // (or are `""`, the whole-scope load), so `startsWith` is the coverage test.
+  const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
+    for (const prefix of loadedCollectionPrefixes[scope]) {
+      if (storageKey.startsWith(prefix)) return true;
+    }
+    return false;
+  };
+  const seedLoadedPrefixes = (
+    scope: ContentScopeType,
+    configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+  ): void => {
+    for (const config of Object.values(configs)) {
+      if (!isCollectionConfig(config)) continue;
+      const prefix = getPatternPrefix(config.pattern);
+      loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
+    }
+  };
+  seedLoadedPrefixes("session", sessionFlowLevelConfigs);
+  seedLoadedPrefixes("user", userFlowLevelConfigs);
+  seedLoadedPrefixes("org", orgFlowLevelConfigs);
+
+  const inflightLoads = new Map<string, Promise<void>>();
+  const runSingleFlight = (token: string, fn: () => Promise<void>): Promise<void> => {
+    const existing = inflightLoads.get(token);
+    if (existing !== undefined) return existing;
+    const promise = (async () => {
+      try {
+        await fn();
+      } finally {
+        inflightLoads.delete(token);
+      }
+    })();
+    inflightLoads.set(token, promise);
+    return promise;
+  };
+
+  const scopeStateRef = (scope: ContentScopeType): { current: Record<string, JsonObject> } =>
+    scope === "session" ? sessionStateRef : scope === "user" ? userStateRef : orgStateRef;
+  const scopeContentRef = (scope: ContentScopeType): { current: Record<string, string> } =>
+    scope === "session" ? sessionContentRef : scope === "user" ? userContentRef : orgContentRef;
+  const scopeIdForScope = (scope: ContentScopeType): string | undefined =>
+    scope === "session" ? sessionId : scope === "user" ? userKey : resolvedOrgKey;
+
+  // Canonical storage keys resolved from each scope's FULL config map. A
+  // resource without an explicit `ref` canonicalizes to the first accessor in
+  // the full map (FIX-591 alias sharing), so a per-load subset must resolve
+  // keys against the whole map — not the single entry being loaded — or an
+  // aliased resource would load under the wrong key and miss the registry's
+  // canonical slot.
+  const scopeStorageKeyMaps: Record<ContentScopeType, Record<string, string>> = {
+    session: resourceStorageKeys(sessionResourceConfigs),
+    user: resourceStorageKeys(userResourceConfigs),
+    org: resourceStorageKeys(orgResourceConfigs)
+  };
+
+  // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
+  // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
+  // as the eager waves, so a key fetched here and one fetched by a wave dedupe.
+  const makeLazyLoad = (scope: ContentScopeType): ScopeLazyLoad | undefined => {
+    const scopeId = scopeIdForScope(scope);
+    if (scopeId === undefined) return undefined; // scope absent this request (org)
+    const stateRef = scopeStateRef(scope);
+    const contentRef = scopeContentRef(scope);
+    return {
+      async getInstance(storageKey: string): Promise<void> {
+        if (storageKey in stateRef.current) return; // already loaded
+        // A miss under an already-bulk-loaded prefix is authoritative, and a
+        // key confirmed absent earlier this request stays absent — skip the
+        // store round-trip in both cases.
+        if (isMissAuthoritative(scope, storageKey)) return;
+        if (missingResourceKeys[scope].has(storageKey)) return;
+        await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
+          if (storageKey in stateRef.current) return;
+          const [state, content] = await Promise.all([
+            stores.resourceState.get(scope, scopeId, storageKey),
+            stores.content.get(scope, scopeId, storageKey)
+          ]);
+          if (state !== undefined) {
+            stateRef.current = { [storageKey]: state, ...stateRef.current };
+          } else {
+            // Negatively cache: one round-trip caps repeated reads of an absent key.
+            missingResourceKeys[scope].add(storageKey);
+          }
+          if (typeof content === "string") {
+            contentRef.current = { [storageKey]: content, ...contentRef.current };
+          }
+        });
+      },
+      async getByPrefix(keyPrefix: string): Promise<void> {
+        if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+        await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
+          if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+          const [state, content] = await Promise.all([
+            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
+            stores.content.getByPrefix(scope, scopeId, keyPrefix)
+          ]);
+          stateRef.current = { ...state, ...stateRef.current };
+          contentRef.current = { ...content, ...contentRef.current };
+          loadedCollectionPrefixes[scope].add(keyPrefix);
+        });
+      }
+    };
+  };
+  const sessionLazyLoad = makeLazyLoad("session");
+  const userLazyLoad = makeLazyLoad("user");
+  const orgLazyLoad = makeLazyLoad("org");
+
+  /**
+   * FIX-688 Waves 2 & 3 loader. Loads the eager, not-yet-cached entries from a
+   * declared-resources map into the per-scope caches. With `loadLazySingles`
+   * it also loads `prefetchMode: 'lazy'` single resources (block dispatch).
+   * Lazy collections are always skipped — the async accessor fetches them.
+   * Cache wins over the store snapshot on conflict, so a concurrent mutation
+   * is never clobbered by an in-flight read.
+   */
+  const loadDeclaredResourcesIntoCache = async (
+    declared: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
+    loadOptions: { loadLazySingles: boolean }
+  ): Promise<void> => {
+    if (declared === undefined) return;
+    const tasks: Array<Promise<void>> = [];
+
+    for (const [accessor, config] of Object.entries(declared)) {
+      const scope = (config as { scope?: ContentScopeType }).scope;
+      if (scope !== "session" && scope !== "user" && scope !== "org") continue;
+      const scopeId = scopeIdForScope(scope);
+      if (scopeId === undefined) continue; // org scope not present this request
+      const mode = (config as { prefetchMode?: string }).prefetchMode ?? "eager";
+      const stateRef = scopeStateRef(scope);
+      const contentRef = scopeContentRef(scope);
+      // Key the load by the canonical storage key (from the full-map resolution
+      // above), so aliased single resources load under the same slot the
+      // registry reads. Collections canonicalize to their accessor, so this is
+      // a no-op for them.
+      const storageKey = scopeStorageKeyMaps[scope][accessor] ?? accessor;
+      const subConfig = { [storageKey]: config };
+
+      const applyLoad = async (): Promise<void> => {
+        const [stateSeed, contentSeed] = await Promise.all([
+          loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
+          loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
+        ]);
+        stateRef.current = {
+          ...normalizeScopeResources(subConfig, stateSeed),
+          ...stateRef.current
+        };
+        contentRef.current = {
+          ...normalizeScopeResourceContent(subConfig, contentSeed),
+          ...contentRef.current
+        };
+      };
+
+      if (isCollectionConfig(config)) {
+        if (mode === "lazy") continue; // lazy collections fetch via async accessor
+        const prefix = getPatternPrefix(config.pattern);
+        const keyPrefix = prefix === "" ? "" : `${prefix}/`;
+        if (loadedCollectionPrefixes[scope].has(keyPrefix)) continue;
+        tasks.push(
+          runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
+            if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+            await applyLoad();
+            loadedCollectionPrefixes[scope].add(keyPrefix);
+          })
+        );
+      } else {
+        if (mode === "lazy" && !loadOptions.loadLazySingles) continue; // deferred to block dispatch
+        if (storageKey in stateRef.current) continue; // already loaded
+        tasks.push(
+          runSingleFlight(`${scope}:key:${storageKey}`, async () => {
+            if (storageKey in stateRef.current) return;
+            await applyLoad();
+          })
+        );
+      }
+    }
+
+    await Promise.all(tasks);
+  };
+
+  // FIX-688 Wave 2: a context is bound to exactly one action, so load that
+  // action's eager resource footprint — its block tree's bubble-up
+  // (`action.block.declaredResources`) — now, in one parallel burst. Only the
+  // dispatched action's resources load; sibling actions' declarations stay
+  // unloaded until their own request. Lazy single resources defer to per-block
+  // dispatch (Wave 3); lazy collections fetch on demand via their async
+  // accessor. The flow-level subset loaded at Wave 1 is skipped here (already
+  // cached / prefix-seeded).
+  const dispatchedActionBlock = (
+    flow.actions as Record<string, { block?: { declaredResources?: Record<string, ResourceConfig | ResourceCollectionConfig> } }> | undefined
+  )?.[options.actionName]?.block;
+  if (dispatchedActionBlock?.declaredResources !== undefined) {
+    await loadDeclaredResourcesIntoCache(dispatchedActionBlock.declaredResources, {
+      loadLazySingles: false
+    });
+  }
 
   const readSessionResourceContent = (): Record<string, string> =>
     sessionContentRef.current;
@@ -2769,6 +3116,7 @@ export async function createExecutionContext<
     readResourceContent: readUserResourceContent,
     persistResourceContent: persistUserResourceContent,
     onResourceChanged: makeResourceChangeHandler("user"),
+    lazyLoad: userLazyLoad,
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -2780,6 +3128,7 @@ export async function createExecutionContext<
     readResourceContent: readSessionResourceContent,
     persistResourceContent: persistSessionResourceContent,
     onResourceChanged: makeResourceChangeHandler("session"),
+    lazyLoad: sessionLazyLoad,
   });
 
   const orgResources =
@@ -2794,6 +3143,7 @@ export async function createExecutionContext<
           readResourceContent: readProjectResourceContent,
           persistResourceContent: persistProjectResourceContent,
           onResourceChanged: makeResourceChangeHandler("org"),
+          lazyLoad: orgLazyLoad,
         });
 
 
@@ -3627,6 +3977,7 @@ export async function createExecutionContext<
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
+      _loadDeclaredResources: loadDeclaredResourcesIntoCache,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,

@@ -152,14 +152,14 @@ export function createFakeResourceCollection<TState extends JsonObject>(
     pattern,
     scope: "session",
     config: { pattern, scope: "session" } as ResourceCollectionRef<TState>["config"],
-    get(key) {
+    async get(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       if (!instances.has(k)) {
         throw new Error(`Resource instance "${k}" not found`);
       }
       return instanceRef(k);
     },
-    getOptional(key) {
+    async getOptional(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       return instances.has(k) ? instanceRef(k) : undefined;
     },
@@ -178,7 +178,7 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       }
       return instanceRef(k);
     },
-    list(prefix) {
+    async list(prefix) {
       const refs: ResourceRef<TState>[] = [];
       for (const k of instances.keys()) {
         if (prefix === undefined || k.startsWith(prefix)) {
@@ -191,7 +191,7 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       instances.delete(k);
     },
-    count() {
+    async count() {
       return instances.size;
     },
   };

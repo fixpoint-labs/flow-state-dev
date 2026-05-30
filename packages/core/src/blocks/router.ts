@@ -164,6 +164,17 @@ export function router<
       )
     : routerResources;
 
+  // The router's OWN declarations (FIX-688): its capability-injected resources
+  // plus its own `resources` config, EXCLUDING the resources that bubble up
+  // from route blocks. `capResources` already folds in the router's own
+  // `resources` (via resolveCapabilities → extractDeclaredResources); merging
+  // `extractDeclaredResources(config)` again is a reference-equal no-op that
+  // also covers the no-capabilities case.
+  const ownDeclaredResources = mergeDeclaredResources(
+    capResources ? { ...capResources } : undefined,
+    extractDeclaredResources(config)
+  );
+
   // Bubble `requireOrg` up from any route block. Without this, a route
   // declaring `requireOrg: true` would be silently lost — the router's
   // requiresOrg would stay `false`, and the flow's HTTP layer wouldn't
@@ -175,6 +186,7 @@ export function router<
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
+    ownDeclaredResources,
     resolvedCapabilities,
     requiresOrg: routesRequireOrg,
     execute: async (input, ctx) => {
@@ -182,8 +194,9 @@ export function router<
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
       )(input, ctx);
 
-      // Sequencer definitions expose a `.then()` DSL method and can be mistaken
-      // for thenables. Detect concrete blocks before awaiting route selection.
+      // A route selector may return a concrete block synchronously or a
+      // promise of one. Detect the concrete block before awaiting so a
+      // synchronously-returned block (e.g. a sequencer) is used as-is.
       const selected = isBlockDefinition(candidate)
         ? (candidate as BlockDefinition<TInputSchema, TOutputSchema>)
         : await candidate;

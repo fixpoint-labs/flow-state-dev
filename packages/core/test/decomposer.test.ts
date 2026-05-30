@@ -102,7 +102,7 @@ describe("utility.decomposer", () => {
       inputSchema: z.object({ request: z.string() })
     })
       .map((input) => input.request)
-      .then(decompose);
+      .step(decompose);
 
     const ctx = createMockContext({
       resolveModel: () => ({

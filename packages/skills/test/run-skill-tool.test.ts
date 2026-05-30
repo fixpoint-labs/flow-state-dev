@@ -64,11 +64,11 @@ describe("listEnabledSkills", () => {
       state: { description: "bar skill" },
       content: null,
     });
-    const list = listEnabledSkills(c);
+    const list = await listEnabledSkills(c);
     expect(list.map((s) => s.name).sort()).toEqual(["bar", "foo"]);
   });
 
-  it("excludes skills with disable-model-invocation: true", () => {
+  it("excludes skills with disable-model-invocation: true", async () => {
     const c = createMockSkillsCollection();
     c._store.set("skills/foo/SKILL.md", {
       name: "skills/foo/SKILL.md",
@@ -80,11 +80,11 @@ describe("listEnabledSkills", () => {
       state: { description: "bar" },
       content: null,
     });
-    const list = listEnabledSkills(c);
+    const list = await listEnabledSkills(c);
     expect(list.map((s) => s.name)).toEqual(["bar"]);
   });
 
-  it("ignores supporting files (only SKILL.md entries)", () => {
+  it("ignores supporting files (only SKILL.md entries)", async () => {
     const c = createMockSkillsCollection();
     c._store.set("skills/foo/SKILL.md", {
       name: "skills/foo/SKILL.md",
@@ -96,7 +96,7 @@ describe("listEnabledSkills", () => {
       state: {},
       content: "# X",
     });
-    expect(listEnabledSkills(c).map((s) => s.name)).toEqual(["foo"]);
+    expect((await listEnabledSkills(c)).map((s) => s.name)).toEqual(["foo"]);
   });
 });
 

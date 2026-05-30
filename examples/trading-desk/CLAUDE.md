@@ -261,7 +261,7 @@ Two conventions when using `roundRobin()` in this example:
    (see BP-019).
 
 **Phase 4 deliberately does NOT use `roundRobin()`.** It's a plain
-sequencer chain — `aggressiveStep.then(conservativeStep).then(neutralStep)`
+sequencer chain — `aggressiveStep.step(conservativeStep).step(neutralStep)`
 — even though the prose framing ("three risk officers in round-robin
 order") sounds like the pattern. None of `roundRobin()`'s features
 apply here:

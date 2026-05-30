@@ -44,7 +44,7 @@ export class FileSync {
    */
   async hydrate(): Promise<void> {
     for (const collection of Object.values(this.collections)) {
-      const entries = collection.list();
+      const entries = await collection.list();
 
       for (const entry of entries) {
         const content = await entry.readContent();
@@ -76,10 +76,10 @@ export class FileSync {
       }
 
       // Find which collection owns this path
-      const owner = this.findOwner(file.path);
+      const owner = await this.findOwner(file.path);
       if (!owner) continue;
 
-      const existing = owner.collection.getOptional(file.path);
+      const existing = await owner.collection.getOptional(file.path);
 
       if (!existing || this.options.syncMode === "full" || existing.state.hash !== file.hash) {
         const ref = await owner.collection.getOrCreate(file.path, {
@@ -103,7 +103,7 @@ export class FileSync {
 
     // Remove entries for files deleted from the sandbox
     for (const collection of Object.values(this.collections)) {
-      const entries = collection.list();
+      const entries = await collection.list();
       for (const entry of entries) {
         if (!currentPaths.has(entry.state.path)) {
           await collection.delete(entry.state.path);
@@ -119,15 +119,15 @@ export class FileSync {
    * existing entry at the path. If no existing entry, the first collection
    * is used as the default owner for new files.
    */
-  private findOwner(
+  private async findOwner(
     filePath: string,
-  ): { name: string; collection: ResourceCollectionRef<FileEntryState> } | undefined {
+  ): Promise<{ name: string; collection: ResourceCollectionRef<FileEntryState> } | undefined> {
     const entries = Object.entries(this.collections);
     if (entries.length === 0) return undefined;
 
     // Check if any collection already owns this path
     for (const [name, collection] of entries) {
-      if (collection.getOptional(filePath)) {
+      if (await collection.getOptional(filePath)) {
         return { name, collection };
       }
     }

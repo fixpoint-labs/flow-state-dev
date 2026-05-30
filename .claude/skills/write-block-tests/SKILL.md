@@ -204,7 +204,7 @@ it("is composable inside sequencers", async () => {
     inputSchema: z.object({ text: z.string() })
   })
     .map((input) => input.text)
-    .then(myBlock);
+    .step(myBlock);
 
   const ctx = createMockContext({ /* ... */ });
   const result = await chain.run({ text: "hello" }, ctx);
@@ -214,13 +214,13 @@ it("is composable inside sequencers", async () => {
 
 #### E2. Sequencer DSL Method Tests
 
-Test DSL methods like `exitIf()`, `thenAll()`, and `workIf()`:
+Test DSL methods like `exitIf()`, `stepAll()`, and `workIf()`:
 
 ```typescript
 it("exits early when exitIf condition is met", async () => {
   const chain = seq({ name: "early-exit", inputSchema: z.object({ done: z.boolean() }) })
     .exitIf((input) => input.done, { output: { skipped: true } })
-    .then(expensiveBlock);
+    .step(expensiveBlock);
 
   const result = await testSequencer(chain, { input: { done: true } });
   expect(result.output).toEqual({ skipped: true });
@@ -228,12 +228,12 @@ it("exits early when exitIf condition is met", async () => {
   expect(result.steps).toHaveLength(1);
 });
 
-it("runs parallel branches with thenAll", async () => {
+it("runs parallel branches with stepAll", async () => {
   const chain = seq({ name: "parallel", inputSchema: z.any() })
-    .thenAll([branchA, branchB]);
+    .stepAll([branchA, branchB]);
 
   const result = await testSequencer(chain, { input: {} });
-  expect(result.steps).toHaveLength(1); // thenAll is one step
+  expect(result.steps).toHaveLength(1); // stepAll is one step
   expect(result.output).toHaveProperty("branchA");
   expect(result.output).toHaveProperty("branchB");
 });
@@ -241,7 +241,7 @@ it("runs parallel branches with thenAll", async () => {
 it("conditionally runs background work", async () => {
   const chain = seq({ name: "conditional-bg", inputSchema: z.any() })
     .workIf((input) => input.needsCleanup, cleanupBlock)
-    .then(mainBlock);
+    .step(mainBlock);
 
   const result = await testSequencer(chain, { input: { needsCleanup: false } });
   // cleanupBlock should be skipped
@@ -265,9 +265,9 @@ it("follows a multi-step plan", async () => {
   });
 
   const chain = seq({ name: "planner", inputSchema: z.any() })
-    .then(mock)  // first call returns plan
-    .then(mock)  // second call returns step 1
-    .then(mock); // third call returns step 2
+    .step(mock)  // first call returns plan
+    .step(mock)  // second call returns step 1
+    .step(mock); // third call returns step 2
 
   const result = await testSequencer(chain, { input: {} });
   expect(result.steps).toHaveLength(3);

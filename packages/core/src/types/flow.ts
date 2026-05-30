@@ -23,6 +23,8 @@ import type { VoiceConfig } from "./speech";
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
+  // All collection refs expose async reads regardless of prefetchMode
+  // — FIX-700 collapsed the eager/lazy type split.
   [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S>
     ? ResourceCollectionRef<S>
     : TResources[K] extends DefinedResource<infer S>
@@ -466,6 +468,14 @@ export type FlowInstance<
   costEstimator?: CostEstimator;
   isolateUserState: boolean;
   isolateOrgState: boolean;
+  /**
+   * Accessor keys declared in the flow's OWN `resources` map passed to
+   * `defineFlow` (FIX-688), captured before block-tree/capability resources
+   * bubble up and merge into `resources`. The block-dispatch prefetch hook uses
+   * this to distinguish flow-level declarations (no per-block load trigger)
+   * from block-level ones.
+   */
+  flowLevelResourceKeys: ReadonlySet<string>;
 };
 
 export type FlowType<
@@ -497,6 +507,8 @@ export type FlowType<
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;
+  /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
+  flowLevelResourceKeys: ReadonlySet<string>;
 
   (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>): FlowInstance<
     TActions,

@@ -14,15 +14,15 @@
  * Pipeline:
  *   sequencer
  *     .tap(initWorkspace)
- *     .then(controller)              // → { specialist, done, reasoning }
- *     .then(recordIteration)         // creates a Task, patches control state
- *     .thenIf(!done, dispatch)       // routes to specialist by name
+ *     .step(controller)              // → { specialist, done, reasoning }
+ *     .step(recordIteration)         // creates a Task, patches control state
+ *     .stepIf(!done, dispatch)       // routes to specialist by name
  *     .tap(recordCompletion)         // collection.complete(taskId, output)
  *     .tap(emitSnapshot)
- *     .then(checkLoop)
+ *     .step(checkLoop)
  *     .loopBack(controller)
  *     .map(toSynthesizerInput)
- *     [.then(synthesizer)]
+ *     [.step(synthesizer)]
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import type {
@@ -191,7 +191,7 @@ function buildDefaultController(config: {
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "sequencer",
         collectionId: config.collectionId,
@@ -293,10 +293,10 @@ function buildDefaultSynthesizer(config: {
 // Internal: per-iteration helpers (closures over the collection factory)
 // ---------------------------------------------------------------------------
 
-function getCollection(
+async function getCollection(
   ctx: BlockContext,
   collectionId: string
-): TaskCollectionRef {
+): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({
     ctx,
     backing: "sequencer",
@@ -335,7 +335,6 @@ export function routedSpecialists<
   const initWorkspace = handler({
     name: `${name}-init`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { workspace: workspaceResource },
     execute: async (input, ctx) => {
       if (config.initialState) {
@@ -347,7 +346,6 @@ export function routedSpecialists<
           initial as Parameters<typeof ctx.resources.workspace.setState>[0]
         );
       }
-      return input;
     },
   });
 
@@ -374,7 +372,6 @@ export function routedSpecialists<
   const recordIteration = handler({
     name: `${name}-record-iteration`,
     inputSchema: controllerOutputSchema,
-    outputSchema: controllerOutputSchema,
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
@@ -382,7 +379,7 @@ export function routedSpecialists<
 
       let currentTaskId: string | undefined;
       if (!input.done && input.specialist) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         const task = await collection.addTask({
           goal: input.reasoning || `iteration ${nextIteration}`,
           assignee: input.specialist,
@@ -418,8 +415,6 @@ export function routedSpecialists<
           `[routedSpecialists:${name}] invoking specialist: ${input.specialist}`
         );
       }
-
-      return input;
     },
   });
 
@@ -437,7 +432,7 @@ export function routedSpecialists<
         `[routedSpecialists:${name}] specialist failed: ${message}`
       );
       if (state.currentTaskId) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         await collection.fail(state.currentTaskId, message);
       }
       // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
@@ -451,7 +446,7 @@ export function routedSpecialists<
     inputSchema: z.any(),
     stateSchema: routedSpecialistsControlSchema,
   })
-    .then(dispatchRouter)
+    .step(dispatchRouter)
     .rescue([{ block: recordError }]);
 
   // 5. RecordCompletion: writes the specialist's output back as the task
@@ -464,7 +459,7 @@ export function routedSpecialists<
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
       if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
-        const collection = getCollection(ctx, collectionId);
+        const collection = await getCollection(ctx, collectionId);
         await collection.complete(state.currentTaskId, input);
       }
     },
@@ -474,10 +469,9 @@ export function routedSpecialists<
   const emitSnapshot = handler({
     name: `${name}-snapshot`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { workspace: workspaceResource },
     sequencerStateSchema: routedSpecialistsControlSchema,
-    execute: async (input, ctx) => {
+    execute: async (_input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
       ctx.emitComponent(
@@ -490,7 +484,6 @@ export function routedSpecialists<
         } as unknown as Record<string, unknown>,
         { key: name }
       );
-      return input;
     },
   });
 
@@ -519,21 +512,21 @@ export function routedSpecialists<
     stateSchema: routedSpecialistsControlSchema,
     container: { component: "routedSpecialists" },
   })
-    .then(initWorkspace)
-    .then(controller)
-    .then(recordIteration)
-    .thenIf((r: ControllerOutput) => !r.done, dispatch)
+    .tap(initWorkspace)
+    .step(controller)
+    .tap(recordIteration)
+    .stepIf((r: ControllerOutput) => !r.done, dispatch)
     .tap(recordCompletion)
     .tap(emitSnapshot)
-    .then(checkLoop)
+    .step(checkLoop)
     .loopBack(controller.name, {
       when: (v: { continue: boolean }) => v.continue,
       maxIterations,
     })
-    .map((_value: unknown, ctx: any) => {
+    .map(async (_value: unknown, ctx: any) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
-      const collection = getCollection(ctx, collectionId);
+      const collection = await getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });
       const history = completed
         .slice()
@@ -554,6 +547,6 @@ export function routedSpecialists<
     });
 
   return finalSynthesizer
-    ? base.then(finalSynthesizer)
+    ? base.step(finalSynthesizer)
     : base;
 }

@@ -5,7 +5,6 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { z } from "zod";
 import { roundRobinInputSchema } from "../schemas";
 
 /**
@@ -27,9 +26,8 @@ export function createInitContributions(opts: {
   return handler({
     name: `${opts.name}-init`,
     inputSchema: roundRobinInputSchema,
-    outputSchema: z.any(),
     resources: { [accessor]: opts.contributions },
-    execute: async (input, ctx) => {
+    execute: async (_input, ctx) => {
       // TODO: computed-key resource accessor — see round-robin follow-up
       await (ctx.resources as any)[accessor].setState({
         entries: [],
@@ -42,7 +40,6 @@ export function createInitContributions(opts: {
         collectionId: opts.collectionId,
         sequencer: ctx.sequencer!,
       });
-      return input;
     },
   });
 }

@@ -397,7 +397,7 @@ function isUnderTmp(relativePath: string): boolean {
  * `upstash` need to spin up a container or instance.
  *
  * Drives the block-factory decision: setup-needing providers compose
- * their blocks as `sequencer().tapIf(isCold, ensureSandbox).then(leaf)`
+ * their blocks as `sequencer().tapIf(isCold, ensureSandbox).step(leaf)`
  * so the user sees status updates during the cold path. Other providers
  * return leaf handlers directly — no sequencer wrapper, no extra trace
  * node, no per-call probe.
@@ -439,7 +439,7 @@ async function hydrate(entry: SandboxEntry, destination: string): Promise<void> 
     const markerPath = path.join(destination, mount.prefix, ".keep");
     await entry.sandbox.writeFile(markerPath, "");
 
-    const refs = mount.collection.list();
+    const refs = await mount.collection.list();
     for (const ref of refs) {
       const bareKey = stripMountPrefix(ref.name, mount.prefix);
       // Skip collection-level metadata entries (e.g. _meta in skills).
@@ -546,7 +546,7 @@ async function flush(
   for (const mount of entry.mounts) {
     if (!mount.writable) continue;
     const seen = seenByMountKey.get(mount.key)!;
-    for (const ref of mount.collection.list()) {
+    for (const ref of await mount.collection.list()) {
       const bareKey = stripMountPrefix(ref.name, mount.prefix);
       // Skip collection metadata — never deletable via bash sweep.
       if (bareKey.startsWith("_")) continue;
@@ -960,7 +960,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       inputSchema: bashCommandInputSchema,
       outputSchema: bashCommandOutputSchema,
     }),
-  ).then(bashCommandLeaf);
+  ).step(bashCommandLeaf);
 
   const bashReadFile = withColdSetup(
     sequencer({
@@ -969,7 +969,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       inputSchema: bashReadFileInputSchema,
       outputSchema: bashReadFileOutputSchema,
     }),
-  ).then(bashReadFileLeaf);
+  ).step(bashReadFileLeaf);
 
   // MOAT can write to host-fs directly; Vercel/Upstash need the
   // sandbox up first.
@@ -982,7 +982,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           inputSchema: bashWriteFileInputSchema,
           outputSchema: bashWriteFileOutputSchema,
         }),
-      ).then(bashWriteFileSandboxLeaf);
+      ).step(bashWriteFileSandboxLeaf);
 
   return { bashCommand, bashReadFile, bashWriteFile };
 }

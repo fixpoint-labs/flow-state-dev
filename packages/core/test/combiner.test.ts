@@ -123,7 +123,7 @@ describe("utility.combiner", () => {
       })
     })
       .map((input) => [input.primary, input.secondary])
-      .then(combine);
+      .step(combine);
 
     await expect(
       runForTest(chain, 

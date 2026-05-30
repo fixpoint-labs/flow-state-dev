@@ -314,7 +314,7 @@ const biasAnalyzerAdapter = sequencer({
     userInput: input.userInput,
     aiResponse: input.response,
   }))
-  .then(biasAnalyzer({ model: MODEL_ID }))
+  .step(biasAnalyzer({ model: MODEL_ID }))
   .map((output: Record<string, unknown>) => {
     const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
     const severity = output.severity as string;
@@ -354,7 +354,7 @@ const biasCheck = sequencer({
     ),
     response: aiResponse,
   }))
-  .thenIf(
+  .stepIf(
     (_input, ctx) => !!(ctx.session.state.features as any).biasCheck,      
     auditor,
   )
@@ -417,7 +417,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   // the skills capability's active-skill formatter to render.
   .tap(skillActivatorBlock)
   .tap(resolveThinkingStyle)
-  .then(thinkingStyleRouter)
+  .step(thinkingStyleRouter)
   .work(biasCheck)
   .workIf(
     // Skip capture when the assistant produced no text (e.g. a turn that

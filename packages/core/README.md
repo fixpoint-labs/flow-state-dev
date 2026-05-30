@@ -45,10 +45,10 @@ const counter = handler({
 
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(analyzeInput)
-  .thenIf((result) => result.needsContext, enrichWithContext)
-  .then(agent)
-  .then(counter)
+  .step(analyzeInput)
+  .stepIf((result) => result.needsContext, enrichWithContext)
+  .step(agent)
+  .step(counter)
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
@@ -61,7 +61,7 @@ const summarize = sequencer({
   name: "summarize",
   inputSchema: z.object({ text: z.string() }),
   outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
-}).then(summarizeBlock);
+}).step(summarizeBlock);
 
 summarize.validate(); // throws if the tail shape drifts from the declared schema
 ```
@@ -113,7 +113,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
-- `sequencer(config)` — Fluent composition DSL (22 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `waitForCondition`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
+- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
 **Block methods** (available on every `BlockDefinition`):
@@ -147,7 +147,9 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
+  - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
 - `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
+  - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
   - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
   - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
   - **`upsert(key, update, createOnly?)`** — patch-or-create. On exists: applies `update` via `patchState` semantics (other fields preserved). On missing: creates with `{ ...createOnly, ...update }` (update wins on overlap). The `createOnly` extras fill fields you only need to supply at creation time. Use for incremental-update paths that need to handle first-touch in a single call.
@@ -342,7 +344,7 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.
 
-**`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.thenAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
+**`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
 ### Helpers (`@flow-state-dev/core/helpers`)
 
@@ -369,7 +371,7 @@ const counter = sequencer({
     // schema default on resume.
     lastClaimed: transientSlot(z.boolean().default(false)),
   }),
-}).then(/* ... */);
+}).step(/* ... */);
 ```
 
 **No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Idempotent writes are now free — callers no longer need to guard with manual identity checks. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
