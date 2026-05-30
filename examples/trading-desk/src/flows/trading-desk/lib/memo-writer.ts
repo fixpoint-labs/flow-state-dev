@@ -180,7 +180,7 @@ export async function publishMemo(
   collectionKey: string,
   patch: CommitPatch,
 ): Promise<void> {
-  const ref = ctx.resources.memos.get(collectionKey);
+  const ref = await ctx.resources.memos.get(collectionKey);
   await ref.patchState({
     ...patch,
     status: "published" as const,

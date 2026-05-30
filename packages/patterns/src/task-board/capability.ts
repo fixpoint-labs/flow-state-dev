@@ -170,10 +170,11 @@ export function createTaskBoardCapability(
     return defineCapability({
       name: capabilityName,
       fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-        // `Promise.resolve` normalizes a sync user factory to a Promise so
-        // the accessor's `() => Promise<TaskCollectionRef>` contract holds
-        // regardless of whether the caller's factory is sync or async.
-        tasks: () => Promise.resolve(userFactory(ctx)),
+        // `async` normalizes a sync-or-async user factory to a Promise and
+        // captures a synchronous throw from the factory as a rejection, so
+        // the accessor's `() => Promise<TaskCollectionRef>` contract holds for
+        // callers that capture the value before awaiting it.
+        tasks: async () => userFactory(ctx),
       }),
     });
   }
@@ -230,7 +231,11 @@ export function createTaskBoardCapability(
       [boardName]: taskBoardStateSchema,
     },
     fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
-      tasks: () => {
+      // `async` so the not-on-execution-chain guard below rejects the returned
+      // promise rather than throwing synchronously — keeps the
+      // `() => Promise<TaskCollectionRef>` contract honest for non-awaiting
+      // callers.
+      tasks: async () => {
         const target = ctx.getTarget<Record<string, unknown>>(boardName);
         if (target === undefined) {
           throw new Error(
