@@ -79,7 +79,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -141,7 +142,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -196,7 +198,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -256,7 +259,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -311,7 +315,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -357,7 +362,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       input: 1,
       userId: "user",
       sessionId: "sess",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();

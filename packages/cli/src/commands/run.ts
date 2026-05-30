@@ -374,9 +374,11 @@ export async function executeRunCommand(
       userId: "cli-user",
       sessionId,
       stores,
-      modelResolver,
       responseEmitter,
-      logger,
+      runtimeConfig: {
+        modelResolver,
+        logger,
+      },
     });
 
     if (result.error !== undefined) {

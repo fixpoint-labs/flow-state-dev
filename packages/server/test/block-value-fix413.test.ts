@@ -43,7 +43,8 @@ async function runFlowAndGetBlockOutputs(args: {
     userId: "user_1",
     sessionId: "sess_1",
     stores,
-    responseEmitter: response
+    responseEmitter: response,
+    runtimeConfig: {}
   });
   const allItems = response.getItems();
   const items = allItems.filter(

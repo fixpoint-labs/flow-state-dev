@@ -163,7 +163,7 @@ describe("FIX-688: three-wave loading", () => {
       sessionId: "s1",
       userId: "u1",
       stores,
-      modelResolver: createStubModelResolver()
+      runtimeConfig: { modelResolver: createStubModelResolver() }
     });
     expect(result.error).toBeUndefined();
     expect(result.output).toEqual({ lazyV: 42 });

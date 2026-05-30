@@ -430,7 +430,7 @@ export async function runActionInternal<
     requestId,
     internalSeams: undefined
   });
-  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+  const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
   const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
 
   response.setLogCallback((eventType, detail) => {
@@ -490,7 +490,7 @@ export async function runActionInternal<
   if (voiceConfig?.tts !== undefined && ttsEnabled) {
     ttsHook = createTTSEmitterHook({
       config: voiceConfig.tts,
-      speechResolver: options.speechResolver,
+      speechResolver: options.runtimeConfig.speechResolver,
       emitter: response
     });
     response.addEventObserver((event) => ttsHook!.onEvent(event));
@@ -764,12 +764,12 @@ export async function runActionInternal<
       input: options.input,
       signal: composedSignal,
       backgroundSignal: backgroundController.signal,
-      modelResolver: options.modelResolver,
-      settings: options.settings,
+      modelResolver: options.runtimeConfig.modelResolver,
+      settings: options.runtimeConfig.settings,
       response,
       stores: options.stores,
       logger,
-      tracingLevel: options.tracingLevel
+      tracingLevel: options.runtimeConfig.tracingLevel
     });
   } catch (setupError) {
     deregisterAbortController(requestId);
@@ -802,7 +802,7 @@ export async function runActionInternal<
     // Compose middleware: global (from caller) → flow-level.
     // Block-level middleware is added inside executeBlock from block.config.
     const actionMiddleware = mergeMiddlewareStacks(
-      options.middleware,
+      options.runtimeConfig.middleware,
       options.flow.middleware
     );
 

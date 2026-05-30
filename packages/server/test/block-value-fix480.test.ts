@@ -71,7 +71,7 @@ async function runFlow(args: {
     sessionId: "s",
     stores,
     responseEmitter: response,
-    modelResolver: streamingModelResolver(args.chunks),
+    runtimeConfig: { modelResolver: streamingModelResolver(args.chunks) },
   });
   return { items: response.getItems() };
 }

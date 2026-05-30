@@ -1,13 +1,13 @@
 /**
  * Interrupted request detection and recovery utilities.
  */
-import type { Middleware, ModelResolver, SpeechResolver } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
   RequestRecord,
   StoreRegistry
 } from "../stores/types";
+import type { RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
@@ -84,11 +84,12 @@ export type RetryRequestOptions = {
   flowRegistry: FlowRegistry;
   /** Optional: override the registry entry if available (avoids a store read). */
   registryEntry?: ActiveRequestEntry;
-  /** Standard runAction dependencies. */
-  modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  middleware?: Middleware[];
-  logger?: RuntimeLogger;
+  /**
+   * Instance-level runtime options, forwarded verbatim to the retried
+   * `runAction` so a retry honors the same resolvers, settings, middleware,
+   * and observability config as the original dispatch. See {@link RuntimeConfig}.
+   */
+  runtimeConfig: RuntimeConfig;
 };
 
 export type RetryRequestResult = {
@@ -105,7 +106,8 @@ export type RetryRequestResult = {
 export async function retryRequest(
   options: RetryRequestOptions
 ): Promise<RetryRequestResult> {
-  const { stores, flowRegistry, logger = DEFAULT_RUNTIME_LOGGER } = options;
+  const { stores, flowRegistry, runtimeConfig } = options;
+  const logger = runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
 
   // Load original request info
   const originalRecord = await stores.request.get(options.originalRequestId);
@@ -151,12 +153,9 @@ export async function retryRequest(
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId
     },
-    modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
-    middleware: options.middleware,
     stores,
     responseEmitter: liveStream.emitter,
-    logger
+    runtimeConfig
   }).finally(() => {
     liveStream.close();
   });

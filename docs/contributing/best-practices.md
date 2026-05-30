@@ -395,6 +395,18 @@ Update policy:
   // Omit outputSchema here. The composed output is discarded.
   ```
 
+### BP-026: Bundle forwarded options into a `RuntimeConfig`-shaped struct, never drill
+
+- Status: Active
+- Date: 2026-05-29
+- Rule:
+  - When a field passes through 3+ layers verbatim (read at most once en route, never transformed), it belongs in a bundled struct, not as a named parameter on every layer. The server execution chain uses `RuntimeConfig` (`packages/server/src/runtime-config.ts`) for instance-level resolvers, settings, middleware, and observability config forwarded through `createFlowApiRouter` → `createFlowRouteHandlers` → `createInboundTransportHost` → `runAction`.
+  - Adding a new forwarded field touches only `RuntimeConfig` plus the public boundary that constructs it (`createFlowState.#doInit` or `createFlowApiRouter`). The intermediate layers do not change.
+  - Keep the public boundary flat. `createFlowState` and `createFlowApiRouter` keep their flat option shapes; the bundling is internal. The `runtimeConfig` field on `CreateFlowApiRouterOptions` is `@internal` — direct callers pass flat options and the router bundles them.
+  - Before adding a new field as a named parameter on `CreateFlowRouteHandlersOptions` / `CreateInboundTransportHostOptions` / `RunActionOptions`, ask: "Does any of these layers actually use this field, or just forward it?" If the answer is "just forward," it goes on `RuntimeConfig`. A field that must be transformed mid-chain stays a named parameter on the layer that transforms it.
+- Why:
+  - Drilling re-introduces a 5-file edit for one-concept additions, and grows fragile as the option set widens. The bundle keeps the public boundary flat (good ergonomics) while the internal plumbing stays narrow — a new forwarded field becomes a one- to two-file change.
+
 ## Template For New Entries
 
 ```md

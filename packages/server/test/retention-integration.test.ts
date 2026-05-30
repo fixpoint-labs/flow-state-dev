@@ -38,6 +38,7 @@ describe("retention policy integration", () => {
         userId: "user1",
         sessionId,
         stores,
+        runtimeConfig: {}
       });
     }
 
@@ -92,6 +93,7 @@ describe("retention policy integration", () => {
         userId: "user1",
         sessionId,
         stores,
+        runtimeConfig: {}
       });
     }
 
@@ -130,6 +132,7 @@ describe("retention policy integration", () => {
         userId: "user1",
         sessionId,
         stores,
+        runtimeConfig: {}
       });
     }
 
@@ -174,6 +177,7 @@ describe("retention policy integration", () => {
       userId: "user1",
       sessionId,
       stores,
+      runtimeConfig: {}
     });
 
     // Second: a failed request
@@ -185,6 +189,7 @@ describe("retention policy integration", () => {
       userId: "user1",
       sessionId,
       stores,
+      runtimeConfig: {}
     });
 
     // Third: another successful request. This triggers eviction.
@@ -196,6 +201,7 @@ describe("retention policy integration", () => {
       userId: "user1",
       sessionId,
       stores,
+      runtimeConfig: {}
     });
 
     // Failed request should still be present (not an eviction candidate)

@@ -244,7 +244,8 @@ describe("runAction — abort path", () => {
       userId: "user_abort",
       sessionId: "sess_abort",
       signal: abortController.signal,
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     // Give runAction a moment to start, then set the abort flag and fire the signal
@@ -300,7 +301,8 @@ describe("runAction — abort path", () => {
       userId: "user_disconnect",
       sessionId: "sess_disconnect",
       signal: abortController.signal,
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     // Simulate accidental disconnect (no abortRequested flag set)
@@ -343,7 +345,8 @@ describe("runAction — abort path", () => {
       requestId: "req_fail_test",
       userId: "user_fail",
       sessionId: "sess_fail",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     // Should have an error
@@ -380,7 +383,8 @@ describe("runAction — abort path", () => {
       requestId: "req_complete_test",
       userId: "user_complete",
       sessionId: "sess_complete",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     // The abort controller should be cleaned up
@@ -420,7 +424,8 @@ describe("runAction — abort path", () => {
       input: {},
       requestId,
       userId: "user_1",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     // Give runAction a moment to reach the handler and register the controller
@@ -478,7 +483,8 @@ describe("runAction — abort path", () => {
       requestId,
       userId: "user_emit",
       signal: abortController.signal,
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     await new Promise((r) => setTimeout(r, 50));
@@ -541,7 +547,8 @@ describe("runAction — abort path", () => {
       requestId,
       userId: "user_double",
       signal: abortController.signal,
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     await new Promise((r) => setTimeout(r, 50));

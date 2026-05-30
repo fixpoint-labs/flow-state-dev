@@ -58,7 +58,8 @@ describe("block_trace input descriptor wiring", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -128,7 +129,8 @@ describe("block_trace input descriptor wiring", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -195,7 +197,8 @@ describe("block_trace input descriptor wiring", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());

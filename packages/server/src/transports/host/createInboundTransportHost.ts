@@ -6,18 +6,10 @@
  * (HTTP, MCP, webhook, scheduled, custom) sees — adapters never touch
  * `runAction` directly.
  */
-import type {
-  FlowStateSettings,
-  Middleware,
-  ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
-} from "@flow-state-dev/core/types";
-import type { TracingLevel } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
-import type { RuntimeLogger } from "../../execution/logging";
+import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
@@ -35,26 +27,15 @@ import type {
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
-  /** Instance-level settings threaded onto every block as `ctx.settings`. */
-  settings?: FlowStateSettings;
-  middleware?: Middleware[];
-  logger?: RuntimeLogger;
   resolvePrincipal: PrincipalResolver;
-  /** Forwarded to runAction so serverless platforms can keep work alive. */
-  onBackgroundWork?: (promise: Promise<unknown>) => void;
-  /** Maximum buffered SSE bytes per request — see `createLiveRequestStream`. */
-  maxResponseBufferSize?: number;
   /**
-   * Default SSE wire-level heartbeat interval in milliseconds applied to
-   * every live stream when the per-flow `request.sseHeartbeatMs` is unset.
-   * When 0 or undefined, no host-level default is applied.
+   * Instance-level options forwarded verbatim through the execution chain.
+   * The host reads `maxResponseBufferSize` / `defaultSseHeartbeatMs` /
+   * `onBackgroundWork` for live-stream wiring, exposes the resolvers /
+   * middleware / logger on the returned host, and passes the bundle to
+   * `runAction`. See {@link RuntimeConfig}.
    */
-  defaultSseHeartbeatMs?: number;
-  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
-  tracingLevel?: TracingLevel;
+  runtimeConfig: RuntimeConfig;
 };
 
 /**
@@ -68,21 +49,9 @@ export type CreateInboundTransportHostOptions = {
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
-  const {
-    registry,
-    stores,
-    modelResolver,
-    speechResolver,
-    transcriptionResolver,
-    settings,
-    middleware,
-    logger,
-    resolvePrincipal,
-    onBackgroundWork,
-    maxResponseBufferSize,
-    defaultSseHeartbeatMs,
-    tracingLevel
-  } = options;
+  const { registry, stores, resolvePrincipal, runtimeConfig } = options;
+  const { onBackgroundWork, maxResponseBufferSize, defaultSseHeartbeatMs } =
+    runtimeConfig;
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
@@ -133,14 +102,9 @@ export function createInboundTransportHost(
       source: envelope.source,
       metadata: envelope.metadata,
       signal: envelope.signal,
-      modelResolver,
-      speechResolver,
-      settings,
-      middleware,
       stores,
       responseEmitter,
-      logger,
-      tracingLevel
+      runtimeConfig
     }).finally(() => {
       if (liveStream !== null) {
         liveStream.close();
@@ -218,12 +182,12 @@ export function createInboundTransportHost(
     registry,
     stores,
     resolvers: {
-      model: modelResolver,
-      speech: speechResolver,
-      transcription: transcriptionResolver
+      model: runtimeConfig.modelResolver,
+      speech: runtimeConfig.speechResolver,
+      transcription: runtimeConfig.transcriptionResolver
     },
-    middleware,
-    logger,
+    middleware: runtimeConfig.middleware,
+    logger: runtimeConfig.logger,
     dispatch,
     resolvePrincipal: resolve
   };
