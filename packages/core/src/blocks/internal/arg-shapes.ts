@@ -1,11 +1,15 @@
-// Argument-shape resolution for the sequencer DSL. Most dispatching methods
-// (`step`, `stepIf`, `work`, `workIf`, `forEach`, `forEachBackground`,
-// `doUntil`, `doWhile`) accept the same families of overloads — a bare block, a
-// connector plus block, a factory plus inline config, or a block plus options.
-// This module is the single home for the discriminators that pull those
-// overloads apart, so a new DSL method declares its shape rather than
-// re-deriving it inline. The resolvers are deliberately condition-agnostic:
-// callers that take a leading `condition` argument strip it before resolving.
+// Argument-shape resolution for the sequencer DSL. Several dispatching methods
+// (`step`, `stepIf`, `work`, `workIf`, `forEach`, `forEachBackground`) accept
+// the same families of overloads — a bare block, a connector plus block, a
+// factory plus inline config, or a block plus options. This module is the
+// single home for the discriminators that pull those overloads apart, so a new
+// DSL method declares its shape rather than re-deriving it inline. The
+// resolvers are deliberately condition-agnostic: callers that take a leading
+// `condition` argument strip it before resolving.
+//
+// `doUntil` / `doWhile` keep their own inline two-line discrimination — they
+// only support `(block) | (connector, block)` (no factory arm), so they don't
+// consume this resolver.
 import type { BlockDefinition, ConnectorFn } from "../../types/block";
 import type { InlineBlockFactory } from "../sequencer-methods";
 import { isBlockDefinition } from "./utils";
@@ -61,11 +65,11 @@ export function isConcurrencyOptions(value: unknown): value is { maxConcurrency?
 }
 
 /**
- * The resolved shape for a single-child method (`step`, `stepIf`, `doUntil`,
- * `doWhile`). Exactly one of `block` / `factory` is set. When `factory` is set,
- * `inlineConfig` accompanies it and the caller builds the concrete block at
- * definition time (so its output schema and declared resources flow into the
- * sequencer's accumulators).
+ * The resolved shape for a single-child method (`step`, `stepIf`). Exactly one
+ * of `block` / `factory` is set. When `factory` is set, `inlineConfig`
+ * accompanies it and the caller builds the concrete block at definition time
+ * (so its output schema and declared resources flow into the sequencer's
+ * accumulators).
  */
 export type ChildCallShape = {
   block?: BlockDefinition<any, any>;
