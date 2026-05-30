@@ -389,6 +389,17 @@ function childBlockPath(
   return path;
 }
 
+/**
+ * Run a single child block at a caller-derived `path` with full execution-scope
+ * wiring. Forwards the input descriptor stashed by the calling op (FIX-573),
+ * intercepts generator model usage, and — when the server installed
+ * `ctx._withExecutionScope` — opens a scoped child context that drives the
+ * unified trace lifecycle; otherwise it runs the block directly (unit-test
+ * contexts). The `options.phase`/`signalOverride` thread background dispatch
+ * (`"work"` phase, FIX-663 signal) into the descendant scope. The kernel
+ * primitives (`runChild`/`runBackground`) and the loop/aggregator/rescue paths
+ * all dispatch through here; it is the one place a child block is invoked.
+ */
 export async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
@@ -602,12 +613,6 @@ function createRuntimeState(): SequencerRuntimeState {
 }
 
 /**
- * Dispatch a background work task. When the request-scoped pool is present
- * (server runtime), push to it tagged with the sequencer's scopeId. When
- * absent (unit-test contexts), fall back to the per-sequencer work list so
- * the inner-sequencer auto-await path keeps working unchanged.
- */
-/**
  * Build the context for a background `.work()` / `.workIf()` /
  * `.forEachBackground()` task. FIX-663: when the request executor supplied a
  * `_requestBackgroundSignal`, substitute it for `ctx.signal` so the task tree
@@ -627,6 +632,13 @@ export function backgroundTaskCtx(ctx: BlockContext): {
   return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
 }
 
+/**
+ * Dispatch a background work task. When the request-scoped pool is present
+ * (server runtime), push to it tagged with the sequencer's scopeId. When
+ * absent (unit-test contexts), fall back to the per-sequencer work list so
+ * the inner-sequencer auto-await path keeps working unchanged. Consumed by the
+ * `runBackground` kernel primitive and `.forEachBackground`'s batch dispatch.
+ */
 export function dispatchWorkTask(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,

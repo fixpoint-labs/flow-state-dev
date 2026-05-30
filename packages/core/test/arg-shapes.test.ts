@@ -175,6 +175,15 @@ describe("resolveCallShape — iterating", () => {
     });
   });
 
+  it("(connector, factory, options) — factory in slot 2 with a trailing options arg", () => {
+    const options = { concurrency: 2 };
+    expect(resolveCallShape([connector, factory, options], "iterating")).toEqual({
+      blockOrFactory: factory,
+      connector,
+      options
+    });
+  });
+
   it("(block, {}) — empty object is treated as options, not a connector slot", () => {
     expect(resolveCallShape([block, {}], "iterating")).toEqual({
       blockOrFactory: block,
