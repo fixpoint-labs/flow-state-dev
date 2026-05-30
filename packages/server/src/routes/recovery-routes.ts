@@ -11,7 +11,7 @@ import type { RuntimeConfig } from "../runtime-config";
 type RecoveryRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  /** Instance-level runtime options (resolvers, middleware, logger, …). */
+  /** Instance-level runtime options (resolvers, voice provider, middleware, logger, …). */
   runtimeConfig: RuntimeConfig;
 };
 

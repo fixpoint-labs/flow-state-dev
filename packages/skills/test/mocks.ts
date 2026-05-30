@@ -22,8 +22,9 @@ export function createMockSkillsCollection(
   const store = new Map<string, MockEntry>();
 
   const makeRef = (entry: MockEntry): ResourceRef => ({
-    name: entry.name,
+    path: entry.name,
     scope: "org" as const,
+    uri: `org/${entry.name}`,
     state: entry.state as never,
     patchState: vi.fn(async (updates: Record<string, unknown>) => {
       entry.state = { ...entry.state, ...updates };

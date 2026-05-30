@@ -29,7 +29,7 @@ Selected options:
 | `flows` | `Record<string, FlowInstance>` | Required. Stable key to flow instance. |
 | `models` | `FlowStateModelsConfig` | `{ default?, intents?, ... }`. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. |
 | `modelResolver` | `ModelResolver` | Escape hatch: a pre-built resolver (test mocks, custom resolvers). Used instead of `models`. |
-| `voice` | `{ speech?, transcription? }` | Pass AI SDK providers like `openai.speech`. |
+| `voice` | `{ provider?: VoiceProvider }` | A voice provider for TTS/STT, e.g. `new OpenAIVoiceProvider(...)`. See [Voice](/docs/advanced/voice). |
 | `stores` | `StoresConfig` | Required. Named profiles of capability slots. |
 | `defaultProfile` | `string` | Active profile when `FSD_ENV` is unset. |
 | `settings` | `TSettings` | Read in blocks via `ctx.settings`. |
@@ -109,8 +109,7 @@ const router = createFlowApiRouter({
   registry,
   stores,                                // a resolved StoreRegistry
   modelResolver: createModelResolver(),  // optional
-  speechResolver: createAiSdkSpeechResolver(fn),       // optional, for TTS
-  transcriptionResolver: createAiSdkTranscriptionResolver(fn), // optional, for STT
+  voiceProvider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }), // optional, for TTS/STT
 });
 
 export const { GET, POST, PATCH, DELETE } = router;
@@ -184,37 +183,11 @@ Parse a slash-format model string into its components (provider, model, gateway)
 
 ## Voice
 
-### `createAiSdkSpeechResolver(resolver)`
+Voice surfaces are owned by a `VoiceProvider` passed as `voiceProvider` to `createFlowApiRouter` (or `voice: { provider }` on `createFlowState`). A provider declares its `abilities` and implements `speak` / `speakStream` / `transcribe` / `listVoices`. Concrete providers ship in their own packages (e.g. `@flow-state-dev/voice-openai`). See [Voice](/docs/advanced/voice) for the full guide.
 
-Create a speech resolver (TTS) using AI SDK providers.
+### `createCompositeVoiceProvider(config)`
 
-```ts
-import { createAiSdkSpeechResolver } from "@flow-state-dev/core/models";
-
-const speechResolver = createAiSdkSpeechResolver(
-  (modelId) => openai.speech(modelId)
-);
-```
-
-### `wrapAiSdkSpeechModel(model, modelId?)`
-
-Wrap a single AI SDK speech model into a framework `SpeechModel`.
-
-### `createAiSdkTranscriptionResolver(resolver)`
-
-Create a transcription resolver (STT) using AI SDK providers.
-
-```ts
-import { createAiSdkTranscriptionResolver } from "@flow-state-dev/core/models";
-
-const transcriptionResolver = createAiSdkTranscriptionResolver(
-  (modelId) => openai.transcription(modelId)
-);
-```
-
-### `wrapAiSdkTranscriptionModel(model, modelId?)`
-
-Wrap a single AI SDK transcription model into a framework `TranscriptionModel`.
+Combine providers per ability (e.g. synthesize with one, transcribe with another). Exported from `@flow-state-dev/core`.
 
 ### `createSentenceBuffer()`
 

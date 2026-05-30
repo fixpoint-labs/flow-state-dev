@@ -12,8 +12,6 @@
  */
 import {
   createModelResolver,
-  createAiSdkSpeechResolver,
-  createAiSdkTranscriptionResolver,
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
@@ -199,12 +197,7 @@ class InternalFlowState<TSettings extends object>
     const modelResolver =
       this.#options.modelResolver ??
       createModelResolver(toModelResolverOptions(this.#options.models));
-    const speechResolver = this.#options.voice?.speech
-      ? createAiSdkSpeechResolver(this.#options.voice.speech)
-      : undefined;
-    const transcriptionResolver = this.#options.voice?.transcription
-      ? createAiSdkTranscriptionResolver(this.#options.voice.transcription)
-      : undefined;
+    const voiceProvider = this.#options.voice?.provider;
 
     // Bundle the forwarded instance-level options here, at the public
     // boundary. The intermediate execution-chain layers take this bundle
@@ -212,8 +205,7 @@ class InternalFlowState<TSettings extends object>
     // per-layer signature change.
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
-      speechResolver,
-      transcriptionResolver,
+      voiceProvider,
       settings: this.#options.settings as FlowStateSettings | undefined,
       middleware: this.#options.middleware,
       onBackgroundWork: this.#options.onBackgroundWork,

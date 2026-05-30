@@ -14,6 +14,8 @@ Items serve three purposes:
 2. **Session history** — persisted items accumulate across requests, forming the conversation log
 3. **LLM context** — some item types feed into conversation history for future model calls
 
+Voice I/O streams chunked audio over the same SSE channel — see [Voice](../advanced/voice).
+
 ## The items you'll use most
 
 Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
@@ -112,7 +114,7 @@ The limit is turn-aligned: whole turns are kept or dropped together so tool-heav
 Items go through three phases:
 
 1. **Added** — item exists with `status: "in_progress"`
-2. **Streaming** — for messages and reasoning, text arrives in chunks via content deltas
+2. **Streaming** — for messages and reasoning, text arrives in chunks via content deltas. When TTS streaming is enabled, audio arrives as a series of `content.audio.delta` events alongside the text deltas — see [SSE Protocol](/docs/streaming/items#contentaudiodelta-streaming-tts-audio-chunks) for the wire shape.
 3. **Done** — item finalized as `"completed"`, `"incomplete"`, or `"failed"` (terminal, immutable)
 
 ### Updating an item mid-flight

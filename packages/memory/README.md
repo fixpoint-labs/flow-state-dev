@@ -91,6 +91,10 @@ Rule of thumb: if your flow never calls into the capture pipeline, reach for `cr
 
 Two entry points: `createMemoryCapability()` builds the read-side capability; `system()` builds the same capability plus the auto-capture and lifecycle pipeline.
 
+## Subject attribution
+
+Every memory carries a `subject` — `'user'` for the primary user, a lowercase first name for other people (`'moni'`), a lowercase-hyphenated name for orgs. The subject is computed once by the observer and carried through the whole pipeline: working entry → episode → semantic fact → digest. Consolidation and prune read the stored subject instead of re-guessing ownership, and refuse to rewrite or merge a fact across subjects. The digest narrates the primary user; other people are described in relation to the user (e.g. "his wife Moni"), never collapsed into the user persona.
+
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
 **Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).

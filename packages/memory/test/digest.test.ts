@@ -159,6 +159,7 @@ function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFa
 function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
   return {
     content: `episode ${overrides.id}`,
+    subject: 'user',
     occurredAtTurn: 0,
     encodedAt: new Date().toISOString(),
     significance: 0.7,

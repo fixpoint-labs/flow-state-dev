@@ -60,6 +60,8 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 
+`state_change` and `resource_change` share an `InvalidationItem` base (`scope`/`delta`/`version`); the leaves keep distinct operation vocabularies and identity fields (`path` vs `resourcePath`). `version` is required on `state_change`, optional on `resource_change`, and `resource_change` scope excludes `block_instance`.
+
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
 
 **`tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
@@ -133,6 +135,8 @@ The Postgres shape sidesteps a write-amplification pathology that affected long-
 `content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.
 
 This means streaming text fits the same "transient × keyed" cell that other live-only updates occupy: the wire and live observers see every delta; the durable surface is the latest accumulated snapshot keyed by item id. Mid-stream reconnects via `Last-Event-ID` snap forward to the latest snapshot rather than replaying token-by-token; the eventual `item.done` payload supersedes with the authoritative final text. The trade-off is intentional — token-by-token disk persistence under concurrent worker streams serializes every delta behind a single per-request write queue and the request appears to lock up.
+
+Streaming TTS audio (FIX-523, `content.audio.delta`) follows the same rule for the same reasons — see [streaming.md](./streaming.md) for the full exclusion list. The durable representation is the eventual `OutputAudioContent` snapshot; chunks are live transport only.
 
 ## Item windows (per task)
 

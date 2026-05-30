@@ -17,6 +17,7 @@ import {
 } from "@flow-state-dev/client";
 import type {
   Content,
+  ContentAudioDeltaEvent,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -173,6 +174,15 @@ export type SessionView = {
    */
   resumeLatestRequest: () => Promise<void>;
   refresh: () => Promise<void>;
+  /**
+   * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
+   * and not retained in session item state — the durable representation is
+   * the eventual `OutputAudioContent` snapshot delivered via `items`. The
+   * returned function unsubscribes. Used by `useVoice` for gapless playback;
+   * external consumers can attach a custom handler when implementing their
+   * own player.
+   */
+  subscribeAudioDelta: (handler: (event: ContentAudioDeltaEvent) => void) => () => void;
 };
 
 function normalizeFlowKind(flowKind: string): string {
@@ -470,6 +480,16 @@ export function useSession(
   const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
+  /**
+   * Subscribers attached via `subscribeAudioDelta` (FIX-523). The set lives
+   * on a ref so handler identities can mutate over the lifetime of a
+   * subscriber without forcing re-renders. We dispatch synchronously inside
+   * the SSE callback so downstream consumers (the audio player) get the
+   * chunk before any React state update batching.
+   */
+  const audioDeltaListenersRef = useRef<Set<(event: ContentAudioDeltaEvent) => void>>(
+    new Set()
+  );
 
   /** Track an item's ownedBy in the ownership index. */
   const trackOwnership = useCallback((item: OutputItem) => {
@@ -786,6 +806,13 @@ export function useSession(
             }
           }
 
+          // resource_change and state_change are the framework's two
+          // invalidation paths (both InvalidationItem leaves in core). The
+          // asymmetry below is intentional, not a gap: resources have separate
+          // content endpoints, so a resource_change flags a batched snapshot
+          // refetch at completion; state_change carries the delta inline, so it
+          // merges into clientData mid-stream (see the FIX-576 block below).
+          //
           // Track that resources changed during streaming. Rather than firing
           // individual HTTP fetches per resource_change (which creates bursts
           // during artifact-heavy flows), we batch into one refresh at request
@@ -931,6 +958,18 @@ export function useSession(
           }
 
           scheduleContentFlush();
+        },
+        onContentAudioDelta: (event) => {
+          // Fan out to subscribers (useVoice or any external consumer
+          // that attached via session.subscribeAudioDelta). A misbehaving
+          // listener must not block delivery to the rest of the set.
+          for (const listener of audioDeltaListenersRef.current) {
+            try {
+              listener(event);
+            } catch {
+              // Swallow — the listener's caller owns reporting.
+            }
+          }
         },
         onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
           setDetail((prev) => {
@@ -1461,6 +1500,16 @@ export function useSession(
     }
   }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
 
+  const subscribeAudioDelta = useCallback(
+    (handler: (event: ContentAudioDeltaEvent) => void) => {
+      audioDeltaListenersRef.current.add(handler);
+      return () => {
+        audioDeltaListenersRef.current.delete(handler);
+      };
+    },
+    []
+  );
+
   return {
     flowKind: resolvedFlowKind,
     sessionId,
@@ -1485,6 +1534,7 @@ export function useSession(
     abortRequest,
     dismissRequest,
     resumeLatestRequest,
-    refresh
+    refresh,
+    subscribeAudioDelta
   };
 }

@@ -10,8 +10,7 @@ import type {
   CreateModelResolverOptions,
   FlowInstance,
   FlowStateSettings,
-  ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel
+  VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
 import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
@@ -30,14 +29,13 @@ export interface FlowStateModelsConfig {
 }
 
 /**
- * Voice providers. The framework wraps these with the AI-SDK resolver
- * adapters automatically; pass `openai.speech` / `openai.transcription`
- * directly. Provisional shape — revisited when FIX-528's `VoiceProvider`
- * lands (the field name stays; only the value type changes).
+ * Voice configuration for the runtime. The user instantiates a provider class
+ * (e.g. `new OpenAIVoiceProvider({ apiKey })`) and passes the instance; the
+ * router and TTS pipeline dispatch through it.
  */
 export interface FlowStateVoiceConfig {
-  speech?: ResolveAiSdkSpeechModel;
-  transcription?: ResolveAiSdkTranscriptionModel;
+  /** Voice provider for TTS and STT. */
+  provider?: VoiceProvider;
 }
 
 export interface CreateFlowStateOptions<

@@ -6,7 +6,7 @@ Flow State Dev supports speech-to-text (STT) input and text-to-speech (TTS) outp
 
 Voice support spans three layers:
 
-1. **Server** — resolves speech/transcription models, runs the TTS synthesis pipeline, exposes a transcription HTTP endpoint
+1. **Server** — dispatches to a single `VoiceProvider` for both synthesis and transcription, runs the TTS synthesis pipeline, exposes a transcription HTTP endpoint
 2. **Client** — provides an isomorphic `transcribe()` helper for sending audio to the server
 3. **React** — `useVoice()` hook manages mic capture, browser speech recognition, audio playback, and voice activity detection
 
@@ -14,58 +14,50 @@ Voice support spans three layers:
 Browser                           Server
   │                                 │
   ├─ MediaRecorder captures audio   │
-  ├─ POST /api/flows/transcribe ──►│─ TranscriptionModel.transcribe()
+  ├─ POST /api/flows/transcribe ──►│─ VoiceProvider.transcribe()
   │◄── { text } ──────────────────│
   ├─ sendAction("run", { text }) ─►│─ block executes, generator streams
   │                                 ├─ TTS pipeline buffers sentences
-  │                                 ├─ SpeechModel.generate() per sentence
+  │                                 ├─ VoiceProvider.speak() / speakStream() per sentence
   │◄── content.added (audio) ─────│─ OutputAudioContent streamed via SSE
   ├─ HTMLAudioElement plays audio   │
 ```
 
 ## Setup
 
-### 1. Install the AI SDK speech provider
+> This section is the architectural summary. The full user-facing walkthrough lives in [`apps/docs/docs/advanced/voice.md`](../../apps/docs/docs/advanced/voice.md).
 
-Voice uses the same `@ai-sdk/openai` provider you already have for text generation. No extra packages needed. The OpenAI provider exposes `.speech()` and `.transcription()` factory methods.
+### 1. Install a voice provider package
 
-### 2. Configure resolvers on the server
+Voice synthesis and transcription are owned by a `VoiceProvider` implementation, shipped as its own package. The reference implementation is `@flow-state-dev/voice-openai`, which wraps the official `openai` SDK and advertises `speak`, `transcribe`, and `listVoices` (it does not stream — `abilities.speakStream === false`).
 
-The server router needs two additional resolvers: one for TTS (speech synthesis) and one for STT (transcription).
+### 2. Wire the provider on the server
+
+A single `VoiceProvider` instance owns both directions of voice. Pass it once; the router uses it for synthesis and the transcribe endpoint alike.
 
 ```typescript
-import { openai } from "@ai-sdk/openai";
-import {
-  createFlowApiRouter,
-  createFlowRegistry,
-} from "@flow-state-dev/server";
-import {
-  createModelResolver,
-  createAiSdkSpeechResolver,
-  createAiSdkTranscriptionResolver,
-} from "@flow-state-dev/core/models";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 
-const modelResolver = createModelResolver();
-
-// Map model IDs like "gpt-4o-mini-tts" to OpenAI speech models
-const speechResolver = createAiSdkSpeechResolver(
-  (modelId) => openai.speech(modelId)
-);
-
-// Map model IDs like "gpt-4o-mini-transcribe" to OpenAI transcription models
-const transcriptionResolver = createAiSdkTranscriptionResolver(
-  (modelId) => openai.transcription(modelId)
-);
+const registry = createFlowRegistry();
+registry.register(myFlow);
 
 export const router = createFlowApiRouter({
   registry,
-  modelResolver,
-  speechResolver,
-  transcriptionResolver,
+  voiceProvider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }),
 });
 ```
 
-Without `speechResolver`, the TTS pipeline won't activate (text streaming still works normally). Without `transcriptionResolver`, the `POST /api/flows/transcribe` endpoint returns 501.
+With the higher-level `createFlowState` assembly, the provider goes under `voice`:
+
+```typescript
+createFlowState({
+  flows: { myFlow },
+  voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
+});
+```
+
+`voiceProvider` is optional. Without it, flows that request TTS skip synthesis (text streaming still works normally) and the `POST /api/flows/transcribe` endpoint returns 501.
 
 ### 3. Add voice config to your flow
 
@@ -78,7 +70,8 @@ const myFlow = defineFlow({
   kind: "my-flow",
   voice: {
     tts: {
-      model: "gpt-4o-mini-tts",  // resolved by speechResolver
+      // `model` is optional — omit it to use the provider's default
+      // (`gpt-4o-mini-tts` for OpenAIVoiceProvider).
       voice: "alloy",            // OpenAI voice: alloy, echo, fable, onyx, nova, shimmer
       speed: 1.0,                // playback speed multiplier (0.25–4.0)
     },
@@ -87,11 +80,9 @@ const myFlow = defineFlow({
 });
 ```
 
-Available OpenAI TTS model: `gpt-4o-mini-tts`.
-
 When `voice.tts` is set, the server's TTS pipeline automatically:
 - Buffers streaming text deltas into complete sentences
-- Calls `SpeechModel.generate()` for each sentence
+- Calls `VoiceProvider.speak()` (or `speakStream()` when the provider advertises it) for each sentence
 - Emits `OutputAudioContent` items alongside the text stream via SSE
 
 If `voice.tts` is omitted, no audio is generated. Text streaming works exactly as before.
@@ -165,7 +156,6 @@ type OutputAudioContent = {
   audio: string;        // base64-encoded audio data
   mediaType: string;    // "audio/mp3", "audio/wav", "audio/pcm16"
   transcript?: string;  // text that was synthesized (for accessibility)
-  duration?: number;    // duration in seconds
 };
 ```
 
@@ -208,33 +198,66 @@ The TTS pipeline runs inside `runAction()` when a flow has `voice.tts` configure
 1. A `TTSEmitterHook` observes `ResponseEmitter` events
 2. When `content.delta` events arrive for assistant message items, text is fed to a `SentenceBuffer`
 3. The buffer detects sentence boundaries (`.` `!` `?` followed by whitespace) and yields complete sentences
-4. Each sentence is sent to `SpeechModel.generate()` for synthesis
+4. Each sentence is dispatched to the provider: `speakStream()` when `abilities.speakStream` is `true`, otherwise `speak()`
 5. The resulting audio is emitted as an `OutputAudioContent` via `content.added`
 6. On action completion, any remaining buffered text is flushed and synthesized
 
 Synthesis errors are non-fatal. If a sentence fails to synthesize, the error is logged and text streaming continues uninterrupted.
 
+## Streaming TTS path
+
+When the configured `VoiceProvider` has `abilities.speakStream === true`, the TTS pipeline (see FIX-528 for the dispatch implementation) emits audio via the `content.audio.delta` event type instead of buffering each sentence to a single `OutputAudioContent` part. First-audio latency drops from sentence-completion time (\~1–2s with batch providers) to first-chunk latency (\~100ms with streaming-capable providers like ElevenLabs).
+
+**Pipeline contract.** Before the first chunk for a content part, the pipeline emits `content.added` with an `OutputAudioContent` placeholder declaring the `mediaType`. Chunks follow, each carrying base64-encoded bytes. Once synthesis finishes, the pipeline reassembles the chunks and emits the final `OutputAudioContent.audio` snapshot via `content.added` (or `content.done`, depending on the pipeline's chosen finalization signal — FIX-528 sets this).
+
+**Player contract.** The React `audio-player` (`packages/react/src/voice/audio-player.ts`) consumes chunks via the Web Audio API: each chunk is decoded into an `AudioBuffer` and scheduled on an `AudioBufferSourceNode` at a moving `nextStartTime` cursor so consecutive sources butt up gap-free. The same player also handles the batch path (whole-buffer `enqueue`) as a thin wrapper over `enqueueChunk` with `isLast: true`. M1 supports MP3 only; PCM and WAV require either WAV-header injection or an AudioWorklet path and are deferred.
+
+**Dedup.** `useVoice` tracks `(itemId, contentIndex)` pairs that have received streaming chunks and skips the batch-path scanner for those parts so the eventual `OutputAudioContent` snapshot doesn't double-play.
+
+**Resume.** Same posture as text deltas — chunks are non-replayable. See [streaming.md](./streaming.md) for the event taxonomy and replay rules.
+
+```ts
+type ContentAudioDeltaEvent = {
+  type: "content.audio.delta";
+  itemId: string;
+  contentIndex: number;
+  audio: string;     // base64-encoded chunk bytes
+  isLast?: boolean;
+};
+
+audioPlayer.enqueueChunk({ audio, mediaType: "audio/mpeg", isLast: false });
+```
+
 ## Provider-Agnostic Design
 
-`SpeechModel` and `TranscriptionModel` are provider-agnostic interfaces defined in `@flow-state-dev/core`. The AI SDK adapters (`createAiSdkSpeechResolver`, `createAiSdkTranscriptionResolver`) are one implementation. You can implement these interfaces directly for other providers (ElevenLabs, Deepgram, browser-native SpeechSynthesis, etc.).
+`VoiceProvider` is the single provider-agnostic interface defined in `@flow-state-dev/core` (`packages/core/src/types/voice-provider.ts`). One object owns every voice surface — synthesis, streaming synthesis, transcription, and voice cataloging. Which surfaces it actually supports is declared by its `abilities` flags rather than by which package you import:
 
 ```typescript
-import type { SpeechModel } from "@flow-state-dev/core";
+interface VoiceAbilities {
+  readonly speak: boolean;        // batch text → audio
+  readonly speakStream: boolean;  // streamed text → audio chunks
+  readonly transcribe: boolean;   // audio → text
+  readonly listVoices: boolean;   // voice catalog
+}
+```
 
-const customSpeechModel: SpeechModel = {
-  modelId: "my-tts",
-  async generate(options) {
-    const audio = await myTtsProvider.synthesize(options.text, options.voice);
-    return { audio, mediaType: "audio/mp3" };
+The router and TTS pipeline never call a method blindly. They narrow with the runtime type guards (`canSpeak`, `canSpeakStream`, `canTranscribe`, `canListVoices`) so a provider that advertises only some surfaces degrades cleanly — a transcribe-only provider leaves TTS off, a non-streaming provider falls back to batch `speak()`.
+
+`@flow-state-dev/voice-openai` is the reference implementation contributors copy when building a new provider package (ElevenLabs, Deepgram, browser-native `SpeechSynthesis`, etc.). A minimal one only has to declare its abilities and implement the matching methods:
+
+```typescript
+import type { VoiceProvider } from "@flow-state-dev/core";
+
+const myProvider: VoiceProvider = {
+  id: "my-tts:default",
+  providerName: "my-tts",
+  abilities: { speak: true, speakStream: false, transcribe: false, listVoices: false },
+  defaultModels: { speak: "my-tts-1" },
+  async speak({ text, voice, model }) {
+    const bytes = await myTtsSdk.synthesize(text, { voice, model });
+    return { audio: bytes, mediaType: "audio/mpeg" };
   },
 };
 ```
 
-Pass a custom `SpeechModel` directly in the flow's voice config instead of a string model ID:
-
-```typescript
-defineFlow({
-  voice: { tts: { model: customSpeechModel } },
-  // ...
-});
-```
+Wire it the same way as the OpenAI provider — pass the instance as `voiceProvider` to `createFlowApiRouter`, or as `voice.provider` on a single flow to override the router-level provider for that flow.

@@ -112,6 +112,8 @@ const router = createFlowApiRouter({ registry, stores });
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.provider` overrides it. See the [Voice guide](https://flowstate.dev/docs/advanced/voice).
+
 ## What this package does
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
@@ -310,6 +312,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
+- `ResponseEmitter.emitContentAudioDelta(itemId, contentIndex, chunk)` — Emit a chunk of streamed TTS audio. Non-replayable; live-only.
 - `encodeStreamEvent` / `serializeSSEFrame` — Low-level SSE encoding
 - `replayRequestEvents` — Replay events from a sequence cursor
 

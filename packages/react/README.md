@@ -180,6 +180,18 @@ Low-level hook for direct action execution without session management.
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views.
 
+## Voice playback
+
+`useVoice` covers both whole-buffer playback (one buffer per `OutputAudioContent` from batch providers like OpenAI) and streaming playback (per-chunk audio via `content.audio.delta` from streaming providers). The audio player handles both modes transparently — flow authors don't change anything to opt in.
+
+```tsx
+const voice = useVoice(session, { action: "say" });
+```
+
+Internally, `useVoice` subscribes to streaming audio chunks via `session.subscribeAudioDelta(handler)` (the same subscription is available for consumers who want to drive a custom player) and decodes them with the Web Audio API on a shared `AudioContext`, scheduling sources back-to-back for gap-free playback. The same `(itemId, contentIndex)` dedup prevents the eventual `OutputAudioContent` snapshot from double-playing audio that already streamed.
+
+The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for releasing the underlying `AudioContext` (called automatically on unmount). MP3 (`audio/mpeg`) is the only supported codec in M1; PCM and WAV are deferred. See [streaming items](../../apps/docs/docs/streaming/items.md) for the wire format.
+
 ## Render helpers
 
 `ItemRenderer` and `ItemsRenderer` handle the dispatch from item types to your registered renderers:

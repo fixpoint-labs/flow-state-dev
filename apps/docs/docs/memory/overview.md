@@ -40,6 +40,8 @@ Working is always present. Episodic, semantic, and digest are opt-in via config.
 
 Once you have semantic or episodic configured, the system also runs a periodic [hygiene pass](./hygiene): semantic confidence decays over time so stale facts rank below freshly-reinforced ones, and old persistent episodes are evicted. The pass is on by default and tunable — turn it off entirely with `hygiene: false` if you'd rather keep raw confidence and unbounded growth.
 
+Every memory also carries a subject: who it's about. The primary user is `user`; other people the user mentions get their own subject (a partner named Moni becomes `moni`). That subject is assigned when the observation is first extracted and carried through every tier, so the same person stays distinct as facts move from episode to consolidated fact to digest. Consolidation and prune won't rewrite or merge a fact across subjects, and the digest stays about the user — other people show up described in relation to them ("his wife Moni"), not folded into the user's own facts.
+
 ## Choosing an entry point
 
 There are two ways into memory. They take the same tier configs; they differ in what they wire up.

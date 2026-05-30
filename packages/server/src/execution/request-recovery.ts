@@ -86,8 +86,9 @@ export type RetryRequestOptions = {
   registryEntry?: ActiveRequestEntry;
   /**
    * Instance-level runtime options, forwarded verbatim to the retried
-   * `runAction` so a retry honors the same resolvers, settings, middleware,
-   * and observability config as the original dispatch. See {@link RuntimeConfig}.
+   * `runAction` so a retry honors the same resolvers (including the effective
+   * `voiceProvider`), settings, middleware, and observability config as the
+   * original dispatch. See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
 };
@@ -132,6 +133,14 @@ export async function retryRequest(
     throw new Error(`Cannot retry request ${options.originalRequestId}: unknown flow "${flowKind}"`);
   }
 
+  // Resolve the effective voice provider the same way normal dispatch does
+  // (createInboundTransportHost): a per-flow `voice.provider` wins over the
+  // router-level provider. `runAction` reads `runtimeConfig.voiceProvider`, so
+  // without this override a flow that overrides TTS would synthesize with the
+  // wrong backend after resume/retry.
+  const effectiveVoiceProvider =
+    flow.voice?.provider ?? runtimeConfig.voiceProvider;
+
   const newRequestId = generateId("req");
   const liveStream = createLiveRequestStream({ requestId: newRequestId });
 
@@ -155,7 +164,9 @@ export async function retryRequest(
     },
     stores,
     responseEmitter: liveStream.emitter,
-    runtimeConfig
+    // Override the router-level provider with the per-flow effective value for
+    // this retry; everything else forwards verbatim.
+    runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
   }).finally(() => {
     liveStream.close();
   });
