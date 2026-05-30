@@ -136,11 +136,33 @@ export function buildDigestContext(input: DigestGuardOutput): string {
   }
 
   if (input.facts.length > 0) {
-    const lines = input.facts.map(
-      (f) =>
-        `- (${f.category}, ×${f.reinforcementCount}, conf ${f.confidence.toFixed(2)}) [subject=${f.subject}] ${f.content}`,
-    )
-    parts.push(`Top semantic facts by reinforcement:\n${lines.join('\n')}`)
+    const renderFact = (f: DigestGuardOutput['facts'][number]) =>
+      `- (${f.category}, ×${f.reinforcementCount}, conf ${f.confidence.toFixed(2)}) ${f.content}`
+
+    // Split facts into the primary user and everyone/everything else, so the
+    // model sees an explicit user-vs-others boundary rather than a flat list of
+    // subject-tagged lines it can melt into one persona.
+    const userFacts = input.facts.filter((f) => (f.subject ?? 'user') === 'user')
+    const otherFacts = input.facts.filter((f) => (f.subject ?? 'user') !== 'user')
+
+    const factParts: string[] = []
+    if (userFacts.length > 0) {
+      factParts.push(`Primary user (subject=user):\n${userFacts.map(renderFact).join('\n')}`)
+    } else {
+      factParts.push('Primary user (subject=user):\n- (nothing known yet)')
+    }
+
+    if (otherFacts.length > 0) {
+      // Each line is prefixed with its own subject so every named person/org
+      // (e.g. "moni", "fixpoint-labs") stays explicitly attributed and can't be
+      // read as the user's.
+      const otherLines = otherFacts.map(
+        (f) => `- ${f.subject ?? 'user'} (${f.category}, ×${f.reinforcementCount}, conf ${f.confidence.toFixed(2)}): ${f.content}`,
+      )
+      factParts.push(`Other people / entities (NOT the user):\n${otherLines.join('\n')}`)
+    }
+
+    parts.push(`Top semantic facts by reinforcement:\n${factParts.join('\n\n')}`)
   } else {
     parts.push('No semantic facts yet.')
   }
@@ -258,6 +280,17 @@ export function digestRegenerateGenerate(config: DigestRegenerateConfig) {
     '  verbatim-in-meaning — these are the most established knowledge.',
     '- Recent and significant episodes. Use only as supporting evidence; do not',
     '  narrate them as events.',
+    '',
+    'Subject attribution (critical — keep distinct people distinct):',
+    '- The digest describes the PRIMARY USER (subject=user). Write it in third',
+    '  person about that one person.',
+    '- Facts are grouped for you into the primary user and "Other people /',
+    '  entities". The other subjects (other people, orgs) are NOT the user.',
+    '  Mention them only in relation to the user (e.g. "his wife Moni", "works at',
+    '  fixpoint-labs"). NEVER state another person\'s facts as if they were the',
+    '  user\'s.',
+    '- If a fact\'s subject is a name other than \'user\', the fact is about that',
+    '  named person, not the user. Do not collapse two people into one.',
     '',
     'Rules:',
     '- Organise by themes you infer (identity, profession, preferences, active',

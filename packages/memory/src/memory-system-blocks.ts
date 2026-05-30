@@ -290,6 +290,14 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     'Rules:',
     '- ONE fact per subject. If user says "I\'m Joe and my wife is Jane",',
     '  that\'s TWO facts: subject=user "Name is Joe" + subject=jane "Is the user\'s wife"',
+    '- Resolve pronouns/possessives to a subject using the earlier turns in the',
+    '  conversation context. After "my wife", a following "her name is Moni" is',
+    '  subject=moni, NOT subject=user. "Her favorite color is teal" in that same',
+    '  thread is also subject=moni. Use the prior turns to decide who "he"/"she"/',
+    '  "her"/"his"/"they" refers to.',
+    '- If you genuinely cannot tell who a statement is about, attribute it to',
+    '  \'user\' only if it is clearly first-person ("I", "my", "me"); otherwise omit',
+    '  it rather than guess.',
     '- Do NOT store negative facts ("X is NOT Y"). Simply omit if nothing positive to store.',
     '- Prefer fewer, higher-quality memories over many low-quality ones',
     '- Return empty items array if nothing new is worth storing',
@@ -442,6 +450,10 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
             await pin(wmRef, entry.id, helperConfig)
           }
 
+          // Normalize the observer-assigned subject once so the episodic encode
+          // and the semantic direct-extraction below agree on the same owner.
+          const normalizedSubject = (item.subject ?? 'user').toLowerCase()
+
           // Route to episodic memory if applicable
           if (
             epRef &&
@@ -451,6 +463,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           ) {
             await encode(epRef, {
               content: item.content,
+              subject: normalizedSubject,
               occurredAtTurn: wmRef.state.currentTurn,
               significance: item.importance,
               category: item.category,
@@ -476,7 +489,6 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           // fact about a different person.
           const sessionOnlyCategories = new Set(['event', 'task'])
           const isStableCategory = !sessionOnlyCategories.has(item.category)
-          const normalizedSubject = (item.subject ?? 'user').toLowerCase()
           if (
             semRef &&
             config.semantic &&
@@ -731,6 +743,11 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     '  episodic, not semantic — it describes what happened, not who the user is.',
     '- Prefer reinforcing existing facts over creating near-duplicates',
     '- ALWAYS check existing facts for contradictions — stale facts are worse than missing ones',
+    '- Each episode is tagged with its subject — preserve it. Do not reassign an',
+    '  episode\'s subject unless the episode text clearly contradicts the tag.',
+    '- Never merge facts about different subjects into one. When choosing targetFactId',
+    '  for reinforce/update, the target MUST have the same subject as the fact you are',
+    '  writing — if no same-subject target exists, use action:\'new\'.',
     '- Return empty facts array if nothing qualifies as stable knowledge',
   ].join('\n')
 
@@ -739,7 +756,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
 
     let ctx = 'Episodes to consolidate:\n'
     for (const ep of input.episodes) {
-      ctx += `- [${ep.id}] (${ep.category}) ${ep.content}\n`
+      ctx += `- [${ep.id}] (${ep.category}, subject=${ep.subject ?? 'user'}) ${ep.content}\n`
     }
 
     if (input.existingFacts.length > 0) {
@@ -829,16 +846,28 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       let invalidated = 0
       const consolidatedEpisodeIds = new Set<string>()
 
+      // Look up a stored fact's normalized subject from the live store, so the
+      // mutation guards below can refuse to rewrite one person's fact with
+      // another's content. Returns undefined when the target id isn't found.
+      const storedSubjectOf = (factId: string): string | undefined => {
+        const target = semRef.state.facts.find((f: any) => f.id === factId)
+        return target ? (target.subject ?? 'user').toLowerCase() : undefined
+      }
+
       for (const fact of input.facts) {
         try {
           for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
+
+          // The owner the LLM attributed this consolidation fact to. Guards below
+          // refuse cross-subject mutations so a mis-targeted `targetFactId`
+          // cannot melt one person's fact into another's.
+          const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
 
           switch (fact.action) {
             case 'new': {
               // Dedup: check existing facts (same subject) before adding. The consolidation
               // LLM sometimes creates near-duplicates of existing facts with action 'new'
               // instead of 'reinforce'.
-              const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
               const existing = allFacts(semRef, normalizedSubject)
               const match = findBestOverlap(fact.content, existing)
               if (match) {
@@ -865,6 +894,11 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
             case 'reinforce':
               if (fact.targetFactId) {
+                const targetSubject = storedSubjectOf(fact.targetFactId)
+                if (targetSubject !== undefined && targetSubject !== normalizedSubject) {
+                  console.warn(`[memory] consolidation subject mismatch: target ${fact.targetFactId} is subject=${targetSubject}, proposed subject=${normalizedSubject}; skipping reinforce`)
+                  break
+                }
                 const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
                 if (result) reinforced++
                 else console.warn(`[memory] Reinforce target not found: ${fact.targetFactId}`)
@@ -873,6 +907,11 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
             case 'update':
               if (fact.targetFactId) {
+                const targetSubject = storedSubjectOf(fact.targetFactId)
+                if (targetSubject !== undefined && targetSubject !== normalizedSubject) {
+                  console.warn(`[memory] consolidation subject mismatch: target ${fact.targetFactId} is subject=${targetSubject}, proposed subject=${normalizedSubject}; skipping update`)
+                  break
+                }
                 const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
                 if (result) updated++
                 else console.warn(`[memory] Update target not found: ${fact.targetFactId}`)
@@ -881,6 +920,12 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
             case 'invalidate':
               if (fact.targetFactId) {
+                // Deletion isn't cross-contamination, so we still remove; but warn
+                // on a subject mismatch for observability.
+                const targetSubject = storedSubjectOf(fact.targetFactId)
+                if (targetSubject !== undefined && targetSubject !== normalizedSubject) {
+                  console.warn(`[memory] consolidation subject mismatch: target ${fact.targetFactId} is subject=${targetSubject}, proposed subject=${normalizedSubject}; invalidating anyway`)
+                }
                 await removeFact(semRef, fact.targetFactId)
                 invalidated++
               }
@@ -1130,6 +1175,21 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
           const [keepId, ...removeIds] = merge.sourceFactIds
           // Collect source episode IDs from all source facts
           const existingFacts = allFacts(semRef)
+
+          // Subject guard: never merge facts that belong to different subjects.
+          // The prune prompt forbids cross-subject merges, but a mis-attributing
+          // model can still propose one; this is the code backstop that prompt
+          // text alone lacks.
+          const mergeSubjects = new Set<string>()
+          for (const id of merge.sourceFactIds) {
+            const fact = existingFacts.find((f: any) => f.id === id)
+            if (fact) mergeSubjects.add((fact.subject ?? 'user').toLowerCase())
+          }
+          if (mergeSubjects.size > 1) {
+            console.warn(`[memory] prune subject mismatch: merge spans subjects {${[...mergeSubjects].join(', ')}}; skipping merge of ${merge.sourceFactIds.join(', ')}`)
+            continue
+          }
+
           const sourceEpisodeIds: string[] = []
           for (const id of merge.sourceFactIds) {
             const fact = existingFacts.find((f: any) => f.id === id)

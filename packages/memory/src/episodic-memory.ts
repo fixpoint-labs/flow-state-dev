@@ -15,6 +15,15 @@ export const episodeSchema = z.object({
   significance: z.number().min(0).max(1),
   /** Semantic category of this episode. */
   category: z.enum(['identity', 'event', 'preference', 'task', 'relationship', 'profession', 'belief', 'attribute', 'pattern']),
+  /**
+   * Who or what this episode is about. `'user'` for the primary user, a
+   * lowercase first name for other people (`'moni'`), a lowercase-hyphenated
+   * name for organizations. Carried from the observer so consolidation reads
+   * the owner instead of re-inferring it from bare predicate text.
+   * Defaults to `'user'` for backward-compatible deserialization of
+   * pre-FIX-703 episodes (no `subject` field) rather than failing validation.
+   */
+  subject: z.string().default('user'),
   /** Contextual metadata about when this episode occurred. */
   context: z.object({
     sessionId: z.string(),

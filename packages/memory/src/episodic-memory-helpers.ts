@@ -11,6 +11,9 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24
  * Input for encoding a new episode — ID, `encodedAt`, `consolidated`, and
  * `stale` are generated automatically. `durability` must be supplied by the
  * caller (reflect routes only `'persistent'` and `'permanent'` items here).
+ * `subject` is the observer-computed owner of the episode (`'user'` or a
+ * lowercase name); reflect passes its normalized subject so consolidation
+ * inherits ownership rather than re-deriving it.
  */
 export type EncodeEpisodeInput = Omit<Episode, 'id' | 'encodedAt' | 'consolidated' | 'stale'>
 

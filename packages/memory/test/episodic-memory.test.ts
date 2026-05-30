@@ -43,6 +43,7 @@ function createMockEpRef(
 function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
   return {
     content: `episode ${overrides.id}`,
+    subject: 'user',
     occurredAtTurn: 0,
     encodedAt: new Date().toISOString(),
     significance: 0.7,
@@ -87,6 +88,45 @@ describe('memory/episodicMemory', () => {
       expect(result.success).toBe(true)
       if (result.success) {
         expect(result.data.consolidated).toBe(false)
+      }
+    })
+
+    it('episodeSchema defaults subject to user for pre-FIX-703 episodes', () => {
+      // A pre-change persisted episode has no `subject` field. It must
+      // deserialize to 'user' rather than failing validation.
+      const legacyEpisode = {
+        id: 'ep1',
+        content: 'test',
+        occurredAtTurn: 0,
+        encodedAt: '2026-01-01T00:00:00.000Z',
+        significance: 0.5,
+        category: 'identity',
+        context: { sessionId: 'sess-1' },
+        consolidated: false,
+      }
+      const result = episodeSchema.safeParse(legacyEpisode)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.subject).toBe('user')
+      }
+    })
+
+    it('episodeSchema preserves an explicit subject', () => {
+      const episode = {
+        id: 'ep1',
+        content: "Is the user's wife",
+        occurredAtTurn: 0,
+        encodedAt: '2026-01-01T00:00:00.000Z',
+        significance: 0.7,
+        category: 'relationship',
+        context: { sessionId: 'sess-1' },
+        consolidated: false,
+        subject: 'moni',
+      }
+      const result = episodeSchema.safeParse(episode)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.subject).toBe('moni')
       }
     })
 
@@ -166,6 +206,22 @@ describe('memory/episodicMemory', () => {
       expect(result.encodedAt).toBeDefined()
       expect(ref.state.episodes).toHaveLength(1)
       expect(ref.state.totalEncoded).toBe(1)
+    })
+
+    it('round-trips the subject onto the encoded episode', async () => {
+      const ref = createMockEpRef()
+      const result = await encode(ref, {
+        content: "Is the user's wife",
+        subject: 'moni',
+        occurredAtTurn: 5,
+        significance: 0.8,
+        category: 'relationship',
+        durability: 'persistent',
+        context: { sessionId: 'sess-1' },
+      }, 200)
+
+      expect(result.subject).toBe('moni')
+      expect(ref.state.episodes[0].subject).toBe('moni')
     })
 
     it('increments totalEncoded on each encode', async () => {
