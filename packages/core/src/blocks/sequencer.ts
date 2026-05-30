@@ -95,7 +95,7 @@ type SequencerOperation = {
  * back to `{ kind: "inline" }` if the child did not emit a trace (e.g., when a
  * sequencer runs without a response emitter in a unit test).
  */
-function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint {
+export function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint {
   const instanceId = buildBlockInstanceId(ctx.request.identity.id, path, 0);
   const itemId = findBlockTraceIdByInstance(ctx, instanceId);
   if (itemId === undefined) return { kind: "inline" };
@@ -158,7 +158,7 @@ function inputDescriptorFromBranches(
  * `_blockInputHint` field. Cleared by `executeBlock`'s scope wrapper after
  * forwarding to the child run.
  */
-function stashInputHint(ctx: BlockContext, hint: BlockValueInternal<unknown>): void {
+export function stashInputHint(ctx: BlockContext, hint: BlockValueInternal<unknown>): void {
   (ctx as { _pendingChildInputHint?: BlockValueInternal<unknown> })._pendingChildInputHint = hint;
 }
 
@@ -170,7 +170,7 @@ function stashInputHint(ctx: BlockContext, hint: BlockValueInternal<unknown>): v
  * Returns `inline` for the sequencer head so the server-side handler stamps
  * the raw input value.
  */
-function sequentialInputHint(
+export function sequentialInputHint(
   ctx: BlockContext,
   runtime: SequencerRuntimeState
 ): BlockValueInternal<unknown> {
@@ -387,7 +387,7 @@ function childBlockPath(
   return path;
 }
 
-async function executeBlock(
+export async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
   ctx: BlockContext,
@@ -614,7 +614,7 @@ function createRuntimeState(): SequencerRuntimeState {
  * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
  * threaded into `executeBlock` so descendant scopes inherit the same signal.
  */
-function backgroundTaskCtx(ctx: BlockContext): {
+export function backgroundTaskCtx(ctx: BlockContext): {
   taskCtx: BlockContext;
   signalOverride: AbortSignal | undefined;
 } {
@@ -625,7 +625,7 @@ function backgroundTaskCtx(ctx: BlockContext): {
   return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
 }
 
-function dispatchWorkTask(
+export function dispatchWorkTask(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,
   name: string,
