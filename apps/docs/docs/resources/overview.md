@@ -179,6 +179,33 @@ Here a request loads the `draft` content and nothing else, even if other keys ex
 
 Choose the scope that matches the data's lifetime. Session for conversation-local artifacts, user for personal notes and saved snippets, org for shared knowledge bases and team documents.
 
+## Resource identity: path, scope, and uri
+
+Every resource handle you read, whether it points at a single resource or one instance inside a collection, carries three identity fields: `path`, `scope`, and `uri`. They're set when the handle is created and never change.
+
+### path — the within-scope storage key
+
+`path` is the slash-delimited string a resource is persisted under. For a collection with the pattern `files/**`, calling `create("readme.md")` gives you a handle whose `path` is `"files/readme.md"`. Parameterized patterns resolve the same way: a `[topic]/notes` pattern with `{ topic: "react" }` produces `path === "react/notes"`.
+
+`path` is a plain string, not a filesystem path object. Manipulate it with ordinary string methods like `.split("/")` or `.startsWith(...)`. There's no path-library behavior implied: no segment normalization, no `..` traversal.
+
+### scope — the lifetime tier
+
+`scope` is one of `"session"`, `"user"`, or `"org"`, matching the scope the resource was defined under. It tells you how long the value lives (see [State & Scopes](/docs/fundamentals/state-and-scopes)).
+
+### uri — `${scope}/${path}`
+
+`uri` is the fully qualified identifier: the scope and the path joined with a slash. A session-scoped handle with `path === "files/readme.md"` has `uri === "session/files/readme.md"`. It's stable and unique across scopes within a flow, which makes it useful for logging, deduplication, or cross-scope addressing.
+
+Treat `uri` as opaque. It is not an RFC-3986 URI, so don't feed it to `new URL()`. It's a plain identifier string.
+
+```ts
+console.log(ref.path, ref.scope, ref.uri);
+// "files/readme.md"  "session"  "session/files/readme.md"
+```
+
+See [Resource Collections](/docs/resources/collections) for how parameterized patterns build these paths.
+
 ## Where to go next
 
 - **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private

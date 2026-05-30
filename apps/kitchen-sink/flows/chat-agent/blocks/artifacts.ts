@@ -75,7 +75,7 @@ const artifactListContext = async (_input: unknown, ctx: any) => {
   }
   const list = instances
     .map((ref: any) => {
-      const id = ref.name.replace("artifacts/", "");
+      const id = ref.path.replace("artifacts/", "");
       const title = ref.state.title ?? "Untitled";
       const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
       return `- ${id}: ${title}${summary}`;

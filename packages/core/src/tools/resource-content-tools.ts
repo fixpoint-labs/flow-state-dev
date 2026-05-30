@@ -4,7 +4,7 @@ import type { ResourceRef } from "../types/resource";
 import { handler } from "../blocks/handler";
 
 function toResourcePath(resource: ResourceRef<any>): string {
-  return `${resource.scope}/${resource.name}`;
+  return resource.uri;
 }
 
 function listResources(ctx: BlockContext): ResourceRef<any>[] {

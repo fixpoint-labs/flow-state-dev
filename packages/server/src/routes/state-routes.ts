@@ -143,16 +143,19 @@ export async function handleGetSessionState(
   }
 
   const sessionResources = createScopeResources({
+    scope: "session",
     configs: sessionConfigs,
     persisted: sessionState,
     persistedContent: sessionContent
   });
   const userResources = createScopeResources({
+    scope: "user",
     configs: userConfigs,
     persisted: userState,
     persistedContent: userContent
   });
   const orgResources = createScopeResources({
+    scope: "org",
     configs: orgConfigs,
     persisted: orgState,
     persistedContent: orgContent

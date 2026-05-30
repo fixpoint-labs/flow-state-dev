@@ -553,8 +553,9 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     };
 
     return {
-      name: storageKey,
+      path: storageKey,
       scope: options.scope,
+      uri: `${options.scope}/${storageKey}`,
       config: nsConfig as unknown as ResourceConfig,
       get state() {
         return readState();
@@ -955,8 +956,9 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       );
 
     handles[resourceName] = {
-      name: storageKey,
+      path: storageKey,
       scope: options.scope,
+      uri: `${options.scope}/${storageKey}`,
       config,
       get state() {
         return readState();

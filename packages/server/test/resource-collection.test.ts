@@ -86,7 +86,7 @@ describe("collection CRUD", () => {
 
     const ref = await ns.create("readme.md", { language: "markdown" });
     expect(ref.state.language).toBe("markdown");
-    expect(ref.name).toBe("files/readme.md");
+    expect(ref.path).toBe("files/readme.md");
 
     const got = await ns.get("readme.md");
     expect(got.state.language).toBe("markdown");
@@ -168,7 +168,7 @@ describe("collection CRUD", () => {
 
     await ns.create("src/utils/helpers.ts", { language: "typescript" });
     const ref = await ns.get("src/utils/helpers.ts");
-    expect(ref.name).toBe("files/src/utils/helpers.ts");
+    expect(ref.path).toBe("files/src/utils/helpers.ts");
     expect(ref.state.language).toBe("typescript");
   });
 });
@@ -525,14 +525,16 @@ describe("collection list() prefix filtering", () => {
 
     const srcFiles = await ns.list("src/");
     expect(srcFiles).toHaveLength(2);
-    expect(srcFiles.map((r) => r.name).sort()).toEqual([
+    expect(srcFiles.map((r) => r.path).sort()).toEqual([
       "files/src/b.ts",
       "files/src/utils/c.ts",
     ]);
 
     const docFiles = await ns.list("docs/");
     expect(docFiles).toHaveLength(1);
-    expect(docFiles[0]!.name).toBe("files/docs/readme.md");
+    expect(docFiles[0]!.path).toBe("files/docs/readme.md");
+    // Locks the `${scope}/${path}` concatenation rule for a multi-segment path.
+    expect(docFiles[0]!.uri).toBe(`${docFiles[0]!.scope}/files/docs/readme.md`);
   });
 
   it("list(prefix) returns empty when no match", async () => {
@@ -556,7 +558,7 @@ describe("parameterized collection", () => {
     await ns.create({ topic: "react" }, { entries: ["first"] });
     const ref = await ns.get({ topic: "react" });
     expect(ref.state.entries).toEqual(["first"]);
-    expect(ref.name).toBe("react/observations");
+    expect(ref.path).toBe("react/observations");
   });
 
   it("list returns all parameterized instances", async () => {

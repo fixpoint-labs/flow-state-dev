@@ -104,7 +104,7 @@ const clearSchedules = handler({
     await Promise.all(
       refs.map((ref) =>
         schedules.delete(
-          ref.name.startsWith(prefix) ? ref.name.slice(prefix.length) : ref.name,
+          ref.path.startsWith(prefix) ? ref.path.slice(prefix.length) : ref.path,
         ),
       ),
     );
