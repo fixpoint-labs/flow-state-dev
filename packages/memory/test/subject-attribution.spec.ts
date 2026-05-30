@@ -256,6 +256,24 @@ describe('memory/subject-attribution (FIX-703)', () => {
     expect(otherSection).not.toContain('jakehoffner.com')
   })
 
+  // Episodes are fed to the digest as supporting evidence — they must also
+  // carry their subject so a high-significance non-user episode (e.g. Moni's
+  // favorite color) can't be read as evidence about the primary user.
+  it('digest context labels each episode with its subject', () => {
+    const out = buildDigestContext({
+      triggered: true,
+      facts: [],
+      episodes: [
+        { subject: 'moni', content: 'Favorite color is teal', category: 'preference', significance: 0.9, occurredAtTurn: 3 },
+        { subject: 'user', content: 'Switched jobs', category: 'event', significance: 0.8, occurredAtTurn: 7 },
+      ],
+    })
+
+    // The Moni episode is tagged with her subject, not the user's.
+    expect(out).toMatch(/subject=moni.*Favorite color is teal/)
+    expect(out).toMatch(/subject=user.*Switched jobs/)
+  })
+
   // Acceptance #3: consolidation reinforce/update cannot rewrite a fact whose
   // stored subject differs from the proposed subject.
   describe('consolidation subject guard', () => {
