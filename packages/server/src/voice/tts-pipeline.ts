@@ -348,10 +348,24 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
       }
       const contentIndex = getNextContentIndex(itemId);
       let mediaType = DEFAULT_AUDIO_MEDIA_TYPE;
+      // Open the content part before the first delta so the client can
+      // allocate its decoding slot and resolve mediaType — the same protocol
+      // the batch path follows (emitContentAdded → emitContentDone) and the
+      // contract `useVoice` already assumes. The placeholder carries empty
+      // audio (the bytes flow through the deltas, not the snapshot); the
+      // client's batch-path scanner skips empty-audio parts so this never
+      // double-plays. mediaType is the default here and is superseded by the
+      // first chunk's value on the closing `content.done`.
+      await options.emitter.emitContentAdded(
+        itemId,
+        contentIndex,
+        buildAudioContent("", mediaType, text)
+      );
       // Drain interruption: cancel() or request abort unblocks a hung next().
       const drainSignals = [cancelController.signal];
       if (options.signal !== undefined) drainSignals.push(options.signal);
       const drainSignal = AbortSignal.any(drainSignals);
+      let closed = false;
       try {
         if (!first.done) {
           mediaType = first.value.mediaType;
@@ -375,10 +389,26 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
           contentIndex,
           buildAudioContent("", mediaType, text)
         );
+        closed = true;
       } catch (error) {
         // A cancel-driven abort is routine teardown, not a synthesis failure.
         if (!cancelled) await reportSynthesisError(itemId, text, error);
       } finally {
+        // Close the part we opened with `emitContentAdded`, even on a failed
+        // or aborted drain — otherwise the client is left with a dangling
+        // empty `output_audio` that never completes. Best-effort: never let a
+        // close failure (e.g. emitter torn down on cancel) break teardown.
+        if (!closed) {
+          try {
+            await options.emitter.emitContentDone(
+              itemId,
+              contentIndex,
+              buildAudioContent("", mediaType, text)
+            );
+          } catch {
+            // Swallow — the chain's own cleanup below still runs.
+          }
+        }
         // Belt-and-suspenders: release the upstream generator even if the
         // request signal already stopped it, then free the slot. Fire-and-
         // forget — return() may never resolve on a stalled generator.

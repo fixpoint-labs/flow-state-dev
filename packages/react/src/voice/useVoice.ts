@@ -178,6 +178,13 @@ export function useVoice(
       for (let i = 0; i < msg.content.length; i++) {
         const part = msg.content[i];
         if (part?.type !== "output_audio") continue;
+        // Streaming TTS turns persist an empty-audio `content.done` snapshot
+        // (the bytes streamed via `content.audio.delta`, which aren't
+        // replayed). On a fresh load or reconnect `streamingAudioPartsRef` is
+        // empty so the dedup guard below can't catch these — skip them
+        // directly, since a zero-byte buffer would throw EncodingError in
+        // `decodeAudioData` for every streamed sentence of every replay.
+        if (part.audio.length === 0) continue;
 
         const streamKey = `${item.id}:${i}`;
         if (streamingAudioPartsRef.current.has(streamKey)) continue;
