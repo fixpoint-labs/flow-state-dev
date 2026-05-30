@@ -367,7 +367,7 @@ async function createScopedSandbox(
 
 /**
  * Strip a mount's pattern prefix from a resource ref's full storage key.
- * `ref.name` is `"artifacts/foo.md"`; stripping `"artifacts"` gives `"foo.md"`.
+ * `ref.path` is `"artifacts/foo.md"`; stripping `"artifacts"` gives `"foo.md"`.
  */
 function stripMountPrefix(name: string, prefix: string): string {
   if (prefix && name.startsWith(prefix + "/")) {
@@ -441,7 +441,7 @@ async function hydrate(entry: SandboxEntry, destination: string): Promise<void> 
 
     const refs = await mount.collection.list();
     for (const ref of refs) {
-      const bareKey = stripMountPrefix(ref.name, mount.prefix);
+      const bareKey = stripMountPrefix(ref.path, mount.prefix);
       // Skip collection-level metadata entries (e.g. _meta in skills).
       if (bareKey.startsWith("_")) continue;
       const content = await ref.readContent();
@@ -547,7 +547,7 @@ async function flush(
     if (!mount.writable) continue;
     const seen = seenByMountKey.get(mount.key)!;
     for (const ref of await mount.collection.list()) {
-      const bareKey = stripMountPrefix(ref.name, mount.prefix);
+      const bareKey = stripMountPrefix(ref.path, mount.prefix);
       // Skip collection metadata — never deletable via bash sweep.
       if (bareKey.startsWith("_")) continue;
       if (!seen.has(bareKey)) {

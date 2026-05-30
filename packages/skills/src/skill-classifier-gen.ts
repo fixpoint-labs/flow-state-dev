@@ -66,8 +66,8 @@ async function listSkillsForPrompt(
   const seen = new Set<string>();
   for (const ref of await collection.list()) {
     if (out.length >= cap) break;
-    if (!ref.name.endsWith("/SKILL.md")) continue;
-    const segments = ref.name.split("/");
+    if (!ref.path.endsWith("/SKILL.md")) continue;
+    const segments = ref.path.split("/");
     if (segments.length < 2) continue;
     const skillName = segments[segments.length - 2]!;
     if (seen.has(skillName)) continue;
@@ -130,8 +130,8 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
       const validNames = new Set<string>();
       if (collection) {
         for (const ref of await collection.list()) {
-          if (!ref.name.endsWith("/SKILL.md")) continue;
-          const segments = ref.name.split("/");
+          if (!ref.path.endsWith("/SKILL.md")) continue;
+          const segments = ref.path.split("/");
           if (segments.length < 2) continue;
           const skillName = segments[segments.length - 2]!;
           const state = ref.state as unknown as SkillState;

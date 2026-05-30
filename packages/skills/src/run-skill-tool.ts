@@ -129,11 +129,11 @@ export async function listEnabledSkills(
   for (const ref of await collection.list()) {
     // The collection holds a mix of SKILL.md manifests and supporting files.
     // Manifests have keys ending in `/SKILL.md` once stripped of the prefix.
-    if (!ref.name.endsWith("/SKILL.md")) continue;
+    if (!ref.path.endsWith("/SKILL.md")) continue;
     const state = ref.state as unknown as SkillState;
     if (state.disableModelInvocation) continue;
     // Extract skill name from the storage key — strip prefix and `/SKILL.md`.
-    const segments = ref.name.split("/");
+    const segments = ref.path.split("/");
     if (segments.length < 2) continue;
     const name = segments[segments.length - 2]!;
     if (seen.has(name)) continue;

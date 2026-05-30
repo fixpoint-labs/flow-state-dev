@@ -109,8 +109,9 @@ export function createFakeResourceCollection<TState extends JsonObject>(
 
   function instanceRef(key: string): ResourceRef<TState> {
     return {
-      name: key,
+      path: key,
       scope: "session",
+      uri: `session/${key}`,
       config: { scope: "session" } as ResourceRef<TState>["config"],
       get state() {
         return (instances.get(key) ?? ({} as TState)) as Readonly<TState>;

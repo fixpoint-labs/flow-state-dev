@@ -484,8 +484,9 @@ describe("generator builder", () => {
           get: () => ({}) as any,
           list: () => [
             {
-              name: "soul",
+              path: "soul",
               scope: "session",
+              uri: "session/soul",
               config: { llmReadable: true, llmWritable: true },
               state: {},
               patchState: async () => undefined,
@@ -849,8 +850,9 @@ it("supports manually adding unified resource content tools", async () => {
   const calls: Array<{ name: string; args: any }> = [];
 
   const readableResource = {
-    name: "soul",
+    path: "soul",
     scope: "session",
+    uri: "session/soul",
     config: { llmReadable: true, llmWritable: false },
     state: {},
     patchState: async () => undefined,
@@ -863,7 +865,8 @@ it("supports manually adding unified resource content tools", async () => {
 
   const writableResource = {
     ...readableResource,
-    name: "notes",
+    path: "notes",
+    uri: "session/notes",
     config: { llmReadable: true, llmWritable: true },
     writeContent: async (content: string) => {
       calls.push({ name: "write", args: content });

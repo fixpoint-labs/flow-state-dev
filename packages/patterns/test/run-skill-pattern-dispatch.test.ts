@@ -91,8 +91,9 @@ function buildCtx(opts: { sessionStateOverrides?: Record<string, unknown> } = {}
 function makeMockSkillsCollection() {
   const store = new Map<string, { name: string; state: Record<string, unknown>; content: string | null }>();
   const make = (entry: { name: string; state: Record<string, unknown>; content: string | null }) => ({
-    name: entry.name,
+    path: entry.name,
     scope: "org" as const,
+    uri: `org/${entry.name}`,
     state: entry.state as never,
     readContent: async () => entry.content,
     writeContent: async (c: string) => { entry.content = c; },

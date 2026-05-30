@@ -62,8 +62,9 @@ function createMockCollection(
   }
 
   const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> => ({
-    name: entry.name,
+    path: entry.name,
     scope: "session",
+    uri: `session/${entry.name}`,
     state: entry.state,
     patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
       entry.state = { ...entry.state, ...updates };

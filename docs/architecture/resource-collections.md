@@ -95,6 +95,27 @@ execute: async (input, ctx) => {
 
 Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved `ResourceRef` is synchronous — you await the lookup, not the read of an already-resolved ref.
 
+### `ResourceRef` identity fields
+
+Every runtime handle carries three identity fields, each set at ref construction and immutable thereafter:
+
+```ts
+interface ResourceRef<TState> {
+  path: string;   // canonical within-scope storage key
+  scope: ScopeType;
+  uri: string;    // `${scope}/${path}`
+  // ...state, mutators, content I/O
+}
+```
+
+- **`path`** — the canonical storage key.
+  - For single resources: the canonical accessor key or `config.ref`.
+  - For collection instances: the resolved storage key (pattern + key params), e.g. `"react/notes"`.
+  - For dual-registered aliases (FIX-591): the canonical key, not the alias used to look up the handle. Two accessors pointing at the same ref produce handles with the same `path` and `uri`, since they share storage.
+- **`uri`** — always `${scope}/${path}`. Stable and unique across scopes within a flow; opaque (not an RFC-3986 URI). Used for logging, dedup across scopes, and cross-flow correspondence.
+
+See [State & Scopes](./state-and-scopes.md) and [Resources & Client Data](./resources-and-client-data.md) for how these fields surface to projections.
+
 ### Parameterized patterns
 
 When a pattern has `[name]` segments, pass an object key instead of a string:

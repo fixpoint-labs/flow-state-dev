@@ -148,7 +148,7 @@ export function resourceTools() {
         const instances = await ns.ref.list(input.prefix);
         for (const instance of instances) {
           resources.push({
-            path: instance.name,
+            path: instance.path,
             state: instance.state as Record<string, unknown>,
           });
         }

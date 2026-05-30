@@ -187,14 +187,20 @@ export type MessageLike = {
 
 export interface ResourceRef<TState extends JsonObject = JsonObject> {
   /**
-   * Canonical storage key for this resource — what state and content are
-   * persisted under. Equal to the accessor key for normal single resources,
-   * the path-derived key (e.g. `"memos/p1/foo"`) for collection instances,
-   * and the canonicalized key for dual-registered aliases (FIX-591). Not
-   * necessarily the accessor name used to look up the handle.
+   * Canonical within-scope storage path for this resource — what state and
+   * content are persisted under. Equal to the accessor key for normal single
+   * resources, the path-derived key (e.g. `"memos/p1/foo"`) for collection
+   * instances, and the canonicalized key for dual-registered aliases (FIX-591).
+   * Not necessarily the accessor name used to look up the handle.
    */
-  name: string;
+  path: string;
   scope: ScopeType;
+  /**
+   * Fully qualified identifier — `${scope}/${path}`. Stable and unique across
+   * scopes within a flow. Opaque: do not feed to `new URL()` — it is not an
+   * RFC-3986 URI, just a debug/logging/cross-scope-addressing handle.
+   */
+  uri: string;
   state: Readonly<TState>;
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;

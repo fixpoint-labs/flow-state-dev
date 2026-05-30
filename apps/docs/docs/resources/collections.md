@@ -77,6 +77,8 @@ execute: async (input, ctx) => {
 
 Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
 
+Each returned ref also carries `path`, `scope`, and `uri` fields for identity — see [Resource identity](./overview#resource-identity-path-scope-and-uri) for details.
+
 ### `create({ replace })` and `upsert` — handling the exists/missing branches
 
 Two additional operations cover the recurring "is the instance already there?" patterns that show up in setup/reset and incremental-update paths:

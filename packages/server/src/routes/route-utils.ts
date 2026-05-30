@@ -5,6 +5,7 @@ import type {
   JsonObject,
   ResourceConfig,
   ResourceCollectionConfig,
+  ScopeType,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
@@ -211,6 +212,7 @@ function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
 }
 
 export function createScopeResources(options: {
+  scope: ScopeType;
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
@@ -228,7 +230,9 @@ export function createScopeResources(options: {
 
       function makeInstanceRef(key: string, value: unknown) {
         return {
-          name: key,
+          path: key,
+          scope: options.scope,
+          uri: `${options.scope}/${key}`,
           get state() { return isJsonObject(value) ? value : {}; },
           async readContent() { return contentMap[key] ?? null; },
           async readContentRaw() { return contentMap[key] ?? null; }
@@ -278,7 +282,9 @@ export function createScopeResources(options: {
       );
 
     handles[resourceName] = {
-      name: storageKey,
+      path: storageKey,
+      scope: options.scope,
+      uri: `${options.scope}/${storageKey}`,
       config: maybeConfig,
       get state() {
         return readState();
