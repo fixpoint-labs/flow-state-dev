@@ -24,13 +24,6 @@ const TRIGGER_SOURCE_LABELS: Record<string, string> = {
   phase1: "P1",
 };
 
-const DISTRIBUTION_LABELS: Record<string, string> = {
-  concentrated: "concentrated",
-  balanced: "balanced",
-  barbell: "barbell",
-  "long-tail": "long-tail",
-};
-
 const METRIC_ORDER = ["horizon", "distribution", "buckets", "evidence"] as const;
 
 export type ScenarioPanelProps = {
@@ -108,7 +101,7 @@ export function ScenarioPanel({
                 "text-[color:var(--c-fg-muted)]",
               )}
             >
-              {DISTRIBUTION_LABELS[distribution] ?? distribution}
+              {distribution}
             </span>
           ) : null}
           {horizon !== null ? (
