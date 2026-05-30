@@ -12,6 +12,7 @@ import { getOrFetch } from "../../lib/cache";
 import { loadFixture } from "../../lib/fixtures";
 import { fetchYahooChart, fetchYahooCompanyProfile } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
+import { trailingReturn } from "./indicators-math";
 import {
   pickMode,
   toolInputSchemas,
@@ -37,15 +38,6 @@ const GICS_TO_ETF: Record<string, string> = {
   "Real Estate": "XLRE",
   Utilities: "XLU",
 };
-
-/** Compute trailing return from daily bars: (last close - first close) / first close. */
-function trailingReturn(bars: Array<{ close: number }>): number | null {
-  if (bars.length < 2) return null;
-  const first = bars[0].close;
-  const last = bars[bars.length - 1].close;
-  if (first === 0) return null;
-  return (last - first) / first;
-}
 
 /** Fetch trailing ~1-month return for a single ticker. Returns null on failure. */
 async function fetchReturn1m(

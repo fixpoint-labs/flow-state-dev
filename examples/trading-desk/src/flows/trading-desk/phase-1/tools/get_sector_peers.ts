@@ -10,6 +10,7 @@ import { loadFixture } from "../../lib/fixtures";
 import { fetchFinnhubPeers } from "../../providers/finnhub";
 import { fetchYahooChart } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
+import { trailingReturn } from "./indicators-math";
 import {
   pickMode,
   toolInputSchemas,
@@ -19,15 +20,6 @@ import {
 } from "./schemas";
 
 const MAX_PEERS = 6;
-
-/** Compute trailing return from daily bars. */
-function trailingReturn(bars: Array<{ close: number }>): number | null {
-  if (bars.length < 2) return null;
-  const first = bars[0].close;
-  const last = bars[bars.length - 1].close;
-  if (first === 0) return null;
-  return (last - first) / first;
-}
 
 /** Median of an array of numbers. Returns null for empty arrays. */
 function median(values: number[]): number | null {

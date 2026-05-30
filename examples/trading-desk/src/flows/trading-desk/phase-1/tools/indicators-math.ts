@@ -10,6 +10,9 @@
  * return finite numbers. When the input series is too short to compute a given
  * indicator the routine returns `0` (or the neutral baseline) rather than
  * throwing — analyst prompts already handle missing-signal cases.
+ *
+ * `trailingReturn` is a simpler helper used by sector/peer tools to compute
+ * period returns from daily close arrays.
  */
 import {
   ATR,
@@ -214,4 +217,13 @@ export function computeIndicators(bars: ReadonlyArray<Bar>): IndicatorOutput {
     kdj: kdj(bars),
     obv: obv(bars),
   };
+}
+
+/** Compute trailing return from daily bars: (last close - first close) / first close. */
+export function trailingReturn(bars: Array<{ close: number }>): number | null {
+  if (bars.length < 2) return null;
+  const first = bars[0].close;
+  const last = bars[bars.length - 1].close;
+  if (first === 0) return null;
+  return (last - first) / first;
 }
