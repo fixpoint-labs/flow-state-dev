@@ -11,7 +11,7 @@
  */
 import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
-import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem, ResourceLoadRecord } from "@flow-state-dev/core/items";
 
 // Generator config + connected-input view used by DebugPayloadSection.
 // Sourced directly from `block_trace.generator` and `block_trace.input.connected`.
@@ -210,6 +210,30 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
           </div>
         </CollapsibleSection>
       )}
+
+      {/* Resource loads (FIX-701): what this block declared vs what actually
+          loaded, with per-load source/timing/cache-hit. */}
+      {(loadsForNode(node).length > 0 ||
+        (traceItem?.declaredResources?.length ?? 0) > 0) && (
+        <CollapsibleSection title="Resource Loads" defaultOpen={false}>
+          <ResourceLoadsSection
+            declared={traceItem?.declaredResources}
+            loads={loadsForNode(node)}
+          />
+        </CollapsibleSection>
+      )}
+
+      {/* Request-level aggregate: hoists this block's subtree loads (the whole
+          request when the entry block is selected) into total/slowest/hit-rate
+          metrics, with flow-eager/action-eager request-init loads surfaced. */}
+      {(() => {
+        const subtree = collectSubtreeLoads(node);
+        return subtree.length > 0 ? (
+          <CollapsibleSection title="Resource Load Summary" defaultOpen={false}>
+            <ResourceLoadsSummary loads={subtree} />
+          </CollapsibleSection>
+        ) : null;
+      })()}
 
       {/* Identity */}
       <CollapsibleSection title="Identity" defaultOpen={false}>
@@ -761,6 +785,135 @@ function ErrorPanel({
         <CollapsibleSection title="Details" defaultOpen={true}>
           <JsonViewer data={remainingDetails} />
         </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+// --- Resource loads (FIX-701) -------------------------------------------
+
+/** Resource-load records recorded on a node's `block_trace`, or empty. */
+function loadsForNode(node: TraceNode): ResourceLoadRecord[] {
+  const item = node.traceItem;
+  return item?.type === "block_trace" ? item.resourceLoads ?? [] : [];
+}
+
+/** Gather resource-load records from a node and all its block descendants.
+ *  Selecting the request's entry block therefore yields the request-wide set. */
+function collectSubtreeLoads(node: TraceNode): ResourceLoadRecord[] {
+  const out: ResourceLoadRecord[] = [...loadsForNode(node)];
+  for (const child of node.children) {
+    if (child.type === "block") out.push(...collectSubtreeLoads(child));
+  }
+  return out;
+}
+
+const SOURCE_LABEL: Record<ResourceLoadRecord["source"], string> = {
+  "flow-eager": "Flow eager",
+  "action-eager": "Action eager",
+  "block-eager": "Block eager",
+  lazy: "Lazy",
+};
+
+const SOURCE_BADGE: Record<ResourceLoadRecord["source"], string> = {
+  "flow-eager": "border-sky-700 text-sky-300",
+  "action-eager": "border-indigo-700 text-indigo-300",
+  "block-eager": "border-violet-700 text-violet-300",
+  lazy: "border-amber-700 text-amber-300",
+};
+
+/** One declared-vs-loaded view: the accessor keys the block declared, then a
+ *  row per load (source, accessor, cache-hit/fetch, wall time, ×count). */
+function ResourceLoadsSection({
+  declared,
+  loads,
+}: {
+  declared?: string[];
+  loads: ResourceLoadRecord[];
+}) {
+  return (
+    <div className="space-y-2">
+      {declared !== undefined && declared.length > 0 && (
+        <div>
+          <span className="text-[10px] uppercase text-slate-500">Declared</span>
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {declared.map((key) => (
+              <span
+                key={key}
+                className="text-[11px] font-mono text-slate-300 border border-slate-700 rounded px-1.5 py-0"
+              >
+                {key}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {loads.length > 0 ? (
+        <div>
+          <span className="text-[10px] uppercase text-slate-500">Loaded</span>
+          <div className="space-y-0.5 mt-0.5">
+            {loads.map((load, i) => (
+              <ResourceLoadRow key={i} load={load} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-500">No loads fired for this block.</p>
+      )}
+    </div>
+  );
+}
+
+function ResourceLoadRow({ load }: { load: ResourceLoadRecord }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] font-mono">
+      <span
+        className={`uppercase text-[9px] border rounded px-1 py-0 shrink-0 ${SOURCE_BADGE[load.source]}`}
+      >
+        {SOURCE_LABEL[load.source]}
+      </span>
+      <span className="text-slate-300 break-all flex-1">{load.storageKey}</span>
+      {load.accessor && <span className="text-slate-500 shrink-0">.{load.accessor}()</span>}
+      <span className={`shrink-0 ${load.cacheHit ? "text-emerald-400" : "text-orange-400"}`}>
+        {load.cacheHit ? "cache hit" : "fetch"}
+      </span>
+      {load.count > 1 && <span className="text-slate-500 shrink-0">×{load.count}</span>}
+      {!load.cacheHit && (
+        <span className="text-slate-500 shrink-0">{load.durationMs.toFixed(1)}ms</span>
+      )}
+    </div>
+  );
+}
+
+/** Request-level aggregate: total loads, total store-fetch time, slowest fetch,
+ *  cache-hit rate. Counts respect each record's collapsed `count`. */
+function ResourceLoadsSummary({ loads }: { loads: ResourceLoadRecord[] }) {
+  let totalAccesses = 0;
+  let fetchCount = 0;
+  let totalFetchMs = 0;
+  let slowestMs = 0;
+  let slowestKey = "";
+  for (const load of loads) {
+    totalAccesses += load.count;
+    if (!load.cacheHit) {
+      fetchCount += load.count;
+      totalFetchMs += load.durationMs;
+      if (load.durationMs > slowestMs) {
+        slowestMs = load.durationMs;
+        slowestKey = load.storageKey;
+      }
+    }
+  }
+  const hitRate =
+    totalAccesses > 0 ? Math.round(((totalAccesses - fetchCount) / totalAccesses) * 100) : 0;
+  return (
+    <div className="space-y-1">
+      <MetadataRow label="Total loads" value={String(totalAccesses)} />
+      <MetadataRow label="Store fetches" value={String(fetchCount)} />
+      <MetadataRow label="Total fetch time" value={`${totalFetchMs.toFixed(1)}ms`} />
+      <MetadataRow label="Cache-hit rate" value={`${hitRate}%`} />
+      {slowestKey !== "" && (
+        <MetadataRow label="Slowest fetch" value={`${slowestKey} (${slowestMs.toFixed(1)}ms)`} mono />
       )}
     </div>
   );
