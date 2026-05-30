@@ -291,11 +291,39 @@ describe("TTS pipeline — streaming dispatch", () => {
     pipeline.onContentDelta("item1", 0, "One. Two. ");
     await pipeline.flush("item1");
 
-    // First sentence: 2 deltas, then error (no content.done for it).
-    // Second sentence: 1 delta + content.done.
+    // First sentence: 2 deltas, then error. Second sentence: 1 delta.
     expect(audioDeltas(captured).length).toBe(3);
     expect(synthErrors(captured)).toHaveLength(1);
-    expect(contentDone(captured)).toHaveLength(1);
+    // Both sentences opened a part (content.added), and both close it
+    // (content.done) — the errored sentence still closes the part it opened
+    // so the client is never left with a dangling empty output_audio.
+    expect(contentAdded(captured)).toHaveLength(2);
+    expect(contentDone(captured)).toHaveLength(2);
+  });
+
+  it("closes the content part with content.done when the drain aborts mid-stream", async () => {
+    // A synthesis failure after the placeholder must still emit content.done
+    // for the same part, or clients that allocate on content.added leak an
+    // open empty output_audio.
+    const provider = streamProvider(() =>
+      (async function* () {
+        yield chunk([1]);
+        throw new VoiceError({ kind: "network", provider: "mock", message: "drop" });
+      })()
+    );
+    const { emitter, captured } = makeEmitter();
+    const pipeline = createTTSPipeline({ provider, config, emitter });
+
+    pipeline.onContentDelta("item1", 0, "Hello world");
+    await pipeline.flush("item1");
+
+    expect(synthErrors(captured)).toHaveLength(1);
+    const added = contentAdded(captured);
+    const done = contentDone(captured);
+    expect(added).toHaveLength(1);
+    expect(done).toHaveLength(1);
+    // The close targets the same (itemId, contentIndex) that was opened.
+    expect((done[0] as any).contentIndex).toBe((added[0] as any).contentIndex);
   });
 
   it("calls iterator.return() on the upstream generator after draining", async () => {
