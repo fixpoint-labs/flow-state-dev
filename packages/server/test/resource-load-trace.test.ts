@@ -379,9 +379,10 @@ describe("FIX-701: per-block resource-load tracing", () => {
       runtimeConfig: { modelResolver: createStubModelResolver() }
     });
     expect(result.error).toBeUndefined();
-    const withLoads = response
-      .getItems()
-      .filter((i) => i.type === "block_trace" && (i as BlockTraceItem).resourceLoads !== undefined);
-    expect(withLoads).toHaveLength(0);
+    // With observability off the trace-capture hook is undefined, so no
+    // block_trace items are emitted at all — which means neither `resourceLoads`
+    // nor `declaredResources` can leak onto the items stream.
+    const traceItems = response.getItems().filter((i) => i.type === "block_trace");
+    expect(traceItems).toHaveLength(0);
   });
 });
