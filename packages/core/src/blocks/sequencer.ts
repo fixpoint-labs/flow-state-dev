@@ -18,8 +18,7 @@ import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../err
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
-import { isConcurrencyOptions, isInlineConfig } from "./internal/arg-shapes";
-import { resolveCallShape } from "./internal/arg-shapes";
+import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
 import { getEmitterItemCount, isBlockDefinition, toError, withTimeout } from "./internal/utils";
@@ -1143,14 +1142,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               async ([, step], branchIndex): Promise<unknown> => {
                 const branchPath = extendBlockPath(parallelPath, blockPathSegment("branch", branchIndex));
                 branchPaths[branchIndex] = branchPath;
-                if (isBlockDefinition(step)) {
-                  stashInputHint(ctx, branchInputHint);
-                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
-                }
-
-                const connected = await step.connector(value as TOutput, ctx);
-                stashInputHint(ctx, branchInputHint);
-                return executeBlock(step.block, connected, ctx, branchPath);
+                const block = isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : step.block;
+                const connector = isBlockDefinition(step) ? undefined : step.connector;
+                return (await runChild(ctx, { block, connector }, branchPath, value, branchInputHint)).value;
               }
             );
 
@@ -1206,13 +1200,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         | { maxConcurrency?: number },
       arg3?: { maxConcurrency?: number }
     ): SequencerDefinition<TInput, TStepOut[], TStateSchema> {
-      const hasConnector =
-        arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
-      const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
-      const blockOrFactory = (hasConnector ? arg2 : arg1) as
+      // Shapes: forEach(block|factory) | forEach(connector, block|factory),
+      // each with optional trailing concurrency options.
+      const shape = resolveCallShape([arg1, arg2, arg3], "iterating");
+      const connector = shape.connector as ConnectorFn<TOutput, TStepIn[]> | undefined;
+      const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = (hasConnector ? arg3 : arg2) as { maxConcurrency?: number } | undefined;
+      const options = shape.options as { maxConcurrency?: number } | undefined;
 
       // Determine element output schema for z.array() propagation
       const elementBlock = isBlockDefinition(blockOrFactory)
@@ -1244,8 +1239,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               const path = childBlockPath(ctx, runtime, "forEach", stepIndex, index);
               iterationPaths[index] = path;
               // Each iteration's child sees the element inline (FIX-573 §5).
-              stashInputHint(ctx, { kind: "inline", value: item });
-              return executeBlock(block, item, ctx, path);
+              return (await runChild(ctx, { block }, path, item, { kind: "inline", value: item })).value;
             });
 
             // `.forEach` aggregates an array of existing iteration outputs.
@@ -1288,13 +1282,13 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         | { concurrency?: number },
       arg3?: { concurrency?: number }
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      const hasConnector =
-        arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
-      const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
-      const blockOrFactory = (hasConnector ? arg2 : arg1) as
+      // Shapes mirror forEach(); the trailing options carry `concurrency`.
+      const shape = resolveCallShape([arg1, arg2, arg3], "iterating");
+      const connector = shape.connector as ConnectorFn<TOutput, TStepIn[]> | undefined;
+      const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = (hasConnector ? arg3 : arg2) as { concurrency?: number } | undefined;
+      const options = shape.options as { concurrency?: number } | undefined;
 
       const elementBlock = isBlockDefinition(blockOrFactory)
         ? (blockOrFactory as BlockDefinition<any, any>)
@@ -1834,14 +1828,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               async (step, branchIndex): Promise<unknown> => {
                 const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
                 branchPaths[branchIndex] = branchPath;
-                if (isBlockDefinition(step)) {
-                  stashInputHint(ctx, branchInputHint);
-                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
-                }
-
-                const connected = await step.connector(value as TOutput, ctx);
-                stashInputHint(ctx, branchInputHint);
-                return executeBlock(step.block, connected, ctx, branchPath);
+                const block = isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : step.block;
+                const connector = isBlockDefinition(step) ? undefined : step.connector;
+                return (await runChild(ctx, { block, connector }, branchPath, value, branchInputHint)).value;
               }
             );
 
