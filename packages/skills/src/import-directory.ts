@@ -42,7 +42,7 @@ export async function importSkillsDirectory(
 
   for (const skill of skills) {
     try {
-      const exists = collection.getOptional(skillManifestKey(skill.name));
+      const exists = await collection.getOptional(skillManifestKey(skill.name));
       if (exists && !overwrite) {
         skipped.push({ name: skill.name, reason: "already exists" });
         continue;

@@ -74,7 +74,7 @@ defineFlow({
 });
 ```
 
-There's a third tier for resources you want to defer even further. A `prefetchMode: 'lazy'` resource skips the action-level burst: a lazy single resource loads when the specific block that declares it dispatches, and a lazy collection loads per access (one store read per key you touch). The default is `'eager'`, so existing flows are unchanged. Lazy is worth reaching for on large or unbounded collections where you only read a handful of keys per request. See [Eager vs lazy collections](/docs/resources/collections#eager-vs-lazy-collections) for the read semantics and tradeoffs.
+There's a third tier for resources you want to defer even further. A `prefetchMode: 'lazy'` resource skips the action-level burst: a lazy single resource loads when the specific block that declares it dispatches, and a lazy collection loads per access (one store read per key you touch). `prefetchMode` is a cost optimization, not an API change. Collection reads (`get`, `getOptional`, `list`, `count`) are async in both modes, so you `await` them either way; eager just resolves against a preloaded cache while lazy fetches on demand. The default is `'eager'`. Lazy is worth reaching for on large or unbounded collections where you only read a handful of keys per request. See [Eager vs lazy collections](/docs/resources/collections#eager-vs-lazy-collections) for the read semantics and tradeoffs.
 
 ## Working with content
 

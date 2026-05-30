@@ -29,7 +29,7 @@ import { taskBoardWorkerBodyStateSchema } from "../schemas";
 
 export interface RecordSuccessOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
 }
 
 /**
@@ -49,7 +49,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
     execute: async (output: unknown, ctx) => {
       const taskId = ctx.sequencer!.state.currentTaskId;
       if (taskId === undefined) return;
-      await collectionFactory(ctx).complete(taskId, output);
+      await (await collectionFactory(ctx)).complete(taskId, output);
       await ctx.sequencer!.patchState({ currentTaskId: undefined });
     },
   });
@@ -57,7 +57,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
 
 export interface RecordErrorOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /**
    * Failure policy. `"skip"` swallows after writing the failure.
    * `"fail"` rethrows so the worker sequencer fails — propagates up
@@ -89,7 +89,7 @@ export function createRecordError(options: RecordErrorOptions) {
       const taskId = ctx.sequencer!.state.currentTaskId;
       const message = error instanceof Error ? error.message : String(error);
       if (taskId !== undefined) {
-        await collectionFactory(ctx).fail(taskId, message);
+        await (await collectionFactory(ctx)).fail(taskId, message);
         await ctx.sequencer!.patchState({ currentTaskId: undefined });
       }
       if (onError === "fail") {

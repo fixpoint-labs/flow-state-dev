@@ -86,13 +86,13 @@ function createMockCollection(
     pattern: "files/*",
     scope: "session",
 
-    get(key: string): ResourceRef<FileEntryState> {
+    async get(key: string): Promise<ResourceRef<FileEntryState>> {
       const entry = store.get(key);
       if (!entry) throw new Error(`Not found: ${key}`);
       return makeRef(entry);
     },
 
-    getOptional(key: string): ResourceRef<FileEntryState> | undefined {
+    async getOptional(key: string): Promise<ResourceRef<FileEntryState> | undefined> {
       const entry = store.get(key);
       return entry ? makeRef(entry) : undefined;
     },
@@ -128,7 +128,7 @@ function createMockCollection(
       return makeRef(entry);
     }),
 
-    list(): ResourceRef<FileEntryState>[] {
+    async list(): Promise<ResourceRef<FileEntryState>[]> {
       return Array.from(store.values()).map(makeRef);
     },
 
@@ -136,7 +136,7 @@ function createMockCollection(
       store.delete(key);
     }),
 
-    count(): number {
+    async count(): Promise<number> {
       return store.size;
     },
 
@@ -345,7 +345,7 @@ describe("FileSync", () => {
 
       // File content unchanged, so getOrCreate should still be called
       // but writeContent should see the same content (no-op from hash check)
-      const ref = collection.getOptional("file.ts");
+      const ref = await collection.getOptional("file.ts");
       expect(ref).toBeDefined();
     });
   });
@@ -1107,10 +1107,10 @@ describe("createBashBlocks", () => {
     await runForTest(bashWriteFile, { path: "artifacts/new-doc.md", content: "artifact content" }, ctx);
     await runForTest(bashWriteFile, { path: "skills/draft/SKILL.md", content: "skill content" }, ctx);
 
-    expect(artifacts.count()).toBe(1);
-    expect(skills.count()).toBe(1);
-    expect(artifacts.getOptional("new-doc.md")?.state.path).toBe("new-doc.md");
-    expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
+    expect(await artifacts.count()).toBe(1);
+    expect(await skills.count()).toBe(1);
+    expect((await artifacts.getOptional("new-doc.md"))?.state.path).toBe("new-doc.md");
+    expect(await skills.getOptional("draft/SKILL.md")).toBeDefined();
   });
 
   it("normalizes leading `./` so model-supplied relative paths route correctly", async () => {
@@ -1130,8 +1130,8 @@ describe("createBashBlocks", () => {
     await runForTest(bashCommand, { command: "ls" }, ctx);
     await runForTest(bashWriteFile, { path: "./artifacts/relative.md", content: "hi" }, ctx);
 
-    expect(artifacts.count()).toBe(1);
-    expect(artifacts.getOptional("relative.md")).toBeDefined();
+    expect(await artifacts.count()).toBe(1);
+    expect(await artifacts.getOptional("relative.md")).toBeDefined();
   });
 
   it("honors writable: false — changes in the mount are not written back", async () => {
@@ -1161,8 +1161,8 @@ describe("createBashBlocks", () => {
     // Local edit visible in sandbox.
     expect(sandbox.files.get("/workspace/skills/foo/SKILL.md")).toBe("EDITED");
     // But the resource stays untouched.
-    expect(skills.getOptional("foo/SKILL.md")).toBeDefined();
-    expect(await skills.getOptional("foo/SKILL.md")!.readContent()).toBe("original");
+    expect(await skills.getOptional("foo/SKILL.md")).toBeDefined();
+    expect(await (await skills.getOptional("foo/SKILL.md"))!.readContent()).toBe("original");
   });
 
   it("drops orphan files with a console warning (not under any mount or ./tmp/)", async () => {
@@ -1184,7 +1184,7 @@ describe("createBashBlocks", () => {
       // Orphan write stays in the sandbox for this session but is never
       // persisted to any collection.
       expect(sandbox.files.get("/workspace/random.txt")).toBe("uh oh");
-      expect(artifacts.count()).toBe(0);
+      expect(await artifacts.count()).toBe(0);
       // console.warn announces the drop.
       expect(warn).toHaveBeenCalled();
       const msg = warn.mock.calls.map((c) => c[0]).join(" ");
@@ -1214,7 +1214,7 @@ describe("createBashBlocks", () => {
       await runForTest(bashWriteFile, { path: "tmp/nested/file.txt", content: "xyz" }, ctx);
       expect(sandbox.files.get("/workspace/tmp/scratchpad.txt")).toBe("abc");
       expect(sandbox.files.get("/workspace/tmp/nested/file.txt")).toBe("xyz");
-      expect(artifacts.count()).toBe(0);
+      expect(await artifacts.count()).toBe(0);
       // No warn for files under tmp/.
       const orphanCalls = warn.mock.calls.filter((c) =>
         (c[0] as string).includes("orphan"),
@@ -1331,10 +1331,10 @@ describe("createBashBlocks", () => {
     sandbox.files.delete("/workspace/artifacts/drop.md");
     await runForTest(bashCommand, { command: "ls" }, ctx);
 
-    expect(artifacts.getOptional("keep.md")).toBeDefined();
-    expect(artifacts.getOptional("drop.md")).toBeUndefined();
+    expect(await artifacts.getOptional("keep.md")).toBeDefined();
+    expect(await artifacts.getOptional("drop.md")).toBeUndefined();
     // Skills collection is untouched — its delete loop runs against its own
     // list and the file we deleted wasn't one of its entries.
-    expect(skills.getOptional("stay/SKILL.md")).toBeDefined();
+    expect(await skills.getOptional("stay/SKILL.md")).toBeDefined();
   });
 });

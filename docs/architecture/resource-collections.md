@@ -62,9 +62,11 @@ Constraints:
 
 ## Runtime API — `ResourceCollectionRef`
 
-At runtime, collection entries on scope resource registries (`ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`) are `ResourceCollectionRef` instances.
+At runtime, collection entries on scope resource registries (`ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`) are `ResourceCollectionRef<TState>` instances. There is one ref type regardless of `prefetchMode`; the mode changes loading cost, not the API.
 
 ### Core operations
+
+All lookups (`get`, `getOptional`, `list`, `count`) return Promises — always `await` them. This holds in both `prefetchMode` settings; see [Prefetch mode](#prefetch-mode).
 
 ```ts
 execute: async (input, ctx) => {
@@ -74,24 +76,24 @@ execute: async (input, ctx) => {
   const ref = await files.create("readme.md", { language: "markdown" });
 
   // Get existing instance (throws if not found)
-  const existing = files.get("utils.ts");
+  const existing = await files.get("utils.ts");
 
   // Get or create — returns existing if present, creates with defaults if not
   const safe = await files.getOrCreate("config.json", { language: "json" });
 
   // List all instances, optionally filtered by prefix
-  const allFiles = files.list();
-  const srcFiles = files.list("src/");
+  const allFiles = await files.list();
+  const srcFiles = await files.list("src/");
 
   // Delete an instance (no-op if not found)
   await files.delete("old-file.ts");
 
   // Current instance count
-  const count = files.count();
+  const count = await files.count();
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved `ResourceRef` is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 ### Parameterized patterns
 
@@ -111,7 +113,7 @@ const notes = ctx.session.resources.notes;
 const ref = await notes.create({ topic: "react" }, { entries: [] });
 // Storage key: "react/notes"
 
-const existing = notes.get({ topic: "rust" });
+const existing = await notes.get({ topic: "rust" });
 // Storage key: "rust/notes"
 ```
 
@@ -157,16 +159,21 @@ Hook context (`CollectionHookContext`) provides `log(message)` and `scopeType`. 
 
 Collection instances and single resources share one flat keyspace for state. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. Resource state — single and collection-instance alike — is persisted per-resource in the keyed `ResourceStateStore`, separate from the scope record (see [State Storage](./resources-and-client-data.md#state-storage)). The in-execution view is still a flat map, so accessors are unchanged; the difference is that a write to one instance touches only that instance's key instead of rewriting the whole scope record.
 
-## Lazy mode internals
+## Prefetch mode
 
-A collection declared with `prefetchMode: 'lazy'` is not bulk-loaded by the resource waves (see [Three-wave loading](./resources-and-client-data.md#three-wave-loading)). Instead its `ResourceCollectionRef` is built around a lazy accessor that wraps the eager collection body.
+`prefetchMode` controls *when* a collection's instances load, not whether reads are async. The accessor signatures are identical in both modes — `get`/`getOptional`/`list`/`count` return Promises either way (see the [Runtime API](#runtime-api--resourcecollectionref)). Flipping the mode requires no call-site changes.
 
-On each read, the accessor first ensures the target is loaded into the per-scope cache, then delegates to the eager body:
+- **`'eager'` (default)** — the collection's whole prefix is bulk-loaded by the resource waves (see [Three-wave loading](./resources-and-client-data.md#three-wave-loading)) into the per-scope cache before any block reads it. A `list()` or `get()` resolves instantly against the in-memory cache.
+- **`'lazy'`** — the collection is not bulk-loaded by the waves. Each access fetches from the store on demand and caches the result.
+
+### Lazy loading internals
+
+A `prefetchMode: 'lazy'` collection reads through the same async accessor as an eager one, but the accessor defers loading until the target is touched:
 
 - A keyed read (`get`, `getOptional`, instance access) calls `lazyLoad.getInstance(storageKey)` to load that one instance.
-- A whole-collection read (`list`, `count`) calls `lazyLoad.getByPrefix(prefix)` to load the collection's pattern-prefix.
+- A whole-collection read (`list`, `count`) calls `lazyLoad.getByPrefix(prefix)` to load the collection's pattern-prefix. A prefix miss is authoritative: once the prefix is loaded, the cache is treated as complete for that collection.
 
-Both go through the shared single-flight map, so a key loaded here dedupes against a wave or a concurrent block dispatch that loaded the same key. Once the cache is populated, the eager body runs unchanged against it. The consequence is that reads become async (the caller awaits the load), while mutations (`create` / `getOrCreate` / `upsert` / `delete`) were already async and keep their signatures. The accessor and the eager collection body both live in `createExecutionContext`.
+Both go through the shared single-flight map, so a key loaded here dedupes against a wave or a concurrent block dispatch that loaded the same key. Once the cache is populated, reads resolve against it exactly as they would under eager mode. Mutations (`create` / `getOrCreate` / `upsert` / `delete`) were already async and behave the same in both modes. The accessor and the collection body both live in `createExecutionContext`.
 
 ## Block declarations
 

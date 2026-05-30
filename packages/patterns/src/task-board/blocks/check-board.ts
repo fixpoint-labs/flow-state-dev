@@ -48,7 +48,7 @@ import { hasClaimableTask, inFlightCount } from "../shared";
 
 export interface CheckBoardOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
 }
@@ -70,7 +70,7 @@ export function createCheckBoard(options: CheckBoardOptions) {
     outputSchema: checkBoardOutputSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<CheckBoardOutput> => {
-      const collection = collectionFactory(ctx);
+      const collection = await collectionFactory(ctx);
       const claimed = ctx.sequencer!.state.lastClaimed;
 
       if (onIdle === "complete") {

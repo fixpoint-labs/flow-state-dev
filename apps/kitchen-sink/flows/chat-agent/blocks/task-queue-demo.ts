@@ -48,7 +48,7 @@ const handleSearch = handler({
     const { query } = searchInputSchema.parse(input.input);
     const found = `Search results for "${query}": [doc-1, doc-2, doc-3]`;
 
-    const collection = getCollection(ctx as unknown as BlockContext);
+    const collection = await getCollection(ctx as unknown as BlockContext);
     await collection.addTask({
       goal: `analyze: ${query}`,
       assignee: "ANALYZE",
@@ -70,7 +70,7 @@ const handleAnalyze = handler({
     const analysis = `Analyzed: ${data.slice(0, 60)}`;
 
     if (hasStructuredData) {
-      const collection = getCollection(ctx as unknown as BlockContext);
+      const collection = await getCollection(ctx as unknown as BlockContext);
       await collection.addTask({
         goal: "extract fields",
         assignee: "EXTRACT",

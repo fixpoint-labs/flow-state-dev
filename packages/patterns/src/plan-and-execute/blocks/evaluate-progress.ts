@@ -123,7 +123,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
         return { decision: "complete" as const };
       }
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,
@@ -164,8 +164,8 @@ export function createLLMEvaluator(options: {
       "- 'complete': all steps are done or the overall goal has been achieved",
       "Be concise in your reasoning.",
     ].join("\n"),
-    user: (_input: unknown, ctx) => {
-      const collection = getOrCreateTaskCollection({
+    user: async (_input: unknown, ctx) => {
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

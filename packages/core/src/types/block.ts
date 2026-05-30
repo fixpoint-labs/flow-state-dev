@@ -771,11 +771,7 @@ export interface BlockCacheableConfig {
 
 export type DeclaredResourceEntry =
   | DefinedResource
-  // Accept collections of either prefetch mode (FIX-688). The bare
-  // `DefinedResourceCollection` defaults `ModeType` to `"eager"`, which would
-  // reject a lazy collection here; widening to `"eager" | "lazy"` lets both
-  // be declared while the precise mode is recovered via `infer` downstream.
-  | DefinedResourceCollection<JsonObject, "eager" | "lazy">;
+  | DefinedResourceCollection<JsonObject>;
 
 /**
  * Flat resource declaration: accessor key → resource definition. The
@@ -970,11 +966,10 @@ export type InferResourcesFromSchemas<T> =
 export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DeclaredResourceEntry>
     ? {
-        // Forward the collection's `prefetchMode` (M) so a lazy collection
-        // surfaces the async-read `ResourceCollectionRef<S, 'lazy'>` on
-        // `ctx.resources.<key>` and an eager one stays synchronous (FIX-688).
-        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S, infer M>
-          ? ResourceCollectionRef<S, M>
+        // All collection refs expose async reads regardless of prefetchMode
+        // — FIX-700 collapsed the eager/lazy type split.
+        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S>
+          ? ResourceCollectionRef<S>
           : T[K] extends DefinedResource<infer S>
             ? ResourceRef<S>
             : ResourceRef<JsonObject>;

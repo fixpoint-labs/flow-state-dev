@@ -151,8 +151,9 @@ const GROUNDING_CLAUSE = [
   "</grounding>",
 ].join("\n");
 
-function memoState(ctx: { resources: any }, collectionKey: string): unknown {
-  return ctx.resources.memos?.getOptional(collectionKey)?.state;
+async function memoState(ctx: { resources: any }, collectionKey: string): Promise<unknown> {
+  const ref = await ctx.resources.memos?.getOptional(collectionKey);
+  return ref?.state;
 }
 
 export const tradingDesk = defineCapability({
@@ -236,8 +237,8 @@ export const tradingDesk = defineCapability({
     bullThesis: {
       resources: { memos: memosCollection },
       context: {
-        bullThesis: (_input, ctx) =>
-          formatMemoBlock("Bull thesis", memoState(ctx, PHASE_2_MEMO_KEYS.bull.collectionKey)),
+        bullThesis: async (_input, ctx) =>
+          formatMemoBlock("Bull thesis", await memoState(ctx, PHASE_2_MEMO_KEYS.bull.collectionKey)),
       },
     },
 
@@ -245,8 +246,8 @@ export const tradingDesk = defineCapability({
     bearThesis: {
       resources: { memos: memosCollection },
       context: {
-        bearThesis: (_input, ctx) =>
-          formatMemoBlock("Bear thesis", memoState(ctx, PHASE_2_MEMO_KEYS.bear.collectionKey)),
+        bearThesis: async (_input, ctx) =>
+          formatMemoBlock("Bear thesis", await memoState(ctx, PHASE_2_MEMO_KEYS.bear.collectionKey)),
       },
     },
 
@@ -254,14 +255,14 @@ export const tradingDesk = defineCapability({
     investmentThesis: {
       resources: { memos: memosCollection },
       context: {
-        investmentThesis: (_input, ctx) =>
+        investmentThesis: async (_input, ctx) =>
           formatMemoBlock(
             "Investment thesis",
-            memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
+            await memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
           ),
-        investmentThesisFields: (_input, ctx) =>
+        investmentThesisFields: async (_input, ctx) =>
           formatThesisExtensions(
-            memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
+            await memoState(ctx, PHASE_2_MEMO_KEYS.researchManager.collectionKey),
           ),
       },
     },
@@ -270,10 +271,10 @@ export const tradingDesk = defineCapability({
     tradeProposal: {
       resources: { memos: memosCollection },
       context: {
-        tradeProposal: (_input, ctx) =>
-          formatMemoBlock("Trade proposal", memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
-        tradeProposalFields: (_input, ctx) =>
-          formatTradeProposalExtensions(memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
+        tradeProposal: async (_input, ctx) =>
+          formatMemoBlock("Trade proposal", await memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
+        tradeProposalFields: async (_input, ctx) =>
+          formatTradeProposalExtensions(await memoState(ctx, PHASE_3_MEMO_KEYS.trader.collectionKey)),
       },
     },
 
@@ -285,14 +286,14 @@ export const tradingDesk = defineCapability({
     riskAssessment: {
       resources: { memos: memosCollection },
       context: {
-        riskAssessment: (_input, ctx) =>
+        riskAssessment: async (_input, ctx) =>
           formatMemoBlock(
             "Risk assessment",
-            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+            await memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
           ),
-        riskAssessmentFields: (_input, ctx) =>
+        riskAssessmentFields: async (_input, ctx) =>
           formatRiskAssessmentExtensions(
-            memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
+            await memoState(ctx, PHASE_4_MEMO_KEYS.riskAssessment.collectionKey),
           ),
       },
     },
@@ -301,20 +302,20 @@ export const tradingDesk = defineCapability({
     riskCritiques: {
       resources: { memos: memosCollection },
       context: {
-        aggressiveCritique: (_input, ctx) =>
+        aggressiveCritique: async (_input, ctx) =>
           formatPersonaCritique(
             "Aggressive Risk critique",
-            memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+            await memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
           ),
-        conservativeCritique: (_input, ctx) =>
+        conservativeCritique: async (_input, ctx) =>
           formatPersonaCritique(
             "Conservative Risk critique",
-            memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+            await memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
           ),
-        neutralCritique: (_input, ctx) =>
+        neutralCritique: async (_input, ctx) =>
           formatPersonaCritique(
             "Neutral Risk critique",
-            memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
+            await memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
           ),
       },
     },
@@ -326,10 +327,10 @@ export const tradingDesk = defineCapability({
     portfolioDecision: {
       resources: { memos: memosCollection },
       context: {
-        portfolioDecision: (_input, ctx) =>
+        portfolioDecision: async (_input, ctx) =>
           formatMemoBlock(
             "Portfolio decision",
-            memoState(ctx, PHASE_5_MEMO_KEYS.portfolioManager.collectionKey),
+            await memoState(ctx, PHASE_5_MEMO_KEYS.portfolioManager.collectionKey),
           ),
       },
     },
@@ -471,25 +472,25 @@ export const tradingDesk = defineCapability({
     riskCritiquesFull: {
       resources: { memos: memosCollection },
       context: {
-        aggressiveCritique: (_input, ctx) =>
+        aggressiveCritique: async (_input, ctx) =>
           ctx.session.state.costPreset === "full"
             ? formatPersonaCritique(
                 "Aggressive Risk critique",
-                memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
+                await memoState(ctx, PHASE_4_MEMO_KEYS.aggressive.collectionKey),
               )
             : "",
-        conservativeCritique: (_input, ctx) =>
+        conservativeCritique: async (_input, ctx) =>
           ctx.session.state.costPreset === "full"
             ? formatPersonaCritique(
                 "Conservative Risk critique",
-                memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
+                await memoState(ctx, PHASE_4_MEMO_KEYS.conservative.collectionKey),
               )
             : "",
-        neutralCritique: (_input, ctx) =>
+        neutralCritique: async (_input, ctx) =>
           ctx.session.state.costPreset === "full"
             ? formatPersonaCritique(
                 "Neutral Risk critique",
-                memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
+                await memoState(ctx, PHASE_4_MEMO_KEYS.neutral.collectionKey),
               )
             : "",
       },

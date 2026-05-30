@@ -439,7 +439,7 @@ async function hydrate(entry: SandboxEntry, destination: string): Promise<void> 
     const markerPath = path.join(destination, mount.prefix, ".keep");
     await entry.sandbox.writeFile(markerPath, "");
 
-    const refs = mount.collection.list();
+    const refs = await mount.collection.list();
     for (const ref of refs) {
       const bareKey = stripMountPrefix(ref.name, mount.prefix);
       // Skip collection-level metadata entries (e.g. _meta in skills).
@@ -546,7 +546,7 @@ async function flush(
   for (const mount of entry.mounts) {
     if (!mount.writable) continue;
     const seen = seenByMountKey.get(mount.key)!;
-    for (const ref of mount.collection.list()) {
+    for (const ref of await mount.collection.list()) {
       const bareKey = stripMountPrefix(ref.name, mount.prefix);
       // Skip collection metadata — never deletable via bash sweep.
       if (bareKey.startsWith("_")) continue;

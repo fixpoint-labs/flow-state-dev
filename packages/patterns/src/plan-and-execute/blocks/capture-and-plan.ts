@@ -100,7 +100,7 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
       ),
     }),
     execute: async (planOutput, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,
