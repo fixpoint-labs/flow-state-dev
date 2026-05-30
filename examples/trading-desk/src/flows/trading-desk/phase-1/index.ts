@@ -22,7 +22,7 @@ export const phase1Pipeline = sequencer({
   name: "phase-1-analysts",
   container: {
     component: "analyst-phase",
-    label: "Phase 1 — Analyst Fan-out begins. 6 analysts dispatched in parallel.",
+    label: "Phase 1 — Analyst Fan-out begins. 6 analysts dispatched (4 concurrent).",
   },
 })
   .tap(setupPhase1Memos)
