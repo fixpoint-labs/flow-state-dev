@@ -24,6 +24,12 @@ it("StateChangeItem.version stays required (not number | undefined)", () => {
   expectTypeOf<StateChangeItem["version"]>().toEqualTypeOf<number>();
 });
 
+it("StateChangeItem.scope still includes block_instance", () => {
+  expectTypeOf<StateChangeItem["scope"]>().toEqualTypeOf<
+    "request" | "session" | "user" | "org" | "block_instance"
+  >();
+});
+
 it("ResourceChangeItem.scope excludes block_instance", () => {
   expectTypeOf<ResourceChangeItem["scope"]>().toEqualTypeOf<
     "request" | "session" | "user" | "org"
