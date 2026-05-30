@@ -25,6 +25,7 @@ import type {
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
+import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import {
   blockPathBranch,
   buildBlockInstanceId,
@@ -247,21 +248,12 @@ export function router<
       // descriptor on the outer ctx so the router's own block_trace.output carries
       // the ref instead of duplicating content. Set AFTER runSelected below.
       const installRouterHint = (selectedInstanceId: string): void => {
-        if (ctx.response === undefined) return;
-        // Defensive: some legacy test fixtures use partial `ctx.response`
-        // mocks without `getItems`. No-op falls back to inline (no ref hint).
-        if (typeof ctx.response.getItems !== "function") return;
-        const items = ctx.response.getItems();
-        for (let i = items.length - 1; i >= 0; i -= 1) {
-          const item = items[i] as { id: string; type: string; provenance?: { blockInstanceId?: string } };
-          if (item.type === "block_trace" && item.provenance?.blockInstanceId === selectedInstanceId) {
-            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
-              kind: "ref",
-              sourceItemId: item.id
-            };
-            return;
-          }
-        }
+        const id = findBlockTraceIdByInstance(ctx, selectedInstanceId);
+        if (id === undefined) return;
+        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
+          kind: "ref",
+          sourceItemId: id
+        };
       };
 
       if (ctx._withExecutionScope === undefined) {
