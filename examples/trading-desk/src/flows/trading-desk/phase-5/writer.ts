@@ -114,6 +114,7 @@ export const commitPortfolioManagerMemo = memoHandler({
           riskAssessment: PHASE_4_MEMO_KEYS.riskAssessment.collectionKey,
         },
         agreesWithTrader,
+        primaryScenario: decision.primaryScenario,
       },
     );
 

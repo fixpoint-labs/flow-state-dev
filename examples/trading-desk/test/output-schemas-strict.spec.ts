@@ -26,6 +26,7 @@ import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/phase-4/schemas";
+import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5a/scenario-forecaster";
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
 
@@ -123,6 +124,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 3 tradeProposalOutputSchema", tradeProposalOutputSchema],
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
+  ["Phase 5a scenarioForecastOutputSchema", scenarioForecastOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
   ["Phase 6 thesisAlignmentOutputSchema", thesisAlignmentOutputSchema],
 ];

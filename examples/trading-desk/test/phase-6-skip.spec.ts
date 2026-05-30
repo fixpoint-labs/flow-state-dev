@@ -222,15 +222,36 @@ function makeUpstreamMocks() {
           nearTermCatalyst: "",
           invalidationTrigger: "",
           acknowledgedAndDropped: [],
+          primaryScenario: "",
         }),
       ],
     }),
-    // Approach preambles (Phases 3–5).
+    // Approach preambles (Phases 3–5a).
     "trader-approach-generator": mockGenerator({ name: "trader-approach-generator", script: [{ text: "x" }] }),
     "aggressive-approach-generator": mockGenerator({ name: "aggressive-approach-generator", script: [{ text: "x" }] }),
     "conservative-approach-generator": mockGenerator({ name: "conservative-approach-generator", script: [{ text: "x" }] }),
     "neutral-approach-generator": mockGenerator({ name: "neutral-approach-generator", script: [{ text: "x" }] }),
     "risk-assessment-approach-generator": mockGenerator({ name: "risk-assessment-approach-generator", script: [{ text: "x" }] }),
+    "scenario-forecaster-approach-generator": mockGenerator({ name: "scenario-forecaster-approach-generator", script: [{ text: "x" }] }),
+    "scenario-forecaster-generator": mockGenerator({
+      name: "scenario-forecaster-generator",
+      script: [
+        structured({
+          label: "ScenarioForecast",
+          headline: "Concentrated base.",
+          rating: "concentrated",
+          metrics: { horizon: "months", distribution: "concentrated", buckets: "3 scenarios", evidence: "sufficient" },
+          body: [{ h: "Summary", p: "Base case dominant.", items: null }],
+          scenarios: [
+            { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
+            { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
+            { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
+          ],
+          distribution: "concentrated",
+          evidenceBasis: "sufficient",
+        }),
+      ],
+    }),
     "portfolio-manager-approach-generator": mockGenerator({ name: "portfolio-manager-approach-generator", script: [{ text: "x" }] }),
   };
 }

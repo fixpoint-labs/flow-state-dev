@@ -146,6 +146,10 @@ function portfolioDecision(
         ? "Attach rate flat or down two quarters running."
         : "",
     acknowledgedAndDropped: [] as { item: string; reason: string }[],
+    primaryScenario:
+      finalRating === "Buy" || finalRating === "Overweight"
+        ? "Data-center beat, +12%"
+        : "",
   };
 }
 

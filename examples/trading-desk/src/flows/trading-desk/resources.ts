@@ -203,6 +203,34 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   calibrationRationale: z.string().nullable().default(null),
+  // Phase 5a ScenarioForecast extension. Only the scenarioForecaster memo
+  // (`memos/p5a/scenario-forecaster`) populates these; all other memos
+  // leave them `null`.
+  scenarios: z
+    .array(
+      z.object({
+        name: z.string(),
+        probability: z.number().min(0).max(1),
+        trigger: z.string(),
+        triggerSource: z.enum([
+          "investmentThesis",
+          "tradeProposal",
+          "riskAssessment",
+          "phase1",
+        ]),
+        expectedOutcome: z.string(),
+        tradeBehavior: z.string(),
+      }),
+    )
+    .nullable()
+    .default(null),
+  distribution: z
+    .enum(["concentrated", "balanced", "barbell", "long-tail"])
+    .nullable()
+    .default(null),
+  probabilitySum: z.number().nullable().default(null),
+  horizon: z.string().nullable().default(null),
+  evidenceBasis: z.enum(["sufficient", "thin"]).nullable().default(null),
   // Phase 5 PortfolioDecision extension. Only the portfolioManager memo
   // (`memos/p5/portfolio-manager`) populates these; all other memos leave
   // them `null`. `finalRating` is the design-mandated 5-tier scale, stored
@@ -234,6 +262,9 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   agreesWithTrader: z.boolean().nullable().default(null),
+  // Phase 5 — scenario reference. The PM names which scenario bucket its
+  // decision underwrites; empty string when no forecast is available.
+  primaryScenario: z.string().nullable().default(null),
   // Phase 6 ThesisAlignment extension. Only the thesisValidator memo
   // (`memos/p6/thesis-alignment`) populates these; all other memos leave
   // them `null`. The validator audits the user's per-run thesis against the

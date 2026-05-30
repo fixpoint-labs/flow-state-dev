@@ -87,6 +87,7 @@ function decision(opts: {
     nearTermCatalyst: "",
     invalidationTrigger: "",
     acknowledgedAndDropped: opts.acknowledgedAndDropped ?? [],
+    primaryScenario: "",
   };
 }
 

@@ -51,6 +51,7 @@ type ActivePhase =
   | "phase-2"
   | "phase-3"
   | "phase-4"
+  | "phase-5a"
   | "phase-5"
   | "phase-6";
 
@@ -62,6 +63,7 @@ const PHASE_KEY: Record<ActivePhase, keyof SpecialInstructionsState | null> = {
   "phase-2": "phase2",
   "phase-3": "phase3",
   "phase-4": "phase4",
+  "phase-5a": null,
   "phase-5": "phase5",
   "phase-6": null,
 };

@@ -39,6 +39,7 @@ import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
+  PHASE_5A_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
@@ -52,6 +53,7 @@ import {
   formatMemoBlock,
   formatPersonaCritique,
   formatRiskAssessmentExtensions,
+  formatScenarioForecastExtensions,
   formatStanceContributions,
   formatThesisExtensions,
   formatTradeProposalExtensions,
@@ -335,6 +337,24 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Phase 5a — scenario-forecast memo + typed extension fields. The PM
+     *  consumes the distribution as structured input so it can reference
+     *  specific buckets when justifying confidence. */
+    scenarioForecast: {
+      resources: { memos: memosCollection },
+      context: {
+        scenarioForecast: async (_input, ctx) =>
+          formatMemoBlock(
+            "Scenario forecast",
+            await memoState(ctx, PHASE_5A_MEMO_KEYS.scenarioForecast.collectionKey),
+          ),
+        scenarioForecastFields: async (_input, ctx) =>
+          formatScenarioForecastExtensions(
+            await memoState(ctx, PHASE_5A_MEMO_KEYS.scenarioForecast.collectionKey),
+          ),
+      },
+    },
+
     /** Per-run user thesis context — only the Phase 6 validator opts in.
      *  CRITICAL: the `core` preset does NOT use this. The pipeline (P1–P5)
      *  must run blind to the user's thesis so its analysis stays independent;
@@ -507,6 +527,7 @@ export {
   formatMemoBlock,
   formatPersonaCritique,
   formatRiskAssessmentExtensions,
+  formatScenarioForecastExtensions,
   formatStanceContributions,
   formatThesisExtensions,
   formatTradeProposalExtensions,

@@ -33,10 +33,12 @@ import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
 import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
+import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
+  PHASE_5A_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
   type AnyMemoShortName,
@@ -80,6 +82,7 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "conservative",
   "neutral",
   "riskAssessment",
+  "scenarioForecast",
   "portfolioManager",
   "thesisAlignment",
 ];
@@ -255,6 +258,18 @@ type MemoClientData = {
   metrics: Record<string, string> | null;
   citations: Array<{ url: string; title: string }> | null;
   errorMessage: string | null;
+  // Phase 5a extension fields — only populated on `memos/p5a/scenario-forecaster`.
+  scenarios: Array<{
+    name: string;
+    probability: number;
+    trigger: string;
+    triggerSource: string;
+    expectedOutcome: string;
+    tradeBehavior: string;
+  }> | null;
+  distribution: "concentrated" | "balanced" | "barbell" | "long-tail" | null;
+  evidenceBasis: "sufficient" | "thin" | null;
+  horizon: string | null;
   // Phase 5 extension fields — only populated on `memos/p5/portfolio-manager`.
   decisionSummary: string | null;
   finalRating:
@@ -282,6 +297,7 @@ type MemoClientData = {
       }
     | null;
   agreesWithTrader: boolean | null;
+  primaryScenario: string | null;
 };
 
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
@@ -333,23 +349,26 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
   }
 
   // status === "published"
-  if (agent === "portfolioManager") {
+  if (agent === "scenarioForecaster") {
     return (
-      <PmHero
+      <ScenarioPanel
         agent={agent}
         label={data?.label ?? null}
         headline={data?.headline ?? null}
         rating={data?.rating ?? null}
         body={data?.body ?? null}
         metrics={data?.metrics ?? null}
-        decisionSummary={data?.decisionSummary ?? null}
-        finalRating={data?.finalRating ?? null}
-        decisionConfidence={data?.decisionConfidence ?? null}
-        acceptedAdjustments={data?.acceptedAdjustments ?? null}
-        keyDependencies={data?.keyDependencies ?? null}
-        upstreamReferences={data?.upstreamReferences ?? null}
-        agreesWithTrader={data?.agreesWithTrader ?? null}
+        scenarios={data?.scenarios ?? null}
+        distribution={data?.distribution ?? null}
+        evidenceBasis={data?.evidenceBasis ?? null}
+        horizon={data?.horizon ?? null}
       />
+    );
+  }
+
+  if (agent === "portfolioManager") {
+    return (
+      <PmHeroWithScenarios session={session} data={data} agent={agent} />
     );
   }
 
@@ -369,6 +388,51 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
         end of memo · {data?.label ?? AGENTS[agent]?.role ?? ""} · {agent}
       </p>
     </article>
+  );
+}
+
+function PmHeroWithScenarios({
+  session,
+  data,
+  agent,
+}: {
+  session: SessionView;
+  data: MemoClientData | null;
+  agent: AgentName;
+}): ReactElement {
+  const { item: scenarioItem } = useResourceCollectionItem(
+    session,
+    "memos",
+    PHASE_5A_MEMO_KEYS.scenarioForecast.collectionKey,
+  );
+  const scenarioStrip = useMemo(() => {
+    if (scenarioItem === null) return null;
+    const sd = scenarioItem.clientData as MemoClientData | null;
+    if (sd === null || sd.scenarios === null || sd.scenarios.length === 0) return null;
+    return {
+      scenarios: sd.scenarios.map((s) => ({ name: s.name, probability: s.probability })),
+      distribution: sd.distribution ?? "balanced",
+      primaryScenario: data?.primaryScenario ?? null,
+    };
+  }, [scenarioItem, data]);
+
+  return (
+    <PmHero
+      agent={agent}
+      label={data?.label ?? null}
+      headline={data?.headline ?? null}
+      rating={data?.rating ?? null}
+      body={data?.body ?? null}
+      metrics={data?.metrics ?? null}
+      decisionSummary={data?.decisionSummary ?? null}
+      finalRating={data?.finalRating ?? null}
+      decisionConfidence={data?.decisionConfidence ?? null}
+      acceptedAdjustments={data?.acceptedAdjustments ?? null}
+      keyDependencies={data?.keyDependencies ?? null}
+      upstreamReferences={data?.upstreamReferences ?? null}
+      agreesWithTrader={data?.agreesWithTrader ?? null}
+      scenarioStrip={scenarioStrip}
+    />
   );
 }
 

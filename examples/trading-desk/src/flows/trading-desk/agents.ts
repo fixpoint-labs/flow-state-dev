@@ -40,6 +40,8 @@ export const AGENTS = {
   conservativeRisk:    { role: "Conservative Risk",    glyph: "C.", hue: 218, team: "risk" },
   neutralRisk:         { role: "Neutral Risk",         glyph: "N°", hue: 178, team: "risk" },
   riskAssessment:      { role: "Risk Assessment",     glyph: "R=", hue: 188, team: "risk" },
+  // Phase 5a — scenario forecaster
+  scenarioForecaster:  { role: "Scenario Forecaster",  glyph: "Sf", hue: 285, team: "pm" },
   // Phase 5 — portfolio manager
   portfolioManager:    { role: "Portfolio Manager",    glyph: "PM", hue: 298, team: "pm" },
   // Phase 6 — thesis audit (post-decision). Reuses the `pm` team so the
@@ -52,12 +54,13 @@ export type AgentName = keyof typeof AGENTS;
 
 /** Phase grouping the sidebar uses to bucket entries (rendered top-down P5 → P1). */
 export const PHASE_GROUPS: ReadonlyArray<{
-  id: "p6" | "p5" | "p4" | "p3" | "p2" | "p1";
+  id: "p6" | "p5" | "p5a" | "p4" | "p3" | "p2" | "p1";
   label: string;
   agents: ReadonlyArray<AgentName>;
 }> = [
   { id: "p6", label: "Phase 6 — Thesis Audit", agents: ["thesisValidator"] },
   { id: "p5", label: "Phase 5 — Portfolio Manager", agents: ["portfolioManager"] },
+  { id: "p5a", label: "Phase 5a — Scenario Forecaster", agents: ["scenarioForecaster"] },
   { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
@@ -174,6 +177,21 @@ export const PHASE_4_MEMO_KEYS = {
 
 export type Phase4MemoShortName = keyof typeof PHASE_4_MEMO_KEYS;
 
+/** Resource storage key for the Phase 5a scenario-forecaster memo. Same
+ *  shape as the Phase 1/2/3/4 maps. */
+export const PHASE_5A_MEMO_KEYS = {
+  scenarioForecast: {
+    agentName: "scenarioForecaster",
+    memoKey: "memos/p5a/scenario-forecaster",
+    collectionKey: "p5a/scenario-forecaster",
+  },
+} as const satisfies Record<
+  string,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase5aMemoShortName = keyof typeof PHASE_5A_MEMO_KEYS;
+
 /** Resource storage key for the Phase 5 portfolio-manager memo. Same shape
  *  as the Phase 1/2/3/4 maps. */
 export const PHASE_5_MEMO_KEYS = {
@@ -213,6 +231,7 @@ export const ALL_MEMO_KEYS = {
   ...PHASE_2_MEMO_KEYS,
   ...PHASE_3_MEMO_KEYS,
   ...PHASE_4_MEMO_KEYS,
+  ...PHASE_5A_MEMO_KEYS,
   ...PHASE_5_MEMO_KEYS,
   ...PHASE_6_MEMO_KEYS,
 } as const;
