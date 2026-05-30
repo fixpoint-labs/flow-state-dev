@@ -675,6 +675,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         accessor: ResourceLoadRecord["accessor"],
         keyOrPrefix: string
       ): void => {
+        if (!isTraceObservabilityEnabled()) return; // zero work per read when off
         if (nsConfig.prefetchMode === "lazy") return;
         options.recordResourceLoad?.({
           storageKey: keyOrPrefix,
@@ -937,6 +938,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           keyOrPrefix: string,
           outcome: LazyLoadOutcome
         ): void => {
+          if (!isTraceObservabilityEnabled()) return; // zero work per read when off
           options.recordResourceLoad?.({
             storageKey: keyOrPrefix,
             scope: options.scope as ResourceLoadRecord["scope"],
