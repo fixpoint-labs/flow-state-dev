@@ -134,6 +134,8 @@ The Postgres shape sidesteps a write-amplification pathology that affected long-
 
 This means streaming text fits the same "transient × keyed" cell that other live-only updates occupy: the wire and live observers see every delta; the durable surface is the latest accumulated snapshot keyed by item id. Mid-stream reconnects via `Last-Event-ID` snap forward to the latest snapshot rather than replaying token-by-token; the eventual `item.done` payload supersedes with the authoritative final text. The trade-off is intentional — token-by-token disk persistence under concurrent worker streams serializes every delta behind a single per-request write queue and the request appears to lock up.
 
+Streaming TTS audio (FIX-523, `content.audio.delta`) follows the same rule for the same reasons — see [streaming.md](./streaming.md) for the full exclusion list. The durable representation is the eventual `OutputAudioContent` snapshot; chunks are live transport only.
+
 ## Item windows (per task)
 
 Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) often want a slice of the item log: "what did worker X emit while it held its claim?". Since FIX-480, that's first-class via `TaskHandle.items()` on the `TaskCollectionRef.list / get` returns.

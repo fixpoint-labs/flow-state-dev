@@ -563,6 +563,11 @@ function dispatchRequestEvent(
     return;
   }
 
+  if (event.type === "content.audio.delta") {
+    callbacks.onContentAudioDelta?.(event);
+    return;
+  }
+
   if (event.type === "content.done") {
     callbacks.onContentDone?.(event);
     return;

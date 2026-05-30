@@ -18,16 +18,19 @@ import type {
   FlowStateSettings,
   Middleware,
   ModelResolver,
-  SpeechResolver,
-  TranscriptionResolver
+  VoiceProvider
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "./execution/logging";
 
 export interface RuntimeConfig {
   modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  transcriptionResolver?: TranscriptionResolver;
+  /**
+   * Voice provider for TTS and STT. Already merged by the host (per-flow
+   * `voice.provider` wins over the router-level provider), so layers below the
+   * host receive the effective value and never re-merge.
+   */
+  voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   middleware?: Middleware[];
@@ -54,8 +57,7 @@ export interface RuntimeConfig {
 export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   return {
     modelResolver: options.modelResolver,
-    speechResolver: options.speechResolver,
-    transcriptionResolver: options.transcriptionResolver,
+    voiceProvider: options.voiceProvider,
     settings: options.settings,
     middleware: options.middleware,
     logger: options.logger,

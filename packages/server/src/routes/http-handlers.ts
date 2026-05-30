@@ -123,8 +123,8 @@ export type CreateFlowRouteHandlersOptions = {
   stores?: Partial<StoreRegistry>;
   /**
    * Instance-level options forwarded verbatim through the execution chain
-   * (resolvers, settings, middleware, logger, tracing, SSE buffering). See
-   * {@link RuntimeConfig}.
+   * (resolvers, voice provider, settings, middleware, logger, tracing, SSE
+   * buffering). See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
   maxConcurrentStreams?: number;
@@ -309,7 +309,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRequestStream(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: runtimeConfig.transcriptionResolver,
+          voiceProvider: runtimeConfig.voiceProvider,
           defaultSseHeartbeatMs
         });
       }
@@ -373,7 +373,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleTranscribe(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: runtimeConfig.transcriptionResolver
+          voiceProvider: runtimeConfig.voiceProvider
         });
       }
 

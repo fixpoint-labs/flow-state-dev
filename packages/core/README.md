@@ -306,6 +306,34 @@ const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
+### Voice Provider
+
+`VoiceProvider` is a single, ability-flagged interface a flow wires to handle one or more voice surfaces: speak (batch TTS), speakStream (streaming TTS), transcribe (STT), and listVoices (catalog). Each provider declares which abilities it supports via the `abilities` field; runtime type guards (`canSpeak`, `canSpeakStream`, `canTranscribe`, `canListVoices`) narrow the provider so the matching method is callable without `!`. Errors thrown by providers carry a discriminated `VoiceError.kind` so callers can branch on category instead of parsing messages.
+
+This surface replaces the previous resolver-factory pattern (`createAiSdkSpeechResolver`, `createAiSdkTranscriptionResolver`) — those helpers and their `SpeechResolver` / `TranscriptionResolver` types are removed from core. The field is named `abilities` (not `capabilities`) to avoid colliding with the framework's first-class `Capability` concept (`defineCapability`, `uses: [cap]`).
+
+```ts
+import { canSpeak, type VoiceProvider } from "@flow-state-dev/core";
+
+async function maybeSpeak(provider: VoiceProvider, text: string) {
+  if (canSpeak(provider)) {
+    const { audio, mediaType } = await provider.speak({ text });
+    return { audio, mediaType };
+  }
+  return null;
+}
+```
+
+Exports from the main package and `@flow-state-dev/core/types`:
+
+- Core contract: `VoiceProvider`, `VoiceAbilities`, `SpeakOptions`, `SpeakResult`, `SpeakChunk`, `TranscribeOptions`, `TranscribeResult`, `VoiceInfo`
+- Narrowing interfaces: `SpeakCapable`, `SpeakStreamCapable`, `TranscribeCapable`, `ListVoicesCapable`
+- Type guards: `canSpeak`, `canSpeakStream`, `canTranscribe`, `canListVoices`
+- Errors: `VoiceError`, `VoiceErrorKind`
+- Composite factory: `createCompositeVoiceProvider` builds a synthetic provider that delegates each ability to a different underlying provider
+
+Per-provider implementations live in separate packages — `@flow-state-dev/voice-openai` is the first, with `@flow-state-dev/voice-elevenlabs` to follow.
+
 ### Types (`@flow-state-dev/core/types`)
 
 Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.

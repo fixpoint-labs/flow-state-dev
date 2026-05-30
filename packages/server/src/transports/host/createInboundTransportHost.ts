@@ -61,6 +61,13 @@ export function createInboundTransportHost(
 
     const requestId = envelope.requestId ?? generateId("req");
 
+    // Per-flow `voice.provider` wins over the router-level provider, mirroring
+    // the principal-resolver override pattern below. Merged once here so
+    // `runAction` receives the effective value (via `runtimeConfig.voiceProvider`)
+    // and never re-merges.
+    const effectiveVoiceProvider =
+      flow.voice?.provider ?? runtimeConfig.voiceProvider;
+
     // Per-flow SSE heartbeat override wins over the host default.
     const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
     const sseHeartbeatMs =
@@ -104,7 +111,9 @@ export function createInboundTransportHost(
       signal: envelope.signal,
       stores,
       responseEmitter,
-      runtimeConfig
+      // Override the router-level provider with the per-flow effective value
+      // for this dispatch; everything else forwards verbatim.
+      runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
     }).finally(() => {
       if (liveStream !== null) {
         liveStream.close();
@@ -183,8 +192,10 @@ export function createInboundTransportHost(
     stores,
     resolvers: {
       model: runtimeConfig.modelResolver,
-      speech: runtimeConfig.speechResolver,
-      transcription: runtimeConfig.transcriptionResolver
+      // Router-level provider only — the per-action effective provider (which
+      // may be a per-flow override) is merged in `dispatch` and not mirrored
+      // here. This bag exists for adapter introspection.
+      voice: runtimeConfig.voiceProvider
     },
     middleware: runtimeConfig.middleware,
     logger: runtimeConfig.logger,

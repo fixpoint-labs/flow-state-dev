@@ -6,7 +6,8 @@
  * instance is hosting the runner. The completed-request flat-string replay
  * branch is unchanged.
  */
-import type { TranscriptionResolver } from "@flow-state-dev/core/types";
+import type { VoiceErrorKind, VoiceProvider } from "@flow-state-dev/core/types";
+import { canTranscribe, VoiceError } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
@@ -46,7 +47,7 @@ function resolveLivenessTimeoutMs(): number {
 type StreamRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  transcriptionResolver?: TranscriptionResolver;
+  voiceProvider?: VoiceProvider;
   /**
    * Default SSE wire heartbeat interval in milliseconds. Applied to GET
    * attach streams when the per-flow `request.sseHeartbeatMs` is unset.
@@ -262,11 +263,15 @@ export async function handleTranscribe(
   _route: Extract<ParsedFlowRoute, { kind: "transcribe" }>,
   ctx: StreamRouteContext
 ): Promise<Response> {
-  if (ctx.transcriptionResolver === undefined) {
+  if (ctx.voiceProvider === undefined) {
+    return jsonResponse(501, { error: "transcription_not_configured" });
+  }
+  if (!canTranscribe(ctx.voiceProvider)) {
     return jsonResponse(501, {
-      error: "Transcription is not configured on this server"
+      error: "provider_does_not_support_transcription"
     });
   }
+  const provider = ctx.voiceProvider;
 
   const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
@@ -274,6 +279,7 @@ export async function handleTranscribe(
   let audioData: Uint8Array;
   let mediaType: string;
   let language: string | undefined;
+  let requestModel: string | undefined;
 
   if (contentType.includes("application/json")) {
     const body = await parseJsonBody(request);
@@ -283,6 +289,7 @@ export async function handleTranscribe(
         error: "Transcription requires non-empty userId"
       });
     }
+    requestModel = getString(body.model as string | undefined);
     const audioBase64 = getString(body.audio as string | undefined);
     if (audioBase64 === undefined) {
       return jsonResponse(400, {
@@ -335,18 +342,67 @@ export async function handleTranscribe(
     audioData = new Uint8Array(buffer);
     mediaType = contentType.split(";")[0].trim() || "audio/webm";
     language = getString(url.searchParams.get("language"));
+    requestModel = getString(url.searchParams.get("model"));
   }
 
-  const model = ctx.transcriptionResolver("gpt-4o-mini-transcribe");
-  const result = await model.transcribe({
-    audio: audioData,
-    mediaType,
-    language
-  });
+  // Resolve the model: per-request `model` wins, then the provider's default.
+  // An empty string is treated as falsy. No framework-level default literal.
+  const model = requestModel || provider.defaultModels?.transcribe;
+  if (!model) {
+    return jsonResponse(400, {
+      error: "no_model",
+      message:
+        "Request did not specify a model and the provider has no defaultModels.transcribe."
+    });
+  }
 
-  return jsonResponse(200, {
-    text: result.text,
-    language: result.language
-  });
+  try {
+    const result = await provider.transcribe({
+      audio: audioData,
+      mediaType,
+      language,
+      model,
+      signal: request.signal
+    });
+    return jsonResponse(200, {
+      text: result.text,
+      language: result.language
+    });
+  } catch (error) {
+    if (error instanceof VoiceError) {
+      return jsonResponse(voiceErrorToHttpStatus(error.kind), {
+        error: error.kind,
+        message: error.message
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Maps a {@link VoiceErrorKind} to the HTTP status returned by the transcribe
+ * endpoint. `aborted` uses nginx's 499 ("client closed request") convention.
+ */
+export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
+  switch (kind) {
+    case "auth":
+      return 401;
+    case "rate_limit":
+      return 429;
+    case "not_found":
+      return 404;
+    case "invalid_input":
+      return 400;
+    case "format_unsupported":
+      return 415;
+    case "provider_unavailable":
+      return 503;
+    case "network":
+      return 502;
+    case "aborted":
+      return 499;
+    case "unknown":
+      return 500;
+  }
 }
 

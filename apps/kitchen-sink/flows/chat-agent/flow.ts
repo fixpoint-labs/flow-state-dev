@@ -444,7 +444,6 @@ const chatAgentFlow = defineFlow({
 
   voice: {
     tts: {
-      model: "tts-1",
       voice: "alloy",
     },
   },

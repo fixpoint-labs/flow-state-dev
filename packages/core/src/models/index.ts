@@ -8,12 +8,6 @@ export type { CreateModelResolverOptions } from "./createModelResolver";
 export type { ResolveModelCallOptions } from "../types/model";
 export type { IntentDefaults } from "./types";
 
-export { createAiSdkSpeechResolver, wrapAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
-export type { ResolveAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
-
-export { createAiSdkTranscriptionResolver, wrapAiSdkTranscriptionModel } from "./createAiSdkTranscriptionResolver";
-export type { ResolveAiSdkTranscriptionModel } from "./createAiSdkTranscriptionResolver";
-
 // Legacy FSD Provider — tombstoned in FIX-633. The runtime function throws
 // with migration guidance; the types below are `never` aliases for the same
 // reason. Both will be removed entirely in a future minor cycle.

@@ -44,6 +44,7 @@ The client assembles content progressively from deltas. Text appears token by to
 | `item.updated` | Patch to an existing item, identified by id. Used by trace items, `tool_output`, and `container` to fill in fields as work progresses. |
 | `content.delta` | Text chunk appended to a streaming item (messages, reasoning). |
 | `content.added` | New content part added to an item (e.g., audio part on a message). |
+| `content.audio.delta` | Audio chunk for streaming TTS. Live-only, not replayable. |
 | `content.done` | A content part finalized. |
 | `item.done` | Item finalized with terminal status. |
 | `request.completed` | All blocks finished. Request succeeded. |
@@ -182,6 +183,67 @@ Both approaches produce the same result. `Last-Event-ID` is the standard SSE hea
 `content.delta` events are not replayed. Streaming text on a reconnect snaps to the most recent persisted snapshot of the message item, then continues from the next live delta. The exact token sequence isn't replayed, and the eventual `item.done` payload supersedes with the final text. Completed messages always replay exactly.
 
 Why: streaming a message token-by-token to disk would require a disk round-trip per token. Multiple concurrent streams would serialize behind a single per-request queue and the request would freeze. Snapping to the latest snapshot keeps the live experience smooth and bounds disk I/O to the natural write rate.
+
+## `content.audio.delta` — streaming TTS audio chunks
+
+When the configured voice provider supports streaming TTS, the server emits `content.audio.delta` events carrying base64-encoded audio chunks for an in-flight `OutputAudioContent` part. These are live-only — they do not replay on reconnect. The durable representation is the eventual `OutputAudioContent` delivered via `content.added`.
+
+### Wire shape
+
+```ts
+type ContentAudioDeltaEvent = {
+  stream: "request";
+  type: "content.audio.delta";
+  requestId: string;
+  sequence_number: number;
+  ts: number;
+  itemId: string;
+  contentIndex: number;
+  /** Base64-encoded audio chunk bytes. */
+  audio: string;
+  /** Set true on the final chunk for this content part. */
+  isLast?: boolean;
+};
+```
+
+A frame on the wire:
+
+```
+id: req_abc:42
+event: content.audio.delta
+data: {"type":"content.audio.delta","itemId":"msg_0","contentIndex":0,"audio":"...base64...","isLast":false}
+```
+
+### Mediatype and content-part identity
+
+The chunk's media type lives on the parent `OutputAudioContent` (delivered via `content.added` before the first chunk), not on the delta itself. Format is stable across all chunks for a given content part, so carrying it per chunk is dead weight. M1 supports MP3 (`audio/mpeg`) only.
+
+### End of stream
+
+`isLast: true` on the final chunk lets clients flush their decode pipeline without waiting for the eventual `content.done`. The server still emits `content.done` with the reassembled `OutputAudioContent.audio` snapshot afterwards.
+
+### Custom client dispatch
+
+If you build a custom SSE consumer, distinguish text deltas from audio deltas at the top-level `type`:
+
+```ts
+switch (event.type) {
+  case "content.delta":
+    appendText(event.delta);
+    break;
+  case "content.audio.delta":
+    audioPlayer.enqueueChunk({
+      audio: event.audio,
+      mediaType: lookupMediaType(event.itemId, event.contentIndex),
+      isLast: event.isLast
+    });
+    break;
+}
+```
+
+### Resume behavior
+
+`content.audio.delta` is excluded from `Last-Event-ID` replay for the same reason as `content.delta`: per-chunk persistence would 10–100x the event-log size for sub-second TTS, and the durable `OutputAudioContent` snapshot already lets the client pick up at the next semantic boundary. On reconnect the client receives any `content.added` it missed (with the snapshot if synthesis finished) and resumes from live deltas; chunks emitted during the disconnect window are lost. This matches every comparable system — OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit.
 
 ## Generator identity
 

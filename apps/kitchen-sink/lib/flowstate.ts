@@ -14,9 +14,9 @@
  */
 import { after } from "next/server";
 import path from "node:path";
-import { openai } from "@ai-sdk/openai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, filesystemStores, inMemoryStores } from "@flow-state-dev/server";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
@@ -27,6 +27,7 @@ import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -74,10 +75,15 @@ export const flowstate = createFlowState({
     process.env.KITCHEN_SINK_TEST_MODE === "1"
       ? createKitchenSinkTestModelResolver()
       : undefined,
-  voice: {
-    speech: (modelId) => openai.speech(modelId),
-    transcription: (modelId) => openai.transcription(modelId),
-  },
+  // Only wire voice when a key is present. `new OpenAIVoiceProvider()`
+  // constructs an `OpenAI` client eagerly, and the SDK throws "Missing
+  // credentials" with no `OPENAI_API_KEY` — which would crash module load
+  // (and Next.js page-data collection for the flows route) in CI / E2E
+  // builds that run without the key. Mirrors the conditional `gateways`
+  // wiring above.
+  voice: openaiApiKey
+    ? { provider: new OpenAIVoiceProvider({ apiKey: openaiApiKey }) }
+    : undefined,
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },
     // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
