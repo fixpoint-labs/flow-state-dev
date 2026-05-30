@@ -156,16 +156,33 @@ describe("OpenAIVoiceProvider.speak", () => {
     expect(stubs.speechCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects instructions on non-gpt-4o-mini-tts models with invalid_input", async () => {
+  it.each(["tts-1", "tts-1-hd"])(
+    "rejects instructions on legacy model %s with invalid_input",
+    async (model) => {
+      const p = new OpenAIVoiceProvider({ apiKey: "test" });
+      await expect(
+        p.speak({
+          text: "x",
+          model,
+          providerOptions: { openai: { instructions: "be cheerful" } },
+        }),
+      ).rejects.toMatchObject({ kind: "invalid_input" });
+      expect(stubs.speechCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("forwards instructions on non-mini TTS models OpenAI accepts (e.g. gpt-4o-tts)", async () => {
+    stubs.speechCreate.mockResolvedValueOnce(audioResponse([1]));
     const p = new OpenAIVoiceProvider({ apiKey: "test" });
-    await expect(
-      p.speak({
-        text: "x",
-        model: "tts-1",
-        providerOptions: { openai: { instructions: "be cheerful" } },
-      }),
-    ).rejects.toMatchObject({ kind: "invalid_input" });
-    expect(stubs.speechCreate).not.toHaveBeenCalled();
+    await p.speak({
+      text: "x",
+      model: "gpt-4o-tts",
+      providerOptions: { openai: { instructions: "be cheerful" } },
+    });
+    expect(stubs.speechCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-4o-tts", instructions: "be cheerful" }),
+      expect.anything(),
+    );
   });
 
   it("forwards instructions when the model is gpt-4o-mini-tts", async () => {

@@ -130,6 +130,13 @@ export async function retryRequest(
     throw new Error(`Cannot retry request ${options.originalRequestId}: unknown flow "${flowKind}"`);
   }
 
+  // Resolve the effective voice provider the same way normal dispatch does
+  // (createInboundTransportHost): a per-flow `voice.provider` wins over the
+  // router-level provider. `runAction` expects the already-merged value, so
+  // without this a flow that overrides TTS would synthesize with the wrong
+  // backend after resume/retry.
+  const effectiveVoiceProvider = flow.voice?.provider ?? options.voiceProvider;
+
   const newRequestId = generateId("req");
   const liveStream = createLiveRequestStream({ requestId: newRequestId });
 
@@ -152,7 +159,7 @@ export async function retryRequest(
       retryOf: options.originalRequestId
     },
     modelResolver: options.modelResolver,
-    voiceProvider: options.voiceProvider,
+    voiceProvider: effectiveVoiceProvider,
     middleware: options.middleware,
     stores,
     responseEmitter: liveStream.emitter,

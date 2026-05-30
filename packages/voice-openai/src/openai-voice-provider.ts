@@ -106,11 +106,11 @@ export class OpenAIVoiceProvider implements VoiceProvider {
       | { instructions?: string }
       | undefined;
     const instructions = providerOpts?.instructions;
-    if (instructions !== undefined && !model.startsWith("gpt-4o-mini-tts")) {
+    if (instructions !== undefined && (model === "tts-1" || model === "tts-1-hd")) {
       throw new VoiceError({
         kind: "invalid_input",
         provider: "openai",
-        message: `instructions is only supported on gpt-4o-mini-tts* models; got model="${model}"`,
+        message: `instructions is not supported on legacy TTS models (tts-1, tts-1-hd); got model="${model}"`,
       });
     }
 

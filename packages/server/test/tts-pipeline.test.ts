@@ -216,10 +216,24 @@ describe("TTS pipeline — streaming dispatch", () => {
     expect(deltas).toHaveLength(2);
     expect((deltas[1] as any).isLast).toBe(true);
     expect(contentDone(captured)).toHaveLength(1);
-    expect(contentAdded(captured)).toHaveLength(0);
+    // The streaming path opens the content part with an empty-audio
+    // placeholder before the first delta (same protocol as batch), so the
+    // client can allocate its decoding slot and resolve mediaType.
+    const added = contentAdded(captured);
+    expect(added).toHaveLength(1);
+    expect((added[0] as any).content.audio).toBe("");
+    // Ordering: content.added precedes every audio delta, which precede
+    // content.done.
+    const order = captured
+      .map((e, i) => ({ type: e.type, i }))
+      .filter((e) =>
+        ["content.added", "content.audio.delta", "content.done"].includes(e.type)
+      );
+    expect(order[0]!.type).toBe("content.added");
+    expect(order.at(-1)!.type).toBe("content.done");
   });
 
-  it("emits a single content.done with empty audio for an empty iterable", async () => {
+  it("emits a content.added placeholder + single content.done for an empty iterable", async () => {
     const provider = streamProvider(() => (async function* () {})());
     const { emitter, captured } = makeEmitter();
     const pipeline = createTTSPipeline({ provider, config, emitter });
@@ -228,6 +242,9 @@ describe("TTS pipeline — streaming dispatch", () => {
     await pipeline.flush("item1");
 
     expect(audioDeltas(captured)).toHaveLength(0);
+    const added = contentAdded(captured);
+    expect(added).toHaveLength(1);
+    expect((added[0] as any).content.audio).toBe("");
     const dones = contentDone(captured);
     expect(dones).toHaveLength(1);
     expect((dones[0] as any).content.audio).toBe("");

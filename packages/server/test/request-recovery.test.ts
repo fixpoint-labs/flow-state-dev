@@ -1,7 +1,23 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { VoiceProvider } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
-import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { detectInterruptedRequests, retryRequest } from "../src/execution/request-recovery";
+
+// retryRequest dispatches via runAction; mock it so the test asserts what
+// retry hands off without executing a real flow.
+const runActionMock = vi.fn(() => Promise.resolve(undefined));
+vi.mock("../src/execution/runAction", () => ({
+  runAction: (...args: unknown[]) => runActionMock(...args)
+}));
+
+function makeVoiceProvider(id: string): VoiceProvider {
+  return {
+    id,
+    providerName: id,
+    abilities: { speak: true, speakStream: false, transcribe: false, listVoices: false }
+  };
+}
 
 function makeRequestRecord(
   id: string,
@@ -141,6 +157,65 @@ describe("detectInterruptedRequests", () => {
     // Bob's untouched
     expect((await stores.request.get("req_bob"))!.status).toBe("in_progress");
     expect(await stores.activeRequests.get("req_bob")).toBeDefined();
+  });
+
+  it("prefers the per-flow voice provider over the router-level one on retry", async () => {
+    // Regression: retry used to forward only the router-level provider, so a
+    // flow that overrides TTS would synthesize with the wrong backend after
+    // resume. retry must merge `flow.voice?.provider` first, mirroring normal
+    // dispatch (createInboundTransportHost).
+    runActionMock.mockClear();
+
+    const routerProvider = makeVoiceProvider("router");
+    const flowProvider = makeVoiceProvider("flow-override");
+
+    await stores.request.set(
+      "req_voice",
+      makeRequestRecord("req_voice"),
+      "any"
+    );
+
+    const flow = {
+      kind: "chat",
+      actions: { run: {} },
+      voice: { provider: flowProvider }
+    } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await retryRequest({
+      originalRequestId: "req_voice",
+      stores,
+      flowRegistry,
+      voiceProvider: routerProvider
+    });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    expect(runActionMock.mock.calls[0][0].voiceProvider).toBe(flowProvider);
+  });
+
+  it("falls back to the router-level voice provider when the flow declares none", async () => {
+    runActionMock.mockClear();
+
+    const routerProvider = makeVoiceProvider("router");
+
+    await stores.request.set(
+      "req_voice_fallback",
+      makeRequestRecord("req_voice_fallback"),
+      "any"
+    );
+
+    const flow = { kind: "chat", actions: { run: {} } } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await retryRequest({
+      originalRequestId: "req_voice_fallback",
+      stores,
+      flowRegistry,
+      voiceProvider: routerProvider
+    });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    expect(runActionMock.mock.calls[0][0].voiceProvider).toBe(routerProvider);
   });
 
   it("skips entries with recent heartbeats", async () => {
