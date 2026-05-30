@@ -673,14 +673,16 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       // too would double-count. No-op when no recorder is wired (mock contexts).
       const recordEagerRead = (
         accessor: ResourceLoadRecord["accessor"],
-        keyOrPrefix: string
+        storageKey: string
       ): void => {
         if (!isTraceObservabilityEnabled()) return; // zero work per read when off
         if (nsConfig.prefetchMode === "lazy") return;
         options.recordResourceLoad?.({
-          storageKey: keyOrPrefix,
+          storageKey,
           scope: options.scope as ResourceLoadRecord["scope"],
-          source: options.resolveEagerSource?.(keyOrPrefix) ?? "action-eager",
+          // All instances of a collection share the wave that loaded its
+          // prefix, so resolve the source from the prefix, not the instance key.
+          source: options.resolveEagerSource?.(nsCollectionKeyPrefix) ?? "action-eager",
           durationMs: 0,
           cacheHit: true,
           accessor
@@ -2631,47 +2633,38 @@ export async function createExecutionContext<
   };
 
   /**
-   * Resolve the `source` for an eager collection cache-hit read. Looks up the
-   * wave that fetched the key/prefix (an instance key falls under its
-   * collection's loaded prefix). Defaults to `action-eager` when the origin is
-   * ambiguous (FIX-701 §11 Q3).
+   * Resolve the `source` for an eager collection cache-hit read. Callers pass
+   * the collection's pattern prefix (all instances of a collection share the
+   * wave that loaded the prefix), so an exact token lookup suffices. Defaults
+   * to `action-eager` when the origin is unknown (FIX-701 §11 Q3).
    */
   const resolveEagerSource = (
     scope: ContentScopeType,
     keyOrPrefix: string
-  ): ResourceLoadRecord["source"] => {
-    const exact =
-      loadSourceByToken.get(`${scope}:key:${keyOrPrefix}`) ??
-      loadSourceByToken.get(`${scope}:prefix:${keyOrPrefix}`);
-    if (exact !== undefined) return exact;
-    const prefixTokenStart = `${scope}:prefix:`;
-    for (const [token, src] of loadSourceByToken) {
-      if (!token.startsWith(prefixTokenStart)) continue;
-      const prefix = token.slice(prefixTokenStart.length);
-      if (prefix !== "" && keyOrPrefix.startsWith(prefix)) return src;
-    }
-    return "action-eager";
-  };
+  ): ResourceLoadRecord["source"] =>
+    loadSourceByToken.get(`${scope}:prefix:${keyOrPrefix}`) ??
+    loadSourceByToken.get(`${scope}:key:${keyOrPrefix}`) ??
+    "action-eager";
 
   /**
-   * Record one fetch record per declared config in a bulk preload wave (waves
+   * Record one fetch record per declared config in a bulk preload wave. Waves
    * 1 & 2 batch their store reads in parallel, so per-key wall time isn't
-   * available — the measured batch time is split evenly across the declared
-   * keys, keeping the request-level total accurate). Also stamps
-   * `loadSourceByToken` so later eager reads of these collections resolve the
-   * right wave. No-op when observability is off or nothing was declared.
+   * available; the caller passes a per-record share of the measured batch time
+   * (`perRecordDurationMs`) so the records sum to the real wall time without
+   * inflating it. Also stamps `loadSourceByToken` so later eager reads of these
+   * collections resolve the right wave. No-op when observability is off or
+   * nothing was declared.
    */
   const recordWavePreload = (
     scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
     source: ResourceLoadRecord["source"],
-    totalDurationMs: number
+    perRecordDurationMs: number
   ): void => {
     if (!isTraceObservabilityEnabled()) return;
     const entries = Object.entries(configs);
     if (entries.length === 0) return;
     const storageKeyMap = resourceStorageKeys(configs);
-    const per = totalDurationMs / entries.length;
     for (const [accessor, config] of entries) {
       let storageKey: string;
       if (isCollectionConfig(config)) {
@@ -2682,7 +2675,7 @@ export async function createExecutionContext<
         storageKey = storageKeyMap[accessor] ?? accessor;
         loadSourceByToken.set(`${scope}:key:${storageKey}`, source);
       }
-      recordResourceLoad({ storageKey, scope, source, durationMs: per, cacheHit: false });
+      recordResourceLoad({ storageKey, scope, source, durationMs: perRecordDurationMs, cacheHit: false });
     }
   };
 
@@ -2746,12 +2739,20 @@ export async function createExecutionContext<
 
   // FIX-701 Wave 1: record the flow-eager preloads (content + state loaded in
   // the two parallel bursts above). These run before any block dispatch, so
-  // they land in the orphan bucket and are flushed onto the entry block.
+  // they land in the orphan bucket and are flushed onto the entry block. The
+  // whole burst loads in parallel, so split the one measured wall time across
+  // every flow-level record (all scopes) — the records then sum to the real
+  // wave-1 cost rather than triple-counting it once per scope.
   const wave1Duration = Date.now() - wave1Start;
-  recordWavePreload("session", sessionFlowLevelConfigs, "flow-eager", wave1Duration);
-  recordWavePreload("user", userFlowLevelConfigs, "flow-eager", wave1Duration);
+  const wave1Entries =
+    Object.keys(sessionFlowLevelConfigs).length +
+    Object.keys(userFlowLevelConfigs).length +
+    (resolvedOrgKey !== undefined ? Object.keys(orgFlowLevelConfigs).length : 0);
+  const wave1PerRecord = wave1Entries > 0 ? wave1Duration / wave1Entries : 0;
+  recordWavePreload("session", sessionFlowLevelConfigs, "flow-eager", wave1PerRecord);
+  recordWavePreload("user", userFlowLevelConfigs, "flow-eager", wave1PerRecord);
   if (resolvedOrgKey !== undefined) {
-    recordWavePreload("org", orgFlowLevelConfigs, "flow-eager", wave1Duration);
+    recordWavePreload("org", orgFlowLevelConfigs, "flow-eager", wave1PerRecord);
   }
 
   let requestRecord = loadedRequest;
