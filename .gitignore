@@ -20,3 +20,5 @@ docs/superpowers/*
 packages/devtool/dist-client/*
 .claude/**/_drafts/*
 docs/internal/design-memos/*
+*.code-workspace
+.tmp/*
