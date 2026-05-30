@@ -114,3 +114,5 @@ The endpoint is read-only, but it exposes the full server-side state of every se
 We made the default fail-closed because the cost of an accidental opt-in to a production deployment is much higher than the cost of typing one extra env flag in local development.
 
 If you have a legitimate reason to enable it in a non-local environment (a staging tier where the DevTool runs on a known internal origin), audit `debugAllowedOrigins` carefully and put the route behind whatever authentication your platform already enforces.
+
+Per-block resource-load metrics are server-side observability in the same vein as this debug state view, gated by trace observability rather than the debug endpoint. See [Observing resource loads](./observing-resource-loads.md).
