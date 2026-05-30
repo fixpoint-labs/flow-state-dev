@@ -60,6 +60,8 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 
+`state_change` and `resource_change` share an `InvalidationItem` base (`scope`/`delta`/`version`); the leaves keep distinct operation vocabularies and identity fields (`path` vs `resourcePath`). `version` is required on `state_change`, optional on `resource_change`, and `resource_change` scope excludes `block_instance`.
+
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
 
 **`tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.

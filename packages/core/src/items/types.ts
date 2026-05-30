@@ -388,23 +388,34 @@ export type ContextItem = OutputItemBase & {
   text: string;
 };
 
-export type StateChangeItem = OutputItemBase & {
-  type: "state_change";
+/**
+ * Shared base for stream items that signal "something changed in a scope" and
+ * that clients use as invalidation cues. Carries the fields common to
+ * `state_change` and `resource_change`. Not a member of the `OutputItem` union —
+ * only its typed leaves are. The base is the loosest supertype: `scope` holds the
+ * widest set and `version` is optional, so each leaf can tighten exactly the
+ * fields its contract narrows (intersection types narrow, never widen).
+ */
+export type InvalidationItem = OutputItemBase & {
   scope: "request" | "session" | "user" | "org" | "block_instance";
+  delta?: unknown;
+  version?: number;
+};
+
+export type StateChangeItem = InvalidationItem & {
+  type: "state_change";
   blockInstanceId?: string;
   operation: "patch" | "set" | "increment" | "push" | "delete_key" | "atomic";
   path?: string;
-  delta?: unknown;
-  version: number;
+  version: number; // re-declared: required for state changes
 };
 
-export type ResourceChangeItem = OutputItemBase & {
+export type ResourceChangeItem = InvalidationItem & {
   type: "resource_change";
+  // re-declared: resource changes never carry block_instance scope
   scope: "request" | "session" | "user" | "org";
   resourcePath: string;
   changeType: "created" | "updated" | "deleted";
-  delta?: unknown;
-  version?: number;
 };
 
 export type ErrorItem = OutputItemBase & {
