@@ -1521,28 +1521,22 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?: BlockDefinition<any, any> | WorkOptions,
       arg3?: WorkOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      const hasConnector = isBlockDefinition(arg2);
-      const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn>) : undefined;
-      const block = (hasConnector ? arg2 : arg1) as BlockDefinition<any, any>;
-      const options = (hasConnector ? arg3 : arg2) as WorkOptions | undefined;
+      // Shapes: work(block) | work(connector, block) | work(block, options) |
+      // work(connector, block, options).
+      const shape = resolveCallShape([arg1, arg2, arg3], "background");
+      const block = shape.block;
+      const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const options = shape.options as WorkOptions | undefined;
 
       return extend<TOutput>(
         {
           name: options?.name ?? `work:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
-            const name = options?.name ?? block.name;
-            const input =
-              connector === undefined ? value : await connector(value as TOutput, ctx);
-
+            // Dispatched in the "work" phase so nested generators apply the
+            // trace default; the work block's input is the parent step's
+            // output (FIX-573 §5). runBackground passes the value through.
             const path = childBlockPath(ctx, runtime, "work", stepIndex);
-            // work() dispatches run in the "work" phase so nested generators
-            // see phase === "work" and apply the trace default for emissions.
-            // The work block's input is the parent step's output (FIX-573 §5).
-            stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
-            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
-            dispatchWorkTask(ctx, runtime, name, rawPromise);
-            return { value };
+            return runBackground(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
           }
         },
         lastOutputSchema,
@@ -1560,10 +1554,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg3?: BlockDefinition<any, any> | WorkOptions,
       arg4?: WorkOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      const hasConnector = isBlockDefinition(arg3);
-      const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
-      const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
-      const options = (hasConnector ? arg4 : arg3) as WorkOptions | undefined;
+      // Shapes mirror work(), prefixed by a boolean/predicate condition.
+      const shape = resolveCallShape([arg2, arg3, arg4], "background");
+      const block = shape.block;
+      const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const options = shape.options as WorkOptions | undefined;
 
       return extend<TOutput>(
         {
@@ -1578,17 +1573,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               return { value };
             }
 
-            const name = options?.name ?? block.name;
-            const input =
-              connector === undefined ? value : await connector(value as TOutput, ctx);
-
-            const path = childBlockPath(ctx, runtime, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
-            stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
-            const rawPromise = executeBlock(block, input, taskCtx, path, { phase: "work", signalOverride });
-            dispatchWorkTask(ctx, runtime, name, rawPromise);
-            return { value };
+            const path = childBlockPath(ctx, runtime, "workIf", stepIndex);
+            return runBackground(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
           }
         },
         lastOutputSchema,
