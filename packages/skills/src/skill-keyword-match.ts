@@ -51,7 +51,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
       const collection = getCollection(ctx, opts.collectionKey);
       if (collection) {
         const seen = new Set<string>();
-        for (const ref of collection.list()) {
+        for (const ref of await collection.list()) {
           if (!ref.name.endsWith("/SKILL.md")) continue;
           const segments = ref.name.split("/");
           if (segments.length < 2) continue;

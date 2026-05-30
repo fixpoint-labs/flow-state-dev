@@ -27,9 +27,7 @@ export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./typ
 export type {
   CollectionHookContext,
   DefinedResourceCollection,
-  EagerResourceCollectionRef,
   EvictionPolicy,
-  LazyResourceCollectionRef,
   ResourceCollectionConfig,
   ResourceCollectionRef,
 } from "./types/resource-collection";

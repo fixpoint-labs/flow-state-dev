@@ -9,7 +9,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "../src";
+
+function createStubModelResolver(): ModelResolver {
+  const resolver = ((modelId: string): GeneratorModel => ({
+    modelId,
+    generate: async () => ({
+      text: `stub response from ${modelId}`,
+      finishReason: "stop",
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    }),
+  })) as ModelResolver;
+  resolver.resolveId = (modelId: string) => modelId;
+  return resolver;
+}
 
 const lazyColl = defineResourceCollection({
   scope: "session",
@@ -40,7 +54,8 @@ function ctxFor(stores: ReturnType<typeof createInMemoryStores>) {
     requestId: "r1",
     sessionId: "s1",
     userId: "u1",
-    stores
+    stores,
+    modelResolver: createStubModelResolver()
   });
 }
 

@@ -48,7 +48,7 @@ Collection entries on scope resource registries are `ResourceCollectionRef` inst
 
 ### Core operations
 
-These examples use an eager collection (the default), so `get`, `list`, and `count` are synchronous. On a lazy collection those reads are async — see [Eager vs lazy collections](#eager-vs-lazy-collections).
+The lookups (`get`, `getOptional`, `list`, `count`) return Promises, so `await` them. This is the same call shape regardless of `prefetchMode` — see [Eager vs lazy collections](#eager-vs-lazy-collections).
 
 ```ts
 execute: async (input, ctx) => {
@@ -58,24 +58,24 @@ execute: async (input, ctx) => {
   const ref = await files.create("readme.md", { language: "markdown" });
 
   // Get existing instance (throws if not found)
-  const existing = files.get("utils.ts");
+  const existing = await files.get("utils.ts");
 
   // Get or create — returns existing if present, creates with defaults if not
   const safe = await files.getOrCreate("config.json", { language: "json" });
 
   // List all instances, optionally filtered by prefix
-  const allFiles = files.list();
-  const srcFiles = files.list("src/");
+  const allFiles = await files.list();
+  const srcFiles = await files.list("src/");
 
   // Delete an instance (no-op if not found)
   await files.delete("old-file.ts");
 
   // Current instance count
-  const count = files.count();
+  const count = await files.count();
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 ### `create({ replace })` and `upsert` — handling the exists/missing branches
 
@@ -135,7 +135,7 @@ const notes = ctx.session.resources.notes;
 const ref = await notes.create({ topic: "react" }, { entries: [] });
 // Storage key: "react/notes"
 
-const existing = notes.get({ topic: "rust" });
+const existing = await notes.get({ topic: "rust" });
 ```
 
 The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
@@ -156,25 +156,37 @@ Set `maxInstances` for any collection that could grow without limit. An AI creat
 
 ## Eager vs lazy collections
 
-A collection's `prefetchMode` controls when its instances load and whether reads are synchronous. The default is `"eager"`.
+`prefetchMode` is a loading-cost knob, not an API-shape knob. All reads (`get`, `getOptional`, `list`, `count`) are async in both modes — you always `await` them. What `prefetchMode` changes is *when* the data loads, not how you call for it. Flipping the mode requires zero call-site changes. The default is `"eager"`.
+
+| Mode | When instances load | What a read does |
+|------|---------------------|------------------|
+| `"eager"` (default) | Whole prefix preloaded into an in-memory cache before any block reads it | Resolves instantly against the cache |
+| `"lazy"` | Nothing up front; each access fetches from the store on demand and caches the result | One store read on a cache miss, then cached |
+
+Same call shape either way:
+
+```ts
+const one = await files.get("readme.md");
+const all = await files.list();
+const n = await files.count();
+```
+
+The `ResourceRef` you get back has a synchronous `.state` getter. You await the lookup, not the read of an already-resolved ref:
+
+```ts
+const ref = await files.get("readme.md");
+const title = ref.state.language; // sync
+```
+
+Mutations (`create`, `getOrCreate`, `upsert`, `delete`) are async in both modes too.
 
 ### Eager (default)
 
-An eager collection loads its whole prefix into the per-request cache before any block reads it. Reads are synchronous:
-
-```ts
-const files = ctx.session.resources.files; // eager
-
-const one = files.get("readme.md");  // sync, returns a ResourceRef
-const all = files.list();            // sync
-const n = files.count();             // sync
-```
-
-This is the right default for collections with a bounded, predictable size. The whole set is in memory, so `list()` and `count()` are exact and cheap.
+Eager is the right default for collections with a bounded, predictable size. The whole set is in memory, so `list()` and `count()` are exact and resolve without a store round-trip.
 
 ### Lazy
 
-Set `prefetchMode: "lazy"` to defer loading. Nothing loads up front; each access reads from the store on demand and caches the result. Reads become async:
+Set `prefetchMode: "lazy"` to defer loading:
 
 ```ts
 const docs = defineResourceCollection({
@@ -182,30 +194,13 @@ const docs = defineResourceCollection({
   stateSchema: z.object({ title: z.string().default("") }),
   prefetchMode: "lazy",
 });
-
-// At runtime:
-const docs = ctx.session.resources.docs;
-
-const one = await docs.get("guide.md");      // async — one store read on miss, then cached
-const maybe = await docs.getOptional("x.md"); // async
-const all = await docs.list();                // async
-const n = await docs.count();                 // async
 ```
-
-The `ResourceRef` you get back from a lazy `get` still has a synchronous `.state` getter. You await the lookup, not the read of an already-loaded instance:
-
-```ts
-const ref = await docs.get("guide.md");
-const title = ref.state.title; // sync
-```
-
-Mutations (`create`, `getOrCreate`, `upsert`, `delete`) were already async on every collection, so those signatures don't change.
 
 Reach for lazy when a collection is large or unbounded and a typical request only touches a few keys by name. You pay one store read per key instead of scanning the whole prefix up front.
 
 ### The cost of `list()` and `count()` on a lazy collection
 
-A lazy `list()` or `count()` reads the entire collection prefix in one unbounded scan. There's no pagination today. That's fine for an occasional full scan, but on a large collection it defeats the point of going lazy. Prefer `get(key)` by key on lazy collections, and fall back to `list()`/`count()` only when you genuinely need the whole set.
+On a lazy collection, `list()` or `count()` reads the entire collection prefix in one unbounded scan. There's no pagination today. That's fine for an occasional full scan, but on a large collection it defeats the point of going lazy. Prefer `get(key)` by key on lazy collections, and fall back to `list()`/`count()` only when you genuinely need the whole set.
 
 ### Lazy requires `eviction: "none"`
 

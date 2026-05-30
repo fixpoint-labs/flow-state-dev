@@ -226,7 +226,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const RESOURCE_KEY = "eventedActors";
   const appendEntry = createAppendEntry(name, workspaceResource, RESOURCE_KEY);
 
-  function getCollection(ctx: BlockContext): TaskCollectionRef {
+  async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
     return getOrCreateTaskCollection({
       ctx,
       backing: "request",
@@ -248,7 +248,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     depth: number,
     ctx: BlockContext
   ): Promise<void> {
-    const collection = getCollection(ctx);
+    const collection = await getCollection(ctx);
     for (const matched of matchingActors(entry)) {
       await collection.addTask({
         goal: `${matched.name} on ${entry.type}:${entry.topic}`,
@@ -299,7 +299,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         if (!taskId) return output;
 
         const widerCtx = ctx as unknown as BlockContext;
-        const collection = getCollection(widerCtx);
+        const collection = await getCollection(widerCtx);
         const task = collection.get(taskId);
         const depth =
           (task?.metadata as { depth?: number } | undefined)?.depth ?? 1;

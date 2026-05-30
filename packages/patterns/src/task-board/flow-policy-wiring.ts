@@ -145,7 +145,7 @@ export interface InstallBoardFlowStateOptions {
   flowPolicy?: unknown;
   toolCache?: TaskBoardToolCacheConfig | boolean;
   /** Resolves the active collection — same factory the worker step uses. */
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /** Shared mutable bag — written by the setup handler, read everywhere else. */
   runState: BoardRunFlowState;
 }

@@ -80,8 +80,10 @@ export async function createBashTool(
   await sync.hydrate();
 
   // 4. Build file listing for LLM context
-  const allFiles = Object.values(collections)
-    .flatMap((c: ResourceCollectionRef<FileEntryState>) => c.list())
+  const allFiles = (
+    await Promise.all(Object.values(collections).map((c: ResourceCollectionRef<FileEntryState>) => c.list()))
+  )
+    .flat()
     .map((ref) => ref.state.path);
   const fileList = allFiles.join("\n");
 

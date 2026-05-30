@@ -43,7 +43,7 @@ export function createRecordArgument(opts: {
         ],
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,
         backing: "sequencer",
         collectionId: opts.collectionId,

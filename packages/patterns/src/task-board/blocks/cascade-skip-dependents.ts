@@ -40,7 +40,7 @@ export function createCascadeSkipDependents(
     name: `${name}-cascade-skip`,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

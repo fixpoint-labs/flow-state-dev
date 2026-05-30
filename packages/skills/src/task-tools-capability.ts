@@ -34,7 +34,9 @@ const okOrError = z.union([
   z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
 ]);
 
-function getCollection(ctx: BlockContext): TaskCollectionRef | undefined {
+async function getCollection(
+  ctx: BlockContext,
+): Promise<TaskCollectionRef | undefined> {
   return getActivePatternCollection(ctx);
 }
 
@@ -48,7 +50,7 @@ async function withTask(
   taskId: string,
   mutator: (collection: TaskCollectionRef) => Promise<void>,
 ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
-  const collection = getCollection(ctx);
+  const collection = await getCollection(ctx);
   if (!collection) return noActivePatternError;
   if (!collection.get(taskId)) return taskNotFoundError(taskId);
   await mutator(collection);
@@ -75,7 +77,7 @@ const addTask = handler({
     z.object({ ok: z.literal(false), error: z.string() }),
   ]),
   execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
+    const collection = await getCollection(ctx);
     if (!collection) return noActivePatternError;
     const task = await collection.addTask({
       goal: input.goal,
@@ -185,7 +187,7 @@ const listTasks = handler({
     z.object({ ok: z.literal(false), error: z.string() }),
   ]),
   execute: async (input, ctx) => {
-    const collection = getCollection(ctx);
+    const collection = await getCollection(ctx);
     if (!collection) return noActivePatternError;
     const filter = {
       ...(input.status !== undefined ? { status: input.status } : {}),

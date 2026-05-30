@@ -79,7 +79,7 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
       .passthrough(),
     sequencerStateSchema: supervisorStateSchema,
     execute: async (planOutput, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

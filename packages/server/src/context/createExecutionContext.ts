@@ -650,7 +650,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         scope: options.scope,
         config: nsConfig,
 
-        get(key: string | Record<string, string>): ResourceRef<JsonObject> {
+        async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
@@ -660,7 +660,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
-        getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
+        async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
@@ -831,7 +831,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           return nsHandle.create(key, initial);
         },
 
-        list(prefix?: string): ResourceRef<JsonObject>[] {
+        async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {
           const resources = options.readResources();
           const instances: ResourceRef<JsonObject>[] = [];
 
@@ -866,19 +866,16 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           options.onResourceChanged?.(storageKey, "deleted");
         },
 
-        count(): number {
+        async count(): Promise<number> {
           const resources = options.readResources();
           return countInstances(nsConfig.pattern, resources);
         }
       };
 
-      // FIX-688: a lazy collection holds only a partial cache. Wrap the eager
-      // handle so each accessor first ensures the target instance (or, for
-      // list/count, the collection prefix) is loaded into the cache, then
-      // delegates to the eager body — which reads/writes the now-populated
-      // cache. Reads (get/getOptional/list/count) become async; mutations were
-      // already async. maxInstances/eviction stay best-effort (they only see
-      // loaded instances), as documented on the config type.
+      // FIX-688/FIX-700: lazy collections hold only a partial cache and need
+      // to load instances on demand before reads. The eager nsHandle already
+      // has async reads (FIX-700), so we only need to inject the load-first
+      // wrapper for lazy collections — the API contract is the same either way.
       if (nsConfig.prefetchMode === "lazy" && options.lazyLoad !== undefined) {
         const lazyLoad = options.lazyLoad;
         const nsPrefix = getPatternPrefix(nsConfig.pattern);
@@ -887,7 +884,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           lazyLoad.getInstance(resolveCollectionKey(nsConfig.pattern, key));
         const ensurePrefix = (): Promise<void> => lazyLoad.getByPrefix(collectionKeyPrefix);
 
-        const lazyHandle = {
+        const lazyHandle: ResourceCollectionRef<JsonObject> = {
           pattern: nsConfig.pattern,
           scope: options.scope,
           config: nsConfig,

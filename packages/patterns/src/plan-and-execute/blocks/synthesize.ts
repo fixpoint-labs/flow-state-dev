@@ -73,7 +73,7 @@ export function createBuildPlanOutput(options: { name: string }) {
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

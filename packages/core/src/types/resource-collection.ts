@@ -97,19 +97,17 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
  * Branded type returned by `defineResourceCollection()`.
- * Carries phantom `StateType` for downstream type inference, plus the
- * `prefetchMode` `TMode` so the collection ref typing can narrow its read
- * methods to sync (eager) or async (lazy). `TMode` defaults to `'eager'`,
- * keeping the bare `DefinedResourceCollection<TState>` source-compatible.
+ * Carries phantom `StateType` for downstream type inference. The `prefetchMode`
+ * config field still exists (it controls server-side loading behaviour), but
+ * it no longer affects the ref's read-method signatures — both eager and lazy
+ * collections expose the same async `ResourceCollectionRef` interface (FIX-700).
  */
 export type DefinedResourceCollection<
   TState extends JsonObject = JsonObject,
-  TMode extends "eager" | "lazy" = "eager"
 > =
   ResourceCollectionConfig & {
     readonly __brand: "ResourceCollection";
     StateType: TState;
-    ModeType: TMode;
   };
 
 // ---------------------------------------------------------------------------
@@ -117,22 +115,27 @@ export type DefinedResourceCollection<
 // ---------------------------------------------------------------------------
 
 /**
- * Eager collection ref — the shape used when `prefetchMode` is `'eager'`
- * (the default). The full instance set is loaded up front, so reads
- * (`get`/`getOptional`/`list`/`count`) are synchronous. This is the exact
- * interface that `ResourceCollectionRef` carried before FIX-688.
+ * Runtime ref for accessing a collection's dynamic resource instances.
+ *
+ * All read methods (`get`/`getOptional`/`list`/`count`) are async regardless
+ * of `prefetchMode` — the server implementation resolves immediately for eager
+ * collections and performs a load for lazy ones, but callers always `await`
+ * (FIX-700). Mutation methods (`create`/`getOrCreate`/`upsert`/`delete`) were
+ * already async and are unchanged.
+ *
+ * `ResourceRef.state` is a synchronous getter on the ref itself — do NOT await it.
  */
-export interface EagerResourceCollectionRef<TState extends JsonObject = JsonObject> {
+export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** The collection's declared pattern. */
   pattern: string;
   /** Scope this collection is registered in. */
   scope: ScopeType;
 
-  /** Get an existing instance. Throws if not found. */
-  get(key: string | Record<string, string>): ResourceRef<TState>;
+  /** Get an existing instance. Rejects if not found. */
+  get(key: string | Record<string, string>): Promise<ResourceRef<TState>>;
 
-  /** Get an existing instance, or undefined if not found. */
-  getOptional(key: string | Record<string, string>): ResourceRef<TState> | undefined;
+  /** Get an existing instance, or `undefined` if not found. */
+  getOptional(key: string | Record<string, string>): Promise<ResourceRef<TState> | undefined>;
 
   /**
    * Create a new instance.
@@ -178,56 +181,17 @@ export interface EagerResourceCollectionRef<TState extends JsonObject = JsonObje
   ): Promise<ResourceRef<TState>>;
 
   /** List all instances, optionally filtered by prefix. */
-  list(prefix?: string): ResourceRef<TState>[];
+  list(prefix?: string): Promise<ResourceRef<TState>[]>;
 
   /** Delete an instance. No-op if the instance does not exist. */
   delete(key: string | Record<string, string>): Promise<void>;
 
   /** Current instance count. */
-  count(): number;
+  count(): Promise<number>;
 
   /** The collection's config. */
   config: Readonly<ResourceCollectionConfig>;
 }
-
-/**
- * Lazy collection ref — the shape used when `prefetchMode` is `'lazy'`. The
- * collection holds only a partial cache and loads instances on demand, so the
- * read methods (`get`/`getOptional`/`list`/`count`) are asynchronous. Mutation
- * methods (`create`/`getOrCreate`/`upsert`/`delete`) keep the same async
- * signatures as the eager ref; `pattern`/`scope`/`config` are unchanged.
- */
-export interface LazyResourceCollectionRef<TState extends JsonObject = JsonObject>
-  extends Pick<
-    EagerResourceCollectionRef<TState>,
-    "pattern" | "scope" | "create" | "getOrCreate" | "upsert" | "delete" | "config"
-  > {
-  /** Get an existing instance. Rejects if not found. */
-  get(key: string | Record<string, string>): Promise<ResourceRef<TState>>;
-
-  /** Get an existing instance, or undefined if not found. */
-  getOptional(key: string | Record<string, string>): Promise<ResourceRef<TState> | undefined>;
-
-  /** List all instances, optionally filtered by prefix. */
-  list(prefix?: string): Promise<ResourceRef<TState>[]>;
-
-  /** Current instance count. */
-  count(): Promise<number>;
-}
-
-/**
- * Runtime ref for accessing a collection's dynamic resource instances, narrowed
- * by `prefetchMode`. `TMode` defaults to `'eager'`, so the bare
- * `ResourceCollectionRef<TState>` resolves to the synchronous-read eager shape
- * — keeping every pre-FIX-688 reference source-compatible. A `'lazy'` mode
- * resolves to the async-read `LazyResourceCollectionRef`.
- */
-export type ResourceCollectionRef<
-  TState extends JsonObject = JsonObject,
-  TMode extends "eager" | "lazy" = "eager"
-> = TMode extends "lazy"
-  ? LazyResourceCollectionRef<TState>
-  : EagerResourceCollectionRef<TState>;
 
 // ---------------------------------------------------------------------------
 // defineResourceCollection()
@@ -241,11 +205,7 @@ export function defineResourceCollection<
   const TConfig extends ResourceCollectionConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig &
-  DefinedResourceCollection<
-    AsStateObject<TStateSchema["_output"]>,
-    TConfig extends { prefetchMode: "lazy" } ? "lazy" : "eager"
-  > {
+): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
 
   if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
@@ -301,11 +261,7 @@ export function defineResourceCollection<
 
   return Object.assign({}, config, {
     __brand: "ResourceCollection" as const,
-  }) as unknown as TConfig &
-    DefinedResourceCollection<
-      AsStateObject<TStateSchema["_output"]>,
-      TConfig extends { prefetchMode: "lazy" } ? "lazy" : "eager"
-    >;
+  }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
 }
 
 // ---------------------------------------------------------------------------
