@@ -151,7 +151,7 @@ export { createApplyThreshold as applyThreshold };
  *
  * ```ts
  * mainSequencer
- *   .then(primaryGenerator)
+ *   .step(primaryGenerator)
  *   .work(
  *     (output) => ({ userInput: output.userInput, response: output.text }),
  *     responseAuditor({
@@ -176,7 +176,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
       name: `safe-${analyzer.name}`,
       inputSchema: auditorInputSchema,
     })
-      .then(analyzer)
+      .step(analyzer)
       .rescue([{ block: analyzerErrorFallback }]);
   }
 
@@ -195,7 +195,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     inputSchema: auditorInputSchema,
     stateSchema: responseAuditorStateSchema,
   })
-    .then(captureContext)
+    .step(captureContext)
     .map((input: { userInput: string; response: string }) =>
       analyzers.map(() => ({ userInput: input.userInput, response: input.response })),
     )
@@ -205,6 +205,6 @@ export function responseAuditor(config: ResponseAuditorConfig) {
       { maxConcurrency: config.maxConcurrency },
     )
     .map((results: unknown[]) => results.filter(Boolean))
-    .then(aggregateResults)
-    .then(thresholdBlock);
+    .step(aggregateResults)
+    .step(thresholdBlock);
 }

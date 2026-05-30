@@ -28,7 +28,7 @@ import type { TaskCollectionRef, TaskInit } from "@flow-state-dev/tasks";
 
 export interface SeedCollectionOptions<TInput = unknown> {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef<TInput, unknown>;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef<TInput, unknown>>;
   initialTasks: readonly TaskInit<TInput>[];
 }
 
@@ -45,7 +45,7 @@ export function createSeedCollection<TInput = unknown>(
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       if (initialTasks.length === 0) return;
-      const collection = collectionFactory(ctx);
+      const collection = await collectionFactory(ctx);
       for (const init of initialTasks) {
         if (init.id !== undefined && collection.get(init.id) !== undefined) {
           continue;

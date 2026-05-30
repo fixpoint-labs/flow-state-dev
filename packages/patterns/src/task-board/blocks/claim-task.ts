@@ -7,7 +7,7 @@
  * the claimed task. Side-channels the claim outcome onto the worker's
  * sequencer state (`currentTaskId`, `lastClaimed`) so downstream
  * `recordSuccess` / `recordError` / `checkBoard` can read it without
- * threading the value through `.thenIf` branches.
+ * threading the value through `.stepIf` branches.
  *
  * The substrate's CAS retry inside `collection.claim` guarantees
  * exactly-once dispatch under contention; this block simply surfaces
@@ -25,7 +25,7 @@ import {
 
 export interface ClaimTaskOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   dispatcher: TaskDispatcher;
   /**
    * Worker-id resolver. The pattern stamps `worker-${index}` per worker;
@@ -52,7 +52,7 @@ export function createClaimTask(options: ClaimTaskOptions) {
     outputSchema: claimResultSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<ClaimResult> => {
-      const collection = collectionFactory(ctx);
+      const collection = await collectionFactory(ctx);
       const task = await dispatcher.claim(collection, workerId(ctx), ctx);
       if (task === null) {
         await ctx.sequencer!.patchState({ lastClaimed: false });

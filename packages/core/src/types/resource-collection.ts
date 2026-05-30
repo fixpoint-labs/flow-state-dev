@@ -55,6 +55,17 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
+  /**
+   * When this collection's instances are loaded relative to a request
+   * (FIX-688). `'eager'` (default when omitted) loads the full instance set
+   * when the scope's resource registry is constructed, giving the collection
+   * ref synchronous `get`/`list`/`count`. `'lazy'` defers loading: the ref's
+   * read methods become async and the collection holds only a partial cache.
+   * Because a lazy collection never sees its full set, it cannot support a
+   * non-`'none'` eviction policy — `defineResourceCollection` throws on that
+   * combination.
+   */
+  prefetchMode?: "eager" | "lazy";
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig<TState>;
@@ -86,9 +97,14 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
  * Branded type returned by `defineResourceCollection()`.
- * Carries phantom `StateType` for downstream type inference.
+ * Carries phantom `StateType` for downstream type inference. The `prefetchMode`
+ * config field still exists (it controls server-side loading behaviour), but
+ * it no longer affects the ref's read-method signatures — both eager and lazy
+ * collections expose the same async `ResourceCollectionRef` interface (FIX-700).
  */
-export type DefinedResourceCollection<TState extends JsonObject = JsonObject> =
+export type DefinedResourceCollection<
+  TState extends JsonObject = JsonObject,
+> =
   ResourceCollectionConfig & {
     readonly __brand: "ResourceCollection";
     StateType: TState;
@@ -98,18 +114,28 @@ export type DefinedResourceCollection<TState extends JsonObject = JsonObject> =
 // Runtime Ref
 // ---------------------------------------------------------------------------
 
-/** Runtime ref for accessing a collection's dynamic resource instances. */
+/**
+ * Runtime ref for accessing a collection's dynamic resource instances.
+ *
+ * All read methods (`get`/`getOptional`/`list`/`count`) are async regardless
+ * of `prefetchMode` — the server implementation resolves immediately for eager
+ * collections and performs a load for lazy ones, but callers always `await`
+ * (FIX-700). Mutation methods (`create`/`getOrCreate`/`upsert`/`delete`) were
+ * already async and are unchanged.
+ *
+ * `ResourceRef.state` is a synchronous getter on the ref itself — do NOT await it.
+ */
 export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** The collection's declared pattern. */
   pattern: string;
   /** Scope this collection is registered in. */
   scope: ScopeType;
 
-  /** Get an existing instance. Throws if not found. */
-  get(key: string | Record<string, string>): ResourceRef<TState>;
+  /** Get an existing instance. Rejects if not found. */
+  get(key: string | Record<string, string>): Promise<ResourceRef<TState>>;
 
-  /** Get an existing instance, or undefined if not found. */
-  getOptional(key: string | Record<string, string>): ResourceRef<TState> | undefined;
+  /** Get an existing instance, or `undefined` if not found. */
+  getOptional(key: string | Record<string, string>): Promise<ResourceRef<TState> | undefined>;
 
   /**
    * Create a new instance.
@@ -155,13 +181,13 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   ): Promise<ResourceRef<TState>>;
 
   /** List all instances, optionally filtered by prefix. */
-  list(prefix?: string): ResourceRef<TState>[];
+  list(prefix?: string): Promise<ResourceRef<TState>[]>;
 
   /** Delete an instance. No-op if the instance does not exist. */
   delete(key: string | Record<string, string>): Promise<void>;
 
   /** Current instance count. */
-  count(): number;
+  count(): Promise<number>;
 
   /** The collection's config. */
   config: Readonly<ResourceCollectionConfig>;
@@ -200,6 +226,16 @@ export function defineResourceCollection<
 
   if (config.eviction !== undefined && config.eviction !== "none" && config.maxInstances === undefined) {
     throw new Error("defineResourceCollection() eviction requires maxInstances");
+  }
+
+  if (
+    config.prefetchMode === "lazy" &&
+    config.eviction !== undefined &&
+    config.eviction !== "none"
+  ) {
+    throw new Error(
+      `defineResourceCollection() does not support prefetchMode: 'lazy' with eviction '${config.eviction}' — lazy collections only hold a partial cache, so eviction cannot see the full set. Use eviction: 'none' with lazy.`
+    );
   }
 
   if (config.prefetchWindow !== undefined) {

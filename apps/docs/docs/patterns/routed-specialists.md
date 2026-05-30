@@ -44,8 +44,8 @@ const workspace = createWorkspace(z.object({
 }));
 
 const researcher = sequencer({ name: "researcher" })
-  .then(generator({ /* ... reads workspace state, returns research notes ... */ }))
-  .then(handler({
+  .step(generator({ /* ... reads workspace state, returns research notes ... */ }))
+  .step(handler({
     name: "write-research",
     resources: { workspace },
     execute: async (out, ctx) => {
@@ -55,8 +55,8 @@ const researcher = sequencer({ name: "researcher" })
   }));
 
 const analyst = sequencer({ name: "analyst" })
-  .then(generator({ /* ... synthesizes patterns from research ... */ }))
-  .then(handler({
+  .step(generator({ /* ... synthesizes patterns from research ... */ }))
+  .step(handler({
     name: "write-analysis",
     resources: { workspace },
     execute: async (out, ctx) => {

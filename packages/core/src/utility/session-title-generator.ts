@@ -37,7 +37,7 @@ export interface SessionTitleGeneratorConfig {
  * });
  *
  * const pipeline = sequencer({ name: "chat", inputSchema })
- *   .then(mainGenerator)
+ *   .step(mainGenerator)
  *   .work(titleBlock)
  * ```
  */
@@ -82,6 +82,6 @@ Current title: ${currentTitle ?? "(none)"}`;
   });
 
   return sequencer({ name: config.name, inputSchema: z.unknown() })
-    .then(titleGenerator)
-    .then(persistTitle);
+    .step(titleGenerator)
+    .step(persistTitle);
 }

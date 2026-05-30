@@ -27,13 +27,13 @@ export interface GeneratorMemory {
 // Shows artifact title + summary so the LLM has an up-to-date inventory
 // without reading full content. Summary is populated by summarize-artifacts.
 
-export const artifactListContext = (_input: unknown, ctx: BlockContext) => {
+export const artifactListContext = async (_input: unknown, ctx: BlockContext) => {
   const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
     title: string;
     summary: string;
     updatedAt: number;
   }>;
-  const instances = artifacts.list();
+  const instances = await artifacts.list();
   if (instances.length === 0) {
     return "No artifacts exist yet in this session.";
   }

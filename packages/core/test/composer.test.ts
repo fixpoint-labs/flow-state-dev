@@ -125,7 +125,7 @@ describe("utility.composer", () => {
       inputSchema: z.object({ parts: z.array(z.string()) })
     })
       .map((input) => ({ parts: input.parts }))
-      .then(compose);
+      .step(compose);
 
     const ctx = createMockContext({
       resolveModel: () => ({

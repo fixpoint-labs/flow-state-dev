@@ -137,7 +137,9 @@ describe("execution runtime", () => {
       userId: "user_logs",
       sessionId: "sess_logs",
       stores: createInMemoryStores(),
-      logger
+      runtimeConfig: {
+        logger
+      }
     });
 
     expect(success.error).toBeUndefined();
@@ -182,7 +184,9 @@ describe("execution runtime", () => {
       userId: "user_logs_fail",
       sessionId: "sess_logs_fail",
       stores: createInMemoryStores(),
-      logger
+      runtimeConfig: {
+        logger
+      }
     });
 
     expect(failed.error?.message).toBe("boom");
@@ -604,9 +608,9 @@ describe("execution runtime", () => {
       name: "research",
       inputSchema: z.object({ text: z.string() })
     })
-      .then(validate)
-      .then(chat)
-      .then(gate);
+      .step(validate)
+      .step(chat)
+      .step(gate);
 
     const result = await executeBlock({
       block: research,
@@ -658,7 +662,7 @@ describe("execution runtime", () => {
       name: "outer",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(0) })
-    }).then(inspect);
+    }).step(inspect);
 
     const result = await executeBlock({
       block: outer,
@@ -703,8 +707,8 @@ describe("execution runtime", () => {
     });
 
     const flow = sequencer({ name: "flow", inputSchema: z.number() })
-      .then(validate)
-      .then(inspect);
+      .step(validate)
+      .step(inspect);
 
     const result = await executeBlock({
       block: flow,
@@ -748,7 +752,7 @@ describe("execution runtime", () => {
 
     const flow = sequencer({ name: "flow-running", inputSchema: z.number() })
       .work(worker)
-      .then(inspect)
+      .step(inspect)
       .waitForWork();
 
     const result = await executeBlock({
@@ -786,10 +790,10 @@ describe("execution runtime", () => {
       }
     });
 
-    const inner = sequencer({ name: "inner", inputSchema: z.number() }).then(inspect);
+    const inner = sequencer({ name: "inner", inputSchema: z.number() }).step(inspect);
     const flow = sequencer({ name: "outer", inputSchema: z.number() })
-      .then(validate)
-      .then(inner);
+      .step(validate)
+      .step(inner);
 
     const result = await executeBlock({
       block: flow,
@@ -831,7 +835,7 @@ describe("execution runtime", () => {
     const flow = sequencer({ name: "flow-failed", inputSchema: z.number() })
       .work(worker)
       .waitForWork({ failOnError: false })
-      .then(inspect);
+      .step(inspect);
 
     const result = await executeBlock({
       block: flow,
@@ -863,7 +867,7 @@ describe("execution runtime", () => {
     // A rescued sub-sequencer: its inner throw is recovered, so it completes
     // and becomes a (rescued) sibling in the outer scope.
     const dispatch = sequencer({ name: "ws-dispatch", inputSchema: z.number() })
-      .then(thrower)
+      .step(thrower)
       .rescue([{ block: recovery }]);
 
     const okStep = handler({
@@ -873,7 +877,7 @@ describe("execution runtime", () => {
       execute: (value) => value
     });
     // A sibling sequencer that completes without ever rescuing.
-    const safe = sequencer({ name: "ws-safe", inputSchema: z.number() }).then(okStep);
+    const safe = sequencer({ name: "ws-safe", inputSchema: z.number() }).step(okStep);
 
     const probe = handler({
       name: "ws-probe",
@@ -893,9 +897,9 @@ describe("execution runtime", () => {
     });
 
     const flow = sequencer({ name: "ws-outer", inputSchema: z.number() })
-      .then(dispatch)
-      .then(safe)
-      .then(probe);
+      .step(dispatch)
+      .step(safe)
+      .step(probe);
 
     const result = await executeBlock({ block: flow, input: 5, ctx });
 
@@ -933,7 +937,7 @@ describe("execution runtime", () => {
       execute: () => -1
     });
     const dispatch = sequencer({ name: "loop-dispatch", inputSchema: z.any() })
-      .then(flaky)
+      .step(flaky)
       .rescue([{ block: recovery }]);
 
     // Drives exactly two iterations via a closure counter.
@@ -961,9 +965,9 @@ describe("execution runtime", () => {
     });
 
     const flow = sequencer({ name: "loop-outer", inputSchema: z.any() })
-      .then(dispatch)
-      .then(controller)
-      .then(probe)
+      .step(dispatch)
+      .step(controller)
+      .step(probe)
       .loopBack(dispatch.name, {
         when: (v) => (v as { continue: boolean }).continue,
         maxIterations: 5
@@ -1029,13 +1033,13 @@ describe("execution runtime", () => {
     });
 
     const inner = sequencer({ name: "inner", inputSchema: z.number() })
-      .then(duplicateA)
-      .then(duplicateB)
+      .step(duplicateA)
+      .step(duplicateB)
       .work(worker)
-      .then(inspect)
+      .step(inspect)
       .waitForWork();
 
-    const outer = sequencer({ name: "outer", inputSchema: z.number() }).then(inner);
+    const outer = sequencer({ name: "outer", inputSchema: z.number() }).step(inner);
 
     const result = await executeBlock({
       block: outer,
@@ -1052,7 +1056,7 @@ describe("execution runtime", () => {
     // Deterministic instance IDs use the shape
     // `${requestId}:${path}:${attempt}`; the path points at the sibling
     // `dup` target's location in the execution tree.
-    expect(dupInstanceId).toMatch(/^req_targets_siblings:root\/then\[/);
+    expect(dupInstanceId).toMatch(/^req_targets_siblings:root\/step\[/);
   });
 
   it("prefers sibling target over same-name ancestor target", async () => {
@@ -1073,19 +1077,19 @@ describe("execution runtime", () => {
         const target = stepCtx.getTarget("dup");
         // Deterministic IDs: `${requestId}:${path}:${attempt}`. The sibling
         // `dup` lives inside the child sequencer, so the path should include
-        // `child/then[...]`, not point at the ancestor `dup` sequencer.
+        // `child/step[...]`, not point at the ancestor `dup` sequencer.
         expect(target?.instanceId).toMatch(
-          /^req_targets_sibling_shadow:root\/then\[0\]\/then\[/
+          /^req_targets_sibling_shadow:root\/step\[0\]\/step\[/
         );
         return value;
       }
     });
 
     const child = sequencer({ name: "child", inputSchema: z.number() })
-      .then(sibling)
-      .then(inspect);
+      .step(sibling)
+      .step(inspect);
 
-    const outer = sequencer({ name: "dup", inputSchema: z.number() }).then(child);
+    const outer = sequencer({ name: "dup", inputSchema: z.number() }).step(child);
 
     const result = await executeBlock({
       block: outer,
@@ -1110,8 +1114,8 @@ describe("execution runtime", () => {
       }
     });
 
-    const inner = sequencer({ name: "dup", inputSchema: z.number() }).then(duplicateLeaf);
-    const outer = sequencer({ name: "dup", inputSchema: z.number() }).then(inner);
+    const inner = sequencer({ name: "dup", inputSchema: z.number() }).step(duplicateLeaf);
+    const outer = sequencer({ name: "dup", inputSchema: z.number() }).step(inner);
 
     const result = await executeBlock({
       block: outer,
@@ -1180,7 +1184,7 @@ describe("execution runtime", () => {
         notes: z.array(z.string()).default([]),
         flags: z.record(z.boolean()).default({})
       })
-    }).then(inspect);
+    }).step(inspect);
 
     const result = await executeBlock({
       block: seq,
@@ -1242,7 +1246,7 @@ describe("execution runtime", () => {
         notes: z.array(z.string()).default([]),
         flags: z.record(z.boolean()).default({})
       })
-    }).then(mutate);
+    }).step(mutate);
 
     const result = await executeBlock({
       block: seq,
@@ -1605,7 +1609,7 @@ describe("execution runtime", () => {
         name: "seq-prod",
         inputSchema: z.number(),
         stateSchema: z.object({ count: z.number().default(0) })
-      }).then(step);
+      }).step(step);
 
       const flow = defineFlow({
         kind: "state-change-transience",
@@ -1691,7 +1695,7 @@ describe("execution runtime", () => {
       name: "noop-stateful",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(0) })
-    }).then(noOp);
+    }).step(noOp);
 
     const result = await executeBlock({ block: seq, input: 1, ctx });
     expect(result.error).toBeUndefined();
@@ -1722,7 +1726,7 @@ describe("execution runtime", () => {
         name: "noop-persisted",
         inputSchema: z.number(),
         stateSchema: z.object({ count: z.number().default(0) })
-      }).then(step);
+      }).step(step);
 
       const flow = defineFlow({
         kind: "noop-persisted-flow",
@@ -1793,8 +1797,8 @@ describe("execution runtime", () => {
         scratch: transientSlot(z.string().optional())
       })
     })
-      .then(writeScratch)
-      .then(readScratch);
+      .step(writeScratch)
+      .step(readScratch);
 
     const result = await executeBlock({ block: seq, input: 1, ctx });
     expect(result.error).toBeUndefined();
@@ -1843,7 +1847,7 @@ describe("execution runtime", () => {
         visible: z.number().default(0),
         scratch: transientSlot(z.string().optional())
       })
-    }).then(mixed);
+    }).step(mixed);
 
     const result = await executeBlock({ block: seq, input: 1, ctx });
     expect(result.error).toBeUndefined();
@@ -1879,7 +1883,7 @@ describe("execution runtime", () => {
         visible: z.number().default(0),
         scratch: transientSlot(z.string().optional())
       })
-    }).then(setBoth);
+    }).step(setBoth);
 
     const result = await executeBlock({ block: seq, input: 1, ctx });
     expect(result.error).toBeUndefined();
@@ -1915,13 +1919,13 @@ describe("execution runtime", () => {
       name: "inner",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(11) })
-    }).then(leaf);
+    }).step(leaf);
 
     const outer = sequencer({
       name: "outer",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(7) })
-    }).then(inner);
+    }).step(inner);
 
     const result = await executeBlock({
       block: outer,
@@ -1995,7 +1999,7 @@ describe("execution runtime", () => {
       name: "research",
       inputSchema: z.object({ text: z.string() }),
       stateSchema: z.object({ mode: z.string().default("idle") })
-    }).then(chat);
+    }).step(chat);
 
     const seqResult = await executeBlock({
       block: seq,
@@ -2044,7 +2048,7 @@ describe("execution runtime", () => {
         label: (input) => `Research:${input}`,
         metadata: (input) => ({ startedWith: input })
       }
-    }).then(leaf);
+    }).step(leaf);
 
     const result = await executeBlock({
       block: flowSeq,
@@ -2080,7 +2084,7 @@ describe("execution runtime", () => {
       name: "lifecycle-seq",
       inputSchema: z.number(),
       container: { component: "Lifecycle" }
-    }).then(leaf);
+    }).step(leaf);
 
     await executeBlock({ block: flowSeq, input: 1, ctx });
 
@@ -2137,7 +2141,7 @@ describe("execution runtime", () => {
       name: "failing-seq",
       inputSchema: z.number(),
       container: { component: "Failure" }
-    }).then(failing);
+    }).step(failing);
 
     const result = await executeBlock({ block: failSeq, input: 1, ctx });
     expect(result.error).toBeDefined();
@@ -2183,7 +2187,7 @@ describe("execution runtime", () => {
       name: "container-seq",
       inputSchema: z.number(),
       container: { component: "test-container" }
-    }).then(leaf);
+    }).step(leaf);
 
     await executeBlock({ block: containerSeq, input: 5, ctx });
 
@@ -2221,13 +2225,13 @@ describe("execution runtime", () => {
       name: "inner-container",
       inputSchema: z.number(),
       container: { component: "inner" }
-    }).then(leaf);
+    }).step(leaf);
 
     const outerSeq = sequencer({
       name: "outer-container",
       inputSchema: z.number(),
       container: { component: "outer" }
-    }).then(innerSeq);
+    }).step(innerSeq);
 
     await executeBlock({ block: outerSeq, input: 1, ctx });
 
@@ -2271,7 +2275,7 @@ describe("execution runtime", () => {
     const plainSeq = sequencer({
       name: "plain-seq",
       inputSchema: z.number()
-    }).then(leaf);
+    }).step(leaf);
 
     await executeBlock({ block: plainSeq, input: 3, ctx });
 
@@ -2329,7 +2333,8 @@ describe("execution runtime", () => {
       requestId: "req_success",
       sessionId: "sess_success",
       userId: "user_success",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(success.error).toBeUndefined();
@@ -2374,7 +2379,8 @@ describe("execution runtime", () => {
       requestId: "req_failure",
       sessionId: "sess_failure",
       userId: "user_failure",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(failed.error).toBeDefined();
@@ -2477,7 +2483,8 @@ describe("transient block output", () => {
       input: { value: "test" },
       userId: "user_transient",
       sessionId: "sess_transient",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2516,7 +2523,8 @@ describe("transient block output", () => {
       input: { value: "hello" },
       userId: "user_stream",
       sessionId: "sess_stream",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2579,7 +2587,8 @@ describe("transient block output", () => {
       input: { value: "test" },
       userId: "user_mixed",
       sessionId: "sess_mixed",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2630,7 +2639,8 @@ describe("transient block output", () => {
       input: { prompt: "hello" },
       userId: "user_gen",
       sessionId: "sess_gen",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2691,7 +2701,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2731,7 +2742,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2770,7 +2782,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2810,7 +2823,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2854,7 +2868,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2893,7 +2908,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2933,7 +2949,8 @@ describe("transient block output", () => {
       input: { text: "ok" },
       userId: "user_status",
       sessionId: "sess_status",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2977,7 +2994,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3033,7 +3051,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3080,7 +3099,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3125,7 +3145,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3198,8 +3219,8 @@ describe("rescue boundary in nested sequencer", () => {
       name: "inner-seq",
       inputSchema: z.object({ value: z.string() })
     })
-      .then(step1)
-      .then(failingStep)
+      .step(step1)
+      .step(failingStep)
       .rescue([{ block: rescueStep }]);
 
     const outerStep = handler({
@@ -3218,8 +3239,8 @@ describe("rescue boundary in nested sequencer", () => {
       inputSchema: z.object({ value: z.string() }),
       outputSchema: z.object({ result: z.string() })
     })
-      .then(innerSeq)
-      .then(outerStep);
+      .step(innerSeq)
+      .step(outerStep);
 
     const flow = defineFlow({
       kind: "rescue-flow",
@@ -3238,12 +3259,14 @@ describe("rescue boundary in nested sequencer", () => {
       input: { value: "test" },
       userId: "user_test",
       stores,
-      modelResolver: (id) => ({
-        modelId: id,
-        async generate() {
-          return { text: "mock" };
-        }
-      })
+      runtimeConfig: {
+        modelResolver: (id) => ({
+          modelId: id,
+          async generate() {
+            return { text: "mock" };
+          }
+        })
+      }
     });
 
     // Execution should complete without error — rescue caught the failure
@@ -3393,8 +3416,8 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
       name: "chain",
       inputSchema: z.number()
     })
-      .then(stepA)
-      .then(stepB);
+      .step(stepA)
+      .step(stepB);
 
     await executeBlock({ block: chain, input: 0, ctx });
 

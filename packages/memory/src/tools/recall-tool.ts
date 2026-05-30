@@ -61,7 +61,7 @@ export type CreateRecallToolOptions = {
  *
  * Reads the original `PrepareEnvelope` from `ctx.parent!.input` — the inner
  * sub-sequencer's input is the envelope handed in by the outer recall
- * sequencer's `.thenIf(filterStep)` step, so `parent.input` recovers it
+ * sequencer's `.stepIf(filterStep)` step, so `parent.input` recovers it
  * even though the filter generator's own output is just `{ selectedIds }`.
  * That parent reference is set fresh per execution by the substrate, so
  * nesting is safe.
@@ -106,19 +106,19 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
   )
 
   // Build the optional filter sub-sequencer. Skipped entirely when the
-  // strategy doesn't ship a `filterBlock` — the recall sequencer's `.thenIf`
+  // strategy doesn't ship a `filterBlock` — the recall sequencer's `.stepIf`
   // condition collapses to false, prepare's envelope passes straight to
   // format which surfaces the intrinsic ordering.
   const filterStep = strategy.filterBlock
     ? sequencer({ name: 'memory/recall.filter' })
-        .then(
+        .step(
           strategy.filterBlock.connectInput((env: PrepareEnvelope) => ({
             query: env.query,
             limit: env.limit,
             candidates: env.candidates,
           })),
         )
-        .then(filterMergeBlock)
+        .step(filterMergeBlock)
     : undefined
 
   const formatBlock = strategy.formatBlock ?? defaultFormatBlock
@@ -149,12 +149,12 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
     description: recallToolDescription,
     inputSchema: recallToolInputSchema,
   })
-    .then(wrappedPrepare)
-    .thenIf(
+    .step(wrappedPrepare)
+    .stepIf(
       (env: PrepareEnvelope) => env.shouldFilter && filterStep !== undefined,
       filterStep ?? formatBlock, // unreachable when filterStep is undefined; cast keeps types happy
     )
-    .then(formatBlock)
+    .step(formatBlock)
     .rescue([{ block: errorRescueBlock }])
 
   // Compact, model-visible representation. The structured `RecallToolResult`

@@ -133,6 +133,6 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     name: config.name,
     inputSchema: z.any()
   })
-    .then(classifyInput)
-    .then(dispatcher);
+    .step(classifyInput)
+    .step(dispatcher);
 }

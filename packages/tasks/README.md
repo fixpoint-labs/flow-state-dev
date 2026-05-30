@@ -160,8 +160,8 @@ const pipeline = sequencer({
   name: "task-pipeline",
   stateSchema: tasksStateSchema,
 })
-  .then(seedTasks)
-  .then(dispatchOne);
+  .step(seedTasks)
+  .step(dispatchOne);
 ```
 
 Tasks live as a `Record<id, Task>` on the outer sequencer's state under the

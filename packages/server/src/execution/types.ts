@@ -6,17 +6,14 @@ import type {
   ActionConfig,
   BlockDefinition,
   FlowInstance,
-  FlowStateSettings,
   Middleware,
-  ModelResolver,
-  RetryPolicy,
-  VoiceProvider
+  RetryPolicy
 } from "@flow-state-dev/core/types";
-import type { TracingLevel } from "@flow-state-dev/core";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { StoreRegistry } from "../stores/types";
+import type { RuntimeConfig } from "../runtime-config";
 import type { RuntimeLogger } from "./logging";
 
 export type ExecutionMetadata = {
@@ -32,7 +29,7 @@ export type ExecutionMetadata = {
   parentBlockInstanceId?: string;
   /**
    * Structural path of this block in the request's execution tree (e.g.
-   * `root/then[0]/iter[2]`). Combined with `requestId` and `attempt`, this
+   * `root/step[0]/iter[2]`). Combined with `requestId` and `attempt`, this
    * uniquely and deterministically identifies the block instance.
    */
   blockPath?: string;
@@ -84,22 +81,15 @@ export type RunActionOptions<
   source?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
-  modelResolver?: ModelResolver;
-  /**
-   * Voice provider for TTS and STT. Already merged by the host (per-flow
-   * `voice.provider` wins over the router-level provider), so `runAction`
-   * receives the effective value and never re-merges.
-   */
-  voiceProvider?: VoiceProvider;
-  /** Instance-level settings threaded onto every block as `ctx.settings`. */
-  settings?: FlowStateSettings;
   stores: StoreRegistry;
-  middleware?: Middleware[];
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
-  logger?: RuntimeLogger;
-  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
-  tracingLevel?: TracingLevel;
+  /**
+   * Instance-level options forwarded verbatim through the execution chain
+   * (resolvers, settings, middleware, logger, tracing). See
+   * {@link RuntimeConfig}.
+   */
+  runtimeConfig: RuntimeConfig;
 };
 
 export type RunActionResolved<

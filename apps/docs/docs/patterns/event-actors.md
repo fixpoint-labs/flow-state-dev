@@ -87,8 +87,8 @@ Use `feedback.emit` in any sequencer to write entries with automatic fan-out:
 import { sequencer } from "@flow-state-dev/core";
 
 const pipeline = sequencer({ name: "main" })
-  .then(someProcessingBlock)
-  .then(feedback.emit);
+  .step(someProcessingBlock)
+  .step(feedback.emit);
 ```
 
 ## Config reference
@@ -165,7 +165,7 @@ const feedbackMonitor = actor({
   name: "feedback_monitor",
   watch: ["observation:slack.message"],
   block: sequencer({ name: "monitor-pipeline" })
-    .then(router({
+    .step(router({
       name: "classify",
       routes: [cheapHandler, expensiveGenerator],
       execute: (input) =>

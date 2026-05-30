@@ -42,7 +42,7 @@ pipeline
     whenResourceChanged({ scope: "session", path: "artifacts/spec.md" }),
     { timeoutMs: 30_000 }
   )
-  .then(readerBlock);
+  .step(readerBlock);
 ```
 
 The reader runs after the writer has flushed its artifact, without the reader having to know how the writer got scheduled.
@@ -80,7 +80,7 @@ pipeline.waitForCondition(
 ```ts
 pipeline
   .waitForCondition(predicate, { timeoutMs: 1_000 })
-  .thenIf(
+  .stepIf(
     ({ timedOut }) => timedOut,
     () => undefined,
     timeoutFallback
@@ -189,7 +189,7 @@ When in doubt, omit `wakeOn` — the default behavior wakes on every item.
 
 ## Limitations
 
-- Predicates are synchronous. Use a regular `.then(handler)` step if you need async checks.
+- Predicates are synchronous. Use a regular `.step(handler)` step if you need async checks.
 - No backpressure. Every item event re-evaluates the predicate; a chatty request multiplies the work. Keep predicates cheap.
 - The wait is request-scoped. Cross-request coordination needs a different primitive (a resource collection, a polling handler).
 - Items are append-only for the lifetime of the request, so a predicate that returned true on entry will keep returning true — that's fine for the initial check, but watch out if your predicate depends on something outside the items array (it may flip back and forth on subsequent reads).

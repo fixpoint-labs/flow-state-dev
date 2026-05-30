@@ -25,7 +25,6 @@ export function createRecordArgument(opts: {
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     execute: async (input, ctx) => {
@@ -44,7 +43,7 @@ export function createRecordArgument(opts: {
         ],
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
 
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,
         backing: "sequencer",
         collectionId: opts.collectionId,
@@ -67,8 +66,6 @@ export function createRecordArgument(opts: {
         { round, agentName: opts.agentName, stance: opts.stance, text },
         { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}` },
       );
-
-      return input;
     },
   });
 }

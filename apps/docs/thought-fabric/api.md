@@ -263,7 +263,7 @@ const chat = generator({
 });
 
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
-  .then(chat)
+  .step(chat)
   .work((response) => ({ content: response }), sec.capture);
 ```
 

@@ -46,7 +46,7 @@ const editorial = roundRobin({
 });
 
 // Use as a step in a flow:
-//   .then(editorial)  // input: { goal: "Review draft X" }
+//   .step(editorial)  // input: { goal: "Review draft X" }
 ```
 
 The default roster agent is an LLM generator that reads the contributions resource and renders prior turns into its prompt. The default synthesizer composes the final deliverable from the transcript.

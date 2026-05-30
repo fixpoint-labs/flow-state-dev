@@ -64,15 +64,15 @@ function message(args: { ts: number; text: string; taskId?: string }): MessageIt
   };
 }
 
-type Factory = () => {
+type Factory = () => Promise<{
   collection: TaskCollectionRef;
   itemLog: OutputItem[];
-};
+}>;
 
 const factories: Array<{ name: string; build: Factory }> = [
   {
     name: "sequencer-backed",
-    build: () => {
+    build: async () => {
       const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
       const captured = createCapturedChanges();
       const itemLog: OutputItem[] = [];
@@ -88,11 +88,11 @@ const factories: Array<{ name: string; build: Factory }> = [
   },
   {
     name: "resource-backed",
-    build: () => {
+    build: async () => {
       const collectionRef = createFakeResourceCollection();
       const captured = createCapturedChanges();
       const itemLog: OutputItem[] = [];
-      const collection = createResourceBackedTaskCollection({
+      const collection = await createResourceBackedTaskCollection({
         collectionId: "c1",
         collection: collectionRef,
         onChange: captured.onChange,
@@ -107,7 +107,7 @@ const factories: Array<{ name: string; build: Factory }> = [
 for (const { name, build } of factories) {
   describe(`TaskHandle.items (${name})`, () => {
     it("returns [] for a task that has not been claimed", async () => {
-      const { collection } = build();
+      const { collection } = await build();
       const t = await collection.addTask({ id: "t1", goal: "do the thing" });
       const handle = collection.get(t.id);
       expect(handle).toBeDefined();
@@ -115,7 +115,7 @@ for (const { name, build } of factories) {
     });
 
     it("returns items in the task's claim window after worker emissions", async () => {
-      const { collection, itemLog } = build();
+      const { collection, itemLog } = await build();
       await collection.addTask({ id: "t1", goal: "g" });
 
       // Synthesize the substrate's task-change events directly into the log.
@@ -140,7 +140,7 @@ for (const { name, build } of factories) {
     });
 
     it("list returns TaskHandles each scoped to their own taskId", async () => {
-      const { collection, itemLog } = build();
+      const { collection, itemLog } = await build();
       await collection.addTasks([
         { id: "t1", goal: "a" },
         { id: "t2", goal: "b" },
@@ -166,7 +166,7 @@ for (const { name, build } of factories) {
     });
 
     it("snapshots at call time — late-arriving items appear on subsequent reads", async () => {
-      const { collection, itemLog } = build();
+      const { collection, itemLog } = await build();
       await collection.addTask({ id: "t1", goal: "g" });
 
       itemLog.push(
@@ -194,7 +194,7 @@ for (const { name, build } of factories) {
         });
       } else {
         const collectionRef = createFakeResourceCollection();
-        collection = createResourceBackedTaskCollection({
+        collection = await createResourceBackedTaskCollection({
           collectionId: "c1",
           collection: collectionRef,
           now: () => 1000,
@@ -220,7 +220,7 @@ describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
       request: { state: { plan: {} } },
     } as unknown as BlockContext;
 
-    const collection = getOrCreateTaskCollection({
+    const collection = await getOrCreateTaskCollection({
       ctx,
       backing: "sequencer",
       collectionId: "plan",

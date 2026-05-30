@@ -91,7 +91,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
 
@@ -157,7 +158,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const pipeline = sequencer({
       name: "fail-seq",
       inputSchema: z.object({})
-    }).then(failing);
+    }).step(failing);
 
     const flow = defineFlow({
       kind: "fail-lifecycle-flow",
@@ -173,7 +174,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeDefined();
 
@@ -214,7 +216,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -242,7 +245,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -273,8 +277,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       name: "id-seq",
       inputSchema: z.object({ x: z.number() })
     })
-      .then(stepA)
-      .then(stepB);
+      .step(stepA)
+      .step(stepB);
 
     const flow = defineFlow({
       kind: "id-conn-flow",
@@ -290,7 +294,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -323,7 +328,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const pipeline = sequencer({ name: "par-seq", inputSchema: z.number() })
       .parallel({ a: branchA, b: branchB })
-      .then(after);
+      .step(after);
 
     const flow = defineFlow({
       kind: "par-flow",
@@ -339,7 +344,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -383,7 +389,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       name: "work-seq",
       inputSchema: z.object({ x: z.number() })
     })
-      .then(main)
+      .step(main)
       .work(bg);
 
     const flow = defineFlow({
@@ -400,7 +406,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -438,7 +445,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     // Traces still stream live (visible on the response emitter) so DevTool
@@ -481,7 +489,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -516,8 +525,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       inputSchema: z.object({ x: z.number() }),
       transient: true
     })
-      .then(innerA)
-      .then(innerB);
+      .step(innerA)
+      .step(innerB);
     const flow = defineFlow({
       kind: "wrap-flow",
       actions: { run: { inputSchema: z.object({ x: z.number() }), block: wrapper } }
@@ -533,7 +542,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());

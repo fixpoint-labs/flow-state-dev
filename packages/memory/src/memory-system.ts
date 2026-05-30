@@ -681,7 +681,7 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  *
  * // Use in a flow:
  * const pipeline = sequencer({ name: 'chat', inputSchema })
- *   .then(chat)
+ *   .step(chat)
  *   .work(mem.capture)
  * ```
  */

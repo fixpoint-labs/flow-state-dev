@@ -88,7 +88,7 @@ A recovered error is handled: the value continues down the chain with its normal
 // priceOrder keeps the pipeline alive when the live-rate lookup fails by
 // falling back to a cached rate inside its own rescue.
 const priceOrder = sequencer({ name: "price-order", inputSchema: order })
-  .then(fetchLiveRate)
+  .step(fetchLiveRate)
   .rescue([{ block: useCachedRate }]);
 
 const enrich = handler({
@@ -104,8 +104,8 @@ const enrich = handler({
 });
 
 sequencer({ name: "order-pipeline", inputSchema: order })
-  .then(priceOrder)
-  .then(enrich);
+  .step(priceOrder)
+  .step(enrich);
 ```
 
 Reach for this when a decision is transient and tied to one run. If the fact needs to outlive the run, write it to state instead.

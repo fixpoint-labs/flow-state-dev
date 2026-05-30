@@ -125,7 +125,7 @@ import { chatPost, chatTyping, chatReact } from "@flow-state-dev/chat-sdk";
 
 const flow = sequencer()
   .tap(chatTyping)
-  .then(answer) // generator
+  .step(answer) // generator
   .tap(chatPost.connectInput((out) => ({ text: out.answer })))
   .tap(chatReact.connectInput(() => ({ emoji: "white_check_mark" })));
 ```

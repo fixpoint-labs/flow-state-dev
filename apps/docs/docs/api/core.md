@@ -100,7 +100,7 @@ const pipeline = sequencer({
 });
 ```
 
-**Methods:** `then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race`, `exitIf`
+**Methods:** `step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
 ### `router(config)`
 

@@ -118,7 +118,7 @@ import { modeSwitch } from "@shared/blocks";
 const pipeline = sequencer({ name: "chat" })
   .tap(counter)        // bubbles up { messageCount }
   .tap(modeSwitch)     // bubbles up { mode }
-  .then(agent);
+  .step(agent);
 ```
 
 If two blocks declare the same field with incompatible types, the framework catches it as a type error during flow construction. Schema conflicts surface at build time, not runtime.
@@ -166,7 +166,7 @@ await ctx.session.appendJournal({
 const recent = await ctx.session.getJournal({ limit: 10 });
 ```
 
-**Resources** — named typed containers for structured data and rich content. See [Resources](/docs/resources/overview).
+**Resources** — named typed containers for structured data and rich content. A request loads only the resources its dispatched action and blocks declare, not every resource in the scope. See [Resources](/docs/resources/overview) and [When resources load](/docs/resources/overview#when-resources-load).
 
 ### Creating sessions
 

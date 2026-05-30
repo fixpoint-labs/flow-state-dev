@@ -33,7 +33,7 @@ export function createLabelFailedReviews(options: LabelFailedReviewsOptions) {
     name: `${name}-label-failed-reviews`,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,

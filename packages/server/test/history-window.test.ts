@@ -167,7 +167,8 @@ describe("history windowing (Slice C)", () => {
       input: "x",
       userId: "u1",
       sessionId: "sess_order",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     const flushIdx = order.indexOf("flush");

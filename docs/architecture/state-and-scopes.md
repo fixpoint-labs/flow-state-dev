@@ -254,7 +254,7 @@ const autoTitle = utility.sessionTitleGenerator({
 });
 
 const pipeline = sequencer({ name: "chat", inputSchema })
-  .then(mainGenerator)
+  .step(mainGenerator)
   .work(autoTitle);     // runs in background, sets session title
 ```
 

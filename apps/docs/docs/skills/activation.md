@@ -37,7 +37,7 @@ The result is a `.tap`-able sequencer. Insert it ahead of your main generator in
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(skillActivator)
-  .then(assistantGenerator);
+  .step(assistantGenerator);
 ```
 
 It reads `input.message`, decides what (if any) skills apply, and writes the matches to `session.state.activeSkills`. The generator that runs after sees activated skills already in its system prompt.

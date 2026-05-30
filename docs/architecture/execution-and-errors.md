@@ -118,7 +118,7 @@ Rescue handlers catch failures from prior steps in a sequencer and route them to
 
 ```ts
 pipeline
-  .then(riskyBlock)
+  .step(riskyBlock)
   .rescue([
     { when: [NetworkError], block: fallbackBlock },
     { when: [ModelError], block: retryWithDifferentModel },
@@ -151,10 +151,10 @@ The work queue enables non-aborting side-chain execution:
 
 ```ts
 pipeline
-  .then(mainProcessing)
+  .step(mainProcessing)
   .work(analyticsBlock)        // queued, won't abort main chain
   .work(notificationBlock)     // queued, won't abort main chain
-  .then(nextMainStep)
+  .step(nextMainStep)
   .waitForWork({ failOnError: false });  // wait for work, keep failures non-terminal
 ```
 

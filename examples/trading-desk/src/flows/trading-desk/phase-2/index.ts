@@ -43,19 +43,19 @@ import {
 
 const bullStep = sequencer({ name: "phase-2-bull-step" })
   .tap(markWritingP2("bull"))
-  .then(consolidateBullMemo)
+  .step(consolidateBullMemo)
   .tap(commitBullMemo)
   .rescue([{ block: markErrorP2("bull") }]);
 
 const bearStep = sequencer({ name: "phase-2-bear-step" })
   .tap(markWritingP2("bear"))
-  .then(consolidateBearMemo)
+  .step(consolidateBearMemo)
   .tap(commitBearMemo)
   .rescue([{ block: markErrorP2("bear") }]);
 
 const researchManagerStep = sequencer({ name: "phase-2-research-manager-step" })
   .tap(markWritingP2("researchManager"))
-  .then(researchManagerGenerator)
+  .step(researchManagerGenerator)
   .tap(commitResearchManagerMemo)
   .rescue([{ block: markErrorP2("researchManager") }]);
 
@@ -68,9 +68,9 @@ export const phase2Pipeline = sequencer({
   },
 })
   .tap(setupPhase2Memos)
-  .then(deriveDebateGoal)
-  .then(phase2RoundRobin)
+  .step(deriveDebateGoal)
+  .step(phase2RoundRobin)
   .tap(validateCitations)
-  .then(bullStep)
-  .then(bearStep)
-  .then(researchManagerStep);
+  .step(bullStep)
+  .step(bearStep)
+  .step(researchManagerStep);

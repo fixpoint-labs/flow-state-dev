@@ -24,6 +24,22 @@
  * state's persistence pipeline, so the second worker reads the now-
  * `in_progress` task and skips it. Result: at most one worker claims any
  * given task.
+ *
+ * Async construction + sync mirror: `ResourceCollectionRef` read methods
+ * (`get`/`getOptional`/`list`/`count`) are uniformly async. To keep the
+ * public `TaskCollectionRef.get/list/count` synchronous, the factory is
+ * `async` and hydrates a sync mirror of resource refs (keyed by task id)
+ * once at construction via a single `await collection.list()`. Each
+ * `ResourceRef.state` is a live getter, so reads through the mirror always
+ * reflect the latest committed state for every task the mirror knows
+ * about — the mirror only tracks the SET of refs, never a frozen
+ * snapshot of their data. Tasks created via `addTask`/`addTasks` are
+ * inserted into the mirror as they are created.
+ *
+ * Caveat: tasks created in the underlying collection by *other* blocks
+ * after construction will not appear in this ref's sync view (accepted
+ * tradeoff — the sync surface is a hydrated snapshot of ids, not a live
+ * view of external inserts).
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -73,16 +89,33 @@ function readTaskState<TInput, TOutput>(
   return ref.state as unknown as Task<TInput, TOutput>;
 }
 
-/** Create a `TaskCollectionRef` backed by a parameterized resource collection. */
-export function createResourceBackedTaskCollection<TInput = unknown, TOutput = unknown>(
+/**
+ * Create a `TaskCollectionRef` backed by a parameterized resource
+ * collection. Async because it awaits one `collection.list()` to hydrate
+ * the sync mirror (see file header). All other reads are synchronous.
+ */
+export async function createResourceBackedTaskCollection<TInput = unknown, TOutput = unknown>(
   options: ResourceBackedOptions
-): TaskCollectionRef<TInput, TOutput> {
+): Promise<TaskCollectionRef<TInput, TOutput>> {
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
   );
+
+  // Sync mirror of resource refs keyed by task id. Hydrated once at
+  // construction (the only async step); reads go through each ref's live
+  // `.state` getter, so the mirror reflects the latest committed state for
+  // every task it knows about. New tasks added via addTask/addTasks are
+  // inserted here. Tasks created in the underlying collection by *other*
+  // blocks after construction will not appear (accepted tradeoff: the
+  // sync TaskCollectionRef surface is a hydrated snapshot of ids, not a
+  // live view of external inserts).
+  const mirror = new Map<string, ResourceRef<JsonObject>>();
+  for (const ref of await options.collection.list()) {
+    mirror.set(readTaskState(ref).id, ref);
+  }
 
   function emit(
     kind: TaskChangeKind,
@@ -100,9 +133,9 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
   }
 
   function listAll(): Task<TInput, TOutput>[] {
-    return options.collection
-      .list()
-      .map((ref) => readTaskState<TInput, TOutput>(ref));
+    return Array.from(mirror.values()).map((ref) =>
+      readTaskState<TInput, TOutput>(ref)
+    );
   }
 
   async function transitionRef(
@@ -112,7 +145,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     flags?: { allowTerminalNoop?: boolean }
   ): Promise<void> {
-    const ref = options.collection.getOptional(id);
+    const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
@@ -142,7 +175,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined
   ): Promise<void> {
-    const ref = options.collection.getOptional(id);
+    const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
@@ -168,7 +201,11 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
 
     async addTask(init) {
       const task = buildInitialTask<TInput, TOutput>(init, now());
-      await options.collection.create(task.id, task as unknown as JsonObject);
+      const created = await options.collection.create(
+        task.id,
+        task as unknown as JsonObject
+      );
+      mirror.set(task.id, created);
       emit("added", task);
       return task;
     },
@@ -177,7 +214,11 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       const created: Task<TInput, TOutput>[] = [];
       for (const init of inits) {
         const task = buildInitialTask<TInput, TOutput>(init, now());
-        await options.collection.create(task.id, task as unknown as JsonObject);
+        const createdRef = await options.collection.create(
+          task.id,
+          task as unknown as JsonObject
+        );
+        mirror.set(task.id, createdRef);
         created.push(task);
         emit("added", task);
       }
@@ -188,7 +229,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       // Live lookup so eligibility re-checks see the freshest dep state
       // even when concurrent workers complete dependencies mid-scan.
       const lookup = (id: string): Task | undefined => {
-        const r = options.collection.getOptional(id);
+        const r = mirror.get(id);
         return r === undefined ? undefined : (readTaskState(r) as Task);
       };
       const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
@@ -198,7 +239,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
 
       for (const candidate of candidates) {
-        const candidateRef = options.collection.getOptional(candidate.id);
+        const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
 
         let claimed: Task<TInput, TOutput> | undefined;
@@ -239,7 +280,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       // the error as `feedback` for the next attempt. The next claim
       // will increment `attempts` again. Hard-fail (no budget left, or
       // no budget set) goes terminal.
-      const candidateRef = options.collection.getOptional(id);
+      const candidateRef = mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
         if (shouldRetryOnFail(current as Task)) {
@@ -300,7 +341,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       const at = nowOverride ?? now();
       const reclaimed: Task<TInput, TOutput>[] = [];
 
-      for (const taskRef of options.collection.list()) {
+      for (const taskRef of mirror.values()) {
         const task = readTaskState<TInput, TOutput>(taskRef);
         if (
           task.status !== "in_progress" ||
@@ -378,7 +419,7 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     },
 
     get(id) {
-      const taskRef = options.collection.getOptional(id);
+      const taskRef = mirror.get(id);
       return taskRef === undefined
         ? undefined
         : wrap(readTaskState<TInput, TOutput>(taskRef));

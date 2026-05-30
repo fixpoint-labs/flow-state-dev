@@ -79,7 +79,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -106,7 +107,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     expect(secondAttemptId).toBe(last.provenance.blockInstanceId);
   });
 
-  it("sequencer nesting: nested .then() steps get distinct path segments per position", async () => {
+  it("sequencer nesting: nested .step() steps get distinct path segments per position", async () => {
     const step1 = handler({
       name: "step-1",
       inputSchema: z.number(),
@@ -121,8 +122,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     });
 
     const pipeline = sequencer({ name: "nested", inputSchema: z.number() })
-      .then(step1)
-      .then(step2);
+      .step(step1)
+      .step(step2);
 
     const flow = defineFlow({
       kind: "nested-flow",
@@ -141,7 +142,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -158,8 +160,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
 
     const step1Path = parseId(step1Trace!.provenance.blockInstanceId).path;
     const step2Path = parseId(step2Trace!.provenance.blockInstanceId).path;
-    expect(step1Path).toBe("root/then[0]");
-    expect(step2Path).toBe("root/then[1]");
+    expect(step1Path).toBe("root/step[0]");
+    expect(step2Path).toBe("root/step[1]");
   });
 
   it("parallel branches do not collide: distinct paths per branch", async () => {
@@ -196,7 +198,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -236,7 +239,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     });
 
     const pipeline = sequencer({ name: "rescued-pipe", inputSchema: z.number() })
-      .then(failingStep)
+      .step(failingStep)
       .rescue([{ block: rescueHandler }]);
 
     const flow = defineFlow({
@@ -256,7 +259,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -272,12 +276,12 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     expect(rescueTrace).toBeDefined();
     expect(failTrace).toBeDefined();
 
-    // Rescue path lives under rescue[N], distinct from the main then[N].
+    // Rescue path lives under rescue[N], distinct from the main step[N].
     expect(parseId(rescueTrace!.provenance.blockInstanceId).path).toMatch(
       /^root\/rescue\[0\]$/
     );
     expect(parseId(failTrace!.provenance.blockInstanceId).path).toMatch(
-      /^root\/then\[0\]$/
+      /^root\/step\[0\]$/
     );
   });
 
@@ -311,7 +315,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       sessionId: "sess",
       requestId,
       stores: createInMemoryStores(),
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -357,7 +362,8 @@ describe("FIX-398: deterministic blockInstanceId", () => {
       input: 1,
       userId: "user",
       sessionId: "sess",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();

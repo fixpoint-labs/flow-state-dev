@@ -141,7 +141,7 @@ A first-party inspector app for real-time flow visualization. See blocks executi
 
 ### Block not receiving expected input?
 
-Check connector types. Sequencer steps pass output to the next block's input. If you used `then(connector, block)`, the connector transforms the value. Verify the connector's return type matches the block's `inputSchema`. Use `fsdev block` with the exact input shape you expect.
+Check connector types. Sequencer steps pass output to the next block's input. If you used `step(connector, block)`, the connector transforms the value. Verify the connector's return type matches the block's `inputSchema`. Use `fsdev block` with the exact input shape you expect.
 
 ### State not updating?
 

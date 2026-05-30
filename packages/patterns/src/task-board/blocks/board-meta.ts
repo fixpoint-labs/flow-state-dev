@@ -40,7 +40,7 @@ export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
 
 export interface BoardMetaOptions {
   name: string;
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   collectionId: string;
 }
 
@@ -94,7 +94,7 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
     transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      const collection = collectionFactory(ctx);
+      const collection = await collectionFactory(ctx);
       const all = collection.list();
       const counts = {
         total: all.length,

@@ -123,6 +123,9 @@ export function handler<
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
     declaredResources,
+    // A handler is a leaf — its OWN declarations equal its bubble-up set
+    // (own `resources` + capability-injected resources, no descendants).
+    ownDeclaredResources: declaredResources,
     resolvedCapabilities,
   });
 }

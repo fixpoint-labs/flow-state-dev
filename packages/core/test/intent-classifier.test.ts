@@ -134,7 +134,7 @@ describe("utility.intentClassifier", () => {
       inputSchema: z.object({ message: z.string() })
     })
       .map((input) => input.message)
-      .then(classify);
+      .step(classify);
 
     const ctx = createMockContext({
       resolveModel: () => ({

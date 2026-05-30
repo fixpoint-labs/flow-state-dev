@@ -59,17 +59,20 @@ export function createApplySkillActivation(options: ApplySkillActivationOptions 
       // Fork / pattern mode entries surface correctly on the badge and
       // signal to `runSkill` which dispatch route to take.
       const collection = getCollection(ctx, collectionKey);
-      const activeSkillEntries = skills.map((s) => {
-        const manifest = collection?.getOptional(skillManifestKey(s.name));
-        const mode = (manifest?.state as SkillState | undefined)?.contextMode ?? "inline";
-        return {
-          name: s.name,
-          mode,
-          input: s.input,
-          activatedAt: Date.now(),
-          source: s.source,
-        };
-      });
+      const activeSkillEntries = await Promise.all(
+        skills.map(async (s) => {
+          const manifest = await collection?.getOptional(skillManifestKey(s.name));
+          const mode =
+            (manifest?.state as SkillState | undefined)?.contextMode ?? "inline";
+          return {
+            name: s.name,
+            mode,
+            input: s.input,
+            activatedAt: Date.now(),
+            source: s.source,
+          };
+        }),
+      );
       await ctx.session.patchState({ activeSkills: activeSkillEntries });
 
       return { skillCount: skills.length, activationSource };

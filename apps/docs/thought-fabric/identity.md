@@ -53,7 +53,7 @@ const chat = generator({
 })
 
 const pipeline = sequencer({ name: 'review', inputSchema })
-  .then(chat)
+  .step(chat)
   .work(
     (response) => ({ content: response }),
     sec.capture,
@@ -216,7 +216,7 @@ Inside a block that declares `uses: [sec.capability]`, you get `ctx.cap.perspect
 
 ```ts
 const pipeline = sequencer({ name: 'review', inputSchema })
-  .then(chatGenerator)
+  .step(chatGenerator)
   .work(
     (response) => ({ content: response }),
     sec.capture,
@@ -281,7 +281,7 @@ const analyze = perspectiveAnalyze({ perspective: securityEngineer, model: 'pres
 const observe = perspectiveObserve({ perspective: securityEngineer })
 
 const pipeline = sequencer({ name: 'manual-capture' })
-  .then(analyze)
+  .step(analyze)
   .tap(observe)
 ```
 
@@ -369,7 +369,7 @@ const secAnalyze = perspectiveAnalyze({ perspective: securityEngineer, model: 'p
 const perfAnalyze = perspectiveAnalyze({ perspective: performanceEngineer, model: 'preset/fast' })
 
 const review = sequencer({ name: 'multi-perspective-review' })
-  .thenAll([secAnalyze, perfAnalyze])
+  .stepAll([secAnalyze, perfAnalyze])
 ```
 
 Use one resource-backed `system()` capability per block or flow. The helpers are exposed as `ctx.cap.perspective`, and resources are declared under `perspectiveObservations` / `perspectivePositions`, so multiple resource-backed perspective systems would currently collide at the capability/resource namespace. If you need two sticky perspectives, run them in separate flows or keep one sticky and use static blocks for the others.
@@ -618,7 +618,7 @@ const chat = generator({ name: 'chat', model: 'preset/default', prompt: '...' })
 const auditor = constitutionAuditor({ constitution: values, model: 'preset/fast' })
 
 const pipeline = sequencer({ name: 'chat-with-audit', inputSchema: chatInput })
-  .then(chat)
+  .step(chat)
   .tap(auditor)
 ```
 

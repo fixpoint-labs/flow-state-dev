@@ -192,12 +192,12 @@ export function formatPersonaCritique(label: string, memo: any): string {
 }
 
 /** Render the four Phase 1 analyst memos as a compact block. */
-export function formatAnalystMemos(memos: {
-  getOptional: (k: string) => { state: any } | undefined;
-}): string {
+export async function formatAnalystMemos(memos: {
+  getOptional: (k: string) => Promise<{ state: any } | undefined>;
+}): Promise<string> {
   const blocks: string[] = [];
   for (const [, mapping] of Object.entries(PHASE_1_MEMO_KEYS)) {
-    const ref = memos.getOptional(mapping.collectionKey);
+    const ref = await memos.getOptional(mapping.collectionKey);
     const role = AGENTS[mapping.agentName].role;
     blocks.push(formatMemoBlock(`${role}`, ref?.state));
   }

@@ -141,7 +141,7 @@ async function resolvePromptBody(
   // block-ref / agent-ref branches before reaching here.
   const promptRef = spec.promptRef!;
   const key = skillFileKey(deps.skillName, promptRef);
-  const ref = deps.skillCollection.getOptional(key);
+  const ref = await deps.skillCollection.getOptional(key);
   if (!ref) {
     throw new Error(
       `Worker '${workerKey}': prompt-ref '${promptRef}' not found in skill folder (resolved key: ${key})`,

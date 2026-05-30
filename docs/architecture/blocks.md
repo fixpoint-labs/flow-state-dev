@@ -93,7 +93,7 @@ const research = sequencer({
   name: "research",
   stateSchema: z.object({ progress: z.number().default(0) }),
   defaultState: { progress: 0 },
-}).then(updateProgress);
+}).step(updateProgress);
 ```
 
 When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
@@ -296,8 +296,8 @@ Fluent DSL for composing blocks into pipelines. The sequencer is the primary com
 import { sequencer } from "@flow-state-dev/core";
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
-  .then(chatGenerator)
-  .then(incrementCounter);
+  .step(chatGenerator)
+  .step(incrementCounter);
 ```
 
 ### DSL Methods (20 total)
@@ -309,9 +309,9 @@ definition and resolution semantics.
 
 | Method | Purpose | `block_trace` kind |
 |--------|---------|---------------------|
-| `then(block)` | Execute block, pass output to next step | `ref` → child's item |
-| `then(connector, block)` | Transform input before block execution | `ref` → child's item |
-| `thenIf(condition, block)` | Conditional step execution | `ref` if taken, carries prior descriptor if skipped |
+| `step(block)` | Execute block, pass output to next step | `ref` → child's item |
+| `step(connector, block)` | Transform input before block execution | `ref` → child's item |
+| `stepIf(condition, block)` | Conditional step execution | `ref` if taken, carries prior descriptor if skipped |
 | `map(fn)` | Transform current value without a block | `inline` (novel content) |
 | `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
 | `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
@@ -320,14 +320,13 @@ definition and resolution semantics.
 | `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
 | `work(block)` | Queue non-aborting side-chain execution | passthrough |
-| `background(block)` | Alias for `.work()` | passthrough |
 | `waitForWork(opts)` | Wait for queued work to complete | passthrough |
 | `tap(block)` | Side effect without changing payload | passthrough |
 | `tapIf(condition, block)` | Conditional side effect | passthrough |
 | `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
 | `branch(branches)` | Conditional multi-path execution | `ref` → selected branch's item |
-| `thenAll(blocks)` | Run array of blocks concurrently, collect all results | `structure` (array of refs) |
-| `thenAny(blocks)` | Try blocks sequentially, first success wins | `ref` → winning branch's item |
+| `stepAll(blocks)` | Run array of blocks concurrently, collect all results | `structure` (array of refs) |
+| `stepAny(blocks)` | Try blocks sequentially, first success wins | `ref` → winning branch's item |
 | `race(blocks)` | Run blocks concurrently, first success wins | `ref` → winning branch's item |
 | `exitIf(condition)` | Conditional early exit from chain | passthrough |
 
@@ -349,7 +348,7 @@ Steps support inline block creation:
 
 ```ts
 pipeline
-  .then(handler, {
+  .step(handler, {
     name: "validate",
     outputSchema: z.string(),
     execute: async (input, ctx) => { /* ... */ return input; }
@@ -397,7 +396,7 @@ const mapped = myBlock.connectOutput((output, ctx) => output.summary);
 Sequencer step-level connectors are preferred over `connectInput` for better type inference:
 
 ```ts
-pipeline.then((output, ctx) => ({ query: output.text }), searchBlock);
+pipeline.step((output, ctx) => ({ query: output.text }), searchBlock);
 ```
 
 ## Block Naming

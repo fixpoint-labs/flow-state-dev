@@ -256,7 +256,7 @@ describe("parallelTasks pattern", () => {
     });
   });
 
-  it("works as a .then() step in another sequencer", async () => {
+  it("works as a .step() step in another sequencer", async () => {
     const customPlanner = handler({
       name: "pt-then-planner",
       inputSchema: z.any(),

@@ -2,10 +2,10 @@
  * Build the per-iteration worker step for the Task Board pipeline.
  *
  * The worker step takes a `Task` (piped from `claimTask` via the
- * pipeline's `.thenIf` connector) and produces whatever the worker
+ * pipeline's `.stepIf` connector) and produces whatever the worker
  * returns. The worker block runs as a first-class step in the
  * sequencer — it is NOT invoked from inside another block's `execute`
- * (BP-011). The pipeline composes it directly via `.then(workerStep)`.
+ * (BP-011). The pipeline composes it directly via `.step(workerStep)`.
  *
  * Two shapes:
  *
@@ -136,7 +136,7 @@ export interface BuildWorkerStepOptions {
    * materialized into `TaskWorkerInput.deps` from the live collection
    * state.
    */
-  collection: (ctx: BlockContext) => TaskCollectionRef;
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /**
    * Optional flow-policy resolver (FIX-610). When the resolver returns
    * a `{ flowPolicy, ledger }` pair, `packWorkerInput` stamps the
@@ -187,8 +187,8 @@ export function buildWorkerStep(
   };
 
   if (isUniformWorker(workers)) {
-    return workers.connectInput<Task>((task, ctx) =>
-      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
+    return workers.connectInput<Task>(async (task, ctx) =>
+      packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
     );
   }
 
@@ -198,8 +198,8 @@ export function buildWorkerStep(
   // against the live collection state.
   const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
   for (const [assignee, worker] of Object.entries(workers)) {
-    connectedWorkers[assignee] = worker.connectInput<Task>((task, ctx) =>
-      packWorkerInput(task, collectionFactory(ctx), packOpts(ctx))
+    connectedWorkers[assignee] = worker.connectInput<Task>(async (task, ctx) =>
+      packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
     );
   }
 

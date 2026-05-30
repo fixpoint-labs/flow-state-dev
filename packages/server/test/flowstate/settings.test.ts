@@ -35,8 +35,10 @@ async function runCapturingSettings(
     input: {},
     userId: "u1",
     requestId: "req_settings_test",
-    settings,
-    stores: createInMemoryStores()
+    stores: createInMemoryStores(),
+    runtimeConfig: {
+      settings
+    }
   });
 }
 

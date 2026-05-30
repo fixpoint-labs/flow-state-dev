@@ -148,7 +148,7 @@ const board = taskBoard({ name: "research", collection: { backing: "request", co
 const cascadeSkip = createCascadeSkipDependents({ name: "research" });
 
 sequencer({ name: "research" })
-  .then(board.block)
+  .step(board.block)
   .tap(cascadeSkip); // transitively cancels pendings whose deps errored
 ```
 

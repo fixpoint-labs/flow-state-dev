@@ -1,6 +1,6 @@
 # Good and Bad Tests
 
-In FSD, the public surface of a block is its `inputSchema`, `outputSchema`, the items it emits to the stream, the state ops it applies, the lifecycle hooks it fires, and any errors it surfaces. Tests cross that surface. Anything beyond it — which helper got called, which `.then()` step intermediate value looked like — is implementation.
+In FSD, the public surface of a block is its `inputSchema`, `outputSchema`, the items it emits to the stream, the state ops it applies, the lifecycle hooks it fires, and any errors it surfaces. Tests cross that surface. Anything beyond it — which helper got called, which `.step()` step intermediate value looked like — is implementation.
 
 ## Good tests
 
@@ -50,7 +50,7 @@ Characteristics:
 
 - Asserts on observable outcomes (output values, emitted items, state changes)
 - Uses public block / pattern surfaces only
-- Does not assert on intermediate `.then()` step shapes inside a sequencer
+- Does not assert on intermediate `.step()` step shapes inside a sequencer
 - Does not assert on which model call was made or in what order
 - Survives internal refactors — renaming a private helper or restructuring composition does not break it
 - Reads like a behavioural spec

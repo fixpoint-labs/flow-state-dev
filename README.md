@@ -24,8 +24,8 @@ const trackUsage = handler({
 });
 
 const pipeline = sequencer({ name: "chat-pipeline" })
-  .then(chat)
-  .then(trackUsage);
+  .step(chat)
+  .step(trackUsage);
 
 export default defineFlow({
   kind: "my-app",
@@ -46,7 +46,7 @@ That's a streaming chat with conversation history, session state, and atomic cou
 |-------|-------------|
 | **handler** | Pure logic — validate, transform, mutate state, implement tools |
 | **generator** | Call an LLM with managed tool loops, streaming, and structured output repair |
-| **sequencer** | Compose blocks into pipelines with `.then()`, `.parallel()`, `.rescue()`, `.forEach()`, and 10 more DSL methods |
+| **sequencer** | Compose blocks into pipelines with `.step()`, `.parallel()`, `.rescue()`, `.forEach()`, and 10 more DSL methods |
 | **router** | Dispatch to different pipelines at runtime based on input or state |
 
 Any block or sequence of blocks can be used as a tool. A single tool call can trigger an entire multi-step pipeline — your AI's tools can be as sophisticated as any other part of your workflow.

@@ -105,8 +105,10 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
     userId: "u",
     input: undefined,
     signal,
-    modelResolver: createMockModelResolver({ policy: "allow" }),
-    stores: createInMemoryStores()
+    stores: createInMemoryStores(),
+    runtimeConfig: {
+      modelResolver: createMockModelResolver({ policy: "allow" })
+    }
   });
 }
 
@@ -150,9 +152,9 @@ describe("FIX-663: background work signal isolation", () => {
     // scopes deep, so its ctx.signal is set only if the override propagated
     // through every _withExecutionScope, not just the first.
     const inner = sequencer({ name: "inner", inputSchema: z.unknown() })
-      .then(slowTask("deep-bg", marker));
+      .step(slowTask("deep-bg", marker));
     const nested = sequencer({ name: "nested", inputSchema: z.unknown() })
-      .then(inner);
+      .step(inner);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .work(nested)
@@ -172,9 +174,9 @@ describe("FIX-663: background work signal isolation", () => {
     const marker: TaskMarker = { ran: false, abortedWhenDone: false };
 
     const inner = sequencer({ name: "inner", inputSchema: z.unknown() })
-      .then(slowTask("deep-bg", marker));
+      .step(slowTask("deep-bg", marker));
     const nested = sequencer({ name: "nested", inputSchema: z.unknown() })
-      .then(inner);
+      .step(inner);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .work(nested)

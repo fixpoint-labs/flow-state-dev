@@ -36,20 +36,20 @@ Blocks inside the sequencer can declare `sequencerStateSchema` to type `ctx.sequ
 
 ## Method Reference
 
-### `then(block)` — Sequential Step
+### `step(block)` — Sequential Step
 
 Execute a block, passing the previous output as input.
 
 ```ts
 pipeline
-  .then(processBlock)
-  .then(saveBlock);
+  .step(processBlock)
+  .step(saveBlock);
 ```
 
 With a connector to transform input:
 
 ```ts
-pipeline.then(
+pipeline.step(
   (output, ctx) => ({ query: output.text }),
   searchBlock
 );
@@ -58,19 +58,19 @@ pipeline.then(
 Inline block definition:
 
 ```ts
-pipeline.then(handler, {
+pipeline.step(handler, {
   name: "validate",
   outputSchema: z.string(),
   execute: async (input, ctx) => input.toUpperCase(),
 });
 ```
 
-### `thenIf(condition, block)` — Conditional Step
+### `stepIf(condition, block)` — Conditional Step
 
 Execute only when condition returns true. Output type is union of current and step output.
 
 ```ts
-pipeline.thenIf(
+pipeline.stepIf(
   (input, ctx) => ctx.session.state.needsReview,
   reviewBlock
 );
@@ -203,8 +203,8 @@ Jump back to a previously named step. **Always bounded** with `maxIterations`.
 
 ```ts
 pipeline
-  .then(generateBlock)  // step name comes from block.name
-  .then(validateBlock)
+  .step(generateBlock)  // step name comes from block.name
+  .step(validateBlock)
   .loopBack("generate-block", {
     when: (value, ctx) => !value.isValid,
     maxIterations: 3,
@@ -219,10 +219,10 @@ Queue non-aborting side-chain execution. The main pipeline continues immediately
 
 ```ts
 pipeline
-  .then(mainProcessing)
+  .step(mainProcessing)
   .work(analyticsBlock)       // runs in background
   .work(notificationBlock)    // runs in background
-  .then(nextStep);            // continues immediately
+  .step(nextStep);            // continues immediately
 ```
 
 With a connector:
@@ -235,16 +235,6 @@ pipeline.work(
 );
 ```
 
-**Alias: `.background()`** — identical to `.work()`, reads more naturally in fan-out contexts:
-
-```ts
-pipeline
-  .then(mainProcessing)
-  .background(analyticsBlock)
-  .background(notificationBlock)
-  .then(nextStep);
-```
-
 **Key:** Work failures do NOT abort the main chain. They are logged and surface on the DevTool's trace channel.
 
 **Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool exactly once before terminal status; the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier in the dispatching sequencer.
@@ -255,12 +245,12 @@ Queue a background sidechain only when a condition is truthy. Complete no-op whe
 
 ```ts
 pipeline
-  .then(mainProcessing)
+  .step(mainProcessing)
   .workIf(
     (ctx) => ctx.session.state.features.memory,
     memoryObserveBlock
   )
-  .then(nextStep);  // continues immediately regardless of condition
+  .step(nextStep);  // continues immediately regardless of condition
 ```
 
 The condition is evaluated once per execution before dispatching. It receives the full `BlockContext` so it can read live session/request state.
@@ -309,7 +299,7 @@ Execute a block for its side effects without changing the main payload.
 ```ts
 pipeline
   .tap(logBlock)           // log but don't change output
-  .then(nextStep);         // receives original output, not log result
+  .step(nextStep);         // receives original output, not log result
 
 // With a function instead of a block
 pipeline.tap(async (value, ctx) => {
@@ -332,7 +322,7 @@ Catch errors from prior steps and route to recovery blocks.
 
 ```ts
 pipeline
-  .then(riskyBlock)
+  .step(riskyBlock)
   .rescue([
     { when: [NetworkError], block: retryWithBackupBlock },
     { when: [ModelError], block: fallbackModelBlock },
@@ -346,12 +336,12 @@ pipeline
 - Failure propagates to the next handler or bubbles up
 - Only handles errors from steps **before** the rescue in the chain
 
-### `thenAll(blocks, options?)` — Parallel Array Execution
+### `stepAll(blocks, options?)` — Parallel Array Execution
 
 Run an array of blocks concurrently with the same input. Returns results as an ordered array.
 
 ```ts
-pipeline.thenAll([
+pipeline.stepAll([
   analysisBlock,
   summaryBlock,
   { connector: (input) => input.text, block: tagBlock },
@@ -362,14 +352,14 @@ pipeline.thenAll([
 
 Like `Promise.all` — if any block throws, the entire step fails. Results are ordered by array index regardless of completion order.
 
-**Difference from `.parallel()`:** `.parallel()` returns a named object `{ key: result }`. `.thenAll()` returns an ordered array `[result, ...]`. Use `.parallel()` when you need named access to results. Use `.thenAll()` when you have a dynamic list of blocks or prefer array indexing.
+**Difference from `.parallel()`:** `.parallel()` returns a named object `{ key: result }`. `.stepAll()` returns an ordered array `[result, ...]`. Use `.parallel()` when you need named access to results. Use `.stepAll()` when you have a dynamic list of blocks or prefer array indexing.
 
-### `thenAny(blocks)` — First Successful Result (Sequential)
+### `stepAny(blocks)` — First Successful Result (Sequential)
 
 Try blocks sequentially in order. Return the first successful result; skip remaining blocks.
 
 ```ts
-pipeline.thenAny([
+pipeline.stepAny([
   primaryProvider,
   fallbackProviderA,
   fallbackProviderB,
@@ -402,11 +392,11 @@ Exit the sequencer chain early when a condition is met. The current value become
 
 ```ts
 pipeline
-  .then(generateBlock)
-  .then(validateBlock)
+  .step(generateBlock)
+  .step(validateBlock)
   .exitIf((value, ctx) => value.confidence > 0.95)
-  .then(refineBlock)   // skipped if confidence is high enough
-  .then(finalizeBlock); // also skipped
+  .step(refineBlock)   // skipped if confidence is high enough
+  .step(finalizeBlock); // also skipped
 ```
 
 Does not skip rescue handlers for errors that occurred before the exit. Outstanding `.work()` tasks dispatched by this sequencer remain on the per-request pool and are drained by the request executor (FIX-554).
@@ -417,12 +407,12 @@ Throw a supplied error when a condition is met. The error can be a static `Error
 
 ```ts
 pipeline
-  .then(phase1Pipeline)
+  .step(phase1Pipeline)
   .throwIf(
     (_value, ctx) => everyAnalystErrored(ctx),
     (_value, ctx) => new EarlyStopError("phase-1-no-data", `No data for ${ctx.session.state.ticker}.`),
   )
-  .then(phase2Pipeline);
+  .step(phase2Pipeline);
 ```
 
 Pairs naturally with `.rescue([{ when: [TypedError], block: handler }])` when the guard should produce a clean terminal state rather than a runtime error. Unlike `.exitIf`, the chain does not continue — control transfers to the nearest matching rescue handler, or out of the sequencer entirely if none matches.
@@ -450,11 +440,11 @@ Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `workIf`, `background`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `workIf`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
-  .then(blockWithSessionResources)     // collects session resources
+  .step(blockWithSessionResources)     // collects session resources
   .parallel({
     a: blockWithUserResources,         // collects user resources
     b: blockWithProjectResources,      // collects project resources
@@ -473,7 +463,7 @@ Nested sequencers bubble their collected resources upward — a sequencer used a
 Two schemas coexist on a sequencer, and the distinction matters:
 
 - `config.outputSchema` — user-declared. The contract the author asserts the sequencer produces. Optional.
-- `lastOutputSchema` — inferred. The schema tracked from the chain's tail step as the DSL builds the chain. Updated by every schema-bearing op (`then`, `map`, `parallel`, etc.).
+- `lastOutputSchema` — inferred. The schema tracked from the chain's tail step as the DSL builds the chain. Updated by every schema-bearing op (`step`, `map`, `parallel`, etc.).
 
 `inputSchema` is inferred from the first block when not set explicitly.
 
@@ -500,8 +490,8 @@ The build-time check trades depth for safety against false negatives in the comm
 
 - It does not recurse into nested object shapes, refinements, brands, or union variants.
 - `.transform()` / `.refine()`-wrapped schemas surface as `ZodEffects`, so the comparison stops at that kind. A wrapped declared schema against a plain inferred one (or the reverse) reports a `ZodEffects` kind mismatch rather than comparing the inner shapes.
-- `thenIf` false-path and `branch` non-first-branch outcomes can widen the real runtime shape in ways the tracked `lastOutputSchema` does not reflect, so `.validate()` can produce a false positive (pass when the runtime would differ).
-- `thenAny`, `race`, `thenAll`, and `branch` erase the tracked tail schema (`lastOutputSchema` becomes undefined). After one of these, `.validate()` no-ops. The runtime gate still catches an actual mismatch — the build-time check is the part that goes quiet, not the runtime enforcement.
+- `stepIf` false-path and `branch` non-first-branch outcomes can widen the real runtime shape in ways the tracked `lastOutputSchema` does not reflect, so `.validate()` can produce a false positive (pass when the runtime would differ).
+- `stepAny`, `race`, `stepAll`, and `branch` erase the tracked tail schema (`lastOutputSchema` becomes undefined). After one of these, `.validate()` no-ops. The runtime gate still catches an actual mismatch — the build-time check is the part that goes quiet, not the runtime enforcement.
 
 `.validate()` is terminal (returns `void`, not the sequencer). Ops added after a `.validate()` call are outside that call's coverage.
 

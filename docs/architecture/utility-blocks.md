@@ -23,11 +23,11 @@ const pipeline = sequencer({
   inputSchema: z.object({ document: z.string() }),
 })
   .map((input) => input.document)
-  .then(summarize)
-  .then(analyze);
+  .step(summarize)
+  .step(analyze);
 ```
 
-Every utility factory accepts a `name` (required) and returns a block that can be chained via `.then()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` (defaults to `"preset/fast"`) and an optional `outputSchema` to override the default output shape.
+Every utility factory accepts a `name` (required) and returns a block that can be chained via `.step()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` (defaults to `"preset/fast"`) and an optional `outputSchema` to override the default output shape.
 
 ## Utility catalog
 
@@ -115,7 +115,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ source: z.string() }),
 })
   .map((input) => input.source)
-  .then(utility.contextReducer({ name: "distill", mode: "distill" }));
+  .step(utility.contextReducer({ name: "distill", mode: "distill" }));
 ```
 
 ---
@@ -166,7 +166,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ transcript: z.string() }),
 })
   .map((input) => input.transcript)
-  .then(extract)
+  .step(extract)
   .tap(async (output, ctx) => {
     // Write extracted memories to session resources
     for (const memory of output.memories) {
@@ -220,7 +220,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ request: z.string() }),
 })
   .map((input) => input.request)
-  .then(decompose);
+  .step(decompose);
 
 // Downstream logic can read tasks[].deps to schedule
 // independent tasks in parallel and dependent tasks sequentially.
@@ -285,7 +285,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ parts: z.array(z.string()) }),
 })
   .map((input) => ({ parts: input.parts }))
-  .then(compose);
+  .step(compose);
 ```
 
 ---
@@ -404,7 +404,7 @@ const pipeline = sequencer({
   }),
 })
   .map((input) => [input.primary, input.secondary])
-  .then(utility.combiner({ name: "merge" }));
+  .step(utility.combiner({ name: "merge" }));
 ```
 
 ---
@@ -451,7 +451,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ artifacts: z.array(z.string()) }),
 })
   .map((input) => input.artifacts)
-  .then(synthesize);
+  .step(synthesize);
 ```
 
 ---
@@ -516,8 +516,8 @@ const pipeline = sequencer({
   inputSchema: z.object({ artifact: z.string() }),
 })
   .map((input) => input.artifact)
-  .then(analyze)
-  .then(route);
+  .step(analyze)
+  .step(route);
 ```
 
 ---
@@ -600,8 +600,8 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .map((input) => input.message)
-  .then(classify)
-  .then(intentRouter);
+  .step(classify)
+  .step(intentRouter);
 ```
 
 For most use cases, prefer `intentRouter` (below) which eliminates this boilerplate entirely.
@@ -671,7 +671,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .map((input) => input.message)
-  .then(triage);
+  .step(triage);
 ```
 
 **Comparison with manual `intentClassifier` + `router`:**
@@ -788,21 +788,21 @@ const research = sequencer({
 })
   // Decompose the question into subtasks
   .map((input) => input.question)
-  .then(decompose)
+  .step(decompose)
 
   // Summarize each subtask in parallel
   .map((output) => output.tasks.map((task) => task.goal))
   .forEach(summarize)
 
   // Analyze the collected summaries
-  .then(analyze)
+  .step(analyze)
 
   // Synthesize into a unified answer
   .map((analysis) => ({
     findings: analysis.findings,
     recommendation: analysis.recommendation,
   }))
-  .then(synthesize);
+  .step(synthesize);
 ```
 
 **Data flow:** `question` → `decomposer` → `[subtasks]` → `forEach(summarizer)` → `analyzer` → `synthesizer` → final output
@@ -879,7 +879,7 @@ Represents the classification result produced by the intentClassifier.
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.
-- Every utility returns a standard `BlockDefinition` and is immediately composable via sequencer methods (`.then()`, `.parallel()`, `.forEach()`, etc.), router routes, or flow definitions.
+- Every utility returns a standard `BlockDefinition` and is immediately composable via sequencer methods (`.step()`, `.parallel()`, `.forEach()`, etc.), router routes, or flow definitions.
 - Non-string inputs are automatically serialized to JSON with 2-space indentation before being sent to the model.
 
 ## Imports

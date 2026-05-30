@@ -38,6 +38,7 @@ const PRIMARY_STRUCT_AGENTS = new Set<string>([
   "researchManager",
   "trader",
   "portfolioManager",
+  "thesisValidator",
 ]);
 
 const PHASE_1_ANALYST_AGENTS = new Set<string>([

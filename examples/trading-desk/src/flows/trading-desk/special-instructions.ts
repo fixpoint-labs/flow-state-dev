@@ -51,8 +51,11 @@ type ActivePhase =
   | "phase-2"
   | "phase-3"
   | "phase-4"
-  | "phase-5";
+  | "phase-5"
+  | "phase-6";
 
+// Phase 6 (thesis audit) has no per-phase instruction field — only the
+// global block applies there — so it maps to `null` like `idle`.
 const PHASE_KEY: Record<ActivePhase, keyof SpecialInstructionsState | null> = {
   idle: null,
   "phase-1": "phase1",
@@ -60,6 +63,7 @@ const PHASE_KEY: Record<ActivePhase, keyof SpecialInstructionsState | null> = {
   "phase-3": "phase3",
   "phase-4": "phase4",
   "phase-5": "phase5",
+  "phase-6": null,
 };
 
 /**

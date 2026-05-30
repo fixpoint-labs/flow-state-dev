@@ -141,10 +141,10 @@ Update policy:
 - Status: Active
 - Date: 2026-04-08
 - Rule:
-  - When a block only mutates state (session, user, sequencer) and its output carries no meaningful information forward, chain it with `.tap()` instead of `.then()`.
+  - When a block only mutates state (session, user, sequencer) and its output carries no meaningful information forward, chain it with `.tap()` instead of `.step()`.
   - Such handlers must not declare `outputSchema` and must not `return input` at the end of `execute`.
 - Why:
-  - Every block chained with `.then()` appends its output to the items log. Returning `input` as a passthrough pollutes the items log with redundant copies of data that carry no new information. Items should contain meaningful output — LLM responses, structured results — not echoes of prior state. State mutations are already observable through the state change log.
+  - Every block chained with `.step()` appends its output to the items log. Returning `input` as a passthrough pollutes the items log with redundant copies of data that carry no new information. Items should contain meaningful output — LLM responses, structured results — not echoes of prior state. State mutations are already observable through the state change log.
   - `.tap()` communicates intent clearly: this block runs for its side effects, the upstream data flows through unchanged.
 
 
@@ -156,7 +156,7 @@ Update policy:
 - Rule:
   - When a router selects a block that requires input transformation, perform the transformation inside the router's `execute` function using `connectInput`, not by pre-connecting the block at definition time.
   - Return `block.connectInput(() => transformedInput)` (using closure over the router's `input`) rather than declaring a permanently-adapted variant of the block.
-  - `connectInput` works natively on all block kinds including sequencers — no wrapper block is created; the full interface (`.then()`, `.tap()`, etc.) is preserved.
+  - `connectInput` works natively on all block kinds including sequencers — no wrapper block is created; the full interface (`.step()`, `.tap()`, etc.) is preserved.
   - If a router's selected block produces output in a shape the router's output schema doesn't expect, use `connectOutput` on the selected block inside `execute` to adapt it.
   - Pre-connecting blocks at definition time (outside a router) is appropriate only when the block is purpose-built as a reusable adapter for a specific caller and the input contract belongs to the block itself, not to a runtime routing decision.
 - Why:
@@ -368,7 +368,7 @@ Update policy:
   - Call `.validate()` at build/setup time on any sequencer that declares `outputSchema`. It catches structural drift between the declared schema and the chain's inferred tail before the flow runs.
   - Omit `outputSchema` for internal or ephemeral sequencers — scratch pipelines, background fan-out, anything whose composed output nothing downstream reads by shape. There the validation is pure overhead.
   - The word "deliberately" is the rule. This is a per-sequencer judgment call, not a blanket requirement that every sequencer carry an `outputSchema`.
-  - Know what `.validate()` does NOT catch: it is a conservative one-level structural check. Deep nested shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail schema is erased by `thenAny` / `race` / `thenAll` / `branch`. The runtime gate still catches actual mismatches in those cases — `.validate()` is the early-warning, not the guarantee.
+  - Know what `.validate()` does NOT catch: it is a conservative one-level structural check. Deep nested shapes, refinements, brands, and union variants are out of scope, and it no-ops when the tail schema is erased by `stepAny` / `race` / `stepAll` / `branch`. The runtime gate still catches actual mismatches in those cases — `.validate()` is the early-warning, not the guarantee.
 - Why:
   - A sequencer's `outputSchema` validates the composed output of the whole chain, which is distinct from a per-block `outputSchema` (that validates one block's own output). When a downstream consumer depends on the composed shape, an undeclared schema means a drift goes silent until the consumer reads a field that isn't there — far from the cause.
   - The runtime gate is uniform across exit paths, so an `exitIf` or `rescue` that returns the wrong intermediate shape fails the same way the tail does. Without the declaration, those alternate paths are exactly where a wrong shape slips through unnoticed.
@@ -379,7 +379,7 @@ Update policy:
     name: "summarize",
     inputSchema: z.object({ text: z.string() }),
     outputSchema: z.object({ summary: z.string(), wordCount: z.number() }),
-  }).then(summarizeBlock); // tail produces { summary, wordCount }
+  }).step(summarizeBlock); // tail produces { summary, wordCount }
 
   summarize.validate(); // build-time drift check; throws SequencerSchemaMismatchError on mismatch
   // Registered as a flow action whose client renderer reads { summary, wordCount }.
@@ -394,6 +394,18 @@ Update policy:
   }).forEach((input) => input.keys, fetchAndCache);
   // Omit outputSchema here. The composed output is discarded.
   ```
+
+### BP-026: Bundle forwarded options into a `RuntimeConfig`-shaped struct, never drill
+
+- Status: Active
+- Date: 2026-05-29
+- Rule:
+  - When a field passes through 3+ layers verbatim (read at most once en route, never transformed), it belongs in a bundled struct, not as a named parameter on every layer. The server execution chain uses `RuntimeConfig` (`packages/server/src/runtime-config.ts`) for instance-level resolvers, settings, middleware, and observability config forwarded through `createFlowApiRouter` → `createFlowRouteHandlers` → `createInboundTransportHost` → `runAction`.
+  - Adding a new forwarded field touches only `RuntimeConfig` plus the public boundary that constructs it (`createFlowState.#doInit` or `createFlowApiRouter`). The intermediate layers do not change.
+  - Keep the public boundary flat. `createFlowState` and `createFlowApiRouter` keep their flat option shapes; the bundling is internal. The `runtimeConfig` field on `CreateFlowApiRouterOptions` is `@internal` — direct callers pass flat options and the router bundles them.
+  - Before adding a new field as a named parameter on `CreateFlowRouteHandlersOptions` / `CreateInboundTransportHostOptions` / `RunActionOptions`, ask: "Does any of these layers actually use this field, or just forward it?" If the answer is "just forward," it goes on `RuntimeConfig`. A field that must be transformed mid-chain stays a named parameter on the layer that transforms it.
+- Why:
+  - Drilling re-introduces a 5-file edit for one-concept additions, and grows fragile as the option set widens. The bundle keeps the public boundary flat (good ergonomics) while the internal plumbing stays narrow — a new forwarded field becomes a one- to two-file change.
 
 ## Template For New Entries
 

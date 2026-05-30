@@ -80,7 +80,7 @@ export type ExecutionParent = {
   /**
    * Structural path locator for deterministic instance IDs. Format is a
    * slash-delimited sequence of `{op}[{index}]` segments rooted at `root`
-   * (e.g. `root/then[0]/iter[2]`). Propagated to the child's
+   * (e.g. `root/step[0]/iter[2]`). Propagated to the child's
    * `_blockIdentity.blockPath` so nested blocks can derive their own paths.
    */
   path?: string;
@@ -262,7 +262,7 @@ export interface BlockContext<
    * the most recent (current-iteration) run of a named block is consulted.
    *
    * Returns `false` when the block ran without rescuing, was never dispatched
-   * (e.g. skipped by `.thenIf`), is not found in the current scope, or when
+   * (e.g. skipped by `.stepIf`), is not found in the current scope, or when
    * called outside a sequencer. Never throws.
    */
   wasRescued(target: string | BlockDefinition<any, any>): boolean;
@@ -478,6 +478,21 @@ export interface BlockContext<
     execute: (ctx: BlockContext) => Promise<TValue>,
     signalOverride?: AbortSignal
   ): Promise<TValue>;
+
+  /**
+   * @internal Top up the per-scope resource caches with an action's or block's
+   * declared resources at dispatch time (FIX-688 Waves 2 & 3). Loads only the
+   * eager entries not already cached; with `loadLazySingles: true` (per-block
+   * dispatch) it additionally loads `prefetchMode: 'lazy'` single resources so
+   * their `.state` stays synchronous inside `execute()`. Lazy collections are
+   * never loaded here — their async accessor fetches on demand. Concurrent
+   * loads of the same key/prefix are single-flight deduped. No-op in mock/unit
+   * contexts that do not provide it.
+   */
+  _loadDeclaredResources?(
+    declared: DeclaredResources | undefined,
+    options: { loadLazySingles: boolean }
+  ): Promise<void>;
 
   /**
    * @internal Mark the nearest enclosing sequencer scope as belonging to a
@@ -754,7 +769,9 @@ export interface BlockCacheableConfig {
   cacheIf?: (output: unknown, input: unknown) => boolean;
 }
 
-export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
+export type DeclaredResourceEntry =
+  | DefinedResource
+  | DefinedResourceCollection<JsonObject>;
 
 /**
  * Flat resource declaration: accessor key → resource definition. The
@@ -790,6 +807,17 @@ export interface BlockDefinition<
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  /**
+   * This block's OWN declared resources (FIX-688): its own `resources` config
+   * plus its own capability-injected resources, EXCLUDING resources that bubble
+   * up from descendant/child blocks. Where `declaredResources` is the bubble-up
+   * (this block + all descendants), `ownDeclaredResources` is the strict subset
+   * this block itself contributes. For leaf blocks (handler/generator) the two
+   * are identical; for composites (sequencer/router) it omits children's
+   * declarations so the block-dispatch prefetch hook can load only this block's
+   * own declarations without re-loading children's.
+   */
+  ownDeclaredResources?: DeclaredResources;
   /**
    * Computed at build time: true when this block declares `requireOrg: true`,
    * or — for sequencers — when any child block requires it. Bubbled by
@@ -938,6 +966,8 @@ export type InferResourcesFromSchemas<T> =
 export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DeclaredResourceEntry>
     ? {
+        // All collection refs expose async reads regardless of prefetchMode
+        // — FIX-700 collapsed the eager/lazy type split.
         [K in keyof T]: T[K] extends DefinedResourceCollection<infer S>
           ? ResourceCollectionRef<S>
           : T[K] extends DefinedResource<infer S>

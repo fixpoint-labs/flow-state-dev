@@ -118,7 +118,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       }).passthrough())
     }),
     execute: async (planOutput, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId: name,
@@ -144,8 +144,8 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     activeStatusMessage: "Combining results",
     inputSchema: z.unknown(),
     outputSchema: z.array(z.unknown()),
-    execute: (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
+    execute: async (_input, ctx) => {
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId: name,
@@ -162,9 +162,9 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     inputSchema: parallelTasksInputSchema,
     activeStatusMessage: "Planning tasks",
   })
-    .then(activePlanner)
+    .step(activePlanner)
     .tap(seedTasksFromPlan)
-    .then(board.block)
-    .then(collectResults)
-    .then(finalize) as SequencerDefinition<any, any>;
+    .step(board.block)
+    .step(collectResults)
+    .step(finalize) as SequencerDefinition<any, any>;
 }

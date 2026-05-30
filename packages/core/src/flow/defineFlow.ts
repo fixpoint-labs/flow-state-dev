@@ -504,6 +504,27 @@ function createFlowInstance(
 
   const blockResources = collectBlockResources(actions);
   const flowOwnResources = options?.resources ?? definition.resources;
+  // Accessor keys declared in the flow's OWN `resources` map, captured before
+  // block-tree/capability resources bubble up and merge in (FIX-688). The
+  // block-dispatch prefetch hook uses this to distinguish flow-level
+  // declarations (no per-block load trigger) from block-level ones.
+  const flowLevelResourceKeys: ReadonlySet<string> = new Set(
+    Object.keys(flowOwnResources ?? {})
+  );
+  // A lazy single resource has no per-block load trigger at flow level — its
+  // load can only be driven by the block that declares it. Reject it here so
+  // the misconfiguration surfaces at build time, not as a silently-never-loaded
+  // resource at runtime. Lazy collections are allowed at flow level.
+  for (const [key, entry] of Object.entries(flowOwnResources ?? {})) {
+    if (
+      !isDefinedResourceCollection(entry) &&
+      (entry as { prefetchMode?: string }).prefetchMode === "lazy"
+    ) {
+      throw new Error(
+        `Single-resource '${key}' declared at flow level cannot be prefetchMode: 'lazy' — flow-level declarations have no per-block load trigger. Declare it on the specific block that needs it, or use prefetchMode: 'eager'.`
+      );
+    }
+  }
   const mergedResources = mergeFlowResourceMap(flowOwnResources, blockResources);
 
   if (mergedResources !== undefined) {
@@ -536,6 +557,7 @@ function createFlowInstance(
     org,
     work: mergeConfig(definition.work, options?.work),
     resources: mergedResources,
+    flowLevelResourceKeys,
     tools,
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
@@ -597,6 +619,7 @@ export function defineFlow<
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,
-    isolateOrgState: baseInstance.isolateOrgState
+    isolateOrgState: baseInstance.isolateOrgState,
+    flowLevelResourceKeys: baseInstance.flowLevelResourceKeys
   });
 }

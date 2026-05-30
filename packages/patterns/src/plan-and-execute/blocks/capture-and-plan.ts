@@ -2,7 +2,7 @@
  * `captureAndPlan` — entry sequencer for the plan-and-execute pattern.
  *
  * Runs once at the top of the pipeline. Composed (not inlined) per
- * BP-011: the planner block is a `.then(planner)` step rather than an
+ * BP-011: the planner block is a `.step(planner)` step rather than an
  * `await planner.run(...)` call inside a handler.
  *
  * Steps:
@@ -100,7 +100,7 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
       ),
     }),
     execute: async (planOutput, ctx) => {
-      const collection = getOrCreateTaskCollection({
+      const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "request",
         collectionId,
@@ -131,6 +131,6 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
   })
     .tap(setInitialState)
     .tap(emitPlanningMeta)
-    .then(planner)
+    .step(planner)
     .tap(seedTasksFromPlan);
 }

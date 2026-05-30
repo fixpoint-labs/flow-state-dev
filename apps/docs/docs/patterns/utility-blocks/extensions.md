@@ -83,12 +83,12 @@ const researchPipeline = sequencer({
   inputSchema: z.object({ question: z.string() }),
 })
   .map((input) => ({ query: input.question }))
-  .then(search)
+  .step(search)
   .map((results) => ({
     context: results.results.map((r) => r.snippet).join("\n"),
     question: "...", // carried forward via connector
   }))
-  .then(answerGenerator);
+  .step(answerGenerator);
 ```
 
 ---

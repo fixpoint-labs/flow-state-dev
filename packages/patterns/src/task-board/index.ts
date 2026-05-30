@@ -14,13 +14,13 @@
  *   `.tap(seedCollection?) → .forEach(workerId, makeWorker)`
  *
  * Each worker (own sequencer state):
- *   `.then(claimTask)
- *      .thenIf(claimed, claim → task, workerBody)
- *      .then(checkBoard)
+ *   `.step(claimTask)
+ *      .stepIf(claimed, claim → task, workerBody)
+ *      .step(checkBoard)
  *      .loopBack(claimTask, when=shouldContinue)`
  *
  * `workerBody`:
- *   `.then(workerStep) .tap(recordSuccess) .rescue(recordError)`
+ *   `.step(workerStep) .tap(recordSuccess) .rescue(recordError)`
  *
  * `workerStep` is the user's worker block directly (uniform case) OR
  * a `router` that selects by `task.assignee` (registry case). The
@@ -67,7 +67,11 @@ import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
+import type {
+  BlockContext,
+  MaybePromise,
+  StateRef,
+} from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
   onTaskChangeFor,
@@ -226,7 +230,7 @@ export interface TaskBoardRequestCollectionSpec {
 /** Caller-supplied factory — full control. Receives the worker's `BlockContext`. */
 export type TaskBoardCollectionFactory<TInput, TOutput> = (
   ctx: BlockContext
-) => TaskCollectionRef<TInput, TOutput>;
+) => MaybePromise<TaskCollectionRef<TInput, TOutput>>;
 
 export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
@@ -547,7 +551,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       // cache writes to this task (later hits get `sourceTask`).
       stampCurrentTaskId(runState, task);
     })
-    .then(workerStep)
+    .step(workerStep)
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);
 
@@ -569,15 +573,15 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       name: `${name}-worker-${workerId}-idle-wait`,
       inputSchema: z.unknown(),
       // idleWait is the false-branch sibling of `claimTask`: both feed the
-      // worker's `.thenIf((out: ClaimResult) => ...)` gates below, so its
+      // worker's `.stepIf((out: ClaimResult) => ...)` gates below, so its
       // terminal `.map` must produce a `ClaimResult`. The trailing `.map`
       // erases the tracked schema (so `.validate()` can't see it), so this
       // contract is enforced by the sequencer's runtime exit gate.
       outputSchema: claimResultSchema,
     })
-      .tap((_input, ctx) => {
+      .tap(async (_input, ctx) => {
         if (cell.collection === undefined) {
-          cell.collection = collectionFactory(ctx);
+          cell.collection = await collectionFactory(ctx);
           cell.wakeFilter = onTaskChangeFor(cell.collection.collectionId);
         }
       })
@@ -619,13 +623,13 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       name: `${name}-worker-${workerId}`,
       stateSchema: taskBoardWorkerStateSchema,
     })
-      .then(claimTask)
-      .thenIf(
+      .step(claimTask)
+      .stepIf(
         (out: ClaimResult) => !out.claimed,
         () => undefined,
         idleWait
       )
-      .thenIf(
+      .stepIf(
         (out: ClaimResult) => out.claimed,
         // Connector: ClaimResult → Task (the workerStep's input).
         // `task` is guaranteed defined when claimed === true; the
@@ -633,7 +637,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
         (out: ClaimResult) => out.task!,
         workerBody
       )
-      .then(checkBoard)
+      .step(checkBoard)
       .loopBack(claimStepName, {
         when: (v) => (v as { shouldContinue?: boolean }).shouldContinue === true,
         maxIterations,
@@ -723,8 +727,14 @@ function isFactoryFn<TInput, TOutput>(
 function buildCollectionFactory<TInput, TOutput>(
   boardName: string,
   collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"]
-): (ctx: BlockContext) => TaskCollectionRef<TInput, TOutput> {
-  if (isFactoryFn(collectionConfig)) return collectionConfig;
+): (ctx: BlockContext) => Promise<TaskCollectionRef<TInput, TOutput>> {
+  // A user-supplied factory may be sync or async; `Promise.resolve`
+  // normalizes it so callers uniformly `await` the result regardless of
+  // backing (`getOrCreateTaskCollection` is now async).
+  if (isFactoryFn(collectionConfig)) {
+    const userFactory = collectionConfig;
+    return (ctx: BlockContext) => Promise.resolve(userFactory(ctx));
+  }
 
   if (collectionConfig.backing === "request") {
     const { collectionId, stateKey } = collectionConfig;
