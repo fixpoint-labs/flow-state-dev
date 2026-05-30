@@ -91,7 +91,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
 
@@ -173,7 +174,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeDefined();
 
@@ -214,7 +216,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -242,7 +245,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -290,7 +294,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -339,7 +344,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -400,7 +406,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -438,7 +445,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     // Traces still stream live (visible on the response emitter) so DevTool
@@ -481,7 +489,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());
@@ -533,7 +542,8 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       userId: "u",
       sessionId: "s",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const traces = getTraces(response.getItems());

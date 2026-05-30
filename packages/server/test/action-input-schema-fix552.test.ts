@@ -29,7 +29,8 @@ describe("FIX-552: optional action.inputSchema", () => {
       input: { message: "hello" },
       userId: "u1",
       sessionId: "s1",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
     expect(ok.error).toBeUndefined();
     expect(ok.output).toBe("hello");
@@ -40,7 +41,8 @@ describe("FIX-552: optional action.inputSchema", () => {
       input: { message: "" },
       userId: "u1",
       sessionId: "s2",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
     expect(bad.error?.message).toMatch(/Action input validation failed/);
   });
@@ -70,7 +72,8 @@ describe("FIX-552: optional action.inputSchema", () => {
       input: { message: "hi" },
       userId: "u1",
       sessionId: "s1",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
     expect(rejected.error?.message).toMatch(/Action input validation failed/);
 
@@ -80,7 +83,8 @@ describe("FIX-552: optional action.inputSchema", () => {
       input: { message: "hello" },
       userId: "u1",
       sessionId: "s2",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
     expect(accepted.error).toBeUndefined();
     expect(accepted.output).toBe("hello");
@@ -114,7 +118,8 @@ describe("FIX-552: optional action.inputSchema", () => {
       input: { message: "hi" },
       userId: "u1",
       sessionId: "s1",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
     expect(captured).toBe("hi");

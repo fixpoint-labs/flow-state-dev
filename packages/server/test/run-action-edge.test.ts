@@ -28,7 +28,8 @@ describe("runAction edge behavior", () => {
         input: { value: 1 },
         userId: "user_missing",
         sessionId: "sess_missing",
-        stores: createInMemoryStores()
+        stores: createInMemoryStores(),
+        runtimeConfig: {}
       })
     ).rejects.toBeInstanceOf(ValidationError);
   });
@@ -57,7 +58,8 @@ describe("runAction edge behavior", () => {
       requestId: "req_invalid_input",
       userId: "user_invalid_input",
       sessionId: "sess_invalid_input",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error?.code).toBe("validation_error");
@@ -97,7 +99,8 @@ describe("runAction edge behavior", () => {
         input: { value: 1 },
         userId: "user_started_error",
         sessionId: "sess_started_error",
-        stores: createInMemoryStores()
+        stores: createInMemoryStores(),
+        runtimeConfig: {}
       })
     ).rejects.toThrow("observer start failure");
   });
@@ -153,7 +156,8 @@ describe("runAction edge behavior", () => {
       requestId: "req_observer_fail",
       userId: "user_observer_fail",
       sessionId: "sess_observer_fail",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error?.message).toBe("primary failure");
@@ -185,6 +189,7 @@ describe("runAction edge behavior", () => {
       userId: "user_generated_request",
       sessionId: "sess_generated_request",
       stores,
+      runtimeConfig: {},
       internalSeams: {
         onActionLifecycle: (stage) => {
           lifecycleStages.push(stage);
@@ -225,6 +230,7 @@ describe("runAction edge behavior", () => {
       userId: "user_generated_request_2",
       sessionId: "sess_generated_request_2",
       stores: createInMemoryStores(),
+      runtimeConfig: {},
       internalSeams: {
         onActionLifecycle: (stage) => {
           lifecycleStages.push(stage);
@@ -258,7 +264,8 @@ describe("runAction edge behavior", () => {
       input: { value: 1 },
       userId: "user_default_seams",
       sessionId: "sess_default_seams",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -300,7 +307,8 @@ describe("runAction edge behavior", () => {
       requestId: "req_patch_missing",
       userId: "user_patch_missing",
       sessionId: "sess_patch_missing",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -337,7 +345,8 @@ describe("runAction edge behavior", () => {
       requestId: "req_malformed_schema",
       userId: "user_malformed_schema",
       sessionId: "sess_malformed_schema",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error?.code).toBe("validation_error");
@@ -376,15 +385,17 @@ describe("runAction edge behavior", () => {
       sessionId: "sess_budget_error",
       requestId: "req_budget_error",
       stores: createInMemoryStores(),
-      modelResolver: () => ({
-        modelId: "openai/gpt-5-mini",
-        async generate() {
-          return {
-            text: "ok",
-            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
-          };
-        }
-      })
+      runtimeConfig: {
+        modelResolver: () => ({
+          modelId: "openai/gpt-5-mini",
+          async generate() {
+            return {
+              text: "ok",
+              usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+            };
+          }
+        })
+      }
     });
 
     expect(result.error?.code).toBe("validation_error");
@@ -422,15 +433,17 @@ describe("runAction edge behavior", () => {
       sessionId: "sess_budget_warn",
       requestId: "req_budget_warn",
       stores: createInMemoryStores(),
-      modelResolver: () => ({
-        modelId: "openai/gpt-5-mini",
-        async generate() {
-          return {
-            text: "ok",
-            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
-          };
-        }
-      })
+      runtimeConfig: {
+        modelResolver: () => ({
+          modelId: "openai/gpt-5-mini",
+          async generate() {
+            return {
+              text: "ok",
+              usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+            };
+          }
+        })
+      }
     });
 
     const warnings = result.items.filter((item) => item.type === "status" && (item as { message?: string }).message?.includes("Token budget"));
@@ -475,15 +488,17 @@ describe("runAction edge behavior", () => {
       sessionId: "sess_budget_stop",
       requestId: "req_budget_stop",
       stores,
-      modelResolver: () => ({
-        modelId: "openai/gpt-5-mini",
-        async generate() {
-          return {
-            text: "ok",
-            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
-          };
-        }
-      })
+      runtimeConfig: {
+        modelResolver: () => ({
+          modelId: "openai/gpt-5-mini",
+          async generate() {
+            return {
+              text: "ok",
+              usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+            };
+          }
+        })
+      }
     });
 
     expect(result.error).toBeUndefined();
@@ -516,7 +531,8 @@ describe("runAction edge behavior", () => {
       requestId: "req_terminal_guard",
       userId: "user_terminal_guard",
       sessionId: "sess_terminal_guard",
-      stores: createInMemoryStores()
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
     });
 
     expect(result.error?.message).toBe("primary failure");

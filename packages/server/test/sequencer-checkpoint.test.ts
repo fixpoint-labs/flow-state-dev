@@ -100,7 +100,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -146,7 +147,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());
@@ -178,7 +180,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: { ...stores, checkpoints: wrappedCheckpoints },
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     // At least the initial baseline + one per step that actually mutated
@@ -215,7 +218,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(writeCount).toBeGreaterThan(0);
@@ -245,7 +249,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(writeCount).toBe(0);
@@ -271,7 +276,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     expect(getStateSnapshots(response.getItems())).toHaveLength(0);
@@ -340,7 +346,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probed,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const writtenInstanceIds = new Set(writes.map((w) => w.blockInstanceId));
@@ -413,7 +420,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores: probedStores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       const snapshots = getStateSnapshots(response.getItems());
@@ -488,7 +496,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores: probedStores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
     expect(result.error).toBeDefined();
 
@@ -560,7 +569,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       sessionId: "sess_1",
       stores: probedStores,
       responseEmitter: response,
-      signal: abortController.signal
+      signal: abortController.signal,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());
@@ -585,7 +595,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       userId: "user_1",
       sessionId: "sess_1",
       stores,
-      responseEmitter: response
+      responseEmitter: response,
+      runtimeConfig: {}
     });
 
     const snapshots = getStateSnapshots(response.getItems());

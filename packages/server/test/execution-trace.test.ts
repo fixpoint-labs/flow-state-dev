@@ -124,7 +124,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -161,7 +162,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -225,7 +227,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeDefined();
@@ -262,7 +265,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -297,7 +301,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_2",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -325,7 +330,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       const items = response.getItems();
@@ -352,7 +358,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -544,7 +551,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -580,7 +588,8 @@ describe("execution trace system", () => {
         userId: "user_1",
         sessionId: "sess_1",
         stores,
-        responseEmitter: response
+        responseEmitter: response,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();

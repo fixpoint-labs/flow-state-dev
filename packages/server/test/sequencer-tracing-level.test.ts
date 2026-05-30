@@ -58,7 +58,9 @@ async function runWithLevel(level: "verbose" | "normal" | "minimal") {
     sessionId: "s",
     stores: createInMemoryStores(),
     responseEmitter: response,
-    tracingLevel: level
+    runtimeConfig: {
+      tracingLevel: level
+    }
   });
   return getSnapshots(response.getItems());
 }

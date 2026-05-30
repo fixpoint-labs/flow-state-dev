@@ -17,10 +17,10 @@ import type {
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { createRuntimeConfig, type RuntimeConfig } from "../runtime-config";
 import {
   createFlowRouteHandlers,
-  NOOP_INTERNAL_ROUTE_SEAMS,
-  type InternalRouteSeams
+  NOOP_INTERNAL_ROUTE_SEAMS
 } from "./http-handlers";
 import {
   createHttpTransportAdapter,
@@ -171,10 +171,15 @@ export type CreateFlowApiRouterOptions = {
    * starving the tree response.
    */
   debugCountLimit?: number;
-};
 
-type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {
-  internalSeams?: InternalRouteSeams;
+  /**
+   * @internal — set by `createFlowState`, which has already resolved its
+   * resolvers and instance settings. Direct callers pass the flat options
+   * above; the router bundles them itself. When provided, it wins over the
+   * flat versions of the bundled fields (`modelResolver`, `settings`, …),
+   * which are then ignored.
+   */
+  runtimeConfig?: RuntimeConfig;
 };
 
 type NextRouteContext = {
@@ -237,11 +242,15 @@ const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
-  const internalOptions: CreateInternalFlowApiRouterOptions = {
+  // Bundle the forwarded instance-level options once at this public boundary.
+  // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
+  // it constructed from their flat options here.
+  const runtimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
+  const handlers = createFlowRouteHandlers({
     ...options,
+    runtimeConfig,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS
-  };
-  const handlers = createFlowRouteHandlers(internalOptions);
+  });
 
   // Server-internal sweeper: marks requests whose executor heartbeat stopped
   // as interrupted, releasing session locks. Disabled when interval is 0.

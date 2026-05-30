@@ -50,7 +50,8 @@ function buildHost(flows: ReturnType<typeof buildFlow>[]) {
   const host = createInboundTransportHost({
     registry,
     stores,
-    resolvePrincipal: defaultBodyUserIdPrincipalResolver
+    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    runtimeConfig: {}
   });
   return { host, registry, stores };
 }
@@ -136,7 +137,8 @@ describe("InboundTransportHost — per-flow authentication", () => {
     const host = createInboundTransportHost({
       registry,
       stores,
-      resolvePrincipal: fallback
+      resolvePrincipal: fallback,
+      runtimeConfig: {}
     });
 
     const principal = await host.resolvePrincipal(mkContext("system-flow", {}));

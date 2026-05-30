@@ -137,7 +137,9 @@ describe("execution runtime", () => {
       userId: "user_logs",
       sessionId: "sess_logs",
       stores: createInMemoryStores(),
-      logger
+      runtimeConfig: {
+        logger
+      }
     });
 
     expect(success.error).toBeUndefined();
@@ -182,7 +184,9 @@ describe("execution runtime", () => {
       userId: "user_logs_fail",
       sessionId: "sess_logs_fail",
       stores: createInMemoryStores(),
-      logger
+      runtimeConfig: {
+        logger
+      }
     });
 
     expect(failed.error?.message).toBe("boom");
@@ -2329,7 +2333,8 @@ describe("execution runtime", () => {
       requestId: "req_success",
       sessionId: "sess_success",
       userId: "user_success",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(success.error).toBeUndefined();
@@ -2374,7 +2379,8 @@ describe("execution runtime", () => {
       requestId: "req_failure",
       sessionId: "sess_failure",
       userId: "user_failure",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(failed.error).toBeDefined();
@@ -2477,7 +2483,8 @@ describe("transient block output", () => {
       input: { value: "test" },
       userId: "user_transient",
       sessionId: "sess_transient",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2516,7 +2523,8 @@ describe("transient block output", () => {
       input: { value: "hello" },
       userId: "user_stream",
       sessionId: "sess_stream",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2579,7 +2587,8 @@ describe("transient block output", () => {
       input: { value: "test" },
       userId: "user_mixed",
       sessionId: "sess_mixed",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2630,7 +2639,8 @@ describe("transient block output", () => {
       input: { prompt: "hello" },
       userId: "user_gen",
       sessionId: "sess_gen",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2691,7 +2701,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2731,7 +2742,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2770,7 +2782,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2810,7 +2823,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2854,7 +2868,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2893,7 +2908,8 @@ describe("transient block output", () => {
         input: { value: "ok" },
         userId: "u",
         sessionId: "s",
-        stores
+        stores,
+        runtimeConfig: {}
       });
 
       expect(result.error).toBeUndefined();
@@ -2933,7 +2949,8 @@ describe("transient block output", () => {
       input: { text: "ok" },
       userId: "user_status",
       sessionId: "sess_status",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -2977,7 +2994,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3033,7 +3051,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3080,7 +3099,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3125,7 +3145,8 @@ describe("keyed component upsert (FIX-491)", () => {
       input: { value: "ok" },
       userId: "u",
       sessionId: "s",
-      stores
+      stores,
+      runtimeConfig: {}
     });
 
     expect(result.error).toBeUndefined();
@@ -3238,12 +3259,14 @@ describe("rescue boundary in nested sequencer", () => {
       input: { value: "test" },
       userId: "user_test",
       stores,
-      modelResolver: (id) => ({
-        modelId: id,
-        async generate() {
-          return { text: "mock" };
-        }
-      })
+      runtimeConfig: {
+        modelResolver: (id) => ({
+          modelId: id,
+          async generate() {
+            return { text: "mock" };
+          }
+        })
+      }
     });
 
     // Execution should complete without error — rescue caught the failure
