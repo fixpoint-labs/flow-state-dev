@@ -63,7 +63,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 const resolver = createModelResolver({
   defaultModel: "anthropic/claude-sonnet-4.6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
     chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
     plan: ["anthropic/claude-opus-4.7"],
     synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
@@ -399,7 +399,7 @@ const resolver = createModelResolver({
   gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
   defaultModel: "anthropic/claude-sonnet-4.6",
   intents: {
-    utility: ["openai/gpt-5.5-nano", "anthropic/claude-haiku-4.5"],
+    utility: ["openai/gpt-5.4-nano", "anthropic/claude-haiku-4.5"],
     chat: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"],
   },
 });
