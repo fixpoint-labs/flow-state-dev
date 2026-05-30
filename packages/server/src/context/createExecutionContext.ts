@@ -696,22 +696,24 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
         async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          recordEagerRead("get", storageKey);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
+            // Record nothing — a throwing get read no cached instance.
             throw new Error(`Resource instance "${storageKey}" not found in collection "${nsConfig.pattern}"`);
           }
+          recordEagerRead("get", storageKey);
           lruAccess.set(storageKey, Date.now());
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
         async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
-          recordEagerRead("getOptional", storageKey);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
+            // Absent instance read nothing from cache — no load record.
             return undefined;
           }
+          recordEagerRead("getOptional", storageKey);
           lruAccess.set(storageKey, Date.now());
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
@@ -2592,6 +2594,9 @@ export async function createExecutionContext<
   const loadAttributionStorage = new AsyncLocalStorage<string>();
   const ORPHAN_BUCKET = "__request__";
   const resourceLoadBuffer = new Map<string, ResourceLoadRecord[]>();
+  // Per-target dedupe index for cache-hit collapsing: target → `source|key|
+  // accessor` → the record to bump. Keeps a wide read loop O(N), not O(N²).
+  const cacheHitIndex = new Map<string, Map<string, ResourceLoadRecord>>();
   // Which wave fetched a given collection prefix / single key, keyed by the
   // single-flight token (`${scope}:prefix:${p}` | `${scope}:key:${k}`). Read by
   // `resolveEagerSource` so an eager cache-hit read can tag the wave that paid
@@ -2607,29 +2612,37 @@ export async function createExecutionContext<
    * Push one resource-load record, routed to the current attribution target
    * (the dispatching block, or the orphan bucket for pre-block waves). Cache
    * hits of the same (source, storageKey, accessor) collapse in place so a
-   * tight read loop is a single aggregated row. Never throws — recording must
-   * never fail a load.
+   * tight read loop is a single aggregated row. The dedupe uses a per-target
+   * index keyed by that tuple, so a block reading N distinct keys stays O(N),
+   * not O(N²). Never throws — recording must never fail a load.
    */
   const recordResourceLoad = (rec: Omit<ResourceLoadRecord, "count">): void => {
     if (!isTraceObservabilityEnabled()) return; // zero overhead when off
     const target = loadAttributionStorage.getStore() ?? ORPHAN_BUCKET;
-    const list = resourceLoadBuffer.get(target) ?? [];
+    let list = resourceLoadBuffer.get(target);
+    if (list === undefined) {
+      list = [];
+      resourceLoadBuffer.set(target, list);
+    }
     if (rec.cacheHit) {
-      const hit = list.find(
-        (r) =>
-          r.cacheHit &&
-          r.source === rec.source &&
-          r.storageKey === rec.storageKey &&
-          r.accessor === rec.accessor
-      );
+      let index = cacheHitIndex.get(target);
+      if (index === undefined) {
+        index = new Map();
+        cacheHitIndex.set(target, index);
+      }
+      const dedupeKey = `${rec.source}|${rec.storageKey}|${rec.accessor ?? ""}`;
+      const hit = index.get(dedupeKey);
       if (hit !== undefined) {
         hit.count += 1;
         hit.durationMs += rec.durationMs;
         return;
       }
+      const record: ResourceLoadRecord = { ...rec, count: 1 };
+      index.set(dedupeKey, record);
+      list.push(record);
+      return;
     }
     list.push({ ...rec, count: 1 });
-    resourceLoadBuffer.set(target, list);
   };
 
   /**
@@ -3916,14 +3929,16 @@ export async function createExecutionContext<
             const own = resourceLoadBuffer.get(instanceId);
             if (own !== undefined && own.length > 0) {
               existing.resourceLoads = own;
-              resourceLoadBuffer.delete(instanceId);
             }
+            resourceLoadBuffer.delete(instanceId);
+            cacheHitIndex.delete(instanceId);
             if (instanceId === rootBlockInstanceId) {
               const orphan = resourceLoadBuffer.get(ORPHAN_BUCKET);
               if (orphan !== undefined && orphan.length > 0) {
                 existing.resourceLoads = [...(existing.resourceLoads ?? []), ...orphan];
-                resourceLoadBuffer.delete(ORPHAN_BUCKET);
               }
+              resourceLoadBuffer.delete(ORPHAN_BUCKET);
+              cacheHitIndex.delete(ORPHAN_BUCKET);
             }
             // Final emission: emit done so consumers know the row is settled.
             void emissionResponse

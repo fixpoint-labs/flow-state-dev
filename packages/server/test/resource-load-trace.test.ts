@@ -90,6 +90,81 @@ describe("FIX-701: per-block resource-load tracing", () => {
     expect(fetches[0]).toMatchObject({ source: "block-eager", scope: "session", count: 1 });
   });
 
+  it("an eager single declared on the action's block produces an action-eager fetch record", async () => {
+    const eagerS = defineResource({
+      scope: "session",
+      ref: "eagerS",
+      stateSchema: z.object({ v: z.number().default(0) }),
+      writable: true
+    });
+    const block = handler({
+      name: "reads-eager-single",
+      resources: { eagerS },
+      execute: (_input, ctx) => ({ v: (ctx.resources.eagerS.state as { v: number }).v })
+    });
+    const flow = defineFlow({
+      kind: "eager-single",
+      actions: { run: { inputSchema: z.object({}), block } }
+    })();
+
+    const stores = createInMemoryStores();
+    await stores.resourceState.set("session", "s1", "eagerS", { v: 9 });
+
+    const { byName } = await run(flow, stores);
+    // Declared on the action's block (not flow-level), so it loads at the
+    // action-dispatch wave as a single store fetch.
+    const fetches = loadsOf(byName("reads-eager-single")).filter(
+      (r) => r.storageKey === "eagerS" && !r.cacheHit
+    );
+    expect(fetches).toHaveLength(1);
+    expect(fetches[0]).toMatchObject({ source: "action-eager", cacheHit: false, count: 1 });
+  });
+
+  it("drains a block's resource loads even when the block throws before output", async () => {
+    const lazyS = defineResource({
+      scope: "session",
+      ref: "boomLazy",
+      prefetchMode: "lazy",
+      stateSchema: z.object({ v: z.number().default(0) }),
+      writable: true
+    });
+    const block = handler({
+      name: "boom",
+      resources: { boomLazy: lazyS },
+      execute: (_input, ctx) => {
+        // Touch the lazy single (block-eager load fired at dispatch), then throw.
+        void (ctx.resources.boomLazy.state as { v: number }).v;
+        throw new Error("boom");
+      }
+    });
+    const flow = defineFlow({
+      kind: "boom-flow",
+      actions: { run: { inputSchema: z.object({}), block } }
+    })();
+
+    const stores = createInMemoryStores();
+    await stores.resourceState.set("session", "s1", "boomLazy", { v: 1 });
+
+    const response = createResponseEmitter({ requestId: "req_boom", now: () => Date.now() });
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      responseEmitter: response,
+      runtimeConfig: { modelResolver: createStubModelResolver() }
+    });
+    expect(result.error).toBeDefined();
+    const traces = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
+    const failed = traces.find((t) => t.blockName === "boom");
+    expect(failed?.status).toBe("failed");
+    const fetches = loadsOf(failed).filter((r) => r.storageKey === "boomLazy" && !r.cacheHit);
+    expect(fetches).toHaveLength(1);
+    expect(fetches[0]).toMatchObject({ source: "block-eager" });
+  });
+
   it("an eager collection read N times collapses to one aggregated cache-hit row with count:N", async () => {
     const eagerColl = defineResourceCollection({
       scope: "session",
