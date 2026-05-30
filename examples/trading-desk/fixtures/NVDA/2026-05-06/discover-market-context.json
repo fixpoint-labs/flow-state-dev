@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA sector outlook peer earnings rotation theme regulatory supply chain",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.reuters.com/technology/nvidia-leads-semiconductor-rally-2026-05-03/",
+      "title": "Nvidia leads semiconductor rally as AI capex accelerates",
+      "snippet": "NVIDIA shares surged as the semiconductor sector rallied on stronger-than-expected data center spending, with peers AMD and Broadcom also posting gains.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.barrons.com/articles/chip-stocks-sector-rotation-2026-05-02",
+      "title": "Chip stocks benefit from sector rotation into tech",
+      "snippet": "Semiconductor stocks are outperforming the broader market as investors rotate into technology names, driven by continued AI infrastructure spending.",
+      "publisher": "barrons.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://www.ft.com/content/nvidia-supply-chain-outlook-2026",
+      "title": "Nvidia supply chain faces constraints amid surging demand",
+      "snippet": "TSMC's advanced packaging capacity remains the key bottleneck for Nvidia's next-generation GPU production, though the company has secured priority allocation.",
+      "publisher": "ft.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

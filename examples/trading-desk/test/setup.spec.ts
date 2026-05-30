@@ -1,5 +1,5 @@
 /**
- * Unit tests for `setupPhase1Memos` — confirms it creates five memos in
+ * Unit tests for `setupPhase1Memos` — confirms it creates six memos in
  * `pending` status and seeds the `memoStatus` mirror.
  */
 import { describe, expect, it } from "vitest";
@@ -19,7 +19,7 @@ const fixtureFlow = defineFlow({
 })({ id: "test" });
 
 describe("setupPhase1Memos", () => {
-  it("creates five pending memos and seeds memoStatus", async () => {
+  it("creates six pending memos and seeds memoStatus", async () => {
     const result = await testBlock(setupPhase1Memos, {
       input: {
         ticker: "NVDA",
@@ -53,5 +53,6 @@ describe("setupPhase1Memos", () => {
     expect(memoStatus.news).toBe("pending");
     expect(memoStatus.technical).toBe("pending");
     expect(memoStatus.companyProfile).toBe("pending");
+    expect(memoStatus.market).toBe("pending");
   });
 });

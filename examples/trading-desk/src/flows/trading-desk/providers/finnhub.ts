@@ -221,6 +221,23 @@ export async function fetchFinnhubCompanyNews(
   };
 }
 
+/**
+ * Peer ticker list from Finnhub `/stock/peers`. Returns up to ~20 tickers
+ * in the same sub-industry; callers should cap for prompt budget. Throws on
+ * any failure so tool handlers can fall through to `emptyPayload`.
+ */
+export async function fetchFinnhubPeers(
+  ticker: string,
+  grouping: "subIndustry" | "industry" | "sector" = "subIndustry",
+): Promise<string[]> {
+  const data = await fetchJson<string[]>("/stock/peers", {
+    symbol: ticker,
+    grouping,
+  });
+  if (!Array.isArray(data)) throw new Error(`Finnhub /stock/peers returned non-array for ${ticker}`);
+  return data.filter((t) => t !== ticker);
+}
+
 const INSIDER_WINDOW_DAYS = 90;
 
 /** Subtracts `days` calendar days from a `YYYY-MM-DD` date string. */

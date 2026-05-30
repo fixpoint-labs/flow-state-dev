@@ -1,0 +1,15 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "grouping": "subIndustry",
+  "peers": [
+    { "ticker": "AMD", "name": "Advanced Micro Devices Inc", "return1m": 0.045 },
+    { "ticker": "AVGO", "name": "Broadcom Inc", "return1m": 0.061 },
+    { "ticker": "INTC", "name": "Intel Corporation", "return1m": -0.012 },
+    { "ticker": "QCOM", "name": "QUALCOMM Inc", "return1m": 0.028 },
+    { "ticker": "MU", "name": "Micron Technology Inc", "return1m": 0.037 },
+    { "ticker": "MRVL", "name": "Marvell Technology Inc", "return1m": 0.052 }
+  ],
+  "peerMedianReturn1m": 0.041,
+  "source": "fixture"
+}

@@ -40,6 +40,9 @@ export const TECHNICAL_QUERY = (ticker: string): string =>
 export const PROFILE_QUERY = (ticker: string): string =>
   `${ticker} recent strategic announcement product launch regulatory filing`;
 
+export const MARKET_QUERY = (ticker: string): string =>
+  `${ticker} sector outlook peer earnings rotation theme regulatory supply chain`;
+
 export type DiscoverWebArgs = {
   ticker: string;
   date: string;
