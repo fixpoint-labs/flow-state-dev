@@ -130,6 +130,22 @@ function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFa
   }
 }
 
+function makeEpisode(overrides: { id: string } & Partial<EpisodicMemoryState['episodes'][number]>) {
+  return {
+    content: `episode ${overrides.id}`,
+    subject: 'user',
+    occurredAtTurn: 0,
+    encodedAt: new Date().toISOString(),
+    significance: 0.7,
+    category: 'identity' as const,
+    context: { sessionId: 'test-session' },
+    consolidated: false,
+    durability: 'persistent' as const,
+    stale: false,
+    ...overrides,
+  }
+}
+
 const config = {
   model: 'gpt-5-mini',
   working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
@@ -243,14 +259,18 @@ describe('memory/subject-attribution (FIX-703)', () => {
   // Acceptance #3: consolidation reinforce/update cannot rewrite a fact whose
   // stored subject differs from the proposed subject.
   describe('consolidation subject guard', () => {
-    async function runPersist(semRef: ResourceHandle<SemanticMemoryState>, input: ConsolidationOutput) {
+    async function runPersist(
+      semRef: ResourceHandle<SemanticMemoryState>,
+      input: ConsolidationOutput,
+      epRef: ResourceHandle<EpisodicMemoryState> = createMockEpRef(),
+    ) {
       const block = consolidationPersist(config)
       const ctx = {
         resources: createMockResources({
           workingMemory: createMockWmRef({ currentTurn: 12 }),
           memorySystem: createMockSysRef({ episodicWritesSinceLastConsolidation: 6 }),
           semanticMemory: semRef,
-          episodicMemory: createMockEpRef(),
+          episodicMemory: epRef,
         }),
         response: { emit: async () => {} },
       } as any
@@ -280,6 +300,31 @@ describe('memory/subject-attribution (FIX-703)', () => {
       expect(semRef.state.facts[0].content).toBe('Name is Jake')
       expect(semRef.state.facts[0].reinforcementCount).toBe(2)
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('subject mismatch'))
+      warn.mockRestore()
+    })
+
+    it('does not mark source episodes consolidated when a fact is guard-skipped', async () => {
+      // Regression: a skipped cross-subject mutation must leave its source
+      // episodes eligible for a later pass, or the content is lost forever.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_user', subject: 'user', content: 'Name is Jake' })],
+      })
+      const epRef = createMockEpRef({ episodes: [makeEpisode({ id: 'ep_moni', subject: 'moni' })] })
+
+      await runPersist(semRef, {
+        facts: [{
+          subject: 'moni',
+          content: 'Favorite color is teal',
+          confidence: 0.8,
+          category: 'preference',
+          sourceEpisodeIds: ['ep_moni'],
+          action: 'reinforce',
+          targetFactId: 'sf_user',
+        }],
+      }, epRef) as any
+
+      expect(epRef.state.episodes[0].consolidated).toBe(false)
       warn.mockRestore()
     })
 
@@ -386,7 +431,27 @@ describe('memory/subject-attribution (FIX-703)', () => {
       expect(semRef.state.facts.map((f) => f.content)).toEqual(
         expect.arrayContaining(['Name is Jake', 'Name is Moni']),
       )
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('subject mismatch'))
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('prune merge refused'))
+      warn.mockRestore()
+    })
+
+    it('refuses a merge that references a missing source fact', async () => {
+      // A missing id means we can't verify its subject, so the merge is refused
+      // rather than risk writing cross-subject content onto the survivor.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_user', subject: 'user', content: 'Name is Jake' })],
+      })
+
+      const result = await runPrune(semRef, {
+        removals: [],
+        merges: [{ sourceFactIds: ['sf_user', 'sf_missing'], mergedContent: 'merged', reason: 'hallucinated id' }],
+      }) as any
+
+      expect(result.merged).toBe(0)
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('Name is Jake')
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('prune merge refused'))
       warn.mockRestore()
     })
 

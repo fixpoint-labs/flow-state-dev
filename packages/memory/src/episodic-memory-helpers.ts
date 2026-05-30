@@ -32,6 +32,10 @@ export async function encode(
 ): Promise<Episode> {
   const newEpisode: Episode = {
     ...episode,
+    // Default the owner to the primary user if a caller omits it, so the stored
+    // episode object always carries a subject (readers use `ep.subject ?? 'user'`,
+    // but this keeps the in-memory record well-formed before any schema reparse).
+    subject: episode.subject ?? 'user',
     id: `ep_${shortId(6)}`,
     encodedAt: new Date().toISOString(),
     consolidated: false,

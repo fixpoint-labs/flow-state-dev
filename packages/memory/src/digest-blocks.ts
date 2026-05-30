@@ -77,6 +77,7 @@ const digestGuardOutputSchema = z.object({
   })),
   /** Top-N episodes in prompt-ready form. */
   episodes: z.array(z.object({
+    subject: z.string(),
     content: z.string(),
     category: z.string(),
     significance: z.number(),
@@ -142,8 +143,9 @@ export function buildDigestContext(input: DigestGuardOutput): string {
     // Split facts into the primary user and everyone/everything else, so the
     // model sees an explicit user-vs-others boundary rather than a flat list of
     // subject-tagged lines it can melt into one persona.
-    const userFacts = input.facts.filter((f) => (f.subject ?? 'user') === 'user')
-    const otherFacts = input.facts.filter((f) => (f.subject ?? 'user') !== 'user')
+    const isUser = (subject: string | undefined) => (subject ?? 'user').toLowerCase() === 'user'
+    const userFacts = input.facts.filter((f) => isUser(f.subject))
+    const otherFacts = input.facts.filter((f) => !isUser(f.subject))
 
     const factParts: string[] = []
     if (userFacts.length > 0) {
@@ -168,9 +170,11 @@ export function buildDigestContext(input: DigestGuardOutput): string {
   }
 
   if (input.episodes.length > 0) {
+    // Tag each episode with its subject so a non-user episode fed as supporting
+    // evidence can't be read as a fact about the primary user.
     const lines = input.episodes.map(
       (e) =>
-        `- (${e.category}, sig ${e.significance.toFixed(2)}, turn ${e.occurredAtTurn}) ${e.content}`,
+        `- (${e.category}, subject=${e.subject ?? 'user'}, sig ${e.significance.toFixed(2)}, turn ${e.occurredAtTurn}) ${e.content}`,
     )
     parts.push(`Recent significant episodes:\n${lines.join('\n')}`)
   }
@@ -245,6 +249,7 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
 
       const episodes = epRef
         ? rankEpisodesForDigest(recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
+            subject: e.subject ?? 'user',
             content: e.content,
             category: e.category as string,
             significance: e.significance,

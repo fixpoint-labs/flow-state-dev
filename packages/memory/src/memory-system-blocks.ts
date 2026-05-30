@@ -856,12 +856,16 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
       for (const fact of input.facts) {
         try {
-          for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
-
           // The owner the LLM attributed this consolidation fact to. Guards below
           // refuse cross-subject mutations so a mis-targeted `targetFactId`
           // cannot melt one person's fact into another's.
           const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
+
+          // Whether this fact's content was actually folded into semantic memory.
+          // A subject-guard skip leaves it unapplied, so its source episodes must
+          // NOT be marked consolidated — otherwise the content is lost to a later
+          // consolidation pass.
+          let applied = true
 
           switch (fact.action) {
             case 'new': {
@@ -897,6 +901,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
                 const targetSubject = storedSubjectOf(fact.targetFactId)
                 if (targetSubject !== undefined && targetSubject !== normalizedSubject) {
                   console.warn(`[memory] consolidation subject mismatch: target ${fact.targetFactId} is subject=${targetSubject}, proposed subject=${normalizedSubject}; skipping reinforce`)
+                  applied = false
                   break
                 }
                 const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
@@ -910,6 +915,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
                 const targetSubject = storedSubjectOf(fact.targetFactId)
                 if (targetSubject !== undefined && targetSubject !== normalizedSubject) {
                   console.warn(`[memory] consolidation subject mismatch: target ${fact.targetFactId} is subject=${targetSubject}, proposed subject=${normalizedSubject}; skipping update`)
+                  applied = false
                   break
                 }
                 const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
@@ -930,6 +936,13 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
                 invalidated++
               }
               break
+          }
+
+          // Only mark this fact's source episodes consolidated if the fact was
+          // actually applied. A subject-guard skip leaves the content unwritten,
+          // so the episodes stay eligible for a future consolidation pass.
+          if (applied) {
+            for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
           }
         } catch (err) {
           console.warn('[memory] Failed to process consolidation fact:', (err as Error).message ?? err)
@@ -1179,14 +1192,21 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
           // Subject guard: never merge facts that belong to different subjects.
           // The prune prompt forbids cross-subject merges, but a mis-attributing
           // model can still propose one; this is the code backstop that prompt
-          // text alone lacks.
+          // text alone lacks. We require every source id to resolve to a stored
+          // fact AND all of them to share one subject — if any id is missing we
+          // can't verify its subject, so we refuse the merge rather than write
+          // possibly cross-subject `mergedContent` onto the survivor.
           const mergeSubjects = new Set<string>()
+          let foundCount = 0
           for (const id of merge.sourceFactIds) {
             const fact = existingFacts.find((f: any) => f.id === id)
-            if (fact) mergeSubjects.add((fact.subject ?? 'user').toLowerCase())
+            if (fact) {
+              foundCount++
+              mergeSubjects.add((fact.subject ?? 'user').toLowerCase())
+            }
           }
-          if (mergeSubjects.size > 1) {
-            console.warn(`[memory] prune subject mismatch: merge spans subjects {${[...mergeSubjects].join(', ')}}; skipping merge of ${merge.sourceFactIds.join(', ')}`)
+          if (foundCount !== merge.sourceFactIds.length || mergeSubjects.size > 1) {
+            console.warn(`[memory] prune merge refused for ${merge.sourceFactIds.join(', ')}: subjects {${[...mergeSubjects].join(', ')}}${foundCount !== merge.sourceFactIds.length ? ', references a missing fact' : ''}`)
             continue
           }
 
