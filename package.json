@@ -19,9 +19,9 @@
     "docs:serve": "pnpm --filter @flow-state-dev/docs serve",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm --filter \"./packages/*\" -r build && changeset publish --provenance",
-    "release:ci": "pnpm --filter \"./packages/*\" -r build && bash -eo pipefail -c 'if [ -n \"${NPM_TOKEN:-}\" ]; then changeset publish --provenance; else echo \"Skipping npm publish in CI: NPM_TOKEN is not set\"; fi'",
-    "release:snapshot": "changeset version --snapshot && pnpm --filter \"./packages/*\" -r build && changeset publish --tag canary --no-git-tag --provenance",
+    "release": "pnpm build:packages && changeset publish --provenance",
+    "release:ci": "pnpm build:packages && bash -eo pipefail -c 'if [ -n \"${NPM_TOKEN:-}\" ]; then changeset publish --provenance; else echo \"Skipping npm publish in CI: NPM_TOKEN is not set\"; fi'",
+    "release:snapshot": "changeset version --snapshot && pnpm build:packages && changeset publish --tag canary --no-git-tag --provenance",
     "fsdev": "tsx packages/cli/bin/fsdev.ts"
   },
   "pnpm": {

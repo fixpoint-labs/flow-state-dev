@@ -85,23 +85,43 @@ Before first publish, verify the npm org is configured:
 - automation token account is a member with publish permissions
 - package access defaults to public (or package-level `publishConfig.access` remains `public`)
 
-## Build Order
+## Builds and the dev loop
 
-Packages have a dependency hierarchy. When building from scratch:
+Builds run through [Turborepo](https://turborepo.dev). It derives task ordering
+from the workspace dependency graph (`dependsOn: ["^build"]`), runs independent
+tasks in parallel, and caches task output — an unchanged rebuild is a near-
+instant cache hit instead of a full recompile.
 
-```
-1. core           (no internal deps)
-2. server         (depends on core)
-   client         (no internal deps — can build in parallel with server)
-3. react          (depends on core + client)
-   testing        (depends on core + server)
-   devtool        (no internal deps — can build in parallel with react/testing)
-4. cli            (depends on core + server + testing; optional peer: devtool)
-```
+| Command | Purpose |
+|---------|---------|
+| `pnpm build:packages` | Build every `packages/*` to `dist` (typecheck/publish input) |
+| `pnpm build` | Build the whole workspace, including apps |
+| `pnpm typecheck` | Typecheck all packages (builds deps first, from cache) |
+| `pnpm test` | Run all tests |
 
-To build the DevTool static assets (for `fsdev dev`), run `pnpm --filter @flow-state-dev/devtool build:assets` after building `apps/devtool`'s dependencies (core, client, react).
+You don't order builds by hand. The one explicit edge in `turbo.json` is
+`@flow-state-dev/server#build`, pinned to `core` only: `testing` is a dev-only
+dependency of `server`, so the default graph traversal would otherwise see a
+`server ⇄ testing` cycle.
 
-Some packages have dependency-aware build scripts that build their upstream deps first.
+To build the DevTool static assets (for `fsdev dev`), run
+`pnpm --filter @flow-state-dev/devtool build:assets` after building
+`apps/devtool`'s dependencies.
+
+### Source consumption in dev
+
+Apps and examples consume workspace packages as **TypeScript source**, not built
+`dist`. Each package's `package.json` `exports` point at `./src` in the
+workspace; the `dist` build is swapped in at publish time via `publishConfig`
+(verify with `pnpm pack`). The `types` condition stays on the built `.d.ts` so
+consumers type-check against clean declarations rather than recompiling
+dependency source.
+
+The upshot: running an app (`pnpm --filter @flow-state-dev/kitchen-sink dev`)
+needs no package build, and editing a package reflects in the running app via
+Next's HMR with no rebuild step. Next transpiles workspace source via
+`transpilePackages`, derived from the workspace in each app's `next.config.mjs`
+so the list can't drift.
 
 ## Testing
 
