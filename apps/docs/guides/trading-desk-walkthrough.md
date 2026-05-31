@@ -174,7 +174,7 @@ export const specialInstructionsResource = defineResource({
 
 ### The injection seam
 
-The `tradingDesk` capability has a `default: ["core"]` preset that every one of the pipeline's fourteen generators already pulls in. Adding the resource and a `userInstructions` context entry on `core` reaches every generator with no per-generator edits. The formatter returns an empty string when both the global and active-phase fields are blank — the XML renderer then suppresses the wrapping tag, so an unset state produces zero prompt content rather than an empty `<userInstructions/>` placeholder.
+The `tradingDesk` capability has a `default: ["core"]` preset that every one of the pipeline's sixteen generators already pulls in. Adding the resource and a `userInstructions` context entry on `core` reaches every generator with no per-generator edits. The formatter returns an empty string when both the global and active-phase fields are blank — the XML renderer then suppresses the wrapping tag, so an unset state produces zero prompt content rather than an empty `<userInstructions/>` placeholder.
 
 ```ts
 core: {
@@ -203,7 +203,7 @@ The gear stays disabled until the user has run at least one analysis. `useResour
 
 ### Why this shape
 
-A few alternatives were considered and rejected. Adding a per-generator context entry across fourteen generators would have worked, but the capability-preset path is the codebase's preferred shape and it survives the addition of new agents. Reading user-scope state via a dedicated action would have required parsing the SSE stream for the response payload — `ExecuteActionResponse` does not carry handler return values, so the snapshot-driven read is the framework-native primitive. A pre-fetch from a new REST endpoint would have been the wrong tool for an example-local feature.
+A few alternatives were considered and rejected. Adding a per-generator context entry across sixteen generators would have worked, but the capability-preset path is the codebase's preferred shape and it survives the addition of new agents. Reading user-scope state via a dedicated action would have required parsing the SSE stream for the response payload — `ExecuteActionResponse` does not carry handler return values, so the snapshot-driven read is the framework-native primitive. A pre-fetch from a new REST endpoint would have been the wrong tool for an example-local feature.
 
 The generalized take on this pattern — "Projects": resource-backed agent state with optional cross-flow sharing — is tracked separately. The version here is deliberately narrow: trading-desk only, no templates, no versioning, no per-agent scope.
 

@@ -223,7 +223,7 @@ export function formatPersonaCritique(label: string, memo: any): string {
   return lines.join("\n");
 }
 
-/** Render the four Phase 1 analyst memos as a compact block. */
+/** Render the Phase 1 analyst memos as a compact block. */
 export async function formatAnalystMemos(memos: {
   getOptional: (k: string) => Promise<{ state: any } | undefined>;
 }): Promise<string> {

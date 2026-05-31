@@ -1,7 +1,7 @@
 /**
  * Canonical agent identity table for the Trading Desk example.
  *
- * Mirrors the Claude Design handoff (2026-05-06) verbatim. All sixteen agents
+ * Mirrors the Claude Design handoff (2026-05-06) verbatim. All seventeen agents
  * across phases P1–P6 ship in this table from Phase 1 — the sidebar phase
  * groups for P2–P5 render in `pending` styling and become live as later
  * phases land.

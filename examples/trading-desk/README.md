@@ -6,7 +6,7 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, sixteen agents,
+manager hand down a five-tier final decision. Five phases, seventeen agents,
 one structured artifact at every convergence point.
 
 ## What's included
@@ -322,7 +322,7 @@ analyze
              └─ markErrorP5           (.rescue)
 ```
 
-All six Phase 3–5 approach preamble generators are built via the
+All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
 [`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
 The factory locks the shared policy (`agentType: "sub"`,
