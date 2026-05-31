@@ -103,7 +103,14 @@ instant cache hit instead of a full recompile.
 | `pnpm build:packages` | Build every `packages/*` to `dist` (typecheck/publish input) |
 | `pnpm build` | Build the whole workspace, including apps |
 | `pnpm typecheck` | Typecheck all packages (builds deps first, from cache) |
-| `pnpm test` | Run all tests |
+| `pnpm test` | Run all tests (turbo `--concurrency=1` — see below) |
+
+`pnpm test` runs package test tasks **serially** (`--concurrency=1`). Each
+package's vitest already parallelizes across its own files using all cores;
+running multiple packages' vitests at once oversubscribes CI runners and makes
+tests flake on the default 5s timeout. Serial execution matches the prior
+`pnpm -r test` behavior and still benefits from turbo's caching (unchanged
+packages are skipped). Build and typecheck stay fully parallel.
 
 You don't order builds by hand. The one explicit edge in `turbo.json` is
 `@flow-state-dev/server#build`, pinned to `core` only: `testing` is a dev-only

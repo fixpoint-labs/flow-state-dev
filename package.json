@@ -10,7 +10,7 @@
     "lint": "turbo run lint",
     "knip": "knip",
     "knip:ci": "knip --include unlisted,binaries,unresolved",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
     "build:packages": "turbo run build --filter=\"./packages/*\"",
     "devtool:dev": "pnpm --filter @flow-state-dev/devtool-app dev",
