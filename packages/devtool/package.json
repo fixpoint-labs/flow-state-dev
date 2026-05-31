@@ -56,11 +56,11 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && pnpm --filter @flow-state-dev/react build && tsc -p tsconfig.json && node scripts/copy-styles.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-styles.mjs",
     "build:assets": "node scripts/build-assets.mjs",
-    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && pnpm --filter @flow-state-dev/react build && node ../../scripts/typecheck.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
-    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && pnpm --filter @flow-state-dev/react build && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest"
   }
 }

@@ -29,10 +29,10 @@
     "react": "^19.2.4"
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && node ../../scripts/typecheck.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
-    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && vitest run --root .",
-    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && vitest --root ."
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
   }
 }

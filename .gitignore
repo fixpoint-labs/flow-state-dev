@@ -22,3 +22,5 @@ packages/devtool/dist-client/*
 docs/internal/design-memos/*
 *.code-workspace
 .tmp/*
+# Turborepo
+.turbo

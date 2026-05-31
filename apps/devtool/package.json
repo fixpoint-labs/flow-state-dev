@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm --filter @flow-state-dev/devtool build && tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "pnpm --filter @flow-state-dev/devtool build && node ../../scripts/typecheck.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'"
   },
   "dependencies": {

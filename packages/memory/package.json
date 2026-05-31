@@ -30,7 +30,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
-    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test": "vitest run --root .",
     "test:watch": "vitest --root ."
   }
 }

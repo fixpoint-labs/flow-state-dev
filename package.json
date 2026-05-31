@@ -5,13 +5,14 @@
   "packageManager": "pnpm@10.4.1",
   "scripts": {
     "install:all": "pnpm install",
-    "typecheck": "pnpm -r --if-present typecheck && node scripts/validate-package-boundaries.mjs",
-    "lint": "pnpm -r --if-present lint",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs",
+    "lint": "turbo run lint",
     "knip": "knip",
     "knip:ci": "knip --include unlisted,binaries,unresolved",
-    "test": "pnpm -r --if-present test",
-    "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
-    "build:packages": "pnpm -r --filter './packages/**' build",
+    "test": "turbo run test",
+    "test:watch": "turbo watch test",
+    "build:packages": "turbo run build --filter=\"./packages/*\"",
     "devtool:dev": "pnpm --filter @flow-state-dev/react build && node scripts/devtool-dev.mjs",
     "docs:dev": "pnpm --filter @flow-state-dev/docs dev",
     "docs:build": "pnpm --filter @flow-state-dev/docs build",
@@ -34,6 +35,7 @@
     "knip": "^6.14.2",
     "ts-morph": "^28.0.0",
     "tsx": "^4.19.4",
+    "turbo": "^2.9.16",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4"
   }

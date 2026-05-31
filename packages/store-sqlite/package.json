@@ -30,9 +30,9 @@
     "@types/node": "^22.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && node ../../scripts/typecheck.mjs",
-    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest run --root .",
-    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest --root ."
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
   }
 }
