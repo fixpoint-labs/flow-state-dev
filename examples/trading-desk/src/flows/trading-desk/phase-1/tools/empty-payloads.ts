@@ -84,6 +84,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     items: [],
   }),
+  get_market_news: (i) => ({
+    source: "unavailable",
+    asOf: i.date,
+    items: [],
+  }),
   get_macro_indicators: (i) => ({
     source: "unavailable",
     asOf: i.date,
@@ -173,6 +178,34 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     query: "",
     items: [],
   }),
+  get_sector_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    sector: null,
+    industry: null,
+    sectorEtf: null,
+    nameReturn1m: null,
+    sectorEtfReturn1m: null,
+    broadMarketReturn1m: null,
+    relativeStrength1m: null,
+    sectorVsMarket1m: null,
+  }),
+  get_sector_peers: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    grouping: null,
+    peers: [],
+    peerMedianReturn1m: null,
+  }),
+  discover_market_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
@@ -190,7 +223,8 @@ type DiscoveryTool =
   | "discover_fundamentals_context"
   | "discover_sentiment_context"
   | "discover_technical_context"
-  | "discover_profile_context";
+  | "discover_profile_context"
+  | "discover_market_context";
 
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,

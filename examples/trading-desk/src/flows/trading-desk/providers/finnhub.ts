@@ -6,7 +6,7 @@
  * single `try { ... } catch {}`.
  *
  * Tools using these helpers: get_fundamentals, get_price_history, search_news,
- * get_insider_transactions.
+ * get_market_news, get_insider_transactions.
  */
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 
@@ -219,6 +219,56 @@ export async function fetchFinnhubCompanyNews(
     asOf: input.date,
     items,
   };
+}
+
+/**
+ * Recent general market-news headlines from Finnhub `/news?category=general`.
+ * Market-wide (not ticker-scoped), so the payload carries no `ticker`. Caps
+ * at 12 items for prompt budget. Throws on any failure so the tool handler
+ * can fall through to `emptyPayload`.
+ */
+export async function fetchFinnhubMarketNews(
+  input: ToolInput<"get_market_news">,
+): Promise<ToolOutput<"get_market_news">> {
+  type Item = {
+    datetime: number;
+    headline: string;
+    source: string;
+    url?: string;
+    category?: string;
+    summary?: string;
+  };
+  const data = await fetchJson<Item[]>("/news", { category: "general" });
+  const items = (data ?? []).slice(0, 12).map((n) => ({
+    date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
+    headline: n.headline,
+    source: n.source,
+    url: n.url,
+    category: n.category,
+    summary: n.summary ?? null,
+  }));
+  return {
+    source: "finnhub",
+    asOf: input.date,
+    items,
+  };
+}
+
+/**
+ * Peer ticker list from Finnhub `/stock/peers`. Returns up to ~20 tickers
+ * in the same sub-industry; callers should cap for prompt budget. Throws on
+ * any failure so tool handlers can fall through to `emptyPayload`.
+ */
+export async function fetchFinnhubPeers(
+  ticker: string,
+  grouping: "subIndustry" | "industry" | "sector" = "subIndustry",
+): Promise<string[]> {
+  const data = await fetchJson<string[]>("/stock/peers", {
+    symbol: ticker,
+    grouping,
+  });
+  if (!Array.isArray(data)) throw new Error(`Finnhub /stock/peers returned non-array for ${ticker}`);
+  return data.filter((t) => t !== ticker);
 }
 
 const INSIDER_WINDOW_DAYS = 90;

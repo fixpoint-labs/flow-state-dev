@@ -1,0 +1,24 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL sector outlook peer earnings rotation theme regulatory supply chain",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.wsj.com/articles/apple-consumer-electronics-outlook-2026-05-04",
+      "title": "Apple faces headwinds as consumer electronics demand softens",
+      "snippet": "Apple's iPhone sales growth has slowed as the broader consumer electronics segment shows signs of saturation, though services revenue continues to grow.",
+      "publisher": "wsj.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.bloomberg.com/news/articles/apple-antitrust-eu-ruling-2026",
+      "title": "EU antitrust ruling pressures Apple's App Store model",
+      "snippet": "The European Commission's latest ruling requires Apple to open its App Store payment system, potentially impacting services margins in the region.",
+      "publisher": "bloomberg.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

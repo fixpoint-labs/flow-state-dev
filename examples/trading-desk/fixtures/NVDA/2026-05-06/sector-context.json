@@ -1,0 +1,13 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "sector": "Technology",
+  "industry": "Semiconductors",
+  "sectorEtf": "XLK",
+  "nameReturn1m": 0.082,
+  "sectorEtfReturn1m": 0.034,
+  "broadMarketReturn1m": 0.021,
+  "relativeStrength1m": 0.048,
+  "sectorVsMarket1m": 0.013,
+  "source": "fixture"
+}

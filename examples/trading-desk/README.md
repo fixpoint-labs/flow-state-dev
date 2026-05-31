@@ -6,15 +6,15 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, thirteen agents,
+manager hand down a five-tier final decision. Five phases, seventeen agents,
 one structured artifact at every convergence point.
 
 ## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — five sub-agents (Fundamentals, Sentiment,
-  News, Technical, Company Profile) running in parallel, each with a
+- **Parallel analyst fan-out** — six sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile, Market) running in parallel, each with a
   distinct identity.
 - **Investigative discovery + auditable citations** — on the `full` cost
   preset each analyst gets a deterministic per-role web-search step
@@ -91,7 +91,7 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the five analyst
+  and its extension fields only; the full preset adds the six analyst
   memos and the full bull/bear debate transcript.
 
 Phase 4 — risk debate:
@@ -122,7 +122,7 @@ Phase 4 — risk debate:
   remaining personas still run.
 - **Cost-preset gates prompt depth** — the cheap preset reads the trade
   proposal, the investment thesis, and prior persona memos; the full
-  preset adds the five analyst memos and the full bull/bear debate
+  preset adds the six analyst memos and the full bull/bear debate
   transcript.
 
 Phase 5 — portfolio manager:
@@ -133,7 +133,7 @@ Phase 5 — portfolio manager:
 - **Final converging step** — a single `portfolioManager` generator reads
   the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
   trade proposal, Phase 4 risk assessment) and writes a typed
-  `PortfolioDecision`. On the `full` preset it also reads the five
+  `PortfolioDecision`. On the `full` preset it also reads the six
   analyst memos, the full bull/bear debate transcript, and the three
   persona risk critiques.
 - **Five-tier rating** — `finalRating` is one of `Sell`, `Underweight`,
@@ -276,13 +276,14 @@ skip investigation accordingly.
 analyze
   └─ seedSession                  (patch session state from input)
   └─ phase-1-analysts             (sub-sequencer, container item)
-        ├─ setupPhase1Memos       (.tap — pre-create 5 memos in `pending`)
+        ├─ setupPhase1Memos       (.tap — pre-create 6 memos in `pending`)
         └─ parallel
              ├─ fundamentalsAnalyst
              ├─ sentimentAnalyst
              ├─ newsAnalyst
              ├─ technicalAnalyst
-             └─ companyProfileAnalyst
+             ├─ companyProfileAnalyst
+             └─ marketAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.step — { goal } from session state)
@@ -321,7 +322,7 @@ analyze
              └─ markErrorP5           (.rescue)
 ```
 
-All six Phase 3–5 approach preamble generators are built via the
+All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
 [`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
 The factory locks the shared policy (`agentType: "sub"`,

@@ -1,0 +1,13 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "sector": "Technology",
+  "industry": "Consumer Electronics",
+  "sectorEtf": "XLK",
+  "nameReturn1m": 0.015,
+  "sectorEtfReturn1m": 0.034,
+  "broadMarketReturn1m": 0.021,
+  "relativeStrength1m": -0.019,
+  "sectorVsMarket1m": 0.013,
+  "source": "fixture"
+}

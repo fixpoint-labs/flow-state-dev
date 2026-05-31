@@ -1,5 +1,5 @@
 /**
- * The five Phase 1 analyst sub-sequencers.
+ * The six Phase 1 analyst sub-sequencers.
  *
  * Each one is the same recipe — `defineAnalyst` captures it. The role
  * differences live in two places per analyst: the generator (which tools'
@@ -29,6 +29,7 @@ import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
   discover_fundamentals_context,
+  discover_market_context,
   discover_profile_context,
   discover_sentiment_context,
   discover_technical_context,
@@ -39,9 +40,12 @@ import {
   get_income_statement,
   get_insider_transactions,
   get_macro_indicators,
+  get_market_news,
   get_prediction_markets,
   get_price_history,
   get_reddit_mentions,
+  get_sector_context,
+  get_sector_peers,
   get_social_sentiment,
   search_news,
 } from "./tools";
@@ -55,6 +59,9 @@ const newsPrompt = loadPrompt("phase-1/prompts/news.prompt.md");
 const sentimentPrompt = loadPrompt("phase-1/prompts/sentiment.prompt.md");
 const companyProfilePrompt = loadPrompt(
   "phase-1/prompts/company-profile.prompt.md"
+);
+const marketContextPrompt = loadPrompt(
+  "phase-1/prompts/market-context.prompt.md"
 );
 
 // ---------------------------------------------------------------------------
@@ -211,4 +218,38 @@ export const companyProfileAnalyst = defineAnalyst({
     profileContext: discover_profile_context,
   },
   generator: companyProfileGenerator,
+});
+
+// ---------------------------------------------------------------------------
+// Market — sector positioning, peer posture, theme momentum, and sector-
+// specific regulatory/supply-chain overhang. Runs as a parallel peer (not
+// a sub-sequence after Company Profile) — the sector label is resolved
+// inside `get_sector_context` via a soft Yahoo profile fetch, cache-deduped.
+// ---------------------------------------------------------------------------
+
+const marketGenerator = generator({
+  name: "market-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.market.agentName,
+  uses: [tradingDesk.presets({ investigate: true })],
+  inputSchema: z.object({
+    sectorContext: toolOutputSchemas.get_sector_context,
+    sectorPeers: toolOutputSchemas.get_sector_peers,
+    marketContext: toolOutputSchemas.discover_market_context,
+    marketNews: toolOutputSchemas.get_market_news,
+  }),
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(marketContextPrompt),
+  outputSchema: thesisOutputSchema,
+});
+
+export const marketAnalyst = defineAnalyst({
+  shortName: "market",
+  tools: {
+    sectorContext: get_sector_context,
+    sectorPeers: get_sector_peers,
+    marketContext: discover_market_context,
+    marketNews: get_market_news,
+  },
+  generator: marketGenerator,
 });

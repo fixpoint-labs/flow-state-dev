@@ -1,0 +1,14 @@
+{
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "grouping": "subIndustry",
+  "peers": [
+    { "ticker": "MSFT", "name": "Microsoft Corporation", "return1m": 0.029 },
+    { "ticker": "DELL", "name": "Dell Technologies Inc", "return1m": 0.018 },
+    { "ticker": "HPQ", "name": "HP Inc", "return1m": -0.005 },
+    { "ticker": "LOGI", "name": "Logitech International", "return1m": 0.011 },
+    { "ticker": "SONO", "name": "Sonos Inc", "return1m": -0.032 }
+  ],
+  "peerMedianReturn1m": 0.011,
+  "source": "fixture"
+}

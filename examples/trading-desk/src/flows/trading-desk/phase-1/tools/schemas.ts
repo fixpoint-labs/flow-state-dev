@@ -159,6 +159,14 @@ export const companyNewsSchema = z.object({
   items: z.array(newsItem),
 });
 
+/** General market-news feed — same item shape as company news, but
+ *  market-wide (no `ticker` field). Feeds the Market Analyst. */
+export const marketNewsSchema = z.object({
+  source: sourceTag,
+  asOf: z.string(),
+  items: z.array(newsItem),
+});
+
 export const macroIndicatorsSchema = z.object({
   source: sourceTag,
   asOf: z.string(),
@@ -367,6 +375,45 @@ export const discoveryPayloadSchema = z.object({
 
 export type DiscoveryPayload = z.infer<typeof discoveryPayloadSchema>;
 
+/**
+ * Sector context: how the name's sector is positioned vs. the broad market,
+ * and where the name sits within its sector. The broad-market return (SPY)
+ * is a relative baseline, not a macro-regime indicator — that belongs to the
+ * Macro Analyst (FIX-704).
+ */
+export const sectorContextSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  sector: z.string().nullable(),
+  industry: z.string().nullable(),
+  sectorEtf: z.string().nullable(),
+  nameReturn1m: z.number().nullable(),
+  sectorEtfReturn1m: z.number().nullable(),
+  broadMarketReturn1m: z.number().nullable(),
+  relativeStrength1m: z.number().nullable(),
+  sectorVsMarket1m: z.number().nullable(),
+});
+
+/**
+ * Sector peers: Finnhub peer set with trailing 1-month returns. Capped at
+ * ~6 peers to keep prompt size and API budget bounded.
+ */
+export const sectorPeersSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  grouping: z.string().nullable(),
+  peers: z.array(
+    z.object({
+      ticker: z.string(),
+      name: z.string().nullable(),
+      return1m: z.number().nullable(),
+    }),
+  ),
+  peerMedianReturn1m: z.number().nullable(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -375,6 +422,7 @@ export const toolInputSchemas = {
   get_price_history: periodInput.extend({ range: z.string().default("1mo") }),
   compute_indicators: periodInput,
   search_news: periodInput,
+  get_market_news: z.object({ date: z.string().min(1) }),
   get_macro_indicators: z.object({ date: z.string().min(1) }),
   get_social_sentiment: periodInput,
   get_reddit_mentions: periodInput,
@@ -385,6 +433,9 @@ export const toolInputSchemas = {
   discover_sentiment_context: periodInput,
   discover_technical_context: periodInput,
   discover_profile_context: periodInput,
+  get_sector_context: periodInput,
+  get_sector_peers: periodInput,
+  discover_market_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -395,6 +446,7 @@ export const toolOutputSchemas = {
   get_price_history: priceHistorySchema,
   compute_indicators: indicatorsSchema,
   search_news: companyNewsSchema,
+  get_market_news: marketNewsSchema,
   get_macro_indicators: macroIndicatorsSchema,
   get_social_sentiment: socialSentimentSchema,
   get_reddit_mentions: redditMentionsSchema,
@@ -405,6 +457,9 @@ export const toolOutputSchemas = {
   discover_sentiment_context: discoveryPayloadSchema,
   discover_technical_context: discoveryPayloadSchema,
   discover_profile_context: discoveryPayloadSchema,
+  get_sector_context: sectorContextSchema,
+  get_sector_peers: sectorPeersSchema,
+  discover_market_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -420,6 +475,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_price_history: "prices.json",
   compute_indicators: "indicators.json",
   search_news: "company-news.json",
+  get_market_news: "market-news.json",
   get_macro_indicators: "macro-indicators.json",
   get_social_sentiment: "social-sentiment.json",
   get_reddit_mentions: "reddit-mentions.json",
@@ -430,6 +486,9 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   discover_sentiment_context: "discover-sentiment-context.json",
   discover_technical_context: "discover-technical-context.json",
   discover_profile_context: "discover-profile-context.json",
+  get_sector_context: "sector-context.json",
+  get_sector_peers: "sector-peers.json",
+  discover_market_context: "discover-market-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

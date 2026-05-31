@@ -3,7 +3,7 @@
  *
  *   - `checkPhase1HasFundamentalsAndProfile` halts the run when either
  *     non-substitutable analyst (`fundamentals` / `companyProfile`) errored,
- *     even if the other four succeeded.
+ *     even if the other five succeeded.
  *   - `checkPhase1HasData` (the pre-existing all-error backstop) halts only
  *     when every analyst errored.
  *
@@ -111,6 +111,7 @@ describe("checkPhase1HasData (all-error backstop)", () => {
         "news",
         "technical",
         "companyProfile",
+        "market",
       ]),
     ).toBe("phase-1-no-data");
   });

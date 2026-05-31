@@ -1,6 +1,6 @@
 # Design: Trading Desk Example (FIX-564)
 
-The trading desk is a five-phase, thirteen-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to five analyst memos (including a Company Profile renderer that grounds the desk in the underlying business identity before signal-oriented synthesis runs), runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
+The trading desk is a five-phase, seventeen-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to six analyst memos (including a Company Profile renderer that grounds the desk in the underlying business identity and a Market Analyst that establishes the sector/peer/theme context), runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
 
 ## 1. Pipeline shape
 
@@ -9,7 +9,7 @@ The flow is one outer sequencer that chains five sub-sequencers. Each phase is a
 ```
 analyzePipeline
   .step(seedSession)
-  .step(phase1Pipeline)   // setupPhase1Memos → parallel(4 analysts)
+  .step(phase1Pipeline)   // setupPhase1Memos → parallel(6 analysts)
   .step(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
   .step(phase3Pipeline)   // setupPhase3Memos → traderStep
   .step(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
@@ -20,9 +20,11 @@ See [`flow.ts`](../../../examples/trading-desk/src/flows/trading-desk/flow.ts) f
 
 ## 2. Identity registry
 
-Thirteen agents across five phases live in a single `AGENTS` table in [`agents.ts`](../../../examples/trading-desk/src/flows/trading-desk/agents.ts). Each entry carries `role`, `glyph` (two-character badge mark), `hue` (OKLCH degrees for the per-agent accent), and `team`. Every agent ships from day one — Phase 2–5 entries render in `pending` styling before their phases run. `PHASE_GROUPS` buckets them for the sidebar.
+Fourteen agents across five phases live in a single `AGENTS` table in [`agents.ts`](../../../examples/trading-desk/src/flows/trading-desk/agents.ts). Each entry carries `role`, `glyph` (two-character badge mark), `hue` (OKLCH degrees for the per-agent accent), and `team`. Every agent ships from day one — Phase 2–5 entries render in `pending` styling before their phases run. `PHASE_GROUPS` buckets them for the sidebar.
 
 Per-phase registries (`PHASE_1_MEMO_KEYS` through `PHASE_5_MEMO_KEYS`) map a short name (`fundamentals`, `bull`, `trader`, `aggressive`, `portfolioManager`) to `{ agentName, memoKey, collectionKey }`. `memoKey` is the full storage key (`memos/p1/fundamentals`). `collectionKey` is the bare suffix the framework auto-prefixes when you call `collection.create("p1/fundamentals")`. `ALL_MEMO_KEYS` merges every per-phase registry — the navigator iterates this single object.
+
+Phase 1's six analysts span a company → sector → macro context taxonomy. Company Profile grounds the desk in the individual business (sector, industry, description, scale). The Market Analyst fills the mid-tier: sector positioning, peer posture, theme momentum, and sector-specific regulatory or supply-chain overhang. The remaining four analysts (Fundamentals, Sentiment, News, Technical) cut across all three tiers depending on their data sources.
 
 The transcript pane in [`transcript-pane.tsx`](../../../examples/trading-desk/components/transcript/transcript-pane.tsx) keeps a `PRIMARY_STRUCT_AGENTS` set that gates which agents emit structured-output cards: `researchManager`, `trader`, `portfolioManager`. Persona agents and analysts emit memos that show up in the right pane but not as transcript cards.
 
@@ -44,7 +46,7 @@ Session state lives in [`state.ts`](../../../examples/trading-desk/src/flows/tra
 
 Every memo state transition is a dual write. `markWriting`, `commitMemo`, and `markError` (see [`memo-writer.ts`](../../../examples/trading-desk/src/flows/trading-desk/memo-writer.ts) for the Phase 1 originals; later phases copy the shape) both patch the resource state and write `session.memoStatus[shortName]`. The reason for both: resource snapshots batch to terminal status, but session state-change items propagate immediately through the stream. The sidebar wants to flicker live, so it reads `memoStatus`. The memo body wants the consolidated terminal snapshot, so it reads the resource.
 
-The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with five concurrent analysts.
+The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with six concurrent analysts.
 
 ## 5. The `tradingDesk` capability
 
@@ -106,11 +108,11 @@ The `formatMemoBlock` helper renders an "unavailable" sentinel when a memo's `he
 
 Three classes of work the framework absorbs that would otherwise be a couple thousand lines of plumbing.
 
-*Typed resource pre-creation plus live status mirror.* The pipeline pre-creates 14 memo slots so the navigator scaffolds correctly, then transitions each through `pending → writing → published` with a dual write — resource patch plus session-state mirror — so the sidebar can flicker live mid-stream. Without the framework you'd hand-roll a resource registry, a per-key status map, a state-mutation API that handles concurrent writers without races, and the SSE plumbing to ship state changes mid-stream. The framework gives you `defineResourceCollection`, `setStateRecord`, `client.expose`, and `useClientData`. The example uses all four.
+*Typed resource pre-creation plus live status mirror.* The pipeline pre-creates 17 memo slots so the navigator scaffolds correctly, then transitions each through `pending → writing → published` with a dual write — resource patch plus session-state mirror — so the sidebar can flicker live mid-stream. Without the framework you'd hand-roll a resource registry, a per-key status map, a state-mutation API that handles concurrent writers without races, and the SSE plumbing to ship state changes mid-stream. The framework gives you `defineResourceCollection`, `setStateRecord`, `client.expose`, and `useClientData`. The example uses all four.
 
 *Structured outputs that show up as identity-aware transcript cards.* Setting `agentType: "primary"` with an `agentName` drawn from the canonical `AGENTS` table is the entire mechanism for getting a `TxStruct` card emitted in the transcript with the right glyph and hue. The renderer picks the per-agent accent from the same table. Without the framework you'd reinvent agent identity, manage card emission yourself, and write per-agent rendering rules. With the framework, the only registration step is the `PRIMARY_STRUCT_AGENTS` set on the transcript pane that gates which agents get cards.
 
-*Capability-driven context injection.* The `tradingDesk` capability owns model selection, ticker/date context, and per-artifact preset bundles across 12 generators. Adding a generator means writing `uses: [tradingDesk.presets({ ... })]` and the capability handles the rest. Without it, every generator carries its own `model:`, `resources:`, and `context:` boilerplate, and a "base class for trading-desk generators" emerges that doesn't compose well with anything else. The capability also means tests can swap out a single preset to override what generators see — without touching the generators themselves.
+*Capability-driven context injection.* The `tradingDesk` capability owns model selection, ticker/date context, and per-artifact preset bundles across 16 generators. Adding a generator means writing `uses: [tradingDesk.presets({ ... })]` and the capability handles the rest. Without it, every generator carries its own `model:`, `resources:`, and `context:` boilerplate, and a "base class for trading-desk generators" emerges that doesn't compose well with anything else. The capability also means tests can swap out a single preset to override what generators see — without touching the generators themselves.
 
 This would all be possible without the framework. It would be a couple thousand lines of plumbing instead of a handful of declarative slots, and the seams would be in load-bearing places.
 
