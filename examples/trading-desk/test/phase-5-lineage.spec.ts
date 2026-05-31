@@ -1,10 +1,18 @@
 /**
  * Tests for the Phase 5 dependency-lineage check inside
- * `commitPortfolioManagerMemo`. Every item in `trader.dependsOn` must
- * appear in the PM's `keyDependencies` or `acknowledgedAndDropped`; an
- * orphaned dependency throws, which the pipeline's per-step rescue turns
- * into an `error` memo. Here we exercise the throw directly through
- * `testBlock` (the rescue wiring itself is covered in phase-5-writer.spec).
+ * `commitPortfolioManagerMemo`. Every item in `trader.dependsOn` must be
+ * dispositioned by the PM in `traderDependencyDispositions`, referenced by
+ * its array index (the same `[n]` it was rendered with). An index left
+ * un-dispositioned throws, which the pipeline's per-step rescue turns into
+ * an `error` memo. Here we exercise the throw directly through `testBlock`
+ * (the rescue wiring itself is covered in phase-5-writer.spec).
+ *
+ * The check is referential, not string-based: the PM may phrase
+ * `keyDependencies` however it likes — the regression test below proves a
+ * fully paraphrased `keyDependencies` still passes as long as every trader
+ * index is dispositioned. (Previously the writer string-matched the PM's
+ * free text against the trader's, so any rewording orphaned the dependency
+ * and failed the run.)
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
@@ -12,6 +20,12 @@ import { testBlock } from "@flow-state-dev/testing";
 import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/phase-5/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
+
+type Disposition = {
+  index: number;
+  status: "carried" | "dropped";
+  note: string;
+};
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-lineage-test",
@@ -47,9 +61,18 @@ function seededPmMemo() {
   };
 }
 
+/** Disposition every index 0..n-1 as carried — the common "kept it all" case. */
+function carryAll(n: number): Disposition[] {
+  return Array.from({ length: n }, (_, i) => ({
+    index: i,
+    status: "carried" as const,
+    note: "Still material to the decision.",
+  }));
+}
+
 function decision(opts: {
   keyDependencies: string[];
-  acknowledgedAndDropped?: { item: string; reason: string }[];
+  traderDependencyDispositions?: Disposition[];
 }) {
   return {
     label: "PortfolioDecision",
@@ -86,7 +109,7 @@ function decision(opts: {
     asymmetricEdge: "",
     nearTermCatalyst: "",
     invalidationTrigger: "",
-    acknowledgedAndDropped: opts.acknowledgedAndDropped ?? [],
+    traderDependencyDispositions: opts.traderDependencyDispositions ?? [],
     primaryScenario: "",
   };
 }
@@ -94,12 +117,12 @@ function decision(opts: {
 async function commitWith(opts: {
   traderDependsOn: string[] | null;
   keyDependencies: string[];
-  acknowledgedAndDropped?: { item: string; reason: string }[];
+  traderDependencyDispositions?: Disposition[];
 }) {
   return testBlock(commitPortfolioManagerMemo, {
     input: decision({
       keyDependencies: opts.keyDependencies,
-      acknowledgedAndDropped: opts.acknowledgedAndDropped,
+      traderDependencyDispositions: opts.traderDependencyDispositions,
     }),
     flow: fixtureFlow,
     session: {
@@ -113,33 +136,62 @@ async function commitWith(opts: {
 }
 
 describe("Phase 5 dependency lineage", () => {
-  it("commits when every trader dependency is carried in keyDependencies", async () => {
+  it("commits when every trader dependency index is dispositioned", async () => {
     const deps = ["AI cap-ex cycle", "China export controls", "Margin trajectory"];
     const result = await commitWith({
       traderDependsOn: deps,
       keyDependencies: deps,
+      traderDependencyDispositions: carryAll(3),
     });
     expect(result.error).toBeNull();
   });
 
-  it("commits when dependencies split across keyDependencies and acknowledgedAndDropped", async () => {
+  it("commits when dispositions mix carried and dropped", async () => {
     const result = await commitWith({
       traderDependsOn: ["AI cap-ex cycle", "China export controls", "Margin trajectory"],
       keyDependencies: ["AI cap-ex cycle", "China export controls"],
-      acknowledgedAndDropped: [
-        { item: "Margin trajectory", reason: "Already priced into the stop." },
+      traderDependencyDispositions: [
+        { index: 0, status: "carried", note: "Core to the thesis." },
+        { index: 1, status: "carried", note: "Tail risk we still hold." },
+        { index: 2, status: "dropped", note: "Already priced into the stop." },
       ],
     });
     expect(result.error).toBeNull();
   });
 
-  it("throws a lineage-violation when a trader dependency is orphaned", async () => {
+  it("commits even when keyDependencies share no text with trader.dependsOn (regression)", async () => {
+    // The PM paraphrases every dependency in its free-text keyDependencies
+    // and adds new ones. Under the old string-match check this orphaned all
+    // three trader deps and failed the run. With index-based dispositions
+    // the lineage check passes because every index is accounted for.
+    const result = await commitWith({
+      traderDependsOn: [
+        "Whether operating margins are compressing and by how much",
+        "Whether AUM scaling translates to higher distributable earnings after overhead",
+        "Whether current valuation is justified once unverified sentiment is removed",
+      ],
+      keyDependencies: [
+        "Operating margin compression magnitude",
+        "Distributable-earnings leverage from AUM growth",
+        "Valuation support after stripping sentiment",
+        "A brand-new dependency the trader never named",
+      ],
+      traderDependencyDispositions: carryAll(3),
+    });
+    expect(result.error).toBeNull();
+  });
+
+  it("throws a lineage-violation when a trader dependency index is not dispositioned", async () => {
     const result = await commitWith({
       traderDependsOn: ["AI cap-ex cycle", "China export controls", "Margin trajectory"],
       keyDependencies: ["AI cap-ex cycle"],
+      traderDependencyDispositions: [
+        { index: 0, status: "carried", note: "Carried." },
+      ],
     });
     expect(result.error).not.toBeNull();
     expect(result.error?.message).toContain("lineage-violation");
+    // The message names the orphaned dependencies (indices 1 and 2).
     expect(result.error?.message).toContain("China export controls");
     expect(result.error?.message).toContain("Margin trajectory");
   });
@@ -148,6 +200,7 @@ describe("Phase 5 dependency lineage", () => {
     const result = await commitWith({
       traderDependsOn: [],
       keyDependencies: [],
+      traderDependencyDispositions: [],
     });
     expect(result.error).toBeNull();
   });

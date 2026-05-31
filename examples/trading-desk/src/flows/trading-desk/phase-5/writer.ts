@@ -72,19 +72,22 @@ export const commitPortfolioManagerMemo = memoHandler({
     const traderDirection = traderState?.direction;
 
     // Lineage enforcement: every dependency the trader named must be
-    // carried forward in `keyDependencies` or consciously dropped in
-    // `acknowledgedAndDropped`. The prompt asks for this, but only the
-    // writer can guarantee it — an orphaned dependency means the PM
-    // silently lost a contestable judgment. Throwing here triggers the
-    // `markErrorP5` rescue, which flips the memo to `error`.
+    // dispositioned by the PM — carried forward as a live judgment or
+    // consciously dropped. The PM references each one by its position in
+    // `trader.dependsOn` (the same `[index]` it was rendered with), so
+    // this check is referential, not string-based: the PM can paraphrase
+    // freely in `keyDependencies` without orphaning a judgment. Only the
+    // writer can guarantee coverage — an un-dispositioned dependency means
+    // the PM silently lost a contestable judgment. Throwing here triggers
+    // the `markErrorP5` rescue, which flips the memo to `error`.
     const traderDeps = traderState?.dependsOn ?? [];
-    const dropped = decision.acknowledgedAndDropped.map((d) => d.item);
-    const orphaned = traderDeps.filter(
-      (d) => !decision.keyDependencies.includes(d) && !dropped.includes(d),
+    const dispositioned = new Set(
+      decision.traderDependencyDispositions.map((d) => d.index),
     );
+    const orphaned = traderDeps.filter((_, i) => !dispositioned.has(i));
     if (orphaned.length > 0) {
       throw new Error(
-        `lineage-violation: PM dropped trader dependencies without acknowledgment: ${orphaned.join(", ")}`,
+        `lineage-violation: PM did not disposition trader dependencies: ${orphaned.join(", ")}`,
       );
     }
     const agreesWithTrader =

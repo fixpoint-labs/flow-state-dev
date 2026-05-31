@@ -145,7 +145,11 @@ function portfolioDecision(
       finalRating === "Buy" || finalRating === "Overweight"
         ? "Attach rate flat or down two quarters running."
         : "",
-    acknowledgedAndDropped: [] as { item: string; reason: string }[],
+    traderDependencyDispositions: [] as {
+      index: number;
+      status: "carried" | "dropped";
+      note: string;
+    }[],
     primaryScenario:
       finalRating === "Buy" || finalRating === "Overweight"
         ? "Data-center beat, +12%"
@@ -217,18 +221,20 @@ describe("Phase 5 writer taps", () => {
     }
   });
 
-  it("schema round-trips acknowledgedAndDropped entries", () => {
+  it("schema round-trips traderDependencyDispositions entries", () => {
     const decision = {
       ...portfolioDecision("Hold"),
-      acknowledgedAndDropped: [
-        { item: "China export-control resolution", reason: "Out of horizon." },
+      traderDependencyDispositions: [
+        { index: 0, status: "carried" as const, note: "Still material." },
+        { index: 1, status: "dropped" as const, note: "Out of horizon." },
       ],
     };
     const parsed = portfolioDecisionOutputSchema.safeParse(decision);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.acknowledgedAndDropped).toEqual([
-        { item: "China export-control resolution", reason: "Out of horizon." },
+      expect(parsed.data.traderDependencyDispositions).toEqual([
+        { index: 0, status: "carried", note: "Still material." },
+        { index: 1, status: "dropped", note: "Out of horizon." },
       ]);
     }
   });

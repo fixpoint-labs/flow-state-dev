@@ -316,7 +316,9 @@ function portfolioManagerStructuredOutput(
         finalRating === "Buy" || finalRating === "Overweight"
           ? "Attach rate flat or down two quarters running."
           : "",
-      acknowledgedAndDropped: [] as { item: string; reason: string }[],
+      traderDependencyDispositions: [
+        { index: 0, status: "carried" as const, note: "Central to the call." },
+      ],
       primaryScenario:
         finalRating === "Buy" || finalRating === "Overweight"
           ? "Data-center beat, +12%"

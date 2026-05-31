@@ -71,8 +71,12 @@ export function formatTradeProposalExtensions(memo: any): string {
     for (const c of memo.invalidationCriteria) lines.push(`- ${c}`);
   }
   if (Array.isArray(memo.dependsOn) && memo.dependsOn.length > 0) {
+    // Number each dependency so a downstream consumer (the Phase 5 PM) can
+    // reference it by index in `traderDependencyDispositions` rather than
+    // re-typing the text. Indices follow array order, which is the order
+    // the Phase 5 writer's lineage check walks.
     lines.push("Depends on (unresolved):");
-    for (const d of memo.dependsOn) lines.push(`- ${d}`);
+    memo.dependsOn.forEach((d: string, i: number) => lines.push(`- [${i}] ${d}`));
   }
   return lines.length > 0 ? lines.join("\n") : "(trade fields empty)";
 }

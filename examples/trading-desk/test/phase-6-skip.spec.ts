@@ -221,7 +221,9 @@ function makeUpstreamMocks() {
           asymmetricEdge: "",
           nearTermCatalyst: "",
           invalidationTrigger: "",
-          acknowledgedAndDropped: [],
+          traderDependencyDispositions: [
+            { index: 0, status: "carried", note: "Central to the call." },
+          ],
           primaryScenario: "",
         }),
       ],
