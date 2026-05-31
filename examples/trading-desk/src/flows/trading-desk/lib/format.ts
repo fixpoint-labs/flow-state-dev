@@ -71,8 +71,12 @@ export function formatTradeProposalExtensions(memo: any): string {
     for (const c of memo.invalidationCriteria) lines.push(`- ${c}`);
   }
   if (Array.isArray(memo.dependsOn) && memo.dependsOn.length > 0) {
+    // Number each dependency so a downstream consumer (the Phase 5 PM) can
+    // reference it by index in `traderDependencyDispositions` rather than
+    // re-typing the text. Indices follow array order, which is the order
+    // the Phase 5 writer's lineage check walks.
     lines.push("Depends on (unresolved):");
-    for (const d of memo.dependsOn) lines.push(`- ${d}`);
+    memo.dependsOn.forEach((d: string, i: number) => lines.push(`- [${i}] ${d}`));
   }
   return lines.length > 0 ? lines.join("\n") : "(trade fields empty)";
 }
@@ -151,6 +155,34 @@ export function formatThesisExtensions(memo: any): string {
     for (const d of memo.unresolvedDisagreements) lines.push(`- ${d}`);
   }
   return lines.length > 0 ? lines.join("\n") : "(thesis fields empty)";
+}
+
+/** Render the Phase 5 ScenarioForecast memo's typed extension fields
+ *  as a `<scenarioForecast>` block for PM consumption. */
+export function formatScenarioForecastExtensions(memo: any): string {
+  if (memo === undefined || memo === null) {
+    return "(no scenario forecast available)";
+  }
+  const lines: string[] = [];
+  if (memo.distribution != null) lines.push(`Distribution: ${memo.distribution}`);
+  if (memo.evidenceBasis != null) lines.push(`Evidence basis: ${memo.evidenceBasis}`);
+  if (memo.horizon != null) lines.push(`Horizon: ${memo.horizon}`);
+  if (Array.isArray(memo.scenarios) && memo.scenarios.length > 0) {
+    lines.push("Scenarios:");
+    for (const s of memo.scenarios as Array<{
+      name: string;
+      probability: number;
+      trigger: string;
+      triggerSource: string;
+      expectedOutcome: string;
+      tradeBehavior: string;
+    }>) {
+      lines.push(
+        `- ${s.name} · ${(s.probability * 100).toFixed(0)}% · trigger: ${s.trigger} [${s.triggerSource}] · outcome: ${s.expectedOutcome} · trade: ${s.tradeBehavior}`,
+      );
+    }
+  }
+  return lines.length > 0 ? lines.join("\n") : "(scenario-forecast fields empty)";
 }
 
 /** Render a Phase 4 persona memo's structured critique fields. The

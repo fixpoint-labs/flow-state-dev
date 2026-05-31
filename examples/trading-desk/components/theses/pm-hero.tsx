@@ -36,6 +36,11 @@ type AcceptedAdjustment = NonNullable<
   MemoState["acceptedAdjustments"]
 >["sizing"];
 
+type ScenarioSummary = {
+  name: string;
+  probability: number;
+};
+
 export type PmHeroProps = {
   agent: AgentName;
   label: string | null;
@@ -63,6 +68,11 @@ export type PmHeroProps = {
       }
     | null;
   agreesWithTrader: boolean | null;
+  scenarioStrip: {
+    scenarios: ReadonlyArray<ScenarioSummary>;
+    distribution: string;
+    primaryScenario: string | null;
+  } | null;
 };
 
 const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
@@ -81,6 +91,7 @@ export function PmHero({
   keyDependencies,
   upstreamReferences,
   agreesWithTrader,
+  scenarioStrip,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -106,6 +117,54 @@ export function PmHero({
         <p className="text-[16px] leading-snug text-[color:var(--c-fg)]">
           {headline}
         </p>
+      ) : null}
+
+      {scenarioStrip !== null && scenarioStrip.scenarios.length > 0 ? (
+        <div
+          className={cn(
+            "flex flex-col gap-1.5 rounded-md border p-2",
+            "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
+          )}
+          aria-label="Scenario distribution"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              scenarios
+            </span>
+            <span className="text-[10.5px] text-[color:var(--c-fg-muted)]">
+              {scenarioStrip.distribution}
+            </span>
+          </div>
+          <div className="flex gap-0.5">
+            {scenarioStrip.scenarios.map((sc) => (
+              <div
+                key={sc.name}
+                className="flex flex-col items-center gap-0.5"
+                style={{ flex: sc.probability }}
+              >
+                <div
+                  className={cn(
+                    "h-1.5 w-full rounded-sm",
+                    scenarioStrip.primaryScenario === sc.name
+                      ? "bg-[color:var(--c-accent)]"
+                      : "bg-[color:var(--c-surface-2)]",
+                  )}
+                />
+                <span
+                  className={cn(
+                    "max-w-full truncate text-center font-mono text-[8px] leading-tight",
+                    scenarioStrip.primaryScenario === sc.name
+                      ? "text-[color:var(--c-fg)]"
+                      : "text-[color:var(--c-fg-faint)]",
+                  )}
+                  title={sc.name}
+                >
+                  {(sc.probability * 100).toFixed(0)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       <div

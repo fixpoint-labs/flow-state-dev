@@ -24,7 +24,7 @@ import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
-import { phase5Pipeline } from "./phase-5";
+import { phase5Pipeline, scenarioForecasterPipeline } from "./phase-5";
 import { phase6Pipeline } from "./phase-6";
 import { resolveTicker } from "./lib/ticker-resolver";
 import {
@@ -201,6 +201,7 @@ const analyzePipeline = sequencer({
   .step(phase2Pipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)
+  .step(scenarioForecasterPipeline)
   .step(phase5Pipeline)
   // Phase 6 — post-decision thesis audit. Only runs when the caller supplied
   // a usable thesis at seed time; otherwise the pipeline ends at the PM.

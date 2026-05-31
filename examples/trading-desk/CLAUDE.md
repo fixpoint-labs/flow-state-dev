@@ -54,7 +54,7 @@ src/flows/trading-desk/
   phase-2/                       (same shape — setup.ts + writer.ts + generators.ts + round-robin.ts)
   phase-3/                       (single trader — trader.ts owns its output schema)
   phase-4/                       (3 personas + risk-assessment consolidator)
-  phase-5/                       (single PM — portfolio-manager.ts owns its output schema)
+  phase-5/                       (scenario forecaster + PM — two stages; each generator owns its output schema)
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
 

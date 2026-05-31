@@ -1,15 +1,23 @@
 /**
- * Phase 5 memo-writing blocks.
+ * Phase 5 memo-writing blocks, for both sub-stages.
  *
+ * Scenario forecaster (runs first):
+ *   - `markWritingForecast` / `markErrorForecast` — built via
+ *     `defineMemoStateBlocks`.
+ *   - `commitScenarioForecastMemo` — normalizes the scenario probabilities,
+ *     copies `horizon` from the trader memo, and publishes. Throws
+ *     `probability-violation` when the raw probabilities sum outside
+ *     [0.8, 1.2], caught by the pipeline's per-step rescue.
+ *
+ * Portfolio manager (runs second, terminal):
  *   - `markWritingP5` / `markErrorP5` — built via `defineMemoStateBlocks`.
- *   - `commitPortfolioManagerMemo` — plain handler that derives two
- *     structural fields at commit time (`agreesWithTrader` from the
- *     trader memo's direction vs the PM's final rating;
- *     `upstreamReferences` from the canonical key maps), publishes the
- *     memo, then flips `session.runComplete` so the navigator renders a
- *     terminal state.
+ *   - `commitPortfolioManagerMemo` — derives two structural fields at
+ *     commit time (`agreesWithTrader` from the trader memo's direction vs
+ *     the PM's final rating; `upstreamReferences` from the canonical key
+ *     maps), enforces trader-dependency lineage, publishes the memo, then
+ *     flips `session.runComplete` so the navigator renders a terminal state.
  *
- * The `runComplete` patch is inline at the end of the handler — not
+ * The `runComplete` patch is inline at the end of the PM handler — not
  * abstracted into a factory callback. This is the cleanest expression of
  * "this commit also marks the run complete": one statement, in the same
  * scope as the rest of the commit body.
@@ -27,6 +35,66 @@ import {
   publishMemo,
 } from "../lib/memo-writer";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
+import { scenarioForecastOutputSchema } from "./scenario-forecaster";
+
+// ── Scenario forecaster ──────────────────────────────────────────────
+
+export const {
+  markWriting: markWritingForecast,
+  markError: markErrorForecast,
+} = defineMemoStateBlocks({
+  phaseId: "p5",
+  agentTeam: "pm",
+  keys: { scenarioForecast: PHASE_5_MEMO_KEYS.scenarioForecast },
+  errorMessageFallback: "Scenario forecaster failed.",
+});
+
+export const commitScenarioForecastMemo = memoHandler({
+  name: "commit-memo-p5-scenario-forecast",
+  inputSchema: scenarioForecastOutputSchema,
+  execute: async (forecast, ctx) => {
+    // Copy horizon from the trader memo's holdingPeriod.
+    const traderMemo = await ctx.resources.memos.getOptional(
+      PHASE_3_MEMO_KEYS.trader.collectionKey,
+    );
+    const traderState = traderMemo?.state as
+      | { holdingPeriod?: string | null }
+      | undefined;
+    const horizon = traderState?.holdingPeriod ?? null;
+
+    // Probability integrity: sum, validate band, normalize.
+    const rawSum = forecast.scenarios.reduce((s, sc) => s + sc.probability, 0);
+    if (rawSum < 0.8 || rawSum > 1.2) {
+      throw new Error(
+        `probability-violation: scenario probabilities sum to ${rawSum.toFixed(4)}, outside [0.8, 1.2]`,
+      );
+    }
+    const normalizedScenarios = forecast.scenarios.map((sc) => ({
+      ...sc,
+      probability: sc.probability / rawSum,
+    }));
+
+    await publishMemo(
+      ctx,
+      "scenarioForecast",
+      PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
+      {
+        label: forecast.label,
+        headline: forecast.headline,
+        rating: forecast.rating,
+        body: forecast.body,
+        metrics: forecast.metrics,
+        scenarios: normalizedScenarios,
+        distribution: forecast.distribution,
+        probabilitySum: rawSum,
+        horizon,
+        evidenceBasis: forecast.evidenceBasis,
+      },
+    );
+  },
+});
+
+// ── Portfolio manager ────────────────────────────────────────────────
 
 export const {
   markWriting: markWritingP5,
@@ -34,8 +102,8 @@ export const {
 } = defineMemoStateBlocks({
   phaseId: "p5",
   agentTeam: "pm",
-  keys: PHASE_5_MEMO_KEYS,
-  errorMessageFallback: "Phase 5 generator failed.",
+  keys: { portfolioManager: PHASE_5_MEMO_KEYS.portfolioManager },
+  errorMessageFallback: "Portfolio manager failed.",
 });
 
 /** Map a Phase 5 final rating to the trader-shape direction it implies, so
@@ -72,19 +140,22 @@ export const commitPortfolioManagerMemo = memoHandler({
     const traderDirection = traderState?.direction;
 
     // Lineage enforcement: every dependency the trader named must be
-    // carried forward in `keyDependencies` or consciously dropped in
-    // `acknowledgedAndDropped`. The prompt asks for this, but only the
-    // writer can guarantee it — an orphaned dependency means the PM
-    // silently lost a contestable judgment. Throwing here triggers the
-    // `markErrorP5` rescue, which flips the memo to `error`.
+    // dispositioned by the PM — carried forward as a live judgment or
+    // consciously dropped. The PM references each one by its position in
+    // `trader.dependsOn` (the same `[index]` it was rendered with), so
+    // this check is referential, not string-based: the PM can paraphrase
+    // freely in `keyDependencies` without orphaning a judgment. Only the
+    // writer can guarantee coverage — an un-dispositioned dependency means
+    // the PM silently lost a contestable judgment. Throwing here triggers
+    // the `markErrorP5` rescue, which flips the memo to `error`.
     const traderDeps = traderState?.dependsOn ?? [];
-    const dropped = decision.acknowledgedAndDropped.map((d) => d.item);
-    const orphaned = traderDeps.filter(
-      (d) => !decision.keyDependencies.includes(d) && !dropped.includes(d),
+    const dispositioned = new Set(
+      decision.traderDependencyDispositions.map((d) => d.index),
     );
+    const orphaned = traderDeps.filter((_, i) => !dispositioned.has(i));
     if (orphaned.length > 0) {
       throw new Error(
-        `lineage-violation: PM dropped trader dependencies without acknowledgment: ${orphaned.join(", ")}`,
+        `lineage-violation: PM did not disposition trader dependencies: ${orphaned.join(", ")}`,
       );
     }
     const agreesWithTrader =
@@ -114,6 +185,7 @@ export const commitPortfolioManagerMemo = memoHandler({
           riskAssessment: PHASE_4_MEMO_KEYS.riskAssessment.collectionKey,
         },
         agreesWithTrader,
+        primaryScenario: decision.primaryScenario,
       },
     );
 

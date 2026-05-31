@@ -806,6 +806,13 @@ export function useSession(
             }
           }
 
+          // resource_change and state_change are the framework's two
+          // invalidation paths (both InvalidationItem leaves in core). The
+          // asymmetry below is intentional, not a gap: resources have separate
+          // content endpoints, so a resource_change flags a batched snapshot
+          // refetch at completion; state_change carries the delta inline, so it
+          // merges into clientData mid-stream (see the FIX-576 block below).
+          //
           // Track that resources changed during streaming. Rather than firing
           // individual HTTP fetches per resource_change (which creates bursts
           // during artifact-heavy flows), we batch into one refresh at request

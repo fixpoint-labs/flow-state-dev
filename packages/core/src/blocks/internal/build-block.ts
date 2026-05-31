@@ -204,6 +204,12 @@ export function buildBlock<
             data: {
               status: "in_progress",
               input: { source: inputHint ?? { kind: "inline", value: rawInput } },
+              // Surface this block's own declared accessor keys so the server
+              // can render declared-vs-loaded resource observability.
+              declaredResources:
+                options.ownDeclaredResources !== undefined
+                  ? Object.keys(options.ownDeclaredResources)
+                  : undefined,
               startedAt: Date.now()
             }
           },

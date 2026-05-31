@@ -210,6 +210,10 @@ A lazy collection only ever holds a partial cache, so eviction can't see the ful
 
 A lazy single resource is also restricted: declaring `prefetchMode: "lazy"` on a single resource at flow level throws, because a flow-level declaration has no per-block dispatch to trigger the load. Declare it on the block that needs it instead.
 
+### Observing load costs in the DevTool
+
+Picking eager or lazy is a guess until you can see what it costs. The DevTool surfaces per-block resource-load metrics: which keys were fetched from the store versus served from cache, how long each fetch took, and whether your eager prefetch is actually earning its keep. Select a block in the trace and open its Resource Loads panel. See [Observing resource loads](../devtool/observing-resource-loads.md).
+
 ## Lifecycle hooks
 
 Collections support per-instance hooks for logging, side effects, or cleanup:
