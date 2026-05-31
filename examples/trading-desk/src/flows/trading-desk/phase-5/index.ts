@@ -1,25 +1,59 @@
 /**
- * `phase5Pipeline` — the Phase 5 sub-sequencer.
+ * The Phase 5 sub-sequencers. Phase 5 runs two stages in order — the
+ * scenario forecaster, then the portfolio manager — each its own top-level
+ * phase-divider container (composed sequentially in `flow.ts`).
  *
- * Runs after Phase 4: pre-creates the portfolio-manager memo in `pending`,
- * then a single step taps `markWritingP5`, runs the portfolioManagerGenerator,
- * and taps `commitPortfolioManagerMemo` on success. A per-step rescue flips
- * the memo to `error` on generator failure — same shape as Phase 3's
- * single-step rescue.
+ *   - `scenarioForecasterPipeline` — pre-creates the scenario-forecaster
+ *     memo, taps `markWritingForecast`, runs the forecaster, and taps
+ *     `commitScenarioForecastMemo` on success.
+ *   - `phase5Pipeline` — pre-creates the portfolio-manager memo, taps
+ *     `markWritingP5`, runs the portfolioManagerGenerator, and taps
+ *     `commitPortfolioManagerMemo` on success.
+ *
+ * Each stage's single step has a per-step rescue that flips its memo to
+ * `error` on generator failure or a writer integrity throw
+ * (`probability-violation` for the forecaster, `lineage-violation` for the
+ * PM) — same shape as Phase 3's single-step rescue.
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design reference's
- * Phase 5 divider line.
+ * Phase 5 divider lines.
  */
 import { sequencer } from "@flow-state-dev/core";
-import { portfolioManagerApproachGenerator } from "./approach";
+import {
+  portfolioManagerApproachGenerator,
+  scenarioForecasterApproachGenerator,
+} from "./approach";
 import { portfolioManagerGenerator } from "./portfolio-manager";
-import { setupPhase5Memos } from "./setup";
+import { scenarioForecasterGenerator } from "./scenario-forecaster";
+import { setupPhase5Memos, setupScenarioForecastMemos } from "./setup";
 import {
   commitPortfolioManagerMemo,
+  commitScenarioForecastMemo,
+  markErrorForecast,
   markErrorP5,
+  markWritingForecast,
   markWritingP5,
 } from "./writer";
+
+const scenarioForecasterStep = sequencer({
+  name: "phase-5-scenario-forecaster-step",
+})
+  .tap(markWritingForecast("scenarioForecast"))
+  .step(scenarioForecasterApproachGenerator)
+  .step(scenarioForecasterGenerator)
+  .tap(commitScenarioForecastMemo)
+  .rescue([{ block: markErrorForecast("scenarioForecast") }]);
+
+export const scenarioForecasterPipeline = sequencer({
+  name: "phase-5-scenario-forecaster",
+  container: {
+    component: "phase-5-scenario-forecaster",
+    label: "Phase 5 — Scenario Forecaster.",
+  },
+})
+  .tap(setupScenarioForecastMemos)
+  .step(scenarioForecasterStep);
 
 const portfolioManagerStep = sequencer({
   name: "phase-5-portfolio-manager-step",

@@ -24,7 +24,7 @@ import { sessionStateSchema } from "../state";
 import { loadPrompt } from "../lib/prompt";
 
 const scenarioForecasterPrompt = loadPrompt(
-  "phase-5a/prompts/scenario-forecaster.prompt.md",
+  "phase-5/prompts/scenario-forecaster.prompt.md",
 );
 
 const scenarioSchema = z.object({

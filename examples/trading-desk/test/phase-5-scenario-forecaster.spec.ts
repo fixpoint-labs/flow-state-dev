@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 5 scenario-forecast writer taps and the ScenarioForecast output schema.
- * Confirms `markWritingP5a` flips `session.memoStatus`, that
+ * Confirms `markWritingForecast` flips `session.memoStatus`, that
  * `commitScenarioForecastMemo` publishes a well-formed forecast with
  * normalized probabilities and copied horizon, and that out-of-band
  * probability sums trigger `probability-violation`.
@@ -10,15 +10,15 @@ import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import {
   commitScenarioForecastMemo,
-  markErrorP5a,
-  markWritingP5a,
-} from "../src/flows/trading-desk/phase-5a/writer";
-import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5a/scenario-forecaster";
+  markErrorForecast,
+  markWritingForecast,
+} from "../src/flows/trading-desk/phase-5/writer";
+import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/scenario-forecaster";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
-const writeSf = markWritingP5a("scenarioForecast");
-const errorSf = markErrorP5a("scenarioForecast");
+const writeSf = markWritingForecast("scenarioForecast");
+const errorSf = markErrorForecast("scenarioForecast");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-sf-writer-test",
@@ -117,7 +117,7 @@ function scenarioForecast(
 }
 
 describe("Phase 5 scenario-forecast writer taps", () => {
-  it("markWritingP5a flips memoStatus.scenarioForecast to writing", async () => {
+  it("markWritingForecast flips memoStatus.scenarioForecast to writing", async () => {
     const result = await testBlock(writeSf, {
       input: {},
       flow: fixtureFlow,
@@ -187,7 +187,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
     expect(last.memoStatus.scenarioForecast).toBe("published");
   });
 
-  it("markErrorP5a flips scenarioForecast to error", async () => {
+  it("markErrorForecast flips scenarioForecast to error", async () => {
     const result = await testBlock(errorSf, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
