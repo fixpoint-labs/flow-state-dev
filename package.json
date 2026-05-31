@@ -13,7 +13,7 @@
     "test": "turbo run test",
     "test:watch": "turbo watch test",
     "build:packages": "turbo run build --filter=\"./packages/*\"",
-    "devtool:dev": "pnpm --filter @flow-state-dev/react build && node scripts/devtool-dev.mjs",
+    "devtool:dev": "pnpm --filter @flow-state-dev/devtool-app dev",
     "docs:dev": "pnpm --filter @flow-state-dev/docs dev",
     "docs:build": "pnpm --filter @flow-state-dev/docs build",
     "docs:serve": "pnpm --filter @flow-state-dev/docs serve",

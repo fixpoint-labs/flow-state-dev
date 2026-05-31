@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "next dev",
     "typecheck": "tsc --noEmit",
-    "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "start": "next start",
     "test": "vitest run --root . --passWithNoTests",

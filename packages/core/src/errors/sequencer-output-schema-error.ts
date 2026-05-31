@@ -14,7 +14,7 @@
  * existing error normalizer and are catchable via `.rescue([{ when: [...] }])`.
  */
 import type { ZodIssue } from "zod";
-import { FlowError } from "./flow-error.js";
+import { FlowError } from "./flow-error";
 
 /** Structured payload attached to a runtime sequencer-output validation failure. */
 export type SequencerOutputSchemaErrorDetails = {

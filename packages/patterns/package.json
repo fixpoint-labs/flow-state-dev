@@ -2,48 +2,48 @@
   "name": "@flow-state-dev/patterns",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "default": "./src/index.ts"
     },
     "./rlm": {
       "types": "./dist/rlm/index.d.ts",
-      "default": "./dist/rlm/index.js"
+      "default": "./src/rlm/index.ts"
     },
     "./plan-and-execute": {
       "types": "./dist/plan-and-execute/index.d.ts",
-      "default": "./dist/plan-and-execute/index.js"
+      "default": "./src/plan-and-execute/index.ts"
     },
     "./supervisor": {
       "types": "./dist/supervisor/index.d.ts",
-      "default": "./dist/supervisor/index.js"
+      "default": "./src/supervisor/index.ts"
     },
     "./routedSpecialists": {
       "types": "./dist/routedSpecialists/index.d.ts",
-      "default": "./dist/routedSpecialists/index.js"
+      "default": "./src/routedSpecialists/index.ts"
     },
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
-      "default": "./dist/response-auditor/index.js"
+      "default": "./src/response-auditor/index.ts"
     },
     "./eventActors": {
       "types": "./dist/eventActors/index.d.ts",
-      "default": "./dist/eventActors/index.js"
+      "default": "./src/eventActors/index.ts"
     },
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",
-      "default": "./dist/task-board/index.js"
+      "default": "./src/task-board/index.ts"
     },
     "./round-robin": {
       "types": "./dist/round-robin/index.d.ts",
-      "default": "./dist/round-robin/index.js"
+      "default": "./src/round-robin/index.ts"
     },
     "./debate": {
       "types": "./dist/debate/index.d.ts",
-      "default": "./dist/debate/index.js"
+      "default": "./src/debate/index.ts"
     }
   },
   "license": "MIT",
@@ -51,7 +51,51 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./rlm": {
+        "types": "./dist/rlm/index.d.ts",
+        "default": "./dist/rlm/index.js"
+      },
+      "./plan-and-execute": {
+        "types": "./dist/plan-and-execute/index.d.ts",
+        "default": "./dist/plan-and-execute/index.js"
+      },
+      "./supervisor": {
+        "types": "./dist/supervisor/index.d.ts",
+        "default": "./dist/supervisor/index.js"
+      },
+      "./routedSpecialists": {
+        "types": "./dist/routedSpecialists/index.d.ts",
+        "default": "./dist/routedSpecialists/index.js"
+      },
+      "./response-auditor": {
+        "types": "./dist/response-auditor/index.d.ts",
+        "default": "./dist/response-auditor/index.js"
+      },
+      "./eventActors": {
+        "types": "./dist/eventActors/index.d.ts",
+        "default": "./dist/eventActors/index.js"
+      },
+      "./task-board": {
+        "types": "./dist/task-board/index.d.ts",
+        "default": "./dist/task-board/index.js"
+      },
+      "./round-robin": {
+        "types": "./dist/round-robin/index.d.ts",
+        "default": "./dist/round-robin/index.js"
+      },
+      "./debate": {
+        "types": "./dist/debate/index.d.ts",
+        "default": "./dist/debate/index.js"
+      }
+    }
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",

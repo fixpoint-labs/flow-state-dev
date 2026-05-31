@@ -5,7 +5,7 @@
  * (`"final"` for the post-generate parse, `"stream"` for streaming).
  */
 import type { ZodIssue } from "zod";
-import { FlowError } from "./flow-error.js";
+import { FlowError } from "./flow-error";
 
 export type OutputValidationDetails = {
   rawOutput: string;

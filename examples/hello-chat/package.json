@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "start": "next start",
     "test": "vitest run --root .",
