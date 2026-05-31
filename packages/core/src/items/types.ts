@@ -166,6 +166,31 @@ export type StructureShape =
  *   the persisted items log. Non-transient blocks (the default) keep the
  *   canonical retained-trace behavior.
  */
+/**
+ * One resource-load record attributable to a block dispatch (or, for
+ * wave-1/wave-2 loads, to the request's entry block). Trace-only — never
+ * enters the production items stream. Cache-hit runs of the same
+ * (source, storageKey, accessor) are aggregated at record time via `count`.
+ */
+export type ResourceLoadRecord = {
+  /** Canonical storage key for a single/instance load, or the prefix
+   *  (e.g. `"files/"`) for a collection list/count load. */
+  storageKey: string;
+  scope: "session" | "user" | "org";
+  /** Which load path produced this record. */
+  source: "flow-eager" | "action-eager" | "block-eager" | "lazy";
+  /** Wall time of the store round-trip in ms. ~0 for cache hits. Summed
+   *  across an aggregated run. */
+  durationMs: number;
+  /** true = served from the in-memory cache; false = real store fetch. */
+  cacheHit: boolean;
+  /** For reads through a collection accessor: which method triggered it.
+   *  Absent for wave preloads (not a read). */
+  accessor?: "get" | "getOptional" | "list" | "count";
+  /** Number of identical records collapsed into this one (default 1). */
+  count: number;
+};
+
 export type BlockTraceItem = OutputItemBase & {
   type: "block_trace";
   blockName: string;
@@ -207,6 +232,21 @@ export type BlockTraceItem = OutputItemBase & {
     cacheReadTokens?: number;
     cacheCreationTokens?: number;
   };
+  /**
+   * Resource loads attributable to this block's dispatch window: wave-3
+   * eager preloads of `ownDeclaredResources`, plus lazy reads issued inside
+   * `execute()`. On the request's entry block_trace this also carries the
+   * orphan wave-1 (flow-eager) and wave-2 (action-eager) loads. Present only
+   * when trace observability is enabled and at least one load was recorded.
+   */
+  resourceLoads?: ResourceLoadRecord[];
+  /**
+   * Accessor/storage keys this block declares at build time
+   * (`ownDeclaredResources`). Surfaced so the DevTool can show
+   * "declared but not loaded" (over-declaration). Present only under trace
+   * observability.
+   */
+  declaredResources?: string[];
   toolCall?: {
     callId: string;
     arguments: string;

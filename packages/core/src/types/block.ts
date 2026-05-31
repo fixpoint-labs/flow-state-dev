@@ -61,6 +61,13 @@ export type BlockTraceCapturePayload = {
     generator?: BlockTraceItem["generator"];
     modelUsage?: BlockTraceItem["modelUsage"];
     model?: BlockTraceItem["model"];
+    /**
+     * Accessor keys the block declares at build time (`ownDeclaredResources`),
+     * stamped at the `added` phase so the server can surface declared-vs-loaded
+     * resource observability. Carried on the payload the same way
+     * `status`/`input` are.
+     */
+    declaredResources?: string[];
     startedAt?: number;
     completedAt?: number;
     duration?: number;

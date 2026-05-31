@@ -31,6 +31,7 @@ export type {
   OutputItemBase,
   ReasoningItem,
   ResourceChangeItem,
+  ResourceLoadRecord,
   RouterDecisionItem,
   StateChangeItem,
   StateSnapshotItem,

@@ -94,6 +94,10 @@ The Resources panel reads from a privileged debug endpoint and shows the full se
 
 Re-stream a previous request to reproduce behavior. Select a completed request and choose replay full or replay from cursor. The DevTool reconnects to the SSE stream and replays the events.
 
+## Observing resource loads
+
+The block detail panel also records what each block cost in resource loads: which keys hit the store versus the in-memory cache, how long each fetch took, and which prefetch wave or accessor triggered it. It's the signal you need to tune a collection's `prefetchMode` instead of guessing. See [Observing resource loads](./observing-resource-loads.md).
+
 ## Embedding the panel
 
 The same UI ships as a React component you can mount inside any framework app. Useful for inspecting flows on Vercel previews and other deployed environments without leaving the app's origin. See [Embedding DevTool](./embedding.md).
