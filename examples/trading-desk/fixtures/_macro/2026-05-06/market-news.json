@@ -1,0 +1,57 @@
+{
+  "asOf": "2026-05-06",
+  "items": [
+    {
+      "date": "2026-05-06",
+      "headline": "Semiconductor index extends rally as AI-infrastructure orders broaden beyond the megacaps",
+      "source": "Bloomberg",
+      "url": "https://www.bloomberg.com/news/articles/2026-05-06/semis-rally-ai-orders-broaden",
+      "category": "sector",
+      "summary": "The PHLX Semiconductor Index closed at a record, with breadth improving as second-tier suppliers and networking names joined the move. Analysts cite order backlogs extending into 2027."
+    },
+    {
+      "date": "2026-05-05",
+      "headline": "Cloud capex guidance lifted across three hyperscalers; supply chain seen tight through year-end",
+      "source": "Reuters",
+      "url": "https://www.reuters.com/technology/hyperscaler-capex-2026-05-05",
+      "category": "theme",
+      "summary": "Aggregate 2026 cloud capex guidance rose roughly 9% quarter-over-quarter. Component lead times for advanced packaging and HBM remain the gating constraint, suppliers say."
+    },
+    {
+      "date": "2026-05-05",
+      "headline": "Money rotates from defensives into cyclical tech as breadth widens",
+      "source": "WSJ",
+      "category": "rotation",
+      "summary": "Fund-flow data show a third straight week of rotation out of staples and utilities into semis, hardware, and capital-equipment names."
+    },
+    {
+      "date": "2026-05-04",
+      "headline": "Advanced-packaging capacity additions announced by two foundries amid HBM shortage",
+      "source": "DigiTimes",
+      "url": "https://www.digitimes.com/news/advanced-packaging-2026-05-04",
+      "category": "supply-chain",
+      "summary": "Two leading foundries detailed CoWoS and HBM capacity expansions for 2026-2027, aiming to ease a bottleneck that has constrained AI-accelerator shipments."
+    },
+    {
+      "date": "2026-05-04",
+      "headline": "Export-control review widens to additional accelerator SKUs; sector braces for headline risk",
+      "source": "Politico",
+      "category": "regulation",
+      "summary": "Officials signaled a review of licensing thresholds covering more data-center accelerator configurations. No final rule issued; timing uncertain."
+    },
+    {
+      "date": "2026-05-02",
+      "headline": "Fed officials signal patience on rate path; markets read a steady-for-longer stance",
+      "source": "Financial Times",
+      "category": "macro",
+      "summary": "Several policymakers emphasized data dependence. Rates futures little changed on the week."
+    },
+    {
+      "date": "2026-05-02",
+      "headline": "Enterprise software demand steadies as IT budgets shift toward AI deployment",
+      "source": "The Information",
+      "category": "theme",
+      "summary": "Channel checks suggest enterprises are reallocating rather than expanding IT budgets, prioritizing AI tooling and inference infrastructure over legacy renewals."
+    }
+  ]
+}

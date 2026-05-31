@@ -159,6 +159,14 @@ export const companyNewsSchema = z.object({
   items: z.array(newsItem),
 });
 
+/** General market-news feed — same item shape as company news, but
+ *  market-wide (no `ticker` field). Feeds the Market Analyst. */
+export const marketNewsSchema = z.object({
+  source: sourceTag,
+  asOf: z.string(),
+  items: z.array(newsItem),
+});
+
 export const macroIndicatorsSchema = z.object({
   source: sourceTag,
   asOf: z.string(),
@@ -414,6 +422,7 @@ export const toolInputSchemas = {
   get_price_history: periodInput.extend({ range: z.string().default("1mo") }),
   compute_indicators: periodInput,
   search_news: periodInput,
+  get_market_news: z.object({ date: z.string().min(1) }),
   get_macro_indicators: z.object({ date: z.string().min(1) }),
   get_social_sentiment: periodInput,
   get_reddit_mentions: periodInput,
@@ -437,6 +446,7 @@ export const toolOutputSchemas = {
   get_price_history: priceHistorySchema,
   compute_indicators: indicatorsSchema,
   search_news: companyNewsSchema,
+  get_market_news: marketNewsSchema,
   get_macro_indicators: macroIndicatorsSchema,
   get_social_sentiment: socialSentimentSchema,
   get_reddit_mentions: redditMentionsSchema,
@@ -465,6 +475,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_price_history: "prices.json",
   compute_indicators: "indicators.json",
   search_news: "company-news.json",
+  get_market_news: "market-news.json",
   get_macro_indicators: "macro-indicators.json",
   get_social_sentiment: "social-sentiment.json",
   get_reddit_mentions: "reddit-mentions.json",

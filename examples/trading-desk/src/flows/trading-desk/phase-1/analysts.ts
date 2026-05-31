@@ -40,6 +40,7 @@ import {
   get_income_statement,
   get_insider_transactions,
   get_macro_indicators,
+  get_market_news,
   get_prediction_markets,
   get_price_history,
   get_reddit_mentions,
@@ -235,6 +236,7 @@ const marketGenerator = generator({
     sectorContext: toolOutputSchemas.get_sector_context,
     sectorPeers: toolOutputSchemas.get_sector_peers,
     marketContext: toolOutputSchemas.discover_market_context,
+    marketNews: toolOutputSchemas.get_market_news,
   }),
   context: { data: (input) => asDataBlock(input) },
   ...definePromptFile(marketContextPrompt),
@@ -247,6 +249,7 @@ export const marketAnalyst = defineAnalyst({
     sectorContext: get_sector_context,
     sectorPeers: get_sector_peers,
     marketContext: discover_market_context,
+    marketNews: get_market_news,
   },
   generator: marketGenerator,
 });

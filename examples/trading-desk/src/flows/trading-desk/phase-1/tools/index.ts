@@ -9,6 +9,7 @@ export { get_fundamentals } from "./get_fundamentals";
 export { get_price_history } from "./get_price_history";
 export { compute_indicators } from "./compute_indicators";
 export { search_news } from "./search_news";
+export { get_market_news } from "./get_market_news";
 export { get_macro_indicators } from "./get_macro_indicators";
 export { get_social_sentiment } from "./get_social_sentiment";
 export { get_reddit_mentions } from "./get_reddit_mentions";
