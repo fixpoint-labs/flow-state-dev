@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "vercel-build": "cd ../.. && pnpm install --frozen-lockfile && pnpm build:packages && pnpm --filter @flow-state-dev/ui storybook:build"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
