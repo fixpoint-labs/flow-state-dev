@@ -38,7 +38,7 @@ import { WritingSkeleton } from "./writing-skeleton";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
-  PHASE_5A_MEMO_KEYS,
+  PHASE_5_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
   type AnyMemoShortName,
@@ -258,7 +258,7 @@ type MemoClientData = {
   metrics: Record<string, string> | null;
   citations: Array<{ url: string; title: string }> | null;
   errorMessage: string | null;
-  // Phase 5a extension fields — only populated on `memos/p5a/scenario-forecaster`.
+  // Phase 5 extension fields — only populated on `memos/p5/scenario-forecaster`.
   scenarios: Array<{
     name: string;
     probability: number;
@@ -403,7 +403,7 @@ function PmHeroWithScenarios({
   const { item: scenarioItem } = useResourceCollectionItem(
     session,
     "memos",
-    PHASE_5A_MEMO_KEYS.scenarioForecast.collectionKey,
+    PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
   );
   const scenarioStrip = useMemo(() => {
     if (scenarioItem === null) return null;

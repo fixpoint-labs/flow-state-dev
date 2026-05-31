@@ -153,7 +153,7 @@ export function formatThesisExtensions(memo: any): string {
   return lines.length > 0 ? lines.join("\n") : "(thesis fields empty)";
 }
 
-/** Render the Phase 5a ScenarioForecast memo's typed extension fields
+/** Render the Phase 5 ScenarioForecast memo's typed extension fields
  *  as a `<scenarioForecast>` block for PM consumption. */
 export function formatScenarioForecastExtensions(memo: any): string {
   if (memo === undefined || memo === null) {

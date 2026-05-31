@@ -1,14 +1,14 @@
 /**
  * `setupPhase5aMemos` — pre-creates the scenario-forecaster memo resource
  * in `pending` before the forecaster generator runs. Built via the shared
- * `defineMemoSetup` factory, mirroring Phase 5/6.
+ * `defineMemoSetup` factory. Part of Phase 5 (Portfolio Management).
  */
-import { PHASE_5A_MEMO_KEYS } from "../agents";
+import { PHASE_5_MEMO_KEYS } from "../agents";
 import { defineMemoSetup } from "../lib/memo-setup";
 
 export const setupPhase5aMemos = defineMemoSetup({
-  phaseId: "p5a",
+  phaseId: "p5",
   agentTeam: "pm",
-  keys: PHASE_5A_MEMO_KEYS,
-  activePhase: "phase-5a",
+  keys: { scenarioForecast: PHASE_5_MEMO_KEYS.scenarioForecast },
+  activePhase: "phase-5",
 });

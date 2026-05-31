@@ -1,5 +1,5 @@
 /**
- * scenario-panel — Phase 5a scenario-forecast memo renderer.
+ * scenario-panel — Phase 5 scenario-forecast memo renderer.
  *
  * Renders the ScenarioForecaster memo: agent identity header, headline,
  * a probability-bar grid for each scenario, a header area with distribution

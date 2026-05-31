@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 5a writer taps and the ScenarioForecast output schema.
+ * Tests for the Phase 5 scenario-forecast writer taps and the ScenarioForecast output schema.
  * Confirms `markWritingP5a` flips `session.memoStatus`, that
  * `commitScenarioForecastMemo` publishes a well-formed forecast with
  * normalized probabilities and copied horizon, and that out-of-band
@@ -21,7 +21,7 @@ const writeSf = markWritingP5a("scenarioForecast");
 const errorSf = markErrorP5a("scenarioForecast");
 
 const fixtureFlow = defineFlow({
-  kind: "trading-desk-p5a-writer-test",
+  kind: "trading-desk-p5-sf-writer-test",
   actions: {
     writeSf: { block: writeSf },
     commitSf: { block: commitScenarioForecastMemo },
@@ -36,7 +36,7 @@ const baseSessionState = {
   date: "2026-05-06",
   costPreset: "fast" as const,
   dataSource: "fixture" as const,
-  activePhase: "phase-5a" as const,
+  activePhase: "phase-5" as const,
   maxDebateRounds: 1,
   memoStatus: { scenarioForecast: "pending" as const },
   runComplete: false,
@@ -47,7 +47,7 @@ function seededSfMemo(opts: { startedAt?: string | null } = {}) {
     status: opts.startedAt ? ("writing" as const) : ("pending" as const),
     agentName: "scenarioForecaster",
     agentTeam: "pm" as const,
-    phaseId: "p5a",
+    phaseId: "p5",
     ticker: "NVDA",
     date: "2026-05-06",
     startedAt: opts.startedAt ?? null,
@@ -116,7 +116,7 @@ function scenarioForecast(
   };
 }
 
-describe("Phase 5a writer taps", () => {
+describe("Phase 5 scenario-forecast writer taps", () => {
   it("markWritingP5a flips memoStatus.scenarioForecast to writing", async () => {
     const result = await testBlock(writeSf, {
       input: {},
@@ -138,7 +138,7 @@ describe("Phase 5a writer taps", () => {
           memoStatus: { scenarioForecast: "writing" },
         },
         resources: {
-          "memos/p5a/scenario-forecaster": seededSfMemo({
+          "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
           }),
           "memos/p3/trader": { holdingPeriod: "months" },
@@ -175,7 +175,7 @@ describe("Phase 5a writer taps", () => {
           memoStatus: { scenarioForecast: "writing" },
         },
         resources: {
-          "memos/p5a/scenario-forecaster": seededSfMemo({
+          "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
           }),
           "memos/p3/trader": { holdingPeriod: "weeks" },
@@ -197,7 +197,7 @@ describe("Phase 5a writer taps", () => {
           memoStatus: { scenarioForecast: "writing" },
         },
         resources: {
-          "memos/p5a/scenario-forecaster": seededSfMemo({
+          "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
           }),
         },
@@ -273,7 +273,7 @@ describe("probability-violation rescue", () => {
           memoStatus: { scenarioForecast: "writing" },
         },
         resources: {
-          "memos/p5a/scenario-forecaster": seededSfMemo({
+          "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
           }),
           "memos/p3/trader": { holdingPeriod: "months" },
@@ -300,7 +300,7 @@ describe("probability-violation rescue", () => {
           memoStatus: { scenarioForecast: "writing" },
         },
         resources: {
-          "memos/p5a/scenario-forecaster": seededSfMemo({
+          "memos/p5/scenario-forecaster": seededSfMemo({
             startedAt: new Date().toISOString(),
           }),
           "memos/p3/trader": { holdingPeriod: "months" },

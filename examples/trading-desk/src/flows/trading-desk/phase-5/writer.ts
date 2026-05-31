@@ -34,8 +34,8 @@ export const {
 } = defineMemoStateBlocks({
   phaseId: "p5",
   agentTeam: "pm",
-  keys: PHASE_5_MEMO_KEYS,
-  errorMessageFallback: "Phase 5 generator failed.",
+  keys: { portfolioManager: PHASE_5_MEMO_KEYS.portfolioManager },
+  errorMessageFallback: "Portfolio manager failed.",
 });
 
 /** Map a Phase 5 final rating to the trader-shape direction it implies, so

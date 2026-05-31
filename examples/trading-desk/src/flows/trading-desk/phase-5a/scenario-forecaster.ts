@@ -1,5 +1,5 @@
 /**
- * The Phase 5a scenario-forecaster generator and its output schema.
+ * The Phase 5 scenario-forecaster generator and its output schema.
  *
  * Runs after the risk debate (Phase 4) and before the PM (Phase 5). Reads
  * the same upstream artifacts the PM reads — InvestmentThesis, TradeProposal,
@@ -11,13 +11,13 @@
  * transcript.
  *
  * The output schema lives inline here because only this generator emits the
- * shape; the Phase 5a writer imports the type back to project the commit.
+ * shape; the Phase 5 writer imports the type back to project the commit.
  * `horizon` and `probabilitySum` are writer projections, not model output.
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_5A_MEMO_KEYS } from "../agents";
+import { PHASE_5_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { thesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
@@ -62,7 +62,7 @@ export type ScenarioForecastOutput = z.infer<typeof scenarioForecastOutputSchema
 export const scenarioForecasterGenerator = generator({
   name: "scenario-forecaster-generator",
   agentType: "primary",
-  agentName: PHASE_5A_MEMO_KEYS.scenarioForecast.agentName,
+  agentName: PHASE_5_MEMO_KEYS.scenarioForecast.agentName,
   uses: [
     tradingDesk.presets({
       investmentThesis: true,

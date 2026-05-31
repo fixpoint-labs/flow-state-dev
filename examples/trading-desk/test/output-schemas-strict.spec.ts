@@ -124,7 +124,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 3 tradeProposalOutputSchema", tradeProposalOutputSchema],
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
-  ["Phase 5a scenarioForecastOutputSchema", scenarioForecastOutputSchema],
+  ["Phase 5 scenarioForecastOutputSchema", scenarioForecastOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
   ["Phase 6 thesisAlignmentOutputSchema", thesisAlignmentOutputSchema],
 ];

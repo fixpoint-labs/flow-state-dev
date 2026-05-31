@@ -45,7 +45,6 @@ export const sessionStateSchema = z.object({
       "phase-2",
       "phase-3",
       "phase-4",
-      "phase-5a",
       "phase-5",
       "phase-6",
     ])

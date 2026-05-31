@@ -9,6 +9,6 @@ import { defineMemoSetup } from "../lib/memo-setup";
 export const setupPhase5Memos = defineMemoSetup({
   phaseId: "p5",
   agentTeam: "pm",
-  keys: PHASE_5_MEMO_KEYS,
+  keys: { portfolioManager: PHASE_5_MEMO_KEYS.portfolioManager },
   activePhase: "phase-5",
 });

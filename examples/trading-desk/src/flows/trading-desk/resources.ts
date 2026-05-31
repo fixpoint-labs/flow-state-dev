@@ -203,8 +203,8 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   calibrationRationale: z.string().nullable().default(null),
-  // Phase 5a ScenarioForecast extension. Only the scenarioForecaster memo
-  // (`memos/p5a/scenario-forecaster`) populates these; all other memos
+  // Phase 5 ScenarioForecast extension. Only the scenarioForecaster memo
+  // (`memos/p5/scenario-forecaster`) populates these; all other memos
   // leave them `null`.
   scenarios: z
     .array(

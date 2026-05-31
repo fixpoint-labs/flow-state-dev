@@ -1,5 +1,5 @@
 /**
- * Phase 5a memo-writing blocks.
+ * Phase 5 scenario-forecast memo-writing blocks.
  *
  *   - `markWritingP5a` / `markErrorP5a` — built via `defineMemoStateBlocks`.
  *   - `commitScenarioForecastMemo` — plain handler that normalizes
@@ -11,7 +11,7 @@
  * that band the writer throws `probability-violation`, caught by the
  * per-step `.rescue` — same shape as Phase 5's lineage-violation throw.
  */
-import { PHASE_3_MEMO_KEYS, PHASE_5A_MEMO_KEYS } from "../agents";
+import { PHASE_3_MEMO_KEYS, PHASE_5_MEMO_KEYS } from "../agents";
 import {
   defineMemoStateBlocks,
   memoHandler,
@@ -23,14 +23,14 @@ export const {
   markWriting: markWritingP5a,
   markError: markErrorP5a,
 } = defineMemoStateBlocks({
-  phaseId: "p5a",
+  phaseId: "p5",
   agentTeam: "pm",
-  keys: PHASE_5A_MEMO_KEYS,
-  errorMessageFallback: "Phase 5a generator failed.",
+  keys: { scenarioForecast: PHASE_5_MEMO_KEYS.scenarioForecast },
+  errorMessageFallback: "Scenario forecaster failed.",
 });
 
 export const commitScenarioForecastMemo = memoHandler({
-  name: "commit-memo-p5a-scenario-forecast",
+  name: "commit-memo-p5-scenario-forecast",
   inputSchema: scenarioForecastOutputSchema,
   execute: async (forecast, ctx) => {
     // Copy horizon from the trader memo's holdingPeriod.
@@ -57,7 +57,7 @@ export const commitScenarioForecastMemo = memoHandler({
     await publishMemo(
       ctx,
       "scenarioForecast",
-      PHASE_5A_MEMO_KEYS.scenarioForecast.collectionKey,
+      PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
       {
         label: forecast.label,
         headline: forecast.headline,
