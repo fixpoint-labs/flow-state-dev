@@ -67,15 +67,24 @@ export const portfolioDecisionOutputSchema = z.object({
   asymmetricEdge: z.string(),
   nearTermCatalyst: z.string(),
   invalidationTrigger: z.string(),
-  // Trader dependencies the PM consciously dropped, each with a reason.
-  // The Phase 5 writer cross-checks this against `trader.dependsOn` so a
-  // dropped dependency is acknowledged rather than silently lost.
-  acknowledgedAndDropped: z.array(
+  // One disposition per trader dependency, referenced by its position
+  // ([0], [1], …) in `trader.dependsOn` as rendered to the PM. The Phase 5
+  // writer requires every trader-dependency index to appear here exactly
+  // once: `carried` keeps it as a live contestable judgment, `dropped`
+  // sets it aside with a one-sentence reason in `note`. Referencing by
+  // index rather than re-typing the dependency text is what makes the
+  // lineage check robust — the PM can paraphrase freely in
+  // `keyDependencies` without orphaning a judgment.
+  traderDependencyDispositions: z.array(
     z.object({
-      item: z.string(),
-      reason: z.string(),
+      index: z.number().int(),
+      status: z.enum(["carried", "dropped"]),
+      note: z.string(),
     }),
   ),
+  // The scenario bucket this decision underwrites. Empty string when the
+  // forecast is unavailable or the PM disagrees with all buckets.
+  primaryScenario: z.string(),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
@@ -89,6 +98,7 @@ export const portfolioManagerGenerator = generator({
       investmentThesis: true,
       tradeProposal: true,
       riskAssessment: true,
+      scenarioForecast: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
       riskCritiquesFull: true,

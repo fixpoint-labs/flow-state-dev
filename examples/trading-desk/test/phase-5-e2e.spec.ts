@@ -316,7 +316,13 @@ function portfolioManagerStructuredOutput(
         finalRating === "Buy" || finalRating === "Overweight"
           ? "Attach rate flat or down two quarters running."
           : "",
-      acknowledgedAndDropped: [] as { item: string; reason: string }[],
+      traderDependencyDispositions: [
+        { index: 0, status: "carried" as const, note: "Central to the call." },
+      ],
+      primaryScenario:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? "Data-center beat, +12%"
+          : "",
     },
   };
 }
@@ -402,6 +408,31 @@ function makeUpstreamMocks() {
     "risk-assessment-approach-generator": mockGenerator({
       name: "risk-assessment-approach-generator",
       script: [{ text: "Risk-assessment approach preamble." }],
+    }),
+    "scenario-forecaster-approach-generator": mockGenerator({
+      name: "scenario-forecaster-approach-generator",
+      script: [{ text: "Scenario forecaster approach preamble." }],
+    }),
+    "scenario-forecaster-generator": mockGenerator({
+      name: "scenario-forecaster-generator",
+      script: [
+        {
+          structuredOutput: {
+            label: "ScenarioForecast",
+            headline: "Concentrated base.",
+            rating: "concentrated",
+            metrics: { horizon: "months", distribution: "concentrated", buckets: "3 scenarios", evidence: "sufficient" },
+            body: [{ h: "Summary", p: "Base case dominant.", items: null }],
+            scenarios: [
+              { name: "Base", probability: 0.55, trigger: "t", triggerSource: "investmentThesis", expectedOutcome: "o", tradeBehavior: "b" },
+              { name: "Up", probability: 0.25, trigger: "t", triggerSource: "tradeProposal", expectedOutcome: "o", tradeBehavior: "b" },
+              { name: "Down", probability: 0.20, trigger: "t", triggerSource: "riskAssessment", expectedOutcome: "o", tradeBehavior: "b" },
+            ],
+            distribution: "concentrated",
+            evidenceBasis: "sufficient",
+          },
+        },
+      ],
     }),
     "portfolio-manager-approach-generator": mockGenerator({
       name: "portfolio-manager-approach-generator",
