@@ -27,8 +27,8 @@ import {
   counterArgumentSchema,
   counterpointOutputSchema,
   sycophancyBreakdownSchema,
-} from './bias-detection.js'
-import type { BiasAnalyzerOutput, SycophancyBreakdown } from './bias-detection.js'
+} from './bias-detection'
+import type { BiasAnalyzerOutput, SycophancyBreakdown } from './bias-detection'
 import {
   DEFAULT_BIAS_ANALYZER_CONFIG,
   computeCompositeSycophancyScore,
@@ -36,7 +36,7 @@ import {
   severityForSycophancyScore,
   shouldGenerateCounterpoints,
   summarizeBiasFindings,
-} from './bias-detection-helpers.js'
+} from './bias-detection-helpers'
 
 // ---------------------------------------------------------------------------
 // Repair helper — merges input fields into partial LLM output

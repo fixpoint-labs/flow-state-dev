@@ -9,8 +9,8 @@
 
 export {
   createRecallTool,
-} from './recall-tool.js'
-export type { CreateRecallToolOptions } from './recall-tool.js'
+} from './recall-tool'
+export type { CreateRecallToolOptions } from './recall-tool'
 
 export {
   capContent,
@@ -21,12 +21,12 @@ export {
   DEFAULT_RECALL_LIMIT,
   formatRecallSummary,
   TRUNCATION_MARKER,
-} from './format-helpers.js'
+} from './format-helpers'
 
 export {
   recallToolDescription,
   recallToolInputSchema,
-} from './types.js'
+} from './types'
 export type {
   MemoryItem,
   MemoryItemSource,
@@ -36,7 +36,7 @@ export type {
   RecallToolInput,
   RecallToolResult,
   RetrievalStrategy,
-} from './types.js'
+} from './types'
 
 export {
   createLlmFilterStrategy,
@@ -51,9 +51,9 @@ export {
   episodeToMemoryItem,
   extractExactPhrases,
   exactPhraseMatches,
-} from './strategies/index.js'
+} from './strategies/index'
 export type {
   BuiltInStrategyName,
   LlmFilterStrategyOptions,
   ResolveStrategyOptions,
-} from './strategies/index.js'
+} from './strategies/index'

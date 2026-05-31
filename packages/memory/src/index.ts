@@ -6,7 +6,7 @@ export type {
   MemoryProvider,
   MemoryContextSections,
   RankedMemorySource,
-} from './provider.js'
+} from './provider'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Schemas, types, resource
@@ -17,37 +17,37 @@ export {
   workingMemoryStateSchema,
   workingMemoryResource,
   workingMemoryResources,
-} from './working-memory.js'
+} from './working-memory'
 export type {
   WorkingMemoryEntry,
   WorkingMemoryState,
   DecayStrategy,
-} from './working-memory.js'
+} from './working-memory'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Helpers, accessors, formatters (verb-first naming)
 // ---------------------------------------------------------------------------
 
-export { DEFAULT_WORKING_MEMORY_CONFIG } from './working-memory-helpers.js'
-export { computeDecay, computeSalience } from './working-memory-helpers.js'
+export { DEFAULT_WORKING_MEMORY_CONFIG } from './working-memory-helpers'
+export { computeDecay, computeSalience } from './working-memory-helpers'
 
 // Helpers — verb-first naming distinguishes from block factories and prevents
 // collisions with future episodic/semantic memory helpers.
-export { add as addWorkingMemory } from './working-memory-helpers.js'
-export { evict as evictWorkingMemory } from './working-memory-helpers.js'
-export { pin as pinWorkingMemory } from './working-memory-helpers.js'
-export { unpin as unpinWorkingMemory } from './working-memory-helpers.js'
-export { refresh as refreshWorkingMemory } from './working-memory-helpers.js'
-export { advance as advanceWorkingMemory } from './working-memory-helpers.js'
-export { items as workingMemoryItems } from './working-memory-helpers.js'
-export { formatForContext as formatWorkingMemoryEntries } from './working-memory-helpers.js'
-export { workingMemoryContextFormatter } from './working-memory-helpers.js'
+export { add as addWorkingMemory } from './working-memory-helpers'
+export { evict as evictWorkingMemory } from './working-memory-helpers'
+export { pin as pinWorkingMemory } from './working-memory-helpers'
+export { unpin as unpinWorkingMemory } from './working-memory-helpers'
+export { refresh as refreshWorkingMemory } from './working-memory-helpers'
+export { advance as advanceWorkingMemory } from './working-memory-helpers'
+export { items as workingMemoryItems } from './working-memory-helpers'
+export { formatForContext as formatWorkingMemoryEntries } from './working-memory-helpers'
+export { workingMemoryContextFormatter } from './working-memory-helpers'
 
 export type {
   WorkingMemoryDecayConfig,
   WorkingMemoryHelperConfig,
   AddEntryInput,
-} from './working-memory-helpers.js'
+} from './working-memory-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Block factories
@@ -61,13 +61,13 @@ export {
   workingMemoryTick,
   workingMemorySnapshot,
   workingMemoryAdd,
-} from './working-memory-blocks.js'
+} from './working-memory-blocks'
 export type {
   Observations,
   WorkingMemoryBlockConfig,
   WorkingMemoryCaptureConfig,
   WorkingMemoryObserveConfig,
-} from './working-memory-blocks.js'
+} from './working-memory-blocks'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Episodic memory schemas, types, resource factory
@@ -77,8 +77,8 @@ export {
   episodeSchema,
   episodicMemoryStateSchema,
   createEpisodicMemoryResource,
-} from './episodic-memory.js'
-export type { Episode, EpisodicMemoryState } from './episodic-memory.js'
+} from './episodic-memory'
+export type { Episode, EpisodicMemoryState } from './episodic-memory'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Memory system tracking resource
@@ -91,8 +91,8 @@ export {
   DEFAULT_CONSOLIDATION_CONFIG,
   DEFAULT_OBSERVER_CONFIG,
   DEFAULT_PRUNE_CONFIG,
-} from './memory-system.js'
-export type { MemorySystemState } from './memory-system.js'
+} from './memory-system'
+export type { MemorySystemState } from './memory-system'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Semantic memory schemas, types, resource factory
@@ -103,30 +103,30 @@ export {
   semanticFactSchema,
   semanticMemoryStateSchema,
   createSemanticMemoryResource,
-} from './semantic-memory.js'
-export type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
+} from './semantic-memory'
+export type { SemanticFact, SemanticMemoryState } from './semantic-memory'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Episodic memory helpers (verb-first naming)
 // ---------------------------------------------------------------------------
 
-export { encode as encodeEpisode } from './episodic-memory-helpers.js'
-export { recent as recentEpisodes } from './episodic-memory-helpers.js'
-export { markConsolidated as markEpisodesConsolidated } from './episodic-memory-helpers.js'
-export type { EncodeEpisodeInput } from './episodic-memory-helpers.js'
+export { encode as encodeEpisode } from './episodic-memory-helpers'
+export { recent as recentEpisodes } from './episodic-memory-helpers'
+export { markConsolidated as markEpisodesConsolidated } from './episodic-memory-helpers'
+export type { EncodeEpisodeInput } from './episodic-memory-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Semantic memory helpers (verb-first naming)
 // ---------------------------------------------------------------------------
 
-export { addFact as addSemanticFact } from './semantic-memory-helpers.js'
-export { updateFact as updateSemanticFact } from './semantic-memory-helpers.js'
-export { reinforce as reinforceSemanticFact } from './semantic-memory-helpers.js'
-export { removeFact as removeSemanticFact } from './semantic-memory-helpers.js'
-export { allFacts as semanticFacts } from './semantic-memory-helpers.js'
-export { query as querySemanticFacts } from './semantic-memory-helpers.js'
-export { topFacts as topSemanticFacts } from './semantic-memory-helpers.js'
-export { cullByEffectiveConfidence } from './semantic-memory-helpers.js'
+export { addFact as addSemanticFact } from './semantic-memory-helpers'
+export { updateFact as updateSemanticFact } from './semantic-memory-helpers'
+export { reinforce as reinforceSemanticFact } from './semantic-memory-helpers'
+export { removeFact as removeSemanticFact } from './semantic-memory-helpers'
+export { allFacts as semanticFacts } from './semantic-memory-helpers'
+export { query as querySemanticFacts } from './semantic-memory-helpers'
+export { topFacts as topSemanticFacts } from './semantic-memory-helpers'
+export { cullByEffectiveConfidence } from './semantic-memory-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 1 + 2 + 3: Memory hygiene — janitor resource, helpers, block (FIX-411)
@@ -137,12 +137,12 @@ export {
   janitorResource,
   janitorStateSchema,
   DEFAULT_HYGIENE_CONFIG,
-} from './janitor.js'
-export type { JanitorState } from './janitor.js'
-export { cullByTTL, markStale } from './episodic-memory-helpers.js'
-export type { EpisodicTTLConfig } from './episodic-memory-helpers.js'
-export { memorySystemJanitor } from './janitor-blocks.js'
-export type { ResolvedHygieneConfig } from './janitor-blocks.js'
+} from './janitor'
+export type { JanitorState } from './janitor'
+export { cullByTTL, markStale } from './episodic-memory-helpers'
+export type { EpisodicTTLConfig } from './episodic-memory-helpers'
+export { memorySystemJanitor } from './janitor-blocks'
+export type { ResolvedHygieneConfig } from './janitor-blocks'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Digest memory schemas, types, resource factory
@@ -153,12 +153,12 @@ export {
   digestSourceSignatureSchema,
   digestMemoryStateSchema,
   createDigestMemoryResource,
-} from './digest-memory.js'
+} from './digest-memory'
 export type {
   Digest,
   DigestSourceSignature,
   DigestMemoryState,
-} from './digest-memory.js'
+} from './digest-memory'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Digest memory helpers (verb-first naming)
@@ -167,7 +167,7 @@ export type {
 export {
   computeSourceSignature as computeDigestSourceSignature,
   isStale as digestIsStale,
-} from './digest-helpers.js'
+} from './digest-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Digest block factories
@@ -182,11 +182,11 @@ export {
   digestRegeneratePersist,
   buildDigestContext,
   rankEpisodesForDigest,
-} from './digest-blocks.js'
+} from './digest-blocks'
 export type {
   DigestBlocksConfig,
   DigestRegenerateConfig,
-} from './digest-blocks.js'
+} from './digest-blocks'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Memory context formatter (configurable factory + per-section builders)
@@ -200,19 +200,19 @@ export {
   createEpisodicEntry,
   DEFAULT_SEMANTIC_TOP_N,
   DEFAULT_EPISODIC_LIMIT,
-} from './formatter.js'
+} from './formatter'
 export type {
   MemoryContextFormatterOptions,
   MemoryContextValue,
   SemanticSectionOption,
   EpisodicSectionOption,
-} from './formatter.js'
+} from './formatter'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Unified memory system factory
 // ---------------------------------------------------------------------------
 
-export { system, DEFAULT_DIGEST_CONFIG, MEMORY_CAPABILITY_PRESETS } from './memory-system.js'
+export { system, DEFAULT_DIGEST_CONFIG, MEMORY_CAPABILITY_PRESETS } from './memory-system'
 export type {
   MemorySystemConfig,
   MemorySystem,
@@ -224,18 +224,18 @@ export type {
   SemanticMemoryConfig,
   DigestSystemConfig,
   MemoryCapabilityPreset,
-} from './memory-system.js'
+} from './memory-system'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Composed memory capability factory
 // ---------------------------------------------------------------------------
 
-export { createMemoryCapability } from './memory-capability.js'
+export { createMemoryCapability } from './memory-capability'
 export type {
   CreateMemoryCapabilityOptions,
   MemoryCapability,
   MemoryCapabilityResources,
-} from './memory-capability.js'
+} from './memory-capability'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Agent-invocable recall tool (FIX-409)
@@ -264,7 +264,7 @@ export {
   episodeToMemoryItem,
   extractExactPhrases,
   exactPhraseMatches,
-} from './tools/index.js'
+} from './tools/index'
 export type {
   CreateRecallToolOptions,
   MemoryItem,
@@ -278,7 +278,7 @@ export type {
   BuiltInStrategyName,
   LlmFilterStrategyOptions,
   ResolveStrategyOptions,
-} from './tools/index.js'
+} from './tools/index'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Memory system block factories
@@ -297,8 +297,8 @@ export {
   pruneGuard,
   pruneGenerate,
   prunePersist,
-} from './memory-system-blocks.js'
-export type { UnifiedObservations, ConsolidationOutput, PruneOutput } from './memory-system-blocks.js'
+} from './memory-system-blocks'
+export type { UnifiedObservations, ConsolidationOutput, PruneOutput } from './memory-system-blocks'
 
 // ---------------------------------------------------------------------------
 // Capabilities — defineCapability() surfaces for each memory tier
@@ -313,10 +313,10 @@ export {
   semanticMemoryCapability,
   createDigestMemoryCapability,
   digestMemoryCapability,
-} from './capabilities.js'
+} from './capabilities'
 export type {
   EpisodicMemoryCapabilityConfig,
   SemanticMemoryCapabilityConfig,
   DigestMemoryCapabilityConfig,
   AddSemanticFactInput,
-} from './capabilities.js'
+} from './capabilities'

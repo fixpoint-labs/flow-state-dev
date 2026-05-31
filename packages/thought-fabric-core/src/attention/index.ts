@@ -1,2 +1,2 @@
-export { scoreSalience } from './score-salience.js'
-export { filterRelevance } from './filter-relevance.js'
+export { scoreSalience } from './score-salience'
+export { filterRelevance } from './filter-relevance'

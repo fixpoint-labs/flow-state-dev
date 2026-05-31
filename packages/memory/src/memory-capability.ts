@@ -27,30 +27,30 @@ import {
   type DigestSystemConfig,
   type MemoryToolConfig,
   type HygieneConfig,
-} from './memory-system.js'
-import { workingMemoryResource } from './working-memory.js'
-import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { createSemanticMemoryResource } from './semantic-memory.js'
-import { createDigestMemoryResource } from './digest-memory.js'
+} from './memory-system'
+import { workingMemoryResource } from './working-memory'
+import { createEpisodicMemoryResource } from './episodic-memory'
+import { createSemanticMemoryResource } from './semantic-memory'
+import { createDigestMemoryResource } from './digest-memory'
 import {
   createWorkingMemoryCapability,
   createEpisodicMemoryCapability,
   createSemanticMemoryCapability,
   createDigestMemoryCapability,
-} from './capabilities.js'
+} from './capabilities'
 import {
   createDigestEntry,
   createWorkingEntry,
   createSemanticEntry,
   createEpisodicEntry,
-} from './formatter.js'
-import { createRecallTool } from './tools/recall-tool.js'
-import { resolveStrategy } from './tools/strategies/index.js'
-import { buildRecall } from './internal/recall.js'
-import { resolveHygieneConfig } from './internal/hygiene-config.js'
-import { resolveMemoryConfigs } from './internal/config.js'
-import type { ResolvedMemoryConfigs } from './internal/config.js'
-import type { ResolvedHygieneConfig } from './janitor-blocks.js'
+} from './formatter'
+import { createRecallTool } from './tools/recall-tool'
+import { resolveStrategy } from './tools/strategies/index'
+import { buildRecall } from './internal/recall'
+import { resolveHygieneConfig } from './internal/hygiene-config'
+import { resolveMemoryConfigs } from './internal/config'
+import type { ResolvedMemoryConfigs } from './internal/config'
+import type { ResolvedHygieneConfig } from './janitor-blocks'
 
 /**
  * Options for `createMemoryCapability`. The subset of `MemorySystemConfig`

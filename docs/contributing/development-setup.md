@@ -13,11 +13,17 @@ Guide for setting up the Flow State Dev monorepo for local development.
 git clone https://github.com/fixpoint-labs/flow-state-dev
 cd implementation
 pnpm install
+pnpm build:packages   # emit dist/*.d.ts so the editor's TS server resolves workspace imports
 pnpm typecheck
 pnpm test
 ```
 
-All three commands should pass cleanly before starting any work.
+These commands should pass cleanly before starting any work.
+
+> Run `pnpm build:packages` once after cloning. Workspace packages resolve
+> their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
+> reports "Cannot find module '@flow-state-dev/…'" on workspace imports. The
+> Next dev server doesn't need it (it consumes source), but your editor does.
 
 ## Monorepo Structure
 
@@ -105,8 +111,9 @@ dependency of `server`, so the default graph traversal would otherwise see a
 `server ⇄ testing` cycle.
 
 To build the DevTool static assets (for `fsdev dev`), run
-`pnpm --filter @flow-state-dev/devtool build:assets` after building
-`apps/devtool`'s dependencies.
+`pnpm --filter @flow-state-dev/devtool build:assets`. It builds the DevTool app
+and its workspace dependencies through Turborepo, so no prior build step is
+needed.
 
 ### Source consumption in dev
 

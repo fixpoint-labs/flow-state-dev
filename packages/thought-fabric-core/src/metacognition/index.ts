@@ -17,7 +17,7 @@ export {
   biasClassificationOutputSchema,
   biasScoringOutputSchema,
   counterpointOutputSchema,
-} from './bias-detection.js'
+} from './bias-detection'
 export type {
   BiasType,
   BiasAnnotation,
@@ -32,7 +32,7 @@ export type {
   BiasClassificationOutput,
   BiasScoringOutput,
   CounterpointOutput,
-} from './bias-detection.js'
+} from './bias-detection'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Helpers (verb-first naming)
@@ -45,8 +45,8 @@ export {
   computeCompositeSycophancyScore,
   shouldGenerateCounterpoints,
   summarizeBiasFindings,
-} from './bias-detection-helpers.js'
-export type { BiasAnalyzerConfig } from './bias-detection-helpers.js'
+} from './bias-detection-helpers'
+export type { BiasAnalyzerConfig } from './bias-detection-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Block factories
@@ -59,5 +59,5 @@ export {
   biasCounterpoint,
   biasFormat,
   biasAnalyzer,
-} from './bias-detection-blocks.js'
-export type { BiasAnalyzerBlockConfig } from './bias-detection-blocks.js'
+} from './bias-detection-blocks'
+export type { BiasAnalyzerBlockConfig } from './bias-detection-blocks'

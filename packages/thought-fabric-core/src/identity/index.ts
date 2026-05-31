@@ -17,7 +17,7 @@ export {
   constitutionTradeoffSchema,
   constitutionReviewInputSchema,
   constitutionReviewOutputSchema,
-} from './constitution.js'
+} from './constitution'
 export type {
   ConstitutionPrinciple,
   ConstitutionContextualOverride,
@@ -29,7 +29,7 @@ export type {
   ConstitutionTradeoff,
   ConstitutionReviewInput,
   ConstitutionReviewOutput,
-} from './constitution.js'
+} from './constitution'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Helpers (verb-first naming)
@@ -41,8 +41,8 @@ export {
   computeConstitutionCompliance,
   formatConstitution,
   summarizeConstitutionReview,
-} from './constitution-helpers.js'
-export type { ConstitutionHelperConfig } from './constitution-helpers.js'
+} from './constitution-helpers'
+export type { ConstitutionHelperConfig } from './constitution-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Block factories
@@ -52,12 +52,12 @@ export {
   constitutionReview,
   constitutionEnforce,
   constitutionAuditor,
-} from './constitution-blocks.js'
+} from './constitution-blocks'
 export type {
   ConstitutionReviewBlockConfig,
   ConstitutionEnforceBlockConfig,
   ConstitutionAuditorBlockConfig,
-} from './constitution-blocks.js'
+} from './constitution-blocks'
 
 // ===========================================================================
 // Perspective — Phase A: Static foundation
@@ -76,7 +76,7 @@ export {
   perspectiveInputSchema,
   perspectiveApplyOutputSchema,
   perspective,
-} from './perspective.js'
+} from './perspective'
 export type {
   PerspectiveSalience,
   PerspectiveReasoning,
@@ -86,7 +86,7 @@ export type {
   PerspectiveAnalysis,
   PerspectiveInput,
   PerspectiveApplyOutput,
-} from './perspective.js'
+} from './perspective'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Helpers
@@ -98,7 +98,7 @@ export {
   formatPerspective,
   summarizePerspective,
   perspectiveContextFormatter,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Block factories (static)
@@ -108,11 +108,11 @@ export {
   perspectiveApply,
   perspectiveAnalyze,
   perspectiveAuditor,
-} from './perspective-blocks.js'
+} from './perspective-blocks'
 export type {
   PerspectiveBlockConfig,
   PerspectiveAnalyzeConfig,
-} from './perspective-blocks.js'
+} from './perspective-blocks'
 
 // ===========================================================================
 // Perspective — Phase B: Resource-backed state
@@ -135,7 +135,7 @@ export {
   perspectiveSnapshotOutputSchema,
   perspectiveObservationsResource,
   perspectivePositionsResource,
-} from './perspective.js'
+} from './perspective'
 export type {
   PerspectiveObservation,
   PerspectiveObservationsState,
@@ -147,7 +147,7 @@ export type {
   PerspectivePositionInput,
   PerspectiveChallengeInput,
   PerspectiveSnapshotOutput,
-} from './perspective.js'
+} from './perspective'
 
 // ---------------------------------------------------------------------------
 // Layer 2: Helpers (verb-first naming)
@@ -165,13 +165,13 @@ export {
   perspectivePositions,
   formatPerspectivePositions,
   formatPerspectiveAccumulated,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 export type {
   PerspectiveObservationsRef,
   PerspectivePositionsRef,
   AddPerspectiveObservationInput,
   AddPerspectivePositionInput,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Stateful blocks
@@ -183,12 +183,12 @@ export {
   perspectiveChallenge,
   perspectiveSnapshot,
   perspectiveAdvance,
-} from './perspective-blocks.js'
+} from './perspective-blocks'
 export type {
   PerspectiveStatefulBlockConfig,
   PerspectivePositionBlockConfig,
   PositionScope,
-} from './perspective-blocks.js'
+} from './perspective-blocks'
 
 // ---------------------------------------------------------------------------
 // Capability + system factory
@@ -196,17 +196,17 @@ export type {
 
 export {
   createPerspectiveCapability,
-} from './perspective-capability.js'
+} from './perspective-capability'
 export type {
   PerspectiveCapability,
   PerspectiveCapabilityConfig,
-} from './perspective-capability.js'
+} from './perspective-capability'
 
 export {
   system,
-} from './perspective-system.js'
+} from './perspective-system'
 export type {
   PerspectiveSystem,
   PerspectiveSystemConfig,
   PerspectiveAccumulated,
-} from './perspective-system.js'
+} from './perspective-system'

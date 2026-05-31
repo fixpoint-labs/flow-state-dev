@@ -18,17 +18,17 @@ import {
   constitutionPrincipleResultSchema,
   constitutionViolationSchema,
   constitutionTradeoffSchema,
-} from './constitution.js'
+} from './constitution'
 import type {
   ConstitutionDefinition,
   ConstitutionReviewOutput,
-} from './constitution.js'
+} from './constitution'
 import {
   DEFAULT_CONSTITUTION_CONFIG,
   computeConstitutionCompliance,
   formatConstitution,
   rankConstitutionPrinciples,
-} from './constitution-helpers.js'
+} from './constitution-helpers'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
