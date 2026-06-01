@@ -188,9 +188,7 @@ async function runCommutative<TState extends object>(
 
   const result: CASPersistResult<TState> = await persist(
     nextState,
-    // "any" signals unconditional write — the store applies the delta
-    // atomically without a version check
-    0, // placeholder — persist interprets hint.commutative + "any" expectedVersion
+    container.getVersion(),
     hint
   );
 
