@@ -11,8 +11,6 @@ export {
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
-export { runFlow } from "./runFlow";
-export type { RunFlowOptions, RunFlowHandle } from "./runFlow";
 export {
   abortRequest,
   hasActiveAbortController,
