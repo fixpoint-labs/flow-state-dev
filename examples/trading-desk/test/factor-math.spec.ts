@@ -9,7 +9,41 @@ import {
   logMarketCap,
   crossSectionalPercentile,
   crossSectionalZScore,
+  crossSectionalRank,
+  gatedZScore,
+  MIN_Z_CROSS_SECTION,
 } from "../src/flows/trading-desk/phase-1/tools/factor-math";
+
+describe("factor-math — small-sample reframe (ordinal rank + gated z)", () => {
+  describe("crossSectionalRank", () => {
+    it("ranks the highest value 1 and the lowest value N", () => {
+      const vals = [10, 30, 20, 50, 40];
+      expect(crossSectionalRank(50, vals)).toEqual({ rank: 1, outOf: 5 });
+      expect(crossSectionalRank(10, vals)).toEqual({ rank: 5, outOf: 5 });
+      expect(crossSectionalRank(30, vals)).toEqual({ rank: 3, outOf: 5 });
+    });
+
+    it("reports outOf as the count actually ranked (not the nominal peer count)", () => {
+      // Only 3 names had a value for this factor → 'rank of 3', honest at any n.
+      expect(crossSectionalRank(5, [5, 1, 9])).toEqual({ rank: 2, outOf: 3 });
+    });
+  });
+
+  describe("gatedZScore", () => {
+    it("omits the z-score for a small peer set (the n~7 case)", () => {
+      const seven = [1, 2, 3, 4, 5, 6, 7];
+      expect(gatedZScore(7, seven)).toBeNull();
+      expect(seven.length).toBeLessThan(MIN_Z_CROSS_SECTION);
+    });
+
+    it("reports a z-score once the cross-section is large enough", () => {
+      const big = Array.from({ length: MIN_Z_CROSS_SECTION }, (_, i) => i);
+      const z = gatedZScore(big[big.length - 1], big);
+      expect(z).not.toBeNull();
+      expect(z!).toBeGreaterThan(0);
+    });
+  });
+});
 
 describe("factor-math", () => {
   describe("momentum12m1", () => {

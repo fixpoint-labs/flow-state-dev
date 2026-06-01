@@ -13,7 +13,8 @@ import {
   momentum12m1,
   logMarketCap,
   crossSectionalPercentile,
-  crossSectionalZScore,
+  crossSectionalRank,
+  gatedZScore,
 } from "./factor-math";
 import { logReturns, realizedVolAnnualized } from "./regime-math";
 import {
@@ -70,17 +71,39 @@ function rankFactor(
   name: NameData,
   allNames: NameData[],
   factor: keyof Omit<NameData, "ticker">,
-): { value: number | null; percentile: number | null; zScore: number | null } {
+): {
+  value: number | null;
+  percentile: number | null;
+  rank: number | null;
+  outOf: number | null;
+  zScore: number | null;
+} {
   const nameValue = name[factor];
-  if (nameValue == null) return { value: null, percentile: null, zScore: null };
+  if (nameValue == null) {
+    return { value: null, percentile: null, rank: null, outOf: null, zScore: null };
+  }
   const allValues = allNames
     .map((n) => n[factor])
     .filter((v): v is number => v != null);
-  if (allValues.length < 2) return { value: nameValue, percentile: null, zScore: null };
-  const rawZ = crossSectionalZScore(nameValue, allValues);
+  if (allValues.length < 2) {
+    return {
+      value: nameValue,
+      percentile: null,
+      rank: null,
+      outOf: allValues.length,
+      zScore: null,
+    };
+  }
+  // Ordinal rank + percentile carry the read at any sample size. The z-score
+  // is reported only when the cross-section is large enough to support it
+  // (gatedZScore) — omitted, not caveated, for the ~7-name Finnhub peer set.
+  const { rank, outOf } = crossSectionalRank(nameValue, allValues);
+  const rawZ = gatedZScore(nameValue, allValues);
   return {
     value: Math.round(nameValue * 10000) / 10000,
     percentile: crossSectionalPercentile(nameValue, allValues),
+    rank,
+    outOf,
     zScore: rawZ != null ? Math.round(rawZ * 100) / 100 : null,
   };
 }

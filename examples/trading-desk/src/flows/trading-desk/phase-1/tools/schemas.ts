@@ -442,6 +442,13 @@ export const factorRanksSchema = z.object({
     factor: z.enum(["momentum", "value", "quality", "size", "lowVol"]),
     value: z.number().nullable(),
     percentile: z.number().nullable(),
+    // Ordinal rank within the peer set (1 = highest), `outOf` names ranked on
+    // this factor. Valid at any sample size; the headline read for the small
+    // (~7-name) free-data peer set.
+    rank: z.number().nullable(),
+    outOf: z.number().nullable(),
+    // Reported only when the cross-section is large enough to be meaningful
+    // (see MIN_Z_CROSS_SECTION); null for small peer sets.
     zScore: z.number().nullable(),
   })),
   compositeFactorPercentile: z.number().nullable(),

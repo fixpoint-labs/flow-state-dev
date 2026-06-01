@@ -86,3 +86,32 @@ export function crossSectionalZScore(value: number, allValues: number[]): number
   if (std === 0) return null;
   return (value - mean) / std;
 }
+
+/** Minimum cross-section size for a cross-sectional z-score to be worth
+ *  reporting. Over a handful of names a z-score is dominated by a single
+ *  outlier (a mega-cap peer), so below this it is omitted and the percentile +
+ *  ordinal rank carry the read instead. ~6 Finnhub peers never reach this on
+ *  free data — by design: an honest factor z needs a far wider universe. */
+export const MIN_Z_CROSS_SECTION = 30;
+
+/** Ordinal rank of `value` within `allValues` — `rank` 1 is the highest value,
+ *  `outOf` is the number of names actually ranked on this factor. Valid at any
+ *  sample size, unlike a z-score. */
+export function crossSectionalRank(
+  value: number,
+  allValues: number[],
+): { rank: number; outOf: number } {
+  const above = allValues.filter((v) => v > value).length;
+  return { rank: above + 1, outOf: allValues.length };
+}
+
+/** Cross-sectional z-score, but only when the cross-section is large enough
+ *  (`MIN_Z_CROSS_SECTION`) to be meaningful; otherwise `null`. */
+export function gatedZScore(
+  value: number,
+  allValues: number[],
+  minN: number = MIN_Z_CROSS_SECTION,
+): number | null {
+  if (allValues.length < minN) return null;
+  return crossSectionalZScore(value, allValues);
+}
