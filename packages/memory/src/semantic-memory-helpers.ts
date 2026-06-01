@@ -1,7 +1,7 @@
 import type { ResourceContext } from '@flow-state-dev/core'
-import type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
-import { shortId, tokenOverlap } from './internal/helpers.js'
-import { effectiveConfidence } from './janitor.js'
+import type { SemanticFact, SemanticMemoryState } from './semantic-memory'
+import { shortId, tokenOverlap } from './internal/helpers'
+import { effectiveConfidence } from './janitor'
 
 type SemRef = ResourceContext<SemanticMemoryState>
 

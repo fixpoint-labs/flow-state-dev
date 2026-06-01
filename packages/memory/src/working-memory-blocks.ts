@@ -1,14 +1,14 @@
 import { generator, handler, sequencer } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { workingMemoryEntrySchema, workingMemoryResource } from './working-memory.js'
-import type { WorkingMemoryDecayConfig } from './working-memory-helpers.js'
+import { workingMemoryEntrySchema, workingMemoryResource } from './working-memory'
+import type { WorkingMemoryDecayConfig } from './working-memory-helpers'
 import {
   add,
   advance,
   evict,
   formatForObserveContext,
   items,
-} from './working-memory-helpers.js'
+} from './working-memory-helpers'
 
 // ---------------------------------------------------------------------------
 // Config types

@@ -1,6 +1,6 @@
 import type { ResourceContext } from '@flow-state-dev/core'
-import type { Episode, EpisodicMemoryState } from './episodic-memory.js'
-import { shortId } from './internal/helpers.js'
+import type { Episode, EpisodicMemoryState } from './episodic-memory'
+import { shortId } from './internal/helpers'
 
 type EpRef = ResourceContext<EpisodicMemoryState>
 

@@ -14,20 +14,20 @@
  * Internal-only — not re-exported from the package index.
  */
 
-import { DEFAULT_WORKING_MEMORY_CONFIG } from '../working-memory-helpers.js'
-import type { WorkingMemoryHelperConfig } from '../working-memory-helpers.js'
+import { DEFAULT_WORKING_MEMORY_CONFIG } from '../working-memory-helpers'
+import type { WorkingMemoryHelperConfig } from '../working-memory-helpers'
 import {
   DEFAULT_EPISODIC_CONFIG,
   DEFAULT_CONSOLIDATION_CONFIG,
   DEFAULT_PRUNE_CONFIG,
   DEFAULT_DIGEST_CONFIG,
-} from '../memory-system.js'
+} from '../memory-system'
 import type {
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
   DigestSystemConfig,
-} from '../memory-system.js'
+} from '../memory-system'
 
 /** Concrete episodic config after defaulting. */
 export interface ResolvedEpisodicConfig {

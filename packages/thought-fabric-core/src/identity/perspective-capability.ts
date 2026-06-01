@@ -28,7 +28,7 @@ import type {
   PerspectiveInstance,
   PerspectiveObservationsState,
   PerspectivePositionsState,
-} from './perspective.js'
+} from './perspective'
 import {
   formatPerspective,
   formatPerspectiveAccumulated,
@@ -40,13 +40,13 @@ import {
   challengePerspectivePosition,
   removePerspectivePosition,
   perspectivePositions,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 import type {
   AddPerspectiveObservationInput,
   AddPerspectivePositionInput,
-} from './perspective-helpers.js'
-import { buildPerspectiveResources } from './perspective-blocks.js'
-import type { PositionScope } from './perspective-blocks.js'
+} from './perspective-helpers'
+import { buildPerspectiveResources } from './perspective-blocks'
+import type { PositionScope } from './perspective-blocks'
 
 // ---------------------------------------------------------------------------
 // Config

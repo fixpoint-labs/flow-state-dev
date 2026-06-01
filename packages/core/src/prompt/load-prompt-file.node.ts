@@ -19,7 +19,7 @@ import {
   type PromptFile,
   type PromptFileFilters,
   type PromptFilePartials,
-} from "./prompt-file.js";
+} from "./prompt-file";
 
 /** Options for {@link loadPromptFile}. */
 export interface LoadPromptFileOptions {

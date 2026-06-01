@@ -5,12 +5,12 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import type { EpisodicMemoryState } from './episodic-memory.js'
-import type { SemanticMemoryState } from './semantic-memory.js'
+import type { EpisodicMemoryState } from './episodic-memory'
+import type { SemanticMemoryState } from './semantic-memory'
 import type {
   DigestMemoryState,
   DigestSourceSignature,
-} from './digest-memory.js'
+} from './digest-memory'
 
 type DigestRef = ResourceContext<DigestMemoryState>
 type SemRef = ResourceContext<SemanticMemoryState>

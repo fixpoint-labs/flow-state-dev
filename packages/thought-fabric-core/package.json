@@ -2,24 +2,24 @@
   "name": "@thought-fabric/core",
   "version": "0.0.1",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "default": "./src/index.ts"
     },
     "./attention": {
       "types": "./dist/attention/index.d.ts",
-      "default": "./dist/attention/index.js"
+      "default": "./src/attention/index.ts"
     },
     "./identity": {
       "types": "./dist/identity/index.d.ts",
-      "default": "./dist/identity/index.js"
+      "default": "./src/identity/index.ts"
     },
     "./metacognition": {
       "types": "./dist/metacognition/index.d.ts",
-      "default": "./dist/metacognition/index.js"
+      "default": "./src/metacognition/index.ts"
     }
   },
   "license": "MIT",
@@ -27,14 +27,34 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./attention": {
+        "types": "./dist/attention/index.d.ts",
+        "default": "./dist/attention/index.js"
+      },
+      "./identity": {
+        "types": "./dist/identity/index.d.ts",
+        "default": "./dist/identity/index.js"
+      },
+      "./metacognition": {
+        "types": "./dist/metacognition/index.d.ts",
+        "default": "./dist/metacognition/index.js"
+      }
+    }
   },
   "scripts": {
-    "build": "pnpm --filter @flow-state-dev/core build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @flow-state-dev/core build && node ../../scripts/typecheck.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
-    "test": "pnpm --filter @flow-state-dev/core build && vitest run --root .",
-    "test:watch": "pnpm --filter @flow-state-dev/core build && vitest --root ."
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
   },
   "dependencies": {
     "zod": "^3.24.1",

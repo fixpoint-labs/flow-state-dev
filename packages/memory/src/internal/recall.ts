@@ -10,16 +10,16 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import { tokenOverlap } from './helpers.js'
-import type { ResolvedHygieneConfig } from '../janitor-blocks.js'
-import type { RankedMemoryItem } from '../provider.js'
-import type { WorkingMemoryState } from '../working-memory.js'
-import { items as wmItems } from '../working-memory-helpers.js'
-import type { EpisodicMemoryState } from '../episodic-memory.js'
-import { recent } from '../episodic-memory-helpers.js'
-import type { SemanticMemoryState } from '../semantic-memory.js'
-import { allFacts } from '../semantic-memory-helpers.js'
-import { effectiveConfidence } from '../janitor.js'
+import { tokenOverlap } from './helpers'
+import type { ResolvedHygieneConfig } from '../janitor-blocks'
+import type { RankedMemoryItem } from '../provider'
+import type { WorkingMemoryState } from '../working-memory'
+import { items as wmItems } from '../working-memory-helpers'
+import type { EpisodicMemoryState } from '../episodic-memory'
+import { recent } from '../episodic-memory-helpers'
+import type { SemanticMemoryState } from '../semantic-memory'
+import { allFacts } from '../semantic-memory-helpers'
+import { effectiveConfidence } from '../janitor'
 
 /**
  * Unified cross-store recall.

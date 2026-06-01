@@ -16,7 +16,7 @@
 
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
-import type { SemanticFact } from './semantic-memory.js'
+import type { SemanticFact } from './semantic-memory'
 
 /** Milliseconds in a day. Used to convert elapsed ms into elapsed days. */
 const MS_PER_DAY = 1000 * 60 * 60 * 24

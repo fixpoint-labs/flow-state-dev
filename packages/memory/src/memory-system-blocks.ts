@@ -1,29 +1,29 @@
 import { generator, handler, sequencer } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { workingMemoryResource } from './working-memory.js'
-import type { WorkingMemoryHelperConfig } from './working-memory-helpers.js'
+import { workingMemoryResource } from './working-memory'
+import type { WorkingMemoryHelperConfig } from './working-memory-helpers'
 import {
   add,
   advance,
   evict,
   items as wmItems,
   pin,
-} from './working-memory-helpers.js'
-import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { encode, markConsolidated } from './episodic-memory-helpers.js'
-import { createSemanticMemoryResource } from './semantic-memory.js'
+} from './working-memory-helpers'
+import { createEpisodicMemoryResource } from './episodic-memory'
+import { encode, markConsolidated } from './episodic-memory-helpers'
+import { createSemanticMemoryResource } from './semantic-memory'
 import {
   addFact,
   updateFact,
   reinforce,
   removeFact,
   allFacts,
-} from './semantic-memory-helpers.js'
-import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system.js'
-import { findBestOverlap } from './internal/helpers.js'
-import { createDigestMemoryResource } from './digest-memory.js'
-import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks.js'
-import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks.js'
+} from './semantic-memory-helpers'
+import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
+import { findBestOverlap } from './internal/helpers'
+import { createDigestMemoryResource } from './digest-memory'
+import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks'
+import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks'
 
 // ---------------------------------------------------------------------------
 // Config types

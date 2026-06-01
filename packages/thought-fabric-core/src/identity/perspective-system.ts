@@ -25,17 +25,17 @@ import {
   perspectiveObservationsResource,
   createPerspectivePositionsResource,
   perspectivePositionsResource,
-} from './perspective.js'
+} from './perspective'
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
   PerspectivePosition,
-} from './perspective.js'
+} from './perspective'
 import {
   formatPerspectiveAccumulated,
   perspectiveObservations,
   perspectivePositions,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 import {
   perspectiveApply,
   perspectiveAnalyze,
@@ -45,10 +45,10 @@ import {
   perspectiveChallenge,
   perspectiveSnapshot,
   perspectiveAdvance,
-} from './perspective-blocks.js'
-import type { PositionScope } from './perspective-blocks.js'
-import { createPerspectiveCapability } from './perspective-capability.js'
-import type { PerspectiveCapability } from './perspective-capability.js'
+} from './perspective-blocks'
+import type { PositionScope } from './perspective-blocks'
+import { createPerspectiveCapability } from './perspective-capability'
+import type { PerspectiveCapability } from './perspective-capability'
 
 // ---------------------------------------------------------------------------
 // Config

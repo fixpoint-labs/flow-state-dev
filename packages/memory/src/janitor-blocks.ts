@@ -10,15 +10,15 @@
 
 import { handler } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { workingMemoryResource } from './working-memory.js'
-import { memorySystemResource } from './memory-system.js'
-import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { createSemanticMemoryResource } from './semantic-memory.js'
-import { cullByEffectiveConfidence } from './semantic-memory-helpers.js'
-import { cullByTTL, markStale } from './episodic-memory-helpers.js'
-import type { EpisodicTTLConfig } from './episodic-memory-helpers.js'
-import { janitorResource } from './janitor.js'
-import type { MemorySystemBlocksConfig } from './memory-system-blocks.js'
+import { workingMemoryResource } from './working-memory'
+import { memorySystemResource } from './memory-system'
+import { createEpisodicMemoryResource } from './episodic-memory'
+import { createSemanticMemoryResource } from './semantic-memory'
+import { cullByEffectiveConfidence } from './semantic-memory-helpers'
+import { cullByTTL, markStale } from './episodic-memory-helpers'
+import type { EpisodicTTLConfig } from './episodic-memory-helpers'
+import { janitorResource } from './janitor'
+import type { MemorySystemBlocksConfig } from './memory-system-blocks'
 
 /**
  * Resolved hygiene configuration passed into the janitor block. The factory

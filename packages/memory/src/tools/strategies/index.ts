@@ -6,8 +6,8 @@
  * custom `RetrievalStrategy` object directly.
  */
 
-import { createLlmFilterStrategy } from './llm-filter-strategy.js'
-import type { RetrievalStrategy } from '../types.js'
+import { createLlmFilterStrategy } from './llm-filter-strategy'
+import type { RetrievalStrategy } from '../types'
 
 export {
   createLlmFilterStrategy,
@@ -21,8 +21,8 @@ export {
   episodeToMemoryItem,
   extractExactPhrases,
   exactPhraseMatches,
-} from './llm-filter-strategy.js'
-export type { LlmFilterStrategyOptions } from './llm-filter-strategy.js'
+} from './llm-filter-strategy'
+export type { LlmFilterStrategyOptions } from './llm-filter-strategy'
 
 /** Built-in strategy names. */
 export type BuiltInStrategyName = 'llm-filter'

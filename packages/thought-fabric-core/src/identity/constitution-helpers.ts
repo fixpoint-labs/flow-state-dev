@@ -11,7 +11,7 @@ import type {
   ConstitutionPrinciple,
   ConstitutionPrincipleResult,
   ConstitutionReviewOutput,
-} from './constitution.js'
+} from './constitution'
 
 // ---------------------------------------------------------------------------
 // Configuration

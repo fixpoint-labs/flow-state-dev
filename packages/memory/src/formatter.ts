@@ -28,12 +28,12 @@
  * function — useful when bypassing the capability presets to wire a custom
  * mix directly into a generator's `context: { memory: … }` slot.
  */
-import { formatForContext } from './working-memory-helpers.js'
-import { topFacts } from './semantic-memory-helpers.js'
-import { recent as recentEpisodes } from './episodic-memory-helpers.js'
-import type { Digest } from './digest-memory.js'
-import type { SemanticFact } from './semantic-memory.js'
-import type { Episode } from './episodic-memory.js'
+import { formatForContext } from './working-memory-helpers'
+import { topFacts } from './semantic-memory-helpers'
+import { recent as recentEpisodes } from './episodic-memory-helpers'
+import type { Digest } from './digest-memory'
+import type { SemanticFact } from './semantic-memory'
+import type { Episode } from './episodic-memory'
 
 // ---------------------------------------------------------------------------
 // Defaults

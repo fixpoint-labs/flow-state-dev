@@ -13,7 +13,7 @@
 import { defineCapability } from '@flow-state-dev/core'
 import type { ResourceContext } from '@flow-state-dev/core'
 
-import { workingMemoryResource, type WorkingMemoryState } from './working-memory.js'
+import { workingMemoryResource, type WorkingMemoryState } from './working-memory'
 import {
   DEFAULT_WORKING_MEMORY_CONFIG,
   add,
@@ -24,18 +24,18 @@ import {
   advance,
   items,
   formatForContext,
-} from './working-memory-helpers.js'
-import type { WorkingMemoryHelperConfig, AddEntryInput } from './working-memory-helpers.js'
+} from './working-memory-helpers'
+import type { WorkingMemoryHelperConfig, AddEntryInput } from './working-memory-helpers'
 
-import { createEpisodicMemoryResource, type EpisodicMemoryState } from './episodic-memory.js'
-import { encode, recent, markConsolidated } from './episodic-memory-helpers.js'
-import type { EncodeEpisodeInput } from './episodic-memory-helpers.js'
+import { createEpisodicMemoryResource, type EpisodicMemoryState } from './episodic-memory'
+import { encode, recent, markConsolidated } from './episodic-memory-helpers'
+import type { EncodeEpisodeInput } from './episodic-memory-helpers'
 
-import { createSemanticMemoryResource, type SemanticMemoryState } from './semantic-memory.js'
-import type { SemanticFact } from './semantic-memory.js'
-import { addFact, updateFact, reinforce, removeFact, allFacts, query } from './semantic-memory-helpers.js'
+import { createSemanticMemoryResource, type SemanticMemoryState } from './semantic-memory'
+import type { SemanticFact } from './semantic-memory'
+import { addFact, updateFact, reinforce, removeFact, allFacts, query } from './semantic-memory-helpers'
 
-import { createDigestMemoryResource, type DigestMemoryState } from './digest-memory.js'
+import { createDigestMemoryResource, type DigestMemoryState } from './digest-memory'
 
 // ---------------------------------------------------------------------------
 // Working Memory Capability

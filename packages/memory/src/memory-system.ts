@@ -6,11 +6,11 @@ import type {
   MemoryProvider,
   RankedMemoryItem as ProviderRankedMemoryItem,
   MemoryContextSections,
-} from './provider.js'
+} from './provider'
 import {
   workingMemoryResource,
   type WorkingMemoryEntry,
-} from './working-memory.js'
+} from './working-memory'
 import {
   items as wmItems,
   computeSalience,
@@ -22,21 +22,21 @@ import {
   refresh,
   advance,
   computeDecay,
-} from './working-memory-helpers.js'
-import type { WorkingMemoryDecayConfig } from './working-memory-helpers.js'
+} from './working-memory-helpers'
+import type { WorkingMemoryDecayConfig } from './working-memory-helpers'
 import {
   createEpisodicMemoryResource,
   type Episode,
-} from './episodic-memory.js'
+} from './episodic-memory'
 import {
   encode,
   recent,
   markConsolidated,
-} from './episodic-memory-helpers.js'
+} from './episodic-memory-helpers'
 import {
   createSemanticMemoryResource,
   type SemanticFact,
-} from './semantic-memory.js'
+} from './semantic-memory'
 import {
   addFact,
   updateFact,
@@ -44,28 +44,28 @@ import {
   removeFact,
   allFacts,
   query,
-} from './semantic-memory-helpers.js'
-import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
-import { memorySystemJanitor } from './janitor-blocks.js'
+} from './semantic-memory-helpers'
+import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks'
+import { memorySystemJanitor } from './janitor-blocks'
 import {
   janitorResource,
   DEFAULT_HYGIENE_CONFIG,
-} from './janitor.js'
+} from './janitor'
 import {
   createDigestMemoryResource,
   type DigestMemoryState,
   type Digest,
-} from './digest-memory.js'
+} from './digest-memory'
 import {
   computeSourceSignature as digestComputeSourceSignature,
   isStale as digestIsStale,
-} from './digest-helpers.js'
-import { digestRegenerate } from './digest-blocks.js'
-import { createMemoryContextFormatter } from './formatter.js'
-import { createRecallTool } from './tools/recall-tool.js'
-import { buildMemoryCapability } from './memory-capability.js'
-import type { BuiltInStrategyName } from './tools/strategies/index.js'
-import type { RetrievalStrategy } from './tools/types.js'
+} from './digest-helpers'
+import { digestRegenerate } from './digest-blocks'
+import { createMemoryContextFormatter } from './formatter'
+import { createRecallTool } from './tools/recall-tool'
+import { buildMemoryCapability } from './memory-capability'
+import type { BuiltInStrategyName } from './tools/strategies/index'
+import type { RetrievalStrategy } from './tools/types'
 
 // ---------------------------------------------------------------------------
 // Memory system tracking resource
@@ -280,7 +280,7 @@ export interface HygieneConfig {
 }
 
 /** Default hygiene configuration. Mirrors `DEFAULT_HYGIENE_CONFIG` in `./janitor.ts`. */
-export { DEFAULT_HYGIENE_CONFIG } from './janitor.js'
+export { DEFAULT_HYGIENE_CONFIG } from './janitor'
 
 /** Configuration for the agent-invocable recall tool (FIX-409). */
 export interface MemoryToolConfig {

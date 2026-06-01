@@ -14,7 +14,7 @@ import type {
   PrepareEnvelope,
   RecallResultItem,
   RecallToolResult,
-} from './types.js'
+} from './types'
 
 /**
  * Compact summary string for the LLM-visible representation of a recall result.

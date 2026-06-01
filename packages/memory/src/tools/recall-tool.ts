@@ -30,18 +30,18 @@ import {
   DEFAULT_PER_ITEM_CHAR_CAP,
   DEFAULT_RECALL_LIMIT,
   formatRecallSummary,
-} from './format-helpers.js'
+} from './format-helpers'
 import {
   recallToolDescription,
   recallToolInputSchema,
-} from './types.js'
+} from './types'
 import type {
   PrepareEnvelope,
   PrepareInput,
   RecallToolInput,
   RecallToolResult,
   RetrievalStrategy,
-} from './types.js'
+} from './types'
 
 /** Options for `createRecallTool`. */
 export type CreateRecallToolOptions = {

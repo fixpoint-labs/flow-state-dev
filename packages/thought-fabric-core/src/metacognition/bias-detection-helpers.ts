@@ -7,7 +7,7 @@
  * structured data produced by the detection and classification blocks.
  */
 
-import type { BiasAnnotation, SycophancyBreakdown, SycophancyLabel } from './bias-detection.js'
+import type { BiasAnnotation, SycophancyBreakdown, SycophancyLabel } from './bias-detection'
 
 // ---------------------------------------------------------------------------
 // Configuration

@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "start": "next start",
-    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test": "vitest run --root .",
     "test:watch": "vitest --root ."
   },
   "dependencies": {

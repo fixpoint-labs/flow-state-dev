@@ -27,8 +27,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Persist Turborepo's task cache across runs so unchanged build /
+      # typecheck / test tasks restore instead of re-running. Keyed per job
+      # so parallel jobs don't clobber one another's cache entry.
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - name: Build packages
-        run: pnpm --filter './packages/*' -r build
+        run: pnpm packages:build
 
       - name: Typecheck
         run: pnpm typecheck
@@ -75,8 +86,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - name: Build packages
-        run: pnpm --filter './packages/*' -r build
+        run: pnpm packages:build
 
       - name: Build kitchen-sink (test mode)
         run: pnpm --filter @flow-state-dev/kitchen-sink build
@@ -114,8 +133,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - name: Build packages
-        run: pnpm --filter './packages/*' -r build
+        run: pnpm packages:build
 
       - name: Build Storybook
         run: pnpm --filter @flow-state-dev/ui storybook:build
