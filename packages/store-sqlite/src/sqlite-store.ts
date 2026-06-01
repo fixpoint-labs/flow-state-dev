@@ -253,6 +253,9 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
+      if (path.length !== 1) {
+        throw new Error(`incField supports depth-1 paths only; got [${path.join(", ")}]`);
+      }
       return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = (typeof existing === "number" ? existing : 0) + delta;
@@ -266,6 +269,9 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
+      if (path.length !== 1) {
+        throw new Error(`pushToArray supports depth-1 paths only; got [${path.join(", ")}]`);
+      }
       return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = Array.isArray(existing) ? [...existing, ...values] : [...values];

@@ -194,8 +194,8 @@ async function runCommutative<TState extends object>(
 
   if (!result.ok) {
     // Commutative ops should never conflict when using "any" expectedVersion.
-    // If the store returns a conflict (e.g. missing record), fall back to
-    // committing locally so the caller doesn't fail.
+    // If the store returns a conflict (e.g. missing record), report no-op
+    // without committing locally — the record may not exist.
     return false;
   }
 

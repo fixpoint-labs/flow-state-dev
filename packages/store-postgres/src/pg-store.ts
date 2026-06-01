@@ -296,11 +296,9 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // Treat the existing value as 0 when it's missing OR when its JSONB
-      // type is anything other than 'number'. Mirrors the in-memory
-      // adapter's `typeof === "number"` baseline; without the typeof guard
-      // Postgres would happily cast JSON strings like "5" to numeric 5 and
-      // diverge from memory.
+      if (path.length !== 1) {
+        throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return runDeltaUpdate(
         id,
         statePath(path),
@@ -318,9 +316,9 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // COALESCE treats a missing field as `[]`. If the existing value is a
-      // JSONB non-array (e.g. an object), Postgres raises a `||` operator
-      // error — caller should know they're pushing to an array slot.
+      if (path.length !== 1) {
+        throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return runDeltaUpdate(
         id,
         statePath(path),
