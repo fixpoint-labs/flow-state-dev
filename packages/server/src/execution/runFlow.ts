@@ -112,8 +112,8 @@ export async function runFlow<
   }
 
   // Call runAction WITHOUT awaiting so the run starts but this function returns
-  // a handle immediately. A synchronous throw inside runAction (e.g. unknown
-  // action) becomes a rejected `finished` rather than a rejection here.
+  // a handle immediately. runAction is async, so a rejection from it (e.g.
+  // unknown action) lands on `finished` rather than rejecting this call.
   const finished = runAction({
     flow,
     actionName: opts.action,

@@ -165,8 +165,8 @@ describe("runFlow", () => {
   });
 
   it("rejects finished (not the runFlow call) for an unknown action", async () => {
-    // The call itself resolves to a handle; the unknown-action throw inside
-    // runAction surfaces as a rejected `finished`, mirroring host.dispatch.
+    // The call itself resolves to a handle; the unknown-action rejection from
+    // runAction lands on `finished`, mirroring host.dispatch.
     const handle = await runFlow(buildMessageFlow(), {
       action: "nope" as "greet",
       input: { name: "Ada" },

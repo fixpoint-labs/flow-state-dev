@@ -44,13 +44,17 @@ See [authentication](../server/authentication.md) for the full trust model.
 import { runFlow, createFilesystemStores } from "@flow-state-dev/server";
 import { digestFlow } from "./flows/digest";
 
-const stores = createFilesystemStores({ dir: ".flow-state" });
+const stores = createFilesystemStores({
+  rootDir: ".flow-state",
+  developmentOnly: true
+});
 
 const handle = await runFlow(digestFlow, {
   action: "run",
   input: { since: "2026-05-01" },
   userId: "user_42", // already resolved + verified by your job
   sessionId: "nightly-digest",
+  stores,
   onItem: (item) => console.log(item.type, item.id)
 });
 
