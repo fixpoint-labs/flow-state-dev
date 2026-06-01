@@ -255,6 +255,61 @@ export async function fetchFinnhubMarketNews(
 }
 
 /**
+ * Macro / geopolitical news from Finnhub `/news?category=general` plus
+ * `forex` (rates / FX / trade headlines). Market-wide, not ticker-scoped.
+ * `forex` is best-effort: if that one category fails, the general feed alone
+ * is still returned rather than discarding both. Deduped by url/headline and
+ * capped at 12 items. Throws only if the general feed fails, so the tool
+ * handler can fall through to `emptyPayload`.
+ *
+ * Distinct from `fetchFinnhubMarketNews` (general-only, framed for the Market
+ * Analyst's sector/theme lane); this adds the forex/FX lane and is framed for
+ * the Macro Analyst's regime read.
+ */
+export async function fetchFinnhubMacroNews(
+  input: ToolInput<"get_macro_news">,
+): Promise<ToolOutput<"get_macro_news">> {
+  type Item = {
+    datetime: number;
+    headline: string;
+    source: string;
+    url?: string;
+    category?: string;
+    summary?: string;
+  };
+  const general = await fetchJson<Item[]>("/news", { category: "general" });
+  let forex: Item[] = [];
+  try {
+    forex = await fetchJson<Item[]>("/news", { category: "forex" });
+  } catch {
+    // forex is a bonus macro/FX lane; the general feed alone is a valid macro read.
+  }
+  const seen = new Set<string>();
+  const items = [...general, ...forex]
+    .filter((n) => {
+      const k = n.url ?? n.headline;
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => b.datetime - a.datetime)
+    .slice(0, 12)
+    .map((n) => ({
+      date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
+      headline: n.headline,
+      source: n.source,
+      url: n.url,
+      category: n.category,
+      summary: n.summary ?? null,
+    }));
+  return {
+    source: "finnhub",
+    asOf: input.date,
+    items,
+  };
+}
+
+/**
  * Peer ticker list from Finnhub `/stock/peers`. Returns up to ~20 tickers
  * in the same sub-industry; callers should cap for prompt budget. Throws on
  * any failure so tool handlers can fall through to `emptyPayload`.

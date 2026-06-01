@@ -89,6 +89,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     items: [],
   }),
+  get_macro_news: (i) => ({
+    source: "unavailable",
+    asOf: i.date,
+    items: [],
+  }),
   get_macro_indicators: (i) => ({
     source: "unavailable",
     asOf: i.date,

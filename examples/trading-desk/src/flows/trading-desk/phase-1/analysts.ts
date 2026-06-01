@@ -41,6 +41,7 @@ import {
   get_income_statement,
   get_insider_transactions,
   get_macro_indicators,
+  get_macro_news,
   get_market_news,
   get_prediction_markets,
   get_price_history,
@@ -268,6 +269,7 @@ const macroGenerator = generator({
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     macro: toolOutputSchemas.get_macro_indicators,
+    macroNews: toolOutputSchemas.get_macro_news,
     macroContext: toolOutputSchemas.discover_macro_context,
     profile: toolOutputSchemas.get_company_profile,
   }),
@@ -280,6 +282,7 @@ export const macroAnalyst = defineAnalyst({
   shortName: "macro",
   tools: {
     macro: get_macro_indicators,
+    macroNews: get_macro_news,
     macroContext: discover_macro_context,
     profile: get_company_profile,
   },
