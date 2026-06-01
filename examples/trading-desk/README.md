@@ -47,6 +47,12 @@ Phase 1 — analyst fan-out:
   Bollinger Bands, VWMA(20), Stochastic Oscillator (%K/%D), KDJ, and OBV. The
   math is delegated to the `trading-signals` library with two small
   hand-rolled helpers (VWMA, KDJ).
+- **Tier 1 valuation metrics** — the fundamentals analyst derives enterprise
+  value, EV multiples (EV/Sales, EV/EBIT, EV/FCF), Price/Book, FCF yield,
+  earnings yield, ROA, net debt, ROIC, PEG/PEGY, and dividend yield from
+  already-fetched statements. Each metric is null when its inputs are absent;
+  proxy metrics (EV/EBIT, ROIC, PEG) are labeled as approximations. No new
+  provider calls.
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
   filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
   on failure, like other single-provider tools).

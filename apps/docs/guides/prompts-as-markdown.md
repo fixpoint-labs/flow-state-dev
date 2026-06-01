@@ -66,7 +66,10 @@ const pf = loadPromptFile("./fundamentals.prompt.md", import.meta.url);
 export const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   model: "openai/gpt-5.4-mini",
-  context: { data: (input) => asDataBlock(input) },
+  context: {
+    data: (input) => asDataBlock(input),
+    valuation: (input) => formatValuation(computeValuation(input)),
+  },
   ...definePromptFile(pf),
   outputSchema: thesisOutputSchema,
 });

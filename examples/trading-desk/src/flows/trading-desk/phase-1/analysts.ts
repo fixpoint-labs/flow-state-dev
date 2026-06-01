@@ -23,6 +23,7 @@ import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
 import { asDataBlock } from "../lib/helpers";
+import { computeValuation, formatValuation } from "../lib/valuation";
 import { loadPrompt } from "../lib/prompt";
 import { defineAnalyst } from "./analyst";
 import { thesisOutputSchema } from "./thesis-schema";
@@ -83,7 +84,10 @@ const fundamentalsGenerator = generator({
     fundamentals: toolOutputSchemas.get_fundamentals,
     fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
-  context: { data: (input) => asDataBlock(input) },
+  context: {
+    data: (input) => asDataBlock(input),
+    valuation: (input) => formatValuation(computeValuation(input)),
+  },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,
 });

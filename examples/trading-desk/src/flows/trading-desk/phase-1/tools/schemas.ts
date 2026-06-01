@@ -105,6 +105,7 @@ export const fundamentalsSchema = z.object({
   returnOnEquity: z.number(),
   operatingMargin: z.number(),
   grossMargin: z.number(),
+  dividendYield: z.number().nullable(),
 });
 
 const priceBar = z.object({

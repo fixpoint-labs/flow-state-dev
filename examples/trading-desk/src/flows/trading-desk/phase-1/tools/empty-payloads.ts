@@ -55,6 +55,7 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     returnOnEquity: 0,
     operatingMargin: 0,
     grossMargin: 0,
+    dividendYield: null,
   }),
   get_price_history: (i) => ({
     source: "unavailable",

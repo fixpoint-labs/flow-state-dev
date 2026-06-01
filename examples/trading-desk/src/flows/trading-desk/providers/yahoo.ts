@@ -97,7 +97,8 @@ export async function fetchYahooFundamentals(
     source: "yahoo",
     ticker: input.ticker,
     asOf: input.date,
-    marketCap: numberFrom(detail.marketCap),
+    // Yahoo returns absolute USD; normalize to $B to match statements and fixtures.
+    marketCap: numberFrom(detail.marketCap) / 1_000_000_000,
     forwardPE:
       nullableNumberFrom(stats.forwardPE) ?? nullableNumberFrom(detail.forwardPE),
     trailingPE: nullableNumberFrom(detail.trailingPE),
@@ -105,6 +106,7 @@ export async function fetchYahooFundamentals(
     returnOnEquity: numberFrom(fin.returnOnEquity),
     operatingMargin: numberFrom(fin.operatingMargins),
     grossMargin: numberFrom(fin.grossMargins),
+    dividendYield: nullableNumberFrom(detail.dividendYield),
   };
 }
 
