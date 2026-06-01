@@ -76,7 +76,8 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
       const before = await s.session.get("s1");
       const result = await s.session.patchField!("s1", ["count"], 5, 0, Date.now());
 
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
       const after = await s.session.get("s1");
       expect(after?.state).toEqual({ count: 5, mode: "idle" });
       expect(after?.version).toBe(1);
@@ -119,7 +120,8 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
       await s.session.patchField!("s1", ["count"], 1, 0, Date.now()); // v1
 
       const result = await s.session.patchField!("s1", ["count"], 42, "any", Date.now());
-      expect(result).toEqual({ ok: true, version: 2 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(2);
       expect((await s.session.get("s1"))?.state).toEqual({ count: 42 });
     });
 
