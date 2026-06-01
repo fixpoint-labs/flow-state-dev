@@ -213,6 +213,13 @@ export type FilesystemRecordStore<
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<T>>;
+  /** Remove a key from the record's `state` slice (depth-1 or depth-2). */
+  deleteField<T extends TRecord>(
+    id: string,
+    path: string[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<T>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
@@ -333,7 +340,7 @@ export function createFilesystemRecordStore<
           updatedAt
         } as TRecord;
         await writeRecord(rootDir, id, nextRecord);
-        return { ok: true, version: newVersion };
+        return { ok: true, version: newVersion, record: nextRecord as T };
       }),
 
     patchField: <T extends TRecord>(
@@ -343,14 +350,24 @@ export function createFilesystemRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<T>> => {
-      assertDepthOne(path, "patchField");
+      assertMaxDepthTwo(path, "patchField");
       return record.casUpdate<T>(
         id,
         expectedVersion,
-        (current) => ({
-          ...current,
-          state: { ...(current.state ?? {}), [path[0]]: value }
-        }),
+        (current) => {
+          const currentState = current.state ?? {};
+          if (path.length === 2) {
+            const parentRecord = (currentState[path[0]] as Record<string, unknown>) ?? {};
+            return {
+              ...current,
+              state: { ...currentState, [path[0]]: { ...parentRecord, [path[1]]: value } }
+            };
+          }
+          return {
+            ...current,
+            state: { ...currentState, [path[0]]: value }
+          };
+        },
         updatedAt
       );
     },
@@ -362,7 +379,9 @@ export function createFilesystemRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<T>> => {
-      assertDepthOne(path, "incField");
+      if (path.length !== 1) {
+        throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return record.casUpdate<T>(
         id,
         expectedVersion,
@@ -385,7 +404,9 @@ export function createFilesystemRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<T>> => {
-      assertDepthOne(path, "pushToArray");
+      if (path.length !== 1) {
+        throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return record.casUpdate<T>(
         id,
         expectedVersion,
@@ -396,6 +417,31 @@ export function createFilesystemRecordStore<
             ...current,
             state: { ...(current.state ?? {}), [path[0]]: [...baseline, ...values] }
           };
+        },
+        updatedAt
+      );
+    },
+
+    deleteField: <T extends TRecord>(
+      id: string,
+      path: string[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<T>> => {
+      assertMaxDepthTwo(path, "deleteField");
+      return record.casUpdate<T>(
+        id,
+        expectedVersion,
+        (current) => {
+          const currentState = { ...(current.state ?? {}) };
+          if (path.length === 2) {
+            const parent = { ...((currentState[path[0]] as Record<string, unknown>) ?? {}) };
+            delete parent[path[1]];
+            currentState[path[0]] = parent;
+          } else {
+            delete currentState[path[0]];
+          }
+          return { ...current, state: currentState };
         },
         updatedAt
       );
@@ -420,15 +466,10 @@ export function createFilesystemRecordStore<
   return record;
 }
 
-/**
- * Delta verbs operate on a single depth-1 key inside `state`. Deeper paths
- * are pre-routed to `set` by the CAS persist layer; a direct adapter caller
- * passing a deep path is a bug we surface rather than silently mis-apply.
- */
-function assertDepthOne(path: string[], verb: string): void {
-  if (path.length !== 1) {
+function assertMaxDepthTwo(path: string[], verb: string): void {
+  if (path.length < 1 || path.length > 2) {
     throw new Error(
-      `${verb} only supports depth-1 paths in v1; received path of length ${path.length}`
+      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
     );
   }
 }

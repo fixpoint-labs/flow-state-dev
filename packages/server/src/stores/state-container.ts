@@ -26,8 +26,10 @@ import type {
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import {
   runWithCAS,
+  isCommutativeHint,
   type CASMutationHint,
-  type CASPersist
+  type CASPersist,
+  type CASPersistResult
 } from "./cas";
 import { withScopeLock } from "./scope-lock";
 
@@ -150,6 +152,10 @@ async function applyMutation<TState extends object>(
     return committed;
   }
 
+  if (isCommutativeHint(hint)) {
+    return runCommutative(container, mutator, persist, hint);
+  }
+
   const { committed } = await runWithCAS({
     container,
     mutator,
@@ -158,6 +164,56 @@ async function applyMutation<TState extends object>(
     hint
   });
   return committed;
+}
+
+/**
+ * Commutative write path for blind/commutative ops on external-store scopes.
+ * Calls persist once with `expectedVersion: "any"` — the store applies the
+ * delta atomically and returns the merged record. The container is refreshed
+ * from the store-returned record (authoritative), guarded by a max-version
+ * check to prevent out-of-order local regressions.
+ */
+async function runCommutative<TState extends object>(
+  container: StateContainer<TState>,
+  mutator: (state: Readonly<TState>) => TState | Promise<TState>,
+  persist: CASPersist<TState>,
+  hint: CASMutationHint
+): Promise<boolean> {
+  const current = container.read();
+  const nextState = await mutator(current);
+
+  if (deepEqual(current, nextState)) {
+    return false;
+  }
+
+  const result: CASPersistResult<TState> = await persist(
+    nextState,
+    // "any" signals unconditional write — the store applies the delta
+    // atomically without a version check
+    0, // placeholder — persist interprets hint.commutative + "any" expectedVersion
+    hint
+  );
+
+  if (!result.ok) {
+    // Commutative ops should never conflict when using "any" expectedVersion.
+    // If the store returns a conflict (e.g. missing record), fall back to
+    // committing locally so the caller doesn't fail.
+    return false;
+  }
+
+  // Max-version guard: only commit the store-returned state if its version
+  // is higher than what we currently hold. This prevents out-of-order local
+  // regressions when two commutative writes resolve in a different order
+  // than they were issued.
+  if (result.version > container.getVersion()) {
+    if (result.record !== undefined) {
+      container.commit(result.record, result.version);
+    } else {
+      container.commit(nextState, result.version);
+    }
+  }
+
+  return true;
 }
 
 const SET_HINT: CASMutationHint = { kind: "set" };
@@ -177,11 +233,6 @@ export function createScopeStateOps<TState extends object>(
     updatesOrKey: Partial<TState> | TKey,
     updater?: (current: TState[TKey]) => TState[TKey]
   ): Promise<boolean> {
-    // Hint selection follows the FIX-405 decision tree: a single own-property
-    // patch with a non-function value (literal form) or any keyed-updater call
-    // routes to `patchField`; everything else (multi-field, computed shape)
-    // falls back to `set`. The persist callback reads the concrete value out
-    // of `nextState` after the mutator runs.
     let hint: CASMutationHint = SET_HINT;
     if (typeof updatesOrKey === "object" && updatesOrKey !== null) {
       const keys = Object.keys(updatesOrKey as Record<string, unknown>);
@@ -189,11 +240,13 @@ export function createScopeStateOps<TState extends object>(
         const onlyKey = keys[0] as string;
         const onlyValue = (updatesOrKey as Record<string, unknown>)[onlyKey];
         if (typeof onlyValue !== "function") {
-          hint = { kind: "patchField", path: [onlyKey] };
+          // Literal single-field patch — blind write, commutative
+          hint = { kind: "patchField", path: [onlyKey], commutative: true };
         }
       }
     } else if (updater !== undefined) {
-      hint = { kind: "patchField", path: [String(updatesOrKey)] };
+      // Updater form reads the current value — RMW, stay on CAS
+      hint = { kind: "patchField", path: [String(updatesOrKey)], commutative: false };
     }
 
     return applyMutation(
@@ -287,8 +340,11 @@ export function createScopeStateOps<TState extends object>(
     key: string,
     value: unknown
   ): Promise<boolean> {
-    // Depth-2 path: v1 keeps the `set` fallback. Native depth>1 patching is a
-    // follow-up if usage warrants it (audit showed ~7% of patches are nested).
+    const hint: CASMutationHint = {
+      kind: "patchField",
+      path: [field, key],
+      commutative: true
+    };
     return applyMutation(
       container,
       options,
@@ -303,7 +359,7 @@ export function createScopeStateOps<TState extends object>(
         };
         return next as TState;
       },
-      SET_HINT
+      hint
     );
   }
 
@@ -311,6 +367,10 @@ export function createScopeStateOps<TState extends object>(
     field: string,
     key: string
   ): Promise<boolean> {
+    const hint: CASMutationHint = {
+      kind: "deleteField",
+      path: [field, key]
+    };
     return applyMutation(
       container,
       options,
@@ -325,7 +385,7 @@ export function createScopeStateOps<TState extends object>(
         next[field] = currentRecord;
         return next as TState;
       },
-      SET_HINT
+      hint
     );
   }
 

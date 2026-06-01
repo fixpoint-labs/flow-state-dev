@@ -26,6 +26,7 @@ type SpyStore = {
   patchField?: ReturnType<typeof vi.fn>;
   incField?: ReturnType<typeof vi.fn>;
   pushToArray?: ReturnType<typeof vi.fn>;
+  deleteField?: ReturnType<typeof vi.fn>;
 };
 
 function makeRecord(
@@ -54,10 +55,11 @@ function makeRecord(
  * falls back to `set`.
  */
 function setup(
-  methods: ("patchField" | "incField" | "pushToArray")[] = [
+  methods: ("patchField" | "incField" | "pushToArray" | "deleteField")[] = [
     "patchField",
     "incField",
-    "pushToArray"
+    "pushToArray",
+    "deleteField"
   ],
   initialState: Record<string, unknown> = {}
 ) {
@@ -88,6 +90,9 @@ function setup(
   }
   if (methods.includes("pushToArray")) {
     spy.pushToArray = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
+  }
+  if (methods.includes("deleteField")) {
+    spy.deleteField = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
   }
 
   const container = createStateContainer<Record<string, unknown>>(
@@ -121,7 +126,7 @@ function setup(
 
 describe("createScopePersist — decision tree", () => {
   describe("patchState routing", () => {
-    it("single own-property literal patch routes to patchField", async () => {
+    it("single own-property literal patch routes to patchField (commutative, 'any')", async () => {
       const { spy, ops } = setup();
 
       await ops.patchState({ count: 5 });
@@ -131,7 +136,7 @@ describe("createScopePersist — decision tree", () => {
         "s1",
         ["count"],
         5,
-        0,
+        "any",
         expect.any(Number)
       );
       expect(spy.set).not.toHaveBeenCalled();
@@ -184,7 +189,7 @@ describe("createScopePersist — decision tree", () => {
   });
 
   describe("incState routing", () => {
-    it("single-field increment routes to incField with the user-provided delta", async () => {
+    it("single-field increment routes to incField with 'any' (commutative)", async () => {
       const { spy, ops } = setup(undefined, { count: 0 });
 
       await ops.incState({ count: 3 });
@@ -194,7 +199,7 @@ describe("createScopePersist — decision tree", () => {
         "s1",
         ["count"],
         3,
-        0,
+        "any",
         expect.any(Number)
       );
     });
@@ -210,7 +215,7 @@ describe("createScopePersist — decision tree", () => {
   });
 
   describe("pushState routing", () => {
-    it("pushState always routes to pushToArray", async () => {
+    it("pushState routes to pushToArray with 'any' (commutative)", async () => {
       const { spy, ops } = setup(undefined, { log: [] });
 
       await ops.pushState("log", "first");
@@ -220,28 +225,36 @@ describe("createScopePersist — decision tree", () => {
         "s1",
         ["log"],
         ["first"],
-        0,
+        "any",
         expect.any(Number)
       );
     });
   });
 
   describe("setStateRecord / deleteStateRecord routing", () => {
-    it("setStateRecord routes to set (depth-2 path, v1 fallback)", async () => {
+    it("setStateRecord routes to patchField with depth-2 commutative path", async () => {
       const { spy, ops } = setup(undefined, { bag: {} });
 
       await ops.setStateRecord("bag", "key", "value");
 
-      expect(spy.set).toHaveBeenCalledTimes(1);
-      expect(spy.patchField).not.toHaveBeenCalled();
+      expect(spy.patchField).toHaveBeenCalledTimes(1);
+      expect(spy.patchField).toHaveBeenCalledWith(
+        "s1",
+        ["bag", "key"],
+        "value",
+        "any",
+        expect.any(Number)
+      );
+      expect(spy.set).not.toHaveBeenCalled();
     });
 
-    it("deleteStateRecord routes to set", async () => {
+    it("deleteStateRecord routes to deleteField with commutative path", async () => {
       const { spy, ops } = setup(undefined, { bag: { x: 1 } });
 
       await ops.deleteStateRecord("bag", "x");
 
-      expect(spy.set).toHaveBeenCalledTimes(1);
+      expect(spy.deleteField).toHaveBeenCalledTimes(1);
+      expect(spy.set).not.toHaveBeenCalled();
     });
   });
 
@@ -258,77 +271,68 @@ describe("createScopePersist — decision tree", () => {
     });
   });
 
-  describe("CAS retry invariants", () => {
-    it("incField delta is invariant across retries (re-applies same delta on conflict)", async () => {
-      // Simulates a concurrent writer: incField is called, returns conflict
-      // once with a fresh version, then the next attempt returns ok. Assert
-      // the spy received the same delta value both times.
-      let calls = 0;
-      let nextVersion = 2;
-      const incField = vi.fn(
-        async (
-          _id: string,
-          _path: string[],
-          _delta: number,
-          _ev: ExpectedVersion,
-          _updatedAt: number
-        ): Promise<SetResult<SessionRecord>> => {
-          calls += 1;
-          if (calls === 1) {
-            // Conflict on first attempt — pretend another writer landed.
-            const stored = makeRecord({ count: 99 });
-            stored.version = 1;
-            return {
-              ok: false,
-              conflict: { currentValue: stored, currentVersion: 1 }
-            };
-          }
-          return { ok: true, version: nextVersion++ };
-        }
-      );
-
-      const initial = makeRecord({ count: 0 });
-      const ref = { current: initial };
-      const set = vi.fn(
-        async (
-          _id: string,
-          _value: SessionRecord,
-          _ev: ExpectedVersion
-        ): Promise<SetResult<SessionRecord>> => ({ ok: true, version: 1 })
-      );
-
-      const container = createStateContainer<Record<string, unknown>>(
-        { count: 0 },
-        0
-      );
-      const persist = createScopePersist<
-        Record<string, unknown>,
-        SessionRecord
-      >(
-        ref,
-        { set, incField } as DeltaStoreOps<SessionRecord> & {
-          set: typeof set;
-        },
-        (expectedVersion, state) => ({
-          ...ref.current,
-          state: state as Record<string, unknown>,
-          version: expectedVersion + 1,
-          updatedAt: Date.now()
-        })
-      );
-      const ops = createScopeStateOps<Record<string, unknown>>(container, {
-        persist,
-        cas: { maxRetries: 3, baseDelayMs: 0 }
-      });
+  describe("commutative ops bypass CAS", () => {
+    it("incField uses 'any' expectedVersion (commutative, no retry)", async () => {
+      const { spy, ops } = setup(undefined, { count: 0 });
 
       await ops.incState({ count: 5 });
 
-      expect(incField).toHaveBeenCalledTimes(2);
-      // Both calls carry delta = 5 — the user intent, not derived from state.
-      expect(incField.mock.calls[0][2]).toBe(5);
-      expect(incField.mock.calls[1][2]).toBe(5);
-      // Second call uses the refreshed expectedVersion from the conflict.
-      expect(incField.mock.calls[1][3]).toBe(1);
+      expect(spy.incField).toHaveBeenCalledTimes(1);
+      // Commutative path passes "any" expectedVersion
+      expect(spy.incField).toHaveBeenCalledWith(
+        "s1",
+        ["count"],
+        5,
+        "any",
+        expect.any(Number)
+      );
+      expect(spy.set).not.toHaveBeenCalled();
+    });
+
+    it("pushState uses 'any' expectedVersion (commutative, no retry)", async () => {
+      const { spy, ops } = setup(undefined, { log: [] });
+
+      await ops.pushState("log", "first");
+
+      expect(spy.pushToArray).toHaveBeenCalledTimes(1);
+      expect(spy.pushToArray).toHaveBeenCalledWith(
+        "s1",
+        ["log"],
+        ["first"],
+        "any",
+        expect.any(Number)
+      );
+    });
+
+    it("literal single-field patchState uses 'any' expectedVersion (commutative)", async () => {
+      const { spy, ops } = setup();
+
+      await ops.patchState({ count: 5 });
+
+      expect(spy.patchField).toHaveBeenCalledTimes(1);
+      expect(spy.patchField).toHaveBeenCalledWith(
+        "s1",
+        ["count"],
+        5,
+        "any",
+        expect.any(Number)
+      );
+    });
+
+    it("updater-form patchState uses numeric expectedVersion (RMW, CAS path)", async () => {
+      const { spy, ops } = setup(undefined, { count: 10 });
+
+      await ops.patchState("count", (current) => (current as number) + 1);
+
+      expect(spy.patchField).toHaveBeenCalledTimes(1);
+      // RMW form uses the numeric expectedVersion from the container
+      expect(spy.patchField).toHaveBeenCalledWith(
+        "s1",
+        ["count"],
+        11,
+        0,
+        expect.any(Number)
+      );
     });
   });
 

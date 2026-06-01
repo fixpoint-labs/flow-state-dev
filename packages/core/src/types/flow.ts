@@ -15,6 +15,7 @@ import type {
 } from "./resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ChatConfig } from "./chat";
+import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
@@ -224,6 +225,7 @@ export type RetentionPolicy = {
 export type SessionConfig = {
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
+  cas?: CASOptions;
   /**
    * Declares which slice of session state crosses to the client. State is
    * private by default — only `expose`d field names and `derived`
@@ -297,6 +299,7 @@ export type RequestConfig = {
 
 export type UserConfig = {
   stateSchema?: ZodTypeAny;
+  cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
   /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
@@ -305,6 +308,7 @@ export type UserConfig = {
 
 export type OrgConfig = {
   stateSchema?: ZodTypeAny;
+  cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
   /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */

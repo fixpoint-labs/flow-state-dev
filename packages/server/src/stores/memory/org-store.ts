@@ -9,6 +9,7 @@ import type {
 import {
   applyOffsetLimit,
   casWriteToMap,
+  deleteFieldInMap,
   incFieldInMap,
   patchFieldInMap,
   pushToArrayInMap
@@ -58,6 +59,15 @@ export class InMemoryProjectStore implements OrgStore {
     updatedAt: number
   ): Promise<SetResult<OrgRecord>> {
     return pushToArrayInMap(this.records, id, path, values, expectedVersion, updatedAt);
+  }
+
+  async deleteField(
+    id: string,
+    path: string[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<OrgRecord>> {
+    return deleteFieldInMap(this.records, id, path, expectedVersion, updatedAt);
   }
 
   async delete(id: string): Promise<void> {

@@ -53,7 +53,8 @@ describe("Store delta verbs — in-memory adapter", () => {
       await seed(store, "s1", { count: 0, mode: "idle" });
 
       const result = await store.patchField!("s1", ["count"], 5, 0, Date.now());
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
 
       const fetched = await store.get("s1");
       expect(fetched?.state).toEqual({ count: 5, mode: "idle" });
@@ -88,7 +89,8 @@ describe("Store delta verbs — in-memory adapter", () => {
       await store.patchField!("s1", ["count"], 1, 0, Date.now()); // version 1
 
       const result = await store.patchField!("s1", ["count"], 42, "any", Date.now());
-      expect(result).toEqual({ ok: true, version: 2 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(2);
 
       const fetched = await store.get("s1");
       expect(fetched?.state).toEqual({ count: 42 });
@@ -107,7 +109,8 @@ describe("Store delta verbs — in-memory adapter", () => {
       await seed(store, "s1", { count: 10 });
 
       const result = await store.incField!("s1", ["count"], 5, 0, Date.now());
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
 
       const fetched = await store.get("s1");
       expect(fetched?.state).toEqual({ count: 15 });
@@ -175,7 +178,8 @@ describe("Store delta verbs — in-memory adapter", () => {
       await seed(store, "s1", { items: ["a"] });
 
       const result = await store.pushToArray!("s1", ["items"], ["b", "c"], 0, Date.now());
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
 
       const fetched = await store.get("s1");
       expect(fetched?.state).toEqual({ items: ["a", "b", "c"] });
@@ -264,13 +268,22 @@ describe("Store delta verbs — in-memory adapter", () => {
   });
 
   describe("depth guard", () => {
-    it("rejects depth > 1 paths (v1 only supports depth-1)", async () => {
+    it("supports depth-2 paths for nested record writes", async () => {
       const store = createInMemorySessionStore();
       await seed(store, "s1", { nested: { x: 1 } });
 
+      const result = await store.patchField!("s1", ["nested", "x"], 2, 0, Date.now());
+      expect(result.ok).toBe(true);
+      expect((await store.get("s1"))?.state).toEqual({ nested: { x: 2 } });
+    });
+
+    it("rejects depth > 2 paths", async () => {
+      const store = createInMemorySessionStore();
+      await seed(store, "s1", {});
+
       await expect(
-        store.patchField!("s1", ["nested", "x"], 2, 0, Date.now())
-      ).rejects.toThrow(/depth-1 paths/);
+        store.patchField!("s1", ["a", "b", "c"], 2, 0, Date.now())
+      ).rejects.toThrow(/depth-1 or depth-2/);
     });
   });
 });

@@ -13,21 +13,12 @@
 
 import type { CASOptions, StateContainer } from "@flow-state-dev/core/types";
 import { deepEqual } from "@flow-state-dev/core/helpers";
+import { ConcurrentModificationError } from "../errors/flow-error";
+
+export { ConcurrentModificationError };
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 10;
-
-export class ConcurrentModificationError extends Error {
-  readonly code: string;
-  readonly attempts: number;
-
-  constructor(message: string, attempts: number) {
-    super(message);
-    this.name = "ConcurrentModificationError";
-    this.code = "CONCURRENT_MODIFICATION";
-    this.attempts = attempts;
-  }
-}
 
 export type CASMutator<TState> = (
   state: Readonly<TState>
@@ -49,9 +40,27 @@ export type CASMutator<TState> = (
  */
 export type CASMutationHint =
   | { kind: "set" }
-  | { kind: "patchField"; path: [string] }
+  | { kind: "patchField"; path: [string] | [string, string]; commutative: boolean }
   | { kind: "incField"; path: [string]; delta: number }
-  | { kind: "pushToArray"; path: [string]; values: unknown[] };
+  | { kind: "pushToArray"; path: [string]; values: unknown[] }
+  | { kind: "deleteField"; path: [string, string] };
+
+/**
+ * Returns true when the hint describes a commutative or blind write that can
+ * bypass the CAS version gate and apply unconditionally in the store.
+ */
+export function isCommutativeHint(hint: CASMutationHint): boolean {
+  switch (hint.kind) {
+    case "incField":
+    case "pushToArray":
+    case "deleteField":
+      return true;
+    case "patchField":
+      return hint.commutative;
+    default:
+      return false;
+  }
+}
 
 /**
  * Outcome of the persist callback. On conflict the caller reports the current
@@ -59,7 +68,7 @@ export type CASMutationHint =
  * before the next retry.
  */
 export type CASPersistResult<TState> =
-  | { ok: true; version: number }
+  | { ok: true; version: number; record?: TState }
   | {
       ok: false;
       currentState: TState | undefined;
