@@ -60,29 +60,43 @@ This is different from the inline `content` + `render` approach on `defineResour
 
 ## A template in a file
 
-`loadResourceTemplate` reads a `.md` file from disk and returns a parsed template object. Pass it to `contentTemplate` on the resource definition.
+Pass a file path string to `contentTemplate`. The server resolves it at startup, the same way `contentFile` works.
 
 ```ts
 import { defineResource } from "@flow-state-dev/core";
-import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
 import { z } from "zod";
 
-const reportTemplate = loadResourceTemplate("./report.prompt.md", import.meta.url);
-
 const report = defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default("Untitled"),
     author: z.string().default(""),
     summary: z.string().default(""),
   }),
-  contentTemplate: reportTemplate,
+  contentTemplate: "./report.prompt.md",
   writable: true,
 });
 ```
 
+Relative paths resolve from the working directory. Absolute paths are used as-is.
+
 `readContent()` renders the template against the current state. `readContentRaw()` returns the raw template source. No `render` function needed.
 
 `contentTemplate` and `render` are mutually exclusive. If both are present, the definition throws at build time.
+
+If you need to pre-parse the template at module level (e.g. for validation or to inspect its metadata), use `loadResourceTemplate` instead of a string:
+
+```ts
+import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
+
+const reportTemplate = loadResourceTemplate("./report.prompt.md", import.meta.url);
+
+const report = defineResource({
+  scope: "session",
+  stateSchema: z.object({ title: z.string().default("Untitled") }),
+  contentTemplate: reportTemplate,
+});
+```
 
 ## A template in a resource (live-editable)
 

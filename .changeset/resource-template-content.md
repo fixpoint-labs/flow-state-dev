@@ -3,4 +3,4 @@
 "@flow-state-dev/server": minor
 ---
 
-Resources can render content from referenced `.md` prompt templates via new `contentTemplate` and `contentTemplateRef` fields on `defineResource()` and `defineResourceCollection()`.
+Resources can render content from `.md` prompt templates via `contentTemplate` and `contentTemplateRef` on `defineResource()` and `defineResourceCollection()`. `contentTemplate` accepts a file path string (resolved at server startup) or a pre-parsed `ResourceTemplate` object.

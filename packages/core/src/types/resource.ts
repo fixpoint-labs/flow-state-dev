@@ -145,13 +145,14 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   contentFile?: string;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
   /**
-   * A pre-parsed role-tagged Markdown template. The resource's content is
-   * rendered against this resource's `state` via deterministic LiquidJS.
-   * Produce one with `loadResourceTemplate()` (Node) or
-   * `parseResourceTemplate()` (isomorphic). Mutually exclusive with
-   * `content` / `contentFile` / `contentTemplateRef`.
+   * A role-tagged Markdown template for this resource's content. Accepts
+   * either a pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
+   * `loadResourceTemplate`) or a file path string that the server resolves
+   * at startup. The resource's content is rendered against its `state` via
+   * deterministic LiquidJS. Mutually exclusive with `content` /
+   * `contentFile` / `contentTemplateRef`.
    */
-  contentTemplate?: ResourceTemplate;
+  contentTemplate?: ResourceTemplate | string;
   /**
    * Path of another resource whose RAW content is a role-tagged Markdown
    * template. Resolved at read-time: editing the template resource or this

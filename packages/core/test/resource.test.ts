@@ -61,6 +61,24 @@ describe("defineResource", () => {
     expect(res.contentTemplate).toBe(stubTemplate);
   });
 
+  it("accepts a string path as contentTemplate", () => {
+    const res = defineResource({
+      scope: "user",
+      stateSchema: z.object({ name: z.string() }),
+      contentTemplate: "./templates/persona.md",
+    });
+    expect(res.contentTemplate).toBe("./templates/persona.md");
+  });
+
+  it("throws when string contentTemplate and contentFile are both provided", () => {
+    expect(() => defineResource({
+      scope: "session",
+      stateSchema: z.object({}),
+      contentTemplate: "./templates/persona.md",
+      contentFile: "./other.md",
+    })).toThrow("at most one content source");
+  });
+
   it("accepts a single contentTemplateRef source", () => {
     const res = defineResource({
       scope: "user",
@@ -90,5 +108,15 @@ describe("defineResourceCollection", () => {
       contentTemplate: stubTemplate,
     });
     expect(col.contentTemplate).toBe(stubTemplate);
+  });
+
+  it("accepts a string path as contentTemplate", () => {
+    const col = defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      contentTemplate: "./templates/item.md",
+    });
+    expect(col.contentTemplate).toBe("./templates/item.md");
   });
 });

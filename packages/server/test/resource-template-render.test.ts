@@ -86,4 +86,17 @@ describe("renderContent with template fields", () => {
     );
     expect(result).toBe("You are Charlie, a engineer.");
   });
+
+  it("skips template branch when contentTemplate is an unresolved string path", async () => {
+    const config: Partial<ResourceConfig> = {
+      scope: "session",
+      contentTemplate: "./templates/persona.md" as any,
+    };
+    const result = await renderContent(
+      config as ResourceConfig,
+      "fallback raw",
+      { name: "Dave" }
+    );
+    expect(result).toBe("fallback raw");
+  });
 });

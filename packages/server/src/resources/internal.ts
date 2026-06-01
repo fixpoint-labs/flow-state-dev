@@ -167,7 +167,7 @@ export async function renderContent(
   state: JsonObject,
   templateRaw?: string
 ): Promise<string | null> {
-  if ("contentTemplate" in config && config.contentTemplate !== undefined) {
+  if ("contentTemplate" in config && config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
     return renderResourceTemplate(config.contentTemplate, state);
   }
   if ("contentTemplateRef" in config && config.contentTemplateRef !== undefined) {

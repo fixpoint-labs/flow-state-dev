@@ -87,6 +87,9 @@ import {
   parseResourceTemplate,
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
+import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 
 function normalizeLimit(
@@ -260,6 +263,32 @@ function normalizeScopeResourceContent(
   }
 
   return normalized;
+}
+
+/**
+ * Resolve string `contentTemplate` paths into parsed `ResourceTemplate`
+ * objects in-place. Called once per execution context so downstream code
+ * always sees a `ResourceTemplate`, never a raw path string.
+ */
+function resolveStringContentTemplates(
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): void {
+  const cwdUrl = pathToFileURL(path.resolve(process.cwd(), "_")).href;
+  for (const [accessor, config] of Object.entries(configs)) {
+    if (typeof config.contentTemplate !== "string") continue;
+    const filePath = path.isAbsolute(config.contentTemplate)
+      ? config.contentTemplate
+      : path.resolve(process.cwd(), config.contentTemplate);
+    try {
+      (config as { contentTemplate: unknown }).contentTemplate =
+        loadResourceTemplate(filePath, cwdUrl);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(
+        `Failed to load contentTemplate for resource "${accessor}" (path: ${config.contentTemplate}): ${message}`
+      );
+    }
+  }
 }
 
 /**
@@ -631,7 +660,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined) {
+        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
           return nsConfig.contentTemplate.source;
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -643,7 +672,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (nsConfig.contentTemplate !== undefined) {
+        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
           return renderResourceTemplate(nsConfig.contentTemplate, readState());
         }
         if (nsConfig.contentTemplateRef !== undefined) {
@@ -1083,7 +1112,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
-        if (config.contentTemplate !== undefined) {
+        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
           return config.contentTemplate.source;
         }
         if (config.contentTemplateRef !== undefined) {
@@ -1095,7 +1124,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
-        if (config.contentTemplate !== undefined) {
+        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
           return renderResourceTemplate(config.contentTemplate, readState());
         }
         if (config.contentTemplateRef !== undefined) {
@@ -2481,6 +2510,10 @@ export async function createExecutionContext<
     else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
     accessorScope[accessor] = scope;
   }
+
+  resolveStringContentTemplates(sessionResourceConfigs);
+  resolveStringContentTemplates(userResourceConfigs);
+  resolveStringContentTemplates(orgResourceConfigs);
 
   if (!options.userId || options.userId.trim().length === 0) {
     throw new Error(`Flow "${flow.kind}" requires a userId`);

@@ -68,8 +68,8 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   prefetchMode?: "eager" | "lazy";
 
-  /** A pre-parsed role-tagged Markdown template applied to each instance. */
-  contentTemplate?: ResourceTemplate;
+  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup. */
+  contentTemplate?: ResourceTemplate | string;
   /** Path of another resource whose raw content is a template for each instance. */
   contentTemplateRef?: string;
 
