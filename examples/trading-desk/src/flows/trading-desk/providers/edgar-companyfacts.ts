@@ -42,11 +42,16 @@ type FactEntry = {
 
 type Fact = { units?: { USD?: FactEntry[] } };
 
-/** The raw `companyfacts` response shape (only the parts we read). */
+/** The raw `companyfacts` response shape (only the parts we read). US filers
+ *  report under `us-gaap`; foreign private issuers (20-F) report under
+ *  `ifrs-full`, with a USD convenience translation in the `USD` unit. */
 export interface EdgarCompanyFacts {
   cik?: number;
   entityName?: string;
-  facts?: { "us-gaap"?: Record<string, Fact> };
+  facts?: {
+    "us-gaap"?: Record<string, Fact>;
+    "ifrs-full"?: Record<string, Fact>;
+  };
 }
 
 const USD_BILLION = 1_000_000_000;
@@ -236,35 +241,73 @@ function annualByFy(
 /** Cost-of-revenue tags, newest-tag-wins like revenue. */
 const COGS_TAGS = ["CostOfGoodsAndServicesSold", "CostOfRevenue"];
 
-/**
- * Map a raw `companyfacts` response into up to `maxPeriods` annual
- * `FinancialPeriod`s, newest first, for the composite scores. Unlike the
- * single-period statement mapper this surfaces working-capital and
- * retained-earnings inputs (Altman X1/X2) and keeps the prior period Piotroski
- * needs for its change-based criteria. A tag a filer never reported is `null`,
- * never 0. Returns `[]` when no annual facts are present (e.g. a non-US filer
- * with no us-gaap data) so the caller falls through to Yahoo.
- */
-export function mapEdgarFinancialsHistory(
-  resp: EdgarCompanyFacts,
-  maxPeriods = 4,
-): FinancialPeriod[] {
-  const g = resp.facts?.["us-gaap"] ?? {};
+/** Per-field tag selection for one XBRL taxonomy: which tag(s) to read and
+ *  whether the fact is instant (balance sheet) or duration (income/cashflow). */
+type FieldSpec = { tags: string[]; kind: "instant" | "duration" };
+type StatementTagMap = Record<keyof Omit<FinancialPeriod, "endDate">, FieldSpec>;
 
+/** US filers (`us-gaap`). */
+const US_GAAP_HISTORY_TAGS: StatementTagMap = {
+  totalAssets: { tags: ["Assets"], kind: "instant" },
+  totalCurrentAssets: { tags: ["AssetsCurrent"], kind: "instant" },
+  totalCurrentLiabilities: { tags: ["LiabilitiesCurrent"], kind: "instant" },
+  totalLiabilities: { tags: ["Liabilities"], kind: "instant" },
+  retainedEarnings: { tags: ["RetainedEarningsAccumulatedDeficit"], kind: "instant" },
+  totalEquity: { tags: ["StockholdersEquity"], kind: "instant" },
+  totalRevenue: { tags: REVENUE_TAGS, kind: "duration" },
+  costOfRevenue: { tags: COGS_TAGS, kind: "duration" },
+  grossProfit: { tags: ["GrossProfit"], kind: "duration" },
+  operatingIncome: { tags: ["OperatingIncomeLoss"], kind: "duration" },
+  netIncome: { tags: ["NetIncomeLoss"], kind: "duration" },
+  cfo: { tags: ["NetCashProvidedByUsedInOperatingActivities"], kind: "duration" },
+  capitalExpenditures: {
+    tags: ["PaymentsToAcquirePropertyPlantAndEquipment"],
+    kind: "duration",
+  },
+};
+
+/** Foreign private issuers (20-F, `ifrs-full`). IFRS uses different tag names;
+ *  operating income is `ProfitLossFromOperatingActivities` and net income is
+ *  `ProfitLoss`. Values are read from the `USD` convenience-translation unit. */
+const IFRS_HISTORY_TAGS: StatementTagMap = {
+  totalAssets: { tags: ["Assets"], kind: "instant" },
+  totalCurrentAssets: { tags: ["CurrentAssets"], kind: "instant" },
+  totalCurrentLiabilities: { tags: ["CurrentLiabilities"], kind: "instant" },
+  totalLiabilities: { tags: ["Liabilities"], kind: "instant" },
+  retainedEarnings: { tags: ["RetainedEarnings"], kind: "instant" },
+  totalEquity: { tags: ["Equity"], kind: "instant" },
+  totalRevenue: { tags: ["Revenue"], kind: "duration" },
+  costOfRevenue: { tags: ["CostOfSales"], kind: "duration" },
+  grossProfit: { tags: ["GrossProfit"], kind: "duration" },
+  operatingIncome: { tags: ["ProfitLossFromOperatingActivities"], kind: "duration" },
+  netIncome: { tags: ["ProfitLoss"], kind: "duration" },
+  cfo: { tags: ["CashFlowsFromUsedInOperatingActivities"], kind: "duration" },
+  capitalExpenditures: {
+    tags: ["PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"],
+    kind: "duration",
+  },
+};
+
+/** Assemble annual `FinancialPeriod`s from one taxonomy's facts. */
+function buildPeriods(
+  facts: Record<string, Fact>,
+  tagMap: StatementTagMap,
+  maxPeriods: number,
+): FinancialPeriod[] {
   const series = {
-    totalAssets: annualByFy(g, ["Assets"], "instant"),
-    totalCurrentAssets: annualByFy(g, ["AssetsCurrent"], "instant"),
-    totalCurrentLiabilities: annualByFy(g, ["LiabilitiesCurrent"], "instant"),
-    totalLiabilities: annualByFy(g, ["Liabilities"], "instant"),
-    retainedEarnings: annualByFy(g, ["RetainedEarningsAccumulatedDeficit"], "instant"),
-    totalEquity: annualByFy(g, ["StockholdersEquity"], "instant"),
-    totalRevenue: annualByFy(g, REVENUE_TAGS, "duration"),
-    costOfRevenue: annualByFy(g, COGS_TAGS, "duration"),
-    grossProfit: annualByFy(g, ["GrossProfit"], "duration"),
-    operatingIncome: annualByFy(g, ["OperatingIncomeLoss"], "duration"),
-    netIncome: annualByFy(g, ["NetIncomeLoss"], "duration"),
-    cfo: annualByFy(g, ["NetCashProvidedByUsedInOperatingActivities"], "duration"),
-    capitalExpenditures: annualByFy(g, ["PaymentsToAcquirePropertyPlantAndEquipment"], "duration"),
+    totalAssets: annualByFy(facts, tagMap.totalAssets.tags, tagMap.totalAssets.kind),
+    totalCurrentAssets: annualByFy(facts, tagMap.totalCurrentAssets.tags, tagMap.totalCurrentAssets.kind),
+    totalCurrentLiabilities: annualByFy(facts, tagMap.totalCurrentLiabilities.tags, tagMap.totalCurrentLiabilities.kind),
+    totalLiabilities: annualByFy(facts, tagMap.totalLiabilities.tags, tagMap.totalLiabilities.kind),
+    retainedEarnings: annualByFy(facts, tagMap.retainedEarnings.tags, tagMap.retainedEarnings.kind),
+    totalEquity: annualByFy(facts, tagMap.totalEquity.tags, tagMap.totalEquity.kind),
+    totalRevenue: annualByFy(facts, tagMap.totalRevenue.tags, tagMap.totalRevenue.kind),
+    costOfRevenue: annualByFy(facts, tagMap.costOfRevenue.tags, tagMap.costOfRevenue.kind),
+    grossProfit: annualByFy(facts, tagMap.grossProfit.tags, tagMap.grossProfit.kind),
+    operatingIncome: annualByFy(facts, tagMap.operatingIncome.tags, tagMap.operatingIncome.kind),
+    netIncome: annualByFy(facts, tagMap.netIncome.tags, tagMap.netIncome.kind),
+    cfo: annualByFy(facts, tagMap.cfo.tags, tagMap.cfo.kind),
+    capitalExpenditures: annualByFy(facts, tagMap.capitalExpenditures.tags, tagMap.capitalExpenditures.kind),
   };
 
   // Fiscal years present in any core series, newest first.
@@ -297,4 +340,25 @@ export function mapEdgarFinancialsHistory(
     cfo: valB(series.cfo, fy),
     capitalExpenditures: valB(series.capitalExpenditures, fy),
   }));
+}
+
+/**
+ * Map a raw `companyfacts` response into up to `maxPeriods` annual
+ * `FinancialPeriod`s, newest first, for the composite scores. Unlike the
+ * single-period statement mapper this surfaces working-capital and
+ * retained-earnings inputs (Altman X1/X2) and keeps the prior period Piotroski
+ * needs for its change-based criteria. Tries `us-gaap` first, then `ifrs-full`
+ * (foreign private issuers / 20-F filers like TSM), reading the USD unit in
+ * both. A tag a filer never reported is `null`, never 0. Returns `[]` when no
+ * annual facts are present in either taxonomy so the caller falls through to
+ * Yahoo. (An IFRS filer that reports no USD convenience translation also
+ * returns `[]` — currency conversion is out of scope.)
+ */
+export function mapEdgarFinancialsHistory(
+  resp: EdgarCompanyFacts,
+  maxPeriods = 4,
+): FinancialPeriod[] {
+  const usGaap = buildPeriods(resp.facts?.["us-gaap"] ?? {}, US_GAAP_HISTORY_TAGS, maxPeriods);
+  if (usGaap.length > 0) return usGaap;
+  return buildPeriods(resp.facts?.["ifrs-full"] ?? {}, IFRS_HISTORY_TAGS, maxPeriods);
 }

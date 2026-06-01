@@ -8,12 +8,15 @@
  * failure (non-2xx, parse error, unknown ticker) so the calling tool can fall
  * through to the next provider with a single `try { ... } catch {}`.
  *
- * Coverage is US-only (EDGAR indexes SEC filers). Non-US tickers throw here
- * and fall through to Yahoo — the same honest-degradation the rest of the
- * desk uses.
+ * The single-period statement helpers read `us-gaap` only, so non-US tickers
+ * throw here and fall through to Yahoo — the same honest degradation the rest
+ * of the desk uses. The multi-period `fetchEdgarFinancialsHistory` (for the
+ * composite scores) additionally reads `ifrs-full`, so foreign private issuers
+ * that file a 20-F with a USD convenience translation (e.g. TSM) resolve from
+ * EDGAR directly rather than depending on Yahoo.
  *
  * Tools using these helpers: get_balance_sheet, get_income_statement,
- * get_cashflow.
+ * get_cashflow, get_quant_composites.
  */
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 import {
