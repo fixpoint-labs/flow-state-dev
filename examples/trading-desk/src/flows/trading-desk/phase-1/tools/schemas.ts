@@ -32,6 +32,8 @@ export class FixtureMissingError extends Error {
  *
  *   - `"fixture"`     — only emitted in fixture mode.
  *   - `"finnhub"`     — live mode, Finnhub answered.
+ *   - `"edgar"`       — live mode, SEC EDGAR XBRL companyfacts answered.
+ *                       Authoritative US-filing source for the statement tools.
  *   - `"yahoo"`       — live mode, Yahoo answered.
  *   - `"fred"`        — live mode, FRED API answered.
  *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
@@ -47,6 +49,7 @@ const sourceTag = z.enum([
   "fixture",
   "yahoo",
   "finnhub",
+  "edgar",
   "fred",
   "polymarket",
   "xai",
@@ -59,15 +62,21 @@ const periodInput = z.object({
   date: z.string().min(1),
 });
 
+// Statement numeric fields are nullable: a field the provider did not supply
+// reads `null` (honest "unobserved"), never `0`. A real `0` and a missing
+// value are different signals, and `0` silently corrupts derived valuation
+// (e.g. a missing operatingIncome must not read as a real zero). Extends the
+// nullable-PE discipline (FIX-692) to the statements after live runs showed
+// Yahoo's legacy modules returning zero-filled statements (FIX-705 follow-up).
 export const balanceSheetSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  totalAssets: z.number(),
-  totalLiabilities: z.number(),
-  totalEquity: z.number(),
-  cashAndEquivalents: z.number(),
-  totalDebt: z.number(),
+  totalAssets: z.number().nullable(),
+  totalLiabilities: z.number().nullable(),
+  totalEquity: z.number().nullable(),
+  cashAndEquivalents: z.number().nullable(),
+  totalDebt: z.number().nullable(),
   unit: z.string().default("USD billions"),
 });
 
@@ -75,11 +84,11 @@ export const incomeStatementSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  revenue: z.number(),
-  grossProfit: z.number(),
-  operatingIncome: z.number(),
-  netIncome: z.number(),
-  yoyRevenueGrowth: z.number(),
+  revenue: z.number().nullable(),
+  grossProfit: z.number().nullable(),
+  operatingIncome: z.number().nullable(),
+  netIncome: z.number().nullable(),
+  yoyRevenueGrowth: z.number().nullable(),
   unit: z.string().default("USD billions"),
 });
 
@@ -87,10 +96,10 @@ export const cashflowSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  operating: z.number(),
-  investing: z.number(),
-  financing: z.number(),
-  freeCashFlow: z.number(),
+  operating: z.number().nullable(),
+  investing: z.number().nullable(),
+  financing: z.number().nullable(),
+  freeCashFlow: z.number().nullable(),
   unit: z.string().default("USD billions"),
 });
 

@@ -49,13 +49,32 @@ const PROXY_PEG = "revenue growth used in place of EPS growth";
 
 const TAX_RATE = 0.21;
 
-/** Returns `null` when the denominator is non-positive (ratio is uninterpretable). */
+/** Returns `null` when the denominator is null or non-positive (ratio is uninterpretable). */
 function ratio(
   numerator: number | null,
   denominator: number | null,
 ): number | null {
   if (numerator == null || denominator == null || denominator <= 0) return null;
   return numerator / denominator;
+}
+
+/** A statement input that is observed and strictly positive, else `null`.
+ *  Collapses both "field unobserved" (null) and "non-positive, so the metric
+ *  built on it is uninterpretable" into a single null signal. */
+function pos(v: number | null): number | null {
+  return v != null && v > 0 ? v : null;
+}
+
+/** Sum that is `null` if any addend is unobserved — an EV/net-debt figure
+ *  built on a missing balance-sheet component is itself unobserved, not a
+ *  partial sum that silently treats the missing piece as zero. */
+function sum(...parts: Array<number | null>): number | null {
+  let total = 0;
+  for (const p of parts) {
+    if (p == null) return null;
+    total += p;
+  }
+  return total;
 }
 
 /** Compute the full Tier 1 derived valuation set from raw payloads. */
@@ -80,56 +99,76 @@ export function computeValuation(args: {
   const yoyGrowth = is_.yoyRevenueGrowth;
   const divYield = f.dividendYield;
 
-  const netDebtVal = totalDebt - cash;
-  const ev = marketCap + totalDebt - cash;
-  const evPositive = ev > 0 ? ev : null;
+  // EV and net debt are `null` if any balance-sheet component is unobserved —
+  // a partial sum that treats a missing piece as 0 would be a fabricated value.
+  const netDebtVal = sum(totalDebt, cash == null ? null : -cash);
+  const ev = sum(marketCap, totalDebt, cash == null ? null : -cash);
+  const evPositive = pos(ev);
 
-  const investedCapital = totalDebt + totalEquity - cash;
+  const investedCapital = sum(totalDebt, totalEquity, cash == null ? null : -cash);
 
-  const growthPct = yoyGrowth * 100;
+  const growthPct = yoyGrowth == null ? null : yoyGrowth * 100;
   const divYieldPct = divYield != null && divYield > 0 ? divYield * 100 : 0;
-  const pegyDenom = growthPct + divYieldPct;
+  const pegyDenom = growthPct == null ? null : growthPct + divYieldPct;
 
   return {
     enterpriseValue: {
       value: ev,
-      ...(ev <= 0 ? { note: "net cash exceeds debt + equity market value" } : {}),
+      ...(ev != null && ev <= 0
+        ? { note: "net cash exceeds debt + equity market value" }
+        : {}),
     },
     evToSales: { value: ratio(evPositive, revenue) },
     evToEbit: { value: ratio(evPositive, operatingIncome), proxy: PROXY_EBIT },
     evToFcf: { value: ratio(evPositive, fcf) },
     priceToBook: { value: ratio(marketCap, totalEquity) },
-    fcfYield: { value: fcf > 0 ? ratio(fcf, marketCap) : null },
+    fcfYield: { value: ratio(pos(fcf), marketCap) },
     priceToFcf: { value: ratio(marketCap, fcf) },
-    earningsYield: { value: netIncome > 0 ? ratio(netIncome, marketCap) : null },
+    earningsYield: { value: ratio(pos(netIncome), marketCap) },
     returnOnAssets: {
-      value: totalAssets > 0 ? netIncome / totalAssets : null,
+      // Keep a real negative ROA (loss-making name) — only null when assets
+      // are unobserved/non-positive or net income is unobserved.
+      value:
+        totalAssets != null && totalAssets > 0 && netIncome != null
+          ? netIncome / totalAssets
+          : null,
     },
     netDebt: {
       value: netDebtVal,
-      ...(netDebtVal < 0 ? { note: "net cash" } : {}),
+      ...(netDebtVal != null && netDebtVal < 0 ? { note: "net cash" } : {}),
     },
     netLeverage: {
-      value: operatingIncome > 0 ? netDebtVal / operatingIncome : null,
+      value:
+        netDebtVal != null && operatingIncome != null && operatingIncome > 0
+          ? netDebtVal / operatingIncome
+          : null,
     },
     roic: {
-      value: operatingIncome > 0 && investedCapital > 0
-        ? (operatingIncome * (1 - TAX_RATE)) / investedCapital
-        : null,
+      value:
+        operatingIncome != null &&
+        operatingIncome > 0 &&
+        investedCapital != null &&
+        investedCapital > 0
+          ? (operatingIncome * (1 - TAX_RATE)) / investedCapital
+          : null,
       proxy: PROXY_TAX,
     },
     peg: {
-      value: trailingPE != null && growthPct > 0
-        ? trailingPE / growthPct
-        : null,
+      value:
+        trailingPE != null && growthPct != null && growthPct > 0
+          ? trailingPE / growthPct
+          : null,
       proxy: PROXY_PEG,
     },
     pegy: {
-      value: trailingPE != null && pegyDenom > 0
-        ? trailingPE / pegyDenom
-        : null,
+      value:
+        trailingPE != null && pegyDenom != null && pegyDenom > 0
+          ? trailingPE / pegyDenom
+          : null,
       proxy: PROXY_PEG,
-      ...(divYield == null ? { note: "dividend yield absent; denominator is growth-only (equals PEG)" } : {}),
+      ...(divYield == null
+        ? { note: "dividend yield absent; denominator is growth-only (equals PEG)" }
+        : {}),
     },
   };
 }

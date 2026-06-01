@@ -186,10 +186,12 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
 - **preset** — `fast` (cheap utility models) or `full` (higher-tier chat models).
   Resolved via the model resolver's `intent/utility` and `intent/chat` intents,
   so the concrete model depends on which provider key is configured.
-- **source** — `fixture` (canonical hand-curated JSON) or `live` (Yahoo Finance
-  + Finnhub + FRED + Polymarket for structured data; Grok via `xSearch` for
-  social sentiment when `XAI_API_KEY` is set; tools whose provider key is
-  absent return `unavailable`).
+- **source** — `fixture` (canonical hand-curated JSON) or `live` (SEC EDGAR +
+  Yahoo Finance + Finnhub + FRED + Polymarket for structured data; Grok via
+  `xSearch` for social sentiment when `XAI_API_KEY` is set; tools whose provider
+  key is absent return `unavailable`). The three financial statements
+  (balance sheet, income statement, cash flow) come from SEC EDGAR XBRL
+  filings first, falling back to Yahoo for non-US filers.
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -424,10 +426,12 @@ data flow.
   differ; that's a property of any LLM-driven analytic that lacks
   ground truth.
 - **Not a complete data layer.** Fixture mode ships hand-curated JSON
-  snapshots at `2026-05-06` for NVDA / AAPL / JPM. Live mode wires
-  Yahoo Finance for prices and fundamentals (keyless). News and
-  sentiment in live mode fall back to fixtures with a noted follow-on.
-  Don't extrapolate from a fixture run to a real-data run.
+  snapshots at `2026-05-06` for NVDA / AAPL / JPM. Live mode wires SEC
+  EDGAR (authoritative US filings, keyless) for the financial statements
+  with Yahoo Finance as fallback, and Yahoo for prices and the valuation
+  snapshot (keyless). A field a provider doesn't report reads `null`
+  (unobserved), never a fabricated 0. Don't extrapolate from a fixture run
+  to a real-data run.
 
 ## Further reading
 
