@@ -23,5 +23,6 @@ export { discover_profile_context } from "./discover_profile_context";
 export { get_sector_context } from "./get_sector_context";
 export { get_sector_peers } from "./get_sector_peers";
 export { discover_market_context } from "./discover_market_context";
+export { discover_macro_context } from "./discover_macro_context";
 
 export * from "./schemas";

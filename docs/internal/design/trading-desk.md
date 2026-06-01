@@ -1,6 +1,6 @@
 # Design: Trading Desk Example (FIX-564)
 
-The trading desk is a five-phase, seventeen-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to six analyst memos (including a Company Profile renderer that grounds the desk in the underlying business identity and a Market Analyst that establishes the sector/peer/theme context), runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
+The trading desk is a five-phase, eighteen-agent stock-research pipeline assembled out of flow-state-dev primitives. It takes a `(ticker, date)` input, fans out to seven analyst memos (including a Company Profile renderer that grounds the desk in the underlying business identity, a Market Analyst that establishes the sector/peer/theme context, and a Macro Analyst that owns the global economic and geopolitical regime plus its transmission to the specific name), runs a bull/bear debate consolidated by a research manager, asks a trader for a structured trade proposal, runs a three-way risk critique consolidated into a typed risk assessment, and ends with a portfolio manager committing a typed `PortfolioDecision`. The example exists to exercise the framework: capabilities, resource collections, round-robin and per-step rescue patterns, BP-016 strict schemas, cost-preset routing, and identity-aware transcript rendering. It is not a trading product and is not advice. The pipeline shape and persona structure are a reimplementation in spirit of Tauric Research's [`TradingAgents`](https://github.com/TauricResearch/TradingAgents) (Apache-2.0); the framework wiring, schemas, and rendering are original.
 
 ## 1. Pipeline shape
 
@@ -9,7 +9,7 @@ The flow is one outer sequencer that chains five sub-sequencers. Each phase is a
 ```
 analyzePipeline
   .step(seedSession)
-  .step(phase1Pipeline)   // setupPhase1Memos → parallel(6 analysts)
+  .step(phase1Pipeline)   // setupPhase1Memos → parallel(7 analysts)
   .step(phase2Pipeline)   // setupPhase2Memos → deriveDebateGoal → router → bullStep → bearStep → researchManagerStep
   .step(phase3Pipeline)   // setupPhase3Memos → traderStep
   .step(phase4Pipeline)   // setupPhase4Memos → aggressiveStep → conservativeStep → neutralStep → riskAssessmentStep
@@ -24,7 +24,7 @@ Fourteen agents across five phases live in a single `AGENTS` table in [`agents.t
 
 Per-phase registries (`PHASE_1_MEMO_KEYS` through `PHASE_5_MEMO_KEYS`) map a short name (`fundamentals`, `bull`, `trader`, `aggressive`, `portfolioManager`) to `{ agentName, memoKey, collectionKey }`. `memoKey` is the full storage key (`memos/p1/fundamentals`). `collectionKey` is the bare suffix the framework auto-prefixes when you call `collection.create("p1/fundamentals")`. `ALL_MEMO_KEYS` merges every per-phase registry — the navigator iterates this single object.
 
-Phase 1's six analysts span a company → sector → macro context taxonomy. Company Profile grounds the desk in the individual business (sector, industry, description, scale). The Market Analyst fills the mid-tier: sector positioning, peer posture, theme momentum, and sector-specific regulatory or supply-chain overhang. The remaining four analysts (Fundamentals, Sentiment, News, Technical) cut across all three tiers depending on their data sources.
+Phase 1's seven analysts span a three-tier context taxonomy: Company (bottom-up) → Market/Sector (mid) → Macro (top-down). Company Profile grounds the desk in the individual business (sector, industry, description, scale). The Market Analyst fills the mid-tier: sector positioning, peer posture, theme momentum, and sector-specific regulatory or supply-chain overhang. The Macro Analyst owns the top tier: the global economic regime (rates, inflation, growth cycle, yield curve, credit, FX, commodities) and geopolitical overhang, plus a transmission map showing how those forces reach the specific name. The remaining four analysts (Fundamentals, Sentiment, News, Technical) cut across levels depending on their data sources.
 
 The transcript pane in [`transcript-pane.tsx`](../../../examples/trading-desk/components/transcript/transcript-pane.tsx) keeps a `PRIMARY_STRUCT_AGENTS` set that gates which agents emit structured-output cards: `researchManager`, `trader`, `portfolioManager`. Persona agents and analysts emit memos that show up in the right pane but not as transcript cards.
 
@@ -46,7 +46,7 @@ Session state lives in [`state.ts`](../../../examples/trading-desk/src/flows/tra
 
 Every memo state transition is a dual write. `markWriting`, `commitMemo`, and `markError` (see [`memo-writer.ts`](../../../examples/trading-desk/src/flows/trading-desk/memo-writer.ts) for the Phase 1 originals; later phases copy the shape) both patch the resource state and write `session.memoStatus[shortName]`. The reason for both: resource snapshots batch to terminal status, but session state-change items propagate immediately through the stream. The sidebar wants to flicker live, so it reads `memoStatus`. The memo body wants the consolidated terminal snapshot, so it reads the resource.
 
-The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with six concurrent analysts.
+The parallel Phase 1 fan-out uses `setStateRecord` instead of `patchState` for `memoStatus` writes — atomic per-key updates avoid the read-modify-write race a `{...prev, [name]: ...}` pattern would hit with seven concurrent analysts.
 
 ## 5. The `tradingDesk` capability
 

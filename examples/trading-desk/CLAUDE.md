@@ -1,6 +1,6 @@
 # Trading Desk Example — Agent Guide
 
-The trading-desk is a four-phase multi-agent flow that produces a structured
+The trading-desk is a five-phase multi-agent flow that produces a structured
 trade recommendation for a given ticker. It's a working example of how to put
 a non-trivial flow together with capabilities, services, per-tool files, and
 fixture/live data modes.
@@ -40,7 +40,7 @@ src/flows/trading-desk/
   phase-1/
     index.ts                     phase1Pipeline (the sub-sequencer)
     analyst.ts                   defineAnalyst — per-analyst sub-sequencer factory
-    analysts.ts                  the five analyst sub-sequencers (5 × ~10 lines via defineAnalyst)
+    analysts.ts                  the seven analyst sub-sequencers (7 × ~10 lines via defineAnalyst)
     setup.ts                     setupPhase1Memos (defineMemoSetup)
     writer.ts                    Phase-1 markWriting / commitMemo / markError (defineMemoWriter)
     prompts.ts                   per-analyst system prompts
@@ -123,9 +123,9 @@ The factory captures the universal recipe: `markWriting → .map(tickerDate)
 → .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
 The call site supplies only what varies — the role's tools and its
 synthesis generator. See [`phase-1/analysts.ts`](src/flows/trading-desk/phase-1/analysts.ts)
-for the five existing analysts.
+for the seven existing analysts.
 
-To add a sixth:
+To add another:
 
 1. Add the agent to `AGENTS` and `PHASE_1_MEMO_KEYS` in `agents.ts`.
 2. Add a new `discover_<role>_context.ts` tool if it needs web discovery,

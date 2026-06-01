@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA macro economic outlook rates inflation geopolitical risk tariff trade policy central bank",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.reuters.com/markets/us/fed-holds-rates-steady-signals-patience-2026-05-04/",
+      "title": "Fed holds rates steady, signals patience on next move",
+      "snippet": "The Federal Reserve kept its benchmark rate at 3.50-3.75%, noting that inflation progress has stalled while the labor market remains resilient, suggesting cuts are unlikely before late 2026.",
+      "publisher": "reuters.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://www.ft.com/content/us-china-chip-export-controls-2026",
+      "title": "US tightens chip export controls to China, targeting AI accelerators",
+      "snippet": "New Commerce Department rules restrict the export of advanced AI chips to China, directly impacting Nvidia's data center revenue from the region and forcing the company to develop compliant alternatives.",
+      "publisher": "ft.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://www.bloomberg.com/news/articles/2026-05-03/dollar-strength-weighs-on-tech-multinationals",
+      "title": "Strong dollar headwind builds for US tech multinationals",
+      "snippet": "The broad trade-weighted dollar index near 120 is creating translation headwinds for companies with significant international revenue, though semiconductor firms with dollar-denominated contracts are partially insulated.",
+      "publisher": "bloomberg.com",
+      "provider": "tavily"
+    }
+  ],
+  "source": "fixture"
+}

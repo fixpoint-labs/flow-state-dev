@@ -175,6 +175,10 @@ export const macroIndicatorsSchema = z.object({
   fedFundsRate: z.number(),
   tenYearYield: z.number(),
   oilWtiUsd: z.number(),
+  yieldCurve2s10s: z.number(),
+  hyCreditSpread: z.number(),
+  dollarIndex: z.number(),
+  industrialProduction: z.number(),
 });
 
 /** A single retrieved X post used as evidence for the sentiment score.
@@ -436,6 +440,7 @@ export const toolInputSchemas = {
   get_sector_context: periodInput,
   get_sector_peers: periodInput,
   discover_market_context: periodInput,
+  discover_macro_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -460,6 +465,7 @@ export const toolOutputSchemas = {
   get_sector_context: sectorContextSchema,
   get_sector_peers: sectorPeersSchema,
   discover_market_context: discoveryPayloadSchema,
+  discover_macro_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -489,6 +495,7 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_sector_context: "sector-context.json",
   get_sector_peers: "sector-peers.json",
   discover_market_context: "discover-market-context.json",
+  discover_macro_context: "discover-macro-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

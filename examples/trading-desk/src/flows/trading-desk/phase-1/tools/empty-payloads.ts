@@ -97,6 +97,10 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     fedFundsRate: 0,
     tenYearYield: 0,
     oilWtiUsd: 0,
+    yieldCurve2s10s: 0,
+    hyCreditSpread: 0,
+    dollarIndex: 0,
+    industrialProduction: 0,
   }),
   get_social_sentiment: (i) => ({
     source: "unavailable",
@@ -206,6 +210,13 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     query: "",
     items: [],
   }),
+  discover_macro_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
@@ -224,7 +235,8 @@ type DiscoveryTool =
   | "discover_sentiment_context"
   | "discover_technical_context"
   | "discover_profile_context"
-  | "discover_market_context";
+  | "discover_market_context"
+  | "discover_macro_context";
 
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,
