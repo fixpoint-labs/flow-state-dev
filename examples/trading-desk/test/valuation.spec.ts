@@ -213,6 +213,7 @@ describe("computeValuation — null propagation", () => {
     expect(v.peg.value).toBeCloseTo(1.619, 2);
     // PEGY with null div → same as PEG (growth-only denom)
     expect(v.pegy.value).toBeCloseTo(1.619, 2);
+    expect(v.pegy.note).toBe("dividend yield absent; denominator is growth-only (equals PEG)");
   });
 });
 

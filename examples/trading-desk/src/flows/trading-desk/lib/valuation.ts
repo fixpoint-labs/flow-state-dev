@@ -129,6 +129,7 @@ export function computeValuation(args: {
         ? trailingPE / pegyDenom
         : null,
       proxy: PROXY_PEG,
+      ...(divYield == null ? { note: "dividend yield absent; denominator is growth-only (equals PEG)" } : {}),
     },
   };
 }
