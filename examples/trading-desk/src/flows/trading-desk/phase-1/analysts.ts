@@ -1,5 +1,5 @@
 /**
- * The six Phase 1 analyst sub-sequencers.
+ * The seven Phase 1 analyst sub-sequencers.
  *
  * Each one is the same recipe — `defineAnalyst` captures it. The role
  * differences live in two places per analyst: the generator (which tools'
@@ -29,6 +29,7 @@ import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
   discover_fundamentals_context,
+  discover_macro_context,
   discover_market_context,
   discover_profile_context,
   discover_sentiment_context,
@@ -40,6 +41,7 @@ import {
   get_income_statement,
   get_insider_transactions,
   get_macro_indicators,
+  get_macro_news,
   get_market_news,
   get_prediction_markets,
   get_price_history,
@@ -63,6 +65,7 @@ const companyProfilePrompt = loadPrompt(
 const marketContextPrompt = loadPrompt(
   "phase-1/prompts/market-context.prompt.md"
 );
+const macroPrompt = loadPrompt("phase-1/prompts/macro.prompt.md");
 
 // ---------------------------------------------------------------------------
 // Fundamentals
@@ -141,7 +144,6 @@ const newsGenerator = generator({
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
     news: toolOutputSchemas.search_news,
-    macro: toolOutputSchemas.get_macro_indicators,
     insiderTransactions: toolOutputSchemas.get_insider_transactions,
   }),
   context: { data: (input) => asDataBlock(input) },
@@ -153,7 +155,6 @@ export const newsAnalyst = defineAnalyst({
   shortName: "news",
   tools: {
     news: search_news,
-    macro: get_macro_indicators,
     insiderTransactions: get_insider_transactions,
   },
   generator: newsGenerator,
@@ -252,4 +253,38 @@ export const marketAnalyst = defineAnalyst({
     marketNews: get_market_news,
   },
   generator: marketGenerator,
+});
+
+// ---------------------------------------------------------------------------
+// Macro — global economic regime (rates, inflation, growth cycle, FX,
+// commodities, credit) and geopolitical regime, plus a transmission map to
+// the specific name. Runs as a parallel peer — company identity is resolved
+// via `get_company_profile` (cache-deduped), not a sub-sequence.
+// ---------------------------------------------------------------------------
+
+const macroGenerator = generator({
+  name: "macro-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.macro.agentName,
+  uses: [tradingDesk.presets({ investigate: true })],
+  inputSchema: z.object({
+    macro: toolOutputSchemas.get_macro_indicators,
+    macroNews: toolOutputSchemas.get_macro_news,
+    macroContext: toolOutputSchemas.discover_macro_context,
+    profile: toolOutputSchemas.get_company_profile,
+  }),
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(macroPrompt),
+  outputSchema: thesisOutputSchema,
+});
+
+export const macroAnalyst = defineAnalyst({
+  shortName: "macro",
+  tools: {
+    macro: get_macro_indicators,
+    macroNews: get_macro_news,
+    macroContext: discover_macro_context,
+    profile: get_company_profile,
+  },
+  generator: macroGenerator,
 });

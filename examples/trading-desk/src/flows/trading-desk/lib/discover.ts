@@ -43,6 +43,9 @@ export const PROFILE_QUERY = (ticker: string): string =>
 export const MARKET_QUERY = (ticker: string): string =>
   `${ticker} sector outlook peer earnings rotation theme regulatory supply chain`;
 
+export const MACRO_QUERY = (ticker: string): string =>
+  `${ticker} macro economic outlook rates inflation geopolitical risk tariff trade policy central bank`;
+
 export type DiscoverWebArgs = {
   ticker: string;
   date: string;

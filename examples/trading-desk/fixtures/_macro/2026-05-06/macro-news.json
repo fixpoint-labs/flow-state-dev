@@ -1,0 +1,60 @@
+{
+  "asOf": "2026-05-06",
+  "items": [
+    {
+      "date": "2026-05-06",
+      "headline": "Fed holds rates steady, signals patience as core inflation drifts toward target",
+      "source": "Reuters",
+      "url": "https://www.reuters.com/markets/us/fed-holds-rates-2026-05-06",
+      "category": "general",
+      "summary": "The FOMC left the policy rate unchanged for a third meeting, reiterating data dependence. Dot-plot still implies cuts later in 2026 but officials pushed back on near-term easing bets."
+    },
+    {
+      "date": "2026-05-06",
+      "headline": "Dollar firms as Treasury yields hold; 2s10s curve stays modestly positive",
+      "source": "Bloomberg",
+      "url": "https://www.bloomberg.com/news/articles/2026-05-06/dollar-firms-yields-hold",
+      "category": "forex",
+      "summary": "The broad dollar index edged higher as the 10-year held near recent levels and the 2s10s spread stayed slightly positive, consistent with a late-cycle, steady-policy read."
+    },
+    {
+      "date": "2026-05-05",
+      "headline": "New tariff review targets additional tech and industrial import categories",
+      "source": "Politico",
+      "url": "https://www.politico.com/news/2026/05/05/tariff-review-tech-industrials",
+      "category": "general",
+      "summary": "Officials opened a review of tariff lines covering semiconductors, capital equipment, and select industrials. No final rule issued; affected supply chains face headline risk into the summer."
+    },
+    {
+      "date": "2026-05-05",
+      "headline": "Middle East tensions lift crude; Brent and WTI add over 2% on supply-risk premium",
+      "source": "Financial Times",
+      "url": "https://www.ft.com/content/middle-east-crude-2026-05-05",
+      "category": "general",
+      "summary": "Energy prices rose on renewed regional tension and shipping-route concerns. Strategists flagged the move as a potential upside risk to headline inflation if sustained."
+    },
+    {
+      "date": "2026-05-04",
+      "headline": "ECB on hold, BOJ edges toward another hike — global rate paths diverge",
+      "source": "Reuters",
+      "url": "https://www.reuters.com/markets/global-rate-divergence-2026-05-04",
+      "category": "forex",
+      "summary": "The ECB held while signaling caution; the Bank of Japan continued to lean hawkish. The widening policy gap kept FX volatility elevated across major crosses."
+    },
+    {
+      "date": "2026-05-03",
+      "headline": "Credit spreads stay tight; high-yield demand signals risk appetite intact",
+      "source": "WSJ",
+      "url": "https://www.wsj.com/articles/credit-spreads-tight-2026-05-03",
+      "category": "general",
+      "summary": "High-yield OAS held near cycle tights as investors kept reaching for carry, a risk-on tell despite the steady-policy backdrop and lingering geopolitical headlines."
+    },
+    {
+      "date": "2026-05-02",
+      "headline": "Industrial production ticks up; soft-landing narrative holds for now",
+      "source": "The Information",
+      "category": "general",
+      "summary": "The latest industrial-production print rose modestly, keeping the growth-momentum read positive and supporting a late-cycle-but-not-contracting characterization of the regime."
+    }
+  ]
+}

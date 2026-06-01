@@ -4,5 +4,9 @@
   "unemployment": 0.041,
   "fedFundsRate": 0.0375,
   "tenYearYield": 0.041,
-  "oilWtiUsd": 78.4
+  "oilWtiUsd": 78.4,
+  "yieldCurve2s10s": 0.0053,
+  "hyCreditSpread": 0.032,
+  "dollarIndex": 119.8,
+  "industrialProduction": 103.2
 }
