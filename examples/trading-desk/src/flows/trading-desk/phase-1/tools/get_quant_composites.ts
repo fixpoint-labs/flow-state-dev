@@ -1,11 +1,17 @@
 /**
- * Quant composites handler: fetches multi-period financial statements and
- * computes Altman Z'' and Piotroski F-Score.
+ * Quant composites handler: fetches multi-period financial statements —
+ * SEC EDGAR companyfacts first (authoritative, multi-period, no key), Yahoo
+ * `fundamentals-timeseries` as the non-US-filer fallback — and computes Altman
+ * Z'' and Piotroski F-Score. EDGAR supplies the working-capital and
+ * retained-earnings inputs Altman X1/X2 need; both sources carry a prior
+ * period for the change-based Piotroski criteria.
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../../lib/cache";
 import { loadFixture } from "../../lib/fixtures";
-import { fetchYahooFinancialsHistory, type FinancialPeriod } from "../../providers/yahoo";
+import { fetchEdgarFinancialsHistory } from "../../providers/edgar";
+import { fetchYahooFinancialsHistory } from "../../providers/yahoo";
+import type { FinancialPeriod } from "../../providers/financials-history";
 import { emptyPayload } from "./empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
 import {
@@ -38,13 +44,23 @@ function toStatementPeriod(fp: FinancialPeriod): StatementPeriod {
 async function fetchLive(
   input: ToolInput<"get_quant_composites">,
 ): Promise<ToolOutput<"get_quant_composites">> {
-  let periods: FinancialPeriod[];
+  // EDGAR first (authoritative US filings, multi-period, no key); Yahoo
+  // timeseries backstops non-US filers and EDGAR outages; empty when both miss.
+  let periods: FinancialPeriod[] = [];
+  let source: "edgar" | "yahoo" = "edgar";
   try {
-    periods = await getOrFetch("yahoo-financials-history", { ticker: input.ticker }, () =>
-      fetchYahooFinancialsHistory(input.ticker),
+    periods = await getOrFetch("edgar-financials-history", { ticker: input.ticker }, () =>
+      fetchEdgarFinancialsHistory(input.ticker),
     );
   } catch {
-    return emptyPayload("get_quant_composites", input);
+    try {
+      source = "yahoo";
+      periods = await getOrFetch("yahoo-financials-history", { ticker: input.ticker }, () =>
+        fetchYahooFinancialsHistory(input.ticker),
+      );
+    } catch {
+      return emptyPayload("get_quant_composites", input);
+    }
   }
 
   if (periods.length === 0) return emptyPayload("get_quant_composites", input);
@@ -70,7 +86,7 @@ async function fetchLive(
   );
 
   return {
-    source: "yahoo",
+    source,
     ticker: input.ticker,
     asOf: periods[0].endDate || input.date,
     altmanZ: altman?.score ?? null,

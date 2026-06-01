@@ -18,8 +18,10 @@
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 import {
   mapEdgarCompanyFacts,
+  mapEdgarFinancialsHistory,
   type EdgarCompanyFacts,
 } from "./edgar-companyfacts";
+import type { FinancialPeriod } from "./financials-history";
 
 // SEC requires a descriptive User-Agent identifying the caller.
 const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
@@ -95,4 +97,20 @@ export async function fetchEdgarCashflow(
 ): Promise<ToolOutput<"get_cashflow">> {
   const facts = await fetchCompanyFacts(input.ticker);
   return mapEdgarCompanyFacts(facts, input.ticker, input.date).cashflow;
+}
+
+/**
+ * Multi-period statement history for the composite scores. Returns the annual
+ * `FinancialPeriod`s EDGAR has on file (newest first), throwing when none are
+ * present (non-US filer, or an EDGAR miss) so the caller falls through to
+ * Yahoo. US filers get the full working-capital + retained-earnings inputs
+ * Altman X1/X2 need, plus a prior period for the change-based Piotroski tests.
+ */
+export async function fetchEdgarFinancialsHistory(
+  ticker: string,
+): Promise<FinancialPeriod[]> {
+  const facts = await fetchCompanyFacts(ticker);
+  const periods = mapEdgarFinancialsHistory(facts);
+  if (periods.length === 0) throw new Error(`No EDGAR financial history for ${ticker}`);
+  return periods;
 }

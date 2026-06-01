@@ -15,6 +15,7 @@
  * `null`, never 0, preserving the honest-unobserved discipline.
  */
 import type { ToolOutput } from "../phase-1/tools/schemas";
+import type { FinancialPeriod } from "./financials-history";
 
 /** One annual data point in a Yahoo timeseries series. */
 type TimeseriesPoint = {
@@ -40,8 +41,12 @@ export const YAHOO_TIMESERIES_TYPES = [
   "annualGrossProfit",
   "annualOperatingIncome",
   "annualNetIncome",
+  "annualCostOfRevenue",
   // balance sheet
   "annualTotalAssets",
+  "annualCurrentAssets",
+  "annualCurrentLiabilities",
+  "annualRetainedEarnings",
   "annualTotalLiabilitiesNetMinorityInterest",
   "annualStockholdersEquity",
   "annualCashAndCashEquivalents",
@@ -188,4 +193,57 @@ export function mapYahooTimeseries(
       unit: "USD billions",
     },
   };
+}
+
+/** The $B value of a series at a specific period end-date; `null` if absent. */
+function valueAtB(
+  series: Map<string, TimeseriesPoint[]>,
+  type: string,
+  asOfDate: string,
+): number | null {
+  const point = series.get(type)?.find((p) => p.asOfDate === asOfDate);
+  const raw = point?.reportedValue?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw / USD_BILLION : null;
+}
+
+/**
+ * Map a raw `fundamentals-timeseries` response into up to `maxPeriods` annual
+ * `FinancialPeriod`s, newest first, for the composite scores. This is the
+ * non-US-filer fallback (a foreign ADR with no EDGAR us-gaap data falls
+ * through to here). Unlike `mapYahooTimeseries` (latest period only) it walks
+ * every fiscal-year-end and surfaces the working-capital and retained-earnings
+ * series Altman X1/X2 and the change-based Piotroski criteria need. A series
+ * absent at a given period maps to `null`, never 0.
+ */
+export function mapYahooTimeseriesHistory(
+  resp: YahooTimeseriesResponse,
+  maxPeriods = 4,
+): FinancialPeriod[] {
+  const s = indexByType(resp);
+
+  // Fiscal-year-ends present in any core series, newest first.
+  const dates = new Set<string>();
+  for (const type of ["annualTotalAssets", "annualTotalRevenue", "annualNetIncome"]) {
+    for (const p of s.get(type) ?? []) {
+      if (p.asOfDate) dates.add(p.asOfDate);
+    }
+  }
+  const periodEnds = [...dates].sort().reverse().slice(0, maxPeriods);
+
+  return periodEnds.map((end) => ({
+    endDate: end,
+    totalAssets: valueAtB(s, "annualTotalAssets", end),
+    totalCurrentAssets: valueAtB(s, "annualCurrentAssets", end),
+    totalCurrentLiabilities: valueAtB(s, "annualCurrentLiabilities", end),
+    totalLiabilities: valueAtB(s, "annualTotalLiabilitiesNetMinorityInterest", end),
+    retainedEarnings: valueAtB(s, "annualRetainedEarnings", end),
+    totalEquity: valueAtB(s, "annualStockholdersEquity", end),
+    totalRevenue: valueAtB(s, "annualTotalRevenue", end),
+    costOfRevenue: valueAtB(s, "annualCostOfRevenue", end),
+    grossProfit: valueAtB(s, "annualGrossProfit", end),
+    operatingIncome: valueAtB(s, "annualOperatingIncome", end),
+    netIncome: valueAtB(s, "annualNetIncome", end),
+    cfo: valueAtB(s, "annualOperatingCashFlow", end),
+    capitalExpenditures: valueAtB(s, "annualCapitalExpenditure", end),
+  }));
 }

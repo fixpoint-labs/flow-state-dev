@@ -1,12 +1,19 @@
 /**
- * Short interest handler: fetches Finnhub short-interest data and computes
- * days-to-cover from average daily volume.
+ * Short interest handler: Yahoo `defaultKeyStatistics` first (free, no key,
+ * covers ADRs and ships days-to-cover + %-of-float pre-computed), then Finnhub
+ * `/stock/short-interest` as a fallback (premium-gated on many plans and thin
+ * for ADRs), then an empty payload. Honest-degradation, matching the desk's
+ * other multi-provider tools.
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../../lib/cache";
 import { loadFixture } from "../../lib/fixtures";
 import { fetchFinnhubShortInterest, hasFinnhubKey } from "../../providers/finnhub";
-import { fetchYahooChart, fetchYahooFundamentals } from "../../providers/yahoo";
+import {
+  fetchYahooChart,
+  fetchYahooFundamentals,
+  fetchYahooShortInterest,
+} from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import {
   pickMode,
@@ -16,7 +23,10 @@ import {
   type ToolOutput,
 } from "./schemas";
 
-async function fetchLive(
+/** Finnhub fallback: shares short + settlement date, with days-to-cover and an
+ *  approximate %-of-float derived from volume and market cap (Yahoo supplies
+ *  both directly; this path only runs when Yahoo has no short interest). */
+async function fetchFinnhubLive(
   input: ToolInput<"get_short_interest">,
 ): Promise<ToolOutput<"get_short_interest">> {
   if (!hasFinnhubKey()) return emptyPayload("get_short_interest", input);
@@ -99,8 +109,15 @@ export const get_short_interest = handler({
   execute: async (input, ctx) => {
     if (pickMode(ctx) === "fixture") return loadFixture("get_short_interest", input);
     return getOrFetch("get_short_interest", input, async () => {
+      // Yahoo first (free, no key, ADR coverage); Finnhub backstops; empty only
+      // when neither answers.
       try {
-        return await fetchLive(input);
+        return await fetchYahooShortInterest(input);
+      } catch {
+        // fall through to Finnhub
+      }
+      try {
+        return await fetchFinnhubLive(input);
       } catch {
         return emptyPayload("get_short_interest", input);
       }

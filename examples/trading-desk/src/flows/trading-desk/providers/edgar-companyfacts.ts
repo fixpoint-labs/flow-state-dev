@@ -25,6 +25,7 @@
  *  - A tag the filer never reported is absent → `null`, never 0.
  */
 import type { ToolOutput } from "../phase-1/tools/schemas";
+import type { FinancialPeriod } from "./financials-history";
 
 /** One reported fact entry under a us-gaap tag's USD unit. EDGAR emits
  *  `start: null` (and `frame: null`) for instant balance-sheet facts, so both
@@ -196,4 +197,104 @@ export function mapEdgarCompanyFacts(
       unit: "USD billions",
     },
   };
+}
+
+/** A fiscal year's value for one tag, in USD billions, with its period end. */
+type FyValue = { end: string; valB: number };
+
+/**
+ * Collect annual facts for a set of tags, indexed by fiscal year (`fy`), in
+ * USD billions. Annual = a full-year duration fact (income/cashflow) or a
+ * fiscal-year-end instant fact (balance sheet), both marked `fp: "FY"`. When a
+ * fiscal year appears under more than one tag/filing, the latest period end
+ * wins (so a restated comparative never overwrites the as-filed value).
+ */
+function annualByFy(
+  facts: Record<string, Fact>,
+  tags: string[],
+  kind: "instant" | "duration",
+): Map<number, FyValue> {
+  const byFy = new Map<number, FyValue>();
+  for (const tag of tags) {
+    for (const e of entries(facts, tag)) {
+      if (typeof e.val !== "number" || e.end == null || e.fy == null) continue;
+      const isAnnual =
+        kind === "instant"
+          ? e.start == null && e.fp === "FY"
+          : e.start != null &&
+            (e.fp === "FY" || daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS);
+      if (!isAnnual) continue;
+      const prev = byFy.get(e.fy);
+      if (prev == null || Date.parse(e.end) > Date.parse(prev.end)) {
+        byFy.set(e.fy, { end: e.end, valB: e.val / USD_BILLION });
+      }
+    }
+  }
+  return byFy;
+}
+
+/** Cost-of-revenue tags, newest-tag-wins like revenue. */
+const COGS_TAGS = ["CostOfGoodsAndServicesSold", "CostOfRevenue"];
+
+/**
+ * Map a raw `companyfacts` response into up to `maxPeriods` annual
+ * `FinancialPeriod`s, newest first, for the composite scores. Unlike the
+ * single-period statement mapper this surfaces working-capital and
+ * retained-earnings inputs (Altman X1/X2) and keeps the prior period Piotroski
+ * needs for its change-based criteria. A tag a filer never reported is `null`,
+ * never 0. Returns `[]` when no annual facts are present (e.g. a non-US filer
+ * with no us-gaap data) so the caller falls through to Yahoo.
+ */
+export function mapEdgarFinancialsHistory(
+  resp: EdgarCompanyFacts,
+  maxPeriods = 4,
+): FinancialPeriod[] {
+  const g = resp.facts?.["us-gaap"] ?? {};
+
+  const series = {
+    totalAssets: annualByFy(g, ["Assets"], "instant"),
+    totalCurrentAssets: annualByFy(g, ["AssetsCurrent"], "instant"),
+    totalCurrentLiabilities: annualByFy(g, ["LiabilitiesCurrent"], "instant"),
+    totalLiabilities: annualByFy(g, ["Liabilities"], "instant"),
+    retainedEarnings: annualByFy(g, ["RetainedEarningsAccumulatedDeficit"], "instant"),
+    totalEquity: annualByFy(g, ["StockholdersEquity"], "instant"),
+    totalRevenue: annualByFy(g, REVENUE_TAGS, "duration"),
+    costOfRevenue: annualByFy(g, COGS_TAGS, "duration"),
+    grossProfit: annualByFy(g, ["GrossProfit"], "duration"),
+    operatingIncome: annualByFy(g, ["OperatingIncomeLoss"], "duration"),
+    netIncome: annualByFy(g, ["NetIncomeLoss"], "duration"),
+    cfo: annualByFy(g, ["NetCashProvidedByUsedInOperatingActivities"], "duration"),
+    capitalExpenditures: annualByFy(g, ["PaymentsToAcquirePropertyPlantAndEquipment"], "duration"),
+  };
+
+  // Fiscal years present in any core series, newest first.
+  const fySet = new Set<number>();
+  for (const fy of series.totalAssets.keys()) fySet.add(fy);
+  for (const fy of series.totalRevenue.keys()) fySet.add(fy);
+  for (const fy of series.netIncome.keys()) fySet.add(fy);
+  const fys = [...fySet].sort((a, b) => b - a).slice(0, maxPeriods);
+
+  const valB = (m: Map<number, FyValue>, fy: number): number | null =>
+    m.get(fy)?.valB ?? null;
+
+  return fys.map((fy) => ({
+    endDate:
+      series.totalAssets.get(fy)?.end ??
+      series.totalRevenue.get(fy)?.end ??
+      series.netIncome.get(fy)?.end ??
+      "",
+    totalAssets: valB(series.totalAssets, fy),
+    totalCurrentAssets: valB(series.totalCurrentAssets, fy),
+    totalCurrentLiabilities: valB(series.totalCurrentLiabilities, fy),
+    totalLiabilities: valB(series.totalLiabilities, fy),
+    retainedEarnings: valB(series.retainedEarnings, fy),
+    totalEquity: valB(series.totalEquity, fy),
+    totalRevenue: valB(series.totalRevenue, fy),
+    costOfRevenue: valB(series.costOfRevenue, fy),
+    grossProfit: valB(series.grossProfit, fy),
+    operatingIncome: valB(series.operatingIncome, fy),
+    netIncome: valB(series.netIncome, fy),
+    cfo: valB(series.cfo, fy),
+    capitalExpenditures: valB(series.capitalExpenditures, fy),
+  }));
 }

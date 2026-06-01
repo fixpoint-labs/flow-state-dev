@@ -11,10 +11,70 @@
 import { describe, expect, it } from "vitest";
 import {
   mapEdgarCompanyFacts,
+  mapEdgarFinancialsHistory,
   type EdgarCompanyFacts,
 } from "../src/flows/trading-desk/providers/edgar-companyfacts";
+import { altmanZDoublePrime } from "../src/flows/trading-desk/phase-1/tools/composite-math";
 
 import rawAapl from "./__fixtures__/edgar-companyfacts-aapl.json";
+
+/** Two-fiscal-year companyfacts covering the line items the composites need —
+ *  including current assets/liabilities and retained earnings, which the
+ *  single-period statement mapper does not surface (so Altman X1/X2 were
+ *  always uncomputable before). Instant facts (balance sheet) carry no
+ *  `start`; duration facts (income/cashflow) span a full fiscal year. */
+const twoYear: EdgarCompanyFacts = {
+  cik: 1,
+  entityName: "Test",
+  facts: {
+    "us-gaap": {
+      Assets: { units: { USD: [
+        { end: "2023-09-30", val: 352e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 364e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      AssetsCurrent: { units: { USD: [
+        { end: "2023-09-30", val: 143e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 152e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      LiabilitiesCurrent: { units: { USD: [
+        { end: "2023-09-30", val: 145e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 176e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      Liabilities: { units: { USD: [
+        { end: "2023-09-30", val: 290e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 308e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      RetainedEarningsAccumulatedDeficit: { units: { USD: [
+        { end: "2023-09-30", val: 8e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 4e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      StockholdersEquity: { units: { USD: [
+        { end: "2023-09-30", val: 62e9, form: "10-K", fp: "FY", fy: 2023 },
+        { end: "2024-09-28", val: 56e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      Revenues: { units: { USD: [
+        { start: "2022-10-01", end: "2023-09-30", val: 383e9, form: "10-K", fp: "FY", fy: 2023 },
+        { start: "2023-10-01", end: "2024-09-28", val: 391e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      GrossProfit: { units: { USD: [
+        { start: "2022-10-01", end: "2023-09-30", val: 169e9, form: "10-K", fp: "FY", fy: 2023 },
+        { start: "2023-10-01", end: "2024-09-28", val: 180e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      OperatingIncomeLoss: { units: { USD: [
+        { start: "2022-10-01", end: "2023-09-30", val: 114e9, form: "10-K", fp: "FY", fy: 2023 },
+        { start: "2023-10-01", end: "2024-09-28", val: 123e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      NetIncomeLoss: { units: { USD: [
+        { start: "2022-10-01", end: "2023-09-30", val: 97e9, form: "10-K", fp: "FY", fy: 2023 },
+        { start: "2023-10-01", end: "2024-09-28", val: 93e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+      NetCashProvidedByUsedInOperatingActivities: { units: { USD: [
+        { start: "2022-10-01", end: "2023-09-30", val: 110e9, form: "10-K", fp: "FY", fy: 2023 },
+        { start: "2023-10-01", end: "2024-09-28", val: 118e9, form: "10-K", fp: "FY", fy: 2024 },
+      ] } },
+    },
+  },
+};
 
 const aapl = () =>
   mapEdgarCompanyFacts(rawAapl as EdgarCompanyFacts, "AAPL", "2026-05-06");
@@ -96,5 +156,54 @@ describe("mapEdgarCompanyFacts — missing tags map to null, not 0", () => {
     expect(incomeStatement.revenue).toBeNull();
     expect(incomeStatement.grossProfit).toBeNull();
     expect(cashflow.freeCashFlow).toBeNull();
+  });
+});
+
+describe("mapEdgarFinancialsHistory — multi-period for composites", () => {
+  it("returns one period per fiscal year, newest first, with the composite line items", () => {
+    const periods = mapEdgarFinancialsHistory(twoYear);
+    expect(periods).toHaveLength(2);
+
+    const fy24 = periods[0];
+    expect(fy24.endDate).toBe("2024-09-28");
+    // The fields the single-period mapper never surfaced — the X1/X2 inputs:
+    expect(fy24.totalCurrentAssets).toBeCloseTo(152, 0);
+    expect(fy24.totalCurrentLiabilities).toBeCloseTo(176, 0);
+    expect(fy24.retainedEarnings).toBeCloseTo(4, 0);
+    expect(fy24.totalAssets).toBeCloseTo(364, 0);
+    expect(fy24.operatingIncome).toBeCloseTo(123, 0);
+    expect(fy24.netIncome).toBeCloseTo(93, 0);
+    expect(fy24.cfo).toBeCloseTo(118, 0);
+
+    // Prior period present so Piotroski's change-based criteria can compute.
+    expect(periods[1].endDate).toBe("2023-09-30");
+    expect(periods[1].totalAssets).toBeCloseTo(352, 0);
+  });
+
+  it("makes Altman Z'' computable (X1 + X2 now populated) — the end-to-end fix", () => {
+    const fy24 = mapEdgarFinancialsHistory(twoYear)[0];
+    const altman = altmanZDoublePrime({
+      totalAssets: fy24.totalAssets,
+      totalCurrentAssets: fy24.totalCurrentAssets,
+      totalCurrentLiabilities: fy24.totalCurrentLiabilities,
+      totalLiabilities: fy24.totalLiabilities,
+      retainedEarnings: fy24.retainedEarnings,
+      totalEquity: fy24.totalEquity,
+      totalRevenue: fy24.totalRevenue,
+      costOfRevenue: fy24.costOfRevenue,
+      grossProfit: fy24.grossProfit,
+      operatingIncome: fy24.operatingIncome,
+      netIncome: fy24.netIncome,
+      cfo: fy24.cfo,
+      capitalExpenditures: fy24.capitalExpenditures,
+      sharesOutstanding: null,
+    });
+    expect(altman).not.toBeNull();
+    // All four inputs present → no missing-input flags.
+    expect(altman!.missingInputs).toHaveLength(0);
+  });
+
+  it("returns an empty array when no annual facts are present", () => {
+    expect(mapEdgarFinancialsHistory({ facts: { "us-gaap": {} } })).toEqual([]);
   });
 });
