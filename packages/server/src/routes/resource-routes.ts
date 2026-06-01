@@ -25,13 +25,31 @@ import {
   findResourceConfig,
   getPersistedData,
   isCollectionConfig,
-  renderContent
+  renderContent,
+  type ResourceFlowLike,
 } from "../resources/internal";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
 };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function resolveTemplateRaw(
+  ctx: ResourceRouteContext,
+  flow: ResourceFlowLike,
+  sessionId: string,
+  config: { contentTemplateRef?: string }
+): Promise<string | undefined> {
+  if (!config.contentTemplateRef) return undefined;
+  const templateFound = findResourceConfig(flow, config.contentTemplateRef);
+  if (!templateFound) return undefined;
+  const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope);
+  return templateData?.content[templateFound.storageKey];
+}
 
 // ---------------------------------------------------------------------------
 // Route Handlers
@@ -72,7 +90,8 @@ export async function handleGetResourceContent(
 
   const state = normalizeResourceState(config, data.resources[found.storageKey]);
   const rawContent = data.content[found.storageKey];
-  const content = await renderContent(config, rawContent, state);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const content = await renderContent(config, rawContent, state, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, content });
 }
@@ -125,7 +144,8 @@ export async function handleGetCollectionItemContent(
 
   const state = isJsonObject(instanceState) ? instanceState : {};
   const rawContent = data.content[storageKey];
-  const content = await renderContent(config, rawContent, state as JsonObject);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const content = await renderContent(config, rawContent, state as JsonObject, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic, content });
 }

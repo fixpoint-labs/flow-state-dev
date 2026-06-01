@@ -44,6 +44,14 @@
     "./helpers": {
       "types": "./dist/helpers/index.d.ts",
       "default": "./src/helpers/index.ts"
+    },
+    "./resource-template": {
+      "types": "./dist/resource-template/resource-template.d.ts",
+      "default": "./src/resource-template/resource-template.ts"
+    },
+    "./resource-template/node": {
+      "types": "./dist/resource-template/load-resource-template.node.d.ts",
+      "default": "./src/resource-template/load-resource-template.node.ts"
     }
   },
   "license": "MIT",
@@ -94,6 +102,14 @@
       "./helpers": {
         "types": "./dist/helpers/index.d.ts",
         "default": "./dist/helpers/index.js"
+      },
+      "./resource-template": {
+        "types": "./dist/resource-template/resource-template.d.ts",
+        "default": "./dist/resource-template/resource-template.js"
+      },
+      "./resource-template/node": {
+        "types": "./dist/resource-template/load-resource-template.node.d.ts",
+        "default": "./dist/resource-template/load-resource-template.node.js"
       }
     }
   },

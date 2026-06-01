@@ -189,6 +189,8 @@ export type ResourceLoadRecord = {
   accessor?: "get" | "getOptional" | "list" | "count";
   /** Number of identical records collapsed into this one (default 1). */
   count: number;
+  /** Raw `.md` source when this resource's content is template-rendered. */
+  templateSource?: string;
 };
 
 export type BlockTraceItem = OutputItemBase & {

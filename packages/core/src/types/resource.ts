@@ -8,6 +8,7 @@ import type {
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ResourceCollectionRef } from "./resource-collection";
+import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
 
 /**
@@ -140,10 +141,25 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
-  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`.
-   * Resolved relative to `process.cwd()` — use absolute paths for predictable behavior. */
+  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`. */
   contentFile?: string;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
+  /**
+   * A role-tagged Markdown template for this resource's content. Accepts
+   * either a pre-parsed `ResourceTemplate` (from `parseResourceTemplate` /
+   * `loadResourceTemplate`) or a file path string that the server resolves
+   * at startup. The resource's content is rendered against its `state` via
+   * deterministic LiquidJS. Mutually exclusive with `content` /
+   * `contentFile` / `contentTemplateRef`.
+   */
+  contentTemplate?: ResourceTemplate | string;
+  /**
+   * Path of another resource whose RAW content is a role-tagged Markdown
+   * template. Resolved at read-time: editing the template resource or this
+   * resource's state changes `readContent()` output on next read.
+   * Mutually exclusive with `content` / `contentFile` / `contentTemplate`.
+   */
+  contentTemplateRef?: string;
   llmReadable?: boolean;
   llmWritable?: boolean;
   dynamic?: boolean;
@@ -262,8 +278,21 @@ export function defineResource<
 >(
   config: TConfig
 ): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
-  if (config.content !== undefined && config.contentFile !== undefined) {
-    throw new Error("defineResource() accepts either content or contentFile, not both");
+  const contentSources = [
+    config.content !== undefined && "content",
+    config.contentFile !== undefined && "contentFile",
+    config.contentTemplate !== undefined && "contentTemplate",
+    config.contentTemplateRef !== undefined && "contentTemplateRef",
+  ].filter(Boolean) as string[];
+  if (contentSources.length > 1) {
+    throw new Error(
+      `defineResource() accepts at most one content source, got: ${contentSources.join(", ")}`
+    );
+  }
+  if (config.render !== undefined && (config.contentTemplate !== undefined || config.contentTemplateRef !== undefined)) {
+    throw new Error(
+      "defineResource() rejects render with contentTemplate/contentTemplateRef — template fields use built-in LiquidJS rendering"
+    );
   }
 
   if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {

@@ -14,6 +14,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@flow-state-dev/core/resource-template/node": resolve(root, "packages/core/src/resource-template/load-resource-template.node.ts"),
+      "@flow-state-dev/core/resource-template": resolve(root, "packages/core/src/resource-template/resource-template.ts"),
       "@flow-state-dev/core/types": resolve(root, "packages/core/src/types/index.ts"),
       "@flow-state-dev/core/items/internal": resolve(root, "packages/core/src/items/internal.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),

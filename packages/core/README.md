@@ -306,6 +306,8 @@ const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
+**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](../../apps/docs/docs/advanced/resource-templates-markdown.md) reference.
+
 ### Voice Provider
 
 `VoiceProvider` is a single, ability-flagged interface a flow wires to handle one or more voice surfaces: speak (batch TTS), speakStream (streaming TTS), transcribe (STT), and listVoices (catalog). Each provider declares which abilities it supports via the `abilities` field; runtime type guards (`canSpeak`, `canSpeakStream`, `canTranscribe`, `canListVoices`) narrow the provider so the matching method is callable without `!`. Errors thrown by providers carry a discriminated `VoiceError.kind` so callers can branch on category instead of parsing messages.

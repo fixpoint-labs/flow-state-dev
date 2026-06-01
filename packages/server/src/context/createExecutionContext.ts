@@ -83,6 +83,13 @@ import {
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+import {
+  parseResourceTemplate,
+  renderResourceTemplate,
+} from "@flow-state-dev/core/resource-template";
+import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 
 function normalizeLimit(
@@ -256,6 +263,32 @@ function normalizeScopeResourceContent(
   }
 
   return normalized;
+}
+
+/**
+ * Resolve string `contentTemplate` paths into parsed `ResourceTemplate`
+ * objects in-place. Called once per execution context so downstream code
+ * always sees a `ResourceTemplate`, never a raw path string.
+ */
+function resolveStringContentTemplates(
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig>
+): void {
+  const cwdUrl = pathToFileURL(path.resolve(process.cwd(), "_")).href;
+  for (const [accessor, config] of Object.entries(configs)) {
+    if (typeof config.contentTemplate !== "string") continue;
+    const filePath = path.isAbsolute(config.contentTemplate)
+      ? config.contentTemplate
+      : path.resolve(process.cwd(), config.contentTemplate);
+    try {
+      (config as { contentTemplate: unknown }).contentTemplate =
+        loadResourceTemplate(filePath, cwdUrl);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(
+        `Failed to load contentTemplate for resource "${accessor}" (path: ${config.contentTemplate}): ${message}`
+      );
+    }
+  }
 }
 
 /**
@@ -485,6 +518,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
      */
     recordResourceLoad?: (rec: Omit<ResourceLoadRecord, "count">) => void;
     resolveEagerSource?: (keyOrPrefix: string) => ResourceLoadRecord["source"];
+    /** Cross-scope template resolver, populated post-construction. */
+    templateResolverRef?: { current: ((ref: string) => string | null) | null };
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -625,10 +660,33 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
+        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+          return nsConfig.contentTemplate.source;
+        }
+        if (nsConfig.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) return null;
+          return resolver(nsConfig.contentTemplateRef);
+        }
         const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
+        if (nsConfig.contentTemplate !== undefined && typeof nsConfig.contentTemplate !== "string") {
+          return renderResourceTemplate(nsConfig.contentTemplate, readState());
+        }
+        if (nsConfig.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) {
+            throw new Error(
+              `Cannot resolve contentTemplateRef "${nsConfig.contentTemplateRef}" for collection instance "${storageKey}" — template resolver not available`
+            );
+          }
+          const rawTemplate = resolver(nsConfig.contentTemplateRef);
+          if (rawTemplate === null) return null;
+          const template = parseResourceTemplate(rawTemplate);
+          return renderResourceTemplate(template, readState());
+        }
         const raw = options.readResourceContent()[storageKey];
         return typeof raw === "string" ? raw : null;
       },
@@ -1054,10 +1112,33 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
+        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+          return config.contentTemplate.source;
+        }
+        if (config.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) return null;
+          return resolver(config.contentTemplateRef);
+        }
         const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
+        if (config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+          return renderResourceTemplate(config.contentTemplate, readState());
+        }
+        if (config.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) {
+            throw new Error(
+              `Cannot resolve contentTemplateRef "${config.contentTemplateRef}" for resource "${resourceName}" — template resolver not available`
+            );
+          }
+          const rawTemplate = resolver(config.contentTemplateRef);
+          if (rawTemplate === null) return null;
+          const template = parseResourceTemplate(rawTemplate);
+          return renderResourceTemplate(template, readState());
+        }
         const raw = options.readResourceContent()[storageKey];
         if (typeof raw !== "string") {
           return null;
@@ -2430,6 +2511,10 @@ export async function createExecutionContext<
     accessorScope[accessor] = scope;
   }
 
+  resolveStringContentTemplates(sessionResourceConfigs);
+  resolveStringContentTemplates(userResourceConfigs);
+  resolveStringContentTemplates(orgResourceConfigs);
+
   if (!options.userId || options.userId.trim().length === 0) {
     throw new Error(`Flow "${flow.kind}" requires a userId`);
   }
@@ -3358,6 +3443,11 @@ export async function createExecutionContext<
     };
   }
 
+  // Mutable-ref template resolver for contentTemplateRef. Populated after all
+  // three scope registries are constructed, so readContent() closures can
+  // resolve a template resource's raw content across scopes.
+  const templateResolverRef: { current: ((ref: string) => string | null) | null } = { current: null };
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     scopeId: userId,
@@ -3370,6 +3460,7 @@ export async function createExecutionContext<
     lazyLoad: userLazyLoad,
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
+    templateResolverRef,
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -3384,6 +3475,7 @@ export async function createExecutionContext<
     lazyLoad: sessionLazyLoad,
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
+    templateResolverRef,
   });
 
   const orgResources =
@@ -3401,7 +3493,17 @@ export async function createExecutionContext<
           lazyLoad: orgLazyLoad,
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
+          templateResolverRef,
         });
+
+  // Populate the template resolver now that all registries exist.
+  templateResolverRef.current = (ref: string): string | null => {
+    for (const contentFn of [readSessionResourceContent, readUserResourceContent, readProjectResourceContent]) {
+      const content = contentFn()[ref];
+      if (typeof content === "string") return content;
+    }
+    return null;
+  };
 
 
 

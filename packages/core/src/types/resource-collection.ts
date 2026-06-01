@@ -2,6 +2,7 @@ import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
 import type { ResourceRef, CollectionClientConfig } from "./resource";
+import type { ResourceTemplate } from "../resource-template/resource-template";
 
 // Re-export pattern utilities for consumers
 export {
@@ -66,6 +67,11 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * combination.
    */
   prefetchMode?: "eager" | "lazy";
+
+  /** A role-tagged Markdown template applied to each instance. Accepts a parsed `ResourceTemplate` or a file path resolved at server startup. */
+  contentTemplate?: ResourceTemplate | string;
+  /** Path of another resource whose raw content is a template for each instance. */
+  contentTemplateRef?: string;
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig<TState>;
@@ -207,6 +213,12 @@ export function defineResourceCollection<
   config: TConfig
 ): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
+
+  if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
+    throw new Error(
+      "defineResourceCollection() accepts at most one template source: contentTemplate or contentTemplateRef, not both"
+    );
+  }
 
   if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
     throw new Error(

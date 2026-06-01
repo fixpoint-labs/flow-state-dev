@@ -25,6 +25,10 @@ import {
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
+import {
+  parseResourceTemplate,
+  renderResourceTemplate,
+} from "@flow-state-dev/core/resource-template";
 
 /** Storage scope a resource lookup resolves to. */
 export type ResolvedResourceScope = "session" | "user" | "org";
@@ -160,8 +164,18 @@ export async function getPersistedData(
 export async function renderContent(
   config: ResourceConfig | ResourceCollectionConfig,
   rawContent: string | undefined,
-  state: JsonObject
+  state: JsonObject,
+  templateRaw?: string
 ): Promise<string | null> {
+  if ("contentTemplate" in config && config.contentTemplate !== undefined && typeof config.contentTemplate !== "string") {
+    return renderResourceTemplate(config.contentTemplate, state);
+  }
+  if ("contentTemplateRef" in config && config.contentTemplateRef !== undefined) {
+    const raw = templateRaw;
+    if (raw === undefined || raw === null) return null;
+    const template = parseResourceTemplate(raw);
+    return renderResourceTemplate(template, state);
+  }
   if (rawContent === undefined) return null;
   if ("render" in config && typeof config.render === "function") {
     return config.render(rawContent, state);

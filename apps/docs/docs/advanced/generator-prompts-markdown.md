@@ -306,3 +306,7 @@ You are the risk consolidator. Weigh the inputs below and decide.
 ## Viewing the source in the DevTool
 
 The DevTool's block-trace inspector shows a "Template Source" collapsible section for any generator built from a prompt file. It displays the raw `.md` source alongside the rendered "Prompt", so you can see the template and what it produced for a given run side by side.
+
+## See also
+
+- [Resource content from Markdown templates](./resource-templates-markdown.md) applies the same `.md` format to resource content, rendering templates against resource state instead of generator input.
