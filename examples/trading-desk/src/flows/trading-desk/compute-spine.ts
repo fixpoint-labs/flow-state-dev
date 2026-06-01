@@ -10,6 +10,7 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { getOrFetch } from "./lib/cache";
 import { loadFixture } from "./lib/fixtures";
+import type { ToolName } from "./phase-1/tools/schemas";
 import { computeValuation } from "./lib/valuation";
 import { buildValuationSpine } from "./lib/valuation-spine";
 import { valuationSpineResource } from "./valuation-spine-resource";
@@ -20,13 +21,13 @@ function pickMode(state: { dataSource: string }): "fixture" | "live" {
 }
 
 async function loadPayload<T>(
-  tool: string,
+  tool: ToolName,
   args: { ticker: string; date: string },
   mode: "fixture" | "live",
 ): Promise<T | null> {
   try {
     if (mode === "fixture") {
-      return loadFixture(tool, args) as T;
+      return loadFixture(tool, args) as unknown as T;
     }
     return await getOrFetch(tool, args, async () => {
       throw new Error(`cache miss for ${tool} — expected warm cache after Phase 1`);

@@ -41,7 +41,7 @@ export function computeExpectedReturn(args: {
   cashflow: Cashflow;
   balanceSheet: BalanceSheet;
 }): ExpectedReturn {
-  const { fundamentals: f, incomeStatement: is_, cashflow: cf, balanceSheet: bs } = args;
+  const { fundamentals: f, incomeStatement: is_, cashflow: cf } = args;
 
   const marketCap = f.marketCap;
   const divYield = f.dividendYield ?? 0;

@@ -190,7 +190,7 @@ export const commitPortfolioManagerMemo = handler({
       const clamped = clampRatingToBand(
         decision.finalRating,
         spine.envelope,
-        decision.ratingOverrideReason || undefined,
+        decision.ratingOverrideReason,
       );
       finalRating = clamped.final;
       ratingClamped = clamped.clamped;
