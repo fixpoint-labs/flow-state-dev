@@ -86,7 +86,7 @@ const fundamentalsGenerator = generator({
   }),
   context: {
     data: (input) => asDataBlock(input),
-    valuation: (input) => formatValuation(computeValuation(input)),
+    valuation: (input: any) => formatValuation(computeValuation(input)),
   },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,
