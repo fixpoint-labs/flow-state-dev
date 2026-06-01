@@ -62,10 +62,12 @@ export type RunFlowOptions<
    */
   runtimeConfig?: RuntimeConfig;
   /**
-   * Called for every non-transient item as it is added / updated / done. A thin
-   * wrapper over `ResponseEmitter.subscribeToItems` — listener exceptions are
-   * isolated and never break the run. Omit to fire-and-forget; items still
-   * persist to `stores`.
+   * Called for every item as it is added / updated / done — the same live
+   * fan-out that feeds connected SSE clients. A thin wrapper over
+   * `ResponseEmitter.subscribeToItems`, so transient items appear here too
+   * (they are live-only and absent from the persisted item log); do not
+   * re-filter them. Listener exceptions are isolated and never break the run.
+   * Omit to fire-and-forget; items still persist to `stores`.
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
 };
