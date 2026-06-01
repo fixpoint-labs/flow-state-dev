@@ -69,7 +69,7 @@ export function altmanZDoublePrime(
   }
 
   // Need at least X3 and X4 for a meaningful partial
-  if (x3 == null && x4 == null) return null;
+  if (x3 == null || x4 == null) return null;
 
   const score =
     6.56 * (x1 ?? 0) +
