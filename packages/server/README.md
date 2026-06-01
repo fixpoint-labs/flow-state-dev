@@ -301,6 +301,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `renderTemplate` — Handlebars-style template rendering utility for resource content
 - `createExecutionContext` — Build a block execution context
 - `runAction` — Execute a flow action end-to-end
+- `runFlow` — Execute a flow action from non-HTTP code (jobs, cron, queue consumers); returns a handle with `requestId` and a `finished` promise. Attach a `.catch` (or await) if you care about failures
 - `executeBlock` — Execute a single block with context
 
 **Stores:**
