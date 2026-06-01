@@ -1,7 +1,7 @@
 /**
  * Canonical agent identity table for the Trading Desk example.
  *
- * Mirrors the Claude Design handoff (2026-05-06) verbatim. All seventeen agents
+ * Mirrors the Claude Design handoff (2026-05-06) verbatim. All nineteen agents
  * across phases P1–P6 ship in this table from Phase 1 — the sidebar phase
  * groups for P2–P5 render in `pending` styling and become live as later
  * phases land.
@@ -31,6 +31,7 @@ export const AGENTS = {
   companyProfileAnalyst: { role: "Company Profile Analyst", glyph: "Cp", hue: 200, team: "analyst" },
   marketAnalyst:         { role: "Market Analyst",          glyph: "Mk", hue: 108, team: "analyst" },
   macroAnalyst:          { role: "Macro Analyst",           glyph: "Ma", hue: 90, team: "analyst" },
+  quantAnalyst:          { role: "Quant Analyst",           glyph: "Qt", hue: 168, team: "analyst" },
   // Phase 2 — research debate
   bullResearcher:      { role: "Bull Researcher",      glyph: "B+", hue: 158, team: "research" },
   bearResearcher:      { role: "Bear Researcher",      glyph: "B-", hue: 18, team: "research" },
@@ -64,7 +65,7 @@ export const PHASE_GROUPS: ReadonlyArray<{
   { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
-  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst", "marketAnalyst", "macroAnalyst"] },
+  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst", "marketAnalyst", "macroAnalyst", "quantAnalyst"] },
 ];
 
 /** Resource storage keys for Phase 1 memos.
@@ -109,6 +110,11 @@ export const PHASE_1_MEMO_KEYS = {
     agentName: "macroAnalyst",
     memoKey: "memos/p1/macro",
     collectionKey: "p1/macro",
+  },
+  quant: {
+    agentName: "quantAnalyst",
+    memoKey: "memos/p1/quant",
+    collectionKey: "p1/quant",
   },
 } as const satisfies Record<
   string,

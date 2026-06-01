@@ -43,7 +43,7 @@ src/flows/trading-desk/
   phase-1/
     index.ts                     phase1Pipeline (the sub-sequencer)
     analyst.ts                   defineAnalyst — per-analyst sub-sequencer factory
-    analysts.ts                  the seven analyst sub-sequencers (7 × ~10 lines via defineAnalyst)
+    analysts.ts                  the eight analyst sub-sequencers (8 × ~10 lines via defineAnalyst)
     setup.ts                     setupPhase1Memos (defineMemoSetup)
     writer.ts                    Phase-1 markWriting / commitMemo / markError (defineMemoWriter)
     prompts.ts                   per-analyst system prompts
@@ -126,7 +126,7 @@ The factory captures the universal recipe: `markWriting → .map(tickerDate)
 → .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
 The call site supplies only what varies — the role's tools and its
 synthesis generator. See [`phase-1/analysts.ts`](src/flows/trading-desk/phase-1/analysts.ts)
-for the seven existing analysts.
+for the eight existing analysts.
 
 To add another:
 

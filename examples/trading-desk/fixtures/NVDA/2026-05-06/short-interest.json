@@ -1,0 +1,9 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "shortInterest": 293000000,
+  "shortInterestPctFloat": 1.2,
+  "daysToCover": 0.8,
+  "settlementDate": "2026-04-30"
+}

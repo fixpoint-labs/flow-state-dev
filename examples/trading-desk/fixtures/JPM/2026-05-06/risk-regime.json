@@ -1,0 +1,13 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "betaMarket": 1.15,
+  "betaSector": 1.08,
+  "rSquared": 0.62,
+  "realizedVolAnnualized": 0.24,
+  "volRegime": "normal",
+  "volPercentile": 50,
+  "correlationMarket": 0.68,
+  "correlationRegime": "falling"
+}

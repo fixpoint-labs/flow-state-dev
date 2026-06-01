@@ -6,16 +6,16 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, seventeen agents,
+manager hand down a five-tier final decision. Five phases, nineteen agents,
 one structured artifact at every convergence point.
 
 ## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — seven sub-agents (Fundamentals, Sentiment,
-  News, Technical, Company Profile, Market, Macro) running in parallel, each
-  with a distinct identity.
+- **Parallel analyst fan-out** — eight sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile, Market, Macro, Quant) running in parallel,
+  each with a distinct identity.
 - **Investigative discovery + auditable citations** — on the `full` cost
   preset each analyst gets a deterministic per-role web-search step
   (`discover_*_context`) that surfaces up to 5 numbered URLs. The analyst
@@ -97,7 +97,7 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the seven analyst
+  and its extension fields only; the full preset adds the eight analyst
   memos and the full bull/bear debate transcript.
 
 Phase 4 — risk debate:
@@ -388,7 +388,7 @@ field), which is what lets the router's resource-merge succeed.
 
 The portfolio manager is one generator with no roster, no debate, no
 consolidator. The orchestration is intentionally trivial; the weight is
-in the typed output shape. `PortfolioDecision` carries seven structured
+in the typed output shape. `PortfolioDecision` carries several structured
 extension fields (`finalRating`, `decisionSummary`, `decisionConfidence`,
 `acceptedAdjustments`, `keyDependencies`, `upstreamReferences`,
 `agreesWithTrader`) on top of the standard memo body, and the

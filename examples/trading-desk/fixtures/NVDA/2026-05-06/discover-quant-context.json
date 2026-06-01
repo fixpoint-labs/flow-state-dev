@@ -1,0 +1,32 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA factor momentum short interest options implied volatility quant signal beta",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://example.com/quant-analysis-nvda-momentum-2026",
+      "title": "NVDA momentum factor ranks in top decile among mega-cap semiconductors",
+      "snippet": "NVIDIA's 6-month price momentum places it in the 85th percentile of its peer group, driven by sustained AI infrastructure demand and data center revenue growth.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://example.com/nvda-short-interest-april-2026",
+      "title": "Short interest in NVDA remains subdued despite elevated valuations",
+      "snippet": "Short interest as a percentage of float sits at just 1.2%, with days-to-cover under 1 day, suggesting limited conviction among bearish positioning despite the stock's stretched valuation multiples.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://example.com/nvda-implied-vol-regime-stressed",
+      "title": "NVDA implied volatility spikes ahead of earnings, vol regime shifts to stressed",
+      "snippet": "Options markets are pricing elevated uncertainty for NVIDIA ahead of its May earnings report, with 30-day implied volatility at 48% and the vol regime classification moving to stressed territory.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    }
+  ]
+}

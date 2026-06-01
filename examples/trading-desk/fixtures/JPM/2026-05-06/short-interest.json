@@ -1,0 +1,9 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "shortInterest": 42500000,
+  "shortInterestPctFloat": 1.5,
+  "daysToCover": 1.2,
+  "settlementDate": "2026-04-30"
+}

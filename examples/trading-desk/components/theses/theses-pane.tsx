@@ -76,6 +76,7 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "companyProfile",
   "market",
   "macro",
+  "quant",
   "bull",
   "bear",
   "researchManager",

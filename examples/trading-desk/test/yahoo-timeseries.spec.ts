@@ -11,11 +11,21 @@
 import { describe, expect, it } from "vitest";
 import {
   mapYahooTimeseries,
+  mapYahooTimeseriesHistory,
   isEmptyTimeseries,
+  YAHOO_TIMESERIES_TYPES,
   type YahooTimeseriesResponse,
 } from "../src/flows/trading-desk/providers/yahoo-timeseries";
 
 import rawAapl from "./__fixtures__/yahoo-timeseries-aapl.json";
+
+/** Build a single-series row in the raw timeseries shape. */
+function row(type: string, points: Array<{ asOfDate: string; raw: number }>) {
+  return {
+    meta: { type: [type], symbol: "TSM" },
+    [type]: points.map((p) => ({ asOfDate: p.asOfDate, reportedValue: { raw: p.raw } })),
+  };
+}
 
 const aapl = () =>
   mapYahooTimeseries(rawAapl as YahooTimeseriesResponse, "AAPL", "2026-05-06");
@@ -117,5 +127,72 @@ describe("isEmptyTimeseries — throttled responses (200 OK, rows present, no da
   it("flags a response with no result rows at all", () => {
     expect(isEmptyTimeseries({ timeseries: { result: [], error: null } })).toBe(true);
     expect(isEmptyTimeseries({})).toBe(true);
+  });
+});
+
+describe("mapYahooTimeseriesHistory — multi-period for composites (the ADR fallback)", () => {
+  it("requests the working-capital + retained-earnings series the composites need", () => {
+    // Without these, Altman X1/X2 are uncomputable for every ticker.
+    expect(YAHOO_TIMESERIES_TYPES).toContain("annualCurrentAssets");
+    expect(YAHOO_TIMESERIES_TYPES).toContain("annualCurrentLiabilities");
+    expect(YAHOO_TIMESERIES_TYPES).toContain("annualRetainedEarnings");
+  });
+
+  it("returns one period per fiscal-year-end, newest first, with current assets/liabilities + retained earnings", () => {
+    const resp: YahooTimeseriesResponse = {
+      timeseries: {
+        result: [
+          row("annualTotalAssets", [
+            { asOfDate: "2023-12-31", raw: 130e9 },
+            { asOfDate: "2024-12-31", raw: 145e9 },
+          ]),
+          row("annualCurrentAssets", [
+            { asOfDate: "2023-12-31", raw: 60e9 },
+            { asOfDate: "2024-12-31", raw: 70e9 },
+          ]),
+          row("annualCurrentLiabilities", [
+            { asOfDate: "2023-12-31", raw: 35e9 },
+            { asOfDate: "2024-12-31", raw: 40e9 },
+          ]),
+          row("annualRetainedEarnings", [
+            { asOfDate: "2023-12-31", raw: 80e9 },
+            { asOfDate: "2024-12-31", raw: 95e9 },
+          ]),
+          row("annualTotalRevenue", [
+            { asOfDate: "2023-12-31", raw: 70e9 },
+            { asOfDate: "2024-12-31", raw: 88e9 },
+          ]),
+          row("annualNetIncome", [
+            { asOfDate: "2023-12-31", raw: 26e9 },
+            { asOfDate: "2024-12-31", raw: 36e9 },
+          ]),
+        ],
+        error: null,
+      },
+    };
+    const periods = mapYahooTimeseriesHistory(resp);
+    expect(periods).toHaveLength(2);
+    expect(periods[0].endDate).toBe("2024-12-31");
+    expect(periods[0].totalAssets).toBeCloseTo(145, 0);
+    expect(periods[0].totalCurrentAssets).toBeCloseTo(70, 0);
+    expect(periods[0].totalCurrentLiabilities).toBeCloseTo(40, 0);
+    expect(periods[0].retainedEarnings).toBeCloseTo(95, 0);
+    expect(periods[0].netIncome).toBeCloseTo(36, 0);
+    expect(periods[1].endDate).toBe("2023-12-31");
+    expect(periods[1].totalAssets).toBeCloseTo(130, 0);
+  });
+
+  it("maps an absent series to null, never 0", () => {
+    const resp: YahooTimeseriesResponse = {
+      timeseries: {
+        result: [row("annualTotalAssets", [{ asOfDate: "2024-12-31", raw: 100e9 }])],
+        error: null,
+      },
+    };
+    const periods = mapYahooTimeseriesHistory(resp);
+    expect(periods).toHaveLength(1);
+    expect(periods[0].totalAssets).toBeCloseTo(100, 0);
+    expect(periods[0].retainedEarnings).toBeNull();
+    expect(periods[0].netIncome).toBeNull();
   });
 });

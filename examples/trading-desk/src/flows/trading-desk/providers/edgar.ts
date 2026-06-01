@@ -8,18 +8,23 @@
  * failure (non-2xx, parse error, unknown ticker) so the calling tool can fall
  * through to the next provider with a single `try { ... } catch {}`.
  *
- * Coverage is US-only (EDGAR indexes SEC filers). Non-US tickers throw here
- * and fall through to Yahoo — the same honest-degradation the rest of the
- * desk uses.
+ * The single-period statement helpers read `us-gaap` only, so non-US tickers
+ * throw here and fall through to Yahoo — the same honest degradation the rest
+ * of the desk uses. The multi-period `fetchEdgarFinancialsHistory` (for the
+ * composite scores) additionally reads `ifrs-full`, so foreign private issuers
+ * that file a 20-F with a USD convenience translation (e.g. TSM) resolve from
+ * EDGAR directly rather than depending on Yahoo.
  *
  * Tools using these helpers: get_balance_sheet, get_income_statement,
- * get_cashflow.
+ * get_cashflow, get_quant_composites.
  */
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 import {
   mapEdgarCompanyFacts,
+  mapEdgarFinancialsHistory,
   type EdgarCompanyFacts,
 } from "./edgar-companyfacts";
+import type { FinancialPeriod } from "./financials-history";
 
 // SEC requires a descriptive User-Agent identifying the caller.
 const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
@@ -95,4 +100,20 @@ export async function fetchEdgarCashflow(
 ): Promise<ToolOutput<"get_cashflow">> {
   const facts = await fetchCompanyFacts(input.ticker);
   return mapEdgarCompanyFacts(facts, input.ticker, input.date).cashflow;
+}
+
+/**
+ * Multi-period statement history for the composite scores. Returns the annual
+ * `FinancialPeriod`s EDGAR has on file (newest first), throwing when none are
+ * present (non-US filer, or an EDGAR miss) so the caller falls through to
+ * Yahoo. US filers get the full working-capital + retained-earnings inputs
+ * Altman X1/X2 need, plus a prior period for the change-based Piotroski tests.
+ */
+export async function fetchEdgarFinancialsHistory(
+  ticker: string,
+): Promise<FinancialPeriod[]> {
+  const facts = await fetchCompanyFacts(ticker);
+  const periods = mapEdgarFinancialsHistory(facts);
+  if (periods.length === 0) throw new Error(`No EDGAR financial history for ${ticker}`);
+  return periods;
 }

@@ -11,9 +11,12 @@ import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
 import {
   isEmptyTimeseries,
   mapYahooTimeseries,
+  mapYahooTimeseriesHistory,
   YAHOO_TIMESERIES_TYPES,
   type YahooTimeseriesResponse,
 } from "./yahoo-timeseries";
+import { mapYahooShortInterest } from "./yahoo-keystats";
+import type { FinancialPeriod } from "./financials-history";
 
 type YahooClient = {
   chart: (
@@ -114,6 +117,27 @@ export async function fetchYahooFundamentals(
     grossMargin: numberFrom(fin.grossMargins),
     dividendYield: nullableNumberFrom(detail.dividendYield),
   };
+}
+
+/**
+ * Short interest from Yahoo `defaultKeyStatistics` — free, no key, and covers
+ * ADRs (where Finnhub's short-interest endpoint is sparse). Throws when the
+ * module carries no `sharesShort` so the calling tool falls through to Finnhub
+ * with a single `try { ... } catch {}`, matching the provider convention.
+ */
+export async function fetchYahooShortInterest(
+  input: ToolInput<"get_short_interest">,
+): Promise<ToolOutput<"get_short_interest">> {
+  const yahoo = await getYahoo();
+  const summary = (await yahoo.quoteSummary(input.ticker, {
+    modules: ["defaultKeyStatistics"],
+  })) as Record<string, Record<string, unknown> | undefined>;
+  const stats = summary.defaultKeyStatistics ?? {};
+  const out = mapYahooShortInterest(stats, input.ticker, input.date);
+  if (out.shortInterest == null) {
+    throw new Error(`No Yahoo short interest for ${input.ticker}`);
+  }
+  return out;
 }
 
 /**
@@ -245,4 +269,21 @@ function numberFrom(raw: unknown): number {
 function nullableNumberFrom(raw: unknown): number | null {
   const n = numberFrom(raw);
   return Number.isFinite(n) && n !== 0 ? n : null;
+}
+
+/**
+ * Multi-period statement history from the modern `fundamentals-timeseries`
+ * endpoint, for the composite scores. Used as the non-US-filer fallback (EDGAR
+ * is primary for US filers). Returns annual `FinancialPeriod`s newest first;
+ * `[]` when the core series carry no usable period (the caller then degrades).
+ *
+ * Replaces the legacy `*History` quoteSummary path, which carried no numeric
+ * fields in current Yahoo responses (the same breakage the statement tools
+ * were migrated off of).
+ */
+export async function fetchYahooFinancialsHistory(
+  ticker: string,
+): Promise<FinancialPeriod[]> {
+  const resp = await fetchYahooTimeseries(ticker);
+  return mapYahooTimeseriesHistory(resp);
 }

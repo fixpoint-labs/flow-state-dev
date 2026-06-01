@@ -46,6 +46,9 @@ export const MARKET_QUERY = (ticker: string): string =>
 export const MACRO_QUERY = (ticker: string): string =>
   `${ticker} macro economic outlook rates inflation geopolitical risk tariff trade policy central bank`;
 
+export const QUANT_QUERY = (ticker: string): string =>
+  `${ticker} factor momentum short interest options implied volatility quant signal beta`;
+
 export type DiscoverWebArgs = {
   ticker: string;
   date: string;

@@ -390,3 +390,32 @@ export async function fetchFinnhubInsiderTransactions(
     windowDays: INSIDER_WINDOW_DAYS,
   };
 }
+
+/** Short interest from Finnhub `/stock/short-interest`. Free endpoint.
+ *  Returns the most recent settlement's short interest. */
+export async function fetchFinnhubShortInterest(
+  ticker: string,
+): Promise<{
+  shortInterest: number;
+  settlementDate: string;
+}> {
+  const now = new Date();
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - 3);
+  const data = await fetchJson<{ data?: Array<{ shortInterest?: number; date?: string }> }>(
+    "/stock/short-interest",
+    {
+      symbol: ticker,
+      from: from.toISOString().slice(0, 10),
+      to: now.toISOString().slice(0, 10),
+    },
+  );
+  const entries = data.data ?? [];
+  if (entries.length === 0) throw new Error(`No short interest data for ${ticker}`);
+  const latest = entries[entries.length - 1];
+  if (latest.shortInterest == null) throw new Error(`Missing shortInterest field for ${ticker}`);
+  return {
+    shortInterest: latest.shortInterest,
+    settlementDate: latest.date ?? now.toISOString().slice(0, 10),
+  };
+}

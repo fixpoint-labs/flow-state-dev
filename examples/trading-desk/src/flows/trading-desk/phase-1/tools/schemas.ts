@@ -428,6 +428,82 @@ export const sectorPeersSchema = z.object({
   peerMedianReturn1m: z.number().nullable(),
 });
 
+/**
+ * Cross-sectional factor ranks: where the name sits within its peer set
+ * on momentum, value, quality, size, and low-vol. The Quant Analyst's
+ * primary differentiator from Technical (chart) and Market (sector returns).
+ */
+export const factorRanksSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  peerCount: z.number().nullable(),
+  factors: z.array(z.object({
+    factor: z.enum(["momentum", "value", "quality", "size", "lowVol"]),
+    value: z.number().nullable(),
+    percentile: z.number().nullable(),
+    // Ordinal rank within the peer set (1 = highest), `outOf` names ranked on
+    // this factor. Valid at any sample size; the headline read for the small
+    // (~7-name) free-data peer set.
+    rank: z.number().nullable(),
+    outOf: z.number().nullable(),
+    // Reported only when the cross-section is large enough to be meaningful
+    // (see MIN_Z_CROSS_SECTION); null for small peer sets.
+    zScore: z.number().nullable(),
+  })),
+  compositeFactorPercentile: z.number().nullable(),
+});
+
+/**
+ * Risk-regime statistics: beta, realized-vol regime, and correlation
+ * regime vs SPY and the sector ETF.
+ */
+export const riskRegimeSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  betaMarket: z.number().nullable(),
+  betaSector: z.number().nullable(),
+  rSquared: z.number().nullable(),
+  realizedVolAnnualized: z.number().nullable(),
+  volRegime: z.enum(["calm", "normal", "elevated", "stressed"]).nullable(),
+  volPercentile: z.number().nullable(),
+  correlationMarket: z.number().nullable(),
+  correlationRegime: z.enum(["rising", "stable", "falling"]).nullable(),
+});
+
+/**
+ * Statistical composites: Altman Z'' and Piotroski F-Score from
+ * quarterly financial statements.
+ */
+export const quantCompositesSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  altmanZ: z.number().nullable(),
+  altmanZone: z.enum(["safe", "grey", "distress"]).nullable(),
+  altmanVariant: z.enum(["Z''"]).nullable(),
+  piotroskiF: z.number().nullable(),
+  piotroskiBreakdown: z.array(z.object({
+    criterion: z.string(),
+    passed: z.boolean().nullable(),
+  })),
+  coverageNote: z.string(),
+});
+
+/**
+ * Short interest and days-to-cover from Finnhub.
+ */
+export const shortInterestSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  shortInterest: z.number().nullable(),
+  shortInterestPctFloat: z.number().nullable(),
+  daysToCover: z.number().nullable(),
+  settlementDate: z.string().nullable(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -452,6 +528,11 @@ export const toolInputSchemas = {
   get_sector_peers: periodInput,
   discover_market_context: periodInput,
   discover_macro_context: periodInput,
+  get_factor_ranks: periodInput,
+  get_risk_regime: periodInput,
+  get_quant_composites: periodInput,
+  get_short_interest: periodInput,
+  discover_quant_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -478,6 +559,11 @@ export const toolOutputSchemas = {
   get_sector_peers: sectorPeersSchema,
   discover_market_context: discoveryPayloadSchema,
   discover_macro_context: discoveryPayloadSchema,
+  get_factor_ranks: factorRanksSchema,
+  get_risk_regime: riskRegimeSchema,
+  get_quant_composites: quantCompositesSchema,
+  get_short_interest: shortInterestSchema,
+  discover_quant_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -509,6 +595,11 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_sector_peers: "sector-peers.json",
   discover_market_context: "discover-market-context.json",
   discover_macro_context: "discover-macro-context.json",
+  get_factor_ranks: "factor-ranks.json",
+  get_risk_regime: "risk-regime.json",
+  get_quant_composites: "quant-composites.json",
+  get_short_interest: "short-interest.json",
+  discover_quant_context: "discover-quant-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

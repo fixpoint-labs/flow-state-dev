@@ -1,0 +1,14 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "peerCount": 7,
+  "factors": [
+    { "factor": "momentum", "value": -0.18, "percentile": 35, "rank": 5, "outOf": 7, "zScore": null },
+    { "factor": "value", "value": 0.42, "percentile": 70, "rank": 3, "outOf": 7, "zScore": null },
+    { "factor": "quality", "value": 0.09, "percentile": 55, "rank": 4, "outOf": 7, "zScore": null },
+    { "factor": "size", "value": 0.78, "percentile": 85, "rank": 2, "outOf": 7, "zScore": null },
+    { "factor": "lowVol", "value": -0.02, "percentile": 50, "rank": 4, "outOf": 7, "zScore": null }
+  ],
+  "compositeFactorPercentile": 59
+}
