@@ -13,14 +13,14 @@ Guide for setting up the Flow State Dev monorepo for local development.
 git clone https://github.com/fixpoint-labs/flow-state-dev
 cd implementation
 pnpm install
-pnpm build:packages   # emit dist/*.d.ts so the editor's TS server resolves workspace imports
+pnpm packages:build   # emit dist/*.d.ts so the editor's TS server resolves workspace imports
 pnpm typecheck
 pnpm test
 ```
 
 These commands should pass cleanly before starting any work.
 
-> Run `pnpm build:packages` once after cloning. Workspace packages resolve
+> Run `pnpm packages:build` once after cloning. Workspace packages resolve
 > their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
 > reports "Cannot find module '@flow-state-dev/…'" on workspace imports. The
 > Next dev server doesn't need it (it consumes source), but your editor does.
@@ -100,7 +100,7 @@ instant cache hit instead of a full recompile.
 
 | Command | Purpose |
 |---------|---------|
-| `pnpm build:packages` | Build every `packages/*` to `dist` (typecheck/publish input) |
+| `pnpm packages:build` | Build every `packages/*` to `dist` (typecheck/publish input) |
 | `pnpm build` | Build the whole workspace, including apps |
 | `pnpm typecheck` | Typecheck all packages (builds deps first, from cache) |
 | `pnpm test` | Run all tests (turbo `--concurrency=1` — see below) |

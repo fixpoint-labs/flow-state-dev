@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "migrate": "tsx scripts/migrate.ts",
-    "vercel-build": "cd ../.. && pnpm install && pnpm build:packages && cd apps/kitchen-sink && next build && tsx scripts/migrate.ts",
+    "vercel-build": "cd ../.. && pnpm install && pnpm packages:build && cd apps/kitchen-sink && next build && tsx scripts/migrate.ts",
     "start": "next start",
     "test": "vitest run --root .",
     "test:watch": "vitest --root .",

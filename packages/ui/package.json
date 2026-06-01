@@ -14,7 +14,7 @@
     "test": "vitest run",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "vercel-build": "cd ../.. && pnpm install --frozen-lockfile && pnpm build:packages && pnpm --filter @flow-state-dev/ui storybook:build"
+    "vercel-build": "cd ../.. && pnpm install && pnpm packages:build && cd packages/ui && pnpm build"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",

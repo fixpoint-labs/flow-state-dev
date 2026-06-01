@@ -23,7 +23,7 @@ rebuild and no watcher. The old `tsc --build` / dist-watching dance (and the
 dev loop to fall out of sync.
 
 Package builds (for typecheck, publish, and CI) run through Turborepo:
-`pnpm build:packages` from the repo root. Turbo caches task output, so an
+`pnpm packages:build` from the repo root. Turbo caches task output, so an
 unchanged rebuild is a near-instant cache hit.
 
 ## Testing this app

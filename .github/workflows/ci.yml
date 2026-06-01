@@ -39,7 +39,7 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       - name: Build packages
-        run: pnpm build:packages
+        run: pnpm packages:build
 
       - name: Typecheck
         run: pnpm typecheck
@@ -95,7 +95,7 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       - name: Build packages
-        run: pnpm build:packages
+        run: pnpm packages:build
 
       - name: Build kitchen-sink (test mode)
         run: pnpm --filter @flow-state-dev/kitchen-sink build
@@ -142,7 +142,7 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       - name: Build packages
-        run: pnpm build:packages
+        run: pnpm packages:build
 
       - name: Build Storybook
         run: pnpm --filter @flow-state-dev/ui storybook:build
