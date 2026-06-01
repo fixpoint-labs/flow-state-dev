@@ -112,6 +112,10 @@ defineResource({
 
 `readContent()` returns the rendered result. `readContentRaw()` returns the template with placeholders intact.
 
+### Templates from Markdown files
+
+For longer or shared templates, you can author resource content as a `.md` file using the same format as generator prompt files: YAML frontmatter plus a LiquidJS `<system>` body that renders against the resource's state. Load it with `loadResourceTemplate` and pass it as `contentTemplate`, or point at a live-editable resource with `contentTemplateRef`. See [Resource content from Markdown templates](/docs/advanced/resource-templates-markdown) for the full walkthrough.
+
 ## LLM access patterns
 
 Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.

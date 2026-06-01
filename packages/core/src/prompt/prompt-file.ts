@@ -17,11 +17,14 @@
  * renders the aggregated context map (`config.context`) in author-chosen order.
  */
 
-import matter from "gray-matter";
 import { Liquid, type Template } from "liquidjs";
 import { z } from "zod";
 import type { BlockContext } from "../types/block";
 import type { CachingConfig } from "../types/model";
+import {
+  parseRoleTaggedMarkdown,
+  RoleTaggedMarkdownParseError,
+} from "../markdown/role-tagged";
 
 /** Brand key carried on the `prompt` closure a PromptFile produces. The
  * generator reads it to detect PromptFile-sourced prompts and route them
@@ -194,23 +197,8 @@ export class PromptFileParseError extends Error {
   }
 }
 
-const SECTION_TAGS = ["system", "user", "context"] as const;
-type SectionTag = (typeof SECTION_TAGS)[number];
-
-/** Extract a single line-anchored `<tag>...</tag>` section body. Throws if the
- * tag appears more than once. Returns `undefined` if absent. */
-function extractSection(body: string, tag: SectionTag, sourcePath?: string): string | undefined {
-  const re = new RegExp(`^<${tag}>([\\s\\S]*?)</${tag}>`, "gm");
-  const matches = [...body.matchAll(re)];
-  if (matches.length > 1) {
-    throw new PromptFileParseError(
-      `Multiple <${tag}> blocks found; at most one is allowed.`,
-      { sourcePath }
-    );
-  }
-  if (matches.length === 0) return undefined;
-  return matches[0]![1]!.replace(/^\n+/, "").replace(/\n+$/, "");
-}
+// Section extraction is delegated to parseRoleTaggedMarkdown (shared with
+// resource-template parser). Prompt-specific guards applied after the split.
 
 /** Static partial names referenced by `{% render 'x' %}` / `{% include 'x' %}`
  * in a template body. Dynamic (variable) references are not detected. */
@@ -260,17 +248,17 @@ export function parsePromptFile(
   const sourcePath = options?.sourcePath;
   const partials = options?.partials ?? {};
 
-  let parsed: matter.GrayMatterFile<string>;
+  let roleTagged;
   try {
-    parsed = matter(text);
+    roleTagged = parseRoleTaggedMarkdown(text, { sourcePath });
   } catch (cause) {
-    throw new PromptFileParseError(
-      `Failed to parse frontmatter: ${(cause as Error).message}`,
-      { cause, sourcePath }
-    );
+    if (cause instanceof RoleTaggedMarkdownParseError) {
+      throw new PromptFileParseError(cause.message, { cause, sourcePath });
+    }
+    throw cause;
   }
 
-  const fmResult = PromptFileFrontmatter.safeParse(parsed.data ?? {});
+  const fmResult = PromptFileFrontmatter.safeParse(roleTagged.frontmatter);
   if (!fmResult.success) {
     throw new PromptFileParseError(
       `Invalid frontmatter: ${fmResult.error.issues
@@ -281,10 +269,9 @@ export function parsePromptFile(
   }
   const frontmatter = fmResult.data;
 
-  const body = parsed.content;
-  const systemBody = extractSection(body, "system", sourcePath);
-  const userBody = extractSection(body, "user", sourcePath);
-  const contextBody = extractSection(body, "context", sourcePath);
+  const systemBody = roleTagged.sections.system;
+  const userBody = roleTagged.sections.user;
+  const contextBody = roleTagged.sections.context;
 
   if (systemBody === undefined) {
     throw new PromptFileParseError(
@@ -308,12 +295,20 @@ export function parsePromptFile(
     extname: ".md",
     strictVariables: true,
     strictFilters: true,
+    ownPropertyOnly: true,
+    parseLimit: 512 * 1024,
+    renderLimit: 5_000,
+    memoryLimit: 1e8,
     fs: partialFs,
   });
   const contextEngine = new Liquid({
     extname: ".md",
     strictVariables: false,
     strictFilters: true,
+    ownPropertyOnly: true,
+    parseLimit: 512 * 1024,
+    renderLimit: 5_000,
+    memoryLimit: 1e8,
     fs: partialFs,
   });
   for (const [filterName, impl] of Object.entries(options?.filters ?? {})) {

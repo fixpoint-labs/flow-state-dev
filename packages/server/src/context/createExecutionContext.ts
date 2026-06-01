@@ -83,6 +83,10 @@ import {
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+import {
+  parseResourceTemplate,
+  renderResourceTemplate,
+} from "@flow-state-dev/core/resource-template";
 
 
 function normalizeLimit(
@@ -485,6 +489,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
      */
     recordResourceLoad?: (rec: Omit<ResourceLoadRecord, "count">) => void;
     resolveEagerSource?: (keyOrPrefix: string) => ResourceLoadRecord["source"];
+    /** Cross-scope template resolver, populated post-construction. */
+    templateResolverRef?: { current: ((ref: string) => string | null) | null };
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -629,6 +635,21 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
+        if (nsConfig.contentTemplate !== undefined) {
+          return renderResourceTemplate(nsConfig.contentTemplate, readState());
+        }
+        if (nsConfig.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) {
+            throw new Error(
+              `Cannot resolve contentTemplateRef "${nsConfig.contentTemplateRef}" for collection instance "${storageKey}" — template resolver not available`
+            );
+          }
+          const rawTemplate = resolver(nsConfig.contentTemplateRef);
+          if (rawTemplate === null) return null;
+          const template = parseResourceTemplate(rawTemplate);
+          return renderResourceTemplate(template, readState());
+        }
         const raw = options.readResourceContent()[storageKey];
         return typeof raw === "string" ? raw : null;
       },
@@ -1058,6 +1079,21 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         return typeof content === "string" ? content : null;
       },
       async readContent(): Promise<string | null> {
+        if (config.contentTemplate !== undefined) {
+          return renderResourceTemplate(config.contentTemplate, readState());
+        }
+        if (config.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) {
+            throw new Error(
+              `Cannot resolve contentTemplateRef "${config.contentTemplateRef}" for resource "${resourceName}" — template resolver not available`
+            );
+          }
+          const rawTemplate = resolver(config.contentTemplateRef);
+          if (rawTemplate === null) return null;
+          const template = parseResourceTemplate(rawTemplate);
+          return renderResourceTemplate(template, readState());
+        }
         const raw = options.readResourceContent()[storageKey];
         if (typeof raw !== "string") {
           return null;
@@ -3355,6 +3391,11 @@ export async function createExecutionContext<
     };
   }
 
+  // Mutable-ref template resolver for contentTemplateRef. Populated after all
+  // three scope registries are constructed, so readContent() closures can
+  // resolve a template resource's raw content across scopes.
+  const templateResolverRef: { current: ((ref: string) => string | null) | null } = { current: null };
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     scopeId: userId,
@@ -3367,6 +3408,7 @@ export async function createExecutionContext<
     lazyLoad: userLazyLoad,
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
+    templateResolverRef,
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -3381,6 +3423,7 @@ export async function createExecutionContext<
     lazyLoad: sessionLazyLoad,
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
+    templateResolverRef,
   });
 
   const orgResources =
@@ -3398,7 +3441,17 @@ export async function createExecutionContext<
           lazyLoad: orgLazyLoad,
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
+          templateResolverRef,
         });
+
+  // Populate the template resolver now that all registries exist.
+  templateResolverRef.current = (ref: string): string | null => {
+    for (const contentFn of [readSessionResourceContent, readUserResourceContent, readProjectResourceContent]) {
+      const content = contentFn()[ref];
+      if (typeof content === "string") return content;
+    }
+    return null;
+  };
 
 
 

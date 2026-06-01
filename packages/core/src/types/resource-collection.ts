@@ -2,6 +2,7 @@ import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
 import type { ResourceRef, CollectionClientConfig } from "./resource";
+import type { ResourceTemplate } from "../resource-template/resource-template";
 
 // Re-export pattern utilities for consumers
 export {
@@ -66,6 +67,11 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * combination.
    */
   prefetchMode?: "eager" | "lazy";
+
+  /** A pre-parsed role-tagged Markdown template applied to each instance. */
+  contentTemplate?: ResourceTemplate;
+  /** Path of another resource whose raw content is a template for each instance. */
+  contentTemplateRef?: string;
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig<TState>;
