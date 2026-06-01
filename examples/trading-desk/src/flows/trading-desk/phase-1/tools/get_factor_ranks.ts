@@ -12,7 +12,6 @@ import { emptyPayload } from "./empty-payloads";
 import {
   momentum12m1,
   earningsYield,
-  grossProfitsToAssets,
   logMarketCap,
   crossSectionalPercentile,
   crossSectionalZScore,
@@ -87,7 +86,9 @@ function rankFactor(
   return {
     value: Math.round(nameValue * 10000) / 10000,
     percentile: crossSectionalPercentile(nameValue, allValues),
-    zScore: Math.round((crossSectionalZScore(nameValue, allValues) ?? 0) * 100) / 100 || null,
+    zScore: crossSectionalZScore(nameValue, allValues) != null
+      ? Math.round(crossSectionalZScore(nameValue, allValues)! * 100) / 100
+      : null,
   };
 }
 

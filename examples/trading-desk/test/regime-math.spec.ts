@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   logReturns,
   realizedVolAnnualized,
-  shortWindowVol,
   volRegimePercentile,
   olsBeta,
   rollingCorrelation,

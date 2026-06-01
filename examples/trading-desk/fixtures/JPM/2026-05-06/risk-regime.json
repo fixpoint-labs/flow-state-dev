@@ -9,5 +9,5 @@
   "volRegime": "normal",
   "volPercentile": 50,
   "correlationMarket": 0.68,
-  "correlationRegime": "moderate"
+  "correlationRegime": "falling"
 }

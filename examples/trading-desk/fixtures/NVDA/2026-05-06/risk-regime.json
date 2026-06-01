@@ -9,5 +9,5 @@
   "volRegime": "stressed",
   "volPercentile": 82,
   "correlationMarket": 0.72,
-  "correlationRegime": "high"
+  "correlationRegime": "stable"
 }
