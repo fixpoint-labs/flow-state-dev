@@ -11,7 +11,6 @@ import { fetchYahooChart, fetchYahooFundamentals } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import {
   momentum12m1,
-  earningsYield,
   logMarketCap,
   crossSectionalPercentile,
   crossSectionalZScore,
@@ -59,14 +58,9 @@ async function fetchNameData(ticker: string, date: string): Promise<NameData> {
     const fundamentals = await getOrFetch("get_fundamentals", { ticker, date }, () =>
       fetchYahooFundamentals({ ticker, date }),
     );
-    value = earningsYield(fundamentals.operatingMargin, 1); // proxy: operating margin as yield stand-in
-    // For cross-sectional rank, we use the raw metric (earnings yield = NI / marketCap is ideal,
-    // but we only have ratios from get_fundamentals — use returnOnEquity as quality proxy)
+    value = fundamentals.operatingMargin !== 0 ? fundamentals.operatingMargin : null;
     quality = fundamentals.returnOnEquity !== 0 ? fundamentals.returnOnEquity : null;
     size = logMarketCap(fundamentals.marketCap);
-    // Better value proxy: use gross margin inverted as a cheapness signal
-    // Actually, use operating margin as the value metric and ROE as quality
-    value = fundamentals.operatingMargin !== 0 ? fundamentals.operatingMargin : null;
   } catch {}
 
   return { ticker, momentum, value, quality, size, lowVol };
@@ -83,12 +77,11 @@ function rankFactor(
     .map((n) => n[factor])
     .filter((v): v is number => v != null);
   if (allValues.length < 2) return { value: nameValue, percentile: null, zScore: null };
+  const rawZ = crossSectionalZScore(nameValue, allValues);
   return {
     value: Math.round(nameValue * 10000) / 10000,
     percentile: crossSectionalPercentile(nameValue, allValues),
-    zScore: crossSectionalZScore(nameValue, allValues) != null
-      ? Math.round(crossSectionalZScore(nameValue, allValues)! * 100) / 100
-      : null,
+    zScore: rawZ != null ? Math.round(rawZ * 100) / 100 : null,
   };
 }
 

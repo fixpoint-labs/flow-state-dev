@@ -124,8 +124,12 @@ export function piotroskiFScore(
   });
 
   // 5. ΔLeverage < 0 (long-term debt / assets decreased)
-  const leverage = ta && ta !== 0 && current.totalLiabilities != null ? current.totalLiabilities / ta : null;
-  const priorLeverage = priorTa && priorTa !== 0 && prior?.totalLiabilities != null ? prior.totalLiabilities / priorTa : null;
+  const ltd = current.totalLiabilities != null && current.totalCurrentLiabilities != null
+    ? current.totalLiabilities - current.totalCurrentLiabilities : null;
+  const leverage = ta && ta !== 0 && ltd != null ? ltd / ta : null;
+  const priorLtd = prior?.totalLiabilities != null && prior?.totalCurrentLiabilities != null
+    ? prior.totalLiabilities - prior.totalCurrentLiabilities : null;
+  const priorLeverage = priorTa && priorTa !== 0 && priorLtd != null ? priorLtd / priorTa : null;
   results.push({
     criterion: "ΔLeverage < 0",
     passed: leverage != null && priorLeverage != null ? leverage < priorLeverage : null,
