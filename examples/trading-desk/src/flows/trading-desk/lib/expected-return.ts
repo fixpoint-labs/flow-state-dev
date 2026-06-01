@@ -2,8 +2,8 @@
  * Expected-return computation from already-fetched fundamentals.
  *
  * E[r] ≈ shareholder_yield + sustainable_growth (Gordon rearranged).
- * Shareholder yield = FCF/marketCap (preferred) or earnings/marketCap
- * (fallback) + dividend yield. Sustainable growth = min(revenueGrowth,
+ * Shareholder yield = FCF/marketCap (preferred — FCF encompasses
+ * distribution capacity) or earnings/marketCap + dividend yield (fallback). Sustainable growth = min(revenueGrowth,
  * retention × ROE), capped at [terminal, GROWTH_CAP].
  */
 import type { z } from "zod";
@@ -54,7 +54,7 @@ export function computeExpectedReturn(args: {
   const netIncome = is_.netIncome;
 
   if (fcf != null && fcf > 0 && marketCap > 0) {
-    shareholderYield = fcf / marketCap + divYield;
+    shareholderYield = fcf / marketCap;
     basis = "fcf";
   } else if (netIncome != null && netIncome > 0 && marketCap > 0) {
     shareholderYield = netIncome / marketCap + divYield;

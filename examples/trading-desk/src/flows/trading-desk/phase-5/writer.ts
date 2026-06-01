@@ -39,7 +39,7 @@ import {
 } from "../lib/memo-writer";
 import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
-import { valuationSpineResource } from "../valuation-spine-resource";
+import { valuationSpineResource, type ValuationSpineState } from "../valuation-spine-resource";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 import { scenarioForecastOutputSchema } from "./scenario-forecaster";
 
@@ -175,14 +175,14 @@ export const commitPortfolioManagerMemo = handler({
     // Valuation-spine clamping: bound the LLM's finalRating to the
     // model-implied envelope when the spine was computed successfully.
     const spine = ctx.resources.valuationSpine?.state as
-      | { envelope: { implied: typeof decision.finalRating; floor: typeof decision.finalRating; ceiling: typeof decision.finalRating; absoluteRating: "Buy" | "Hold" | "Sell"; relativeRating: "Overweight" | "Equal Weight" | "Underweight"; rationale: string } }
+      | ValuationSpineState
       | null
       | undefined;
     let finalRating = decision.finalRating;
     let modelImpliedRating: typeof finalRating | null = null;
     let ratingBand: { floor: typeof finalRating; ceiling: typeof finalRating } | null = null;
     let ratingClamped = false;
-    let ratingOverrideReason: string | null = null;
+    let ratingOverrideReason: string | null = decision.ratingOverrideReason || null;
     let absoluteRating: "Buy" | "Hold" | "Sell" | null = null;
     let relativeRating: "Overweight" | "Equal Weight" | "Underweight" | null = null;
 

@@ -71,22 +71,22 @@ describe("computeExpectedReturn", () => {
     expect(er.shareholderYield).toBeGreaterThan(0);
     expect(er.sustainableGrowth).toBeGreaterThan(0);
     expect(er.expectedReturn).toBeGreaterThan(0);
-    // NVDA: FCF yield = 64/2950 ≈ 2.17% + div 0.02% ≈ 2.19%
-    expect(er.shareholderYield).toBeCloseTo(0.0219, 3);
+    // NVDA: FCF yield = 64/2950 ≈ 2.17% (no divYield — FCF encompasses distributions)
+    expect(er.shareholderYield).toBeCloseTo(0.0217, 3);
   });
 
   it("AAPL: uses FCF basis", () => {
     const er = computeExpectedReturn(aaplStatements);
     expect(er.basis).toBe("fcf");
-    // AAPL: FCF yield = 105/2810 ≈ 3.74% + div 0.45% ≈ 4.19%
-    expect(er.shareholderYield).toBeCloseTo(0.0419, 3);
+    // AAPL: FCF yield = 105/2810 ≈ 3.74%
+    expect(er.shareholderYield).toBeCloseTo(0.0374, 3);
   });
 
   it("JPM: uses FCF basis", () => {
     const er = computeExpectedReturn(jpmStatements);
     expect(er.basis).toBe("fcf");
-    // JPM: FCF yield = 24/615 ≈ 3.90% + div 2.2% ≈ 6.10%
-    expect(er.shareholderYield).toBeCloseTo(0.0610, 3);
+    // JPM: FCF yield = 24/615 ≈ 3.90%
+    expect(er.shareholderYield).toBeCloseTo(0.0390, 3);
   });
 
   it("negative FCF falls back to earnings", () => {

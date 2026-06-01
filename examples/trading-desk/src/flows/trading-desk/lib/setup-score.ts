@@ -66,8 +66,8 @@ export function computeSetupScore(args: {
     }
     const roicVal = valuation?.roic?.value;
     if (roicVal != null) {
-      // ROIC: 20% → 75, 40% → 100, 5% → 40
-      parts.push(clamp100(roicVal * 200));
+      // ROIC: 20% → 75, 40% → 100, 5% → ~38
+      parts.push(clamp100(roicVal * 250 + 25));
     }
     const altmanZone = quantComposites?.altmanZone;
     if (altmanZone != null) {
