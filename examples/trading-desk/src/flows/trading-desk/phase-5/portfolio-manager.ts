@@ -85,6 +85,9 @@ export const portfolioDecisionOutputSchema = z.object({
   // The scenario bucket this decision underwrites. Empty string when the
   // forecast is unavailable or the PM disagrees with all buckets.
   primaryScenario: z.string(),
+  // Override reason: non-empty when the PM chooses a rating outside the
+  // model-implied band. Empty string when staying within the band.
+  ratingOverrideReason: z.string(),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
@@ -99,6 +102,7 @@ export const portfolioManagerGenerator = generator({
       tradeProposal: true,
       riskAssessment: true,
       scenarioForecast: true,
+      valuationSpine: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
       riskCritiquesFull: true,

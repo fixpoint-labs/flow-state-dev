@@ -42,7 +42,12 @@ Populate `recommendedAdjustments` — three required levers (sizing, holdingPeri
   - `attributedTo`: which persona's reasoning carried the call.
 Use `unchanged` when no persona made a load-bearing case for change — attribute the no-op to the persona whose reasoning carried that verdict (often neutral).
 
-Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `underconfident`, and `calibrationRationale` with a one-sentence justification. The PM uses this to scale conviction.
+Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `underconfident`, and `calibrationRationale` with a one-sentence justification. The PM uses this to inform confidence.
+
+If a `<valuationSpine>` block is present, use it as a quantitative
+cross-check: does the trader's proposed direction align with the expected
+excess return? Is the target price consistent with fair value? Flag
+divergences as risks when they are material.
 
 {% render 'shared-output-preamble' %}
 </system>

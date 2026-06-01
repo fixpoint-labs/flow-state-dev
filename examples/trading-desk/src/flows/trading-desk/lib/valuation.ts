@@ -173,11 +173,57 @@ export function computeValuation(args: {
   };
 }
 
-/** Render a `DerivedValuation` as a compact labeled block for prompt injection. */
+export type MetricVerdict = "cheap" | "fair" | "expensive" | "n/a";
+
+/** Absolute heuristic bands for ratio-type metrics. Cheap/expensive when
+ *  more than one standard deviation from a reasonable sector median. These
+ *  are blunt fallbacks — justified-multiple comparison is preferred when
+ *  the valuation spine provides one. */
+const RATIO_BANDS: Record<string, { cheap: number; expensive: number }> = {
+  evToSales: { cheap: 2.0, expensive: 10.0 },
+  evToEbit: { cheap: 10.0, expensive: 25.0 },
+  evToFcf: { cheap: 15.0, expensive: 35.0 },
+  priceToBook: { cheap: 1.5, expensive: 5.0 },
+  priceToFcf: { cheap: 15.0, expensive: 35.0 },
+  peg: { cheap: 0.8, expensive: 2.0 },
+  pegy: { cheap: 0.6, expensive: 1.5 },
+};
+
+const YIELD_BANDS: Record<string, { cheap: number; expensive: number }> = {
+  fcfYield: { cheap: 0.06, expensive: 0.02 },
+  earningsYield: { cheap: 0.06, expensive: 0.02 },
+};
+
+function verdictForRatio(key: string, value: number | null): MetricVerdict {
+  if (value == null) return "n/a";
+  const band = RATIO_BANDS[key];
+  if (!band) return "fair";
+  if (value <= band.cheap) return "cheap";
+  if (value >= band.expensive) return "expensive";
+  return "fair";
+}
+
+function verdictForYield(key: string, value: number | null): MetricVerdict {
+  if (value == null) return "n/a";
+  const band = YIELD_BANDS[key];
+  if (!band) return "fair";
+  // Higher yield = cheaper
+  if (value >= band.cheap) return "cheap";
+  if (value <= band.expensive) return "expensive";
+  return "fair";
+}
+
+/** Render a `DerivedValuation` as a compact labeled block for prompt injection.
+ *  Each metric now carries a cheap / fair / expensive / n/a verdict. */
 export function formatValuation(v: DerivedValuation): string {
   const lines: string[] = [];
 
-  const fmt = (label: string, m: DerivedMetric, style: "money" | "ratio" | "pct") => {
+  const fmt = (
+    label: string,
+    m: DerivedMetric,
+    style: "money" | "ratio" | "pct",
+    verdict?: MetricVerdict,
+  ) => {
     if (m.value == null) {
       lines.push(`${label}: n/a`);
       return;
@@ -188,6 +234,7 @@ export function formatValuation(v: DerivedValuation): string {
     else display = `${m.value.toFixed(2)}×`;
 
     const suffixes: string[] = [];
+    if (verdict && verdict !== "n/a") suffixes.push(verdict);
     if (m.proxy) suffixes.push(`proxy: ${m.proxy}`);
     if (m.note) suffixes.push(m.note);
     const suffix = suffixes.length > 0 ? ` (${suffixes.join("; ")})` : "";
@@ -195,19 +242,19 @@ export function formatValuation(v: DerivedValuation): string {
   };
 
   fmt("Enterprise value", v.enterpriseValue, "money");
-  fmt("EV/Sales", v.evToSales, "ratio");
-  fmt("EV/EBIT", v.evToEbit, "ratio");
-  fmt("EV/FCF", v.evToFcf, "ratio");
-  fmt("Price/Book", v.priceToBook, "ratio");
-  fmt("FCF yield", v.fcfYield, "pct");
-  fmt("Price/FCF", v.priceToFcf, "ratio");
-  fmt("Earnings yield", v.earningsYield, "pct");
+  fmt("EV/Sales", v.evToSales, "ratio", verdictForRatio("evToSales", v.evToSales.value));
+  fmt("EV/EBIT", v.evToEbit, "ratio", verdictForRatio("evToEbit", v.evToEbit.value));
+  fmt("EV/FCF", v.evToFcf, "ratio", verdictForRatio("evToFcf", v.evToFcf.value));
+  fmt("Price/Book", v.priceToBook, "ratio", verdictForRatio("priceToBook", v.priceToBook.value));
+  fmt("FCF yield", v.fcfYield, "pct", verdictForYield("fcfYield", v.fcfYield.value));
+  fmt("Price/FCF", v.priceToFcf, "ratio", verdictForRatio("priceToFcf", v.priceToFcf.value));
+  fmt("Earnings yield", v.earningsYield, "pct", verdictForYield("earningsYield", v.earningsYield.value));
   fmt("ROA", v.returnOnAssets, "pct");
   fmt("Net debt", v.netDebt, "money");
   fmt("Net leverage", v.netLeverage, "ratio");
   fmt("ROIC", v.roic, "pct");
-  fmt("PEG", v.peg, "ratio");
-  fmt("PEGY", v.pegy, "ratio");
+  fmt("PEG", v.peg, "ratio", verdictForRatio("peg", v.peg.value));
+  fmt("PEGY", v.pegy, "ratio", verdictForRatio("pegy", v.pegy.value));
 
   return lines.join("\n");
 }

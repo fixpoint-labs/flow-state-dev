@@ -20,6 +20,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/phase-5/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";
 
 type Disposition = {
   index: number;
@@ -33,7 +34,7 @@ const fixtureFlow = defineFlow({
     commitPm: { block: commitPortfolioManagerMemo },
   },
   session: { stateSchema: sessionStateSchema },
-  resources: { memos: memosCollection },
+  resources: { memos: memosCollection, valuationSpine: valuationSpineResource },
 })({ id: "test" });
 
 const baseSessionState = {
@@ -111,6 +112,7 @@ function decision(opts: {
     invalidationTrigger: "",
     traderDependencyDispositions: opts.traderDependencyDispositions ?? [],
     primaryScenario: "",
+    ratingOverrideReason: "",
   };
 }
 

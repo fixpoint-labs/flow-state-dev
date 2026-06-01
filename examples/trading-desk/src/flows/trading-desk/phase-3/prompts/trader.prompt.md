@@ -42,6 +42,12 @@ Output shape (TradeProposal):
       and Phase 5 (PM) see exactly where you are making a contestable
       judgment call.
 
+If a `<valuationSpine>` block is present, use its `fairValue` as an
+anchor for `targetPrice` — your target should be near or above fair value
+for a long, or near or below it for a short. Use the `expectedReturn`
+and `marginOfSafety` to inform sizing conviction. Do not invent your own
+valuation from scratch when the spine provides one.
+
 If the thesis is neutral and you do not see an asymmetric setup, propose `direction: "flat"`, `sizePct: 0`, with a coherent rationale rather than a degenerate output. `flat` is a real and acceptable proposal. Even for `flat`, emit valid `stopPrice` / `targetPrice` levels you would change your mind at.
 </system>
 
