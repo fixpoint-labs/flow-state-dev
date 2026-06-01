@@ -413,8 +413,9 @@ export async function fetchFinnhubShortInterest(
   const entries = data.data ?? [];
   if (entries.length === 0) throw new Error(`No short interest data for ${ticker}`);
   const latest = entries[entries.length - 1];
+  if (latest.shortInterest == null) throw new Error(`Missing shortInterest field for ${ticker}`);
   return {
-    shortInterest: latest.shortInterest ?? 0,
+    shortInterest: latest.shortInterest,
     settlementDate: latest.date ?? now.toISOString().slice(0, 10),
   };
 }
