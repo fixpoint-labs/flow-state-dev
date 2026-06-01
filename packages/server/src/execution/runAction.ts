@@ -430,6 +430,15 @@ export async function runActionInternal<
     requestId,
     internalSeams: undefined
   });
+
+  if (options.onItem !== undefined) {
+    // Fan every item to the caller's listener, transient ones included (they
+    // are live-only and absent from the persisted log). subscribeToItems
+    // returns an unsubscribe fn; the emitter is scoped to this run and
+    // discarded once it completes, so no manual teardown is needed.
+    response.subscribeToItems(options.onItem);
+  }
+
   const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
   const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
 
@@ -984,7 +993,8 @@ export async function runActionInternal<
     return {
       output: result.output,
       items: response.getItems(),
-      durationMs: Date.now() - startedAt
+      durationMs: Date.now() - startedAt,
+      requestId
     };
   } catch (error) {
     // Clear heartbeat
@@ -1138,6 +1148,7 @@ export async function runActionInternal<
       output: undefined,
       items: response.getItems(),
       durationMs: Date.now() - startedAt,
+      requestId,
       error: signalAborted ? undefined : applyNormalizedErrorSeam(
         internalSeams,
         normalizeError(error, {

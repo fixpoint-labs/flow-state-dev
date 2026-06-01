@@ -266,3 +266,5 @@ const cases = await fromCsv("./fixtures/cases.csv", {
 - **Isolated** — Each test harness creates a fresh runtime context with in-memory stores. No shared state between tests.
 - **Full-contract testing** — Test harnesses enforce the same validation, lifecycle, and execution contracts as the production runtime. If it passes in tests, it'll behave the same way in production.
 - **No network** — Everything runs in-process. No HTTP servers, no SSE connections, no external dependencies.
+
+To execute a flow in a background job or scheduled task outside the test harness, see [Calling a flow without a transport](../advanced/manual-flow-execution.md).

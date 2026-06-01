@@ -57,6 +57,12 @@ export type PgRecordStore<TRecord, TListOptions> = {
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<TRecord>>;
+  deleteField(
+    id: string,
+    path: string[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
@@ -109,12 +115,12 @@ export function createPgRecordStore<
   }
 
   function statePath(path: string[]): string[] {
-    if (path.length !== 1) {
+    if (path.length < 1 || path.length > 2) {
       throw new Error(
-        `pg delta verbs only support depth-1 paths in v1; received path of length ${path.length}`
+        `pg delta verbs support depth-1 or depth-2 paths; received path of length ${path.length}`
       );
     }
-    return ["state", path[0]];
+    return ["state", ...path];
   }
 
   /**
@@ -152,9 +158,6 @@ export function createPgRecordStore<
     const idParam = `$${opOffset + 2}`;
 
     if (expectedVersion === "any") {
-      // Single atomic UPDATE — no SELECT first, no race. Missing record
-      // returns rowCount=0, which we surface as a conflict so the CAS layer
-      // can fall back to `set` with a full record on retry.
       const sql = `UPDATE ${tableName}
         SET
           data = jsonb_set(data, $1::text[], ${valueExpr}, true)
@@ -165,12 +168,16 @@ export function createPgRecordStore<
           version = version + 1,
           updated_at = ${updatedAtParam}::bigint
         WHERE id = ${idParam}
-        RETURNING version`;
+        RETURNING version, data`;
       const params = [pgPath, ...operandParams, updatedAt, id];
       const result = await executor.query(sql, params);
       if (result.rowCount > 0) {
         const row = result.rows[0] as QueryResultRow;
-        return { ok: true, version: Number(row.version) };
+        return {
+          ok: true,
+          version: Number(row.version),
+          record: parseData(row.data) as TRecord
+        };
       }
       return loadConflict(id);
     }
@@ -289,11 +296,9 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // Treat the existing value as 0 when it's missing OR when its JSONB
-      // type is anything other than 'number'. Mirrors the in-memory
-      // adapter's `typeof === "number"` baseline; without the typeof guard
-      // Postgres would happily cast JSON strings like "5" to numeric 5 and
-      // diverge from memory.
+      if (path.length !== 1) {
+        throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return runDeltaUpdate(
         id,
         statePath(path),
@@ -311,9 +316,9 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // COALESCE treats a missing field as `[]`. If the existing value is a
-      // JSONB non-array (e.g. an object), Postgres raises a `||` operator
-      // error — caller should know they're pushing to an array slot.
+      if (path.length !== 1) {
+        throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
+      }
       return runDeltaUpdate(
         id,
         statePath(path),
@@ -322,6 +327,60 @@ export function createPgRecordStore<
         expectedVersion,
         updatedAt
       );
+    },
+
+    async deleteField(
+      id: string,
+      path: string[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      const pgPath = statePath(path);
+      const updatedAtParam = "$2";
+      const idParam = "$3";
+
+      if (expectedVersion === "any") {
+        const sql = `UPDATE ${tableName}
+          SET
+            data = (data #- $1::text[])
+                   || jsonb_build_object(
+                        'version', version + 1,
+                        'updatedAt', ${updatedAtParam}::bigint
+                      ),
+            version = version + 1,
+            updated_at = ${updatedAtParam}::bigint
+          WHERE id = ${idParam}
+          RETURNING version, data`;
+        const params = [pgPath, updatedAt, id];
+        const result = await executor.query(sql, params);
+        if (result.rowCount > 0) {
+          const row = result.rows[0] as QueryResultRow;
+          return {
+            ok: true,
+            version: Number(row.version),
+            record: parseData(row.data) as TRecord
+          };
+        }
+        return loadConflict(id);
+      }
+
+      const newVersion = expectedVersion + 1;
+      const sql = `UPDATE ${tableName}
+        SET
+          data = (data #- $1::text[])
+                 || jsonb_build_object(
+                      'version', $4::int,
+                      'updatedAt', ${updatedAtParam}::bigint
+                    ),
+          version = $4::int,
+          updated_at = ${updatedAtParam}::bigint
+        WHERE id = ${idParam} AND version = $5`;
+      const params = [pgPath, updatedAt, id, newVersion, expectedVersion];
+      const result = await executor.query(sql, params);
+      if (result.rowCount > 0) {
+        return { ok: true, version: newVersion };
+      }
+      return loadConflict(id);
     },
 
     async delete(id: string): Promise<void> {

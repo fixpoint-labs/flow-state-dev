@@ -64,29 +64,14 @@ function checkVersion<TRecord extends { version: number }>(
   return undefined;
 }
 
-function assertDepthOne(path: string[], verb: string): void {
-  // Callers should pre-route deep paths to set. If one slips through,
-  // surface it rather than silently doing the wrong thing. Internal callers
-  // (createScopePersist via the CASMutationHint tuple) cannot trigger this;
-  // direct adapter API consumers can.
-  if (path.length !== 1) {
+function assertMaxDepthTwo(path: string[], verb: string): void {
+  if (path.length < 1 || path.length > 2) {
     throw new Error(
-      `${verb} only supports depth-1 paths in v1; received path of length ${path.length}`
+      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
     );
   }
 }
 
-/**
- * Apply a single-field replacement to the `state` slice of an in-memory
- * record. The new record is cloned into the map (so callers cannot mutate
- * the stored state through retained references) and the version is bumped
- * by one. Returns the new version on success or conflict info on stale
- * `expectedVersion`.
- *
- * `path` must be depth-1 in v1 — the createScopePersist router only emits
- * single-key hints. Deeper paths short-circuit to the `set` fallback before
- * reaching this helper.
- */
 export function patchFieldInMap<TRecord extends DeltaRecord>(
   records: Map<string, TRecord>,
   id: string,
@@ -98,18 +83,26 @@ export function patchFieldInMap<TRecord extends DeltaRecord>(
   const current = records.get(id);
   const conflictResult = checkVersion(current, expectedVersion);
   if (conflictResult !== undefined) return conflictResult;
-  assertDepthOne(path, "patchField");
+  assertMaxDepthTwo(path, "patchField");
 
   const next = clone(current as TRecord);
   const newVersion = (current as TRecord).version + 1;
-  next.state = {
-    ...((current as TRecord).state ?? {}),
-    [path[0]]: value
-  };
+  const currentState = (current as TRecord).state ?? {};
+
+  if (path.length === 2) {
+    const parentRecord = (currentState[path[0]] as Record<string, unknown>) ?? {};
+    next.state = {
+      ...currentState,
+      [path[0]]: { ...parentRecord, [path[1]]: value }
+    };
+  } else {
+    next.state = { ...currentState, [path[0]]: value };
+  }
+
   next.version = newVersion;
   next.updatedAt = updatedAt;
   records.set(id, next);
-  return { ok: true, version: newVersion };
+  return { ok: true, version: newVersion, record: clone(next) };
 }
 
 export function incFieldInMap<TRecord extends DeltaRecord>(
@@ -123,7 +116,9 @@ export function incFieldInMap<TRecord extends DeltaRecord>(
   const current = records.get(id);
   const conflictResult = checkVersion(current, expectedVersion);
   if (conflictResult !== undefined) return conflictResult;
-  assertDepthOne(path, "incField");
+  if (path.length !== 1) {
+    throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
+  }
 
   const next = clone(current as TRecord);
   const newVersion = (current as TRecord).version + 1;
@@ -136,7 +131,7 @@ export function incFieldInMap<TRecord extends DeltaRecord>(
   next.version = newVersion;
   next.updatedAt = updatedAt;
   records.set(id, next);
-  return { ok: true, version: newVersion };
+  return { ok: true, version: newVersion, record: clone(next) };
 }
 
 export function pushToArrayInMap<TRecord extends DeltaRecord>(
@@ -150,13 +145,12 @@ export function pushToArrayInMap<TRecord extends DeltaRecord>(
   const current = records.get(id);
   const conflictResult = checkVersion(current, expectedVersion);
   if (conflictResult !== undefined) return conflictResult;
-  assertDepthOne(path, "pushToArray");
+  if (path.length !== 1) {
+    throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
+  }
 
   const existing = (current as TRecord).state?.[path[0]];
   if (existing !== undefined && !Array.isArray(existing)) {
-    // Match the Postgres adapter, which raises a `||` operator error on
-    // non-array JSONB. Silently overwriting would mask state-shape bugs in
-    // dev that surface only on a Postgres deploy.
     throw new Error(
       `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
     );
@@ -172,5 +166,36 @@ export function pushToArrayInMap<TRecord extends DeltaRecord>(
   next.version = newVersion;
   next.updatedAt = updatedAt;
   records.set(id, next);
-  return { ok: true, version: newVersion };
+  return { ok: true, version: newVersion, record: clone(next) };
+}
+
+export function deleteFieldInMap<TRecord extends DeltaRecord>(
+  records: Map<string, TRecord>,
+  id: string,
+  path: string[],
+  expectedVersion: ExpectedVersion,
+  updatedAt: number
+): SetResult<TRecord> {
+  const current = records.get(id);
+  const conflictResult = checkVersion(current, expectedVersion);
+  if (conflictResult !== undefined) return conflictResult;
+  assertMaxDepthTwo(path, "deleteField");
+
+  const next = clone(current as TRecord);
+  const newVersion = (current as TRecord).version + 1;
+  const currentState = { ...((current as TRecord).state ?? {}) };
+
+  if (path.length === 2) {
+    const parentRecord = { ...((currentState[path[0]] as Record<string, unknown>) ?? {}) };
+    delete parentRecord[path[1]];
+    currentState[path[0]] = parentRecord;
+  } else {
+    delete currentState[path[0]];
+  }
+
+  next.state = currentState;
+  next.version = newVersion;
+  next.updatedAt = updatedAt;
+  records.set(id, next);
+  return { ok: true, version: newVersion, record: clone(next) };
 }

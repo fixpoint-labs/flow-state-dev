@@ -1,0 +1,271 @@
+{
+  "timeseries": {
+    "result": [
+      {
+        "meta": {
+          "type": [
+            "annualTotalAssets"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualTotalAssets": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 364980000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 359241000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualCapitalExpenditure"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualCapitalExpenditure": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": -9447000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": -12715000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualOperatingIncome"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualOperatingIncome": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 123216000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 133050000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualTotalDebt"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualTotalDebt": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 106629000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 98657000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualTotalRevenue"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualTotalRevenue": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 391035000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 416161000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualCashAndCashEquivalents"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualCashAndCashEquivalents": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 29943000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 35934000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualFreeCashFlow"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualFreeCashFlow": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 108807000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 98767000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualOperatingCashFlow"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualOperatingCashFlow": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 118254000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 111482000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualNetIncome"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualNetIncome": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 93736000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 112010000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualGrossProfit"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualGrossProfit": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 180683000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 195201000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualStockholdersEquity"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualStockholdersEquity": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 56950000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 73733000000.0
+            }
+          }
+        ]
+      },
+      {
+        "meta": {
+          "type": [
+            "annualTotalLiabilitiesNetMinorityInterest"
+          ],
+          "symbol": "AAPL"
+        },
+        "annualTotalLiabilitiesNetMinorityInterest": [
+          {
+            "asOfDate": "2024-09-30",
+            "reportedValue": {
+              "raw": 308030000000.0
+            }
+          },
+          {
+            "asOfDate": "2025-09-30",
+            "reportedValue": {
+              "raw": 285508000000.0
+            }
+          }
+        ]
+      }
+    ],
+    "error": null
+  }
+}

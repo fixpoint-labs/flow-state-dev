@@ -135,7 +135,7 @@ export type ExpectedVersion = number | "any";
  * re-apply the mutator.
  */
 export type SetResult<TRecord> =
-  | { ok: true; version: number }
+  | { ok: true; version: number; record?: TRecord }
   | {
       ok: false;
       conflict: { currentValue: TRecord | undefined; currentVersion: number };
@@ -201,6 +201,18 @@ export interface DeltaStoreOps<TRecord> {
     id: string,
     path: string[],
     values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+
+  /**
+   * Remove the value at `path` inside the record's `state` slice. For a
+   * depth-2 path `["field", "key"]` this deletes `state.field.key`, leaving
+   * sibling keys intact. A missing key is a no-op (version still bumps).
+   */
+  deleteField?(
+    id: string,
+    path: string[],
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<TRecord>>;

@@ -3286,6 +3286,7 @@ export async function createExecutionContext<
   });
 
   const userOps = createScopeStateOps(userContainer, {
+    cas: flow.user?.cas,
     persist: createScopePersist<TUserState, UserRecord>(
       userRef,
       stores.user,
@@ -3299,6 +3300,7 @@ export async function createExecutionContext<
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
+    cas: flow.session?.cas,
     persist: createScopePersist<TSessionState, SessionRecord>(
       sessionRef,
       stores.session,
@@ -3332,6 +3334,7 @@ export async function createExecutionContext<
       })
     );
     return createScopeStateOps(orgContainer, {
+      cas: flow.org?.cas,
       persist: async (state, expectedVersion, hint) => {
         if (orgRef.current === undefined) {
           return { ok: true, version: expectedVersion + 1 };

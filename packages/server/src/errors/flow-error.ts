@@ -209,3 +209,29 @@ export class FlowStateDisposedError extends FlowError {
     this.name = "FlowStateDisposedError";
   }
 }
+
+/**
+ * Thrown when a CAS retry loop exhausts its budget on an external-store scope.
+ * Only surfaces for read-modify-write ops (`setState`, `atomicState`,
+ * multi-field `patchState`, updater-form `patchState`); commutative ops
+ * and in-memory scopes never throw it.
+ */
+export class ConcurrentModificationError extends FlowError {
+  readonly attempts: number;
+
+  constructor(message: string, attempts: number, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "concurrent_modification",
+        retryable: true
+      })
+    );
+    this.name = "ConcurrentModificationError";
+    this.attempts = attempts;
+    if (!this.details) {
+      (this as { details: Record<string, unknown> }).details = {};
+    }
+    (this.details as Record<string, unknown>).attempts = attempts;
+  }
+}

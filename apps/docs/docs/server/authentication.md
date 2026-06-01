@@ -298,6 +298,9 @@ is then stored separately and excluded from the schema check. See
 [Sharing State Across Flows](/docs/advanced/flow-isolation) for the full
 opt-out story.
 
+For triggering a flow from code outside the HTTP layer — where you supply the
+resolved `userId` yourself — see [Calling a flow without a transport](../advanced/manual-flow-execution.md).
+
 ## What the framework does not do
 
 - Store credentials, OAuth tokens, or webhook secrets.
