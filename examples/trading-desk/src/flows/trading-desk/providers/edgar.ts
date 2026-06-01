@@ -21,9 +21,8 @@ import {
   type EdgarCompanyFacts,
 } from "./edgar-companyfacts";
 
-// SEC requires a descriptive User-Agent identifying the caller. This is a
-// public open-source example; the address is the project owner's.
-const USER_AGENT = "flow-state-dev-example (jake.hoffner@gmail.com)";
+// SEC requires a descriptive User-Agent identifying the caller.
+const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
 const TICKERS_URL = "https://www.sec.gov/files/company_tickers.json";
 const COMPANYFACTS_BASE = "https://data.sec.gov/api/xbrl/companyfacts";
 
