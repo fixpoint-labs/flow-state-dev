@@ -85,3 +85,43 @@ describe("fetchFinnhubFundamentals P/E mapping", () => {
     expect(out.trailingPE).toBeNull();
   });
 });
+
+describe("fetchFinnhubFundamentals dividend yield mapping", () => {
+  it("maps dividendYieldIndicatedAnnual percent to fraction", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: { dividendYieldIndicatedAnnual: 2.5 },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "JPM", date: "2026-05-06" });
+    expect(out.dividendYield).toBeCloseTo(0.025, 4);
+  });
+
+  it("returns null dividendYield when absent", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: {},
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "NVDA", date: "2026-05-06" });
+    expect(out.dividendYield).toBeNull();
+  });
+
+  it("returns null dividendYield when zero (non-payer)", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: { dividendYieldIndicatedAnnual: 0 },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "NVDA", date: "2026-05-06" });
+    expect(out.dividendYield).toBeNull();
+  });
+});
+
+describe("fetchFinnhubFundamentals marketCap normalization", () => {
+  it("normalizes marketCapitalization from $M to $B", async () => {
+    mockFetch({
+      marketCapitalization: 2950000, // $2.95T in $M
+      metric: {},
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "NVDA", date: "2026-05-06" });
+    expect(out.marketCap).toBeCloseTo(2950, 1);
+  });
+});

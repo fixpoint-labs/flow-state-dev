@@ -7,5 +7,6 @@
   "priceToSales": 3.7,
   "returnOnEquity": 0.17,
   "operatingMargin": 0.49,
-  "grossMargin": 1.0
+  "grossMargin": 1.0,
+  "dividendYield": 0.022
 }

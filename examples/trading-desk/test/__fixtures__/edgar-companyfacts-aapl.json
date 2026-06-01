@@ -1,0 +1,536 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "Assets": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 364980000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 364980000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 359241000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "Liabilities": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 308030000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 308030000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 285508000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "StockholdersEquity": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 56950000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 56950000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 73733000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "CashAndCashEquivalentsAtCarryingValue": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 29943000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 29943000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 35934000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "LongTermDebtNoncurrent": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 85750000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 85750000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 78328000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "LongTermDebtCurrent": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 10912000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 10912000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 12350000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "LongTermDebt": {
+        "units": {
+          "USD": [
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 96662000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": null,
+              "end": "2024-09-28",
+              "val": 96662000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024Q3I"
+            },
+            {
+              "start": null,
+              "end": "2025-09-27",
+              "val": 90678000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            }
+          ]
+        }
+      },
+      "Revenues": {
+        "units": {
+          "USD": [
+            {
+              "start": "2015-09-27",
+              "end": "2016-09-24",
+              "val": 215639000000,
+              "fy": 2018,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2016"
+            },
+            {
+              "start": "2016-09-25",
+              "end": "2017-09-30",
+              "val": 229234000000,
+              "fy": 2018,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2017"
+            },
+            {
+              "start": "2017-10-01",
+              "end": "2018-09-29",
+              "val": 265595000000,
+              "fy": 2018,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2018"
+            }
+          ]
+        }
+      },
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 391035000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 391035000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 416161000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "GrossProfit": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 180683000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 180683000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 195201000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "OperatingIncomeLoss": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 123216000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 123216000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 133050000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 93736000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 93736000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 112010000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "NetCashProvidedByUsedInOperatingActivities": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 118254000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 118254000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 111482000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "NetCashProvidedByUsedInInvestingActivities": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 2935000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 2935000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 15195000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "NetCashProvidedByUsedInFinancingActivities": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": -121983000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": -121983000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": -120686000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      },
+      "PaymentsToAcquirePropertyPlantAndEquipment": {
+        "units": {
+          "USD": [
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 9447000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": null
+            },
+            {
+              "start": "2023-10-01",
+              "end": "2024-09-28",
+              "val": 9447000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2024"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 12715000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "frame": "CY2025"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

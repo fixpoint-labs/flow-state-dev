@@ -8,6 +8,12 @@
  * get_balance_sheet, get_income_statement, get_cashflow.
  */
 import type { ToolInput, ToolOutput } from "../phase-1/tools/schemas";
+import {
+  isEmptyTimeseries,
+  mapYahooTimeseries,
+  YAHOO_TIMESERIES_TYPES,
+  type YahooTimeseriesResponse,
+} from "./yahoo-timeseries";
 
 type YahooClient = {
   chart: (
@@ -97,7 +103,8 @@ export async function fetchYahooFundamentals(
     source: "yahoo",
     ticker: input.ticker,
     asOf: input.date,
-    marketCap: numberFrom(detail.marketCap),
+    // Yahoo returns absolute USD; normalize to $B to match statements and fixtures.
+    marketCap: numberFrom(detail.marketCap) / 1_000_000_000,
     forwardPE:
       nullableNumberFrom(stats.forwardPE) ?? nullableNumberFrom(detail.forwardPE),
     trailingPE: nullableNumberFrom(detail.trailingPE),
@@ -105,87 +112,67 @@ export async function fetchYahooFundamentals(
     returnOnEquity: numberFrom(fin.returnOnEquity),
     operatingMargin: numberFrom(fin.operatingMargins),
     grossMargin: numberFrom(fin.grossMargins),
+    dividendYield: nullableNumberFrom(detail.dividendYield),
   };
+}
+
+/**
+ * Fetch the three statements in one call from the modern
+ * `fundamentals-timeseries` endpoint and map them with `mapYahooTimeseries`.
+ *
+ * The legacy `*History` quoteSummary modules stopped carrying their numeric
+ * fields (live runs read 0 across grossProfit / operatingIncome / the whole
+ * balance sheet + cashflow — FIX-705 follow-up). This endpoint still returns
+ * them as annual series. We hit the REST URL directly rather than via the
+ * `yahoo-finance2` client: the client's `fundamentalsTimeSeries` transform
+ * reshapes the payload opaquely, and the raw series shape is the one we can
+ * pin in tests. Throws on non-2xx so callers fall through to the next
+ * provider with a single `try { ... } catch {}`.
+ */
+const YAHOO_TIMESERIES_BASE =
+  "https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries";
+
+async function fetchYahooTimeseries(ticker: string): Promise<YahooTimeseriesResponse> {
+  const url = new URL(`${YAHOO_TIMESERIES_BASE}/${encodeURIComponent(ticker)}`);
+  url.searchParams.set("symbol", ticker);
+  url.searchParams.set("type", YAHOO_TIMESERIES_TYPES.join(","));
+  // Wide window so at least one annual period (plus a prior for YoY) lands.
+  url.searchParams.set("period1", "1483228800"); // 2017-01-01
+  url.searchParams.set("period2", "9999999999");
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Yahoo timeseries failed: HTTP ${res.status} ${body.slice(0, 120)}`);
+  }
+  const json = (await res.json()) as YahooTimeseriesResponse;
+  // Yahoo throttles the unauthenticated endpoint with a 200 that carries the
+  // series rows but no data. Treat that as a failure so the tool falls through
+  // to the next provider rather than returning an all-null "yahoo" payload.
+  if (isEmptyTimeseries(json)) {
+    throw new Error(`Yahoo timeseries empty for ${ticker} (throttled or unsupported)`);
+  }
+  return json;
 }
 
 export async function fetchYahooBalanceSheet(
   input: ToolInput<"get_balance_sheet">,
 ): Promise<ToolOutput<"get_balance_sheet">> {
-  const yahoo = await getYahoo();
-  const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["balanceSheetHistory"],
-  })) as { balanceSheetHistory?: { balanceSheetStatements?: Array<Record<string, unknown>> } };
-  const stmt = summary.balanceSheetHistory?.balanceSheetStatements?.[0] ?? {};
-  // Yahoo returns absolute dollars; schema is "USD billions".
-  const toB = (raw: unknown) => numberFrom(raw) / 1e9;
-  const totalAssets = toB(stmt.totalAssets);
-  const totalLiabilities = toB(stmt.totalLiab);
-  return {
-    source: "yahoo",
-    ticker: input.ticker,
-    asOf: asOfFromStatement(stmt) ?? input.date,
-    totalAssets,
-    totalLiabilities,
-    totalEquity: toB(stmt.totalStockholderEquity) || totalAssets - totalLiabilities,
-    cashAndEquivalents: toB(stmt.cash),
-    totalDebt: toB(stmt.shortLongTermDebt) + toB(stmt.longTermDebt),
-    unit: "USD billions",
-  };
+  const resp = await fetchYahooTimeseries(input.ticker);
+  return mapYahooTimeseries(resp, input.ticker, input.date).balanceSheet;
 }
 
 export async function fetchYahooIncomeStatement(
   input: ToolInput<"get_income_statement">,
 ): Promise<ToolOutput<"get_income_statement">> {
-  const yahoo = await getYahoo();
-  const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["incomeStatementHistory"],
-  })) as {
-    incomeStatementHistory?: { incomeStatementHistory?: Array<Record<string, unknown>> };
-  };
-  const history = summary.incomeStatementHistory?.incomeStatementHistory ?? [];
-  const latest = history[0] ?? {};
-  const prior = history[1] ?? {};
-  const toB = (raw: unknown) => numberFrom(raw) / 1e9;
-  const latestRev = numberFrom(latest.totalRevenue);
-  const priorRev = numberFrom(prior.totalRevenue);
-  const yoy = priorRev > 0 ? (latestRev - priorRev) / priorRev : 0;
-  return {
-    source: "yahoo",
-    ticker: input.ticker,
-    asOf: asOfFromStatement(latest) ?? input.date,
-    revenue: toB(latest.totalRevenue),
-    grossProfit: toB(latest.grossProfit),
-    operatingIncome: toB(latest.operatingIncome),
-    netIncome: toB(latest.netIncome),
-    yoyRevenueGrowth: yoy,
-    unit: "USD billions",
-  };
+  const resp = await fetchYahooTimeseries(input.ticker);
+  return mapYahooTimeseries(resp, input.ticker, input.date).incomeStatement;
 }
 
 export async function fetchYahooCashflow(
   input: ToolInput<"get_cashflow">,
 ): Promise<ToolOutput<"get_cashflow">> {
-  const yahoo = await getYahoo();
-  const summary = (await yahoo.quoteSummary(input.ticker, {
-    modules: ["cashflowStatementHistory"],
-  })) as {
-    cashflowStatementHistory?: { cashflowStatements?: Array<Record<string, unknown>> };
-  };
-  const stmt = summary.cashflowStatementHistory?.cashflowStatements?.[0] ?? {};
-  const toB = (raw: unknown) => numberFrom(raw) / 1e9;
-  const operating = toB(stmt.totalCashFromOperatingActivities);
-  // Yahoo reports capex as a negative number; FCF = operating + capex.
-  const capex = toB(stmt.capitalExpenditures);
-  return {
-    source: "yahoo",
-    ticker: input.ticker,
-    asOf: asOfFromStatement(stmt) ?? input.date,
-    operating,
-    investing: toB(stmt.totalCashflowsFromInvestingActivities),
-    financing: toB(stmt.totalCashFromFinancingActivities),
-    freeCashFlow: operating + capex,
-    unit: "USD billions",
-  };
+  const resp = await fetchYahooTimeseries(input.ticker);
+  return mapYahooTimeseries(resp, input.ticker, input.date).cashflow;
 }
 
 /**
@@ -258,16 +245,4 @@ function numberFrom(raw: unknown): number {
 function nullableNumberFrom(raw: unknown): number | null {
   const n = numberFrom(raw);
   return Number.isFinite(n) && n !== 0 ? n : null;
-}
-
-/** Statement period end-date — Yahoo emits a Date or `{ raw: epochSeconds }`. */
-function asOfFromStatement(stmt: Record<string, unknown>): string | null {
-  const end = stmt.endDate;
-  if (end instanceof Date) return end.toISOString().slice(0, 10);
-  if (typeof end === "object" && end !== null && "raw" in end) {
-    const raw = (end as { raw?: unknown }).raw;
-    if (typeof raw === "number") return new Date(raw * 1000).toISOString().slice(0, 10);
-  }
-  if (typeof end === "string") return end.slice(0, 10);
-  return null;
 }

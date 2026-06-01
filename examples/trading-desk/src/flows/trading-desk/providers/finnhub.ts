@@ -104,6 +104,7 @@ export async function fetchFinnhubFundamentals(
       roeTTM?: number;
       operatingMarginTTM?: number;
       grossMarginTTM?: number;
+      dividendYieldIndicatedAnnual?: number;
     };
   };
   const [profile, metric] = await Promise.all([
@@ -120,18 +121,23 @@ export async function fetchFinnhubFundamentals(
   // matching the Yahoo adapter's nullableNumberFrom.
   const num = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v : null;
+  // Nullable percent → fraction. 0/absent → null (a non-payer is unobserved,
+  // not "0% yield"); never default to 0 the way pct() does for ROE/margins.
+  const nullablePct = (v: number | undefined): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v !== 0 ? v / 100 : null;
   return {
     source: "finnhub",
     ticker: input.ticker,
     asOf: input.date,
-    // Profile gives market cap in $M; canonicalize to absolute USD.
-    marketCap: (profile.marketCapitalization ?? 0) * 1_000_000,
+    // Profile gives market cap in $M; normalize to $B to match statements and fixtures.
+    marketCap: (profile.marketCapitalization ?? 0) / 1_000,
     forwardPE: num(m.forwardPE),
     trailingPE: num(m.peTTM),
     priceToSales: m.psTTM ?? 0,
     returnOnEquity: pct(m.roeTTM),
     operatingMargin: pct(m.operatingMarginTTM),
     grossMargin: pct(m.grossMarginTTM),
+    dividendYield: nullablePct(m.dividendYieldIndicatedAnnual),
   };
 }
 

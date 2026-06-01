@@ -34,7 +34,10 @@ src/flows/trading-desk/
     discover.ts                  web-search → DiscoveryPayload shape
   providers/                     external API clients (stateless, throw on failure)
     finnhub.ts                   Finnhub fetch helpers
-    yahoo.ts                     Yahoo Finance v3 fetch helpers
+    yahoo.ts                     Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
+    yahoo-timeseries.ts          pure mapper: fundamentals-timeseries → 3 statements
+    edgar.ts                     SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
+    edgar-companyfacts.ts        pure mapper: us-gaap companyfacts → 3 statements
     web.ts                       homepage meta + web-search fallback
     xai.ts                       Grok (xAI) credentials + model id
   phase-1/
@@ -308,12 +311,23 @@ bodies, plus Grok (xAI) for social sentiment when `XAI_API_KEY` is set.
 Required environment variables:
 
 ```
-FINNHUB_API_KEY=...      # finnhub.io — fundamentals, prices, news, insider transactions
+FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
 XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
 ```
 
-Polymarket and Yahoo Finance don't require keys.
+Polymarket, Yahoo Finance, and SEC EDGAR don't require keys.
+
+The three financial statements (`get_balance_sheet` / `get_income_statement`
+/ `get_cashflow`) source from **SEC EDGAR XBRL companyfacts first, then Yahoo
+`fundamentals-timeseries`, then empty payload**. EDGAR is the authoritative
+US-filing source and answers even when Yahoo throttles its unauthenticated
+endpoint (a 200-with-no-data response the Yahoo mapper detects and treats as a
+miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. Statement
+fields are nullable: a field a provider doesn't report reads `null`
+(unobserved), never `0` — extends the nullable-PE discipline (FIX-692) to the
+statements. The legacy Yahoo `*History` quoteSummary modules were dropped:
+they returned zero-filled statements in current Yahoo responses.
 
 `get_social_sentiment` is the only Phase 1 tool that routes between a
 handler and a generator. Fixture and unavailable are handlers; the
