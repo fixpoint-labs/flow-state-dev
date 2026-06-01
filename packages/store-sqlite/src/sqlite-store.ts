@@ -36,7 +36,6 @@ export type SQLiteRecordStore<TRecord, TListOptions> = {
     value: TRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<TRecord>>;
-  /** Replace a single depth-1 `state.<field>` (FIX-405 delta verb). */
   patchField(
     id: string,
     path: string[],
@@ -44,7 +43,6 @@ export type SQLiteRecordStore<TRecord, TListOptions> = {
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<TRecord>>;
-  /** Add `delta` to a numeric depth-1 `state.<field>` (missing/non-numeric → 0). */
   incField(
     id: string,
     path: string[],
@@ -52,11 +50,16 @@ export type SQLiteRecordStore<TRecord, TListOptions> = {
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<TRecord>>;
-  /** Append `values` to an array depth-1 `state.<field>` (missing/non-array → replace). */
   pushToArray(
     id: string,
     path: string[],
     values: unknown[],
+    expectedVersion: ExpectedVersion,
+    updatedAt: number
+  ): Promise<SetResult<TRecord>>;
+  deleteField(
+    id: string,
+    path: string[],
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<TRecord>>;
@@ -130,21 +133,18 @@ export function createSQLiteRecordStore<
     path: string[],
     expectedVersion: ExpectedVersion,
     updatedAt: number,
-    mutate: (current: unknown) => unknown
+    mutate: (current: unknown, record: DeltaRecord, path: string[]) => void
   ): SetResult<TRecord> {
-    if (path.length !== 1) {
+    if (path.length < 1 || path.length > 2) {
       throw new Error(
-        `sqlite delta verbs only support depth-1 paths in v1; got [${path.join(", ")}]`
+        `sqlite delta verbs support depth-1 or depth-2 paths; got [${path.join(", ")}]`
       );
     }
-    const key = path[0]!;
     return db.transaction((): SetResult<TRecord> => {
       const row = selectDeltaStmt.get(id) as
         | { data: string; version: number }
         | undefined;
       if (row === undefined) {
-        // Missing record: `currentVersion` is 0, matching the full-record
-        // `set` conflict path so the CAS layer can retry with a fresh write.
         return {
           ok: false,
           conflict: { currentValue: undefined, currentVersion: 0 }
@@ -161,15 +161,12 @@ export function createSQLiteRecordStore<
       }
       const newVersion = (expectedVersion === "any" ? row.version : expectedVersion) + 1;
       const record = JSON.parse(row.data) as DeltaRecord;
-      // A legacy record may have been stored without an explicit `state`
-      // object; treat it as empty so the verb upgrades it rather than throwing
-      // (mirrors the filesystem adapter's `current.state ?? {}` guard).
       if (record.state == null) record.state = {};
-      record.state[key] = mutate(record.state[key]);
+      mutate(undefined, record, path);
       record.version = newVersion;
       record.updatedAt = updatedAt;
       updateDeltaStmt.run(JSON.stringify(record), newVersion, updatedAt, id);
-      return { ok: true, version: newVersion };
+      return { ok: true, version: newVersion, record: record as unknown as TRecord };
     })();
   }
 
@@ -237,7 +234,16 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      return runDelta(id, path, expectedVersion, updatedAt, () => value);
+      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+        if (p.length === 2) {
+          if (record.state[p[0]] == null || typeof record.state[p[0]] !== "object") {
+            record.state[p[0]] = {};
+          }
+          (record.state[p[0]] as Record<string, unknown>)[p[1]] = value;
+        } else {
+          record.state[p[0]] = value;
+        }
+      });
     },
 
     async incField(
@@ -247,11 +253,13 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // Treat a missing or non-numeric existing value as 0, mirroring the
-      // in-memory adapter's `typeof === "number"` baseline.
-      return runDelta(id, path, expectedVersion, updatedAt, (current) =>
-        (typeof current === "number" ? current : 0) + delta
-      );
+      if (path.length !== 1) {
+        throw new Error(`incField supports depth-1 paths only; got [${path.join(", ")}]`);
+      }
+      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+        const existing = record.state[p[0]];
+        record.state[p[0]] = (typeof existing === "number" ? existing : 0) + delta;
+      });
     },
 
     async pushToArray(
@@ -261,11 +269,31 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      // Append when the existing value is an array; otherwise replace with
-      // the pushed values (missing/non-array slot).
-      return runDelta(id, path, expectedVersion, updatedAt, (current) =>
-        Array.isArray(current) ? [...current, ...values] : [...values]
-      );
+      if (path.length !== 1) {
+        throw new Error(`pushToArray supports depth-1 paths only; got [${path.join(", ")}]`);
+      }
+      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+        const existing = record.state[p[0]];
+        record.state[p[0]] = Array.isArray(existing) ? [...existing, ...values] : [...values];
+      });
+    },
+
+    async deleteField(
+      id: string,
+      path: string[],
+      expectedVersion: ExpectedVersion,
+      updatedAt: number
+    ): Promise<SetResult<TRecord>> {
+      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+        if (p.length === 2) {
+          const parent = record.state[p[0]];
+          if (parent != null && typeof parent === "object") {
+            delete (parent as Record<string, unknown>)[p[1]];
+          }
+        } else {
+          delete record.state[p[0]];
+        }
+      });
     },
 
     async delete(id: string): Promise<void> {

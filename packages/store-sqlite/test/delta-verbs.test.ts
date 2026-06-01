@@ -63,7 +63,8 @@ describe("SQLite adapter — delta verb contract (FIX-405)", () => {
 
       const result = await store.patchField!("s1", ["count"], 5, 0, Date.now());
 
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
       const after = await store.get("s1");
       expect(after?.state).toEqual({ count: 5, mode: "idle" });
       expect(after?.version).toBe(1);
@@ -114,12 +115,20 @@ describe("SQLite adapter — delta verb contract (FIX-405)", () => {
       expect(result.ok).toBe(false);
     });
 
-    it("rejects depth>1 paths in v1", async () => {
+    it("supports depth-2 paths for nested record writes", async () => {
+      const store = freshStore();
+      await seed(store, "s1", { nested: { x: 1 } });
+      const result = await store.patchField!("s1", ["nested", "y"], 2, 0, Date.now());
+      expect(result.ok).toBe(true);
+      expect((await store.get("s1"))?.state).toEqual({ nested: { x: 1, y: 2 } });
+    });
+
+    it("rejects depth > 2 paths", async () => {
       const store = freshStore();
       await seed(store, "s1", {});
       await expect(
-        store.patchField!("s1", ["a", "b"], 1, 0, Date.now())
-      ).rejects.toThrow(/depth-1/i);
+        store.patchField!("s1", ["a", "b", "c"], 1, 0, Date.now())
+      ).rejects.toThrow();
     });
   });
 

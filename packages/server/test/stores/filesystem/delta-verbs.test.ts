@@ -60,7 +60,8 @@ describe("Filesystem adapter — delta verbs", () => {
       const before = await store.get("s1");
 
       const result = await store.patchField!("s1", ["count"], 5, 0, Date.now());
-      expect(result).toEqual({ ok: true, version: 1 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(1);
 
       const after = await store.get("s1");
       expect(after?.state).toEqual({ count: 5, mode: "idle" });
@@ -98,7 +99,8 @@ describe("Filesystem adapter — delta verbs", () => {
       await store.patchField!("s1", ["count"], 1, 0, Date.now()); // v1
 
       const result = await store.patchField!("s1", ["count"], 42, "any", Date.now());
-      expect(result).toEqual({ ok: true, version: 2 });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.version).toBe(2);
       expect((await store.get("s1"))?.state).toEqual({ count: 42 });
     });
 
@@ -108,11 +110,19 @@ describe("Filesystem adapter — delta verbs", () => {
       expect(result.ok).toBe(false);
     });
 
-    it("throws on depth > 1 paths", async () => {
+    it("supports depth-2 paths for nested record writes", async () => {
+      const store = createFilesystemSessionStore({ rootDir });
+      await seed(store, "s1", { status: { a: "ok" } });
+      const result = await store.patchField!("s1", ["status", "b"], "done", 0, Date.now());
+      expect(result.ok).toBe(true);
+      expect((await store.get("s1"))?.state).toEqual({ status: { a: "ok", b: "done" } });
+    });
+
+    it("throws on depth > 2 paths", async () => {
       const store = createFilesystemSessionStore({ rootDir });
       await seed(store, "s1", {});
       await expect(
-        store.patchField!("s1", ["a", "b"], 1, 0, Date.now())
+        store.patchField!("s1", ["a", "b", "c"], 1, 0, Date.now())
       ).rejects.toThrow();
     });
   });

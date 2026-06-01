@@ -16,11 +16,18 @@
  */
 
 import type { CASPersist, CASPersistResult } from "./cas";
+import { isCommutativeHint } from "./cas";
+import type { CASMutationHint } from "./cas";
 import type {
   DeltaStoreOps,
   ExpectedVersion,
   SetResult
 } from "./types";
+
+function toNestedValue(state: unknown, field: string, key: string): unknown {
+  const obj = state as Record<string, Record<string, unknown>>;
+  return obj?.[field]?.[key];
+}
 
 export type ScopeStoreLike<TRecord> = DeltaStoreOps<TRecord> & {
   set(
@@ -48,20 +55,25 @@ export function createScopePersist<
 ): CASPersist<TState> {
   return async (state, expectedVersion, hint) => {
     const id = ref.current.id;
-    // One Date.now() shared between the delta-verb call (so the DB row
-    // stores it) and the local ref update (so consumers reading
-    // ref.current.updatedAt see the same value the DB holds). The `set`
-    // fallback path doesn't use this — `buildSetRecord` captures its own
-    // Date.now() inside the full record it constructs.
     const updatedAt = Date.now();
+    const commutative = isCommutativeHint(hint);
+    const effectiveVersion: ExpectedVersion = commutative ? "any" : expectedVersion;
 
     const handleResult = (
       result: SetResult<TRecord>,
       buildLocalNext: (version: number) => TRecord
     ): CASPersistResult<TState> => {
       if (result.ok) {
-        ref.current = buildLocalNext(result.version);
-        return { ok: true, version: result.version };
+        // On the commutative path, prefer the store-returned record (it
+        // reflects concurrent writers' changes). On the CAS path, build
+        // the local next from the mutator output as before.
+        const next = result.record ?? buildLocalNext(result.version);
+        ref.current = next;
+        return {
+          ok: true,
+          version: result.version,
+          record: next.state as TState
+        };
       }
       const current = result.conflict.currentValue;
       if (current !== undefined) {
@@ -82,12 +94,14 @@ export function createScopePersist<
     });
 
     if (hint.kind === "patchField" && typeof store.patchField === "function") {
-      const value = (state as Record<string, unknown>)[hint.path[0]];
+      const value = hint.path.length === 2
+        ? (toNestedValue(state, hint.path[0], hint.path[1]))
+        : (state as Record<string, unknown>)[hint.path[0]];
       const result = await store.patchField(
         id,
         hint.path,
         value,
-        expectedVersion,
+        effectiveVersion,
         updatedAt
       );
       return handleResult(result, buildDeltaLocal);
@@ -98,7 +112,7 @@ export function createScopePersist<
         id,
         hint.path,
         hint.delta,
-        expectedVersion,
+        effectiveVersion,
         updatedAt
       );
       return handleResult(result, buildDeltaLocal);
@@ -112,7 +126,17 @@ export function createScopePersist<
         id,
         hint.path,
         hint.values,
-        expectedVersion,
+        effectiveVersion,
+        updatedAt
+      );
+      return handleResult(result, buildDeltaLocal);
+    }
+
+    if (hint.kind === "deleteField" && typeof store.deleteField === "function") {
+      const result = await store.deleteField(
+        id,
+        hint.path,
+        effectiveVersion,
         updatedAt
       );
       return handleResult(result, buildDeltaLocal);
