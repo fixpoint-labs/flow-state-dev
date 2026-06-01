@@ -6,7 +6,7 @@
  * design are deferred to a follow-up.
  */
 
-import type { MemoryItem } from './tools/types.js'
+import type { MemoryItem } from './tools/types'
 
 export type { MemoryItem }
 

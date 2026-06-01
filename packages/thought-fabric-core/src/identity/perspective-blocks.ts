@@ -28,11 +28,11 @@ import {
   perspectivePositionInputSchema,
   perspectiveChallengeInputSchema,
   perspectiveSnapshotOutputSchema,
-} from './perspective.js'
+} from './perspective'
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
-} from './perspective.js'
+} from './perspective'
 import {
   formatPerspective,
   addPerspectiveObservation,
@@ -41,7 +41,7 @@ import {
   perspectiveObservations,
   perspectivePositions,
   advancePerspectiveObservations,
-} from './perspective-helpers.js'
+} from './perspective-helpers'
 
 /** Position scope — controls where positions are persisted. */
 export type PositionScope = 'session' | 'user' | 'org'

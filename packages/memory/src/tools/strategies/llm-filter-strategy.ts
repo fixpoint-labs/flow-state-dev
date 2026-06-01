@@ -23,17 +23,17 @@
 
 import { generator, handler } from '@flow-state-dev/core'
 import { z } from 'zod'
-import type { Episode, EpisodicMemoryState } from '../../episodic-memory.js'
-import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory.js'
-import type { WorkingMemoryState } from '../../working-memory.js'
-import { allFacts } from '../../semantic-memory-helpers.js'
-import { effectiveConfidence } from '../../janitor.js'
+import type { Episode, EpisodicMemoryState } from '../../episodic-memory'
+import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory'
+import type { WorkingMemoryState } from '../../working-memory'
+import { allFacts } from '../../semantic-memory-helpers'
+import { effectiveConfidence } from '../../janitor'
 import type {
   MemoryItem,
   PrepareEnvelope,
   PrepareInput,
   RetrievalStrategy,
-} from '../types.js'
+} from '../types'
 
 /**
  * @deprecated since the prepare gate split into per-source pools — the

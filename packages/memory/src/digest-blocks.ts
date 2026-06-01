@@ -15,19 +15,19 @@
 
 import { generator, handler, sequencer } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { workingMemoryResource } from './working-memory.js'
-import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { recent as recentEpisodes } from './episodic-memory-helpers.js'
-import { createSemanticMemoryResource } from './semantic-memory.js'
-import { topFacts } from './semantic-memory-helpers.js'
+import { workingMemoryResource } from './working-memory'
+import { createEpisodicMemoryResource } from './episodic-memory'
+import { recent as recentEpisodes } from './episodic-memory-helpers'
+import { createSemanticMemoryResource } from './semantic-memory'
+import { topFacts } from './semantic-memory-helpers'
 import {
   createDigestMemoryResource,
   type Digest,
   type DigestMemoryState,
-} from './digest-memory.js'
-import { computeSourceSignature } from './digest-helpers.js'
-import { memorySystemResource } from './memory-system.js'
-import type { MemorySystemBlocksConfig } from './memory-system-blocks.js'
+} from './digest-memory'
+import { computeSourceSignature } from './digest-helpers'
+import { memorySystemResource } from './memory-system'
+import type { MemorySystemBlocksConfig } from './memory-system-blocks'
 
 // ---------------------------------------------------------------------------
 // Config

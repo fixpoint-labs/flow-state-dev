@@ -54,7 +54,7 @@ const resolver = createModelResolver({
   },
   defaultModel: "anthropic/claude-sonnet-4.6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
   },
   retryPolicy: {
     maxAttemptsPerModel: 3,
@@ -70,7 +70,7 @@ Intents are named routing groups configured on the resolver. Generators referenc
 const resolver = createModelResolver({
   defaultModel: "anthropic/claude-sonnet-4.6",
   intents: {
-    utility:   ["anthropic/claude-haiku-4.5", "openai/gpt-5.5-nano"],
+    utility:   ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
     chat:      ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
     plan:      ["anthropic/claude-opus-4.7"],
     synthesize:["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],

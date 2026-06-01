@@ -8,7 +8,7 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import { shortId } from '../helpers.js'
+import { shortId } from '../helpers'
 import type {
   PerspectiveInstance,
   PerspectiveSalience,
@@ -17,7 +17,7 @@ import type {
   PerspectiveObservationsState,
   PerspectivePosition,
   PerspectivePositionsState,
-} from './perspective.js'
+} from './perspective'
 
 /** Reference type for the observations resource. */
 export type PerspectiveObservationsRef = ResourceContext<PerspectiveObservationsState>

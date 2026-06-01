@@ -7,20 +7,24 @@ Living under `apps/` (not `examples/`) because kitchen-sink is too large to serv
 ## Commands
 
 ```bash
-pnpm dev          # Incremental package build (tsc --build), then Next.js dev server
-pnpm dev:fresh    # Wipe tsbuildinfo + dist (tsc --build --clean), then full rebuild + dev
-pnpm dev:watch    # tsc --build --watch + Next.js with restart-on-dist-change
+pnpm dev          # Next.js dev server (no package build step)
 pnpm build        # Production build
-pnpm test         # Run tests (builds testing package first)
+pnpm test         # Run tests
 pnpm test:watch   # Watch mode
 ```
 
-`pnpm dev` uses TypeScript project references (`tsc --build`) which writes per-package
-`tsconfig.tsbuildinfo` files containing input fingerprints. On re-run it skips
-unchanged projects entirely — first cold start is a few seconds; subsequent runs
-where nothing changed cost ~1s for the build phase. Fingerprints are content-based,
-so it stays correct after `git pull`. Use `dev:fresh` if the cache gets out of sync
-(rare — usually after toolchain upgrades).
+`pnpm dev` is just `next dev`. Workspace packages are consumed as TypeScript
+source — their `package.json` `exports` point at `./src` in the workspace (the
+built `./dist` is swapped in at publish time via `publishConfig`), and
+`next.config.mjs` lists every workspace package in `transpilePackages`. So
+editing a package shows up in the running app through Next's HMR with no
+rebuild and no watcher. The old `tsc --build` / dist-watching dance (and the
+`dev:fresh` / `dev:watch` scripts) are gone — there's no compiled `dist` in the
+dev loop to fall out of sync.
+
+Package builds (for typecheck, publish, and CI) run through Turborepo:
+`pnpm packages:build` from the repo root. Turbo caches task output, so an
+unchanged rebuild is a near-instant cache hit.
 
 ## Testing this app
 

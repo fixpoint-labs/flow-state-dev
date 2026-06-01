@@ -1,7 +1,14 @@
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { workspacePackages } from "../../scripts/workspace-packages.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Workspace packages are consumed as TypeScript source in dev (their
+// package.json `exports` point at ./src; the dist build is swapped in at
+// publish via publishConfig). Next must transpile every one it imports, so the
+// list is derived from the workspace (see scripts/workspace-packages.mjs) —
+// adding a package can no longer silently break HMR.
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -12,15 +19,7 @@ const nextConfig = {
   // `flows/chat-agent/blocks/bash-tools.ts`), so the static import is
   // visible to nft like any other dependency.
   serverExternalPackages: ["pg"],
-  transpilePackages: [
-    "@flow-state-dev/core",
-    "@flow-state-dev/client",
-    "@flow-state-dev/devtool",
-    "@flow-state-dev/react",
-    "@flow-state-dev/server",
-    "@flow-state-dev/store-postgres",
-    "@flow-state-dev/vercel",
-  ],
+  transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),
   },

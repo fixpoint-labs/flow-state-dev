@@ -2,48 +2,48 @@
   "name": "@flow-state-dev/core",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "default": "./src/index.ts"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",
-      "default": "./dist/types/index.js"
+      "default": "./src/types/index.ts"
     },
     "./items": {
       "types": "./dist/items/index.d.ts",
-      "default": "./dist/items/index.js"
+      "default": "./src/items/index.ts"
     },
     "./items/internal": {
       "types": "./dist/items/internal.d.ts",
-      "default": "./dist/items/internal.js"
+      "default": "./src/items/internal.ts"
     },
     "./prompt": {
       "types": "./dist/prompt/index.d.ts",
-      "default": "./dist/prompt/index.js"
+      "default": "./src/prompt/index.ts"
     },
     "./prompt-file": {
       "types": "./dist/prompt/prompt-file.d.ts",
-      "default": "./dist/prompt/prompt-file.js"
+      "default": "./src/prompt/prompt-file.ts"
     },
     "./prompt-file/node": {
       "types": "./dist/prompt/load-prompt-file.node.d.ts",
-      "default": "./dist/prompt/load-prompt-file.node.js"
+      "default": "./src/prompt/load-prompt-file.node.ts"
     },
     "./models": {
       "types": "./dist/models/index.d.ts",
-      "default": "./dist/models/index.js"
+      "default": "./src/models/index.ts"
     },
     "./capability": {
       "types": "./dist/capability/index.d.ts",
-      "default": "./dist/capability/index.js"
+      "default": "./src/capability/index.ts"
     },
     "./helpers": {
       "types": "./dist/helpers/index.d.ts",
-      "default": "./dist/helpers/index.js"
+      "default": "./src/helpers/index.ts"
     }
   },
   "license": "MIT",
@@ -51,7 +51,51 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./types": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "./items": {
+        "types": "./dist/items/index.d.ts",
+        "default": "./dist/items/index.js"
+      },
+      "./items/internal": {
+        "types": "./dist/items/internal.d.ts",
+        "default": "./dist/items/internal.js"
+      },
+      "./prompt": {
+        "types": "./dist/prompt/index.d.ts",
+        "default": "./dist/prompt/index.js"
+      },
+      "./prompt-file": {
+        "types": "./dist/prompt/prompt-file.d.ts",
+        "default": "./dist/prompt/prompt-file.js"
+      },
+      "./prompt-file/node": {
+        "types": "./dist/prompt/load-prompt-file.node.d.ts",
+        "default": "./dist/prompt/load-prompt-file.node.js"
+      },
+      "./models": {
+        "types": "./dist/models/index.d.ts",
+        "default": "./dist/models/index.js"
+      },
+      "./capability": {
+        "types": "./dist/capability/index.d.ts",
+        "default": "./dist/capability/index.js"
+      },
+      "./helpers": {
+        "types": "./dist/helpers/index.d.ts",
+        "default": "./dist/helpers/index.js"
+      }
+    }
   },
   "dependencies": {
     "ai": "^6.0.93",

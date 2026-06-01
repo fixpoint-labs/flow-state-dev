@@ -3,9 +3,10 @@
  * packages/devtool/dist-client/ so the package ships pre-built static assets
  * for `fsdev dev` to serve.
  *
- * The Vite build now consumes the panel from the same package's library
- * entry, so we build the library first (`pnpm --filter <pkg> build`) before
- * running the Vite build via the alias config in apps/devtool.
+ * The app's `tsc --noEmit` step uses composite project references, so its
+ * workspace dependencies (core, client, react, devtool) must be built first.
+ * We build through Turborepo, which orders those dependencies ahead of the
+ * app's own build — no manual sequencing here.
  *
  * Usage: node scripts/build-assets.mjs
  */
@@ -21,9 +22,9 @@ const devtoolAppDir = resolve(monorepoRoot, "apps/devtool");
 const sourceDistDir = resolve(devtoolAppDir, "dist");
 const targetDir = resolve(packageRoot, "dist-client");
 
-console.log("Building DevTool app...");
-execSync("pnpm run build", {
-  cwd: devtoolAppDir,
+console.log("Building DevTool app (with workspace dependencies)...");
+execSync("pnpm exec turbo run build --filter=@flow-state-dev/devtool-app", {
+  cwd: monorepoRoot,
   stdio: "inherit",
 });
 

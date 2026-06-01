@@ -9,9 +9,9 @@
  * package index.
  */
 
-import type { ResolvedHygieneConfig } from '../janitor-blocks.js'
-import { DEFAULT_HYGIENE_CONFIG } from '../janitor.js'
-import type { HygieneConfig } from '../memory-system.js'
+import type { ResolvedHygieneConfig } from '../janitor-blocks'
+import { DEFAULT_HYGIENE_CONFIG } from '../janitor'
+import type { HygieneConfig } from '../memory-system'
 
 /**
  * Resolve user-supplied hygiene config into the concrete shape the janitor
