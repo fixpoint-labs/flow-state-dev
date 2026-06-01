@@ -45,6 +45,13 @@ export type ExecutionResult<TOutput = unknown> = {
   items: import("./internal/response").RuntimeItem[];
   durationMs: number;
   error?: FlowError;
+  /**
+   * Id of the dispatched request. Set by `runAction` (request-level execution)
+   * so non-HTTP callers can correlate logs or attach a stream by it without
+   * pre-generating an id. Absent for standalone block-level executions
+   * (`executeBlock`), which have no request context.
+   */
+  requestId?: string;
 };
 
 export type ExecuteBlockResult<TOutput = unknown> = ExecutionResult<TOutput>;
@@ -84,6 +91,16 @@ export type RunActionOptions<
   stores: StoreRegistry;
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
+  /**
+   * Live-subscription convenience for callers that run a flow outside the HTTP
+   * transport (jobs, cron, queue consumers) and want to observe items as they
+   * happen without assembling their own `ResponseEmitter`. Called for every
+   * item as it is added / updated / done — the same live fan-out that feeds
+   * connected SSE clients, so transient items (live-only, absent from the
+   * persisted log) appear here too; do not re-filter them. Listener exceptions
+   * are isolated and never break the run.
+   */
+  onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
   /**
    * Instance-level options forwarded verbatim through the execution chain
    * (resolvers, settings, middleware, logger, tracing). See
