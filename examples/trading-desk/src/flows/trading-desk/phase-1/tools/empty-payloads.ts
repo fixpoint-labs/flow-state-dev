@@ -222,6 +222,54 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     query: "",
     items: [],
   }),
+  get_factor_ranks: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    peerCount: null,
+    factors: [],
+    compositeFactorPercentile: null,
+  }),
+  get_risk_regime: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    betaMarket: null,
+    betaSector: null,
+    rSquared: null,
+    realizedVolAnnualized: null,
+    volRegime: null,
+    volPercentile: null,
+    correlationMarket: null,
+    correlationRegime: null,
+  }),
+  get_quant_composites: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    altmanZ: null,
+    altmanZone: null,
+    altmanVariant: null,
+    piotroskiF: null,
+    piotroskiBreakdown: [],
+    coverageNote: "Statement data unavailable.",
+  }),
+  get_short_interest: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    shortInterest: null,
+    shortInterestPctFloat: null,
+    daysToCover: null,
+    settlementDate: null,
+  }),
+  discover_quant_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
@@ -241,7 +289,8 @@ type DiscoveryTool =
   | "discover_technical_context"
   | "discover_profile_context"
   | "discover_market_context"
-  | "discover_macro_context";
+  | "discover_macro_context"
+  | "discover_quant_context";
 
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,

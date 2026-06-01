@@ -271,3 +271,86 @@ function asOfFromStatement(stmt: Record<string, unknown>): string | null {
   if (typeof end === "string") return end.slice(0, 10);
   return null;
 }
+
+/** Multi-period statement extraction for composite scores.
+ *  Returns ≥2 periods with richer line items than the single-period helpers. */
+export type FinancialPeriod = {
+  endDate: string;
+  totalAssets: number | null;
+  totalCurrentAssets: number | null;
+  totalCurrentLiabilities: number | null;
+  totalLiabilities: number | null;
+  retainedEarnings: number | null;
+  totalEquity: number | null;
+  totalRevenue: number | null;
+  costOfRevenue: number | null;
+  grossProfit: number | null;
+  operatingIncome: number | null;
+  netIncome: number | null;
+  cfo: number | null;
+  capitalExpenditures: number | null;
+};
+
+export async function fetchYahooFinancialsHistory(
+  ticker: string,
+): Promise<FinancialPeriod[]> {
+  const yahoo = await getYahoo();
+  const summary = (await yahoo.quoteSummary(ticker, {
+    modules: [
+      "balanceSheetHistory",
+      "incomeStatementHistory",
+      "cashflowStatementHistory",
+    ],
+  })) as {
+    balanceSheetHistory?: { balanceSheetStatements?: Array<Record<string, unknown>> };
+    incomeStatementHistory?: { incomeStatementHistory?: Array<Record<string, unknown>> };
+    cashflowStatementHistory?: { cashflowStatements?: Array<Record<string, unknown>> };
+  };
+
+  const bs = summary.balanceSheetHistory?.balanceSheetStatements ?? [];
+  const is_ = summary.incomeStatementHistory?.incomeStatementHistory ?? [];
+  const cf = summary.cashflowStatementHistory?.cashflowStatements ?? [];
+
+  const maxLen = Math.max(bs.length, is_.length, cf.length);
+  if (maxLen === 0) throw new Error(`No financial history for ${ticker}`);
+
+  const periods: FinancialPeriod[] = [];
+  for (let i = 0; i < maxLen; i++) {
+    const bsPeriod = bs[i] ?? {};
+    const isPeriod = is_[i] ?? {};
+    const cfPeriod = cf[i] ?? {};
+
+    const endDate = asOfFromStatement(bsPeriod) ?? asOfFromStatement(isPeriod) ?? "";
+
+    periods.push({
+      endDate,
+      totalAssets: nullNum(bsPeriod.totalAssets),
+      totalCurrentAssets: nullNum(bsPeriod.totalCurrentAssets),
+      totalCurrentLiabilities: nullNum(bsPeriod.totalCurrentLiabilities),
+      totalLiabilities: nullNum(bsPeriod.totalLiab),
+      retainedEarnings: nullNum(bsPeriod.retainedEarnings),
+      totalEquity: nullNum(bsPeriod.totalStockholderEquity),
+      totalRevenue: nullNum(isPeriod.totalRevenue),
+      costOfRevenue: nullNum(isPeriod.costOfRevenue),
+      grossProfit: nullNum(isPeriod.grossProfit),
+      operatingIncome: nullNum(isPeriod.operatingIncome),
+      netIncome: nullNum(isPeriod.netIncome),
+      cfo: nullNum(cfPeriod.totalCashFromOperatingActivities),
+      capitalExpenditures: nullNum(cfPeriod.capitalExpenditures),
+    });
+  }
+
+  return periods;
+}
+
+/** Return a number or null — unlike `numberFrom` which returns 0 for null/undefined. */
+function nullNum(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "object" && "raw" in raw) {
+    const v = (raw as { raw?: unknown }).raw;
+    return typeof v === "number" ? v : null;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}

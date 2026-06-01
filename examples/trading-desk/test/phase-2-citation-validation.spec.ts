@@ -134,10 +134,10 @@ describe("validateCitations", () => {
       {
         round: 1,
         agentName: "bullResearcher",
-        text: `[memo:quant "rates will fall"] and [memo:fundamentals "${FUNDAMENTALS_QUOTE}"]`,
+        text: `[memo:astrology "rates will fall"] and [memo:fundamentals "${FUNDAMENTALS_QUOTE}"]`,
       },
     ]);
-    // Only the fundamentals tag is a valid analyst; `quant` never matches.
+    // Only the fundamentals tag is a valid analyst; `astrology` never matches.
     expect(integrity.tagsChecked).toBe(1);
     expect(integrity.tagsValid).toBe(1);
   });

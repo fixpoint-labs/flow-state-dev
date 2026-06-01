@@ -1,0 +1,32 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "query": "AAPL factor momentum short interest options implied volatility quant signal beta",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://example.com/aapl-factor-profile-q2-2026",
+      "title": "Apple's factor profile remains balanced as mega-cap quality anchor",
+      "snippet": "Apple's multi-factor composite ranks in the 67th percentile of its peer universe, with above-average quality and size scores offsetting middling momentum and value exposure.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://example.com/aapl-short-interest-historically-low",
+      "title": "AAPL short interest at 0.7% of float, near historic lows",
+      "snippet": "Bearish positioning on Apple remains minimal, with short interest as a fraction of free float hovering near all-time lows and days-to-cover well under one trading session.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://example.com/aapl-beta-correlation-market-anchor",
+      "title": "Apple's high market correlation makes it a bellwether for S&P 500 direction",
+      "snippet": "With a market correlation of 0.82 and beta of 1.12, Apple continues to function as a macro proxy within large-cap tech, reflecting broad market sentiment more than idiosyncratic catalysts.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    }
+  ]
+}

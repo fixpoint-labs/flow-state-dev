@@ -1,0 +1,21 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "altmanZ": 8.52,
+  "altmanZone": "safe",
+  "altmanVariant": "Z''",
+  "piotroskiF": 7,
+  "piotroskiBreakdown": [
+    { "criterion": "ROA > 0", "passed": true },
+    { "criterion": "CFO > 0", "passed": true },
+    { "criterion": "ΔROA > 0", "passed": true },
+    { "criterion": "CFO/Assets > ROA", "passed": true },
+    { "criterion": "ΔLeverage < 0", "passed": true },
+    { "criterion": "ΔCurrentRatio > 0", "passed": false },
+    { "criterion": "No new shares", "passed": null },
+    { "criterion": "ΔGrossMargin > 0", "passed": true },
+    { "criterion": "ΔAssetTurnover > 0", "passed": false }
+  ],
+  "coverageNote": "Z'' variant used (non-manufacturing). Piotroski: 7 of 9 criteria passed; share issuance data unavailable (marked null)."
+}

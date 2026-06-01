@@ -1,0 +1,14 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "peerCount": 7,
+  "factors": [
+    { "factor": "momentum", "value": 0.34, "percentile": 85, "zScore": 1.04 },
+    { "factor": "value", "value": -0.52, "percentile": 30, "zScore": -0.53 },
+    { "factor": "quality", "value": 0.61, "percentile": 80, "zScore": 0.84 },
+    { "factor": "size", "value": 0.89, "percentile": 90, "zScore": 1.28 },
+    { "factor": "lowVol", "value": -0.71, "percentile": 20, "zScore": -0.84 }
+  ],
+  "compositeFactorPercentile": 61
+}

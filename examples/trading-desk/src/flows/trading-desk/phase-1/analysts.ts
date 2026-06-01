@@ -1,5 +1,5 @@
 /**
- * The seven Phase 1 analyst sub-sequencers.
+ * The eight Phase 1 analyst sub-sequencers.
  *
  * Each one is the same recipe — `defineAnalyst` captures it. The role
  * differences live in two places per analyst: the generator (which tools'
@@ -32,11 +32,13 @@ import {
   discover_macro_context,
   discover_market_context,
   discover_profile_context,
+  discover_quant_context,
   discover_sentiment_context,
   discover_technical_context,
   get_balance_sheet,
   get_cashflow,
   get_company_profile,
+  get_factor_ranks,
   get_fundamentals,
   get_income_statement,
   get_insider_transactions,
@@ -45,9 +47,12 @@ import {
   get_market_news,
   get_prediction_markets,
   get_price_history,
+  get_quant_composites,
   get_reddit_mentions,
+  get_risk_regime,
   get_sector_context,
   get_sector_peers,
+  get_short_interest,
   get_social_sentiment,
   search_news,
 } from "./tools";
@@ -66,6 +71,7 @@ const marketContextPrompt = loadPrompt(
   "phase-1/prompts/market-context.prompt.md"
 );
 const macroPrompt = loadPrompt("phase-1/prompts/macro.prompt.md");
+const quantPrompt = loadPrompt("phase-1/prompts/quant.prompt.md");
 
 // ---------------------------------------------------------------------------
 // Fundamentals
@@ -287,4 +293,40 @@ export const macroAnalyst = defineAnalyst({
     profile: get_company_profile,
   },
   generator: macroGenerator,
+});
+
+// ---------------------------------------------------------------------------
+// Quant — cross-sectional factor ranks, statistical composites (Altman Z'',
+// Piotroski F-Score), risk-regime statistics, and short-interest positioning.
+// Pure quantitative analysis — no chart-reading (Technical's lane) and no
+// sector-rotation (Market's lane).
+// ---------------------------------------------------------------------------
+
+const quantGenerator = generator({
+  name: "quant-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.quant.agentName,
+  uses: [tradingDesk.presets({ investigate: true })],
+  inputSchema: z.object({
+    factorRanks: toolOutputSchemas.get_factor_ranks,
+    riskRegime: toolOutputSchemas.get_risk_regime,
+    quantComposites: toolOutputSchemas.get_quant_composites,
+    shortInterest: toolOutputSchemas.get_short_interest,
+    quantContext: toolOutputSchemas.discover_quant_context,
+  }),
+  context: { data: (input) => asDataBlock(input) },
+  ...definePromptFile(quantPrompt),
+  outputSchema: thesisOutputSchema,
+});
+
+export const quantAnalyst = defineAnalyst({
+  shortName: "quant",
+  tools: {
+    factorRanks: get_factor_ranks,
+    riskRegime: get_risk_regime,
+    quantComposites: get_quant_composites,
+    shortInterest: get_short_interest,
+    quantContext: discover_quant_context,
+  },
+  generator: quantGenerator,
 });

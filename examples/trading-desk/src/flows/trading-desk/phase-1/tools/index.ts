@@ -25,5 +25,10 @@ export { get_sector_context } from "./get_sector_context";
 export { get_sector_peers } from "./get_sector_peers";
 export { discover_market_context } from "./discover_market_context";
 export { discover_macro_context } from "./discover_macro_context";
+export { get_factor_ranks } from "./get_factor_ranks";
+export { get_risk_regime } from "./get_risk_regime";
+export { get_quant_composites } from "./get_quant_composites";
+export { get_short_interest } from "./get_short_interest";
+export { discover_quant_context } from "./discover_quant_context";
 
 export * from "./schemas";

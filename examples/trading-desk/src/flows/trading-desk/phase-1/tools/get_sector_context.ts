@@ -10,6 +10,7 @@
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../../lib/cache";
 import { loadFixture } from "../../lib/fixtures";
+import { GICS_TO_ETF } from "../../lib/sector-resolution";
 import { fetchYahooChart, fetchYahooCompanyProfile } from "../../providers/yahoo";
 import { emptyPayload } from "./empty-payloads";
 import { trailingReturn } from "./indicators-math";
@@ -22,22 +23,6 @@ import {
 } from "./schemas";
 
 const BROAD_MARKET_TICKER = "SPY";
-
-/** GICS sector → Select Sector SPDR ETF. Covers the 11 standard GICS
- *  sectors. Returns null for unmapped/unknown sectors. */
-const GICS_TO_ETF: Record<string, string> = {
-  Technology: "XLK",
-  "Communication Services": "XLC",
-  "Consumer Cyclical": "XLY",
-  "Consumer Defensive": "XLP",
-  Energy: "XLE",
-  "Financial Services": "XLF",
-  Healthcare: "XLV",
-  Industrials: "XLI",
-  "Basic Materials": "XLB",
-  "Real Estate": "XLRE",
-  Utilities: "XLU",
-};
 
 /** Fetch trailing ~1-month return for a single ticker. Returns null on failure. */
 async function fetchReturn1m(

@@ -1,0 +1,161 @@
+/**
+ * Cross-sectional factor ranking handler: resolves the peer set, fetches
+ * multi-month prices and fundamentals for each peer, computes factor
+ * exposures, and returns the target's percentile rank within the cross-section.
+ */
+import { handler } from "@flow-state-dev/core";
+import { getOrFetch } from "../../lib/cache";
+import { loadFixture } from "../../lib/fixtures";
+import { fetchFinnhubPeers } from "../../providers/finnhub";
+import { fetchYahooChart, fetchYahooFundamentals } from "../../providers/yahoo";
+import { emptyPayload } from "./empty-payloads";
+import {
+  momentum12m1,
+  earningsYield,
+  grossProfitsToAssets,
+  logMarketCap,
+  crossSectionalPercentile,
+  crossSectionalZScore,
+} from "./factor-math";
+import { logReturns, realizedVolAnnualized } from "./regime-math";
+import {
+  pickMode,
+  toolInputSchemas,
+  toolOutputSchemas,
+  type ToolInput,
+  type ToolOutput,
+} from "./schemas";
+
+const MAX_PEERS = 6;
+
+type NameData = {
+  ticker: string;
+  momentum: number | null;
+  value: number | null;
+  quality: number | null;
+  size: number | null;
+  lowVol: number | null;
+};
+
+async function fetchNameData(ticker: string, date: string): Promise<NameData> {
+  let momentum: number | null = null;
+  let value: number | null = null;
+  let quality: number | null = null;
+  let size: number | null = null;
+  let lowVol: number | null = null;
+
+  try {
+    const chart = await getOrFetch("get_price_history", { ticker, date, range: "1y" }, () =>
+      fetchYahooChart({ ticker, date, range: "1y" }),
+    );
+    const closes = chart.bars.map((b) => b.close);
+    momentum = momentum12m1(closes);
+    const returns = logReturns(closes);
+    const vol = realizedVolAnnualized(returns);
+    // lowVol factor: invert so lower vol = higher lowVol exposure
+    lowVol = vol != null ? -vol : null;
+  } catch {}
+
+  try {
+    const fundamentals = await getOrFetch("get_fundamentals", { ticker, date }, () =>
+      fetchYahooFundamentals({ ticker, date }),
+    );
+    value = earningsYield(fundamentals.operatingMargin, 1); // proxy: operating margin as yield stand-in
+    // For cross-sectional rank, we use the raw metric (earnings yield = NI / marketCap is ideal,
+    // but we only have ratios from get_fundamentals — use returnOnEquity as quality proxy)
+    quality = fundamentals.returnOnEquity !== 0 ? fundamentals.returnOnEquity : null;
+    size = logMarketCap(fundamentals.marketCap);
+    // Better value proxy: use gross margin inverted as a cheapness signal
+    // Actually, use operating margin as the value metric and ROE as quality
+    value = fundamentals.operatingMargin !== 0 ? fundamentals.operatingMargin : null;
+  } catch {}
+
+  return { ticker, momentum, value, quality, size, lowVol };
+}
+
+function rankFactor(
+  name: NameData,
+  allNames: NameData[],
+  factor: keyof Omit<NameData, "ticker">,
+): { value: number | null; percentile: number | null; zScore: number | null } {
+  const nameValue = name[factor];
+  if (nameValue == null) return { value: null, percentile: null, zScore: null };
+  const allValues = allNames
+    .map((n) => n[factor])
+    .filter((v): v is number => v != null);
+  if (allValues.length < 2) return { value: nameValue, percentile: null, zScore: null };
+  return {
+    value: Math.round(nameValue * 10000) / 10000,
+    percentile: crossSectionalPercentile(nameValue, allValues),
+    zScore: Math.round((crossSectionalZScore(nameValue, allValues) ?? 0) * 100) / 100 || null,
+  };
+}
+
+async function fetchLive(
+  input: ToolInput<"get_factor_ranks">,
+): Promise<ToolOutput<"get_factor_ranks">> {
+  let peerTickers: string[];
+  try {
+    peerTickers = await fetchFinnhubPeers(input.ticker, "subIndustry");
+  } catch {
+    return emptyPayload("get_factor_ranks", input);
+  }
+
+  const capped = peerTickers.slice(0, MAX_PEERS);
+  const allTickers = [input.ticker, ...capped];
+
+  const nameDataResults = await Promise.allSettled(
+    allTickers.map((t) => fetchNameData(t, input.date)),
+  );
+
+  const allNames = nameDataResults
+    .filter((r): r is PromiseFulfilledResult<NameData> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  const target = allNames.find((n) => n.ticker === input.ticker);
+  if (!target) return emptyPayload("get_factor_ranks", input);
+
+  const factors: ToolOutput<"get_factor_ranks">["factors"] = [
+    { factor: "momentum" as const, ...rankFactor(target, allNames, "momentum") },
+    { factor: "value" as const, ...rankFactor(target, allNames, "value") },
+    { factor: "quality" as const, ...rankFactor(target, allNames, "quality") },
+    { factor: "size" as const, ...rankFactor(target, allNames, "size") },
+    { factor: "lowVol" as const, ...rankFactor(target, allNames, "lowVol") },
+  ];
+
+  const availablePercentiles = factors
+    .map((f) => f.percentile)
+    .filter((p): p is number => p != null);
+  const compositeFactorPercentile =
+    availablePercentiles.length > 0
+      ? Math.round(availablePercentiles.reduce((a, b) => a + b, 0) / availablePercentiles.length)
+      : null;
+
+  return {
+    source: allNames.length > 1 ? "yahoo" : "unavailable",
+    ticker: input.ticker,
+    asOf: input.date,
+    peerCount: allNames.length,
+    factors,
+    compositeFactorPercentile,
+  };
+}
+
+export const get_factor_ranks = handler({
+  name: "get_factor_ranks",
+  description:
+    "Cross-sectional factor ranks: momentum, value, quality, size, and " +
+    "low-vol percentiles of the name within its peer set.",
+  inputSchema: toolInputSchemas.get_factor_ranks,
+  outputSchema: toolOutputSchemas.get_factor_ranks,
+  execute: async (input, ctx) => {
+    if (pickMode(ctx) === "fixture") return loadFixture("get_factor_ranks", input);
+    return getOrFetch("get_factor_ranks", input, async () => {
+      try {
+        return await fetchLive(input);
+      } catch {
+        return emptyPayload("get_factor_ranks", input);
+      }
+    });
+  },
+});

@@ -1,0 +1,32 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "query": "JPM factor momentum short interest options implied volatility quant signal beta",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://example.com/jpm-value-factor-bank-sector-2026",
+      "title": "JPMorgan screens well on value factor as bank P/E multiples compress",
+      "snippet": "JPM's trailing P/E of 11.2x and price-to-book of 1.8x place it in the 70th percentile on value among large-cap financial peers, reflecting sector-wide multiple compression after the March rate volatility.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://example.com/jpm-short-interest-moderate-bearish-tilt",
+      "title": "Short interest in JPM ticks higher to 1.5% of float",
+      "snippet": "Bearish positioning on JPMorgan has edged up modestly, with days-to-cover rising to 1.2, though levels remain well below the 3%+ threshold that typically signals crowded shorts in financials.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    },
+    {
+      "id": "3",
+      "url": "https://example.com/jpm-altman-z-score-bank-structural-bias",
+      "title": "Why JPM's grey-zone Altman Z-score is not a distress signal",
+      "snippet": "Large banks structurally score in the grey zone on Altman Z'' due to their leverage-heavy balance sheets and low working capital ratios. JPM's 1.82 score is consistent with its well-capitalized peers and does not indicate financial distress.",
+      "publisher": "example.com",
+      "provider": "tavily"
+    }
+  ]
+}

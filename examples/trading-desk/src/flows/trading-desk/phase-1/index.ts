@@ -1,7 +1,7 @@
 /**
  * `phase1Pipeline` — the Phase 1 sub-sequencer.
  *
- * Pre-creates the seven memo slots, then runs the seven analyst sub-sequencers
+ * Pre-creates the eight memo slots, then runs the eight analyst sub-sequencers
  * in parallel. The container `component: "analyst-phase"` is what the
  * transcript pane keys on to render the "Phase 1 — Analyst Fan-out begins"
  * divider; the `label` matches the canonical Design Reference string
@@ -14,6 +14,7 @@ import {
   macroAnalyst,
   marketAnalyst,
   newsAnalyst,
+  quantAnalyst,
   sentimentAnalyst,
   technicalAnalyst,
 } from "./analysts";
@@ -23,7 +24,7 @@ export const phase1Pipeline = sequencer({
   name: "phase-1-analysts",
   container: {
     component: "analyst-phase",
-    label: "Phase 1 — Analyst Fan-out begins. 7 analysts dispatched (5 concurrent).",
+    label: "Phase 1 — Analyst Fan-out begins. 8 analysts dispatched (5 concurrent).",
   },
 })
   .tap(setupPhase1Memos)
@@ -36,6 +37,7 @@ export const phase1Pipeline = sequencer({
       companyProfile: companyProfileAnalyst,
       market: marketAnalyst,
       macro: macroAnalyst,
+      quant: quantAnalyst,
     },
     { maxConcurrency: 5 },
   );

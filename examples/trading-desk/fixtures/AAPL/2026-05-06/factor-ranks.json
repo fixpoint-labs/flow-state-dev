@@ -1,0 +1,14 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "peerCount": 7,
+  "factors": [
+    { "factor": "momentum", "value": 0.12, "percentile": 60, "zScore": 0.25 },
+    { "factor": "value", "value": -0.01, "percentile": 50, "zScore": 0.0 },
+    { "factor": "quality", "value": 0.55, "percentile": 75, "zScore": 0.67 },
+    { "factor": "size", "value": 0.95, "percentile": 95, "zScore": 1.65 },
+    { "factor": "lowVol", "value": 0.08, "percentile": 55, "zScore": 0.13 }
+  ],
+  "compositeFactorPercentile": 67
+}

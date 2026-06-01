@@ -1,0 +1,21 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "altmanZ": 1.82,
+  "altmanZone": "grey",
+  "altmanVariant": "Z''",
+  "piotroskiF": 5,
+  "piotroskiBreakdown": [
+    { "criterion": "ROA > 0", "passed": true },
+    { "criterion": "CFO > 0", "passed": true },
+    { "criterion": "ΔROA > 0", "passed": false },
+    { "criterion": "CFO/Assets > ROA", "passed": true },
+    { "criterion": "ΔLeverage < 0", "passed": false },
+    { "criterion": "ΔCurrentRatio > 0", "passed": null },
+    { "criterion": "No new shares", "passed": true },
+    { "criterion": "ΔGrossMargin > 0", "passed": null },
+    { "criterion": "ΔAssetTurnover > 0", "passed": true }
+  ],
+  "coverageNote": "Z'' variant used. Banks structurally score low on Altman Z due to high leverage and low working capital; grey zone is typical for well-capitalized financials. Piotroski: 5 of 7 computable criteria passed; current ratio and gross margin changes not meaningful for banks (marked null)."
+}

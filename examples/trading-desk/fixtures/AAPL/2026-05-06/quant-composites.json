@@ -1,0 +1,21 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "altmanZ": 6.18,
+  "altmanZone": "safe",
+  "altmanVariant": "Z''",
+  "piotroskiF": 6,
+  "piotroskiBreakdown": [
+    { "criterion": "ROA > 0", "passed": true },
+    { "criterion": "CFO > 0", "passed": true },
+    { "criterion": "ΔROA > 0", "passed": false },
+    { "criterion": "CFO/Assets > ROA", "passed": true },
+    { "criterion": "ΔLeverage < 0", "passed": false },
+    { "criterion": "ΔCurrentRatio > 0", "passed": null },
+    { "criterion": "No new shares", "passed": true },
+    { "criterion": "ΔGrossMargin > 0", "passed": true },
+    { "criterion": "ΔAssetTurnover > 0", "passed": false }
+  ],
+  "coverageNote": "Z'' variant used (non-manufacturing). Piotroski: 6 of 8 computable criteria passed; current ratio change unavailable (marked null)."
+}

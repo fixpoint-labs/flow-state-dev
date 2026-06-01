@@ -1,0 +1,13 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "betaMarket": 1.12,
+  "betaSector": 0.95,
+  "rSquared": 0.71,
+  "realizedVolAnnualized": 0.22,
+  "volRegime": "normal",
+  "volPercentile": 45,
+  "correlationMarket": 0.82,
+  "correlationRegime": "high"
+}

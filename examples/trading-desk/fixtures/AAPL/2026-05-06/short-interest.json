@@ -1,0 +1,9 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "shortInterest": 108000000,
+  "shortInterestPctFloat": 0.7,
+  "daysToCover": 0.5,
+  "settlementDate": "2026-04-30"
+}
