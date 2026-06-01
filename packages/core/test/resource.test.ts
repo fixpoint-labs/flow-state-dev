@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineResource } from "../src";
+import { defineResourceCollection } from "../src/types/resource-collection";
 import { parseResourceTemplate } from "../src/resource-template/resource-template";
 
 const stubTemplate = parseResourceTemplate("<system>Hello {{ state.name }}</system>");
@@ -67,5 +68,27 @@ describe("defineResource", () => {
       contentTemplateRef: "templates/analyst",
     });
     expect(res.contentTemplateRef).toBe("templates/analyst");
+  });
+});
+
+describe("defineResourceCollection", () => {
+  it("throws when contentTemplate and contentTemplateRef are both provided", () => {
+    expect(() => defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({}),
+      contentTemplate: stubTemplate,
+      contentTemplateRef: "templates/analyst",
+    })).toThrow("at most one template source");
+  });
+
+  it("accepts a single contentTemplate", () => {
+    const col = defineResourceCollection({
+      pattern: "items/*",
+      scope: "session",
+      stateSchema: z.object({ name: z.string() }),
+      contentTemplate: stubTemplate,
+    });
+    expect(col.contentTemplate).toBe(stubTemplate);
   });
 });

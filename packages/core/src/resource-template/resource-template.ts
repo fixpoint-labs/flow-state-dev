@@ -73,6 +73,7 @@ export interface ResourceTemplate {
   readonly sections: { system: string; user?: string; context?: string };
   readonly source: string;
   readonly inertKeys: readonly string[];
+  readonly partials?: ResourceTemplatePartials;
 }
 
 /** Pre-registered partials, keyed by name (filename without `.md`). */
@@ -193,6 +194,7 @@ export function parseResourceTemplate(
     },
     source: text,
     inertKeys,
+    partials: Object.keys(partials).length > 0 ? partials : undefined,
   };
 }
 
@@ -206,8 +208,8 @@ export function renderResourceTemplate(
   state: JsonObject,
   options?: { partials?: ResourceTemplatePartials }
 ): string {
-  const partials = options?.partials ?? {};
-  const partialFs = makePartialFs(partials);
+  const allPartials = options?.partials ?? template.partials ?? {};
+  const partialFs = makePartialFs(allPartials);
 
   const engine = new Liquid({
     extname: ".md",
@@ -226,7 +228,7 @@ export function renderResourceTemplate(
   } catch (cause) {
     throw new ResourceTemplateRenderError(
       `Template render failed: ${(cause as Error).message}`,
-      { cause, sourcePath: template.source.slice(0, 100) }
+      { cause }
     );
   }
 }

@@ -631,6 +631,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
+        if (nsConfig.contentTemplate !== undefined) {
+          return nsConfig.contentTemplate.source;
+        }
+        if (nsConfig.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) return null;
+          return resolver(nsConfig.contentTemplateRef);
+        }
         const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },
@@ -1075,6 +1083,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         await persistResourceState(storageKey, config, next);
       },
       async readContentRaw(): Promise<string | null> {
+        if (config.contentTemplate !== undefined) {
+          return config.contentTemplate.source;
+        }
+        if (config.contentTemplateRef !== undefined) {
+          const resolver = options.templateResolverRef?.current;
+          if (!resolver) return null;
+          return resolver(config.contentTemplateRef);
+        }
         const content = options.readResourceContent()[storageKey];
         return typeof content === "string" ? content : null;
       },

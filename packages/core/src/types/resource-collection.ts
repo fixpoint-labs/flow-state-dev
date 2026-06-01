@@ -214,6 +214,12 @@ export function defineResourceCollection<
 ): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
 
+  if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
+    throw new Error(
+      "defineResourceCollection() accepts at most one template source: contentTemplate or contentTemplateRef, not both"
+    );
+  }
+
   if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
     throw new Error(
       `defineResourceCollection() requires an explicit scope of "session", "user", or "org" (got ${JSON.stringify(config.scope)})`

@@ -64,7 +64,7 @@ This is different from the inline `content` + `render` approach on `defineResour
 
 ```ts
 import { defineResource } from "@flow-state-dev/core";
-import { loadResourceTemplate } from "@flow-state-dev/core/prompt-file/node";
+import { loadResourceTemplate } from "@flow-state-dev/core/resource-template/node";
 import { z } from "zod";
 
 const reportTemplate = loadResourceTemplate("./report.prompt.md", import.meta.url);
@@ -120,7 +120,7 @@ Template rendering is sandboxed to the resource's own state.
 
 - The `state` scope is the only top-level variable. There is no access to `ctx`, `input`, session state, or other resources.
 - Property access is `ownPropertyOnly`. Prototype properties are not reachable from the template.
-- Templates that exceed the render size limit (configurable, default 256 KB) throw a `PromptFileRenderError` rather than producing unbounded output.
+- Templates that exceed the size limit (default 512 KB) throw a `ResourceTemplateParseError` rather than producing unbounded output.
 
 These constraints keep resource templates deterministic and predictable. If you need full context access, conditional logic across resources, or model-aware rendering, use a handler that reads the state and writes content explicitly.
 
