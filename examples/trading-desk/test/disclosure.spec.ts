@@ -25,9 +25,11 @@ function disclosureThesis() {
       { key: "callTone", value: "confident" },
       { key: "ratingsPosture", value: "net buy, 18/24" },
       { key: "filingFlags", value: "none material" },
+      { key: "recentCatalysts", value: "earnings + deal" },
     ],
     body: [
       { h: "Latest filing", p: "10-K highlights.", items: null },
+      { h: "Material events", p: "Earnings 8-K and material agreement.", items: null },
       { h: "Earnings call", p: "Guidance raised.", items: null },
       { h: "Consensus & revisions", p: "Beat + raise.", items: null },
       { h: "Read for NVDA", p: "Net constructive.", items: null },
@@ -90,6 +92,7 @@ describe("disclosure tool degradation", () => {
     const payload = emptyPayload("get_sec_filings", input);
     expect(payload.source).toBe("unavailable");
     expect(payload.recentFilings).toEqual([]);
+    expect(payload.materialEvents).toEqual([]);
     expect(payload.latestPeriodic).toBeNull();
     expect(payload.redFlagProbes).toEqual([]);
     expect(toolOutputSchemas.get_sec_filings.safeParse(payload).success).toBe(true);

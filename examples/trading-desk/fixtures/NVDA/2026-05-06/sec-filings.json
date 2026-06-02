@@ -22,6 +22,27 @@
       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000011/nvda-20260226.htm"
     }
   ],
+  "materialEvents": [
+    {
+      "filingDate": "2026-02-26",
+      "form": "8-K",
+      "title": "Results of Operations and Financial Condition",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000011/nvda-20260226.htm",
+      "events": [
+        { "code": "2.02", "label": "earnings", "title": "Results of Operations and Financial Condition", "signal": "high" },
+        { "code": "9.01", "label": "exhibits", "title": "Financial Statements and Exhibits", "signal": "low" }
+      ]
+    },
+    {
+      "filingDate": "2026-03-15",
+      "form": "8-K",
+      "title": "Entry into a Material Definitive Agreement",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000018/nvda-20260315.htm",
+      "events": [
+        { "code": "1.01", "label": "material-agreement", "title": "Entry into a Material Definitive Agreement", "signal": "high" }
+      ]
+    }
+  ],
   "latestPeriodic": {
     "form": "10-K",
     "filingDate": "2026-02-26",
