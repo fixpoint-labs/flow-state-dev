@@ -13,6 +13,7 @@ import type {
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
+import type { FlowDispatcher } from "../transports/dispatcher";
 import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -129,6 +130,13 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+
+  /**
+   * Controls where flow actions execute. Default: in-process (runAction
+   * called directly). Set to a FlowDispatcher implementation to route
+   * execution to an external worker (e.g., BullMQ WorkerDispatcher).
+   */
+  dispatcher?: FlowDispatcher;
 }
 
 /**

@@ -255,7 +255,8 @@ class InternalFlowState<TSettings extends object>
       resolvePrincipal: this.#options.resolvePrincipal,
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
-      staleSweepThresholdMs: this.#options.staleSweepThresholdMs
+      staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
+      dispatcher: this.#options.dispatcher
     });
   }
 }
