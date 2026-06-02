@@ -519,6 +519,18 @@ export const secFilingsSchema = z.object({
     title: z.string(),
     url: z.string(),
   })),
+  materialEvents: z.array(z.object({
+    filingDate: z.string(),
+    form: z.string(),
+    title: z.string(),
+    url: z.string(),
+    events: z.array(z.object({
+      code: z.string(),
+      label: z.string(),
+      title: z.string(),
+      signal: z.enum(["high", "medium", "low"]),
+    })),
+  })),
   latestPeriodic: z.object({
     form: z.string(),
     filingDate: z.string(),

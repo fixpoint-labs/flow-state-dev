@@ -276,6 +276,7 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     ticker: i.ticker,
     asOf: i.date,
     recentFilings: [],
+    materialEvents: [],
     latestPeriodic: null,
     redFlagProbes: [],
   }),

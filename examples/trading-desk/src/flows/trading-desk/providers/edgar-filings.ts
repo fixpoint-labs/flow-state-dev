@@ -6,13 +6,17 @@
  * Tools using this helper: get_sec_filings.
  */
 import { resolveCik, USER_AGENT } from "./edgar";
+import { classifyItems, type MaterialEventItem } from "./eight-k-items";
 
 const SUBMISSIONS_BASE = "https://data.sec.gov/submissions";
 const ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data";
 const EFTS_BASE = "https://efts.sec.gov/LATEST/search-index";
 
 const PERIODIC_FORMS = new Set(["10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A"]);
+const EIGHT_K_FORMS = new Set(["8-K", "8-K/A"]);
 const MAX_RECENT = 8;
+const LOOKBACK_DAYS = 90;
+const MAX_EVENTS = 12;
 const SECTION_CAP = 6000;
 
 const RED_FLAG_TERMS = [
@@ -45,11 +49,20 @@ type LatestPeriodic = {
   mdna: string | null;
 };
 
+export type MaterialEvent = {
+  filingDate: string;
+  form: string;
+  title: string;
+  url: string;
+  events: MaterialEventItem[];
+};
+
 export type EdgarFilingsPayload = {
   source: "edgar" | "fixture" | "unavailable";
   ticker: string;
   asOf: string;
   recentFilings: FilingEntry[];
+  materialEvents: MaterialEvent[];
   latestPeriodic: LatestPeriodic | null;
   redFlagProbes: RedFlagProbe[];
 };
@@ -61,9 +74,10 @@ async function edgarFetch(url: string): Promise<Response> {
 }
 
 /** Fetch the submissions list for a ticker. */
-async function fetchSubmissions(ticker: string): Promise<{
+async function fetchSubmissions(ticker: string, date: string): Promise<{
   cik: number;
   recentFilings: FilingEntry[];
+  materialEvents: MaterialEvent[];
 }> {
   const paddedCik = await resolveCik(ticker);
   const res = await edgarFetch(`${SUBMISSIONS_BASE}/CIK${paddedCik}.json`);
@@ -76,27 +90,43 @@ async function fetchSubmissions(ticker: string): Promise<{
         accessionNumber?: string[];
         primaryDocument?: string[];
         primaryDocDescription?: string[];
+        items?: string[];
       };
     };
   };
   const recent = data.filings?.recent;
-  if (!recent?.form) return { cik: data.cik, recentFilings: [] };
+  if (!recent?.form) return { cik: data.cik, recentFilings: [], materialEvents: [] };
+
+  const cutoff = windowCutoff(date, LOOKBACK_DAYS);
   const entries: FilingEntry[] = [];
+  const materialEvents: MaterialEvent[] = [];
   const len = recent.form.length;
-  for (let i = 0; i < len && entries.length < MAX_RECENT; i++) {
+
+  for (let i = 0; i < len; i++) {
     const form = recent.form[i];
     if (!PERIODIC_FORMS.has(form)) continue;
     const accession = (recent.accessionNumber?.[i] ?? "").replace(/-/g, "");
     const primaryDoc = recent.primaryDocument?.[i] ?? "";
     const url = `${ARCHIVES_BASE}/${data.cik}/${accession}/${primaryDoc}`;
-    entries.push({
-      form,
-      filingDate: recent.filingDate?.[i] ?? "",
-      title: recent.primaryDocDescription?.[i] ?? form,
-      url,
-    });
+    const filingDate = recent.filingDate?.[i] ?? "";
+    const title = recent.primaryDocDescription?.[i] ?? form;
+
+    if (entries.length < MAX_RECENT) {
+      entries.push({ form, filingDate, title, url });
+    }
+
+    if (
+      materialEvents.length < MAX_EVENTS &&
+      EIGHT_K_FORMS.has(form) &&
+      filingDate >= cutoff
+    ) {
+      const itemsField = recent.items?.[i] ?? "";
+      const events = classifyItems(itemsField);
+      materialEvents.push({ filingDate, form, title, url, events });
+    }
   }
-  return { cik: data.cik, recentFilings: entries };
+
+  return { cik: data.cik, recentFilings: entries, materialEvents };
 }
 
 /** Extract a section from filing HTML by item header pattern. */
@@ -183,12 +213,18 @@ function thirtyMonthsAgo(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function windowCutoff(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Full filings fetch: submissions + latest periodic extraction + red-flag probes. */
 export async function fetchEdgarFilings(
   ticker: string,
   date: string,
 ): Promise<EdgarFilingsPayload> {
-  const { cik, recentFilings } = await fetchSubmissions(ticker);
+  const { cik, recentFilings, materialEvents } = await fetchSubmissions(ticker, date);
   const [latestPeriodic, redFlagProbes] = await Promise.all([
     fetchLatestPeriodic(recentFilings),
     probeRedFlags(cik),
@@ -198,6 +234,7 @@ export async function fetchEdgarFilings(
     ticker,
     asOf: date,
     recentFilings,
+    materialEvents,
     latestPeriodic,
     redFlagProbes,
   };
