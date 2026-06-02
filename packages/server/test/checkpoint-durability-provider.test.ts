@@ -226,15 +226,39 @@ describe("CheckpointDurabilityProvider", () => {
       expect(suspensions.deleteForRequest).toHaveBeenCalledTimes(1);
     });
 
-    it("does not touch CheckpointStore or LeaseStore", async () => {
-      const { provider, checkpoints, leases } = setup();
+    it("does not touch CheckpointStore", async () => {
+      const { provider, checkpoints } = setup();
 
       await provider.cleanup("req_1");
 
       expect(checkpoints.write).not.toHaveBeenCalled();
       expect(checkpoints.latest).not.toHaveBeenCalled();
       expect(checkpoints.delete).not.toHaveBeenCalled();
-      expect(leases.acquire).not.toHaveBeenCalled();
+    });
+
+    it("releases an active lease during cleanup", async () => {
+      const { provider, leases } = setup();
+      const lease: Lease = {
+        requestId: "req_1",
+        leaseId: "lease_99",
+        holder: "w1",
+        acquiredAt: Date.now(),
+        expiresAt: Date.now() + 30_000,
+      };
+      vi.mocked(leases.get).mockResolvedValue(lease);
+
+      await provider.cleanup("req_1");
+
+      expect(leases.get).toHaveBeenCalledWith("req_1");
+      expect(leases.release).toHaveBeenCalledWith("req_1", "lease_99");
+    });
+
+    it("skips lease release when no active lease exists", async () => {
+      const { provider, leases } = setup();
+
+      await provider.cleanup("req_1");
+
+      expect(leases.get).toHaveBeenCalledWith("req_1");
       expect(leases.release).not.toHaveBeenCalled();
     });
   });

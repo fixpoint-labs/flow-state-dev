@@ -24,7 +24,11 @@ export function createCheckpointDurabilityProvider(
     releaseLease: (reqId, lid) => stores.leases.release(reqId, lid),
 
     cleanup: async (reqId) => {
-      await stores.suspensions.deleteForRequest(reqId);
+      const lease = await stores.leases.get(reqId);
+      await Promise.all([
+        stores.suspensions.deleteForRequest(reqId),
+        lease ? stores.leases.release(reqId, lease.leaseId) : undefined,
+      ]);
     },
   };
 }

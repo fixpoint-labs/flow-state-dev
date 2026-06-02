@@ -1,33 +1,14 @@
 /**
  * In-memory LeaseStore for the SQLite adapter package. Temporary until
  * native SQLite implementation ships in a follow-up PR (FIX-140 PR 3).
- * Inlined to respect the type-only import boundary from @flow-state-dev/server.
  */
 
-interface LeaseOptions {
-  holder: string;
-  durationMs: number;
-}
-
-interface Lease {
-  requestId: string;
-  leaseId: string;
-  holder: string;
-  acquiredAt: number;
-  expiresAt: number;
-}
-
-interface LeaseStore {
-  acquire(requestId: string, options: LeaseOptions): Promise<Lease | null>;
-  release(requestId: string, leaseId: string): Promise<void>;
-  get(requestId: string): Promise<Lease | null>;
-  pruneExpired(): Promise<void>;
-}
-
-let leaseCounter = 0;
+import type { Lease, LeaseOptions } from "@flow-state-dev/server";
+import type { LeaseStore } from "@flow-state-dev/server";
 
 export class InMemoryLeaseStore implements LeaseStore {
   private readonly data = new Map<string, Lease>();
+  private leaseCounter = 0;
 
   async acquire(requestId: string, options: LeaseOptions): Promise<Lease | null> {
     const existing = this.data.get(requestId);
@@ -37,7 +18,7 @@ export class InMemoryLeaseStore implements LeaseStore {
     }
     const lease: Lease = {
       requestId,
-      leaseId: `lease_${++leaseCounter}`,
+      leaseId: `lease_${++this.leaseCounter}`,
       holder: options.holder,
       acquiredAt: now,
       expiresAt: now + options.durationMs,

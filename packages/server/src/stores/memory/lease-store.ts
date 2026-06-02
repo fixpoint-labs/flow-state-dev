@@ -5,10 +5,9 @@
 import type { Lease, LeaseOptions } from "../../durability/types";
 import type { LeaseStore } from "../types";
 
-let leaseCounter = 0;
-
 export class InMemoryLeaseStore implements LeaseStore {
   private readonly data = new Map<string, Lease>();
+  private leaseCounter = 0;
 
   async acquire(
     requestId: string,
@@ -23,7 +22,7 @@ export class InMemoryLeaseStore implements LeaseStore {
 
     const lease: Lease = {
       requestId,
-      leaseId: `lease_${++leaseCounter}`,
+      leaseId: `lease_${++this.leaseCounter}`,
       holder: options.holder,
       acquiredAt: now,
       expiresAt: now + options.durationMs,
