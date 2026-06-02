@@ -41,7 +41,8 @@
   "files": [
     "dist",
     "dist-client",
-    "!dist/**/*.map"
+    "!dist/**/*.map",
+    "!dist-client/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
