@@ -358,7 +358,7 @@ const disclosureGenerator = generator({
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.disclosure.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
-  inputSchema: disclosureInputSchema,
+  inputSchema: disclosureInputSchema as z.ZodTypeAny,
   context: { data: (input) => asDataBlock(input) },
   ...definePromptFile(disclosurePrompt),
   outputSchema: thesisOutputSchema,
