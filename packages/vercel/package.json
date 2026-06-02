@@ -1,6 +1,29 @@
 {
   "name": "@flow-state-dev/vercel",
   "version": "0.0.0",
+  "description": "Vercel deployment adapter for flow-state-dev.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "vercel",
+    "deployment",
+    "sse",
+    "heartbeat"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/vercel"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -28,7 +51,8 @@
   },
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -57,6 +81,10 @@
       }
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/server": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",

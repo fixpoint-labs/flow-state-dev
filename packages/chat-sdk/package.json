@@ -1,6 +1,28 @@
 {
   "name": "@flow-state-dev/chat-sdk",
   "version": "0.1.0",
+  "description": "Chat SDK inbound transport for flow-state-dev.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "chat",
+    "sdk",
+    "transport"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/chat-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -16,7 +38,8 @@
   },
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -33,6 +56,10 @@
       }
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",

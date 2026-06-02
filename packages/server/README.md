@@ -2,6 +2,12 @@
 
 **The runtime. Register flows, execute actions, stream results — one config object to a complete API.**
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/server
+```
+
 ```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import myFlow from "./flows/my-flow";
@@ -96,7 +102,7 @@ It's a `createFlowState` option, not a handler option, because the router is bui
 
 ### Connection resilience
 
-`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](../../apps/docs/docs/server/connection-resilience.md) for tuning.
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
 ## Lower-level: registry and router
 
@@ -153,7 +159,7 @@ unambiguous at runtime. Every request carries a `source` field on its
 `RequestRecord` for provenance — `http` for the default adapter, set by
 each custom transport for its own.
 
-See [`docs/architecture/inbound-transports.md`](../../docs/architecture/inbound-transports.md)
+See the [inbound transports reference](https://flow-state.dev/docs/advanced/inbound-transports)
 for the full contract reference and a walk-through of authoring a custom
 adapter.
 
@@ -204,7 +210,7 @@ for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
 
-See [`docs/architecture/authentication.md`](../../docs/architecture/authentication.md)
+See the [authentication reference](https://flow-state.dev/docs/server/authentication)
 for the full contract, resolution order, and `requireUser: false`
 semantics.
 
@@ -228,7 +234,7 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
-`createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](../../apps/docs/docs/streaming/trace-channel.md) for the full backend list and file layout.
+`createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](https://flow-state.dev/docs/streaming/trace-channel) for the full backend list and file layout.
 
 ```ts
 const stores = createFilesystemStores({
@@ -321,7 +327,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
 - Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
-- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See `apps/docs/docs/advanced/sequencer-side-chains.md` for the two-signal cancellation contract.
+- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
@@ -330,7 +336,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Cross-flow schema validation:**
 
-`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](../../apps/docs/docs/fundamentals/flow-isolation.md) and the [state-and-scopes architecture doc](../../docs/architecture/state-and-scopes.md) for the full model.
+`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -353,7 +359,7 @@ interface ContentStore {
 
 Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
 
-That scoped load runs in three waves. `createExecutionContext` fires Wave 1 (flow-level resources, at context creation) and Wave 2 (the dispatched action's declared resources, in one parallel burst — a context is bound to exactly one action, so this lives in the context rather than `runAction`). Wave 3 fires in the block runtime's `run`: a block's `prefetchMode: 'lazy'` single resources load when that block dispatches, and lazy collections defer further to a per-access on-demand accessor. A per-scope cache plus a single-flight in-flight map dedupe loads across all three waves and concurrent block dispatch. See the [resources-and-client-data architecture doc](../../docs/architecture/resources-and-client-data.md#three-wave-loading) for the full model.
+That scoped load runs in three waves. `createExecutionContext` fires Wave 1 (flow-level resources, at context creation) and Wave 2 (the dispatched action's declared resources, in one parallel burst — a context is bound to exactly one action, so this lives in the context rather than `runAction`). Wave 3 fires in the block runtime's `run`: a block's `prefetchMode: 'lazy'` single resources load when that block dispatches, and lazy collections defer further to a per-access on-demand accessor. A per-scope cache plus a single-flight in-flight map dedupe loads across all three waves and concurrent block dispatch. See the [resources reference](https://flow-state.dev/docs/resources/overview) for the full model.
 
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
@@ -399,7 +405,7 @@ The interface and loading semantics mirror `ContentStore` exactly: declared stat
 
 ## CheckpointStore
 
-`StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints (FIX-401). Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime (FIX-141) reads `latest(...)` to resume after an interruption.
+`StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints. Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime reads `latest(...)` to resume after an interruption.
 
 ```ts
 interface CheckpointStore {
@@ -503,6 +509,6 @@ pnpm --filter @flow-state-dev/server test
 
 ## Architecture reference
 
-- [Server and Client](../../docs/architecture/server-and-client.md) — Routes, transport, React hooks contract
-- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Streaming](../../docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
+- [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, work queue
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

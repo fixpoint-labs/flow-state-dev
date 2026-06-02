@@ -4,6 +4,12 @@
 
 This is the foundation package. Every other package depends on it. It's isomorphic — runs in Node, the browser, edge runtimes, anywhere JavaScript runs.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/core
+```
+
 ## What you can build
 
 ```ts
@@ -26,7 +32,7 @@ const agent = generator({
 });
 ```
 
-The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](../../apps/docs/docs/advanced/generator-prompts-markdown.md) reference.
+The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](https://flow-state.dev/docs/advanced/generator-prompts-markdown) reference.
 
 **A handler that validates and transforms:**
 
@@ -230,7 +236,7 @@ generator({
 //   </memory>
 ```
 
-Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See `docs/architecture/blocks.md` for the full contract.
+Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See the [blocks reference](https://flow-state.dev/docs/fundamentals/blocks) for the full contract.
 
 **Slot types:**
 - `ToolsSlot` — Tools accepted by generators: static array or `(ctx) => tools[]`
@@ -306,7 +312,7 @@ const load = createPromptLoader(path.resolve(process.cwd(), "src/prompts"));
 const analyst = generator({ name: "analyst", model, prompt: load("analyst.prompt.md") });
 ```
 
-**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](../../apps/docs/docs/advanced/resource-templates-markdown.md) reference.
+**Resource content templates.** The same `.md` format can render resource content against state. The Node subpath exports `loadResourceTemplate(specifier, importerUrl, options?)` and the isomorphic subpath exports `parseResourceTemplate(text, options?)` and `renderResourceTemplate(template, state)`. Wire them via `contentTemplate` (build-time file) or `contentTemplateRef` (live-editable resource) on `defineResource()` and `defineResourceCollection()`. See the [Resource content from Markdown templates](https://flow-state.dev/docs/advanced/resource-templates-markdown) reference.
 
 ### Voice Provider
 
@@ -348,7 +354,7 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 `state_change` and `resource_change` share an exported `InvalidationItem` base (common `scope`/`delta`/`version` fields) for consumers that react to "something changed in a scope" generically. It is a base type, not a member of the `OutputItem` union — only the two leaves are.
 
-**`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
+**`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
 ### Helpers (`@flow-state-dev/core/helpers`)
 
@@ -402,9 +408,9 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
 
-**Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See `docs/PROMPT_CACHING.md` for the full design, audit, and manual-mode guide.
+**Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See the [prompt caching guide](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md) for the full design, audit, and manual-mode guide.
 
-**Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies, and `ctx.wasRescued(name | blockDef)` to ask whether a prior block in the current sequencer scope was recovered by a `.rescue()` handler (transient, per-iteration under loops; returns `false` when not rescued or not found). See [Composing blocks → Querying rescue status](../../apps/docs/docs/sequencers/composing-blocks.md).
+**Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies, and `ctx.wasRescued(name | blockDef)` to ask whether a prior block in the current sequencer scope was recovered by a `.rescue()` handler (transient, per-iteration under loops; returns `false` when not rescued or not found). See [Composing blocks → Querying rescue status](https://flow-state.dev/docs/sequencers/composing-blocks).
 
 **The `client` block is the data policy.** Each scope's `client` block declares what crosses to the browser — `expose` for verbatim fields, `derived` for projections. State, resources, and intermediate values stay server-side unless you opt them in. Security by architecture, not by convention.
 
@@ -422,11 +428,11 @@ pnpm --filter @flow-state-dev/core test
 
 ## Architecture reference
 
-- [Blocks](../../docs/architecture/blocks.md) — Deep dive into all four block kinds
-- [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
-- [Sequencer DSL](../../docs/architecture/sequencer-dsl.md) — Full method reference for the composition DSL
-- [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
-- [Resources and Client Data](../../docs/architecture/resources-and-client-data.md) — Data containers and derived client views
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — Deep dive into all four block kinds
+- [Flows](https://flow-state.dev/docs/fundamentals/flows) — defineFlow, actions, lifecycle hooks
+- [Sequencer DSL](https://flow-state.dev/docs/sequencers/overview) — Full method reference for the composition DSL
+- [State and Scopes](https://flow-state.dev/docs/fundamentals/state-and-scopes) — Scoped state, atomic operations, CAS
+- [Resources](https://flow-state.dev/docs/resources/overview) — Data containers and derived client views
 
 
 ## Model intents
@@ -497,7 +503,7 @@ See the [models page](https://flow-state.dev/docs/fundamentals/models#env-var-ov
 
 ### Observable model identity
 
-Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See `apps/docs/docs/streaming/items.md` for the full surface.
+Every item produced by a generator carries a `model: ModelIdentity` field, and the unified `BlockTraceItem` for generator blocks gains a top-level `model` field with the same shape. `ModelIdentity = { actual: string; requested?: string; gateway?: string }` answers "which concrete model produced this?" — distinct from `BlockTraceItem.generator.model` (the requested string) and `BlockTraceItem.modelUsage.model` (the token-accounting key). `actual` is always populated; `requested` appears when it differs from `actual` (intent strings, fallback to a non-first candidate, provider substitution); `gateway` appears when the call routed through a gateway. Handler-emitted items do not carry the field. See the [streaming items reference](https://flow-state.dev/docs/streaming/items) for the full surface.
 
 ### Strict-mode schema helper
 

@@ -146,13 +146,13 @@ createScheduleIndexConformanceTests("my-backend", {
 
 Covers upsert idempotence, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
 
-See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
+See [the schedule index reference](https://flow-state.dev/docs/server/schedule-index) for the full interface and contract.
 
 ## See also
 
-- `apps/docs/docs/server/scheduled.md` — full reference guide
-- `apps/docs/docs/server/schedule-index.md` — schedule index reference
-- `apps/docs/guides/scheduled-vercel-cron.md`
-- `apps/docs/guides/scheduled-cloud-scheduler.md`
-- `apps/docs/guides/scheduled-eventbridge.md`
-- `apps/docs/guides/scheduled-dynamic.md`
+- [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — full reference guide
+- [Schedule index reference](https://flow-state.dev/docs/server/schedule-index) — schedule index reference
+- [Vercel Cron guide](https://flow-state.dev/guides/scheduled-vercel-cron)
+- [Cloud Scheduler guide](https://flow-state.dev/guides/scheduled-cloud-scheduler)
+- [EventBridge guide](https://flow-state.dev/guides/scheduled-eventbridge)
+- [Dynamic schedules guide](https://flow-state.dev/guides/scheduled-dynamic)

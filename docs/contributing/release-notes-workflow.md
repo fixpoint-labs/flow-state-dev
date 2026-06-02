@@ -1,5 +1,7 @@
 # Release notes workflow
 
+For the end-to-end publish process and runbook, see [RELEASING.md](./RELEASING.md).
+
 When you submit a PR, you write a changeset. This page covers when to do it, how to do it, and what happens to the fragment after merge.
 
 The authoritative rule is [BP-022](best-practices.md#bp-022-release-notes-via-changesets). This doc is the longer walk-through that BP-022 links to.

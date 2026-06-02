@@ -45,7 +45,7 @@ Peer dependency: `react ^18.0.0 || ^19.0.0`
 
 ## How it works
 
-`@flow-state-dev/react` wraps the [`@flow-state-dev/client`](../client) transport layer with React hooks. All network communication goes through the client — no transport logic lives in this package. This means:
+`@flow-state-dev/react` wraps the [`@flow-state-dev/client`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/client) transport layer with React hooks. All network communication goes through the client — no transport logic lives in this package. This means:
 
 - Hooks manage lifecycle and reactivity, not HTTP or SSE
 - You can swap transport behavior by configuring the client
@@ -190,7 +190,7 @@ const voice = useVoice(session, { action: "say" });
 
 Internally, `useVoice` subscribes to streaming audio chunks via `session.subscribeAudioDelta(handler)` (the same subscription is available for consumers who want to drive a custom player) and decodes them with the Web Audio API on a shared `AudioContext`, scheduling sources back-to-back for gap-free playback. The same `(itemId, contentIndex)` dedup prevents the eventual `OutputAudioContent` snapshot from double-playing audio that already streamed.
 
-The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for releasing the underlying `AudioContext` (called automatically on unmount). MP3 (`audio/mpeg`) is the only supported codec in M1; PCM and WAV are deferred. See [streaming items](../../apps/docs/docs/streaming/items.md) for the wire format.
+The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for releasing the underlying `AudioContext` (called automatically on unmount). MP3 (`audio/mpeg`) is the only supported codec in M1; PCM and WAV are deferred. See [streaming items](https://flow-state.dev/docs/streaming/items) for the wire format.
 
 ## Render helpers
 
@@ -273,5 +273,5 @@ pnpm --filter @flow-state-dev/react test
 
 ## Architecture reference
 
-- [Server and Client](../../docs/architecture/server-and-client.md) — React hooks contract, FlowProvider, rendering
-- [Streaming](../../docs/architecture/streaming.md) — Item types, content model, transience
+- [React Hooks](https://flow-state.dev/docs/client/react) — React hooks contract, FlowProvider, rendering
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item types, content model, transience

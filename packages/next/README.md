@@ -2,6 +2,12 @@
 
 Platform-agnostic Next.js App Router adapter for flow-state-dev.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/next
+```
+
 `createNextHandler` mounts a `FlowState` (from `createFlowState`) onto a
 catch-all route. It resolves the runtime lazily on the first request and
 awaits Next.js 15's async `params`. There's no Vercel-specific behavior here,

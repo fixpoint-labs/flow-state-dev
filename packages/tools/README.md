@@ -2,6 +2,12 @@
 
 Portable tool blocks for `@flow-state-dev` flows. Each tool is a handler block that can be passed directly to a generator's `tools` array.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/tools
+```
+
 ## Search
 
 Multi-provider web search with automatic provider detection.
@@ -150,8 +156,8 @@ generator({
 | Adapter | Provider type | Description |
 |---------|--------------|-------------|
 | Local FS | `"local"` | Real filesystem + `child_process`. Best for development. |
-| Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. Requires OIDC Federation enabled on the project **or** the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple. Without either, the adapter throws a clear error naming both options — pick a different provider (e.g. `just-bash`) for unauthenticated/anonymous-visitor demos. See the [Deploying to Vercel guide](https://flow-state-dev.com/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel) for the full recipe. |
-| Upstash | `"upstash"` | Placeholder — blocked on API stabilization (FIX-314). |
+| Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. Requires OIDC Federation enabled on the project **or** the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple. Without either, the adapter throws a clear error naming both options — pick a different provider (e.g. `just-bash`) for unauthenticated/anonymous-visitor demos. See the [Deploying to Vercel guide](https://flow-state.dev/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel) for the full recipe. |
+| Upstash | `"upstash"` | Placeholder — blocked on upstream API stabilization. |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
 | MOAT | `"moat"` | Local container isolation with credential injection (requires the `moat` CLI v0.4.0+). |
 | Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
@@ -212,7 +218,7 @@ createBashCapability({
 });
 ```
 
-See the [bash docs page](https://flow-state-dev.com/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
+See the [bash docs page](https://flow-state.dev/docs/tools/bash#moat-local-container-isolation) for grants, network policy, and limits.
 
 ### Configuration
 

@@ -73,7 +73,7 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 
 ## Interrupted Request Recovery
 
-This adapter fully supports the interrupted request recovery feature (FIX-294). The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
+This adapter fully supports interrupted request recovery. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
 
 ## Schema evolution
 

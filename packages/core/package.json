@@ -1,6 +1,29 @@
 {
   "name": "@flow-state-dev/core",
   "version": "0.0.0",
+  "description": "Isomorphic builders, type contracts, and item taxonomy for the flow-state-dev block framework.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "blocks",
+    "items",
+    "zod",
+    "schema"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -56,7 +79,8 @@
   },
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -113,6 +137,10 @@
       }
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
   "dependencies": {
     "ai": "^6.0.93",
     "cron-parser": "^5.0.0",

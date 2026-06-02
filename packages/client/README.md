@@ -4,6 +4,12 @@
 
 Works in Node, the browser, edge runtimes. No React dependency. No DOM dependency. Just HTTP and SSE.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/client
+```
+
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
@@ -138,5 +144,5 @@ pnpm --filter @flow-state-dev/client test
 
 ## Architecture reference
 
-- [Server and Client](../../docs/architecture/server-and-client.md) — Routes, transport, React hooks contract
-- [Streaming](../../docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
+- [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

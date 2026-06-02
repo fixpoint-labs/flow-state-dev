@@ -2,6 +2,12 @@
 
 Deterministic test utilities for Flow State Dev runtime contracts.
 
+## Installation
+
+```bash
+pnpm add -D @flow-state-dev/testing
+```
+
 This package provides:
 - isolated runtime harness creation (`createTestContext`)
 - block/flow test helpers (`testBlock`, `testSequencer`, `testRouter`, `testFlow`)
@@ -186,6 +192,6 @@ Seeding is idempotent — already-present users/sessions/orgs aren't re-`set`, s
 
 ## Architecture Reference
 
-- [Blocks](../../docs/architecture/blocks.md) — block kinds, BlockContext
-- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — retry, rescue, error model
-- [State and Scopes](../../docs/architecture/state-and-scopes.md) — scope hierarchy, state ops
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — block kinds, BlockContext
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — retry, rescue, error model
+- [State and Scopes](https://flow-state.dev/docs/fundamentals/state-and-scopes) — scope hierarchy, state ops
