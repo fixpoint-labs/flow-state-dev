@@ -378,6 +378,29 @@ describe.each(schemaFamilies)(
       expect(changes[1]?.data?.taskId).toBe("t2");
     });
 
+    it("forwards idPrefix to seed (P&E 'step', supervisor default 'task')", async () => {
+      const planner = makePlanner([{ goal: "No explicit id" }]);
+
+      const entry = createPlanningEntry({
+        name: "test-entry",
+        inputSchema,
+        stateSchema,
+        planner,
+        maxAttemptsPerTask: 1,
+        activeStatusMessage,
+        idPrefix: "step",
+      });
+
+      const result = await testBlock(entry, {
+        input: { goal: "Test" },
+      });
+
+      expect(result.error).toBeNull();
+      const changes = taskChanges(result.items);
+      expect(changes).toHaveLength(1);
+      expect(changes[0]?.data?.taskId).toBe("step-1");
+    });
+
     it("completes without error (state transitions verified by pattern tests)", async () => {
       const planner = makePlanner([{ goal: "A" }]);
 

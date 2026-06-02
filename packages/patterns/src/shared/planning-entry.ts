@@ -125,6 +125,8 @@ export interface PlanningEntryOptions<
   planner: BlockDefinition<any, any>;
   maxAttemptsPerTask: number;
   activeStatusMessage?: string;
+  /** Auto-id prefix forwarded to `createSeedTasksFromPlan`. Default `"task"`; P&E passes `"step"`. */
+  idPrefix?: string;
 }
 
 /**
@@ -142,6 +144,7 @@ export function createPlanningEntry<
     planner,
     maxAttemptsPerTask,
     activeStatusMessage,
+    idPrefix,
   } = options;
   const collectionId = name;
 
@@ -175,6 +178,7 @@ export function createPlanningEntry<
     collectionId,
     maxAttemptsPerTask,
     stateSchema,
+    ...(idPrefix ? { idPrefix } : {}),
   });
 
   return sequencer({

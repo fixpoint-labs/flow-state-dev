@@ -38,5 +38,6 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
     planner,
     maxAttemptsPerTask,
     activeStatusMessage: "Planning the steps",
+    idPrefix: "step",
   });
 }
