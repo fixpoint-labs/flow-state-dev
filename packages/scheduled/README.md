@@ -146,7 +146,7 @@ createScheduleIndexConformanceTests("my-backend", {
 
 Covers upsert idempotence, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
 
-See [the schedule index reference](https://flowstate.dev/docs/server/schedule-index) for the full interface and contract.
+See [the schedule index reference](https://flow-state.dev/docs/server/schedule-index) for the full interface and contract.
 
 ## See also
 

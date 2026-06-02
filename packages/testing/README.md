@@ -5,7 +5,7 @@ Deterministic test utilities for Flow State Dev runtime contracts.
 ## Installation
 
 ```bash
-pnpm add @flow-state-dev/testing
+pnpm add -D @flow-state-dev/testing
 ```
 
 This package provides:
