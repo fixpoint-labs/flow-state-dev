@@ -46,7 +46,8 @@ const DEFAULT_MAX_LOOP_GUARD = 250;
 export type ResumeState = {
   stepIndex: number;
   state?: Record<string, unknown>;
-  cachedOutputs?: Record<number, unknown>;
+  /** The input value that was about to be passed to the step that suspended. */
+  stepInput?: unknown;
 };
 
 /** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
@@ -720,11 +721,12 @@ function runSequencerOperations(
           runtime.stepHistory.push(operation.name);
           currentStepIndex = index;
 
-          // Skip completed steps in resume mode — inject cached outputs.
+          // Skip completed steps in resume mode. On the last skipped step,
+          // set currentValue to stepInput so the re-executed step receives
+          // the same input it saw on the original run.
           if (resumeState !== undefined && index <= resumeStepIndex) {
-            const cachedOutput = resumeState.cachedOutputs?.[index];
-            if (cachedOutput !== undefined) {
-              currentValue = cachedOutput;
+            if (index === resumeStepIndex && resumeState.stepInput !== undefined) {
+              currentValue = resumeState.stepInput;
             }
             continue;
           }
@@ -808,6 +810,7 @@ function runSequencerOperations(
         // and the resume runtime can skip-and-inject up to this point.
         if (error instanceof SuspensionError) {
           (error as any)._stepIndex = currentStepIndex;
+          (error as any)._currentValue = currentValue;
           (error as any)._sequencerState = ctx.sequencer !== undefined
             ? (typeof ctx.sequencer.state === "object" ? { ...ctx.sequencer.state as Record<string, unknown> } : undefined)
             : undefined;

@@ -35,32 +35,40 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
     },
 
     async list(filter?: SuspensionFilter): Promise<SuspensionRecord[]> {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+
+      if (filter?.flowKind) {
+        conditions.push(`data->>'flowKind' = $${paramIdx++}`);
+        params.push(filter.flowKind);
+      }
+      if (filter?.userId) {
+        conditions.push(`data->>'userId' = $${paramIdx++}`);
+        params.push(filter.userId);
+      }
+      if (filter?.sessionId) {
+        conditions.push(`data->>'sessionId' = $${paramIdx++}`);
+        params.push(filter.sessionId);
+      }
+      if (filter?.status) {
+        conditions.push(`data->>'status' = $${paramIdx++}`);
+        params.push(filter.status);
+      }
+
+      const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+      const limit = filter?.limit !== undefined ? ` LIMIT $${paramIdx++}` : "";
+      if (filter?.limit !== undefined) params.push(filter.limit);
+
       const result = await executor.query(
-        "SELECT data FROM suspension_records ORDER BY created_at DESC"
+        `SELECT data FROM suspension_records${where} ORDER BY created_at DESC${limit}`,
+        params
       );
 
-      let results = result.rows.map((row) => {
+      return result.rows.map((row) => {
         const data = row.data;
         return typeof data === "string" ? (JSON.parse(data) as SuspensionRecord) : (data as SuspensionRecord);
       });
-
-      if (filter?.flowKind) {
-        results = results.filter((r) => r.flowKind === filter.flowKind);
-      }
-      if (filter?.userId) {
-        results = results.filter((r) => r.userId === filter.userId);
-      }
-      if (filter?.sessionId) {
-        results = results.filter((r) => r.sessionId === filter.sessionId);
-      }
-      if (filter?.status) {
-        results = results.filter((r) => r.status === filter.status);
-      }
-      if (filter?.limit !== undefined) {
-        results = results.slice(0, filter.limit);
-      }
-
-      return results;
     },
 
     async deleteForRequest(requestId: string): Promise<void> {

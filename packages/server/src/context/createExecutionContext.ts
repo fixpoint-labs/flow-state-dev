@@ -75,7 +75,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
-import { SuspensionError } from "@flow-state-dev/core/errors/suspension-error";
+import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -4336,7 +4336,6 @@ export async function createExecutionContext<
         const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
         if (resumeCtx !== undefined) {
           if (resumeCtx.action === "reject") {
-            const { SuspensionRejectedError } = await import("@flow-state-dev/core/errors/suspension-error");
             throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
           }
           return resumeCtx.data;

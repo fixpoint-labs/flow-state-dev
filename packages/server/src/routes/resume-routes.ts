@@ -70,9 +70,14 @@ export async function handleResumeSuspension(
   }
 
   const suspension = await provider.loadSuspension(route.requestId, suspensionId);
-  if (suspension === null || suspension.status !== "pending") {
+  if (suspension === null) {
     return jsonResponse(404, {
-      error: `Suspension "${suspensionId}" not found or not pending`
+      error: `Suspension "${suspensionId}" not found`
+    });
+  }
+  if (suspension.status !== "pending") {
+    return jsonResponse(409, {
+      error: `Suspension "${suspensionId}" has already been resolved (status: "${suspension.status}")`
     });
   }
 

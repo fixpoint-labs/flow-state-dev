@@ -10,7 +10,7 @@ import type {
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError } from "@flow-state-dev/core/errors/suspension-error";
+import { SuspensionError } from "@flow-state-dev/core";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
@@ -832,7 +832,7 @@ export async function runActionInternal<
         (ctx as any)._resumeState = {
           stepIndex: resumeStepIndex,
           state: checkpoint?.state as Record<string, unknown> | undefined,
-          cachedOutputs: {}
+          stepInput: suspension.stepInput
         };
       }
     }
@@ -901,6 +901,7 @@ export async function runActionInternal<
             status: "pending",
             blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
             stepIndex,
+            stepInput: (suspendError as any)._currentValue,
             createdAt: Date.now(),
             expiresAt: suspendError.timeoutMs
               ? Date.now() + suspendError.timeoutMs
@@ -1060,19 +1061,20 @@ export async function runActionInternal<
     // Persist the final event list (includes terminal status event)
     await options.stores.request.flushEvents(requestId);
 
+    // Release durability lease on ANY terminal state so the resume endpoint
+    // doesn't 409 until TTL expires when the resumed action errors.
+    if (resumeOf !== undefined && options.runtimeConfig.durabilityProvider !== undefined) {
+      try {
+        await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
+      } catch (err) {
+        logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
+          requestId, resumeOf, error: String(err)
+        });
+      }
+    }
+
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
-
-      // Clean up durability artifacts for completed resume requests.
-      if (resumeOf !== undefined && options.runtimeConfig.durabilityProvider !== undefined) {
-        try {
-          await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
-        } catch (err) {
-          logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
-            requestId, resumeOf, error: String(err)
-          });
-        }
-      }
 
       // Retention eviction: remove old request records if session exceeds limits
       if (options.sessionId !== undefined && resolvedRetention !== undefined) {
