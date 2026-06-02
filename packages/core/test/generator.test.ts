@@ -1514,9 +1514,9 @@ describe("generator — observable model identity (FIX-518)", () => {
       model: "mock-model",
       outputSchema: z.string(),
       prompt: "go",
-      onCompleted: ((_output: string, _ctx: unknown) => {
+      onCompleted: async (_output, _ctx) => {
         callCount++;
-      }) as any,
+      },
     });
 
     const ctx = createMockContext({

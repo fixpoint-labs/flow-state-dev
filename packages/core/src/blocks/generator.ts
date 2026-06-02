@@ -386,7 +386,7 @@ export interface GeneratorConfig<
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted"> {
   onCompleted?: (
     output: TOutput,
-    ctx: BlockContext,
+    ctx: TCtx,
     meta: GeneratorCompletedMeta
   ) => Promise<void> | void;
   requestStateSchema?: TRequestStateSchema;
