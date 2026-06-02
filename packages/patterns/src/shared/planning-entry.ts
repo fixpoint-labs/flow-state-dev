@@ -87,7 +87,7 @@ export function createSeedTasksFromPlan<TState>(
       });
 
       const tasks: TaskInit[] = planOutput.tasks.map((t, i) => {
-        const resolvedInput = t.input ?? t.context ?? (inputDefault === "goal" ? t.goal : undefined);
+        const resolvedInput = t.input ?? (inputDefault === "goal" ? t.goal : (t.context ?? undefined));
 
         return {
           id: t.id ?? `${idPrefix}-${i + 1}`,

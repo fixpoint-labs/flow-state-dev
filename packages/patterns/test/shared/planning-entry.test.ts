@@ -161,6 +161,24 @@ describe("createSeedTasksFromPlan", () => {
     expect(changes[0]?.data?.task?.input).toBe("Research topic A");
   });
 
+  it("inputDefault='goal' takes priority over t.context (parallelTasks compat)", async () => {
+    const seed = createSeedTasksFromPlan({
+      name: "test",
+      collectionId: "test",
+      inputDefault: "goal",
+    });
+
+    const wrapper = sequencer({ name: "w", inputSchema: z.any() })
+      .step(makePlanner([{ goal: "Research topic A", context: "extra context" }]))
+      .tap(seed);
+
+    const result = await testBlock(wrapper, { input: { goal: "test" } });
+
+    expect(result.error).toBeNull();
+    const changes = taskChanges(result.items);
+    expect(changes[0]?.data?.task?.input).toBe("Research topic A");
+  });
+
   it("inputDefault='goal' is overridden by explicit t.input", async () => {
     const seed = createSeedTasksFromPlan({
       name: "test",
