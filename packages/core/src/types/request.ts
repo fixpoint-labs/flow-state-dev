@@ -15,7 +15,8 @@ export type RequestStatus =
   | "incomplete"
   | "failed"
   | "interrupted"
-  | "aborted";
+  | "aborted"
+  | "suspended";
 
 /**
  * Read-only snapshot of a request's lifecycle state, returned by

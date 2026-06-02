@@ -75,6 +75,14 @@ import {
   createInMemoryUserStore,
   InMemoryUserStore
 } from "./memory/user-store";
+import {
+  createInMemorySuspensionStore,
+  InMemorySuspensionStore
+} from "./memory/suspension-store";
+import {
+  createInMemoryLeaseStore,
+  InMemoryLeaseStore
+} from "./memory/lease-store";
 import { ScopeMutationTimeoutError } from "./scope-lock";
 import {
   createScopeStateOps,
@@ -90,6 +98,7 @@ export type {
   CheckpointStore,
   ContentScopeType,
   ContentStore,
+  LeaseStore,
   ResourceStateStore,
   ExpectedVersion,
   OrgListOptions,
@@ -107,6 +116,7 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  SuspensionStore,
   SubscribeToEventsOptions,
   TraceEvent,
   TraceStore,
@@ -151,6 +161,8 @@ export {
   createInMemorySessionStore,
   createInMemoryTraceStore,
   createInMemoryUserStore,
+  createInMemorySuspensionStore,
+  createInMemoryLeaseStore,
   FilesystemActiveRequestRegistry,
   FilesystemCheckpointStore,
   FilesystemContentStore,
@@ -169,6 +181,8 @@ export {
   InMemorySessionStore,
   InMemoryTraceStore,
   InMemoryUserStore,
+  InMemorySuspensionStore,
+  InMemoryLeaseStore,
   MemoryStateContainer,
   runWithCAS
 };
@@ -240,7 +254,9 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
     traces: createInMemoryTraceStore({
       ...options.traceStore,
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
-    })
+    }),
+    suspensions: createInMemorySuspensionStore(),
+    leases: createInMemoryLeaseStore()
   };
 }
 
@@ -292,7 +308,9 @@ export function createFilesystemStores(
       rootDir: path.join(options.rootDir, "traces"),
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
       onPersistError
-    })
+    }),
+    suspensions: createInMemorySuspensionStore(),
+    leases: createInMemoryLeaseStore()
   };
 }
 

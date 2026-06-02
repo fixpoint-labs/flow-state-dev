@@ -18,7 +18,8 @@ export function isTerminalRequestStatus(status: RequestStatus | undefined): bool
     status === "failed" ||
     status === "incomplete" ||
     status === "interrupted" ||
-    status === "aborted"
+    status === "aborted" ||
+    status === "suspended"
   );
 }
 

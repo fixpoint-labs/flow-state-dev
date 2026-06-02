@@ -13,6 +13,8 @@ import { createSQLiteOrgStore } from "./org-store";
 import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 import { createSQLiteCheckpointStore } from "./checkpoint-store";
 import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-store";
+import { InMemorySuspensionStore } from "./suspension-store";
+import { InMemoryLeaseStore } from "./lease-store";
 
 // Inlined to avoid a value import from `@flow-state-dev/server` — the
 // store-sqlite package boundary forbids value imports from server, and the
@@ -70,6 +72,8 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
       ...options.traceStore,
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
     }),
+    suspensions: new InMemorySuspensionStore(),
+    leases: new InMemoryLeaseStore(),
     close() {
       db.close();
     }

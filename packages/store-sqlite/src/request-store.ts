@@ -46,7 +46,8 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
     status === "failed" ||
     status === "incomplete" ||
     status === "interrupted" ||
-    status === "aborted"
+    status === "aborted" ||
+    status === "suspended"
   );
 }
 

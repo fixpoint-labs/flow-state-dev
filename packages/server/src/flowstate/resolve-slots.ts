@@ -3,7 +3,7 @@
  *
  * Given the active profile (a `CapabilitySlotMap`), this realizes each
  * declared adapter and projects the capability slots onto the flat
- * 8-slot `StoreRegistry` the runtime consumes. `primary` covers all eight
+ * `StoreRegistry` the runtime consumes. `primary` covers all
  * sub-stores; `blobs` / `queue` / `scheduler` are forward-compatible and
  * map to no sub-store today (declaring them is a no-op). Any sub-store left
  * uncovered falls back to an in-memory store, preserving the historical
@@ -26,7 +26,7 @@ const FORWARD_COMPATIBLE_SLOTS: ReadonlySet<CapabilitySlot> = new Set([
   "scheduler"
 ]);
 
-/** The eight `StoreRegistry` sub-stores the `primary` capability backs. */
+/** The `StoreRegistry` sub-stores the `primary` capability backs. */
 export const PRIMARY_REGISTRY_SLOTS: ReadonlyArray<keyof StoreRegistry> = [
   "session",
   "request",
@@ -35,7 +35,9 @@ export const PRIMARY_REGISTRY_SLOTS: ReadonlyArray<keyof StoreRegistry> = [
   "activeRequests",
   "content",
   "checkpoints",
-  "traces"
+  "traces",
+  "suspensions",
+  "leases"
 ];
 
 export type ResolvedProfileStores = {

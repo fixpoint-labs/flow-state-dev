@@ -186,6 +186,16 @@ export type ActionConfig<
     warnAt?: number;
     onExceeded?: "error" | "stop" | "warn";
   };
+  /**
+   * When true, this action's execution is durable: checkpoints are
+   * written at step boundaries, ctx.suspend() is available, and crash
+   * recovery resumes from the last checkpoint instead of re-executing
+   * from scratch.
+   *
+   * Requires a DurabilityProvider on the runtime. Default: false
+   * (transient — crashes lose request state).
+   */
+  durable?: boolean;
 };
 
 /**

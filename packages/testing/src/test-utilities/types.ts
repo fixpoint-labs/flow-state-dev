@@ -138,7 +138,7 @@ export type TestFlowOptions<TInput = unknown> = {
 };
 
 export type TestFlowResult = {
-  status: "completed" | "failed" | "incomplete" | "interrupted" | "aborted";
+  status: "completed" | "failed" | "incomplete" | "interrupted" | "aborted" | "suspended";
   requestId: string;
   output?: unknown;
   error?: Error;

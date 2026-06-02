@@ -4,6 +4,7 @@ import type {
   FlowStateSettings,
   JsonObject,
   ModelResolver,
+  RequestStatus,
   ResponseEmitterHandle
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -13,7 +14,7 @@ import type { StoreRegistry } from "../stores/types";
 export type RequestRuntime = {
   requestId: string;
   actionName: string;
-  status: "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
+  status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
   failedAtMs?: number;
