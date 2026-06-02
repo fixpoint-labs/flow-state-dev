@@ -139,11 +139,17 @@ export function modelImpliedRating(input: ValuationSpineInput): RatingEnvelope {
   const implied = combinedRating(abs.rating, rel.rating);
   const idx = ratingIndex(implied);
 
-  // Band: ±1 tier; thin evidence → center on Hold, widen to ±2
+  // Band: ±1 tier. Thin evidence (missing valuation / low-confidence return)
+  // widens the band UPWARD only. It grants extra room to be more bullish when
+  // the deterministic value anchor is absent, but must NOT open a free path
+  // *below* the model-implied rating: missing data is absorbed by a lower
+  // decisionConfidence, never by a lower rating. So the downward spread is
+  // always 1; only the upward spread reacts to thin evidence.
   const thin = ss.evidenceBasis === "thin" || er.lowConfidence;
-  const spread = thin ? 2 : 1;
-  const floor = FINAL_RATING_LADDER[Math.max(0, idx - spread)];
-  const ceiling = FINAL_RATING_LADDER[Math.min(4, idx + spread)];
+  const downSpread = 1;
+  const upSpread = thin ? 2 : 1;
+  const floor = FINAL_RATING_LADDER[Math.max(0, idx - downSpread)];
+  const ceiling = FINAL_RATING_LADDER[Math.min(4, idx + upSpread)];
 
   const rationale = `absolute: ${abs.rationale}; relative: ${rel.rationale}`;
 

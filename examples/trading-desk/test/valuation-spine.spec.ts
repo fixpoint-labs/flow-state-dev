@@ -347,6 +347,49 @@ describe("modelImpliedRating", () => {
     expect(spread).toBeGreaterThanOrEqual(2);
   });
 
+  it("strong setup + missing valuation → implied Overweight, floor not below Hold", () => {
+    // Regression (FIX-715 follow-up): the TSM case. Valuation/return is
+    // uncomputable (excessReturn null, lowConfidence), but quality/factor/
+    // momentum give a high setup score. The absolute axis is Hold ("no return
+    // estimate"), the relative axis is Overweight (score ≥ 65) → combined
+    // Overweight. Thin evidence must NOT widen the band downward: missing data
+    // is absorbed by confidence, not by a lower rating. So the floor must be
+    // Hold (implied − 1), never Underweight (implied − 2).
+    const er = {
+      shareholderYield: null,
+      sustainableGrowth: null,
+      expectedReturn: null,
+      hurdle: HURDLE_RATE,
+      excessReturn: null,
+      basis: "none" as const,
+      lowConfidence: true,
+    };
+    const fv = {
+      justifiedPE: null,
+      fairValue: null,
+      marginOfSafety: null,
+      method: "none" as const,
+      available: false,
+    };
+    const ss = {
+      score: 82,
+      value: null,
+      quality: 90,
+      factor: 88,
+      momentum: 75,
+      evidenceBasis: "sufficient" as const,
+    };
+    const env = modelImpliedRating({ expectedReturn: er, fairValue: fv, setupScore: ss });
+    expect(env.absoluteRating).toBe("Hold");
+    expect(env.relativeRating).toBe("Overweight");
+    expect(env.implied).toBe("Overweight");
+    // The fix: floor is Hold, not Underweight — missing data cannot open a
+    // path below the implied rating.
+    expect(env.floor).toBe("Hold");
+    // Upward room is preserved for thin evidence.
+    expect(env.ceiling).toBe("Buy");
+  });
+
   it("both absolute and relative ratings are present", () => {
     expect(nvdaEnv.absoluteRating).toBeDefined();
     expect(nvdaEnv.relativeRating).toBeDefined();

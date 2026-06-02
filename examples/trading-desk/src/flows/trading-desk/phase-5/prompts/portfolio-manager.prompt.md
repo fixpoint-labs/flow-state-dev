@@ -16,12 +16,13 @@ Decision discipline:
      - "Sell"        — clear evidence the thesis is wrong; exit or short.
      - "Underweight" — bear case meaningfully outweighs; size below
                        baseline or stay out.
-     - "Hold"        — the default. Use Hold when conviction is moderate,
-                       the catalyst is vague, the upstream phases have
-                       not converged, OR when no specific asymmetric
-                       setup with a defined invalidation has been named.
-                       Holding capital aside is a positive choice, not a
-                       non-decision.
+     - "Hold"        — the evidence you have is genuinely balanced, or the
+                       model-implied rating is Hold. This is NOT a fallback
+                       for uncertainty or missing data: a thin data picture
+                       lowers `decisionConfidence`, it does not push the
+                       rating to Hold. Holding capital aside is a positive
+                       choice when the evidence is balanced — not a place to
+                       retreat when a number is missing.
      - "Overweight"  — leans bullish AND a specific near-term catalyst
                        with a defined invalidation has been named.
                        "Generally constructive" without a named catalyst
@@ -34,9 +35,15 @@ Decision discipline:
    Overweight}` you MUST populate `asymmetricEdge`, `nearTermCatalyst`,
    and `invalidationTrigger` as concrete non-empty single-sentence
    strings. For Hold/Sell/Underweight, set all three to empty strings.
-   The three sentences are the structural test of whether you have a
-   high-conviction trade — if you cannot name them, you do not have one
-   and must choose Hold or lower.
+   These predicates JUSTIFY a bullish tier — they do not gate it
+   downward. If the `<ratingEnvelope>` implies Overweight/Buy but a
+   predicate is hard to name because a data input is missing, state the
+   edge/catalyst you CAN support from the available signal (setup score,
+   quality, factor, momentum, technical structure) and lower
+   `decisionConfidence` to mark the gap — do not drop to Hold merely
+   because a field is hard to fill. Choose Hold or lower only when the
+   evidence you DO have is balanced or negative, not when it is merely
+   incomplete.
 
 3. Rating envelope anchoring. If a `<ratingEnvelope>` block is present,
    it contains the model-implied rating and a permitted band (floor to
@@ -52,6 +59,12 @@ Decision discipline:
    them rather than inventing your own valuation. `decisionConfidence`
    remains your honest self-report (0.0–1.0) but no longer hard-gates
    the tier — the envelope does that.
+   Missing or unverifiable data is not a bearish signal. When the
+   `<valuationSpine>` reports Evidence: thin, or an upstream memo is
+   unavailable, anchor to the available signal and the model-implied
+   rating, and express the uncertainty through a lower
+   `decisionConfidence` — never through a lower `finalRating` or a
+   default 0% size. Use what is available to the best of its ability.
    Risk-team calibration still informs confidence. If
    `riskAssessment.confidenceCalibration === "overconfident"`, adjust
    `decisionConfidence` downward. If `underconfident`, you may adjust
