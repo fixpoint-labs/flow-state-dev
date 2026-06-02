@@ -7,8 +7,12 @@ import type {
   ActionConfig,
   BlockDefinition,
   FlowInstance,
-  Middleware
+  Middleware,
+  SuspensionRecord
 } from "@flow-state-dev/core/types";
+import { SuspensionError } from "@flow-state-dev/core/errors/suspension-error";
+import type { SuspensionItem } from "@flow-state-dev/core/items";
+import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
@@ -807,6 +811,33 @@ export async function runActionInternal<
     throw setupError;
   }
 
+  // Resume mode: when re-invoking after suspension, load the suspension record
+  // and checkpoint to populate _resumeState so the sequencer skips completed steps.
+  const resumeOf = options.metadata?.resumeOf as string | undefined;
+  const resumeContext = options.metadata?.resumeContext as ResumeContext | undefined;
+  if (resumeOf !== undefined && resumeContext !== undefined) {
+    const provider = options.runtimeConfig.durabilityProvider;
+    if (provider !== undefined) {
+      const suspension = await provider.loadSuspension(resumeOf, resumeContext.suspensionId);
+      if (suspension !== null && suspension.stepIndex >= 0) {
+        // Load the checkpoint from the original request to get the sequencer state.
+        const checkpoint = await options.stores.checkpoints.latest(
+          resumeOf,
+          suspension.blockInstanceId
+        );
+        // Skip steps 0..stepIndex-1 (completed before suspension).
+        // Step at stepIndex (the one that called ctx.suspend()) re-executes;
+        // this time ctx.suspend() returns resumeData instead of throwing.
+        const resumeStepIndex = suspension.stepIndex - 1;
+        (ctx as any)._resumeState = {
+          stepIndex: resumeStepIndex,
+          state: checkpoint?.state as Record<string, unknown> | undefined,
+          cachedOutputs: {}
+        };
+      }
+    }
+  }
+
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
   });
@@ -836,18 +867,100 @@ export async function runActionInternal<
       options.flow.middleware
     );
 
-    const result = await executeBlock({
-      block: action.block,
-      input: parsedInput,
-      ctx,
-      retry: options.retry,
-      middleware: actionMiddleware.length > 0 ? actionMiddleware : undefined,
-      internalSeams,
-      metadata: {
-        scope: "request"
-      },
-      logger
-    });
+    let result;
+    try {
+      result = await executeBlock({
+        block: action.block,
+        input: parsedInput,
+        ctx,
+        retry: options.retry,
+        middleware: actionMiddleware.length > 0 ? actionMiddleware : undefined,
+        internalSeams,
+        metadata: {
+          scope: "request"
+        },
+        logger
+      });
+    } catch (suspendError) {
+      if (suspendError instanceof SuspensionError) {
+        const provider = options.runtimeConfig.durabilityProvider;
+        if (provider !== undefined) {
+          const stepIndex = (suspendError as any)._stepIndex ?? -1;
+          const record: SuspensionRecord = {
+            suspensionId: suspendError.suspensionId,
+            requestId,
+            flowKind: options.flow.kind,
+            actionName: options.actionName,
+            sessionId: options.sessionId,
+            userId: options.userId,
+            reason: suspendError.reason,
+            message: suspendError.message,
+            data: suspendError.data,
+            resumeSchema: suspendError.resumeSchema,
+            render: suspendError.render,
+            status: "pending",
+            blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
+            stepIndex,
+            createdAt: Date.now(),
+            expiresAt: suspendError.timeoutMs
+              ? Date.now() + suspendError.timeoutMs
+              : undefined
+          };
+          await provider.suspend(record);
+        }
+
+        const suspItem: SuspensionItem = {
+          id: `item_suspension_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          type: "suspension",
+          suspensionId: suspendError.suspensionId,
+          status: "pending",
+          reason: suspendError.reason,
+          message: suspendError.message,
+          data: suspendError.data,
+          resumeSchema: suspendError.resumeSchema,
+          render: suspendError.render,
+          requestId,
+          itemIndex: getResponseItemCount(response),
+          provenance: RUNTIME_PROVENANCE,
+          ts: Date.now()
+        };
+        await response.emitItemAdded(suspItem);
+        await response.emitItemDone(suspItem);
+
+        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
+        await flushCheckpoints();
+        await flushTraces();
+
+        await patchRequestRecord(options.stores, requestId, {
+          status: "suspended",
+          items: response.getItems()
+        });
+        ctx.requestRuntime.status = "suspended";
+        await response.emitRequestStatus("suspended");
+        await options.stores.request.flushEvents(requestId);
+
+        logRuntimeEvent(logger, "info", "[flow-state] action execution suspended", {
+          ...createExecutionLogContext(metadata),
+          suspensionId: suspendError.suspensionId,
+          reason: suspendError.reason,
+          durationMs: Date.now() - startedAt
+        });
+
+        deregisterAbortController(requestId);
+        await registry.deregister(requestId).catch(() => {});
+        if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
+
+        return {
+          output: undefined,
+          items: response.getItems(),
+          durationMs: Date.now() - startedAt,
+          requestId
+        };
+      }
+      throw suspendError;
+    }
 
     if (result.error !== undefined) {
       throw result.error;
@@ -948,6 +1061,17 @@ export async function runActionInternal<
 
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+
+      // Clean up durability artifacts for completed resume requests.
+      if (resumeOf !== undefined && options.runtimeConfig.durabilityProvider !== undefined) {
+        try {
+          await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
+        } catch (err) {
+          logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
+            requestId, resumeOf, error: String(err)
+          });
+        }
+      }
 
       // Retention eviction: remove old request records if session exceeds limits
       if (options.sessionId !== undefined && resolvedRetention !== undefined) {

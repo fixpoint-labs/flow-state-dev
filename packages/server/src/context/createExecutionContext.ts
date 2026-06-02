@@ -75,6 +75,9 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
+import { SuspensionError } from "@flow-state-dev/core/errors/suspension-error";
+import type { ResumeContext } from "@flow-state-dev/core/types";
+import { generateId } from "../utils/generate-id";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
   resolveUserStorageKey,
@@ -4329,6 +4332,19 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      suspend: async (suspendOpts) => {
+        const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
+        if (resumeCtx !== undefined) {
+          if (resumeCtx.action === "reject") {
+            const { SuspensionRejectedError } = await import("@flow-state-dev/core/errors/suspension-error");
+            throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+          }
+          return resumeCtx.data;
+        }
+        const suspensionId = generateId("susp");
+        throw new SuspensionError({ ...suspendOpts, suspensionId });
+      },
+      saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per
       // claimed task; child scopes constructed afterward inherit it (see the

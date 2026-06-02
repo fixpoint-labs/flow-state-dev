@@ -4,6 +4,7 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
+import { SuspensionError } from "@flow-state-dev/core/errors/suspension-error";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
@@ -446,6 +447,10 @@ export async function executeBlock(
       durationMs: Date.now() - startedAt
     };
   } catch (error) {
+    // SuspensionError is control flow, not a block failure — let it propagate.
+    if (error instanceof SuspensionError) {
+      throw error;
+    }
     const normalized = normalizeError(error, {
       blockName: options.block.name,
       scope: "block"

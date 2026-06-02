@@ -414,6 +414,26 @@ export interface BlockContext<
    */
   runOnce?<T>(key: string, fn: () => Promise<T>): Promise<T>;
 
+  /**
+   * Suspend execution and wait for external input. On first call, throws
+   * a SuspensionError that the sequencer catches at the step boundary. On
+   * resume, returns the resume data instead of throwing.
+   *
+   * Only callable inside a block that runs within a durable sequencer.
+   * Throws if called outside a durable context.
+   */
+  suspend?(options: import("../errors/suspension-error").SuspendOptions): Promise<unknown>;
+
+  /**
+   * Manually save a checkpoint at the current execution point. Normally
+   * checkpoints are automatic at sequencer step boundaries; this is for
+   * blocks that perform expensive work within a single step and want
+   * finer-grained recovery.
+   *
+   * Only available in durable contexts.
+   */
+  saveCheckpoint?(): Promise<void>;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
