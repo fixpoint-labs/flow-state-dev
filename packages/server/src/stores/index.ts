@@ -35,6 +35,14 @@ import {
 } from "./filesystem/trace-store";
 export type { FilesystemTraceStoreOptions } from "./filesystem/trace-store";
 import {
+  createFilesystemSuspensionStore,
+  FilesystemSuspensionStore
+} from "./filesystem/suspension-store";
+import {
+  createFilesystemLeaseStore,
+  FilesystemLeaseStore
+} from "./filesystem/lease-store";
+import {
   createFilesystemUserStore,
   FilesystemUserStore
 } from "./filesystem/user-store";
@@ -150,6 +158,8 @@ export {
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
+  createFilesystemSuspensionStore,
+  createFilesystemLeaseStore,
   createFilesystemTraceStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
@@ -170,6 +180,8 @@ export {
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
+  FilesystemSuspensionStore,
+  FilesystemLeaseStore,
   FilesystemTraceStore,
   FilesystemUserStore,
   InMemoryActiveRequestRegistry,
@@ -309,8 +321,8 @@ export function createFilesystemStores(
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
       onPersistError
     }),
-    suspensions: createInMemorySuspensionStore(),
-    leases: createInMemoryLeaseStore()
+    suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions")),
+    leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases"))
   };
 }
 
