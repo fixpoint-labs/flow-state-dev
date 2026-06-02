@@ -1,0 +1,34 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "ratingsDistribution": {
+    "period": "2026-04-01",
+    "strongBuy": 28,
+    "buy": 14,
+    "hold": 5,
+    "sell": 1,
+    "strongSell": 0
+  },
+  "earningsSurprises": [
+    { "period": "2026-01-26", "actual": 0.89, "estimate": 0.84, "surprisePct": 5.95 },
+    { "period": "2025-10-26", "actual": 0.81, "estimate": 0.75, "surprisePct": 8.0 },
+    { "period": "2025-07-27", "actual": 0.68, "estimate": 0.64, "surprisePct": 6.25 },
+    { "period": "2025-04-27", "actual": 0.61, "estimate": 0.58, "surprisePct": 5.17 }
+  ],
+  "consensusEstimates": {
+    "fyEpsAvg": 4.15,
+    "fyRevenueAvg": 185000000000,
+    "numAnalysts": 42
+  },
+  "priceTargets": {
+    "high": 220.0,
+    "low": 120.0,
+    "median": 175.0,
+    "consensus": 170.0
+  },
+  "recentRatingActions": [
+    { "date": "2026-04-15", "firm": "Morgan Stanley", "action": "Maintained", "fromGrade": "Overweight", "toGrade": "Overweight" },
+    { "date": "2026-03-28", "firm": "Goldman Sachs", "action": "Upgraded", "fromGrade": "Neutral", "toGrade": "Buy" }
+  ]
+}

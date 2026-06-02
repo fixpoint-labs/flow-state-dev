@@ -53,6 +53,7 @@ const sourceTag = z.enum([
   "fred",
   "polymarket",
   "xai",
+  "fmp",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;
@@ -504,6 +505,91 @@ export const shortInterestSchema = z.object({
   settlementDate: z.string().nullable(),
 });
 
+/**
+ * SEC filings: recent filing list, latest periodic section extracts, and
+ * EFTS red-flag probes. Keyless (EDGAR is free, US-only).
+ */
+export const secFilingsSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  recentFilings: z.array(z.object({
+    form: z.string(),
+    filingDate: z.string(),
+    title: z.string(),
+    url: z.string(),
+  })),
+  latestPeriodic: z.object({
+    form: z.string(),
+    filingDate: z.string(),
+    url: z.string(),
+    riskFactors: z.string().nullable(),
+    mdna: z.string().nullable(),
+  }).nullable(),
+  redFlagProbes: z.array(z.object({
+    term: z.string(),
+    hit: z.boolean(),
+    snippet: z.string().nullable(),
+  })),
+});
+
+/**
+ * Analyst estimates, ratings, and targets. Finnhub free baseline (ratings
+ * distribution + earnings surprises); FMP optional enrichment (consensus
+ * estimates, price targets, recent rating actions).
+ */
+export const analystEstimatesSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  ratingsDistribution: z.object({
+    period: z.string(),
+    strongBuy: z.number(),
+    buy: z.number(),
+    hold: z.number(),
+    sell: z.number(),
+    strongSell: z.number(),
+  }).nullable(),
+  earningsSurprises: z.array(z.object({
+    period: z.string(),
+    actual: z.number().nullable(),
+    estimate: z.number().nullable(),
+    surprisePct: z.number().nullable(),
+  })),
+  consensusEstimates: z.object({
+    fyEpsAvg: z.number().nullable(),
+    fyRevenueAvg: z.number().nullable(),
+    numAnalysts: z.number().nullable(),
+  }).nullable(),
+  priceTargets: z.object({
+    high: z.number().nullable(),
+    low: z.number().nullable(),
+    median: z.number().nullable(),
+    consensus: z.number().nullable(),
+  }).nullable(),
+  recentRatingActions: z.array(z.object({
+    date: z.string(),
+    firm: z.string(),
+    action: z.string(),
+    fromGrade: z.string().nullable(),
+    toGrade: z.string().nullable(),
+  })),
+});
+
+/**
+ * Earnings-call transcript. FMP-key-gated: `available: false` when no key
+ * or no transcript exists for the latest quarter.
+ */
+export const earningsTranscriptSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  available: z.boolean(),
+  callDate: z.string().nullable(),
+  quarter: z.string().nullable(),
+  content: z.string().nullable(),
+});
+
 export const toolInputSchemas = {
   get_balance_sheet: periodInput,
   get_income_statement: periodInput,
@@ -533,6 +619,10 @@ export const toolInputSchemas = {
   get_quant_composites: periodInput,
   get_short_interest: periodInput,
   discover_quant_context: periodInput,
+  get_sec_filings: periodInput,
+  get_analyst_estimates: periodInput,
+  get_earnings_transcript: periodInput,
+  discover_disclosure_context: periodInput,
 } as const;
 
 export const toolOutputSchemas = {
@@ -564,6 +654,10 @@ export const toolOutputSchemas = {
   get_quant_composites: quantCompositesSchema,
   get_short_interest: shortInterestSchema,
   discover_quant_context: discoveryPayloadSchema,
+  get_sec_filings: secFilingsSchema,
+  get_analyst_estimates: analystEstimatesSchema,
+  get_earnings_transcript: earningsTranscriptSchema,
+  discover_disclosure_context: discoveryPayloadSchema,
 } as const;
 
 export type ToolName = keyof typeof toolInputSchemas;
@@ -600,6 +694,10 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   get_quant_composites: "quant-composites.json",
   get_short_interest: "short-interest.json",
   discover_quant_context: "discover-quant-context.json",
+  get_sec_filings: "sec-filings.json",
+  get_analyst_estimates: "analyst-estimates.json",
+  get_earnings_transcript: "earnings-transcript.json",
+  discover_disclosure_context: "discover-disclosure-context.json",
 };
 
 export function fixtureFileName(tool: ToolName): string {

@@ -49,6 +49,9 @@ export const MACRO_QUERY = (ticker: string): string =>
 export const QUANT_QUERY = (ticker: string): string =>
   `${ticker} factor momentum short interest options implied volatility quant signal beta`;
 
+export const DISCLOSURE_QUERY = (ticker: string): string =>
+  `${ticker} SEC filing earnings call transcript guidance consensus estimate analyst rating`;
+
 export type DiscoverWebArgs = {
   ticker: string;
   date: string;

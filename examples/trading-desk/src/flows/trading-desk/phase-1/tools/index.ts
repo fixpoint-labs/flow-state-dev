@@ -30,5 +30,9 @@ export { get_risk_regime } from "./get_risk_regime";
 export { get_quant_composites } from "./get_quant_composites";
 export { get_short_interest } from "./get_short_interest";
 export { discover_quant_context } from "./discover_quant_context";
+export { get_sec_filings } from "./get_sec_filings";
+export { get_analyst_estimates } from "./get_analyst_estimates";
+export { get_earnings_transcript } from "./get_earnings_transcript";
+export { discover_disclosure_context } from "./discover_disclosure_context";
 
 export * from "./schemas";

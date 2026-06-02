@@ -1,0 +1,40 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "recentFilings": [
+    {
+      "form": "10-K",
+      "filingDate": "2026-02-26",
+      "title": "Annual Report",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000012/nvda-20260126.htm"
+    },
+    {
+      "form": "10-Q",
+      "filingDate": "2025-11-20",
+      "title": "Quarterly Report",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000045/nvda-20251026.htm"
+    },
+    {
+      "form": "8-K",
+      "filingDate": "2026-02-26",
+      "title": "Results of Operations and Financial Condition",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000011/nvda-20260226.htm"
+    }
+  ],
+  "latestPeriodic": {
+    "form": "10-K",
+    "filingDate": "2026-02-26",
+    "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000012/nvda-20260126.htm",
+    "riskFactors": "We are subject to risks related to the demand for our products and services... Our operating results depend on the demand for AI-related products, which may be affected by changes in customer preferences, competitive dynamics, and macroeconomic conditions. Export controls and trade restrictions, including those imposed by the U.S. government on sales to certain countries, may adversely affect our business...",
+    "mdna": "Revenue for fiscal year 2026 increased 114% year-over-year to $130.5 billion, driven primarily by Data Center revenue growth of 142% to $115.2 billion. Gross margin expanded to 73.0% from 72.7%. We continue to invest in next-generation GPU architectures and software platforms to maintain our competitive position in AI computing infrastructure..."
+  },
+  "redFlagProbes": [
+    { "term": "going concern", "hit": false, "snippet": null },
+    { "term": "material weakness", "hit": false, "snippet": null },
+    { "term": "restatement", "hit": false, "snippet": null },
+    { "term": "covenant", "hit": false, "snippet": null },
+    { "term": "litigation", "hit": true, "snippet": "Securities litigation and regulatory proceedings" },
+    { "term": "dilution", "hit": true, "snippet": "Stock-based compensation and dilution" }
+  ]
+}

@@ -5,7 +5,7 @@ title: A walkthrough of the Trading Desk example
 
 # A walkthrough of the Trading Desk example
 
-The Trading Desk example is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Eight analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call.
+The Trading Desk example is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Nine analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call.
 
 It is a teaching demo. The agents reason in plain English about stocks because that domain has public, structured prior art to model against. Don't trade real money on it.
 
@@ -13,8 +13,7 @@ This walkthrough names the framework pieces the example uses, in roughly the ord
 
 ## The pipeline at a glance
 
-Phase 1 fans out nine analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines and 90 days of insider Form 4 transactions. The sentiment analyst reads 7-day X/Twitter sentiment via Grok's `xSearch` hosted tool when an xAI key is configured; without one, sentiment runs on `unavailable`. The company-profile analyst renders structured business identity, sector, industry, description, and scale, from a deterministic provider fetch, so the rest of the pipeline reasons from data instead of training priors. The market analyst examines sector positioning, how the company's closest peers are trading, and which sector-level themes (regulatory shifts, supply-chain changes, rotation flows) carry momentum or overhang. The macro analyst reads the global economic regime (rates, inflation, growth cycle, yield curve, credit spreads, dollar, oil) from FRED, alongside macro and geopolitical news headlines that stay available even when the FRED feed is down (with deeper web search on the full preset). It then maps how those top-down forces transmit to the specific name through channels like rate sensitivity, FX exposure, or supply-chain risk. Each economic series degrades on its own, so one unavailable indicator no longer blanks the whole memo. The quant analyst provides a systematic, numbers-only layer: cross-sectional factor ranks (momentum, value, quality, size, low-vol percentiles within the peer set), statistical composites (Altman Z'' for bankruptcy risk and Piotroski F-Score for financial strength), risk-regime statistics (OLS beta, realized-vol regime, correlation regime), and short-interest positioning data.
-Phase 1 fans out seven analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The fundamentals analyst reads the balance sheet, income statement, and cash-flow statement, then derives a capital-structure-aware valuation set (enterprise value, EV multiples, Price/Book, FCF yield, earnings yield, ROA, net debt, dividend yield) from those statements, with each metric null when its inputs are not present. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines and 90 days of insider Form 4 transactions. The sentiment analyst reads 7-day X/Twitter sentiment via Grok's `xSearch` hosted tool when an xAI key is configured; without one, sentiment runs on `unavailable`. The company-profile analyst renders structured business identity, sector, industry, description, and scale, from a deterministic provider fetch, so the rest of the pipeline reasons from data instead of training priors. The market analyst examines sector positioning, how the company's closest peers are trading, and which sector-level themes (regulatory shifts, supply-chain changes, rotation flows) carry momentum or overhang. The macro analyst reads the global economic regime (rates, inflation, growth cycle, yield curve, credit spreads, dollar, oil) from FRED, alongside macro and geopolitical news headlines that stay available even when the FRED feed is down (with deeper web search on the full preset). It then maps how those top-down forces transmit to the specific name through channels like rate sensitivity, FX exposure, or supply-chain risk. Each economic series degrades on its own, so one unavailable indicator no longer blanks the whole memo.
+Phase 1 fans out nine analyst sub-agents in parallel. Each reads its own data sources and writes a typed `Thesis` memo with claims, evidence, risks, and a recommendation. The technical analyst reads a wide indicator set (RSI, MACD, ATR, SMA50/200, Bollinger Bands, VWMA, Stochastic, KDJ, OBV). The news analyst reads headlines and 90 days of insider Form 4 transactions. The sentiment analyst reads 7-day X/Twitter sentiment via Grok's `xSearch` hosted tool when an xAI key is configured; without one, sentiment runs on `unavailable`. The company-profile analyst renders structured business identity, sector, industry, description, and scale, from a deterministic provider fetch, so the rest of the pipeline reasons from data instead of training priors. The market analyst examines sector positioning, how the company's closest peers are trading, and which sector-level themes (regulatory shifts, supply-chain changes, rotation flows) carry momentum or overhang. The macro analyst reads the global economic regime (rates, inflation, growth cycle, yield curve, credit spreads, dollar, oil) from FRED, alongside macro and geopolitical news headlines that stay available even when the FRED feed is down (with deeper web search on the full preset). It then maps how those top-down forces transmit to the specific name through channels like rate sensitivity, FX exposure, or supply-chain risk. Each economic series degrades on its own, so one unavailable indicator no longer blanks the whole memo. The quant analyst provides a systematic, numbers-only layer: cross-sectional factor ranks (momentum, value, quality, size, low-vol percentiles within the peer set), statistical composites (Altman Z'' for bankruptcy risk and Piotroski F-Score for financial strength), risk-regime statistics (OLS beta, realized-vol regime, correlation regime), and short-interest positioning data. The disclosure analyst reads SEC filings (10-K annual reports), sell-side consensus estimates, and earnings-call transcripts to surface material disclosures, risk factors, management guidance, and where the Street's expectations diverge from management's own language. The fundamentals analyst reads the balance sheet, income statement, and cash-flow statement, then derives a capital-structure-aware valuation set (enterprise value, EV multiples, Price/Book, FCF yield, earnings yield, ROA, net debt, dividend yield) from those statements, with each metric null when its inputs are not present.
 
 Phase 2 runs a bounded bull-versus-bear loop. A research manager synthesizes the debate into an `InvestmentThesis` with explicit `unresolvedDisagreements`.
 
@@ -27,7 +26,7 @@ Phase 5 reads everything upstream and emits a `PortfolioDecision` with a five-ti
 Every agent in Phases 3–5 streams a one-sentence approach preamble before its structured memo, so the transcript shows the agent's plan in plain English seconds before the typed output lands. The preamble is display-only — it's not fed back into the structured generator.
 
 ```
-analysts (x7 in parallel)
+analysts (x9 in parallel)
   → bull/bear debate → research manager
     → trader
       → risk officers (x3 round-robin) → risk consolidator
@@ -40,7 +39,7 @@ Each arrow above is a `.step()` in a sequencer. The whole flow is one chain.
 
 A sequencer is the composition primitive. It takes blocks and chains them. The `.parallel()` step on a sequencer runs a set of branches concurrently and produces a single combined output.
 
-Phase 1 uses one `.parallel()` step with seven branches. Each branch is itself a sub-sequencer that mirrors the same shape:
+Phase 1 uses one `.parallel()` step with nine branches. Each branch is itself a sub-sequencer that mirrors the same shape:
 
 ```ts
 sequencer({ name: "analyst-fundamentals" })
@@ -56,11 +55,11 @@ A few teaching moments live in that one declaration.
 
 The analyst is not a special "agent" type. It's a sequencer composed of a handler (the silent state-mutating block kind), a generator (the LLM-calling block kind), and another handler. Any block composes with any other. There is no agent-versus-workflow split.
 
-The seven memo slots get pre-created in `pending` by a setup tap that runs before the parallel block. The right-pane navigator sees seven placeholder cards from the start of the phase, not just as each analyst completes. That kind of "show the work as it happens" UI falls out of pre-creating the resource entries.
+The nine memo slots get pre-created in `pending` by a setup tap that runs before the parallel block. The right-pane navigator sees nine placeholder cards from the start of the phase, not just as each analyst completes. That kind of "show the work as it happens" UI falls out of pre-creating the resource entries.
 
 Resources are the live data layer. Each analyst writes its typed memo to a session-scoped resource collection. React reads it through `useResourceCollectionItem`. The framework handles the SSE plumbing; your component is a renderer.
 
-The per-branch `.rescue()` matters too. If the news fetch fails, only the news memo flips to `error`. The other six analysts still complete.
+The per-branch `.rescue()` matters too. If the news fetch fails, only the news memo flips to `error`. The other eight analysts still complete.
 
 ### Investigation and citations
 
@@ -175,7 +174,7 @@ export const specialInstructionsResource = defineResource({
 
 ### The injection seam
 
-The `tradingDesk` capability has a `default: ["core"]` preset that every one of the pipeline's sixteen generators already pulls in. Adding the resource and a `userInstructions` context entry on `core` reaches every generator with no per-generator edits. The formatter returns an empty string when both the global and active-phase fields are blank — the XML renderer then suppresses the wrapping tag, so an unset state produces zero prompt content rather than an empty `<userInstructions/>` placeholder.
+The `tradingDesk` capability has a `default: ["core"]` preset that every one of the pipeline's seventeen generators already pulls in. Adding the resource and a `userInstructions` context entry on `core` reaches every generator with no per-generator edits. The formatter returns an empty string when both the global and active-phase fields are blank — the XML renderer then suppresses the wrapping tag, so an unset state produces zero prompt content rather than an empty `<userInstructions/>` placeholder.
 
 ```ts
 core: {
@@ -204,7 +203,7 @@ The gear stays disabled until the user has run at least one analysis. `useResour
 
 ### Why this shape
 
-A few alternatives were considered and rejected. Adding a per-generator context entry across sixteen generators would have worked, but the capability-preset path is the codebase's preferred shape and it survives the addition of new agents. Reading user-scope state via a dedicated action would have required parsing the SSE stream for the response payload — `ExecuteActionResponse` does not carry handler return values, so the snapshot-driven read is the framework-native primitive. A pre-fetch from a new REST endpoint would have been the wrong tool for an example-local feature.
+A few alternatives were considered and rejected. Adding a per-generator context entry across seventeen generators would have worked, but the capability-preset path is the codebase's preferred shape and it survives the addition of new agents. Reading user-scope state via a dedicated action would have required parsing the SSE stream for the response payload — `ExecuteActionResponse` does not carry handler return values, so the snapshot-driven read is the framework-native primitive. A pre-fetch from a new REST endpoint would have been the wrong tool for an example-local feature.
 
 The generalized take on this pattern — "Projects": resource-backed agent state with optional cross-flow sharing — is tracked separately. The version here is deliberately narrow: trading-desk only, no templates, no versioning, no per-agent scope.
 
@@ -217,11 +216,11 @@ pnpm --filter @flow-state-dev/example-trading-desk dev
 
 The top bar exposes a ticker input, a date, a cost preset (`fast` or `full`), and a data source toggle (`fixture` or `live`). A disclaimer band sits above the transcript: this is a demo, not investment advice.
 
-On a fresh run, you'll see the eight analyst cards appear in `pending` right away. They flip to `writing` as each analyst starts its generator call, then to `done` as the memos commit. The bull and bear cards follow. Then the trade proposal, then the three risk persona cards, then the consolidated risk assessment, then the PM Hero on the right.
+On a fresh run, you'll see the nine analyst cards appear in `pending` right away. They flip to `writing` as each analyst starts its generator call, then to `done` as the memos commit. The bull and bear cards follow. Then the trade proposal, then the three risk persona cards, then the consolidated risk assessment, then the PM Hero on the right.
 
 The `fast` preset completes well under a minute on one provider key. `full` takes longer because the debate runs two rounds against larger models.
 
-For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required for model resolution. Yahoo Finance is keyless. `FINNHUB_API_KEY` is optional for live news and insider transactions; without it those tools return `unavailable` and the news analyst treats the missing data as missing signal, not bearish. `XAI_API_KEY` is optional for live social sentiment via Grok; without it, `get_social_sentiment` returns `unavailable` and the sentiment analyst applies the same missing-signal treatment.
+For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required for model resolution. Yahoo Finance is keyless. `FINNHUB_API_KEY` is optional for live news and insider transactions; without it those tools return `unavailable` and the news analyst treats the missing data as missing signal, not bearish. `XAI_API_KEY` is optional for live social sentiment via Grok; without it, `get_social_sentiment` returns `unavailable` and the sentiment analyst applies the same missing-signal treatment. `FMP_API_KEY` is optional for earnings-call transcripts; without it, the disclosure analyst still runs on EDGAR filings (keyless) and Finnhub ratings (existing key).
 
 ## Session lifecycle and persistence
 

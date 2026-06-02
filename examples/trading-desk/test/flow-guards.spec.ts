@@ -114,6 +114,7 @@ describe("checkPhase1HasData (all-error backstop)", () => {
         "market",
         "macro",
         "quant",
+        "disclosure",
       ]),
     ).toBe("phase-1-no-data");
   });
