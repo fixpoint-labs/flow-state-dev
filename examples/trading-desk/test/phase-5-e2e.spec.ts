@@ -323,6 +323,7 @@ function portfolioManagerStructuredOutput(
         finalRating === "Buy" || finalRating === "Overweight"
           ? "Data-center beat, +12%"
           : "",
+      ratingOverrideReason: "",
     },
   };
 }

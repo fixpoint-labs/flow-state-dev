@@ -16,6 +16,7 @@ import {
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";
 
 const writePm = markWritingP5("portfolioManager");
 const errorPm = markErrorP5("portfolioManager");
@@ -28,7 +29,7 @@ const fixtureFlow = defineFlow({
     errorPm: { block: errorPm },
   },
   session: { stateSchema: sessionStateSchema },
-  resources: { memos: memosCollection },
+  resources: { memos: memosCollection, valuationSpine: valuationSpineResource },
 })({ id: "test" });
 
 const baseSessionState = {
@@ -154,6 +155,7 @@ function portfolioDecision(
       finalRating === "Buy" || finalRating === "Overweight"
         ? "Data-center beat, +12%"
         : "",
+    ratingOverrideReason: "",
   };
 }
 

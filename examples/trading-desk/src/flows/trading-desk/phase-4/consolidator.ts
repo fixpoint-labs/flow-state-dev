@@ -33,6 +33,7 @@ export const riskAssessmentGenerator = generator({
       tradeProposal: true,
       investmentThesis: true,
       riskCritiques: true,
+      valuationSpine: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
       highReasoning: true,

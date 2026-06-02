@@ -55,6 +55,7 @@ export const traderGenerator = generator({
   uses: [
     tradingDesk.presets({
       investmentThesis: true,
+      valuationSpine: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
       reasoning: true,

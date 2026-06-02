@@ -22,6 +22,8 @@
  * "this commit also marks the run complete": one statement, in the same
  * scope as the rest of the commit body.
  */
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   PHASE_1_MEMO_KEYS,
   PHASE_2_MEMO_KEYS,
@@ -29,11 +31,15 @@ import {
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
 } from "../agents";
+import { clampRatingToBand } from "../lib/rating-engine";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
 } from "../lib/memo-writer";
+import { memoResources } from "../resources";
+import { sessionStateSchema } from "../state";
+import { valuationSpineResource, type ValuationSpineState } from "../valuation-spine-resource";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 import { scenarioForecastOutputSchema } from "./scenario-forecaster";
 
@@ -124,9 +130,12 @@ const ANALYST_MEMO_KEYS = [
   PHASE_1_MEMO_KEYS.technical.collectionKey,
 ] as const;
 
-export const commitPortfolioManagerMemo = memoHandler({
+export const commitPortfolioManagerMemo = handler({
   name: "commit-memo-p5-portfolio-manager",
   inputSchema: portfolioDecisionOutputSchema,
+  outputSchema: z.void(),
+  sessionStateSchema,
+  resources: { ...memoResources, valuationSpine: valuationSpineResource },
   execute: async (decision, ctx) => {
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
     // is missing (defensive — should not happen post-Phase 3) or has no
@@ -163,6 +172,37 @@ export const commitPortfolioManagerMemo = memoHandler({
         ? directionFromRating(decision.finalRating) === traderDirection
         : null;
 
+    // Valuation-spine clamping: bound the LLM's finalRating to the
+    // model-implied envelope when the spine was computed successfully.
+    const spine = ctx.resources.valuationSpine?.state as
+      | ValuationSpineState
+      | null
+      | undefined;
+    let finalRating = decision.finalRating;
+    let modelImpliedRating: typeof finalRating | null = null;
+    let ratingBand: { floor: typeof finalRating; ceiling: typeof finalRating } | null = null;
+    let ratingClamped = false;
+    let ratingOverrideReason: string | null = decision.ratingOverrideReason || null;
+    let absoluteRating: "Buy" | "Hold" | "Sell" | null = null;
+    let relativeRating: "Overweight" | "Equal Weight" | "Underweight" | null = null;
+
+    if (spine?.envelope) {
+      const clamped = clampRatingToBand(
+        decision.finalRating,
+        spine.envelope,
+        decision.ratingOverrideReason,
+      );
+      finalRating = clamped.final;
+      ratingClamped = clamped.clamped;
+      modelImpliedRating = spine.envelope.implied;
+      ratingBand = { floor: spine.envelope.floor, ceiling: spine.envelope.ceiling };
+      ratingOverrideReason = clamped.clamped
+        ? null
+        : (decision.ratingOverrideReason || null);
+      absoluteRating = spine.envelope.absoluteRating;
+      relativeRating = spine.envelope.relativeRating;
+    }
+
     await publishMemo(
       ctx,
       "portfolioManager",
@@ -174,7 +214,7 @@ export const commitPortfolioManagerMemo = memoHandler({
         body: decision.body,
         metrics: decision.metrics,
         decisionSummary: decision.decisionSummary,
-        finalRating: decision.finalRating,
+        finalRating,
         decisionConfidence: decision.decisionConfidence,
         acceptedAdjustments: decision.acceptedAdjustments,
         keyDependencies: decision.keyDependencies,
@@ -186,6 +226,12 @@ export const commitPortfolioManagerMemo = memoHandler({
         },
         agreesWithTrader,
         primaryScenario: decision.primaryScenario,
+        modelImpliedRating,
+        ratingBand,
+        ratingClamped,
+        ratingOverrideReason,
+        absoluteRating,
+        relativeRating,
       },
     );
 

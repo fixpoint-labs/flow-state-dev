@@ -265,6 +265,28 @@ export const memoStateSchema = z.object({
   // Phase 5 — scenario reference. The PM names which scenario bucket its
   // decision underwrites; empty string when no forecast is available.
   primaryScenario: z.string().nullable().default(null),
+  // Valuation-spine derived fields (FIX-715). Only the portfolioManager
+  // memo populates these; all other memos leave them `null`. The writer
+  // computes these from the spine resource at commit time — the LLM never
+  // emits them.
+  modelImpliedRating: z
+    .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
+    .nullable()
+    .default(null),
+  ratingBand: z
+    .object({
+      floor: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+      ceiling: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+    })
+    .nullable()
+    .default(null),
+  ratingClamped: z.boolean().nullable().default(null),
+  ratingOverrideReason: z.string().nullable().default(null),
+  absoluteRating: z.enum(["Buy", "Hold", "Sell"]).nullable().default(null),
+  relativeRating: z
+    .enum(["Overweight", "Equal Weight", "Underweight"])
+    .nullable()
+    .default(null),
   // Phase 6 ThesisAlignment extension. Only the thesisValidator memo
   // (`memos/p6/thesis-alignment`) populates these; all other memos leave
   // them `null`. The validator audits the user's per-run thesis against the

@@ -42,6 +42,11 @@ import {
   PHASE_5_MEMO_KEYS,
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
+import { valuationSpineResource } from "./valuation-spine-resource";
+import {
+  formatValuationSpine,
+  formatRatingEnvelope,
+} from "./lib/valuation-spine";
 import { formatUserInstructions } from "./special-instructions";
 import { specialInstructionsResource } from "./special-instructions-resource";
 import { sessionStateSchema, type SessionState } from "./state";
@@ -441,6 +446,29 @@ export const tradingDesk = defineCapability({
       resources: { memos: memosCollection, p2Contributions: phase2Contributions },
       tools: (ctx) =>
         ctx.session.state.costPreset === "full" ? [find_counter_evidence] : [],
+    },
+
+    /** Valuation spine — computed deterministic anchor for the final
+     *  rating. Injects `<valuationSpine>` (expected return, fair value,
+     *  setup score) and `<ratingEnvelope>` (implied rating + permitted
+     *  band) from the session-scoped spine resource. Returns null (tag
+     *  suppressed) when the resource hasn't been populated yet. Opted
+     *  into by: trader, risk consolidator, scenario forecaster, PM,
+     *  and research manager. Bull/bear stay blind. */
+    valuationSpine: {
+      resources: { valuationSpine: valuationSpineResource },
+      context: {
+        valuationSpine: (_input, ctx) => {
+          const spine = ctx.resources.valuationSpine?.state;
+          if (!spine) return null;
+          return formatValuationSpine(spine);
+        },
+        ratingEnvelope: (_input, ctx) => {
+          const spine = ctx.resources.valuationSpine?.state;
+          if (!spine) return null;
+          return formatRatingEnvelope(spine.envelope);
+        },
+      },
     },
 
     // ────────────────────────────────────────────────────────────────────

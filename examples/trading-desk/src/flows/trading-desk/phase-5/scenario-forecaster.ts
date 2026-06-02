@@ -68,6 +68,7 @@ export const scenarioForecasterGenerator = generator({
       investmentThesis: true,
       tradeProposal: true,
       riskAssessment: true,
+      valuationSpine: true,
       phase1MemosFull: true,
       phase2DebateFull: true,
       riskCritiquesFull: true,

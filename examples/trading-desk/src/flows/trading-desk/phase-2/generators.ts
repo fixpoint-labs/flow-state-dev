@@ -153,6 +153,7 @@ export const researchManagerGenerator = generator({
       bearThesis: true,
       phase2Debate: true,
       citationIntegrity: true,
+      valuationSpine: true,
       reasoning: true,
     }),
   ],

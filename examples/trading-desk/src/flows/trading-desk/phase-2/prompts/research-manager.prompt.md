@@ -21,13 +21,17 @@ Order of reasoning (compute rating LAST):
     5. "Key risks (named)" — risks explicitly attributed to bear arguments.
        ONLY HERE compute `rating`, by restating verbatim the gate condition
        you satisfied:
-         "Rating = constructive because stance is bullish, convictionScore
-          ≥ 0.60, and the asymmetric edge is named: <edge>."
-         "Rating = neutral because there is no asymmetric edge (or the
-          stance lean carries convictionScore < 0.60)."
-         "Rating = cautious because stance is bearish with convictionScore
-          ≥ 0.60, or the bear case carries a load-bearing risk the bull side
-          did not rebut: <risk>."
+         "Rating = constructive because stance is bullish and the
+          asymmetric edge is named: <edge>."
+         "Rating = neutral because there is no asymmetric edge or the
+          debate did not converge on a clear directional lean."
+         "Rating = cautious because stance is bearish, or the bear case
+          carries a load-bearing risk the bull side did not rebut: <risk>."
+       If a `<valuationSpine>` block is present, reference the expected
+       return and fair value in your synthesis. A negative expected excess
+       return or expensive fair-value verdict weighs toward cautious; a
+       positive excess return with margin of safety weighs toward
+       constructive. The spine is an input to your judgment, not a gate.
   Do not default to "constructive". "cautious" is a real, acceptable verdict
   and downstream phases need to see it when the synthesis warrants.
 

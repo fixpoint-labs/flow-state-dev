@@ -19,6 +19,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "./agents";
+import { computeAndStoreSpine } from "./compute-spine";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
@@ -36,6 +37,7 @@ import {
 import { specialInstructionsStateSchema } from "./special-instructions";
 import { specialInstructionsResource } from "./special-instructions-resource";
 import { sessionStateSchema } from "./state";
+import { valuationSpineResource } from "./valuation-spine-resource";
 
 export { sessionStateSchema, type SessionState } from "./state";
 export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";
@@ -198,6 +200,7 @@ const analyzePipeline = sequencer({
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  .tap(computeAndStoreSpine)
   .step(phase2Pipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)
@@ -264,6 +267,8 @@ const tradingDeskFlow = defineFlow({
     // derivation; the capability's `core` preset also declares it for
     // runtime context access.
     specialInstructions: specialInstructionsResource,
+    // Valuation spine — computed after Phase 1, read by Phases 2–5.
+    valuationSpine: valuationSpineResource,
   },
 });
 
