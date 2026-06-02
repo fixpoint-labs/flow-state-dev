@@ -30,7 +30,7 @@ workers:
   discoverer:
     prompt: "You are the discoverer. Call addTask once per competitor, then return a one-line summary."
     tools: [taskTools]
-    agent-type: sub
+    visibility: sub
 initial-tasks:
   - id: discover
     goal: Discover competitors and enqueue analyzers
@@ -47,7 +47,7 @@ const skillsCap = createSkillsCapability({
   scope: "session",
   initialSkills: [{ name: "test-discoverer", skillMd: PATTERN_SKILL_MD }],
   patternRegistry: defaultPatternRegistry,
-  agentType: "primary"
+  itemVisibility: { client: true, history: true }
 });
 
 const assistant = generator({
@@ -58,7 +58,7 @@ const assistant = generator({
   user: (input) => input.message,
   outputSchema: z.string(),
   uses: [skillsCap],
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   maxIterations: 4
 });
 

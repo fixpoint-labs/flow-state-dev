@@ -75,17 +75,25 @@ describe("createSkillsCapability", () => {
     expect(Object.getPrototypeOf(configured)).toBe(cap);
   });
 
-  it("agentType is unset by default (cap attaches to any block)", () => {
+  it("itemVisibility is unset by default (cap attaches to any block)", () => {
     const cap = createSkillsCapability();
-    expect(cap.agentType).toBeUndefined();
+    expect(cap.itemVisibility).toBeUndefined();
   });
 
-  it("forwards agentType to the defined capability", () => {
-    const cap = createSkillsCapability({ agentType: "primary" });
-    expect(cap.agentType).toBe("primary");
+  it("forwards itemVisibility to the defined capability", () => {
+    const cap = createSkillsCapability({ itemVisibility: { client: true, history: true } });
+    expect(cap.itemVisibility).toEqual({ client: true, history: true });
 
-    const arrayCap = createSkillsCapability({ agentType: ["primary", "trace"] });
-    expect(arrayCap.agentType).toEqual(["primary", "trace"]);
+    const arrayCap = createSkillsCapability({
+      itemVisibility: [
+        { client: true, history: true },
+        { client: false, history: false },
+      ],
+    });
+    expect(arrayCap.itemVisibility).toEqual([
+      { client: true, history: true },
+      { client: false, history: false },
+    ]);
   });
 
   it("does NOT compose taskTools when no patternRegistry is supplied", () => {

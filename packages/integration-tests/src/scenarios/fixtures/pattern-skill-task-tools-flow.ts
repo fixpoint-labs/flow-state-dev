@@ -24,7 +24,7 @@ const cappedDiscoverer = generator({
   user: (input) => input.message,
   outputSchema: z.string(),
   uses: [taskTools],
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   maxIterations: 4
 });
 

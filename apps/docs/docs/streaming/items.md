@@ -247,26 +247,26 @@ switch (event.type) {
 
 ## Generator identity
 
-Every auto-emitted item from a generator is stamped with the producing generator's `agentType` and `agentName`. Identity governs conversational-item visibility and gives the client and downstream tooling enough information to route and render each item appropriately.
+Every auto-emitted item from a generator is stamped with the producing generator's `itemVisibility` and `agentName`. Identity governs conversational-item visibility and gives the client and downstream tooling enough information to route and render each item appropriately.
 
-### The three identities
+### Visibility levels
 
-| `agentType` | On client stream | In conversation history | In devtool |
+| `itemVisibility` | On client stream | In conversation history | In devtool |
 |-------------|:---:|:---:|:---:|
-| `"primary"` | ✓ | ✓ | ✓ |
-| `"sub"` | ✓ | — | ✓ |
-| `"trace"` | — | — | ✓ |
+| `{ client: true, history: true }` | ✓ | ✓ | ✓ |
+| `{ client: true, history: false }` | ✓ | — | ✓ |
+| `{ client: false, history: false }` | — | — | ✓ |
 | *unset* | no auto-emission at all — only `block_trace` flows via graph edges |
 
-A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_trace`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
+A generator with no `itemVisibility` is a pure transformer: it runs the model, returns typed `block_trace`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
 
 ### Multi-peer agents
 
-Two generators with `agentType: "primary"` and distinct `agentName`s can coexist in the same session. Both see the user's messages and each other's messages via `history: true`:
+Two generators with `itemVisibility: { client: true, history: true }` and distinct `agentName`s can coexist in the same session. Both see the user's messages and each other's messages via `history: true`:
 
 ```ts
-const planner = generator({ name: "planner", agentType: "primary", agentName: "planner", /* ... */ });
-const executor = generator({ name: "executor", agentType: "primary", agentName: "executor", /* ... */ });
+const planner = generator({ name: "planner", itemVisibility: { client: true, history: true }, agentName: "planner", /* ... */ });
+const executor = generator({ name: "executor", itemVisibility: { client: true, history: true }, agentName: "executor", /* ... */ });
 ```
 
 ### Parallel sub-agents — collaborative vs. isolated
@@ -275,20 +275,20 @@ const executor = generator({ name: "executor", agentType: "primary", agentName: 
 
 ```ts
 // Collaborative: all instances share one identity.
-generator({ agentType: "sub", agentName: "researcher", /* ... */ });
+generator({ itemVisibility: { client: true, history: false }, agentName: "researcher", /* ... */ });
 
 // Isolated: each instance unique. selectForContext can address them individually.
-(id) => generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
+(id) => generator({ itemVisibility: { client: true, history: false }, agentName: `researcher-${id}`, /* ... */ });
 ```
 
 ### Custom context via `selectForContext`
 
-`session.items.history()` is the ambient conversation-history view — user messages + `"primary"`-typed conversational items. For anything else (long-running sub-agents pulling their own prior outputs, coordinators aggregating peer outputs, debugging flows that want trace items), use `selectForContext`:
+`session.items.history()` is the ambient conversation-history view — user messages + items with `history: true` visibility. For anything else (long-running sub-agents pulling their own prior outputs, coordinators aggregating peer outputs, debugging flows that want trace items), use `selectForContext`:
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: "researcher",
   context: (input, ctx) => {
     const priorFindings = ctx.session.items.selectForContext({
@@ -301,11 +301,11 @@ const researcher = generator({
 });
 ```
 
-`selectForContext` returns raw `SessionItem[]` with no conversation-history filtering. It respects `includeTransient`, `itemTypes`, and the `agentType`/`agentName` query fields.
+`selectForContext` returns raw `SessionItem[]` with no conversation-history filtering. It respects `includeTransient`, `itemTypes`, and the `itemVisibility`/`agentName` query fields.
 
 ### React renderer behavior
 
-The default `<ItemsRenderer>` filters `agentType: "sub"` items from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
+The default `<ItemsRenderer>` filters items with `history: false` visibility from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
 
 ## Observable model identity
 

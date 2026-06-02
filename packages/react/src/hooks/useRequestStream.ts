@@ -21,7 +21,7 @@ const ITEM_UPDATE_INVARIANT_KEYS: ReadonlyArray<string> = [
   "id",
   "type",
   "provenance",
-  "agentType",
+  "itemVisibility",
   "transient"
 ];
 import { useFlowContext } from "../context/FlowContext";

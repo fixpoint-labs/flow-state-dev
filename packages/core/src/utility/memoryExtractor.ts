@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const memoryExtractorTypeSchema = z.enum([
@@ -33,7 +33,7 @@ export interface MemoryExtractorConfig<
    * Set to `"trace"` for observability-only runs, or `"primary"` if the
    * extraction itself should be visible to the user.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -56,7 +56,7 @@ export function memoryExtractor<
     name: config.name,
     model: config.model ?? "intent/utility",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       "You extract durable memory candidates from user and assistant interactions.",
       "Extract only information worth persisting beyond the current request.",

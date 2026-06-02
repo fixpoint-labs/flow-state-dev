@@ -98,8 +98,8 @@ const INVESTIGATION_CLAUSE = [
 
 /** Shared `fetch` tool instance used by the `investigate` and `verify`
  *  presets. One instance reused across all generators that opt in — the tool
- *  is stateless and the framework binds per-call agentType / agentName from
- *  the generator that consumed it. */
+ *  is stateless and the framework binds per-call itemVisibility / agentName
+ *  from the generator that consumed it. */
 const fetchArticle = createFetchTool();
 
 /** Shared `search` tool instance for the `verify` preset (Phase 6). Auto-

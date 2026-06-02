@@ -75,17 +75,6 @@ export async function handleGetSessionState(
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
 
-  // Legacy-compat safety net: pre-FIX-506 records were persisted before trace
-  // items carried `agentType: "trace"`, so `resolveItemVisibility` alone can't
-  // identify them. The hardcoded set covers those records; new records take
-  // the primary `resolveItemVisibility(item).client === false` path below.
-  // TODO(FIX-506): remove once we're confident no legacy records remain.
-  const TRACE_ITEM_TYPES = new Set([
-    "block_trace",
-    "router_decision",
-    "state_snapshot",
-  ]);
-
   let aggregatedItems: OutputItem[] | undefined;
   let totalItems = 0;
   if (includeItems) {
@@ -102,7 +91,7 @@ export async function handleGetSessionState(
           }
           if (
             itemTypeFilter === undefined &&
-            (TRACE_ITEM_TYPES.has(item.type) || resolveItemVisibility(item).client === false)
+            !resolveItemVisibility(item).client
           ) {
             continue;
           }

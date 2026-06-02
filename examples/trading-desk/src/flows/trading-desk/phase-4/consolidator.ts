@@ -9,8 +9,8 @@
  * Emits a typed `RiskAssessment` — what Phase 5 (the portfolio manager)
  * actually consumes. The three persona memos remain as the audit trail.
  *
- * `agentType: "sub"` — no structured-output card in the transcript; the
- * memo on the right pane is the artifact.
+ * `itemVisibility: { client: true, history: false }` — no structured-output
+ * card in the transcript; the memo on the right pane is the artifact.
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
@@ -26,7 +26,7 @@ const riskAssessmentPrompt = loadPrompt(
 
 export const riskAssessmentGenerator = generator({
   name: "risk-assessment-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_4_MEMO_KEYS.riskAssessment.agentName,
   uses: [
     tradingDesk.presets({

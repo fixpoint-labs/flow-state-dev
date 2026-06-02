@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export type IntentCategories = Record<string, string>;
@@ -24,7 +24,7 @@ export interface IntentClassifierConfig<
    * `"primary"` if you want the classification surfaced to the user, or
    * `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -97,7 +97,7 @@ export function intentClassifier<
     name: config.name,
     model: config.model ?? "intent/utility",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       "You are an intent classification assistant.",
       "Classify the user input into exactly one category from the provided list.",

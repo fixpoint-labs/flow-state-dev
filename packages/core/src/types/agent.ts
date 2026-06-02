@@ -8,7 +8,7 @@
  * supplies the concrete implementation.
  */
 
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 
 /**
  * REPLACE-semantic overrides applied to a registered Agent at worker
@@ -25,8 +25,8 @@ export interface AgentOverrides {
   tools?: string[];
   /** REPLACES the agent's model id. */
   model?: string;
-  /** REPLACES the agent's agent-type. */
-  agentType?: AgentType;
+  /** REPLACES the agent's item visibility. */
+  itemVisibility?: ItemVisibility;
 }
 
 /**
@@ -43,8 +43,8 @@ export interface Agent {
   body: string;
   /** Model id; falls back to the deps' default when undefined. */
   model?: string;
-  /** Defaults to `"sub"` when undefined. */
-  agentType?: AgentType;
+  /** Defaults to `{ client: true, history: false }` when undefined. */
+  itemVisibility?: ItemVisibility;
   /** Tool-catalog keys this agent may reference. */
   allowedTools?: string[];
   /** Capability keys this agent composes via `uses`. */

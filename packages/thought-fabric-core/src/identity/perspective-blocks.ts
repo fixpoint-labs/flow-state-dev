@@ -217,7 +217,7 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
       }
       return parts.join('\n')
     },
-    agentType: 'trace',
+    itemVisibility: { client: false, history: false },
   })
 }
 

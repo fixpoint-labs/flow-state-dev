@@ -8,7 +8,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   ToolsSlot,
   UsesSlot,
@@ -62,7 +62,7 @@ export interface CreateRosterAgentOptions {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   instructions?: RosterAgentInstructions;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   /** Accessor key used in the block's `resources:` map. Defaults to
    *  `"contributions"`. See `createInitContributions` for rationale. */
   accessorKey?: string;
@@ -95,7 +95,7 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
     model: opts.model ?? "intent/chat",
     resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
-    agentType: opts.agentType ?? "sub",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     agentName: opts.agentName,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),

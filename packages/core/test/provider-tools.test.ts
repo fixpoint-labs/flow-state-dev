@@ -148,7 +148,7 @@ describe("generator search config", () => {
 
     const block = generator({
       name: "source-gen",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "test-model",
       prompt: "Search",
     });

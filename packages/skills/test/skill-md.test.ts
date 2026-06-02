@@ -256,7 +256,7 @@ describe("parseSkillMd — pattern binding", () => {
         `    prompt: |`,
         `      You write the report.`,
         `      Use prior findings.`,
-        `    agent-type: primary`,
+        `    visibility: primary`,
         `initial-tasks:`,
         `  - id: s`,
         `    goal: finalize`,
@@ -267,7 +267,7 @@ describe("parseSkillMd — pattern binding", () => {
     expect(state.patternBinding?.workers.synth?.prompt).toMatch(
       /You write the report\.\nUse prior findings\./,
     );
-    expect(state.patternBinding?.workers.synth?.agentType).toBe("primary");
+    expect(state.patternBinding?.workers.synth?.itemVisibility).toEqual({ client: true, history: true });
   });
 
   it("parses pattern-config and collection scope", () => {
@@ -542,7 +542,7 @@ describe("serializeSkillMd — pattern binding round-trip", () => {
         `  market:`,
         `    prompt-ref: ./reference/market.md`,
         `    tools: [search]`,
-        `    agent-type: sub`,
+        `    visibility: sub`,
         `  vet:`,
         `    agent-ref: research-analyst`,
         `    agent-overrides:`,
@@ -577,7 +577,7 @@ describe("serializeSkillMd — pattern binding round-trip", () => {
         `    prompt: |`,
         `      First line.`,
         `      Second line.`,
-        `    agent-type: primary`,
+        `    visibility: primary`,
         `initial-tasks:`,
         `  - id: s`,
         `    goal: synthesize`,

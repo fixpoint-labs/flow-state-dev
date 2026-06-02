@@ -14,7 +14,7 @@ import type {
 } from "../types/block";
 import { asRuntime } from "../types/block";
 import type { ItemQuery, MessageLimit } from "../types/scope";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
@@ -380,27 +380,25 @@ export interface GeneratorConfig<
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
   /**
-   * Identity of this generator — classifies its auto-emitted items.
+   * Transport and memory visibility stamped on every conversational item
+   * this generator auto-emits.
    *
-   * - `"primary"`: user-facing agent. Items flow to the client and into
-   *   conversation history.
-   * - `"sub"`: task-executor under a primary agent. Items reach the client
-   *   for live observability but are excluded from conversation history —
-   *   sub-agents are deaf to prior turns by design.
-   * - `"trace"`: observability-only emissions (devtool/replay). Not on the
-   *   client stream, not in history.
+   * - `{ client: true, history: true }` — user-facing agent (primary).
+   * - `{ client: true, history: false }` — observable work (sub-agent).
+   * - `{ client: false, history: true }` — private/injected context.
+   * - `{ client: false, history: false }` — trace (devtool only).
    * - *unset* (default): **no auto-emission**. Only the generator's typed
    *   `block_trace` output flows to parents via graph edges.
    *
    * There is no position-inferred default — every generator declares its
-   * own identity explicitly. Pattern factories set identity on their
+   * own visibility explicitly. Pattern factories set visibility on their
    * internal generators.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   /**
    * Stable name of the producing agent. Defaults to the block's `name`
-   * when `agentType` is set and `agentName` is omitted. Generators that
-   * share an `agentName` collaborate (same logical agent across
+   * when `itemVisibility` is set and `agentName` is omitted. Generators
+   * that share an `agentName` collaborate (same logical agent across
    * instances); distinct names stay isolated. Items emitted by the
    * generator are stamped with this name.
    */
@@ -867,7 +865,7 @@ function compileToolsWithExecute(
   ctx: BlockContext,
   flowTools: ToolsConfig | undefined,
   generatorBlockName: string,
-  agentType: AgentType | undefined,
+  itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
@@ -914,7 +912,7 @@ function compileToolsWithExecute(
           ctx,
           flowTools,
           generatorBlockName,
-          agentType,
+          itemVisibility,
           agentName,
           options?.toolCallId,
         );
@@ -1069,7 +1067,7 @@ function compileToolsWithExecute(
       const attribution = {
         callId: options.toolCallId,
         generatorBlock: generatorBlockName,
-        agentType,
+        itemVisibility,
         agentName,
         // Read the current generator identity off ctx so a multi-turn tool
         // loop sees the identity that was active when the model invoked the
@@ -1113,7 +1111,7 @@ async function tryServeFromCache(
   ctx: BlockContext,
   flowTools: ToolsConfig | undefined,
   generatorBlockName: string,
-  agentType: AgentType | undefined,
+  itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
   toolCallId: string | undefined,
 ): Promise<
@@ -1160,7 +1158,7 @@ async function tryServeFromCache(
       const attribution = {
         callId: toolCallId,
         generatorBlock: generatorBlockName,
-        agentType,
+        itemVisibility,
         agentName,
         model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
         cached: {
@@ -1459,7 +1457,7 @@ function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
   provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
-  agentType: AgentType | undefined,
+  itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
   model: ModelIdentity | undefined
 ) {
@@ -1473,7 +1471,7 @@ function buildSourceItem(
     ts: Date.now(),
     ownedBy: ctx._blockIdentity?.ownedBy,
     taskId: ctx._blockIdentity?.taskId,
-    agentType,
+    itemVisibility,
     agentName,
     sourceType: "url" as const,
     sourceId: source.id,
@@ -1492,7 +1490,7 @@ function buildSourceItem(
  * `execute` closures on compiled tools, and this function streams all text
  * deltas to the client as they arrive.
  *
- * When `agentType` is undefined, the generator produces no auto-emitted
+ * When `itemVisibility` is undefined, the generator produces no auto-emitted
  * items: the model still streams (so tool `execute` closures fire and
  * schema validation runs), but reasoning, messages, tool-call progress,
  * and source items are all suppressed.
@@ -1528,13 +1526,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  agentType: AgentType | undefined,
+  itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>,
   resolvedCaching?: CachingConfig
 ): Promise<TOutput> {
-  const emit = agentType !== undefined;
+  const emit = itemVisibility !== undefined;
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
   const identity = ctx._blockIdentity;
@@ -1597,7 +1595,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ts: Date.now(),
             ownedBy,
             taskId,
-            agentType,
+            itemVisibility,
             agentName,
             model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: "" }]
@@ -1638,7 +1636,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ts: Date.now(),
             ownedBy,
             taskId,
-            agentType,
+            itemVisibility,
             agentName,
             model: resolvedIdentity,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
@@ -1659,7 +1657,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ts: Date.now(),
             ownedBy,
             taskId,
-            agentType,
+            itemVisibility,
             agentName,
             model: resolvedIdentity,
             content: [{ type: "output_text" as const, text: "" }]
@@ -1697,7 +1695,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ts: Date.now(),
           ownedBy,
           taskId,
-          agentType,
+          itemVisibility,
           agentName,
           model: resolvedIdentity,
           toolCallId: delta.toolCallId,
@@ -1721,7 +1719,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           ts: Date.now(),
           ownedBy,
           taskId,
-          agentType,
+          itemVisibility,
           agentName,
           model: resolvedIdentity,
           toolCallId: tr.toolCallId,
@@ -1733,7 +1731,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
       if (emit) {
-        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName, resolvedIdentity);
+        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, itemVisibility, agentName, resolvedIdentity);
         await ctx.response.emit({ type: "item.added", item: sourceItem });
         await ctx.response.emit({ type: "item.done", item: sourceItem });
       }
@@ -1766,7 +1764,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ts: Date.now(),
         ownedBy,
         taskId,
-        agentType,
+        itemVisibility,
         agentName,
         model: resolvedIdentity,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
@@ -1786,7 +1784,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ts: Date.now(),
         ownedBy,
         taskId,
-        agentType,
+        itemVisibility,
         agentName,
         model: resolvedIdentity,
         content: [{ type: "output_text" as const, text: "" }]
@@ -1891,7 +1889,7 @@ export function generator<
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
-  const blockAgentType = config.agentType;
+  const blockItemVisibility = config.itemVisibility;
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
@@ -1967,7 +1965,7 @@ export function generator<
         const resolved: unknown[] = [];
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
-            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
+            if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             for (const entry of surface.contextEntries) {
               const v = typeof entry === "function"
@@ -2006,7 +2004,7 @@ export function generator<
       if (hasDynamic) {
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
-            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
+            if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             dynTools.push(...surface.tools);
           }
@@ -2201,16 +2199,12 @@ export function generator<
       const runTools = normalizedConfig.loop?.runTools !== false;
       const maxSteps = resolveMaxIterations(normalizedConfig);
 
-      // Identity: generators without `agentType` produce no auto-emitted
+      // Visibility: generators without `itemVisibility` produce no auto-emitted
       // items (only block_trace output via graph edges). When set, `agentName`
       // defaults to the block name so collaborating generators can be
       // given a shared name explicitly.
-      // Resolved BEFORE `compileToolsWithExecute` so the tool runner can
-      // stamp `agentType`/`agentName` on emitted `tool_output`
-      // items — `resolveItemVisibility()` uses those to decide
-      // sub-agent visibility (client: true, history: false).
-      const agentType = normalizedConfig.agentType;
-      const agentName = agentType !== undefined
+      const itemVisibility = normalizedConfig.itemVisibility;
+      const agentName = itemVisibility !== undefined
         ? (normalizedConfig.agentName ?? blockName)
         : undefined;
 
@@ -2218,7 +2212,7 @@ export function generator<
       // without (model suggests calls but doesn't execute them).
       const compiledTools = toolBlocks.length > 0
         ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, agentType, agentName)
+            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, itemVisibility, agentName)
             : compileToolsForModel(toolBlocks))
         : [];
 
@@ -2228,7 +2222,7 @@ export function generator<
       // Identity-less, tool-less generators fall through to non-streaming
       // and skip message emission entirely.
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
-      const canStream = (agentType !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      const canStream = (itemVisibility !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
       // Emit debug capture for devtool inspection before the LLM call. Use
       // the same combined-system-message assembly the model sees so the
@@ -2276,7 +2270,7 @@ export function generator<
             blockName,
             maxSteps,
             ctx,
-            agentType,
+            itemVisibility,
             agentName,
             prepareStepFn,
             resolvedProviderOpts,
@@ -2327,7 +2321,7 @@ export function generator<
 
       // Emit source items from provider-native tools (e.g., web search).
       // Only when the generator has a declared identity.
-      if (agentType !== undefined && generation.sources !== undefined && generation.sources.length > 0) {
+      if (itemVisibility !== undefined && generation.sources !== undefined && generation.sources.length > 0) {
         const sourceIdentity = ctx._blockIdentity;
         const sourceProv = {
           blockName: sourceIdentity?.blockName ?? blockName,
@@ -2336,7 +2330,7 @@ export function generator<
           phase: sourceIdentity?.phase ?? ("main" as const)
         };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName, nonStreamingIdentity);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, itemVisibility, agentName, nonStreamingIdentity);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -2357,7 +2351,7 @@ export function generator<
       // emitted by the time this block runs. Subscribers that key UI state
       // off the `in_progress` transient must tolerate the durable
       // `tool_output` arriving first on non-streaming providers.
-      if (agentType !== undefined) {
+      if (itemVisibility !== undefined) {
         const toolIdentity = ctx._blockIdentity;
         const toolProvenance = {
           blockName: toolIdentity?.blockName ?? blockName,
@@ -2389,7 +2383,7 @@ export function generator<
             ts: Date.now(),
             ownedBy: toolOwnedBy,
             taskId: toolTaskId,
-            agentType,
+            itemVisibility,
             agentName,
             model: nonStreamingIdentity,
             toolCallId: call.toolCallId,
@@ -2412,7 +2406,7 @@ export function generator<
               ts: Date.now(),
               ownedBy: toolOwnedBy,
               taskId: toolTaskId,
-              agentType,
+              itemVisibility,
               agentName,
               model: nonStreamingIdentity,
               toolCallId: call.toolCallId,
@@ -2447,7 +2441,7 @@ export function generator<
       // Emit a completed assistant message when the generator has identity
       // and produced text output. Identity-less generators skip emission —
       // their typed `block_trace` output is the only signal to downstream blocks.
-      if (agentType !== undefined && isTextOutputSchema(outputSchema) && typeof output === "string") {
+      if (itemVisibility !== undefined && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
         const provenance = {
@@ -2470,7 +2464,7 @@ export function generator<
           ts: Date.now(),
           ownedBy: nsOwnedBy,
           taskId: nsTaskId,
-          agentType,
+          itemVisibility,
           agentName,
           model: nonStreamingIdentity,
           content: [{ type: "output_text" as const, text: output }]

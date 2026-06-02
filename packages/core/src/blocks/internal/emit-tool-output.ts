@@ -8,7 +8,7 @@
  * helper handles only the item envelope.
  */
 import type { BlockContext, BlockDefinition } from "../../types/block";
-import type { AgentType, ModelIdentity } from "../../items/types";
+import type { ItemVisibility, ModelIdentity } from "../../items/types";
 import { sanitizeToolName } from "../../helpers/tool-name";
 import { getEmitterItemCount } from "./utils";
 import { toError } from "./utils";
@@ -24,7 +24,7 @@ export type EmitToolOutputAttribution = {
   callId: string;
   /** Name of the block that initiated the call (parent generator or wrapping block). */
   generatorBlock: string;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   agentName?: string;
   /**
    * Resolved identity of the generator model that invoked this tool. Stamped
@@ -86,7 +86,7 @@ export async function emitToolOutputAround(
     ts: Date.now(),
     ownedBy: parentIdentity?.ownedBy,
     taskId: parentIdentity?.taskId,
-    ...(attribution.agentType !== undefined ? { agentType: attribution.agentType } : {}),
+    ...(attribution.itemVisibility !== undefined ? { itemVisibility: attribution.itemVisibility } : {}),
     ...(attribution.agentName !== undefined ? { agentName: attribution.agentName } : {}),
     ...(attribution.model !== undefined ? { model: attribution.model } : {}),
     ...(attribution.cached !== undefined

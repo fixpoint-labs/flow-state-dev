@@ -13,9 +13,9 @@
  * `fetch` tool agent-callable so the model picks 2–3 article URLs from
  * the headline window to read in depth.
  *
- * `agentType: "sub"` on every generator keeps each analyst's items off
- * the conversation history while still flowing to the client for live
- * observability.
+ * `itemVisibility: { client: true, history: false }` on every generator
+ * keeps each analyst's items off the conversation history while still
+ * flowing to the client for live observability.
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
@@ -80,7 +80,7 @@ const quantPrompt = loadPrompt("phase-1/prompts/quant.prompt.md");
 
 const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.fundamentals.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -118,7 +118,7 @@ export const fundamentalsAnalyst = defineAnalyst({
 
 const technicalGenerator = generator({
   name: "technical-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.technical.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -149,7 +149,7 @@ export const technicalAnalyst = defineAnalyst({
 
 const newsGenerator = generator({
   name: "news-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.news.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -176,7 +176,7 @@ export const newsAnalyst = defineAnalyst({
 
 const sentimentGenerator = generator({
   name: "sentiment-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.sentiment.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -210,7 +210,7 @@ export const sentimentAnalyst = defineAnalyst({
 
 const companyProfileGenerator = generator({
   name: "company-profile-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.companyProfile.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -240,7 +240,7 @@ export const companyProfileAnalyst = defineAnalyst({
 
 const marketGenerator = generator({
   name: "market-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.market.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -274,7 +274,7 @@ export const marketAnalyst = defineAnalyst({
 
 const macroGenerator = generator({
   name: "macro-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.macro.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({
@@ -308,7 +308,7 @@ export const macroAnalyst = defineAnalyst({
 
 const quantGenerator = generator({
   name: "quant-analyst-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.quant.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
   inputSchema: z.object({

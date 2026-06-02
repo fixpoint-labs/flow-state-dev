@@ -119,7 +119,7 @@ describe("stream resume — event persistence", () => {
       blockName: "check-board",
       blockKind: "handler",
       blockInstanceId: "bi_1",
-      agentType: "trace",
+      itemVisibility: { client: false, history: false },
       provenance: {
         blockName: "check-board",
         blockInstanceId: "bi_1",
@@ -181,7 +181,7 @@ describe("stream resume — event persistence", () => {
         blockName: "check-board",
         blockKind: "handler",
         blockInstanceId: `bi_${i}`,
-        agentType: "trace",
+        itemVisibility: { client: false, history: false },
         provenance: {
           blockName: "check-board",
           blockInstanceId: `bi_${i}`,
@@ -200,7 +200,7 @@ describe("stream resume — event persistence", () => {
         blockName: "check-board",
         blockKind: "handler",
         blockInstanceId: `bi_${i}`,
-        agentType: "trace",
+        itemVisibility: { client: false, history: false },
         provenance: {
           blockName: "check-board",
           blockInstanceId: `bi_${i}`,

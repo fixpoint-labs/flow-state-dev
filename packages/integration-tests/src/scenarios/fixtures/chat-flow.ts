@@ -33,7 +33,7 @@ const chatGenerator = generator({
   outputSchema: z.string(),
   tools: [searchTool],
   history: true,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   maxIterations: 6
 });
 

@@ -42,7 +42,7 @@
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   InstructionsSlot,
   SequencerDefinition,
@@ -180,9 +180,9 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   context?: GeneratorSlot<any, any>;
-  judgeAgentType?: AgentType;
-  synthesizerAgentType?: AgentType;
-  debaterAgentType?: AgentType;
+  judgeVisibility?: ItemVisibility;
+  synthesizerVisibility?: ItemVisibility;
+  debaterVisibility?: ItemVisibility;
   /**
    * Strip debater names from the judge's view of the transcript.
    * Stances are retained. Default `true`. Mitigates identity-driven
@@ -215,9 +215,9 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     uses,
     tools,
     context,
-    judgeAgentType,
-    synthesizerAgentType,
-    debaterAgentType,
+    judgeVisibility,
+    synthesizerVisibility,
+    debaterVisibility,
     anonymizeTranscript = true,
     shuffleForJudge = true,
     outputSchema,
@@ -322,7 +322,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(uses !== undefined ? { uses } : {}),
       ...(tools !== undefined ? { tools } : {}),
       ...(instructions !== undefined ? { instructions } : {}),
-      ...(judgeAgentType !== undefined ? { agentType: judgeAgentType } : {}),
+      ...(judgeVisibility !== undefined ? { itemVisibility: judgeVisibility } : {}),
     });
 
   /**
@@ -403,8 +403,8 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         ...(tools !== undefined ? { tools } : {}),
         ...(instructions !== undefined ? { instructions } : {}),
         ...(model !== undefined ? { model } : {}),
-        ...(synthesizerAgentType !== undefined
-          ? { agentType: synthesizerAgentType }
+        ...(synthesizerVisibility !== undefined
+          ? { itemVisibility: synthesizerVisibility }
           : {}),
       });
     return withJudge.step(synth) as SequencerDefinition<any, any>;
@@ -439,8 +439,8 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           ...(uses !== undefined ? { uses } : {}),
           ...(tools !== undefined ? { tools } : {}),
           ...(instructions !== undefined ? { instructions } : {}),
-          ...(debaterAgentType !== undefined
-            ? { agentType: debaterAgentType }
+          ...(debaterVisibility !== undefined
+            ? { itemVisibility: debaterVisibility }
             : {}),
         });
       const recordTap = createRecordArgument({
@@ -507,8 +507,8 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         ...(uses !== undefined ? { uses } : {}),
         ...(tools !== undefined ? { tools } : {}),
         ...(instructions !== undefined ? { instructions } : {}),
-        ...(debaterAgentType !== undefined
-          ? { agentType: debaterAgentType }
+        ...(debaterVisibility !== undefined
+          ? { itemVisibility: debaterVisibility }
           : {}),
       });
     const recordTap = createRecordArgument({

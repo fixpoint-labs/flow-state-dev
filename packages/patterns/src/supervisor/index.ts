@@ -16,7 +16,7 @@
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
 import { flowPolicy } from "@flow-state-dev/tasks";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorHistoryConfig,
   GeneratorSlot,
   InstructionsSlot,
@@ -89,15 +89,15 @@ export interface SupervisorConfig<
   context?: GeneratorSlot<any, any>;
   history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
-  reviewerAgentType?: AgentType;
-  synthesizerAgentType?: AgentType;
+  reviewerVisibility?: ItemVisibility;
+  synthesizerVisibility?: ItemVisibility;
 }
 
 /** Default reviewer — generator over `ReviewerInput → ReviewerVerdict`. */
 function buildDefaultReviewer(opts: {
   name: string;
   reviewCriteria?: string[];
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
 }) {
@@ -114,7 +114,7 @@ function buildDefaultReviewer(opts: {
     outputSchema: reviewerVerdictSchema,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
-    agentType: opts.agentType ?? "sub",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     prompt: [
       "You are a quality reviewer in a supervisor workflow.",
       "Evaluate the worker's output and return a verdict:",
@@ -168,7 +168,7 @@ function buildDefaultSynthesizer(opts: {
   history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
   instructions?: InstructionsSlot<any>;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }) {
   const basePrompt = [
     "You are the final synthesis step in a supervisor workflow.",
@@ -183,7 +183,7 @@ function buildDefaultSynthesizer(opts: {
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.history !== undefined ? { history: opts.history } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
-    agentType: opts.agentType ?? "primary",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: true },
     prompt: [opts.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
@@ -236,8 +236,8 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     context,
     history,
     uses,
-    reviewerAgentType,
-    synthesizerAgentType,
+    reviewerVisibility,
+    synthesizerVisibility,
     instructions,
     outputSchema,
   } = config;
@@ -263,7 +263,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         buildDefaultReviewer({
           name,
           reviewCriteria,
-          agentType: reviewerAgentType,
+          itemVisibility: reviewerVisibility,
           context,
           uses,
         }));
@@ -308,7 +308,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       history,
       uses,
       instructions,
-      agentType: synthesizerAgentType,
+      itemVisibility: synthesizerVisibility,
     });
 
   // Relies on the substrate's default `onIdle: "complete-or-blocked"`

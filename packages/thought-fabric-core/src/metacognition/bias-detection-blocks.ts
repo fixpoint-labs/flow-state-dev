@@ -146,7 +146,7 @@ export function biasDetectAgreement(config?: BiasAnalyzerBlockConfig) {
       '## AI Response',
       input.aiResponse,
     ].join('\n'),
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
     repairOutput: repairWithInputFields as any,
   })
 }
@@ -203,7 +203,7 @@ export function biasClassify(config?: BiasAnalyzerBlockConfig) {
       `omittedCounterpoints: ${input.agreementPattern.omittedCounterpoints}`,
       `uncriticalFramingAdoption: ${input.agreementPattern.uncriticalFramingAdoption}`,
     ].join('\n'),
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
     repairOutput: repairWithInputFields as any,
   })
 }
@@ -301,7 +301,7 @@ export function biasCounterpoint(config?: BiasAnalyzerBlockConfig) {
         biasDescriptions || '(none)',
       ].join('\n')
     },
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
     repairOutput: repairWithInputFields as any,
   })
 }

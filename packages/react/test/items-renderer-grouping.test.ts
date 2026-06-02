@@ -125,7 +125,7 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
   it("drops sub-agent tool items before they reach the group", () => {
     const items: OutputItem[] = [
       toolItem("t1", "web_search"),
-      toolItem("t2", "web_search", { agentType: "sub" }), // must not reach the group
+      toolItem("t2", "web_search", { itemVisibility: { client: true, history: false } }), // must not reach the group
       toolItem("t3", "web_search"),
     ];
     const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
@@ -138,7 +138,7 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
   it("drops sub-agent non-tool items entirely so tools coalesce", () => {
     const items: OutputItem[] = [
       toolItem("t1", "web_search"),
-      messageItem("m1", { agentType: "sub" }),
+      messageItem("m1", { itemVisibility: { client: true, history: false } }),
       toolItem("t2", "web_search"),
     ];
     const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
@@ -214,7 +214,7 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
 
   it("respects showSubAgents: true — sub-agent items flow through", () => {
     const items: OutputItem[] = [
-      toolItem("t1", "web_search", { agentType: "sub" }),
+      toolItem("t1", "web_search", { itemVisibility: { client: true, history: false } }),
       toolItem("t2", "web_search"),
     ];
     const stream = buildItemRenderStream(items, undefined, {

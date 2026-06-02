@@ -14,7 +14,7 @@ Three problems:
 
 ## 2. Approach: single SSE wire, server-side filter, durable trace store, public/internal type split
 
-Keep the existing single SSE endpoint. Rename `?unfiltered=true` to `?include=trace` for honesty. Introduce a `TraceStore` on `StoreRegistry` that persists trace events independently of `RequestRecord` GC, mirroring how `CheckpointStore` already works for `state_snapshot`. Refactor the four auto-emission sites through a new `ctx.emit.trace.*` namespace and stamp `agentType: "trace"` consistently. Shrink the public `OutputItem` union from 15 to 10 — the four trace types leave the union but stay exported as named types; `step_error` is deleted outright.
+Keep the existing single SSE endpoint. Rename `?unfiltered=true` to `?include=trace` for honesty. Introduce a `TraceStore` on `StoreRegistry` that persists trace events independently of `RequestRecord` GC, mirroring how `CheckpointStore` already works for `state_snapshot`. Refactor the four auto-emission sites through a new `ctx.emit.trace.*` namespace and stamp `itemVisibility: { client: false, history: false }` consistently. Shrink the public `OutputItem` union from 15 to 10 — the four trace types leave the union but stay exported as named types; `step_error` is deleted outright.
 
 ### Why this shape
 
@@ -118,7 +118,7 @@ Four current auto-emission sites refactor to call through `ctx.emit.trace.*`:
 
 Each `ctx.emit.trace.*` call:
 
-1. Stamps `agentType: "trace"` if not set.
+1. Stamps `itemVisibility: { client: false, history: false }` if not set.
 2. Calls `response.emitItemAdded` / `emitItemDone` (or `emitItemOneShot` for `block_debug`).
 3. Reads the assigned sequence number via `response.getSequenceNumber()`.
 4. Fire-and-forget `stores.traces.appendEvent(...)` (errors → `onPersistError`).
@@ -141,9 +141,9 @@ Each `ctx.emit.trace.*` call:
 
 ### 3.7 Visibility model
 
-`STRUCTURAL_TYPE_DEFAULTS` shrinks from 12 to 7 (the four trace entries leave; the `step_error` entry leaves with the type). The `agentType === "trace"` short-circuit in `resolveItemVisibility` becomes the only path returning `client: false`. `createClientEventFilter` is unchanged in shape.
+`STRUCTURAL_TYPE_DEFAULTS` shrinks from 12 to 7 (the four trace entries leave; the `step_error` entry leaves with the type). The `itemVisibility: { client: false, history: false }` short-circuit in `resolveItemVisibility` becomes the only path returning `client: false`. `createClientEventFilter` is unchanged in shape.
 
-`TRACE_ITEM_TYPES` in `state-routes.ts` stays as a legacy-compat safety net (TODO-tagged) for pre-migration `RequestRecord.items` records that lack the `agentType` stamp. Primary check is `resolveItemVisibility(item).client === false`.
+`TRACE_ITEM_TYPES` in `state-routes.ts` stays as a legacy-compat safety net (TODO-tagged) for pre-migration `RequestRecord.items` records that lack the `itemVisibility` stamp. Primary check is `resolveItemVisibility(item).client === false`.
 
 ## 4. Trade-offs
 

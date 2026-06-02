@@ -116,7 +116,7 @@ export async function materializeWorker(
 
   return generator({
     name: `skillWorker_${deps.skillName}_${workerKey}`,
-    agentType: spec.agentType ?? "sub",
+    itemVisibility: spec.itemVisibility ?? { client: true, history: false },
     agentName: `skill-${deps.skillName}-${workerKey}`,
     inputSchema: workerInputSchema,
     outputSchema: z.string(),

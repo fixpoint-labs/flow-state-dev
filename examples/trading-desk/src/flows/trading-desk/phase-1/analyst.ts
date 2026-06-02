@@ -29,7 +29,7 @@ export interface AnalystConfig {
    *  used to attribute tool pills, and the memo key the writer resolves. */
   shortName: Phase1MemoShortName;
   /** Tools fanned out in parallel. Each value is decorated with
-   *  `.asTool({ agentType: "sub", agentName })` before being placed in
+   *  `.asTool({ itemVisibility: { client: true, history: false }, agentName })` before being placed in
    *  the parallel record so transcript pills attribute to this analyst. */
   tools: Record<string, BlockDefinition>;
   /** The role-specific synthesis generator. Its `inputSchema` must match

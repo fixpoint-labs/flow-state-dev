@@ -107,11 +107,11 @@ sequencer({ name: "phase-3-trader-step" })
   .rescue([{ block: markErrorP3("trader") }]);
 ```
 
-`agentType: "primary"` on the trader generator tells the framework to render the structured output as a card in the transcript. The transcript renderer reads the item type and dispatches to the right component. No custom event handling in the React layer.
+`itemVisibility: { client: true, history: true }` on the trader generator tells the framework to render the structured output as a card in the transcript. The transcript renderer reads the item type and dispatches to the right component. No custom event handling in the React layer.
 
 ### An in-flow factory
 
-All six preamble generators in Phases 3–5 are built via a small `createApproachGenerator` factory that lives next to the `tradingDesk` capability in `services/approach-generator.ts`. The factory bakes in the parts that are shared across every preamble — `agentType: "sub"` (streams a message item, no struct card), `model: "intent/utility"` (always-fast, regardless of `costPreset`), and the user-instruction template — and each call site supplies only what varies: name, agent name, artifact name, prompt, and capability presets.
+All six preamble generators in Phases 3–5 are built via a small `createApproachGenerator` factory that lives next to the `tradingDesk` capability in `services/approach-generator.ts`. The factory bakes in the parts that are shared across every preamble — `itemVisibility: { client: true, history: false }` (streams a message item, no struct card), `model: "intent/utility"` (always-fast, regardless of `costPreset`), and the user-instruction template — and each call site supplies only what varies: name, agent name, artifact name, prompt, and capability presets.
 
 ```ts
 export const traderApproachGenerator = createApproachGenerator({

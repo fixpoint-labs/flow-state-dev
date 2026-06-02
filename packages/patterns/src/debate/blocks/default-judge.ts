@@ -16,7 +16,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   InstructionsSlot,
   ToolsSlot,
@@ -46,7 +46,7 @@ export interface CreateJudgeOptions {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   instructions?: InstructionsSlot;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 /**
@@ -102,7 +102,7 @@ export function createJudge(opts: CreateJudgeOptions) {
     outputSchema: debateVerdictSchema,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
-    agentType: opts.agentType ?? "primary",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: true },
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),

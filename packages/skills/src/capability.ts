@@ -26,9 +26,9 @@ import type {
 } from "@flow-state-dev/core/types";
 import type {
   AgentRegistry,
-  AgentType,
   DefinedCapability as DefCap,
   InitialSkill,
+  ItemVisibility,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import {
@@ -71,16 +71,18 @@ export interface SkillsCapabilityOptions {
   /** Optional override of the model fork-mode subagents run on. */
   forkModelId?: string;
   /**
-   * Restrict this capability to blocks with a matching `agentType`.
+   * Restrict this capability to blocks with a matching `itemVisibility`.
    *
    * Omitted (default): every generator that declares skills via `uses:`
    * gets the full body + runSkill tool.
-   * Set to `"primary"` in multi-agent patterns so only the main agent
-   * (planner, supervisor, blackboard synthesizer) coordinates with skills;
-   * workers (`agentType: "sub"`) don't duplicate the skill body into their
-   * context on every step. See CapabilityConfig.agentType.
+   * Set to `{ client: true, history: true }` in multi-agent patterns so
+   * only the main agent (planner, supervisor, blackboard synthesizer)
+   * coordinates with skills; workers
+   * (`itemVisibility: { client: true, history: false }`) don't duplicate
+   * the skill body into their context on every step.
+   * See CapabilityConfig.itemVisibility.
    */
-  agentType?: AgentType | readonly AgentType[];
+  itemVisibility?: ItemVisibility | readonly ItemVisibility[];
 
   /**
    * Optional pattern registry. When supplied, skills declaring `pattern:`
@@ -185,7 +187,7 @@ export function createSkillsCapability(
 
   return defineCapability({
     name: "skills",
-    agentType: options.agentType,
+    itemVisibility: options.itemVisibility,
     ...(composesTaskTools ? { uses: [taskToolsCapability] as const } : {}),
 
     // Always-on surface: the resource collection and the session-state slice

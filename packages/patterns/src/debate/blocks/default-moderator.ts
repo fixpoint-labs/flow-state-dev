@@ -17,7 +17,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   ToolsSlot,
   UsesSlot,
@@ -49,7 +49,7 @@ export interface CreateModeratorOptions {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   instructions?: ModeratorInstructions;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 /**
@@ -63,7 +63,7 @@ export function createModerator(opts: CreateModeratorOptions) {
     outputSchema: debateModeratorOutputSchema,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
-    agentType: opts.agentType ?? "sub",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     // The moderator's tool loop can run for a while before it commits a
     // decision. Surface a global status so it's clear work is in flight.
     activeStatusMessage: (_input, ctx) => {

@@ -35,10 +35,10 @@ export function memoLabel(name: AgentName): string {
 }
 
 /**
- * Tag every block in a `.parallel` tool record with an `agentType: "sub"`
- * + `agentName` attribution so the transcript pills attach to the right
- * analyst card. Replaces the per-analyst IIFE that bound `.asTool()` over
- * each tool entry.
+ * Tag every block in a `.parallel` tool record with an
+ * `itemVisibility: { client: true, history: false }` + `agentName`
+ * attribution so the transcript pills attach to the right analyst card.
+ * Replaces the per-analyst IIFE that bound `.asTool()` over each tool entry.
  *
  * @example
  *   .parallel(attributedTools("fundamentalsAnalyst", {
@@ -52,7 +52,7 @@ export function attributedTools<R extends Record<string, BlockDefinition>>(
 ): Record<keyof R, BlockDefinition> {
   const result: Record<string, BlockDefinition> = {};
   for (const [key, block] of Object.entries(tools)) {
-    result[key] = block.asTool({ agentType: "sub", agentName });
+    result[key] = block.asTool({ itemVisibility: { client: true, history: false }, agentName });
   }
   return result as Record<keyof R, BlockDefinition>;
 }

@@ -35,14 +35,14 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 
 Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
-### `agentType` — control output visibility
+### `itemVisibility` — control output visibility
 
-Every generator-based utility accepts an optional `agentType` (`"primary"` | `"sub"` | `"trace"`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
+Every generator-based utility accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
 
-- `synthesizer` defaults to `agentType: "primary"` — its output is user-facing by convention.
-- All other utilities leave `agentType` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
-- Set `agentType: "primary"` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
-- Set `agentType: "trace"` when the output is observability-only — visible in the devtool, not to the client or in history.
+- `synthesizer` defaults to `itemVisibility: { client: true, history: true }` — its output is user-facing by convention.
+- All other utilities leave `itemVisibility` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
+- Set `itemVisibility: { client: true, history: true }` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
+- Set `itemVisibility: { client: false, history: false }` when the output is observability-only — visible in the devtool, not to the client or in history.
 
 ```ts
 // Default: silent, flows only via graph edges
@@ -51,7 +51,7 @@ const classify = utility.intentClassifier({ name: "classify", categories });
 // Opt in to user visibility
 const critic = utility.analyzer({
   name: "critic",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   criteria: ["clarity", "accuracy"],
 });
 ```

@@ -381,7 +381,7 @@ function buildFilterBlock(model: string) {
       }
       return lines.join('\n')
     },
-    agentType: 'trace',
+    itemVisibility: { client: false, history: false },
   })
 }
 

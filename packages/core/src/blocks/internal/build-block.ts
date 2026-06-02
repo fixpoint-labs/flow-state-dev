@@ -312,7 +312,7 @@ export function buildBlock<
         const attribution = {
           callId,
           generatorBlock: ctx._blockIdentity?.blockName ?? definition.name,
-          ...(opts.agentType !== undefined ? { agentType: opts.agentType } : {}),
+          ...(opts.itemVisibility !== undefined ? { itemVisibility: opts.itemVisibility } : {}),
           ...(opts.agentName !== undefined ? { agentName: opts.agentName } : {}),
         };
         const hintRef = { kind: "ref" as const };

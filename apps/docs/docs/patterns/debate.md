@@ -282,9 +282,9 @@ The default synthesizer is a generator that projects the raw debate shape — in
 | `context` | `GeneratorSlot` | — | Generator context slot forwarded to default blocks. |
 | `anonymizeTranscript` | `boolean` | `true` | Strip debater names from the judge's view. |
 | `shuffleForJudge` | `boolean` | `true` | Shuffle per-round argument order in the judge's prompt. |
-| `judgeAgentType` | `AgentType` | `"primary"` | Agent type for the default judge. |
-| `synthesizerAgentType` | `AgentType` | `"primary"` | Agent type for the default synthesizer. |
-| `debaterAgentType` | `AgentType` | `"sub"` | Agent type for default debaters. |
+| `judgeVisibility` | `ItemVisibility` | `{ client: true, history: true }` | Visibility for the default judge. |
+| `synthesizerVisibility` | `ItemVisibility` | `{ client: true, history: true }` | Visibility for the default synthesizer. |
+| `debaterVisibility` | `ItemVisibility` | `{ client: true, history: false }` | Visibility for default debaters. |
 | `collectionId` | `string` | `name` | Stable id for the per-run `TaskCollection`. |
 
 `DebaterConfig`:

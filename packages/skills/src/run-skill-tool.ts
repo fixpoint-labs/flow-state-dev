@@ -6,8 +6,8 @@
  * the skill from the configured collection and dispatches to:
  *   - `inlineActivate` (handler) — patches `activeSkills` so the next
  *     generator step renders the substituted body in its system prompt.
- *   - `skillFork` (generator, `agentType: "sub"`) — runs the skill body as
- *     a subagent with a resolved subset of catalog tools.
+ *   - `skillFork` (generator, `itemVisibility: { client: true, history: false }`)
+ *     — runs the skill body as a subagent with a resolved subset of catalog tools.
  *
  * The tool is a `router` rather than a handler: dispatch + per-branch
  * input/output adaptation belongs inside a router (BP-013), and routing to

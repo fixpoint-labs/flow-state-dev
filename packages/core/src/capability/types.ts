@@ -21,7 +21,7 @@ import type {
   ResolvableModel,
   ResolvableProviderOptions,
 } from "../blocks/generator";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -178,20 +178,15 @@ export interface CapabilityConfig<
   )[];
 
   /**
-   * Restrict this capability to blocks with a matching `agentType`.
+   * Restrict this capability to blocks with a matching `itemVisibility`.
    *
    * Omitted (default): the capability attaches to every block that declares
-   * it via `uses`. Set to an `AgentType` or array of `AgentType`s to filter
-   * to an allowlist — the capability only attaches when the consuming
-   * block's `agentType` is in the list. A block with no `agentType`
-   * (including handlers, sequencers, routers, and generators that don't
-   * set the field) is treated as `"primary"` for this check.
-   *
-   * Use `"primary"` on capabilities that should coordinate the main agent
-   * but not be replicated into workers (`agentType: "sub"`), e.g. large
-   * skill bodies or expensive system prompts in multi-agent patterns.
+   * it via `uses`. Set to an `ItemVisibility` or array to filter to an
+   * allowlist — the capability only attaches when the consuming block's
+   * `itemVisibility` matches (deep equal). A block with no `itemVisibility`
+   * is treated as `{ client: true, history: true }` for this check.
    */
-  agentType?: AgentType | readonly AgentType[];
+  itemVisibility?: ItemVisibility | readonly ItemVisibility[];
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;
@@ -260,8 +255,8 @@ export interface DefinedCapability<
   // Capability composition — static refs and/or dynamic resolver functions
   uses?: UsesSlot;
 
-  /** Allowlist of block `agentType`s this capability attaches to. See CapabilityConfig.agentType. */
-  agentType?: AgentType | readonly AgentType[];
+  /** Allowlist of block `itemVisibility` this capability attaches to. See CapabilityConfig.itemVisibility. */
+  itemVisibility?: ItemVisibility | readonly ItemVisibility[];
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;

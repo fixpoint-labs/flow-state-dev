@@ -180,7 +180,7 @@ const assistantGenerator = generator({
     }
   },
 
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   // `ctx.user` may be absent in test harnesses without a configured user
   // scope, so fall back to the catalog default rather than relying on the
   // Zod default alone.

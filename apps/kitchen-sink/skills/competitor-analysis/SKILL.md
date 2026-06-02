@@ -8,14 +8,14 @@ workers:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
-    agent-type: sub
+    visibility: sub
   analyzer:
     prompt-ref: ./reference/analyze.md
     tools: [search, fetch]
-    agent-type: sub
+    visibility: sub
   synthesizer:
     prompt-ref: ./reference/synthesize.md
-    agent-type: primary
+    visibility: primary
 
 initial-tasks:
   - id: discover

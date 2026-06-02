@@ -318,7 +318,7 @@ export function digestRegenerateGenerate(config: DigestRegenerateConfig) {
     context: (input: any) => buildDigestContext(input as DigestGuardOutput),
     user: () => 'Produce the digest.',
     maxTokens: config.digest.maxTokens,
-    agentType: 'trace',
+    itemVisibility: { client: false, history: false },
   })
 }
 

@@ -141,7 +141,7 @@ describe("BlockDefinition.asTool", () => {
     expect(update?.patch?.error?.message).toBe("kaboom");
   });
 
-  it("stamps agentType/agentName from opts onto the emitted item", async () => {
+  it("stamps itemVisibility/agentName from opts onto the emitted item", async () => {
     const inner = handler({
       name: "lookup",
       inputSchema: z.object({ q: z.string() }),
@@ -152,17 +152,17 @@ describe("BlockDefinition.asTool", () => {
     const seq = sequencer({
       name: "attr",
       inputSchema: z.object({ q: z.string() }),
-    }).step(inner.asTool({ agentType: "sub", agentName: "fundamentals" }));
+    }).step(inner.asTool({ itemVisibility: { client: true, history: false }, agentName: "fundamentals" }));
 
     const { ctx, emitted } = ctxWithRecorder();
     await runForTest(seq, { q: "x" }, ctx);
 
     const item = toolOutputsOf(emitted)[0];
-    expect(item.agentType).toBe("sub");
+    expect(item.itemVisibility).toEqual({ client: true, history: false });
     expect(item.agentName).toBe("fundamentals");
   });
 
-  it("omits agentType/agentName when neither opts nor ctx supply them", async () => {
+  it("omits itemVisibility/agentName when neither opts nor ctx supply them", async () => {
     const inner = handler({
       name: "lookup",
       inputSchema: z.object({ q: z.string() }),
@@ -179,7 +179,7 @@ describe("BlockDefinition.asTool", () => {
     await runForTest(seq, { q: "x" }, ctx);
 
     const item = toolOutputsOf(emitted)[0];
-    expect(item.agentType).toBeUndefined();
+    expect(item.itemVisibility).toBeUndefined();
     expect(item.agentName).toBeUndefined();
   });
 

@@ -6,7 +6,7 @@
  * framework's primitives collapse cleanly to "input → one generator → output"
  * without the agentic scaffolding that powers chat-agent.
  *
- * Streaming requires `agentType: "primary"` together with a string
+ * Streaming requires `itemVisibility: { client: true, history: true }` together with a string
  * `outputSchema`; the runtime gate at packages/core/src/blocks/generator.ts
  * checks both before flipping a generator into streamed-text mode.
  */
@@ -39,7 +39,7 @@ import { mem, MODEL_ID } from "./memory";
 export const copyeditGenerator = generator({
   name: "copyedit-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: copyeditInputSchema,
   prompt: COPYEDIT_PROMPT,
   user: (input) => input.text,
@@ -50,7 +50,7 @@ export const copyeditGenerator = generator({
 export const improveGenerator = generator({
   name: "improve-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: improveInputSchema,
   prompt: IMPROVE_PROMPT,
   user: (input) => input.text,
@@ -61,7 +61,7 @@ export const improveGenerator = generator({
 export const changeToneGenerator = generator({
   name: "change-tone-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: changeToneInputSchema,
   prompt: CHANGE_TONE_PROMPT,
   user: (input) => `Target tone: ${input.tone}\n\n---\n\n${input.text}`,
@@ -72,7 +72,7 @@ export const changeToneGenerator = generator({
 export const translateGenerator = generator({
   name: "translate-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: translateInputSchema,
   prompt: TRANSLATE_PROMPT,
   user: (input) => `Target language: ${input.language}\n\n---\n\n${input.text}`,
@@ -86,7 +86,7 @@ export const translateGenerator = generator({
 export const summarizeGenerator = generator({
   name: "summarize-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: summarizeInputSchema,
   prompt: (input) => summarizePrompt(input.length),
   user: (input) => input.text,
@@ -97,7 +97,7 @@ export const summarizeGenerator = generator({
 export const expandGenerator = generator({
   name: "expand-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: expandInputSchema,
   prompt: EXPAND_PROMPT,
   user: (input) =>
@@ -111,7 +111,7 @@ export const expandGenerator = generator({
 export const fixCodeGenerator = generator({
   name: "fix-code-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   inputSchema: fixCodeInputSchema,
   prompt: (input) => fixCodePrompt(input.language),
   user: (input) => input.text,
@@ -132,7 +132,7 @@ export const fixCodeGenerator = generator({
 export const personalizeGenerator = generator({
   name: "personalize-generator",
   model: MODEL_ID,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   uses: [mem],
   inputSchema: personalizeInputSchema,
   prompt: PERSONALIZE_PROMPT,

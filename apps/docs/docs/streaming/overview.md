@@ -47,28 +47,28 @@ The reference table below shows where each item type appears by default. Two thi
 
 ### How visibility is resolved
 
-Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`:
+Visibility is a pure function of `(item.type, item.itemVisibility)` computed by `resolveItemVisibility()`:
 
-- **Conversational types** (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType`.
-- **Structural types** (`component`, `status`, `block_trace`, etc.) have fixed per-type visibility.
-- An `agentType: "trace"` item is always `{ client: false, history: false }` regardless of type — trace is observability-only.
+- **Conversational types** (`message`, `reasoning`, `tool_output`) use the item's `itemVisibility` field. Absent `itemVisibility` defaults to `{ client: true, history: true }`.
+- **Structural types** (`component`, `status`, `error`, etc.) resolve to `{ client: true, history: false }`.
+- **Trace types** (`block_trace`, `router_decision`, `state_snapshot`) always resolve to `{ client: false, history: false }` by their type.
 
 ### Generator identity controls conversational visibility
 
-Generators declare an identity via `agentType`. The framework uses that identity to route the auto-emitted messages and reasoning:
+Generators declare visibility via `itemVisibility`. The framework uses that to route auto-emitted messages and reasoning:
 
 ```ts
 // User-facing agent — on the client stream, in conversation history.
-const chatbot = generator({ agentType: "primary", /* ... */ });
+const chatbot = generator({ itemVisibility: { client: true, history: true }, /* ... */ });
 
 // Sub-agent — visible to the client (live observability), but its output
 // does NOT enter history.
-const worker = generator({ agentType: "sub", /* ... */ });
+const worker = generator({ itemVisibility: { client: true, history: false }, /* ... */ });
 
 // Devtool-only observer — not on the client stream, not in history.
-const memoryObserver = generator({ agentType: "trace", /* ... */ });
+const memoryObserver = generator({ itemVisibility: { client: false, history: false }, /* ... */ });
 
-// No agentType → the generator produces no auto-emitted items. Its typed
+// No itemVisibility → the generator produces no auto-emitted items. Its typed
 // `block_trace` still flows to parents via graph edges.
 const classifier = generator({ outputSchema: z.enum(["A", "B"]), /* ... */ });
 ```
@@ -77,13 +77,13 @@ See [Generator identity](../streaming/items#generator-identity) for the full mod
 
 ### Handler-emitted items
 
-Handlers don't declare `agentType` — but their emit helpers accept optional identity:
+Handlers don't declare `itemVisibility` — but their emit helpers accept optional visibility:
 
 ```ts
 ctx.emitMessage("Analysis complete.");
 // Implicit agent-equivalent visibility: on the client, enters history.
 
-ctx.emitMessage("Debug observation", { agentType: "trace" });
+ctx.emitMessage("Debug observation", { itemVisibility: { client: false, history: false } });
 // Observability-only: devtool sees it, users and the LLM don't.
 ```
 
@@ -126,7 +126,7 @@ event: item.updated
 data: {"itemId":"item_42","patch":{"status":"completed","payload":{...}}}
 ```
 
-The patch is a **shallow top-level merge** — each top-level key in `patch` replaces the existing value at that key on the consumer's tracked item. Nested updates require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped both server-side and client-side and never apply.
+The patch is a **shallow top-level merge** — each top-level key in `patch` replaces the existing value at that key on the consumer's tracked item. Nested updates require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `itemVisibility`, `transient`) are stripped both server-side and client-side and never apply.
 
 Producers should prefer `emitItemUpdated` over re-emitting `item.added` + `item.done` when fields evolve; consumers see fewer flicker frames and the wire stays compact. See [Emitting Items](/docs/streaming/emitting-items#updating-an-item-after-emission) for the producer-side helper.
 

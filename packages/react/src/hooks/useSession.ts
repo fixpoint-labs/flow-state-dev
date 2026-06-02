@@ -18,6 +18,7 @@ import {
 import type {
   Content,
   ContentAudioDeltaEvent,
+  ItemVisibility,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -32,6 +33,19 @@ import {
 } from "../internal/mergeStateChangeIntoSnapshot";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
+
+// Mirrors `resolveItemVisibility` from `@flow-state-dev/core/items` —
+// inlined because this package may only import types from core.
+const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
+const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
+const CONVERSATIONAL_DEFAULT: ItemVisibility = { client: true, history: true };
+const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
+const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
+function resolveItemVisibility(item: OutputItem): ItemVisibility {
+  if (TRACE_TYPES.has(item.type)) return TRACE_DEFAULT;
+  if (CONVERSATIONAL_TYPES.has(item.type)) return item.itemVisibility ?? CONVERSATIONAL_DEFAULT;
+  return STRUCTURAL_DEFAULT;
+}
 
 type ContentDeltaAccumulator = {
   itemId: string;
@@ -147,8 +161,8 @@ export type SessionView = {
   getOwnedItems: (ownedBy: string) => OutputItem[];
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
   getItemsByAgent: (agentName: string) => OutputItem[];
-  /** Returns items stamped with the given `agentType`. */
-  getItemsByAgentType: (agentType: "primary" | "sub" | "trace") => OutputItem[];
+  /** Returns items matching the given visibility predicate. */
+  getItemsByVisibility: (predicate: Partial<ItemVisibility>) => OutputItem[];
   sendAction: (
     action: string,
     input: unknown,
@@ -1425,9 +1439,14 @@ export function useSession(
     [items]
   );
 
-  const getItemsByAgentType = useCallback(
-    (agentType: "primary" | "sub" | "trace"): OutputItem[] =>
-      items.filter((item) => item.agentType === agentType),
+  const getItemsByVisibility = useCallback(
+    (predicate: Partial<ItemVisibility>): OutputItem[] =>
+      items.filter((item) => {
+        const resolved = resolveItemVisibility(item);
+        if (predicate.client !== undefined && resolved.client !== predicate.client) return false;
+        if (predicate.history !== undefined && resolved.history !== predicate.history) return false;
+        return true;
+      }),
     [items]
   );
 
@@ -1529,7 +1548,7 @@ export function useSession(
     resourceChanges,
     getOwnedItems,
     getItemsByAgent,
-    getItemsByAgentType,
+    getItemsByVisibility,
     sendAction,
     abortRequest,
     dismissRequest,

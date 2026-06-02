@@ -196,7 +196,7 @@ describe("FIX-523 — content.audio.delta is non-replayable", () => {
         requestId,
         itemIndex: 0,
         provenance: { blockName: "test", blockInstanceId: "test_1", phase: "main" as const },
-        agentType: "trace" as const,
+        itemVisibility: { client: false, history: false },
         ts: 100,
         blockName: "test",
         blockKind: "handler" as const,

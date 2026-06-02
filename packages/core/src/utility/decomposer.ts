@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig, GeneratorHistoryConfig, GeneratorSlot } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const decomposerTaskSchema = z.object({
@@ -29,7 +29,7 @@ export interface DecomposerConfig<
    * via graph edges only. Set to `"primary"` to surface the plan to the user,
    * or `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -52,7 +52,7 @@ export function decomposer<
     name: config.name,
     model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     context: config.context,
     history: config.history,
     search: true,

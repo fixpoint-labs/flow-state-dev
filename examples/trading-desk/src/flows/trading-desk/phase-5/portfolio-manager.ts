@@ -8,9 +8,9 @@
  * risk critiques. The cost-preset gating lives inside the `*Full`
  * presets, not at the call site.
  *
- * `agentType: "primary"` so the structured `TxStruct` card renders in the
- * transcript automatically (the navigator's `PRIMARY_STRUCT_AGENTS` set
- * already includes `portfolioManager`).
+ * `itemVisibility: { client: true, history: true }` so the structured
+ * `TxStruct` card renders in the transcript automatically (the navigator's
+ * `PRIMARY_STRUCT_AGENTS` set already includes `portfolioManager`).
  *
  * The output schema lives inline here because only one generator emits
  * the shape; the Phase 5 writer imports the type back to project the
@@ -91,7 +91,7 @@ export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSche
 
 export const portfolioManagerGenerator = generator({
   name: "portfolio-manager-generator",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   agentName: PHASE_5_MEMO_KEYS.portfolioManager.agentName,
   uses: [
     tradingDesk.presets({

@@ -3,10 +3,10 @@
  *
  * When a skill declares `context: fork` in its frontmatter, `runSkill`
  * dispatches the invocation to this generator. The subagent runs with
- * `agentType: "sub"`, meaning its tool calls and streaming output reach
- * the client for live observability but are excluded from the parent
- * conversation's history — the isolation guarantee fork skills need,
- * without bypassing the framework.
+ * `itemVisibility: { client: true, history: false }`, meaning its tool
+ * calls and streaming output reach the client for live observability but
+ * are excluded from the parent conversation's history — the isolation
+ * guarantee fork skills need, without bypassing the framework.
  *
  * Per-invocation inputs:
  *   - `body`: the substituted SKILL.md body, used as the system prompt.
@@ -64,7 +64,7 @@ export function createSkillForkGenerator(
 
   return generator({
     name: "skillFork",
-    agentType: "sub",
+    itemVisibility: { client: true, history: false },
     agentName: "skill-fork",
     inputSchema: forkInputSchema,
     // Output is whatever the subagent returns — plain text unless the skill

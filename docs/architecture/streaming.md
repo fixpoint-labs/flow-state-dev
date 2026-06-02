@@ -50,7 +50,7 @@ For `block_trace`: When the item has `toolCall` metadata (legacy tool invocation
 
 ### Visibility Resolution
 
-`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_trace`, `router_decision`, and `state_snapshot` are devtool-only.
+`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.itemVisibility)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `tool_output`) inherit visibility from the producing generator's `itemVisibility` (`{ client: true, history: true }`, `{ client: true, history: false }`, `{ client: false, history: false }`). Structural items have fixed per-type visibility — `block_trace`, `router_decision`, and `state_snapshot` are devtool-only.
 
 ### Container Ownership (`ownedBy`)
 

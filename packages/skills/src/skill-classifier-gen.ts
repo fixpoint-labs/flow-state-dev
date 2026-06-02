@@ -6,9 +6,9 @@
  * an apply handler filters out skills not in the catalog (a hallucination
  * guard) and applies the confidence threshold.
  *
- * `agentType: "trace"` hides emissions from both the client stream and the
- * LLM history — the classification is observability-only, never visible to
- * the main generator's chat history.
+ * `itemVisibility: { client: false, history: false }` hides emissions from
+ * both the client stream and the LLM history — the classification is
+ * observability-only, never visible to the main generator's chat history.
  */
 
 import { z } from "zod";
@@ -94,7 +94,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     model: opts.classifierModel ?? "intent/utility",
     inputSchema,
     outputSchema: skillClassifierOutputSchema,
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
     prompt: async (_input, ctx) => {
       const collection = getCollection(ctx, opts.collectionKey);
       const skills = await listSkillsForPrompt(collection, cap);
