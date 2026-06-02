@@ -103,6 +103,7 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
   const len = recent.form.length;
 
   for (let i = 0; i < len; i++) {
+    if (entries.length >= MAX_RECENT && materialEvents.length >= MAX_EVENTS) break;
     const form = recent.form[i];
     if (!PERIODIC_FORMS.has(form)) continue;
     const accession = (recent.accessionNumber?.[i] ?? "").replace(/-/g, "");
@@ -122,7 +123,9 @@ async function fetchSubmissions(ticker: string, date: string): Promise<{
     ) {
       const itemsField = recent.items?.[i] ?? "";
       const events = classifyItems(itemsField);
-      materialEvents.push({ filingDate, form, title, url, events });
+      if (events.length > 0) {
+        materialEvents.push({ filingDate, form, title, url, events });
+      }
     }
   }
 
@@ -214,8 +217,8 @@ function thirtyMonthsAgo(): string {
 }
 
 function windowCutoff(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() - days);
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
