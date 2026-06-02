@@ -215,8 +215,8 @@ export async function createPostgresStores(
     resourceState: createPostgresResourceStateStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),
     traces: createInMemoryTraceStore(),
-    suspensions: createInMemorySuspensionStore(),
-    leases: createInMemoryLeaseStore(),
+    suspensions: createPostgresSuspensionStore(executor),
+    leases: createPostgresLeaseStore(executor),
     async close() {
       await closePool();
     }

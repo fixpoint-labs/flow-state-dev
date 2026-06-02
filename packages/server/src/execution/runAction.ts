@@ -912,8 +912,9 @@ export async function runActionInternal<
         const suspItem: SuspensionItem = {
           id: `item_suspension_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           type: "suspension",
+          status: "completed",
           suspensionId: suspendError.suspensionId,
-          status: "pending",
+          suspensionStatus: "pending",
           reason: suspendError.reason,
           message: suspendError.message,
           data: suspendError.data,
