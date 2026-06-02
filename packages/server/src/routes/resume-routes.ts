@@ -101,15 +101,6 @@ export async function handleResumeSuspension(
     });
   }
 
-  const now = Date.now();
-  await provider.suspend({
-    ...suspension,
-    status: action === "approve" ? "approved" : "rejected",
-    resolvedAt: now,
-    resolvedBy: resumedBy,
-    resumeData
-  });
-
   const resumeContext: ResumeContext = {
     suspensionId,
     action,
@@ -120,6 +111,15 @@ export async function handleResumeSuspension(
   const newRequestId = generateId("req");
 
   try {
+    const now = Date.now();
+    await provider.suspend({
+      ...suspension,
+      status: action === "approve" ? "approved" : "rejected",
+      resolvedAt: now,
+      resolvedBy: resumedBy,
+      resumeData
+    });
+
     const handle = ctx.host.dispatch({
       source: "http",
       flowKind: route.flowKind,
@@ -153,6 +153,8 @@ export async function handleResumeSuspension(
       originalRequestId: route.requestId
     });
   } catch (error) {
+    // Revert suspension to pending so the operator can retry.
+    await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
     await provider.releaseLease(route.requestId, lease.leaseId);
     throw error;
   }
