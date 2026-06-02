@@ -3,7 +3,6 @@ import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
 import type {
-  BlockCacheableConfig,
   BlockConfig,
   BlockContext,
   BlockDefinition,
@@ -31,7 +30,7 @@ import type {
 import type { ModelSelection } from "../models/selectModel";
 import { isModelSelection } from "../models/selectModel";
 import type { ProviderPreference } from "../models/types";
-import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
+import type { ToolsConfig } from "../types/flow";
 import type {
   CapabilityRef,
   InferCapabilities,
@@ -48,37 +47,22 @@ import { buildBlock } from "./internal/build-block";
 import { sanitizeToolName } from "../helpers/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
-  aggregateContextEntries,
   objectFormHasNestedFunction,
 } from "./context-aggregator";
-import { renderTaggedContext, type TagAccumulator } from "../prompt";
 import {
   definePromptFile,
   getPromptFileBrand,
   isPromptFile,
   type PromptFile,
   type PromptFileBrand,
-  type PromptFileConfigView,
 } from "../prompt/prompt-file";
+import { getEmitterItemCount } from "./internal/utils";
 import {
-  blockPathTool,
-  buildBlockInstanceId,
-  extendBlockPath,
-  ROOT_BLOCK_PATH
-} from "./internal/block-instance-id";
-
-import { getEmitterItemCount, toError, withTimeout } from "./internal/utils";
-import { emitToolOutputAround } from "./internal/emit-tool-output";
-import {
-  buildCacheKey,
-  getInFlightMap,
-  isFresh,
-  normalizeCacheable,
-  resolveCacheSourceTask,
-  resolveToolCacheStore,
-  writeToolObservation,
-  type ToolCacheStore,
-} from "./internal/cache-tool-call";
+  assembleMessages,
+  buildSystemPrefix,
+  asUserMessage,
+} from "./internal/message-assembly";
+import { buildToolExecutor } from "./internal/tool-executor";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -470,23 +454,6 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   return typeof value === "function" ? value(input, ctx) : value;
 }
 
-async function resolvePrompt<TInput, TCtx extends BlockContext>(
-  value: PromptSlot<TInput, TCtx>,
-  input: TInput,
-  ctx: TCtx
-): Promise<string> {
-  if (!Array.isArray(value)) {
-    if (value == null) return "";
-    return typeof value === "function" ? (await value(input, ctx)) ?? "" : value;
-  }
-  const parts: string[] = [];
-  for (const entry of value) {
-    if (entry == null) continue;
-    const resolved = typeof entry === "function" ? await entry(input, ctx) : entry;
-    if (resolved != null) parts.push(resolved);
-  }
-  return parts.join("\n");
-}
 
 async function resolveValueOrFn<T, TInput, TCtx extends BlockContext>(
   value: T | ((input: TInput, ctx: TCtx) => MaybePromise<T | undefined>) | undefined,
@@ -617,13 +584,6 @@ function normalizeToArray(value: unknown): unknown[] {
   return [value];
 }
 
-function asSystemMessage(value: unknown): unknown {
-  if (typeof value === "string") {
-    return { role: "system", content: value };
-  }
-
-  return value;
-}
 
 /**
  * Post-resolution generator-config values exposed to PromptFile templates as
@@ -632,7 +592,7 @@ function asSystemMessage(value: unknown): unknown {
  * brought" (state/resources). The aggregated context tag map is added per
  * call (it depends on resolved context entries).
  */
-interface PromptFileConfigMeta {
+export interface PromptFileConfigMeta {
   model?: string;
   intent?: string;
   tools?: string[];
@@ -642,153 +602,6 @@ interface PromptFileConfigMeta {
   providerOptions?: Record<string, unknown>;
 }
 
-/**
- * Flatten an aggregated tag tree into the `config.context` map templates read:
- * each top-level tag name maps to the rendered string the framework would
- * otherwise have placed inside `<tagName>...</tagName>`.
- */
-function flattenAggregatedContext(tagged: TagAccumulator): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const key of Object.keys(tagged)) {
-    const value = tagged[key]!;
-    out[key] = Array.isArray(value)
-      ? value.filter((s) => s.length > 0).join("\n")
-      : renderTaggedContext(value, []);
-  }
-  return out;
-}
-
-/**
- * Build the system-message prefix from a prompt slot and a list of
- * already-resolved context entries.
- *
- * Aggregates object-form context entries under their normalized tag keys.
- * For inline prompts, resolves the prompt as today and renders the aggregated
- * context as a single XML block appended (blank-line-separated) to the prompt.
- *
- * For PromptFile prompts (`promptFileBrand` present), renders the `<system>`
- * template against `{ input, ctx, config }` where `config` carries the resolved
- * model/tools/caching plus the aggregated context map. When the template
- * declares a `<context>` block, it owns context rendering: the default XML-tag
- * append is suppressed and the rendered block is wrapped in `<context>...
- * </context>`. The constructed `config` view is returned so the caller can
- * render a PromptFile `<user>` slot against the same scope.
- *
- * Returns an empty `messages` array when both prompt and context are empty.
- */
-async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
-  promptValue: PromptSlot<TInput, TCtx>,
-  promptFileBrand: PromptFileBrand | undefined,
-  contextValues: unknown[],
-  input: TInput,
-  ctx: TCtx,
-  configMeta: PromptFileConfigMeta
-): Promise<{ messages: unknown[]; configView: PromptFileConfigView | undefined; promptText: string }> {
-  const aggregated = await aggregateContextEntries(contextValues, input, ctx);
-
-  let promptStr: string;
-  let xmlBlock: string;
-  let configView: PromptFileConfigView | undefined;
-
-  if (promptFileBrand) {
-    const config: PromptFileConfigView = {
-      ...configMeta,
-      context: flattenAggregatedContext(aggregated.tagged),
-    };
-    configView = config;
-    const scope = { input, ctx, config };
-    promptStr = await promptFileBrand.renderSystem(scope);
-    if (promptFileBrand.hasContextBlock) {
-      const ctxStr = (await promptFileBrand.renderContext(scope)) ?? "";
-      xmlBlock = `<context>\n${ctxStr}\n</context>`;
-    } else {
-      xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
-    }
-  } else {
-    promptStr = await resolvePrompt(promptValue, input, ctx);
-    xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
-  }
-
-  const combinedParts: string[] = [];
-  if (promptStr.length > 0) combinedParts.push(promptStr);
-  if (xmlBlock.length > 0) combinedParts.push(xmlBlock);
-  const combinedContent = combinedParts.join("\n\n");
-
-  const messages: unknown[] = [];
-  if (combinedContent.length > 0) {
-    messages.push({ role: "system", content: combinedContent });
-  }
-  for (const pt of aggregated.passThrough) {
-    messages.push(asSystemMessage(pt));
-  }
-  return { messages, configView, promptText: promptStr };
-}
-
-function asUserMessage(value: unknown): unknown {
-  if (typeof value === "string") {
-    return { role: "user", content: value };
-  }
-
-  return value;
-}
-
-/**
- * Whether two values represent the same user-role LLM message. Used at
- * message-assembly time to avoid double-emitting the current turn's user
- * input when both `action.userMessage` (via live items in historyValues)
- * and the generator's `user` slot resolve to identical content.
- *
- * Tolerates the two shapes the codebase produces today:
- *   - { role: "user", content: string }      (asUserMessage; itemToLLMMessages on output_text)
- *   - { role: "user", content: Array<...> }  (multipart future-proofing)
- *
- * If either side is not a recognizable user message, returns false (do not
- * dedup). Equality on content uses a stable stringified key so the helper
- * is robust to shape evolution without re-deriving normalization rules
- * across the two production paths (asUserMessage and itemToLLMMessages).
- */
-function isEquivalentUserMessage(a: unknown, b: unknown): boolean {
-  if (!isUserRoleMessage(a) || !isUserRoleMessage(b)) return false;
-  return userMessageContentKey(a) === userMessageContentKey(b);
-}
-
-function isUserRoleMessage(value: unknown): value is { role: "user"; content: unknown } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "user" &&
-    "content" in (value as object)
-  );
-}
-
-function userMessageContentKey(msg: { content: unknown }): string {
-  const c = msg.content;
-  if (typeof c === "string") return c;
-  // Sort object keys recursively so equivalence is independent of key
-  // insertion order across the two producers (asUserMessage and
-  // itemToLLMMessages). Without this, two semantically equal multipart
-  // parts whose keys were inserted in different orders would stringify
-  // differently and dedup would silently fail.
-  try {
-    const serialized = stableStringify(c);
-    return serialized !== undefined ? serialized : String(c);
-  } catch {
-    return String(c);
-  }
-}
-
-function stableStringify(value: unknown): string | undefined {
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(val as Record<string, unknown>).sort()) {
-        sorted[k] = (val as Record<string, unknown>)[k];
-      }
-      return sorted;
-    }
-    return val;
-  });
-}
 
 async function resolveSlotValues<TInput, TCtx extends BlockContext>(
   slot: GeneratorSlot<TInput, TCtx> | undefined,
@@ -855,10 +668,9 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
 }
 
 /**
- * Compile tools WITH execute wrappers. Each framework tool's `run()` method
- * is wrapped with the framework's retry/timeout/lifecycle hooks in an
- * `execute` closure. The AI SDK will auto-execute these tools during its
- * built-in multi-step loop.
+ * Compile tools WITH execute wrappers. Each tool's `run()` is wrapped
+ * via `buildToolExecutor` (cache/retry/status-guard/observer/scope/envelope).
+ * The AI SDK auto-executes these during its multi-step loop.
  */
 function compileToolsWithExecute(
   tools: GeneratorTool[],
@@ -868,354 +680,28 @@ function compileToolsWithExecute(
   itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
 ): GeneratorModelTool[] {
-  const timeoutMs = flowTools?.defaults?.timeoutMs;
-  const retry = flowTools?.defaults?.retry;
-  // Snapshot the request-scoped status slot when the first tool in a
-  // (possibly parallel) round starts; restore when the last one exits.
-  // Without this, a finished tool's `activeStatusMessage` lingers as a
-  // stale "still running" indicator after the tool itself returns.
   const statusGuard = { active: 0, saved: "" };
   return tools.map((tool) => {
-    // Pluck the model-output mapper off the tool's runtime view (set by
-    // `BlockDefinition.mapModelOutput`). Forwarded as `toModelOutput` on the
-    // resulting tool entry so the AI SDK substitutes the mapper's string for
-    // the structured output when materialising next-turn tool-result content.
-    // The wrapper's `tool_output` emit path below continues to use the raw
-    // structured `output`; the mapper's string is captured on the unified
-    // `block_trace` item's `mapModelOutput` field so devtool can render what
-    // the LLM saw alongside the structured output.
     const modelOutputMapper = asRuntime(tool)._modelOutputMapper;
     return {
-    name: tool.name,
-    description: tool.description,
-    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
-    ...(modelOutputMapper !== undefined
-      ? {
-          toModelOutput: async (output: unknown) =>
-            modelOutputMapper(output as never, ctx),
-        }
-      : {}),
-    execute: async (args: unknown, options?: { toolCallId?: string }) => {
-      // FIX-610: opt-in tool-result memoization. The cache wrapping
-      // composes around the rest of this closure. On a hit we skip the
-      // entire scope/retry/timeout machinery and emit a `tool_output`
-      // carrying `cached: true`; observers fire with `cached: true` so
-      // downstream consumers see the same lifecycle pair. Errors are
-      // never cached. Misses fall through to the normal path and write
-      // the cache afterward unless `cacheIf` returned false.
-      const cacheable = tool.config.cacheable;
-      let cacheMiss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore } | undefined;
-      if (cacheable !== undefined) {
-        const cacheResult = await tryServeFromCache(
-          tool,
-          args,
-          ctx,
-          flowTools,
-          generatorBlockName,
-          itemVisibility,
-          agentName,
-          options?.toolCallId,
-        );
-        if (cacheResult.kind === "hit") return cacheResult.output;
-        if (cacheResult.kind === "in-flight") return cacheResult.promise;
-        if (
-          cacheResult.kind === "miss" &&
-          cacheResult.key !== undefined &&
-          cacheResult.cfg !== undefined &&
-          cacheResult.store !== undefined
-        ) {
-          cacheMiss = {
-            key: cacheResult.key,
-            cfg: cacheResult.cfg,
-            store: cacheResult.store,
-          };
-        }
-      }
-
-      // FIX-573 Path A: when invoked through the model loop with a
-      // `toolCallId`, emit a `tool_output` placeholder around the called
-      // block's run. The called block's own `block_trace.output` is set to a
-      // ref pointing at the tool_output (via `_blockOutputHint`) so the tool
-      // result is stored once and surfaced in two places.
-      const callTool = async (scopedCtx: BlockContext): Promise<unknown> => {
-        if (statusGuard.active === 0) {
-          statusGuard.saved = scopedCtx._peekStatus?.() ?? "";
-        }
-        statusGuard.active++;
-        // Surface the tool's run in the status slot so the in-flight indicator
-        // reflects "what's happening now". Routing through emit.status (rather
-        // than emitting a raw status item) updates the slot, which is what
-        // makes the restore in `finally` actually publish a clearing item
-        // instead of being deduped against an unchanged slot.
-        scopedCtx.emit.status(`Using ${tool.name}…`);
-        // FSDEV_DEBUG_TOOLS=1 prints per-tool start/end with timing. Used
-        // to localize tool-dispatch hangs (e.g. when a tool_output envelope
-        // emits but the handler never completes). Off by default.
-        const debugTools = typeof process !== "undefined" && process.env?.FSDEV_DEBUG_TOOLS === "1";
-        const toolStartedAt = debugTools ? Date.now() : 0;
-        if (debugTools) {
-          // eslint-disable-next-line no-console
-          console.error(`[fsd-tool] start ${tool.name} callId=${options?.toolCallId ?? "-"}`);
-        }
-        try {
-          await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
-          const output = await runWithRetry(
-            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
-            retry
-          );
-          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
-          if (debugTools) {
-            // eslint-disable-next-line no-console
-            console.error(`[fsd-tool] done  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms`);
+      name: tool.name,
+      description: tool.description,
+      parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
+      ...(modelOutputMapper !== undefined
+        ? {
+            toModelOutput: async (output: unknown) =>
+              modelOutputMapper(output as never, ctx),
           }
-          return output;
-        } catch (err) {
-          if (debugTools) {
-            const msg = err instanceof Error ? err.message : String(err);
-            // eslint-disable-next-line no-console
-            console.error(`[fsd-tool] fail  ${tool.name} callId=${options?.toolCallId ?? "-"} dur=${Date.now() - toolStartedAt}ms err=${msg}`);
-          }
-          throw err;
-        } finally {
-          statusGuard.active--;
-          if (statusGuard.active === 0) {
-            scopedCtx.emit.status(statusGuard.saved);
-          }
-        }
-      };
-
-      // `_withExecutionScope` is the durable-runtime hook that disambiguates
-      // tool invocations across resumes by deriving a deterministic path.
-      // `toolCallId` is the stable disambiguator; "0" is fine when absent
-      // because that path also skips the envelope.
-      const withScope = (run: (scopedCtx: BlockContext) => Promise<unknown>): Promise<unknown> => {
-        if (ctx._withExecutionScope === undefined) return run(ctx);
-        const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
-        const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, options?.toolCallId ?? "0"));
-        const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
-        return ctx._withExecutionScope(
-          { name: tool.name, kind: tool.kind, instanceId, path: toolPath, input: args },
-          run
-        );
-      };
-
-      // Wrap with `onToolErrored` so the observer fires BEFORE the
-      // `tool_output` envelope settles to failed and emits `item.done`.
-      // Consumers that listen for `item.done` and expect the observer's
-      // side-effects (memo writes, additional emitted items) to already
-      // have run rely on this ordering. The outer envelope-emit path
-      // catches whatever this rethrows and only then emits item.done.
-      const callToolWithErrorObserver = async (scopedCtx: BlockContext): Promise<unknown> => {
-        try {
-          return await callTool(scopedCtx);
-        } catch (error) {
-          const err = toError(error);
-          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
-          throw err;
-        }
-      };
-
-      // Wrap the chosen execute path in cache + observation bookkeeping.
-      // - Single-flight: when this is a cacheable miss, register the
-      //   executing promise on the in-flight map so concurrent identical
-      //   calls in the same request join this one execution instead of
-      //   each kicking off their own.
-      // - Observation: write a ledger entry on both success and error so
-      //   flow policies can see every tool call, including failures.
-      // - Cache write: only on success, gated by `cacheIf`.
-      const runAndRecord = async (runOnce: () => Promise<unknown>): Promise<unknown> => {
-        const inFlightMap = cacheMiss !== undefined ? getInFlightMap(ctx) : undefined;
-        const execute = runOnce();
-        if (inFlightMap !== undefined && cacheMiss !== undefined) {
-          inFlightMap.set(cacheMiss.key, execute);
-        }
-        try {
-          const output = await execute;
-          if (cacheMiss !== undefined) {
-            maybeWriteCache(tool, args, output, ctx, cacheMiss);
-          }
-          writeToolObservation(ctx, {
-            toolName: tool.name,
-            args,
-            result: output,
-            cached: false,
-          });
-          return output;
-        } catch (err) {
-          // Errors are never cached. Record the failure as an
-          // observation so flow policies can surface it on a retry's
-          // priorWork. The original throw still propagates.
-          writeToolObservation(ctx, {
-            toolName: tool.name,
-            args,
-            error: err instanceof Error ? err.message : String(err),
-            cached: false,
-          });
-          throw err;
-        } finally {
-          if (inFlightMap !== undefined && cacheMiss !== undefined) {
-            inFlightMap.delete(cacheMiss.key);
-          }
-        }
-      };
-
-      // No `toolCallId` → no stable envelope callId; run the tool directly
-      // with retry + observer hooks (matches prior behavior).
-      if (options?.toolCallId === undefined) {
-        return await runAndRecord(() => withScope(callToolWithErrorObserver));
-      }
-      const attribution = {
-        callId: options.toolCallId,
-        generatorBlock: generatorBlockName,
-        itemVisibility,
-        agentName,
-        // Read the current generator identity off ctx so a multi-turn tool
-        // loop sees the identity that was active when the model invoked the
-        // tool. The generator block writes `_currentModelIdentity` on every
-        // chunk that carries a resolvedIdentity.
-        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
-      };
-      return await runAndRecord(() =>
-        emitToolOutputAround(tool, ctx, args, attribution, (_outerCtx, toolOutputId) =>
-          withScope((scopedCtx) => {
-            (scopedCtx as { _blockOutputHint?: { kind: "ref"; sourceItemId: string } })
-              ._blockOutputHint = { kind: "ref", sourceItemId: toolOutputId };
-            return callToolWithErrorObserver(scopedCtx);
-          })
-        )
-      );
-    }
+        : {}),
+      execute: buildToolExecutor(
+        tool,
+        { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard },
+        ctx,
+      ),
     };
   });
 }
 
-/**
- * Cache-lookup helper for `compileToolsWithExecute`. Returns:
- *  - `{ kind: "hit", output }` when the call was served from the cache
- *    (observers fired, `tool_output` item emitted if a `toolCallId` is
- *    present, observation hook called).
- *  - `{ kind: "in-flight", promise }` when an identical call is already
- *    running in this request; the caller awaits the shared promise.
- *  - `{ kind: "miss" }` when the call should fall through to the normal
- *    execute path. The miss path registers an in-flight entry so
- *    siblings can join it.
- *
- * Cache attribution (`sourceTask`) flows through via the Task Board
- * `_resolveCacheSourceTask` hook installed by board wiring. When no
- * cache store is installed, returns `miss` immediately — caching is
- * a no-op for non-board generators.
- */
-async function tryServeFromCache(
-  tool: GeneratorTool,
-  args: unknown,
-  ctx: BlockContext,
-  flowTools: ToolsConfig | undefined,
-  generatorBlockName: string,
-  itemVisibility: ItemVisibility | undefined,
-  agentName: string | undefined,
-  toolCallId: string | undefined,
-): Promise<
-  | { kind: "hit"; output: unknown }
-  | { kind: "in-flight"; promise: Promise<unknown> }
-  | { kind: "miss"; key?: string; cfg?: BlockCacheableConfig; store?: ToolCacheStore }
-> {
-  const cacheable = tool.config.cacheable;
-  if (cacheable === undefined) return { kind: "miss" };
-  const store = resolveToolCacheStore(ctx);
-  if (store === undefined) return { kind: "miss" };
-
-  const cfg = normalizeCacheable(cacheable);
-  let key: string;
-  try {
-    key = buildCacheKey(tool.name, args, ctx, cfg, store);
-  } catch (err) {
-    // Canonicalize failure → fall back to executing the call (no
-    // caching). The thrown message names the offending tool.
-    // eslint-disable-next-line no-console
-    console.warn((err as Error).message);
-    return { kind: "miss" };
-  }
-
-  const inFlightMap = getInFlightMap(ctx);
-  const inFlight = inFlightMap.get(key);
-  if (inFlight !== undefined) return { kind: "in-flight", promise: inFlight };
-
-  const entry = store.get(key);
-  if (entry !== undefined && isFresh(entry, cfg, store)) {
-    const ageMs = Date.now() - entry.storedAt;
-    await runToolObserver(
-      flowTools?.onToolStarted,
-      { toolName: tool.name, input: args, cached: true },
-      ctx,
-    );
-    await runToolObserver(
-      flowTools?.onToolCompleted,
-      { toolName: tool.name, input: args, output: entry.output, cached: true },
-      ctx,
-    );
-
-    if (toolCallId !== undefined) {
-      const attribution = {
-        callId: toolCallId,
-        generatorBlock: generatorBlockName,
-        itemVisibility,
-        agentName,
-        model: (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity,
-        cached: {
-          ageMs,
-          ...(entry.sourceTask !== undefined ? { sourceTask: entry.sourceTask } : {}),
-        },
-      };
-      await emitToolOutputAround(
-        tool,
-        ctx,
-        args,
-        attribution,
-        async () => entry.output,
-      );
-    }
-
-    writeToolObservation(ctx, {
-      toolName: tool.name,
-      args,
-      result: entry.output,
-      cached: true,
-    });
-
-    return { kind: "hit", output: entry.output };
-  }
-
-  // Miss: hand back the key+cfg+store so the caller can register the
-  // executing promise in the in-flight map (single-flight) and write
-  // through after the call resolves.
-  return { kind: "miss", key, cfg, store };
-}
-
-/**
- * Post-execute cache write. Invoked from the call site only on the
- * success path — errors are never cached, by contract. Honors
- * `cacheIf` and stamps the active source-task attribution if any
- * board wiring resolved one.
- */
-function maybeWriteCache(
-  tool: GeneratorTool,
-  args: unknown,
-  output: unknown,
-  ctx: BlockContext,
-  miss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore },
-): void {
-  const shouldCache = miss.cfg.cacheIf === undefined ? true : miss.cfg.cacheIf(output, args);
-  if (!shouldCache) return;
-  const ttl = miss.cfg.ttl ?? miss.store.defaultTtl;
-  const sourceTask = resolveCacheSourceTask(ctx);
-  miss.store.set(miss.key, {
-    output,
-    storedAt: Date.now(),
-    ...(ttl !== undefined ? { ttl } : {}),
-    toolName: tool.name,
-    ...(sourceTask !== undefined ? { sourceTask } : {}),
-  });
-}
 
 /**
  * Build a context string listing available tools by name and description.
@@ -1236,76 +722,6 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
   return `<tools>\n${lines.join("\n")}</tools>`;
 }
 
-function isBlockObserver(
-  observer: ToolsConfig["onToolStarted"]
-): observer is BlockDefinition<any, any> {
-  // Block observers carry the substrate `run` dispatch entry point installed
-  // by `buildBlock`; plain function observers don't. Discriminate on that.
-  return (
-    typeof observer === "object" &&
-    observer !== null &&
-    "run" in observer &&
-    typeof (observer as { run?: unknown }).run === "function"
-  );
-}
-
-async function runToolObserver(
-  observer: ToolsConfig["onToolStarted"] | ToolsConfig["onToolCompleted"] | ToolsConfig["onToolErrored"] | undefined,
-  event: ToolLifecycleEvent,
-  ctx: BlockContext
-): Promise<void> {
-  if (observer === undefined) {
-    return;
-  }
-
-  if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
-    await asRuntime(observer as BlockDefinition<any, any>).run(event, ctx);
-    return;
-  }
-
-  await (observer as (input: ToolLifecycleEvent, ctx: BlockContext) => MaybePromise<void>)(event, ctx);
-}
-
-async function runWithRetry<TValue>(
-  run: () => Promise<TValue>,
-  retry: RetryPolicy | undefined
-): Promise<TValue> {
-  if (retry === undefined) {
-    return run();
-  }
-
-  const maxAttempts = Math.max(1, retry.maxAttempts ?? 1);
-  const baseDelayMs = Math.max(0, retry.baseDelayMs ?? 0);
-  const maxDelayMs = Math.max(baseDelayMs, retry.maxDelayMs ?? Number.POSITIVE_INFINITY);
-  let attempt = 0;
-
-  while (attempt < maxAttempts) {
-    attempt += 1;
-
-    try {
-      return await run();
-    } catch (error) {
-      const normalizedError = toError(error);
-      if (attempt >= maxAttempts) {
-        throw normalizedError;
-      }
-
-      if (retry.retryableErrors !== undefined && retry.retryableErrors.length > 0) {
-        const isRetryable = retry.retryableErrors.some((ErrorType) => normalizedError instanceof ErrorType);
-        if (!isRetryable) {
-          throw normalizedError;
-        }
-      }
-
-      const delayMs = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-  }
-
-  throw new Error("Tool retry loop exited unexpectedly");
-}
 
 function parseOutputWithSchema<TOutput>(
   schema: ZodTypeAny,
@@ -2089,56 +1505,30 @@ export function generator<
       const historySlot = normalizeHistorySlot(normalizedConfig.history);
       const historyValues = await resolveSlotValues(historySlot, input, ctx);
 
-      // Build initial system prefix (prompt + context + tool descriptions)
-      // separately so prepareStep can replace it with freshly resolved values.
-      // Object-form context entries are aggregated under shared XML tag keys
-      // and rendered into a single combined system message alongside the
-      // prompt; string entries follow as their own messages. PromptFile
-      // generators render their `<system>`/`<context>`/`<user>` templates here
-      // against the resolved `config` view.
+      const userBrand = getPromptFileBrand(normalizedConfig.user);
       const {
-        messages: systemPrefix,
+        messages,
+        systemPrefixCount,
         configView,
         promptText: prompt,
-      } = await buildSystemPrefix(
-          normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
+        userValues,
+      } = await assembleMessages(
+        {
+          promptValue: normalizedConfig.prompt as Exclude<typeof normalizedConfig.prompt, PromptFile>,
           promptFileBrand,
           contextValues,
+          historyValues,
+          resolveUserValues: async (cv) =>
+            userBrand?.hasUserBlock && cv !== undefined
+              ? [await userBrand.renderUser({ input, ctx, config: cv })].filter(
+                  (v): v is string => v != null,
+                )
+              : resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx),
+          configMeta,
           input,
-          ctx,
-          configMeta
-        );
-
-      // A PromptFile `<user>` block fills the user slot — but only when the
-      // author left it in place. If `user` was overridden after the spread
-      // (`...definePromptFile(pf), user: "..."`), the override carries no
-      // PromptFile brand, so it resolves through the normal slot path and
-      // wins, consistent with `prompt` spread precedence.
-      const userBrand = getPromptFileBrand(normalizedConfig.user);
-      const userValues = userBrand?.hasUserBlock && configView !== undefined
-        ? [await userBrand.renderUser({ input, ctx, config: configView })].filter(
-            (v): v is string => v != null
-          )
-        : await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
-      const systemPrefixCount = systemPrefix.length;
-      // FIX-662: when action.userMessage emits a runtime user item, it lands
-      // in live items and flows through historyValues. If the generator's
-      // `user` slot resolves to equivalent content, drop the leading
-      // userValues entry so the model does not see the user's turn twice.
-      // Anthropic silently merges adjacent same-role messages, which is the
-      // visible symptom this guards against. The drop is on userValues (not
-      // historyValues) because historyValues is the retry/resume contract
-      // surface and live items must remain visible to retried turns.
-      const userMessages = userValues.map(asUserMessage);
-      const dropLeadingUserDuplicate =
-        userMessages.length > 0 &&
-        historyValues.length > 0 &&
-        isEquivalentUserMessage(historyValues[historyValues.length - 1], userMessages[0]);
-      const messages: unknown[] = [
-        ...systemPrefix,
-        ...historyValues,
-        ...(dropLeadingUserDuplicate ? userMessages.slice(1) : userMessages)
-      ];
+        },
+        ctx,
+      );
 
       // Build prepareStep callback when prompt, context, or tools contain
       // dynamic (function-typed) entries. The AI SDK calls this before each
@@ -2229,7 +1619,7 @@ export function generator<
       // devtool view matches the real prompt rather than a flat join.
       // `user` and `history` are captured post-`asUserMessage` wrapping so
       // the devtool sees the exact message shapes sent to the model.
-      const debugPrompt = systemPrefix
+      const debugPrompt = messages.slice(0, systemPrefixCount)
         .map((m) => (m && typeof m === "object" && "content" in m
           ? String((m as { content: unknown }).content ?? "")
           : ""))
