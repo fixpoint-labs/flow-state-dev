@@ -15,6 +15,7 @@ import { router } from "@flow-state-dev/core";
 import type {
   AgentRegistry,
   DefinedCapability,
+  MaterializeAgentFn,
   PatternBinding,
   ResourceCollectionRef,
   ToolCatalog,
@@ -50,6 +51,8 @@ export interface PatternRunRouterOptions {
   agentRegistry?: AgentRegistry;
   /** Optional capability catalog (Agents primitive slot). */
   capabilityCatalog?: Record<string, DefinedCapability>;
+  /** Injected materializer for `agent-ref` workers. */
+  materializeAgent?: MaterializeAgentFn;
   /** Default model id when a worker omits its own. */
   defaultModelId?: string;
 }
@@ -67,6 +70,7 @@ export function createPatternRunRoute(
     blockRegistry,
     agentRegistry,
     capabilityCatalog,
+    materializeAgent,
     defaultModelId,
   } = opts;
 
@@ -118,6 +122,7 @@ export function createPatternRunRoute(
         ...(blockRegistry ? { blocks: blockRegistry } : {}),
         ...(agentRegistry ? { agentRegistry } : {}),
         ...(capabilityCatalog ? { capabilityCatalog } : {}),
+        ...(materializeAgent ? { materializeAgent } : {}),
         skillName: input.skillName,
         skillCollection: input.skillCollection,
         ...(defaultModelId ? { defaultModelId } : {}),

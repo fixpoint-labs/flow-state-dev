@@ -1,0 +1,125 @@
+/**
+ * `materializeAgent` — build a worker-shaped or standalone generator from a
+ * resolved Agent. Satisfies `MaterializeAgentFn` so it can be injected into
+ * PatternRegistryDeps without skills depending on workforce.
+ */
+
+import {
+  generator,
+  type GeneratorTool,
+  type MaterializeAgentFn,
+  type MaterializeAgentOptions,
+  type Agent,
+  type DefinedCapability,
+} from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import {
+  workerInputSchema,
+  buildUserMessage,
+  taskTools as taskToolsCapability,
+} from "@flow-state-dev/skills";
+import { resolveAgentPersona } from "./resolve-persona";
+
+function resolveCatalogTools(
+  agentName: string,
+  toolKeys: readonly string[] | undefined,
+  catalog: Record<string, GeneratorTool>,
+): GeneratorTool[] {
+  if (!toolKeys || toolKeys.length === 0) return [];
+  const out: GeneratorTool[] = [];
+  for (const key of toolKeys) {
+    const tool = catalog[key];
+    if (!tool) {
+      console.warn(
+        `[workforce] agent "${agentName}": unknown tool "${key}" — skipped`,
+      );
+      continue;
+    }
+    out.push(tool);
+  }
+  return out;
+}
+
+function resolveCapabilities(
+  agentName: string,
+  capKeys: readonly string[] | undefined,
+  catalog: Record<string, DefinedCapability> | undefined,
+): DefinedCapability[] {
+  if (!capKeys || capKeys.length === 0 || !catalog) return [];
+  const out: DefinedCapability[] = [];
+  for (const key of capKeys) {
+    const cap = catalog[key];
+    if (!cap) {
+      console.warn(
+        `[workforce] agent "${agentName}": unknown capability "${key}" — skipped`,
+      );
+      continue;
+    }
+    out.push(cap);
+  }
+  return out;
+}
+
+function buildAgentGenerator(
+  agent: Agent,
+  opts: MaterializeAgentOptions,
+): BlockDefinition {
+  const model =
+    opts.overrides?.model ?? agent.model ?? opts.defaultModelId ?? "intent/chat";
+  const itemVisibility =
+    opts.overrides?.itemVisibility ??
+    agent.itemVisibility ??
+    { client: true, history: false };
+
+  const toolKeys = opts.overrides?.tools ?? agent.allowedTools;
+  const usesTaskTools = toolKeys?.includes("taskTools") ?? false;
+  const catalogKeys = toolKeys?.filter((t) => t !== "taskTools");
+  const tools = resolveCatalogTools(agent.name, catalogKeys, opts.catalog);
+
+  const resolvedUses = resolveCapabilities(
+    agent.name,
+    agent.usesCapabilities,
+    opts.capabilityCatalog,
+  );
+  const uses = [
+    ...resolvedUses,
+    ...(usesTaskTools ? [taskToolsCapability] : []),
+  ];
+
+  if (agent.usesSkills?.length) {
+    console.warn(
+      `[workforce] agent "${agent.name}": usesSkills is reserved and not yet wired — ignored`,
+    );
+  }
+
+  if (agent.contextMode === "fork") {
+    console.warn(
+      `[workforce] agent "${agent.name}": contextMode "fork" is not honored — composing inline`,
+    );
+  }
+
+  const isWorker = opts.shape === "worker";
+
+  return generator({
+    name: isWorker
+      ? `skillWorker_${opts.skillName}_${opts.workerKey}`
+      : `agent_${agent.name}`,
+    itemVisibility,
+    agentName: agent.name,
+    inputSchema: isWorker ? workerInputSchema : z.object({ goal: z.string() }),
+    outputSchema: z.string(),
+    model,
+    prompt: (_input: unknown, ctx: unknown) =>
+      resolveAgentPersona(agent.persona, ctx as any),
+    user: isWorker
+      ? (input: any) => buildUserMessage(input)
+      : (input: any) => input.goal,
+    ...(tools.length ? { tools } : {}),
+    ...(uses.length ? { uses } : {}),
+    maxIterations: 12,
+  }) as unknown as BlockDefinition;
+}
+
+export const materializeAgent: MaterializeAgentFn = (agent, opts) =>
+  buildAgentGenerator(agent, opts);

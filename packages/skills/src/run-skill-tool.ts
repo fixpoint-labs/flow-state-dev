@@ -29,6 +29,7 @@ import type {
   AgentRegistry,
   DefinedCapability,
   InitialSkill,
+  MaterializeAgentFn,
   SkillState,
   ToolCatalog,
 } from "@flow-state-dev/core";
@@ -101,6 +102,8 @@ export interface RunSkillToolOptions {
   agentRegistry?: AgentRegistry;
   /** Optional capability catalog forwarded to the Agents primitive. */
   capabilityCatalog?: Record<string, DefinedCapability>;
+  /** Injected materializer for `agent-ref` workers. */
+  materializeAgent?: MaterializeAgentFn;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +193,7 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     blockRegistry,
     agentRegistry,
     capabilityCatalog,
+    materializeAgent,
   } = opts;
 
   const forkGen = createSkillForkGenerator({
@@ -204,6 +208,7 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
         ...(blockRegistry ? { blockRegistry } : {}),
         ...(agentRegistry ? { agentRegistry } : {}),
         ...(capabilityCatalog ? { capabilityCatalog } : {}),
+        ...(materializeAgent ? { materializeAgent } : {}),
         ...(forkModelId ? { defaultModelId: forkModelId } : {}),
       })
     : undefined;

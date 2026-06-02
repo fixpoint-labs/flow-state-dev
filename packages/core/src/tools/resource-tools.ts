@@ -167,6 +167,42 @@ export function resourceTools() {
   };
 }
 
+/**
+ * Unified path lookup spanning single resources and collection instances.
+ * Tries single resources by `ResourceRef.path`, then collections via the
+ * existing `resolvePathToCollection` matcher (+ `nsRef.get(key)`). Returns
+ * a `ResourceRef` (collection instances are themselves `ResourceRef`s, so
+ * `readContent()` is uniform). Returns `undefined` on a miss.
+ */
+export async function resolveResourceByPath(
+  path: string,
+  ctx: BlockContext,
+): Promise<ResourceRef<any> | undefined> {
+  const registry = ctx.resources;
+  if (registry === undefined) return undefined;
+
+  for (const entry of registry.list()) {
+    if (!("pattern" in entry && "create" in entry)) {
+      const ref = entry as ResourceRef<any>;
+      if (ref.path === path) return ref;
+    }
+  }
+
+  const collections = collectCollections(ctx);
+  for (const ns of collections) {
+    const { key } = tryMatchPath(ns, path);
+    if (key !== undefined) {
+      try {
+        return await ns.ref.get(key);
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function resolvePathToCollection(
   path: string,
   ctx: BlockContext

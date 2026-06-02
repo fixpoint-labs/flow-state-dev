@@ -170,7 +170,7 @@ describe("materializeWorker — agent-ref stub", () => {
     ).rejects.toThrow(/no \s*agentRegistry was supplied|no agentRegistry was supplied/i);
   });
 
-  it("throws \"implementation not yet wired\" when a registry is supplied", async () => {
+  it("throws \"no materializeAgent\" when registry is supplied but materializer is not", async () => {
     const mockRegistry = {
       get: vi.fn(),
       list: vi.fn(),
@@ -181,6 +181,42 @@ describe("materializeWorker — agent-ref stub", () => {
         { agentRef: "research-veteran" },
         deps({ agentRegistry: mockRegistry }),
       ),
-    ).rejects.toThrow(/implementation is not yet wired/);
+    ).rejects.toThrow(/no materializeAgent function was supplied/);
+  });
+
+  it("throws naming registered agents when agent is not found", async () => {
+    const mockRegistry = {
+      get: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([{ name: "other-agent" }]),
+    } as never;
+    const mockMaterialize = vi.fn();
+    await expect(
+      materializeWorker(
+        "vet",
+        { agentRef: "research-veteran" },
+        deps({ agentRegistry: mockRegistry, materializeAgent: mockMaterialize as any }),
+      ),
+    ).rejects.toThrow(/not in the registry.*other-agent/);
+  });
+
+  it("calls materializeAgent when agent-ref resolves", async () => {
+    const agent = { name: "research-veteran", description: "d", persona: "p" };
+    const mockRegistry = {
+      get: vi.fn().mockResolvedValue(agent),
+      list: vi.fn().mockResolvedValue([agent]),
+    } as never;
+    const fakeBlock = { kind: "generator" as const, config: {} } as any;
+    const mockMaterialize = vi.fn().mockReturnValue(fakeBlock);
+    const result = await materializeWorker(
+      "vet",
+      { agentRef: "research-veteran", agentOverrides: { model: "fast" } },
+      deps({ agentRegistry: mockRegistry, materializeAgent: mockMaterialize as any }),
+    );
+    expect(result).toBe(fakeBlock);
+    expect(mockMaterialize).toHaveBeenCalledWith(agent, expect.objectContaining({
+      shape: "worker",
+      workerKey: "vet",
+      overrides: { model: "fast" },
+    }));
   });
 });
