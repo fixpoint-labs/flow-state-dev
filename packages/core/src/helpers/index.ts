@@ -19,4 +19,13 @@ export {
   stripTransientKeys,
 } from "./transient-slot";
 export { resolveClientProjection, hasClientProjection, validateClientProjection } from "./client-projection";
-export { introspectStateKeys } from "./zod-introspect";
+export {
+  introspectStateKeys,
+  getZodTypeName,
+  isZodObject,
+  getZodObjectShape,
+  getZodArrayElement,
+  getZodInnerType,
+  compareZodSchemasStructurally,
+  type ZodSchemaCompareResult,
+} from "./zod-introspect";

@@ -7,6 +7,7 @@
  *   an accumulator that becomes the block's effective config.
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
+import { isZodObject } from "../helpers/zod-introspect";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
   GeneratorTool,
@@ -280,10 +281,6 @@ function extendSchema(
   }
   // If not both ZodObject, just return incoming (last-wins)
   return incoming;
-}
-
-function isZodObject(schema: ZodTypeAny): boolean {
-  return schema._def?.typeName === "ZodObject";
 }
 
 /**

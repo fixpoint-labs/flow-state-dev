@@ -20,12 +20,9 @@
  * parent ZodObject's shape.
  */
 import type { ZodTypeAny } from "zod";
+import { getZodObjectShape } from "./zod-introspect";
 
 const TRANSIENT_FLAG = Symbol.for("@flow-state-dev/transient-slot");
-
-type ZodShapeDef = {
-  shape?: () => Record<string, ZodTypeAny>;
-};
 
 /**
  * Mark a Zod schema field as a transient sequencer-state slot. Returns the
@@ -50,8 +47,7 @@ export function isTransientSlot(schema: ZodTypeAny | undefined): boolean {
 export function getTransientKeys(stateSchema: ZodTypeAny | undefined): Set<string> {
   const keys = new Set<string>();
   if (stateSchema === undefined || stateSchema === null) return keys;
-  const def = (stateSchema as unknown as { _def?: ZodShapeDef })._def;
-  const shape = def?.shape?.();
+  const shape = getZodObjectShape(stateSchema);
   if (!shape) return keys;
   for (const [key, fieldSchema] of Object.entries(shape)) {
     if (isTransientSlot(fieldSchema)) {
