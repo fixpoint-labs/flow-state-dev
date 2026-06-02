@@ -40,7 +40,7 @@ type TickerEntry = { cik_str: number; ticker: string; title: string };
 let cikMap: Map<string, number> | null = null;
 let cikMapPromise: Promise<Map<string, number>> | null = null;
 
-export async function getCikMap(): Promise<Map<string, number>> {
+async function getCikMap(): Promise<Map<string, number>> {
   if (cikMap !== null) return cikMap;
   if (cikMapPromise !== null) return cikMapPromise;
   cikMapPromise = (async () => {

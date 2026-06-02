@@ -160,20 +160,21 @@ async function probeRedFlags(
   cik: number,
 ): Promise<RedFlagProbe[]> {
   const paddedCik = String(cik).padStart(10, "0");
-  const results: RedFlagProbe[] = [];
-  for (const term of RED_FLAG_TERMS) {
-    try {
-      const url = `${EFTS_BASE}?q=%22${encodeURIComponent(term)}%22&dateRange=custom&startdt=${thirtyMonthsAgo()}&forms=10-K,10-Q&ciks=${paddedCik}`;
-      const res = await edgarFetch(url);
-      const data = (await res.json()) as { hits?: { total?: { value?: number }; hits?: Array<{ _source?: { file_description?: string } }> } };
-      const total = data.hits?.total?.value ?? 0;
-      const snippet = data.hits?.hits?.[0]?._source?.file_description ?? null;
-      results.push({ term, hit: total > 0, snippet });
-    } catch {
-      results.push({ term, hit: false, snippet: null });
-    }
-  }
-  return results;
+  const startdt = thirtyMonthsAgo();
+  return Promise.all(
+    RED_FLAG_TERMS.map(async (term) => {
+      try {
+        const url = `${EFTS_BASE}?q=%22${encodeURIComponent(term)}%22&dateRange=custom&startdt=${startdt}&forms=10-K,10-Q&ciks=${paddedCik}`;
+        const res = await edgarFetch(url);
+        const data = (await res.json()) as { hits?: { total?: { value?: number }; hits?: Array<{ _source?: { file_description?: string } }> } };
+        const total = data.hits?.total?.value ?? 0;
+        const snippet = data.hits?.hits?.[0]?._source?.file_description ?? null;
+        return { term, hit: total > 0, snippet };
+      } catch {
+        return { term, hit: false, snippet: null };
+      }
+    }),
+  );
 }
 
 function thirtyMonthsAgo(): string {
