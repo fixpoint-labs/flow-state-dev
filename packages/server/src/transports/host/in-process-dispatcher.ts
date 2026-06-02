@@ -117,14 +117,7 @@ export function createInProcessDispatcher(
   };
 }
 
-/**
- * Combine two AbortSignals: the returned signal aborts when either input fires.
- */
 function combineSignals(outer: AbortSignal, inner: AbortSignal): AbortSignal {
   if (outer.aborted) return outer;
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  outer.addEventListener("abort", onAbort, { once: true });
-  inner.addEventListener("abort", onAbort, { once: true });
-  return controller.signal;
+  return AbortSignal.any([outer, inner]);
 }

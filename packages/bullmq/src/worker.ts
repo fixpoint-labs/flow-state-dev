@@ -108,6 +108,14 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
       }
 
       return result;
+    } catch (err) {
+      if (publisher) {
+        const errorResult = {
+          error: { message: err instanceof Error ? err.message : String(err) }
+        };
+        await publisher.publishTerminal(errorResult as any).catch(() => {});
+      }
+      throw err;
     } finally {
       if (publisher) {
         await publisher.close().catch(() => {});
