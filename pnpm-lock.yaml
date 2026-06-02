@@ -124,6 +124,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.30
         version: 3.0.30(zod@3.25.76)
+      '@flow-state-dev/bullmq':
+        specifier: workspace:*
+        version: link:../../packages/bullmq
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../../packages/client

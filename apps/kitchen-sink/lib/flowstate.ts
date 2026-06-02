@@ -24,10 +24,19 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
+import { createBullmqRuntime } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
+const redisUrl = process.env.REDIS_URL;
+
+// BullMQ runtime for local dev. When REDIS_URL is set (e.g. via docker compose),
+// the runtime registers a co-located worker so background jobs are durable.
+// The web process enqueues and the worker runs in the same process for simplicity.
+const bullmqRuntime = redisUrl
+  ? createBullmqRuntime({ connection: redisUrl })
+  : undefined;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
 // and exposes a same-pool `scheduleIndex` for the weekly-digest flow. Declared
@@ -111,3 +120,9 @@ export const flowstate = createFlowState({
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
 });
+
+if (bullmqRuntime) {
+  console.log("[flowstate] BullMQ runtime available (REDIS_URL set)");
+}
+
+export { bullmqRuntime };

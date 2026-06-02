@@ -18,6 +18,7 @@
     "@ai-sdk/gateway": "^3.0.51",
     "@ai-sdk/mcp": "^1.0.36",
     "@ai-sdk/openai": "^3.0.30",
+    "@flow-state-dev/bullmq": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",

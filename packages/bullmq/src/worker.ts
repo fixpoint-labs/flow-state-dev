@@ -80,7 +80,7 @@ export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
         metadata: data.metadata,
         stores,
         runtimeConfig,
-        onItem: (item, kind) => {
+        onItem: (item: OutputItem, kind: "added" | "updated" | "done") => {
           onItem?.(job.id ?? "unknown", item, kind);
           if (publisher) {
             publisher

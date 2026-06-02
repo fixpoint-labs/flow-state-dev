@@ -18,7 +18,7 @@ const nextConfig = {
   // adapter takes the SDK class via DI from the consumer (see
   // `flows/chat-agent/blocks/bash-tools.ts`), so the static import is
   // visible to nft like any other dependency.
-  serverExternalPackages: ["pg"],
+  serverExternalPackages: ["pg", "bullmq", "ioredis"],
   transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),
