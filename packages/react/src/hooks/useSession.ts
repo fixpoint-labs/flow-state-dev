@@ -16,12 +16,9 @@ import {
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
 import type {
-  Content,
   ContentAudioDeltaEvent,
   ItemVisibility,
-  MessageItem,
   OutputItem,
-  ReasoningItem,
   ResourceChangeItem,
   SessionMetadataChangedEvent,
   StateChangeItem
@@ -31,6 +28,7 @@ import {
   isReducibleStateChange,
   mergeStateChangeIntoSnapshot
 } from "../internal/mergeStateChangeIntoSnapshot";
+import { createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -47,11 +45,6 @@ function resolveItemVisibility(item: OutputItem): ItemVisibility {
   return STRUCTURAL_DEFAULT;
 }
 
-type ContentDeltaAccumulator = {
-  itemId: string;
-  contentIndex: number;
-  delta: string;
-};
 
 /**
  * Items subscription configuration for useSession.
@@ -259,139 +252,6 @@ function passesItemFilter(
   return true;
 }
 
-/**
- * Sorts items chronologically by timestamp, with itemIndex as tiebreaker.
- */
-function sortItemsChronologically(items: OutputItem[]): OutputItem[] {
-  return items.sort((left, right) => {
-    const tsDiff = left.ts - right.ts;
-    if (tsDiff !== 0) {
-      return tsDiff;
-    }
-
-    return left.itemIndex - right.itemIndex;
-  });
-}
-
-function updateItemWithContentDelta(
-  target: OutputItem,
-  contentIndex: number,
-  delta: string
-): OutputItem {
-  if (target.type === "message") {
-    const message = target as MessageItem;
-    const content = [...(message.content ?? [])];
-    const part = content[contentIndex];
-    if (part !== undefined && part.type === "output_text") {
-      content[contentIndex] = {
-        ...part,
-        text: (part.text ?? "") + delta
-      };
-      return { ...message, content };
-    }
-  }
-
-  if (target.type === "reasoning") {
-    const reasoning = target as ReasoningItem;
-    const summary = [...(reasoning.summary ?? [])];
-    const part = summary[contentIndex];
-    if (part !== undefined && part.type === "reasoning_text") {
-      summary[contentIndex] = {
-        ...part,
-        text: (part.text ?? "") + delta
-      };
-      return { ...reasoning, summary };
-    }
-  }
-
-  return target;
-}
-
-function updateItemWithContentAdded(
-  target: OutputItem,
-  _contentIndex: number,
-  content: Content
-): OutputItem {
-  if (target.type === "message") {
-    const message = target as MessageItem;
-    const parts = [...(message.content ?? []), content];
-    return { ...message, content: parts };
-  }
-
-  return target;
-}
-
-function buildItemsFromMap(
-  ids: string[],
-  itemsById: ReadonlyMap<string, OutputItem>
-): OutputItem[] {
-  const next: OutputItem[] = [];
-
-  for (const id of ids) {
-    const item = itemsById.get(id);
-    if (item !== undefined) {
-      next.push(item);
-    }
-  }
-
-  return next;
-}
-
-function sameChronologicalOrder(left: OutputItem, right: OutputItem): boolean {
-  return left.ts === right.ts && left.itemIndex === right.itemIndex;
-}
-
-/**
- * Compares two items for chronological ordering (ts first, itemIndex tiebreaker).
- * Returns negative if a < b, positive if a > b, zero if equal.
- */
-function compareItemOrder(a: OutputItem, b: OutputItem): number {
-  const tsDiff = a.ts - b.ts;
-  if (tsDiff !== 0) return tsDiff;
-  return a.itemIndex - b.itemIndex;
-}
-
-/**
- * Inserts an item ID into a sorted ID array using binary search.
- * Items nearly always arrive in chronological order, so we check the tail first
- * for an O(1) fast path before falling back to binary search + splice.
- */
-function insertSortedItemId(
-  sortedIds: string[],
-  newItem: OutputItem,
-  itemsById: ReadonlyMap<string, OutputItem>
-): string[] {
-  const next = [...sortedIds];
-  const len = next.length;
-
-  // Fast path: item belongs at the end (most common during streaming).
-  if (len === 0) {
-    next.push(newItem.id);
-    return next;
-  }
-
-  const lastItem = itemsById.get(next[len - 1]!);
-  if (lastItem !== undefined && compareItemOrder(newItem, lastItem) >= 0) {
-    next.push(newItem.id);
-    return next;
-  }
-
-  // Binary search for insertion position.
-  let lo = 0;
-  let hi = len;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    const midItem = itemsById.get(next[mid]!);
-    if (midItem !== undefined && compareItemOrder(midItem, newItem) < 0) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-
-  next.splice(lo, 0, newItem.id);
-  return next;
-}
 export function useSession(
   sessionId: string | undefined,
   options?: UseSessionHookOptions
@@ -476,9 +336,7 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
-  const sortedItemIdsRef = useRef<string[]>([]);
-  const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
+  const storeRef = useRef(createItemStore());
   /**
    * Buffer for `state_change` items received before the initial snapshot
    * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
@@ -490,8 +348,6 @@ export function useSession(
   const pendingStateChangesRef = useRef<StateChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
   const optimisticIdRef = useRef<string | null>(null);
-  /** Maps container ownedBy values to sets of item IDs for O(1) container lookups. */
-  const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
   /**
@@ -505,17 +361,6 @@ export function useSession(
     new Set()
   );
 
-  /** Track an item's ownedBy in the ownership index. */
-  const trackOwnership = useCallback((item: OutputItem) => {
-    const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
-    if (ownedBy === undefined) return;
-    let set = ownershipIndexRef.current.get(ownedBy);
-    if (set === undefined) {
-      set = new Set();
-      ownershipIndexRef.current.set(ownedBy, set);
-    }
-    set.add(item.id);
-  }, []);
 
   // Mirror state into refs so callbacks that consult these values can
   // stay stable across renders. Without these mirrors, `sendAction` and
@@ -575,38 +420,9 @@ export function useSession(
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
-
-    if (deltaQueueRef.current.size === 0) {
-      return;
+    if (storeRef.current.flushDeltas()) {
+      setItems(storeRef.current.getSorted());
     }
-
-    let hasChanges = false;
-
-    for (const queued of deltaQueueRef.current.values()) {
-      const target = itemsByIdRef.current.get(queued.itemId);
-      if (target === undefined) {
-        continue;
-      }
-
-      const nextItem = updateItemWithContentDelta(
-        target,
-        queued.contentIndex,
-        queued.delta
-      );
-
-      if (nextItem !== target) {
-        itemsByIdRef.current.set(queued.itemId, nextItem);
-        hasChanges = true;
-      }
-    }
-
-    deltaQueueRef.current.clear();
-
-    if (!hasChanges) {
-      return;
-    }
-
-    setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
   }, []);
 
   const scheduleContentFlush = useCallback(() => {
@@ -647,43 +463,26 @@ export function useSession(
       setSnapshot(merged);
 
       if (!itemConfig.enabled) {
-        itemsByIdRef.current = new Map();
-        sortedItemIdsRef.current = [];
-        deltaQueueRef.current.clear();
-        ownershipIndexRef.current = new Map();
+        storeRef.current.clear();
         setItems([]);
         return;
       }
 
-      const filtered = sortItemsChronologically(
-        [...(nextSnapshot.items ?? [])].filter((item) =>
+      const filtered = [...(nextSnapshot.items ?? [])]
+        .filter((item) =>
           passesItemFilter(item, {
             includeTransient: itemConfig.includeTransient,
             itemTypes: itemConfig.itemTypes
           })
         )
-      );
+        .sort((a, b) => {
+          const tsDiff = a.ts - b.ts;
+          if (tsDiff !== 0) return tsDiff;
+          return a.itemIndex - b.itemIndex;
+        });
 
-      const nextMap = new Map<string, OutputItem>();
-      const nextOwnership = new Map<string, Set<string>>();
-      for (const item of filtered) {
-        nextMap.set(item.id, item);
-        const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
-        if (ownedBy !== undefined) {
-          let set = nextOwnership.get(ownedBy);
-          if (set === undefined) {
-            set = new Set();
-            nextOwnership.set(ownedBy, set);
-          }
-          set.add(item.id);
-        }
-      }
-
-      itemsByIdRef.current = nextMap;
-      sortedItemIdsRef.current = filtered.map((item) => item.id);
-      deltaQueueRef.current.clear();
-      ownershipIndexRef.current = nextOwnership;
-      setItems(filtered);
+      storeRef.current.loadSnapshot(filtered);
+      setItems(storeRef.current.getSorted());
     },
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
   );
@@ -877,99 +676,28 @@ export function useSession(
             serverItem.role === "user" &&
             optimisticIdRef.current !== null
           ) {
-            itemsByIdRef.current.delete(optimisticIdRef.current);
+            storeRef.current.deleteById(optimisticIdRef.current);
             optimisticIdRef.current = null;
           }
 
-          const existing = itemsByIdRef.current.get(event.item.id);
-          const isNewItem = existing === undefined;
-          const orderChanged =
-            existing !== undefined && !sameChronologicalOrder(existing, event.item);
-
-          itemsByIdRef.current.set(event.item.id, event.item);
-          trackOwnership(event.item);
-
-          if (isNewItem) {
-            // Binary insertion: O(log n) search + O(1) amortized for in-order arrivals.
-            sortedItemIdsRef.current = insertSortedItemId(
-              sortedItemIdsRef.current,
-              event.item,
-              itemsByIdRef.current
-            );
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          } else if (orderChanged) {
-            // Order changed — remove old position and re-insert.
-            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
-            sortedItemIdsRef.current = insertSortedItemId(
-              filtered,
-              event.item,
-              itemsByIdRef.current
-            );
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          } else {
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          }
-
+          storeRef.current.upsert(event.item);
+          setItems(storeRef.current.getSorted());
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
             return;
           }
 
-          const existing = itemsByIdRef.current.get(event.item.id);
-          const isNewItem = existing === undefined;
-          const orderChanged =
-            existing !== undefined && !sameChronologicalOrder(existing, event.item);
-
-          itemsByIdRef.current.set(event.item.id, event.item);
-          trackOwnership(event.item);
-
-          if (isNewItem) {
-            sortedItemIdsRef.current = insertSortedItemId(
-              sortedItemIdsRef.current,
-              event.item,
-              itemsByIdRef.current
-            );
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          } else if (orderChanged) {
-            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
-            sortedItemIdsRef.current = insertSortedItemId(
-              filtered,
-              event.item,
-              itemsByIdRef.current
-            );
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          } else {
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-          }
+          storeRef.current.upsert(event.item);
+          setItems(storeRef.current.getSorted());
         },
         onContentAdded: (event) => {
-          const existing = itemsByIdRef.current.get(event.itemId);
-          if (existing === undefined) {
-            return;
-          }
-          const updated = updateItemWithContentAdded(
-            existing,
-            event.contentIndex,
-            event.content
-          );
-          if (updated !== existing) {
-            itemsByIdRef.current.set(event.itemId, updated);
-            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          if (storeRef.current.applyContentAdded(event.itemId, event.contentIndex, event.content)) {
+            setItems(storeRef.current.getSorted());
           }
         },
         onContentDelta: (event) => {
-          const key = `${event.itemId}:${event.contentIndex}`;
-          const existing = deltaQueueRef.current.get(key);
-          if (existing === undefined) {
-            deltaQueueRef.current.set(key, {
-              itemId: event.itemId,
-              contentIndex: event.contentIndex,
-              delta: event.delta
-            });
-          } else {
-            existing.delta += event.delta;
-          }
+          storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
 
           scheduleContentFlush();
         },
@@ -1075,8 +803,7 @@ export function useSession(
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
-      flushContentDeltas,
-      trackOwnership
+      flushContentDeltas
     ]
   );
 
@@ -1084,10 +811,7 @@ export function useSession(
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
       resourceChangeSeqRef.current = 0;
-      itemsByIdRef.current = new Map();
-      sortedItemIdsRef.current = [];
-      deltaQueueRef.current.clear();
-      ownershipIndexRef.current = new Map();
+      storeRef.current.clear();
       pendingStateChangesRef.current = [];
       cancelScheduledFlush();
       setDetail(null);
@@ -1220,20 +944,15 @@ export function useSession(
         type: "status",
         status: "completed",
         requestId,
-        itemIndex: itemsByIdRef.current.size,
+        itemIndex: storeRef.current.size(),
         provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
         ts: Date.now(),
         message: "Request was stopped.",
         detail: { code: "system.request_aborted" }
       } as OutputItem;
 
-      itemsByIdRef.current.set(abortItem.id, abortItem);
-      sortedItemIdsRef.current = insertSortedItemId(
-        sortedItemIdsRef.current,
-        abortItem,
-        itemsByIdRef.current
-      );
-      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+      storeRef.current.upsert(abortItem);
+      setItems(storeRef.current.getSorted());
     },
     [itemConfig.enabled]
   );
@@ -1343,12 +1062,8 @@ export function useSession(
           content: [{ type: "output_text", text: actionOptions.userMessage }]
         } as OutputItem;
 
-        itemsByIdRef.current.set(optimisticId, optimisticItem);
-        const ordered = sortItemsChronologically([
-          ...itemsByIdRef.current.values()
-        ]);
-        sortedItemIdsRef.current = ordered.map((item) => item.id);
-        setItems(ordered);
+        storeRef.current.upsert(optimisticItem);
+        setItems(storeRef.current.getSorted());
       }
 
       try {
@@ -1424,14 +1139,7 @@ export function useSession(
   );
 
   const getOwnedItems = useCallback((ownedBy: string): OutputItem[] => {
-    const ids = ownershipIndexRef.current.get(ownedBy);
-    if (ids === undefined || ids.size === 0) return [];
-    const result: OutputItem[] = [];
-    for (const id of ids) {
-      const item = itemsByIdRef.current.get(id);
-      if (item !== undefined) result.push(item);
-    }
-    return sortItemsChronologically(result);
+    return storeRef.current.getOwnedBy(ownedBy);
   }, []);
 
   const getItemsByAgent = useCallback(

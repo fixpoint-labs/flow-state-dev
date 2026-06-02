@@ -25,6 +25,7 @@ const ITEM_UPDATE_INVARIANT_KEYS: ReadonlyArray<string> = [
   "transient"
 ];
 import { useFlowContext } from "../context/FlowContext";
+import { insertSortedIntoArray } from "../internal/item-store";
 
 /**
  * Type-based filter for request stream items.
@@ -120,15 +121,7 @@ export function useRequestStream(
           setIsFinishing(true);
         }
 
-        setItems((prev: OutputItem[]) => {
-          const next = [...prev, event.item];
-          next.sort((left, right) => {
-            const tsDiff = left.ts - right.ts;
-            if (tsDiff !== 0) return tsDiff;
-            return left.itemIndex - right.itemIndex;
-          });
-          return next;
-        });
+        setItems((prev: OutputItem[]) => insertSortedIntoArray(prev, event.item));
       },
       onItemDone: (event) => {
         setItems((prev: OutputItem[]) =>
