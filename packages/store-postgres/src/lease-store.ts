@@ -63,16 +63,8 @@ export function createPostgresLeaseStore(executor: QueryExecutor): LeaseStore {
       }
 
       // Fallback for executors without transaction support (e.g. PGlite):
-      // check-then-write without row locking.
-      const existing = await executor.query(
-        "SELECT lease_id, holder, acquired_at, expires_at FROM leases WHERE request_id = $1",
-        [requestId]
-      );
-      const row = existing.rows[0];
-      if (row && Number(row.expires_at) > now && row.holder !== options.holder) {
-        return null;
-      }
-
+      // Use a conditional upsert that only overwrites expired leases, then
+      // verify we actually won by reading back the row.
       await executor.query(
         `INSERT INTO leases (request_id, lease_id, holder, acquired_at, expires_at)
          VALUES ($1, $2, $3, $4, $5)
@@ -80,9 +72,19 @@ export function createPostgresLeaseStore(executor: QueryExecutor): LeaseStore {
            lease_id = EXCLUDED.lease_id,
            holder = EXCLUDED.holder,
            acquired_at = EXCLUDED.acquired_at,
-           expires_at = EXCLUDED.expires_at`,
-        [lease.requestId, lease.leaseId, lease.holder, lease.acquiredAt, lease.expiresAt]
+           expires_at = EXCLUDED.expires_at
+         WHERE leases.expires_at <= $6 OR leases.holder = $7`,
+        [lease.requestId, lease.leaseId, lease.holder, lease.acquiredAt, lease.expiresAt, now, options.holder]
       );
+
+      // Verify we won the race by checking if our lease_id is the one stored.
+      const verify = await executor.query(
+        "SELECT lease_id FROM leases WHERE request_id = $1",
+        [requestId]
+      );
+      if (verify.rows[0]?.lease_id !== lease.leaseId) {
+        return null;
+      }
       return lease;
     },
 
