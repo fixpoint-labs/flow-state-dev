@@ -1,17 +1,20 @@
 /**
  * Chat-style message renderer.
  * User messages align right, assistant messages align left.
- * Assistant messages show an identity badge when agentType/agentName are present.
+ * Assistant messages show an identity badge when itemVisibility/agentName are present.
  */
 import type { MessageItem } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 
 function IdentityBadge({ item }: { item: MessageItem }) {
-  if (item.agentType === undefined && item.agentName === undefined) return null;
+  const vis = resolveItemVisibility(item);
+  const visLabel = vis.history ? undefined : "sub-agent";
+  if (visLabel === undefined && item.agentName === undefined) return null;
   return (
     <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex gap-1.5">
       {item.agentName !== undefined && <span className="font-mono">{item.agentName}</span>}
-      {item.agentType !== undefined && (
-        <span className="px-1 rounded-sm bg-slate-800/70 text-slate-400">{item.agentType}</span>
+      {visLabel !== undefined && (
+        <span className="px-1 rounded-sm bg-slate-800/70 text-slate-400">{visLabel}</span>
       )}
     </div>
   );

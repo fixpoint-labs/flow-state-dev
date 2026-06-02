@@ -365,7 +365,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     prompt: observePrompt,
     context: buildContext,
     user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
   })
 }
 
@@ -798,7 +798,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     // the trace channel).
     repair: { mode: 'auto', maxAttempts: 3 },
     repairOutput: buildEnvelopeRepair(['facts']),
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
   })
 }
 
@@ -1134,7 +1134,7 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
     user: (_input: unknown) => 'Review the facts and identify removals and merges.',
     repair: { mode: 'auto', maxAttempts: 3 },
     repairOutput: buildEnvelopeRepair(['removals', 'merges']),
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
   })
 }
 

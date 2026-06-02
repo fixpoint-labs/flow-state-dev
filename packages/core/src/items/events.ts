@@ -48,9 +48,9 @@ export const ITEM_UPDATE_INVARIANT_KEYS = [
   "id",
   "type",
   "provenance",
-  "agentType",
+  "itemVisibility",
   "transient"
-] as const satisfies ReadonlyArray<keyof OutputItem | "agentType">;
+] as const satisfies ReadonlyArray<keyof OutputItem>;
 
 /**
  * Shallow top-level merge update for a previously-emitted item. Each

@@ -933,7 +933,7 @@ describe("generator streaming", () => {
     let receivedOutputSchema: unknown = "NOT_CALLED";
     const block = generator({
       name: "stream-schema",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       prompt: "Return text"
     });
@@ -966,7 +966,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-delta",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -1011,7 +1011,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-result",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -1051,7 +1051,7 @@ describe("generator streaming", () => {
     expect(toolResultItems[0].item.result).toEqual({ found: true });
   });
 
-  it("does not emit any items when agentType is unset", async () => {
+  it("does not emit any items when itemVisibility is unset", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "no-identity",
@@ -1089,11 +1089,11 @@ describe("generator streaming", () => {
     expect(convItems.length).toBe(0);
   });
 
-  it("still streams text through to schema validation when agentType is set", async () => {
+  it("still streams text through to schema validation when itemVisibility is set", async () => {
     const emitted: Array<{ type: string; item?: any; delta?: string }> = [];
     const block = generator({
       name: "text-still-flows",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -1129,7 +1129,7 @@ describe("generator streaming", () => {
 
     await runForTest(block, { value: "x" }, ctx);
 
-    // Tool call events and text content both emit under agentType: "primary".
+    // Tool call events and text content both emit under itemVisibility: {client:true, history:true}.
     const toolItems = emitted.filter(
       e => e.type === "item.added" && e.item?.type === "tool_call_progress"
     );
@@ -1149,7 +1149,7 @@ describe("generator non-streaming tool emission (FIX-661)", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "ns-tool",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "inline-mock",
       prompt: "p"
     });
@@ -1218,7 +1218,7 @@ describe("generator non-streaming tool emission (FIX-661)", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "ns-tool-no-steps",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "inline-mock",
       prompt: "p"
     });
@@ -1251,7 +1251,7 @@ describe("generator non-streaming tool emission (FIX-661)", () => {
     expect(tcpAdds[0].item.toolCallId).toBe("tc_2");
   });
 
-  it("emits no tool_call_progress items when agentType is unset", async () => {
+  it("emits no tool_call_progress items when itemVisibility is unset", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "ns-tool-no-identity",
@@ -1296,7 +1296,7 @@ describe("generator — observable model identity (FIX-518)", () => {
     const identity = { actual: "openai/gpt-5.5", requested: "intent/chat" };
     const block = generator({
       name: "stream-identity",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       prompt: "Stream please",
     });
@@ -1358,7 +1358,7 @@ describe("generator — observable model identity (FIX-518)", () => {
     const identity = { actual: "openai/gpt-5.4-mini", requested: "intent/utility" };
     const block = generator({
       name: "non-stream-identity",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       // No tools, structured-friendly schema → goes through the non-streaming path.
       outputSchema: z.string(),
@@ -1393,7 +1393,7 @@ describe("generator — observable model identity (FIX-518)", () => {
     let capturedIdentity: unknown;
     const block = generator({
       name: "identity-hook",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-model",
       outputSchema: z.string(),
       prompt: "go",

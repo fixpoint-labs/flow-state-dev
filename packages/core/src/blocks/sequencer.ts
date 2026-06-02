@@ -329,18 +329,8 @@ async function emitStateSnapshot(
     terminal
   };
 
-  // Route through the trace channel so item.added/item.done are stamped
-  // `agentType: "trace"` and persisted via the TraceStore. The durable-
-  // checkpoint side-channel (in runAction's setItemHooks.onItemDone) is
-  // unaffected — it observes the same items as before. Stamp the item
-  // and await the emit pair sequentially here (rather than via the
-  // fire-and-forget `ctx.emit.trace.stateSnapshot`) so consecutive calls
-  // from the step loop emit item.done in order — onItemDone is the
-  // checkpoint-write trigger and its sequencing matters.
-  const stamped = item as typeof item & { agentType?: "trace" };
-  if (stamped.agentType === undefined) {
-    stamped.agentType = "trace";
-  }
+  // Trace types (`state_snapshot`) are resolved to `{false,false}` by
+  // `resolveItemVisibility` via `item.type` — no stamp needed.
   await ctx.response.emit({ type: "item.added", item });
   await ctx.response.emit({ type: "item.done", item });
 

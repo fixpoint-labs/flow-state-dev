@@ -1,10 +1,10 @@
 /**
- * Tests for the capability agentType filter.
+ * Tests for the capability itemVisibility filter.
  *
- * A capability declaring `agentType` (single or array) is only attached to
- * blocks whose agentType is in the allowlist. A block with no agentType is
- * treated as "primary" — the default identity for un-tagged generators and
- * all non-generator block kinds.
+ * A capability declaring `itemVisibility` (single or array) is only attached to
+ * blocks whose itemVisibility is in the allowlist. A block with no itemVisibility
+ * is treated as `{ client: true, history: true }` — the default identity for
+ * un-tagged generators and all non-generator block kinds.
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
@@ -16,8 +16,8 @@ import { handler } from "../src/blocks/handler";
 const resourceA = defineResource({ scope: "session", stateSchema: z.object({ a: z.string() }) });
 const resourceB = defineResource({ scope: "session", stateSchema: z.object({ b: z.string() }) });
 
-describe("capability agentType filter", () => {
-  it("unscoped capability (no agentType) attaches to any block identity", () => {
+describe("capability itemVisibility filter", () => {
+  it("unscoped capability (no itemVisibility) attaches to any block identity", () => {
     const cap = defineCapability({
       name: "shared",
       resources: { resourceA },
@@ -26,14 +26,14 @@ describe("capability agentType filter", () => {
     const primary = generator({
       name: "primary-gen",
       uses: [cap],
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "intent/utility",
       prompt: "x",
     });
@@ -49,24 +49,24 @@ describe("capability agentType filter", () => {
     expect(untagged.declaredResources?.resourceA).toBe(resourceA);
   });
 
-  it("agentType: 'primary' excludes sub-agent generators", () => {
+  it("itemVisibility: {client:true, history:true} excludes sub-agent generators", () => {
     const cap = defineCapability({
       name: "main-only",
       resources: { resourceA },
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
     });
 
     const primary = generator({
       name: "primary-gen",
       uses: [cap],
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "intent/utility",
       prompt: "x",
     });
@@ -75,11 +75,11 @@ describe("capability agentType filter", () => {
     expect(sub.declaredResources?.resourceA).toBeUndefined();
   });
 
-  it("unset block agentType is treated as 'primary' for filter purposes", () => {
+  it("unset block itemVisibility is treated as {client:true, history:true} for filter purposes", () => {
     const cap = defineCapability({
       name: "main-only",
       resources: { resourceA },
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
     });
 
     const gen = generator({
@@ -92,31 +92,31 @@ describe("capability agentType filter", () => {
     expect(gen.declaredResources?.resourceA).toBe(resourceA);
   });
 
-  it("allowlist array matches any listed agentType", () => {
+  it("allowlist array matches any listed itemVisibility", () => {
     const cap = defineCapability({
       name: "primary-or-trace",
       resources: { resourceA },
-      agentType: ["primary", "trace"],
+      itemVisibility: [{ client: true, history: true }, { client: false, history: false }],
     });
 
     const primary = generator({
       name: "p",
       uses: [cap],
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "intent/utility",
       prompt: "x",
     });
     const trace = generator({
       name: "t",
       uses: [cap],
-      agentType: "trace",
+      itemVisibility: { client: false, history: false },
       model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "s",
       uses: [cap],
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "intent/utility",
       prompt: "x",
     });
@@ -136,7 +136,7 @@ describe("capability agentType filter", () => {
 
     const cap = defineCapability({
       name: "skills-ish",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       presets: {
         tools: { tools: [skillTool] },
         default: ["tools"],
@@ -146,14 +146,14 @@ describe("capability agentType filter", () => {
     const primary = generator({
       name: "primary-gen",
       uses: [cap],
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "intent/utility",
       prompt: "x",
     });
     const sub = generator({
       name: "sub-gen",
       uses: [cap],
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "intent/utility",
       prompt: "x",
     });
@@ -170,7 +170,7 @@ describe("capability agentType filter", () => {
     const mainCap = defineCapability({
       name: "main-only",
       resources: { resourceA },
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
     });
     const sharedCap = defineCapability({
       name: "shared",
@@ -180,7 +180,7 @@ describe("capability agentType filter", () => {
     const sub = generator({
       name: "sub-gen",
       uses: [mainCap, sharedCap],
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "intent/utility",
       prompt: "x",
     });
@@ -189,12 +189,12 @@ describe("capability agentType filter", () => {
     expect(sub.declaredResources?.resourceB).toBe(resourceB);
   });
 
-  it("handler treats unset block agentType as primary — scoped cap still attaches", () => {
-    // Handlers don't have agentType. The filter treats this as "primary".
+  it("handler treats unset block itemVisibility as {client:true, history:true} — scoped cap still attaches", () => {
+    // Handlers don't have itemVisibility. The filter treats this as {client:true, history:true}.
     const cap = defineCapability({
       name: "main-only",
       resources: { resourceA },
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
     });
 
     const h = handler({

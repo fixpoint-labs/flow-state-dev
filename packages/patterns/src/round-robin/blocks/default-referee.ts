@@ -5,7 +5,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   ToolsSlot,
   UsesSlot,
@@ -29,7 +29,7 @@ export interface CreateRefereeOptions {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   instructions?: RefereeInstructions;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   /** Accessor key used in the block's `resources:` map. Defaults to
    *  `"contributions"`. See `createInitContributions` for rationale. */
   accessorKey?: string;
@@ -44,7 +44,7 @@ export function createReferee(opts: CreateRefereeOptions) {
     outputSchema: roundRobinRefereeOutputSchema,
     resources: { [accessor]: opts.contributions },
     sequencerStateSchema: roundRobinStateSchema,
-    agentType: opts.agentType ?? "sub",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),

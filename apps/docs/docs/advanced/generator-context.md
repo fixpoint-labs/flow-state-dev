@@ -245,7 +245,7 @@ const worker = generator({
   name: "worker",
   model: "openai/gpt-5.4-mini",
   prompt: "Execute the assigned task.",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   user: (input, ctx) => `Task: ${input.description}\nWorkspace:\n${ctx.cap.workspace.summary()}`
 });
 ```

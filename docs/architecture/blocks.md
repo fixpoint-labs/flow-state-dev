@@ -51,13 +51,13 @@ interface BlockContext {
     | { status: "failed"; error: Error };
 
   // Item emission
-  emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }): void;
+  emitMessage(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
   emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
 }
 ```
 
-Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
+Each emitted item's visibility is derived from `(item.type, item.itemVisibility)` via `resolveItemVisibility(item)`. Generators declare visibility by setting `itemVisibility` on their config; conversational items (message, reasoning, tool_output) inherit visibility from that setting, structural items have fixed per-type defaults, and trace types are always `{ client: false, history: false }`. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -191,7 +191,7 @@ const chatGenerator = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -280,13 +280,13 @@ The file is YAML frontmatter (strict-validated) over a body split into line-anch
 
 ### Automatic Emissions
 
-Generators auto-emit items based on model output — but only when `agentType` is set:
+Generators auto-emit items based on model output — but only when `itemVisibility` is set:
 - Reasoning/thinking → `reasoning` item
 - Text response → `message` item (role: "assistant"), streamed via `content.delta`
 - Tool invocation → `block_trace` with `toolCall` (two-phase: in_progress → completed)
 - Final return value → `block_trace` (internal/devtools only)
 
-To run a generator silently (no session items, only `block_trace` via graph edges), omit `agentType`. See [Item Visibility](#item-visibility) for the identity model.
+To run a generator silently (no session items, only `block_trace` via graph edges), omit `itemVisibility`. See [Item Visibility](#item-visibility) for the visibility model.
 
 ## Sequencer
 
@@ -409,32 +409,32 @@ pipeline.step((output, ctx) => ({ query: output.text }), searchBlock);
 
 ## Item Visibility
 
-Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`. There are no per-item `client` / `history` overrides — identity is the lever.
+Visibility is a pure function of `(item.type, item.itemVisibility)` computed by `resolveItemVisibility(item)`. The `itemVisibility` field is the lever.
 
-### Generator identity (`agentType`)
+### Generator visibility (`itemVisibility`)
 
 Every generator declares one of four stances:
 
-| `agentType` | Client stream | LLM history | DevTool |
-|-------------|:-------------:|:-----------:|:-------:|
-| `"primary"` | ✓ | ✓ | ✓ |
-| `"sub"`     | ✓ | — | ✓ |
-| `"trace"`   | — | — | ✓ |
-| *unset*     | *no auto-emission* — only `block_trace` flows via graph edges |
+| `itemVisibility` | Client stream | LLM history | DevTool |
+|------------------|:-------------:|:-----------:|:-------:|
+| `{ client: true, history: true }` | ✓ | ✓ | ✓ |
+| `{ client: true, history: false }` | ✓ | — | ✓ |
+| `{ client: false, history: false }` | — | — | ✓ |
+| *unset* | *no auto-emission* — only `block_trace` flows via graph edges |
 
-No position-inferred default. Every generator declares its own identity.
+No position-inferred default. Every generator declares its own visibility.
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  agentType: "sub",           // visible to the user for observability,
-  agentName: "researcher",    // not inherited by the orchestrator's history.
+  itemVisibility: { client: true, history: false },  // visible to the user for observability,
+  agentName: "researcher",                            // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
   model: "anthropic:claude-sonnet-4-6",
 });
 ```
 
-Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`, `block_trace`, `router_decision`, `state_snapshot`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
+Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`) have fixed per-type visibility. Trace types (`block_trace`, `router_decision`, `state_snapshot`) always resolve to `{ client: false, history: false }`. `itemVisibility` on a structural or trace item is metadata for filtering / rendering, not visibility.
 
 ### `agentName`
 
@@ -442,20 +442,26 @@ Stable name stamped on every emitted item. Defaults to the block's `name`. Gener
 
 ### Emission helpers
 
-- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, agentType?, agentName? }`. Without identity, a handler-emitted message defaults to agent-equivalent visibility (on client, in history).
-- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, agentType?, agentName? }`.
-- `ctx.emitStatus(message, options?)` — transient progress indicators. Structural; identity does not affect visibility.
+- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, itemVisibility?, agentName? }`. Without an explicit `itemVisibility`, a handler-emitted message defaults to `{ client: true, history: true }`.
+- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, itemVisibility?, agentName? }`.
+- `ctx.emitStatus(message, options?)` — transient progress indicators. Structural; `itemVisibility` does not affect visibility.
 
 Examples:
 
 ```ts
 ctx.emitMessage("Analysis complete.");
-// Agent-equivalent visibility (client + history).
+// Default visibility (client + history).
 
-ctx.emitMessage("Debug: classifier chose route A", { agentType: "trace", agentName: "classifier" });
+ctx.emitMessage("Debug: classifier chose route A", {
+  itemVisibility: { client: false, history: false },
+  agentName: "classifier",
+});
 // Devtool-only observation — hidden from user and LLM.
 
-ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "auditor" });
+ctx.emitMessage("Background audit complete.", {
+  itemVisibility: { client: true, history: false },
+  agentName: "auditor",
+});
 // Visible live but excluded from conversation history.
 ```
 

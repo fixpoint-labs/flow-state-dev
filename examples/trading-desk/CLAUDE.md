@@ -97,7 +97,7 @@ import { tradingDesk } from "../capability";
 
 export const myGenerator = generator({
   name: "my-generator",
-  agentType: "sub",                          // or "primary" if it should emit speak rows
+  itemVisibility: { client: true, history: false }, // or { client: true, history: true } if it should emit speak rows
   agentName: AGENT_KEYS.someAgent.agentName,
   uses: [tradingDesk],                       // model + ticker + date come from here
   prompt: MY_SYSTEM_PROMPT,

@@ -429,7 +429,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   /**
    * Emits an `item.updated` event applying a shallow top-level merge of
    * `patch` to the previously-emitted item. Identity-invariant keys
-   * (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped
+   * (`id`, `type`, `provenance`, `itemVisibility`, `transient`) are stripped
    * from the patch before it reaches the wire and before the server-side
    * mirror is updated.
    *

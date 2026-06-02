@@ -34,7 +34,7 @@ import {
   getPatternPrefix,
 } from "@flow-state-dev/core/types";
 import type {
-  AgentType,
+  ItemVisibility,
   BlockTraceItem,
   ToolOutputItem,
   ComponentItem,
@@ -1610,25 +1610,23 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
     itemIndex: item.itemIndex,
     payload,
     ts: item.ts,
-    agentType: item.agentType,
+    itemVisibility: item.itemVisibility,
     agentName: item.agentName,
   };
 }
 
 /**
- * Applies `agentType` / `agentName` filters from a SessionItem query.
- * Both accept scalar or array form; scalar treated as single-element set.
+ * Applies `itemVisibility` / `agentName` filters from a SessionItem query.
  * Returns true if the item passes the filter (or no filter applies).
  */
 function matchesIdentityFilter(
   item: SessionItem,
   query: ItemQuery | undefined,
 ): boolean {
-  if (query?.agentType !== undefined) {
-    const allowed = Array.isArray(query.agentType)
-      ? new Set(query.agentType)
-      : new Set([query.agentType]);
-    if (item.agentType === undefined || !allowed.has(item.agentType)) {
+  if (query?.itemVisibility !== undefined) {
+    const resolved = resolveItemVisibility(item as unknown as OutputItem);
+    if (resolved.client !== query.itemVisibility.client ||
+        resolved.history !== query.itemVisibility.history) {
       return false;
     }
   }
@@ -1692,7 +1690,7 @@ function createSessionItemViews(
         return false;
       }
 
-      // Identity filters (agentType, agentName) — honored by all views.
+      // Identity filters (itemVisibility, agentName) — honored by all views.
       if (!matchesIdentityFilter(item, query)) {
         return false;
       }
@@ -1753,19 +1751,19 @@ type EmissionContext = {
    * generator; undefined at the root (runtime-level emissions carry no
    * identity). Callers may override per-emission via options.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   agentName?: string;
 };
 
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
-  (content: Content[], options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
+  (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
+  (content: Content[], options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
 } {
   return function emitMessage(
     textOrContent: string | Content[],
-    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
   ): void {
     const content: Content[] =
       typeof textOrContent === "string"
@@ -1773,10 +1771,6 @@ function createEmitMessage(
         : textOrContent;
 
     const itemIndex = emCtx.nextItemIndex();
-    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
-    // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_trace item. Per-call
-    // `{ transient: true }` is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
@@ -1788,7 +1782,7 @@ function createEmitMessage(
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
       taskId: emCtx.taskId,
-      agentType: options?.agentType ?? emCtx.agentType,
+      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
       content
@@ -1806,7 +1800,7 @@ function createEmitComponent(
   data: Record<string, unknown>,
   options?: {
     key?: string;
-    agentType?: AgentType;
+    itemVisibility?: ItemVisibility;
     agentName?: string;
     transient?: boolean;
   },
@@ -1816,7 +1810,7 @@ function createEmitComponent(
     data: Record<string, unknown>,
     options?: {
       key?: string;
-      agentType?: AgentType;
+      itemVisibility?: ItemVisibility;
       agentName?: string;
       transient?: boolean;
     },
@@ -1846,7 +1840,7 @@ function createEmitComponent(
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
       taskId: emCtx.taskId,
-      agentType: options?.agentType ?? emCtx.agentType,
+      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       component,
       data,
@@ -2360,9 +2354,12 @@ function createDeprecatedAlias<TFn extends (...args: any[]) => any>(
 
 /**
  * Build the three `ctx.emit.trace.*` impls. Each:
- *   - stamps `agentType: "trace"` on the item if missing,
  *   - emits item.added then item.done via the response emitter,
  *   - fire-and-forgets a TraceStore append for both events.
+ *
+ * Trace types (`block_trace`, `router_decision`, `state_snapshot`) resolve
+ * to `{ client: false, history: false }` by `item.type` in
+ * `resolveItemVisibility` — no stamp needed.
  *
  * The TraceStore writes are best-effort: errors are swallowed (with a
  * once-per-process console.warn fallback) so trace plumbing never breaks
@@ -2412,16 +2409,8 @@ function buildTraceEmitters(
       });
   }
 
-  function stampTrace<T extends { agentType?: AgentType }>(item: T): T {
-    if (item.agentType === undefined) {
-      (item as { agentType?: AgentType }).agentType = "trace";
-    }
-    return item;
-  }
-
   return {
     blockTrace(item) {
-      stampTrace(item);
       void emCtx.response
         .emitItemAdded(item)
         .then(() => {
@@ -2432,7 +2421,6 @@ function buildTraceEmitters(
         .catch(() => { /* trace emission is best-effort */ });
     },
     routerDecision(item) {
-      stampTrace(item);
       void emCtx.response
         .emitItemAdded(item)
         .then(() => {
@@ -2443,7 +2431,6 @@ function buildTraceEmitters(
         .catch(() => { /* trace emission is best-effort */ });
     },
     stateSnapshot(item) {
-      stampTrace(item);
       void emCtx.response
         .emitItemAdded(item)
         .then(() => {
@@ -3983,7 +3970,6 @@ export async function createExecutionContext<
               },
               ts: startedAt,
               ownedBy: identity.ownedBy,
-              agentType: "trace",
               blockName: identity.blockName,
               blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
               blockInstanceId: instanceId,
@@ -4463,8 +4449,8 @@ export async function createExecutionContext<
           }
         }
         const childPhase = resolvedParent.phase ?? "main";
-        // Each scope starts with no identity. Generators that declare an
-        // `agentType` stamp it directly on the items they emit; other
+        // Each scope starts with no identity. Generators that declare
+        // `itemVisibility` stamp it directly on the items they emit; other
         // blocks inherit nothing — they emit structural items (status,
         // component, container) whose visibility comes from the type
         // defaults in `resolveItemVisibility()`.

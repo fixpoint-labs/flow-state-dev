@@ -48,7 +48,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -69,28 +69,28 @@ What the framework handles for you:
 
 #### Generator identity — who is emitting?
 
-Each generator declares its identity via `agentType`, which governs where its auto-emitted items flow:
+Each generator declares its visibility via `itemVisibility`, which governs where its auto-emitted items flow:
 
-| `agentType` | Client UI | LLM History | DevTool |
-|-------------|:--:|:--:|:--:|
-| `"primary"` | ✓ | ✓ | ✓ |
-| `"sub"` | ✓ | — | ✓ |
-| `"trace"` | — | — | ✓ |
+| `itemVisibility` | Client UI | LLM History | DevTool |
+|------------------|:--:|:--:|:--:|
+| `{ client: true, history: true }` | ✓ | ✓ | ✓ |
+| `{ client: true, history: false }` | ✓ | — | ✓ |
+| `{ client: false, history: false }` | — | — | ✓ |
 | *unset* | no auto-emission — only `block_trace` flows via graph edges |
 
-Set `agentType` explicitly on every generator that should stream. There is no position-inferred default — each generator's identity is visible in its own config.
+Set `itemVisibility` explicitly on every generator that should stream. There is no position-inferred default — each generator's visibility is visible in its own config.
 
 ```ts
 // User-facing chatbot. Messages + reasoning go to UI and enter history.
-const chatbot = generator({ agentType: "primary", /* ... */ });
+const chatbot = generator({ itemVisibility: { client: true, history: true }, /* ... */ });
 
 // Worker inside a supervisor pattern. Visible to the user for observability,
 // but its output does not pollute the orchestrator's next-turn history.
-const worker = generator({ agentType: "sub", /* ... */ });
+const worker = generator({ itemVisibility: { client: true, history: false }, /* ... */ });
 
 // Background observer. Items appear in the devtool stream for debugging;
 // they never reach the client or the LLM.
-const memoryObserver = generator({ agentType: "trace", /* ... */ });
+const memoryObserver = generator({ itemVisibility: { client: false, history: false }, /* ... */ });
 
 // Pure structured-output transformer. Feeds its typed output to the next
 // block via graph edges. No session items at all.
@@ -98,7 +98,7 @@ const classifier = generator({
   model: "preset/fast",
   prompt: "Classify input as A, B, or C.",
   outputSchema: z.enum(["A", "B", "C"]),
-  // agentType omitted — no auto-emission.
+  // itemVisibility omitted — no auto-emission.
 });
 ```
 
@@ -107,10 +107,10 @@ Optionally, set `agentName` to give the identity a stable label — useful for p
 ```ts
 // Collaborative: all parallel instances share one identity.
 // selectForContext({ agentName: "researcher" }) returns them all.
-generator({ agentType: "sub", agentName: "researcher", /* ... */ });
+generator({ itemVisibility: { client: true, history: false }, agentName: "researcher", /* ... */ });
 
 // Isolated: each instance has a unique identity.
-generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
+generator({ itemVisibility: { client: true, history: false }, agentName: `researcher-${id}`, /* ... */ });
 ```
 
 `agentName` defaults to the block's `name` when omitted.
@@ -159,13 +159,13 @@ Sometimes you already know what the tool inputs are. An analyst-style flow may f
 const dataBundle = sequencer({ name: "prefetch" })
   .map(tickerDate)
   .parallel({
-    balanceSheet: get_balance_sheet.asTool({ agentType: "sub", agentName: "fundamentals" }),
-    incomeStatement: get_income_statement.asTool({ agentType: "sub", agentName: "fundamentals" }),
+    balanceSheet: get_balance_sheet.asTool({ itemVisibility: { client: true, history: false }, agentName: "fundamentals" }),
+    incomeStatement: get_income_statement.asTool({ itemVisibility: { client: true, history: false }, agentName: "fundamentals" }),
   })
   .step(synthesizeFundamentals);
 ```
 
-Each branch emits a `tool_output` with the same envelope shape as a generator-driven tool call. The `agentType` / `agentName` opts control grouping under the parent agent's card; both are optional. When omitted, the fields are not stamped on the emitted item.
+Each branch emits a `tool_output` with the same envelope shape as a generator-driven tool call. The `itemVisibility` / `agentName` opts control grouping under the parent agent's card; both are optional. When omitted, the fields are not stamped on the emitted item.
 
 Failures behave the same way: if a wrapped block throws, the emitted `tool_output` flips to `status: "failed"` with the error message visible, and the error propagates to the sequencer's normal error path.
 

@@ -11,7 +11,7 @@
  */
 
 import type { GeneratorTool } from "../blocks/generator";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import type { AgentOverrides } from "./agent";
 
 /**
@@ -57,8 +57,8 @@ export interface WorkerSpec {
   agentOverrides?: AgentOverrides;
   /** Tool catalog keys made available to a prompt-driven worker. */
   tools?: string[];
-  /** Agent-type tag controlling history/visibility. Defaults to `"sub"`. */
-  agentType?: AgentType;
+  /** Visibility controlling client delivery and history inclusion. Defaults to `{ client: true, history: false }`. */
+  itemVisibility?: ItemVisibility;
   /** Model id override. Falls back to the deps' default. */
   model?: string;
 }

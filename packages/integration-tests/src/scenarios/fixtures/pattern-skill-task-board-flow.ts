@@ -45,7 +45,7 @@ const discoverer = generator({
   outputSchema: z.string(),
   tools: [searchTool],
   uses: [taskTools],
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   maxIterations: 12
 });
 

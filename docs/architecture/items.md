@@ -10,33 +10,42 @@ Every item has a `type` that determines what it is, a `status` that tracks its l
 
 ## Visibility
 
-Every item's visibility is derived from two things: its `type` and the optional `agentType` identity of the generator that produced it. `resolveItemVisibility()` returns two booleans:
+Every item's visibility is derived from two things: its `type` and the optional `itemVisibility` field on the item. `resolveItemVisibility(item)` returns two booleans:
 
 - **`client`** — whether the item is sent to connected clients (browser, mobile, CLI)
 - **`history`** — whether the item is included in LLM conversation history
 
-There are no per-item `client`/`history` overrides. Visibility is a pure function of `(type, agentType)`. The devtool always sees everything.
+Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool always sees everything.
 
-### Generator identity governs conversational items
+### Three type categories
 
-Messages, reasoning, and `tool_output` items — the conversational types — inherit visibility from the producing generator's `agentType`:
+Items fall into three visibility categories based on their `type`:
 
-| `agentType` | Client | History |
-|-------------|:------:|:-------:|
-| `"primary"` | ✓ | ✓ |
-| `"sub"`     | ✓ | — |
-| `"trace"`   | — | — |
-| *unset*     | ✓ | ✓ (handler-emit fallback) |
+**Trace types** (`block_trace`, `router_decision`, `state_snapshot`) always resolve to `{ client: false, history: false }` by their type alone. No stamp needed — the type is sufficient.
 
-`sub` items reach the client for live observability but are excluded from conversation history. `trace` items are observability-only — devtool and `selectForContext` can see them, nothing else.
+**Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
+
+**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`) default to `{ client: true, history: false }`.
+
+### The `itemVisibility` field
+
+Generators declare `itemVisibility` in their config. Conversational items emitted by that generator inherit the visibility setting:
+
+| `itemVisibility` | Client | History |
+|------------------|:------:|:-------:|
+| `{ client: true, history: true }` | ✓ | ✓ |
+| `{ client: true, history: false }` | ✓ | — |
+| `{ client: false, history: false }` | — | — |
+| `{ client: false, history: true }` | — | ✓ |
+| *unset* | ✓ | ✓ (handler-emit fallback) |
+
+The `{ client: true, history: false }` setting lets items reach the client for live observability while excluding them from conversation history. `{ client: false, history: false }` items are observability-only — devtool and `selectForContext` can see them, nothing else. The `{ client: false, history: true }` corner enables private/injected context that the LLM sees but the client does not.
 
 See `generator-identity.md` for the full identity model.
 
 ### Structural types have fixed visibility
 
-Component, container, source, status, state_change, resource_change, error → `{ client: true, history: false }`. Block_trace, router_decision, state_snapshot → `{ client: false, history: false }` (devtool-only).
-
-Structural items ignore `agentType` for visibility. `agentType` on a structural item is metadata only (useful for per-agent rendering or queries via `selectForContext`).
+Structural items ignore `itemVisibility` for visibility resolution. `itemVisibility` on a structural item is metadata only (useful for per-agent rendering or queries via `selectForContext`).
 
 ## Item types
 
@@ -79,7 +88,7 @@ Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) �
 `block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `agentType` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.stepAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 
 `block_trace.input.source` is a `BlockValue<T>` of the same shape, stamped at block start. Sequential steps stamp a `ref` to the upstream block's trace; aggregator branches share the same upstream ref; downstream consumers of an aggregator see a `structure` of branch refs; `forEach` per-iteration children see `inline` with the element value; the request entry point sees `inline` with the raw input.
@@ -150,23 +159,23 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 
 ## The full registry
 
-| Type | Emitted by | Client | History | Identity-governed | Persistence |
-|------|------------|:------:|:-------:|:-----------------:|-------------|
-| `message` | Generator (auto), `ctx.emitMessage()` | agentType | agentType | ✓ | Persistent |
-| `reasoning` | Generator (auto, CoT models) | agentType | agentType | ✓ | Persistent |
-| `tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
-| `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
-| `container` | Sequencer/Router with `container` config | ✓ | — | — | Persistent |
-| `source` | Generator (provider-native tools) | ✓ | — | — | Persistent |
-| `status` | `ctx.emitStatus()` | ✓ | — | — | **Always transient** |
-| `state_change` | Auto on state mutations | ✓ | — | — | Transient in prod / persistent in dev |
-| `resource_change` | Auto on resource mutations | ✓ | — | — | Transient by default |
-| `error` | Runtime (terminal failure) | ✓ | — | — | Persistent |
-| `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | — | Persistent |
-| `router_decision` | Router (auto, on selection) | — | — | — | Persistent |
-| `state_snapshot` | Sequencer (at step boundaries) | — | — | — | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
+| Type | Emitted by | Client | History | Visibility category | Persistence |
+|------|------------|:------:|:-------:|:-------------------:|-------------|
+| `message` | Generator (auto), `ctx.emitMessage()` | itemVisibility | itemVisibility | Conversational | Persistent |
+| `reasoning` | Generator (auto, CoT models) | itemVisibility | itemVisibility | Conversational | Persistent |
+| `tool_output` | Generator (per tool invocation) | itemVisibility | itemVisibility | Conversational | Persistent |
+| `component` | `ctx.emitComponent()` | ✓ | — | Structural | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
+| `container` | Sequencer/Router with `container` config | ✓ | — | Structural | Persistent |
+| `source` | Generator (provider-native tools) | ✓ | — | Structural | Persistent |
+| `status` | `ctx.emitStatus()` | ✓ | — | Structural | **Always transient** |
+| `state_change` | Auto on state mutations | ✓ | — | Structural | Transient in prod / persistent in dev |
+| `resource_change` | Auto on resource mutations | ✓ | — | Structural | Transient by default |
+| `error` | Runtime (terminal failure) | ✓ | — | Structural | Persistent |
+| `block_trace` | Every block (auto, lifecycle: in_progress → updates → terminal) | — | — | Trace | Persistent |
+| `router_decision` | Router (auto, on selection) | — | — | Trace | Persistent |
+| `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 
-**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Identity-governed` = visibility derives from the producing generator's `agentType`. A `trace` agentType forces `client: false, history: false` regardless of type.
+**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
 
 ## Status slot semantics
 
@@ -298,7 +307,7 @@ Most new UI needs can be expressed via `component` items with a registered rende
 If a new type is genuinely needed:
 
 1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
-2. **Decide visibility** — is it conversational (identity-governed) or structural? If structural, add it to `STRUCTURAL_TYPE_DEFAULTS` in `packages/core/src/items/resolve-visibility.ts` with fixed `client` / `history` values. If conversational, add it to `CONVERSATIONAL_TYPES` so `agentType` governs visibility.
+2. **Decide visibility** — which category? If trace, add it to `TRACE_TYPES` in `packages/core/src/items/resolve-visibility.ts` (always `{ client: false, history: false }`). If structural, add it to `STRUCTURAL_TYPE_DEFAULTS` with fixed `client` / `history` values. If conversational, add it to `CONVERSATIONAL_TYPES` so `item.itemVisibility` governs visibility.
 3. **Add a registry row** to the table in this document — all columns required.
 4. **Set persistence** — `transient: true` at emission for stream-only items.
 5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.
@@ -308,7 +317,7 @@ If a new type is genuinely needed:
 ## Base schema reference
 
 ```ts
-type AgentType = "primary" | "sub" | "trace";
+type ItemVisibility = { client: boolean; history: boolean };
 
 type OutputItemBase = {
   id: string;
@@ -320,7 +329,7 @@ type OutputItemBase = {
   provenance: ItemProvenance;
   ts: number;             // Epoch ms
   ownedBy?: string;       // blockInstanceId of the enclosing container, if any
-  agentType?: AgentType;  // Governs visibility for conversational types
+  itemVisibility?: ItemVisibility;  // Governs visibility for conversational types
   agentName?: string;     // Stable name of the producing agent (defaults to block name)
 };
 

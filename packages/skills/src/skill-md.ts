@@ -14,7 +14,7 @@
 
 import type {
   AgentOverrides,
-  AgentType,
+  ItemVisibility,
   PatternBinding,
   Skill,
   SkillContextMode,
@@ -80,12 +80,12 @@ const WORKER_KNOWN_KEYS = new Set([
   "agent-ref",
   "agent-overrides",
   "tools",
-  "agent-type",
+  "visibility",
   "model",
 ]);
 
 /** Sub-keys of `agent-overrides`. */
-const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "agent-type"]);
+const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
 
 /** Sub-keys of an `initial-tasks` entry. */
 const INITIAL_TASK_KEYS = new Set([
@@ -289,14 +289,8 @@ function parseWorkerSpec(key: string, v: unknown): WorkerSpec {
     spec.tools = t as string[];
   }
 
-  if ("agent-type" in obj) {
-    const at = obj["agent-type"];
-    if (at !== "primary" && at !== "sub" && at !== "trace") {
-      throw new Error(
-        `SKILL.md worker \`${key}\`: \`agent-type\` must be "primary" | "sub" | "trace"`,
-      );
-    }
-    spec.agentType = at as AgentType;
+  if ("visibility" in obj) {
+    spec.itemVisibility = parseVisibilityField(`worker \`${key}\``, obj["visibility"]);
   }
 
   if ("model" in obj) {
@@ -337,12 +331,8 @@ function parseAgentOverrides(workerKey: string, v: unknown): AgentOverrides {
     }
     out.model = m;
   }
-  if ("agent-type" in obj) {
-    const at = obj["agent-type"];
-    if (at !== "primary" && at !== "sub" && at !== "trace") {
-      throw new Error(`SKILL.md worker \`${workerKey}\`: \`agent-overrides.agent-type\` must be "primary" | "sub" | "trace"`);
-    }
-    out.agentType = at as AgentType;
+  if ("visibility" in obj) {
+    out.itemVisibility = parseVisibilityField(`worker \`${workerKey}\` agent-overrides`, obj["visibility"]);
   }
   return out;
 }
@@ -540,6 +530,39 @@ function parsePatternConfigField(v: unknown): Record<string, unknown> | undefine
     throw new Error("SKILL.md `pattern-config:` must be a mapping");
   }
   return v as Record<string, unknown>;
+}
+
+/**
+ * Parse a `visibility` YAML value into an `ItemVisibility` object.
+ *
+ * Accepts either:
+ *   - A mapping with `client` and `history` boolean fields.
+ *   - A legacy string shorthand: `"primary"` | `"sub"` | `"trace"`.
+ */
+function parseVisibilityField(location: string, v: unknown): ItemVisibility {
+  if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+    const obj = v as Record<string, unknown>;
+    if (typeof obj["client"] !== "boolean" || typeof obj["history"] !== "boolean") {
+      throw new Error(
+        `SKILL.md ${location}: \`visibility\` mapping requires boolean \`client\` and \`history\` fields`,
+      );
+    }
+    return { client: obj["client"] as boolean, history: obj["history"] as boolean };
+  }
+  if (typeof v === "string") {
+    switch (v) {
+      case "primary": return { client: true, history: true };
+      case "sub": return { client: true, history: false };
+      case "trace": return { client: false, history: false };
+      default:
+        throw new Error(
+          `SKILL.md ${location}: \`visibility\` string must be "primary" | "sub" | "trace" — got ${JSON.stringify(v)}`,
+        );
+    }
+  }
+  throw new Error(
+    `SKILL.md ${location}: \`visibility\` must be a mapping ({ client, history }) or a shorthand string`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1193,12 +1216,19 @@ function serializePatternBinding(lines: string[], binding: PatternBinding): void
         lines.push(`      tools: [${spec.agentOverrides.tools.map((t) => yamlScalar(t)).join(", ")}]`);
       if (spec.agentOverrides.model !== undefined)
         lines.push(`      model: ${yamlScalar(spec.agentOverrides.model)}`);
-      if (spec.agentOverrides.agentType !== undefined)
-        lines.push(`      agent-type: ${spec.agentOverrides.agentType}`);
+      if (spec.agentOverrides.itemVisibility !== undefined) {
+        lines.push("      visibility:");
+        lines.push(`        client: ${spec.agentOverrides.itemVisibility.client}`);
+        lines.push(`        history: ${spec.agentOverrides.itemVisibility.history}`);
+      }
     }
     if (spec.tools)
       lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
-    if (spec.agentType !== undefined) lines.push(`    agent-type: ${spec.agentType}`);
+    if (spec.itemVisibility !== undefined) {
+      lines.push("    visibility:");
+      lines.push(`      client: ${spec.itemVisibility.client}`);
+      lines.push(`      history: ${spec.itemVisibility.history}`);
+    }
     if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
   }
   lines.push("initial-tasks:");

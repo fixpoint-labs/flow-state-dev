@@ -224,7 +224,7 @@ The default synthesizer is a generator that composes the transcript into a unifi
 | `uses` | `UsesSlot` | — | Capabilities forwarded to default blocks. |
 | `tools` | `ToolsSlot` | — | Tools forwarded to default blocks. |
 | `context` | `GeneratorSlot` | — | Generator context slot forwarded to default blocks. |
-| `synthesizerAgentType` | `AgentType` | `"primary"` | Agent type for the default synthesizer. |
+| `synthesizerVisibility` | `ItemVisibility` | `{ client: true, history: true }` | Item visibility for the default synthesizer. |
 | `collectionId` | `string` | `name` | Stable id for the per-run `TaskCollection`. |
 | `accessorKey` | `string` | `"contributions"` | Resource accessor key. Set distinct values when multiple round-robins coexist. |
 

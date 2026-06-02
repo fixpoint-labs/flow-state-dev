@@ -227,8 +227,8 @@ supervisor({
   context?: GeneratorSlot;
   history?: GeneratorHistoryConfig;
   uses?: UsesSlot;
-  reviewerAgentType?: AgentType;
-  synthesizerAgentType?: AgentType;
+  reviewerVisibility?: ItemVisibility;
+  synthesizerVisibility?: ItemVisibility;
   instructions?: string | (input, ctx) => string;
 });
 ```

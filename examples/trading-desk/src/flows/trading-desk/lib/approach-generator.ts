@@ -12,9 +12,10 @@
  *
  * The factory consolidates the ~80% boilerplate shared across all six
  * preambles. Hardcoded policy:
- *   - `agentType: "sub"` — produces a streaming `message` item, no
- *     `TxStruct` card (the structured generator emits its own card when
- *     `agentType: "primary"`).
+ *   - `itemVisibility: { client: true, history: false }` — produces a
+ *     streaming `message` item, no `TxStruct` card (the structured
+ *     generator emits its own card when
+ *     `itemVisibility: { client: true, history: true }`).
  *   - `model: "intent/utility"` — always-fast regardless of the user's
  *     `costPreset`. Block-level `model:` takes precedence over the
  *     `tradingDesk` capability's `intent/${costPreset}` resolution.
@@ -65,7 +66,7 @@ export interface ApproachGeneratorConfig {
 export function createApproachGenerator(config: ApproachGeneratorConfig) {
   return generator({
     name: config.name,
-    agentType: "sub",
+    itemVisibility: { client: true, history: false },
     agentName: config.agentName,
     model: "intent/utility",
     uses: config.uses,

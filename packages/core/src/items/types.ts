@@ -15,18 +15,9 @@ export type ItemVisibility = {
 };
 
 /**
- * Identity classification for the generator that produced an item.
- *
- * - `"primary"`: a user-facing agent. Items flow to the client and into
- *   conversation history.
- * - `"sub"`: a task-executor under a primary agent. Items flow to the client
- *   (for observability / live rendering) but are excluded from conversation
- *   history — sub-agents are deaf to the broader conversation by design.
- * - `"trace"`: items produced for observability only (devtool/replay). They
- *   do not reach the client SSE stream and are not in history.
- *
- * A generator that declares no `agentType` produces no auto-emitted items —
- * only its typed `block_trace` output flows to parents via graph edges.
+ * @deprecated Use `ItemVisibility` instead. Retained as an internal type alias
+ * for test backward-compat and transition-period tooling. Will be removed in a
+ * future release.
  */
 export type AgentType = "primary" | "sub" | "trace";
 
@@ -77,15 +68,22 @@ export type OutputItemBase = {
    */
   taskId?: string;
   /**
-   * Identity of the generator that produced this item. Governs visibility
-   * via `resolveItemVisibility()` for conversational item types
-   * (`message`, `reasoning`, `tool_output`). Structural items
-   * (status, component, block_trace, etc.) ignore this field.
+   * Transport and memory visibility for this item. Conversational items
+   * (`message`, `reasoning`, `tool_output`) carry this from the producing
+   * generator; structural items ignore it (they have fixed per-type defaults).
+   *
+   * - `{ client: true, history: true }` — normal conversational turn.
+   * - `{ client: true, history: false }` — observable work (sub-agent output).
+   * - `{ client: false, history: true }` — private/injected context.
+   * - `{ client: false, history: false }` — trace (devtool only).
+   *
+   * When absent on a conversational item, `resolveItemVisibility` falls back
+   * to `{ client: true, history: true }` (handler-emit ergonomics).
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   /**
    * Stable name of the producing agent. Defaults to the generator's block
-   * `name` when `agentType` is set. Multiple generators that share an
+   * `name` when `itemVisibility` is set. Multiple generators that share an
    * `agentName` collaborate (same logical agent across instances); distinct
    * names stay isolated.
    */

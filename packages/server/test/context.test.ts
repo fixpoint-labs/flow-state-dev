@@ -431,8 +431,8 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
      * assistant tool-call message + one tool tool-result message.
      */
     toolCalls?: number;
-    /** Override agent identity for the assistant message (defaults to "primary"). */
-    assistantAgentType?: "primary" | "sub" | "trace";
+    /** Override item visibility for the assistant message. */
+    assistantItemVisibility?: { client: boolean; history: boolean };
   };
 
   function makeTurn(spec: TurnSpec): any {
@@ -449,7 +449,7 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
         itemIndex: itemIndex++,
         ts: baseTs + itemIndex,
         role: "user",
-        agentType: "primary",
+        itemVisibility: { client: true, history: true },
         content: [{ type: "output_text", text: spec.userText }],
         provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
       });
@@ -463,7 +463,7 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
         requestId: spec.requestId,
         itemIndex: itemIndex++,
         ts: baseTs + itemIndex,
-        agentType: "primary",
+        itemVisibility: { client: true, history: true },
         toolCall: {
           callId: `call_${spec.requestId}_${k}`,
           name: `t_${k}`,
@@ -484,7 +484,7 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
         itemIndex: itemIndex++,
         ts: baseTs + itemIndex,
         role: "assistant",
-        agentType: spec.assistantAgentType ?? "primary",
+        itemVisibility: spec.assistantItemVisibility ?? { client: true, history: true },
         content: [{ type: "output_text", text: spec.assistantText }],
         provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
       });
@@ -687,7 +687,7 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
   it("sub-agent items in a retained turn are filtered out by resolveItemVisibility", async () => {
     // The assistant message in turn 1 is sub-agent — history: false.
     const ctx = await makeCtx([
-      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1", assistantAgentType: "sub" },
+      { requestId: "r1", startedAtMs: 100, userText: "u1", assistantText: "a1", assistantItemVisibility: { client: true, history: false } },
       { requestId: "r2", startedAtMs: 200, userText: "u2", assistantText: "a2" }
     ]);
 

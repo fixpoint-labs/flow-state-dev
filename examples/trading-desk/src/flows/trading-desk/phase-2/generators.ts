@@ -57,7 +57,7 @@ export type BullThesisOutput = z.infer<typeof bullThesisOutputSchema>;
 
 export const consolidateBullMemo = generator({
   name: "consolidate-bull-memo",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_2_MEMO_KEYS.bull.agentName,
   uses: [
     tradingDesk.presets({
@@ -93,7 +93,7 @@ export type BearThesisOutput = z.infer<typeof bearThesisOutputSchema>;
 
 export const consolidateBearMemo = generator({
   name: "consolidate-bear-memo",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_2_MEMO_KEYS.bear.agentName,
   uses: [
     tradingDesk.presets({
@@ -110,9 +110,9 @@ export const consolidateBearMemo = generator({
 // ---------------------------------------------------------------------------
 // Research Manager
 //
-// `agentType: "primary"` because per the design, RM emits the
-// InvestmentThesis structured row in the transcript and is treated as a
-// primary identity (not a sub-agent like the consolidators).
+// `itemVisibility: { client: true, history: true }` because per the design,
+// RM emits the InvestmentThesis structured row in the transcript and is
+// treated as a primary identity (not a sub-agent like the consolidators).
 // ---------------------------------------------------------------------------
 
 /**
@@ -144,7 +144,7 @@ export type InvestmentThesisOutput = z.infer<typeof investmentThesisOutputSchema
 
 export const researchManagerGenerator = generator({
   name: "research-manager-generator",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   agentName: PHASE_2_MEMO_KEYS.researchManager.agentName,
   uses: [
     tradingDesk.presets({

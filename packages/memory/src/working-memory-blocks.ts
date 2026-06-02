@@ -103,7 +103,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
-    agentType: "trace",
+    itemVisibility: { client: false, history: false },
   })
 }
 

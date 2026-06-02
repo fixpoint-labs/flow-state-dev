@@ -106,7 +106,7 @@ export const skillsCap = createSkillsCapability({
   },
   initialSkills,
   scope: "project",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -116,7 +116,7 @@ A few notes:
 - `initialSkills` is lazy-seeded. The skills aren't written to the collection until the first `runSkill` call, so module load is cheap.
 - `errors` is an array, not a throw. A single malformed skill doesn't block the rest from seeding.
 - `scope: "project"` puts the skills in the project resource scope, shared across users. Use `"user"` for per-user skills, `"session"` mostly for tests.
-- `agentType: "primary"` is explained in Step 5.
+- `itemVisibility: { client: true, history: true }` is explained in Step 5.
 
 ## Step 4: Attach the capability to your generator
 
@@ -127,7 +127,7 @@ import { skillsCap } from "./lib/capabilities";
 
 export const assistant = generator({
   name: "assistant",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   model: "preset/medium",
   prompt: [
     "You are a helpful assistant.",
@@ -172,7 +172,7 @@ export const skillsCap = createSkillsCapability({
   catalog: { search: searchTool, fetch: fetchTool, crawl: crawlTool },
   initialSkills,
   scope: "user",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 
 export const skillActivator = createSkillActivator({
@@ -188,7 +188,7 @@ import { skillActivator, skillsCap } from "./lib/capabilities";
 
 export const assistant = generator({
   name: "assistant",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   model: "preset/medium",
   prompt: "You are a helpful assistant. Active skills override defaults.",
   // The active-skill body formatter (in the `context` preset) stays on,
@@ -221,12 +221,12 @@ For a deeper breakdown of when to keep the mid-flow path or compose both, see [A
 
 If you compose your assistant with multi-agent patterns (`planAndExecute`, `supervisor`, `blackboard`), the pattern factory wires a coordinator and workers. Without scoping, skills attach to both — every worker carries the skill catalog even though only the coordinator needs it to decide on activation.
 
-The `agentType: "primary"` option turns the skills capability into an allowlist: attach only to blocks with `agentType: "primary"`, skip blocks with `agentType: "sub"`. Pattern factories tag their synthesizers as primary and their workers as sub, so this one line does the right thing for every pattern.
+The `itemVisibility: { client: true, history: true }` option turns the skills capability into an allowlist: attach only to blocks with `itemVisibility: { client: true, history: true }`, skip blocks with `itemVisibility: { client: true, history: false }`. Pattern factories tag their synthesizers with full visibility and their workers with history-excluded visibility, so this one line does the right thing for every pattern.
 
 ```ts
 export const skillsCap = createSkillsCapability({
   // ...
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -345,7 +345,7 @@ Search broadly, fetch the most promising sources, and return a structured
 report with: background, key findings, open questions.
 ```
 
-The `runSkill` router spawns a sub-agent generator (the framework's own `generator` block with `agentType: "sub"`) running the skill body as its system prompt with only the listed tools. The sub-agent's tool calls and streaming output reach the client for DevTool observability, but don't appear in the parent's conversation history.
+The `runSkill` router spawns a sub-agent generator (the framework's own `generator` block with `itemVisibility: { client: true, history: false }`) running the skill body as its system prompt with only the listed tools. The sub-agent's tool calls and streaming output reach the client for DevTool observability, but don't appear in the parent's conversation history.
 
 The parent sees only a single `runSkill` tool call with the sub-agent's final text as its result.
 
@@ -355,7 +355,7 @@ Run the app. Open DevTool. Ask a question that should match a skill. What you sh
 
 **Up-front path (Step 5 wired in):**
 
-1. A `skill-classifier` block appears in the trace timeline as `agentType: "trace"` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
+1. A `skill-classifier` block appears in the trace timeline with `itemVisibility: { client: false, history: false }` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
 2. Session state's `activeSkills` carries the matched skill for the duration of the turn.
 3. The next generator step's system prompt contains the active-skill body inside a `<skills>` tag block — no separate catalog listing, no `runSkill` tool in the tool list.
 4. If you wired the active-skills clientData projection, your top bar should show one badge per active skill labeled with the matching tier (`slash` / `keyword` / `classifier`).

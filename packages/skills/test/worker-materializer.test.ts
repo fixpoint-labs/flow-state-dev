@@ -108,16 +108,18 @@ describe("materializeWorker — prompt-driven branches", () => {
     expect((fallback as { config?: { model?: string } }).config?.model).toBe("intent/chat");
   });
 
-  it("defaults agent-type to sub and propagates spec.agentType", async () => {
+  it("defaults itemVisibility to sub-equivalent and propagates spec.itemVisibility", async () => {
     const sub = await materializeWorker("a", { prompt: "x" }, deps());
-    expect((sub as { config?: { agentType?: string } }).config?.agentType).toBe("sub");
+    expect((sub as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config?.itemVisibility).toEqual(
+      { client: true, history: false },
+    );
     const primary = await materializeWorker(
       "b",
-      { prompt: "x", agentType: "primary" },
+      { prompt: "x", itemVisibility: { client: true, history: true } },
       deps(),
     );
-    expect((primary as { config?: { agentType?: string } }).config?.agentType).toBe(
-      "primary",
+    expect((primary as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config?.itemVisibility).toEqual(
+      { client: true, history: true },
     );
   });
 

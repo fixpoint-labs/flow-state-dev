@@ -22,7 +22,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [readDoc, writeDoc],
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -142,7 +142,7 @@ export default defineFlow({
 - `utility.keyedRouter(config)` — Router factory for the "pick a block from a `Record<string, Block>` by string key" case. Throws with the registered keys (or routes to `fallback`) when the selected key is unregistered. Input adaptation belongs on the routed blocks via `.connectInput` (BP-013)
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
-Every generator-based utility above accepts an optional `agentType` (`"primary" | "sub" | "trace"`) to control whether output is surfaced to the client/history. `synthesizer` defaults to `"primary"`; all others default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
+Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. `synthesizer` defaults to `{ client: true, history: true }`; all others default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)

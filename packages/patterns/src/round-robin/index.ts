@@ -24,7 +24,7 @@
  */
 import { sequencer, handler } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   InstructionsSlot,
   SequencerDefinition,
@@ -145,7 +145,7 @@ export interface RoundRobinConfig<
   tools?: ToolsSlot;
   /** Generator context slot forwarded to defaults. */
   context?: GeneratorSlot<any, any>;
-  synthesizerAgentType?: AgentType;
+  synthesizerVisibility?: ItemVisibility;
   /** Stable id for the audit `TaskCollection`. Defaults to `name`. */
   collectionId?: string;
   /**
@@ -179,7 +179,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     uses,
     tools,
     context,
-    synthesizerAgentType,
+    synthesizerVisibility,
     outputSchema,
   } = config;
 
@@ -341,8 +341,8 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(tools !== undefined ? { tools } : {}),
       ...(instructions !== undefined ? { instructions } : {}),
       ...(model !== undefined ? { model } : {}),
-      ...(synthesizerAgentType !== undefined
-        ? { agentType: synthesizerAgentType }
+      ...(synthesizerVisibility !== undefined
+        ? { itemVisibility: synthesizerVisibility }
         : {}),
     });
 

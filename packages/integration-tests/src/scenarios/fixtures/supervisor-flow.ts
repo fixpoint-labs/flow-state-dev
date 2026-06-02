@@ -26,7 +26,7 @@ const worker = generator({
     metadata: z.record(z.unknown()).optional()
   }),
   outputSchema: z.string(),
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   prompt: "You are a focused task executor. Complete the assigned task concisely.",
   user: (input) => `Task: ${input.goal}`
 });

@@ -406,7 +406,7 @@ export type RequestSSECallbacks = {
   /**
    * Fired when an `item.updated` event arrives. The patch is a shallow
    * top-level merge into the previously-added item; identity-invariant
-   * keys (`id`, `type`, `provenance`, `agentType`, `transient`) are
+   * keys (`id`, `type`, `provenance`, `itemVisibility`, `transient`) are
    * stripped server-side and should also be ignored defensively here.
    */
   onItemUpdated?: (event: ItemUpdatedEvent) => void;

@@ -32,7 +32,7 @@
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
 import { flowPolicy } from "@flow-state-dev/tasks";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorHistoryConfig,
   GeneratorSearchConfig,
   GeneratorSlot,
@@ -180,12 +180,12 @@ export interface PlanAndExecuteConfig<
 
   /** Capabilities to install on default blocks. */
   uses?: UsesSlot;
-  /** Agent type for default planner. Default: "sub". */
-  plannerAgentType?: AgentType;
-  /** Agent type for default executor. Default: "sub". */
-  stepExecutorAgentType?: AgentType;
-  /** Agent type for default synthesizer. Default: "primary". */
-  synthesizerAgentType?: AgentType;
+  /** Item visibility for default planner. Default: `{ client: true, history: false }`. */
+  plannerVisibility?: ItemVisibility;
+  /** Item visibility for default executor. Default: `{ client: true, history: false }`. */
+  stepExecutorVisibility?: ItemVisibility;
+  /** Item visibility for default synthesizer. Default: `{ client: true, history: true }`. */
+  synthesizerVisibility?: ItemVisibility;
   /** Resources declared on the default executor. */
   resources?: Record<string, any>;
 }
@@ -315,7 +315,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       }
       return parts.join("\n");
     },
-    agentType: config.stepExecutorAgentType ?? "sub",
+    itemVisibility: config.stepExecutorVisibility ?? { client: true, history: false },
   });
 }
 
@@ -490,7 +490,7 @@ function createDefaultSynthesizer(config: {
   uses?: UsesSlot;
   instructions?: InstructionsSlot<any>;
   synthesizeInstructions?: string;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }) {
   const basePrompt = [
     "You are synthesizing findings from a structured multi-step research process.",
@@ -528,7 +528,7 @@ function createDefaultSynthesizer(config: {
     outputSchema: z.string(),
     prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
     user: buildSynthesizerUserPrompt,
-    agentType: config.agentType ?? "primary",
+    itemVisibility: config.itemVisibility ?? { client: true, history: true },
   });
 }
 
@@ -621,7 +621,7 @@ export function planAndExecute<
           uses: config.uses,
           instructions: config.instructions,
           synthesizeInstructions: config.synthesizeInstructions,
-          agentType: config.synthesizerAgentType,
+          itemVisibility: config.synthesizerVisibility,
         }));
 
   // ------- Pattern-specific blocks ------------------------------------------

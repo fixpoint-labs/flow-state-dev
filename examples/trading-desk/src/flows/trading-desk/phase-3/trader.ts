@@ -3,8 +3,8 @@
  *
  * Reads the Phase 2 InvestmentThesis (plus the four analyst memos and the
  * full debate transcript on `full` preset) and writes a typed
- * `TradeProposal`. `agentType: "primary"` so the structured `TxStruct` card
- * renders in the transcript automatically.
+ * `TradeProposal`. `itemVisibility: { client: true, history: true }` so the
+ * structured `TxStruct` card renders in the transcript automatically.
  *
  * The output schema lives inline here because only one generator emits
  * the shape; the Phase 3 writer imports the type back from this file to
@@ -50,7 +50,7 @@ export type TradeProposalOutput = z.infer<typeof tradeProposalOutputSchema>;
 
 export const traderGenerator = generator({
   name: "trader-generator",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   uses: [
     tradingDesk.presets({

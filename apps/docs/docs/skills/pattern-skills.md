@@ -26,7 +26,7 @@ workers:
     tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesis.md
-    agent-type: primary
+    visibility: primary
 
 initial-tasks:
   - id: market
@@ -77,10 +77,10 @@ Each worker has exactly one of four resolution fields. Parse fails with a precis
 Per-worker tuning:
 
 - `tools` — catalog keys the worker can invoke. Unknown keys warn and drop (additive-not-restrictive).
-- `agent-type` — `sub` (default), `primary` (output reaches conversation history), or `trace` (observability only).
+- `visibility` — `sub` (default), `primary` (output reaches conversation history), or `trace` (observability only). Also accepts a mapping: `visibility: { client: true, history: false }`.
 - `model` — model id override. Falls back to the capability's default.
 
-`agent-overrides` is a sibling object on `agent-ref` workers — `tools`, `model`, `agent-type`. Each field REPLACES the agent's default; no merging. `agent-overrides` requires `agent-ref` and fails at parse otherwise.
+`agent-overrides` is a sibling object on `agent-ref` workers — `tools`, `model`, `visibility`. Each field REPLACES the agent's default; no merging. `agent-overrides` requires `agent-ref` and fails at parse otherwise.
 
 ## The `taskTools` capability
 
@@ -112,7 +112,7 @@ workers:
     tools: [search, fetch]
   synthesizer:
     prompt-ref: ./reference/synthesize.md
-    agent-type: primary
+    visibility: primary
 
 initial-tasks:
   - id: discover

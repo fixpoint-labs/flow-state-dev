@@ -104,7 +104,7 @@ const xSearchTool = providerTool("xSearch", xai.tools.xSearch());
 
 const grokRoute = generator({
   name: "get_social_sentiment.xai",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   uses: [tradingDesk],
   // Explicit `model` overrides the tradingDesk core preset's
   // intent-based selector. This route is pinned to Grok regardless of

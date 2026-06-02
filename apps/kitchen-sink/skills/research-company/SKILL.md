@@ -8,14 +8,14 @@ workers:
   market-analyst:
     prompt-ref: ./reference/market.md
     tools: [search, fetch]
-    agent-type: sub
+    visibility: sub
   financial-analyst:
     prompt-ref: ./reference/financials.md
     tools: [search, fetch]
-    agent-type: sub
+    visibility: sub
   synthesizer:
     prompt-ref: ./reference/synthesis.md
-    agent-type: primary
+    visibility: primary
 
 initial-tasks:
   - id: market

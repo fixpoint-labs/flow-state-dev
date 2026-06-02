@@ -9,7 +9,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   ToolsSlot,
   UsesSlot,
@@ -50,7 +50,7 @@ export interface CreateDebaterOptions {
   uses?: UsesSlot;
   tools?: ToolsSlot;
   instructions?: DebaterInstructions;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 /**
@@ -77,7 +77,7 @@ export function createDebater(opts: CreateDebaterOptions) {
     agentName: opts.agentName,
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
-    agentType: opts.agentType ?? "sub",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     // No `activeStatusMessage` here: the pattern emits an inline
     // `debate-turn-pending` row with the same information, and pairing
     // them produces two near-identical "{agentName} is composing..."

@@ -62,8 +62,8 @@ const myGenerator = generator({
 
 **Identity config:**
 
-- `agentType?: "primary" | "sub" | "trace"` — Declares the generator's identity. Governs visibility of auto-emitted conversational items (messages, reasoning, tool outputs). `"primary"` = user-facing (client + history). `"sub"` = task-executor (client, not history). `"trace"` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.
-- `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `agentType` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
+- `itemVisibility?: { client: boolean; history: boolean }` — Declares the generator's visibility. Governs auto-emission of conversational items (messages, reasoning, tool outputs). `{ client: true, history: true }` = user-facing (client + history). `{ client: true, history: false }` = task-executor (client, not history). `{ client: false, history: false }` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.
+- `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `itemVisibility` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
 
 **Search config:**
 

@@ -71,7 +71,7 @@ export const subQueryGenerator = generator({
   maxIterations: 5,
   outputSchema: subQueryOutputSchema,
   resources: { context: contextResource },
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
 });
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ export const rootGenerator = generator({
   maxIterations: 10,
   outputSchema: rlmOutputSchema,
   resources: { context: contextResource },
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 
 // ---------------------------------------------------------------------------

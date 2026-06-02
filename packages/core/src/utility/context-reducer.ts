@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const contextReducerDistillOutputSchema = z.object({
@@ -54,7 +54,7 @@ export interface ContextReducerConfig<
    * graph edges only. Set to `"primary"` to surface the reduction to the user,
    * or `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -90,7 +90,7 @@ export function contextReducer<
     name: config.name,
     model: config.model ?? "intent/utility",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       ...CONTEXT_REDUCER_INSTRUCTIONS[mode],
       "Return output that exactly matches the required schema."

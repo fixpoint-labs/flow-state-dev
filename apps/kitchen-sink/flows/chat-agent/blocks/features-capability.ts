@@ -11,7 +11,7 @@
  * disabled because the bash tool creates artifacts by writing to files
  * under the artifacts mount.
  *
- * Skills is scoped to `agentType: "primary"` so worker generators inside
+ * Skills is scoped to `itemVisibility: primary` so worker generators inside
  * plan-and-execute / supervisor / blackboard patterns don't replicate
  * skill bodies into their context. It's attached as a static `uses` entry
  * so the framework installs the skills collection resource at build time —
@@ -75,7 +75,7 @@ const skillsCap = createSkillsCapability({
   scope: "user",
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   // Pattern skills opt in here. Default registry covers the six
   // implemented Wave 1 patterns plus coordinator alias and the two
   // forward-compat stubs. taskTools composes by default.
@@ -142,7 +142,7 @@ export const featuresCapability = defineCapability({
   uses: [
     // Static: skills capability — installs the skills collection resource at
     // build time (dynamic uses callbacks can't contribute resources). Scoped
-    // to primary agents by the capability's own `agentType` so worker
+    // to primary agents by the capability's own `itemVisibility` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
     //
     // The `runSkill` preset stays ON because pattern- and fork-mode skills

@@ -27,8 +27,8 @@ export type ItemsRendererProps = {
    */
   deduplicateByKey?: boolean;
   /**
-   * When true, items produced by sub-agents (`agentType: "sub"`) are
-   * rendered inline with the rest of the stream. Default: false — sub-agent
+   * When true, items with `history: false` visibility (sub-agent output) are
+   * rendered inline with the rest of the stream. Default: false — those
    * items are filtered out of the default conversation view. The data still
    * flows through `useSession().items`; use a custom renderer (e.g., a
    * per-agent panel) to surface it explicitly.
@@ -138,6 +138,11 @@ const CONTAINER_MANAGED_TYPES = new Set([
   "tool_output",
 ]);
 
+// Mirrors `@flow-state-dev/core/items/resolve-visibility.ts` — inlined
+// because this package may only import types from core.
+const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
+const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
+
 /**
  * Pure helper: applies dedup / sub-agent / container-owner filters, then
  * optionally collapses consecutive tool_output runs into `group`
@@ -156,7 +161,11 @@ export function buildItemRenderStream(
   const deduplicated = deduplicateByKey ? deduplicateComponentItems(items) : items;
   const visibleByAgent = showSubAgents
     ? deduplicated
-    : deduplicated.filter((item) => item.agentType !== "sub");
+    : deduplicated.filter((item) => {
+        if (TRACE_TYPES.has(item.type)) return false;
+        if (!CONVERSATIONAL_TYPES.has(item.type)) return true;
+        return item.itemVisibility?.history !== false;
+      });
 
   const suppressedOwners = buildSuppressedOwners(visibleByAgent, renderers?.container);
 

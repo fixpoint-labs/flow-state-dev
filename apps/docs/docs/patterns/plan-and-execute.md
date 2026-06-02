@@ -187,18 +187,18 @@ planAndExecute({
   userResources?: Record<string, any>;
   orgResources?: Record<string, any>;
 
-  // Identity for the internal planner generator. Default: "sub".
+  // Visibility for the internal planner generator. Default: { client: true, history: false }.
   // The default planner is a utility decomposer that does not currently
-  // accept agentType; this knob applies when a custom `planner` is supplied.
-  plannerAgentType?: "primary" | "sub" | "trace";
+  // accept itemVisibility; this knob applies when a custom `planner` is supplied.
+  plannerVisibility?: { client: boolean; history: boolean };
 
-  // Identity for the internal step executor generator. Default: "sub" —
+  // Visibility for the internal step executor generator. Default: { client: true, history: false } —
   // executor chatter stays out of the orchestrator's conversation history.
-  stepExecutorAgentType?: "primary" | "sub" | "trace";
+  stepExecutorVisibility?: { client: boolean; history: boolean };
 
-  // Identity for the final synthesizer generator. Default: "primary" —
+  // Visibility for the final synthesizer generator. Default: { client: true, history: true } —
   // synthesis is the user-facing answer for the plan.
-  synthesizerAgentType?: "primary" | "sub" | "trace";
+  synthesizerVisibility?: { client: boolean; history: boolean };
 });
 ```
 

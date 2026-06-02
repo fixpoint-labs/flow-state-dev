@@ -1,4 +1,4 @@
-import type { AgentType, ItemStatus } from "../items/types";
+import type { ItemStatus, ItemVisibility } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
@@ -29,8 +29,8 @@ export type SessionItem = {
   itemIndex: number;
   payload: unknown;
   ts?: number;
-  /** Identity of the producing agent (post-FIX-391). */
-  agentType?: AgentType;
+  /** Transport and memory visibility of this item. */
+  itemVisibility?: ItemVisibility;
   agentName?: string;
 };
 
@@ -62,8 +62,8 @@ export type ItemQuery = {
   includeTransient?: boolean;
   itemTypes?: string[];
   roles?: Array<"user" | "assistant" | "system" | "developer" | "tool">;
-  /** Filter by producing agent type. Scalar or array form. */
-  agentType?: AgentType | AgentType[];
+  /** Filter by item visibility. Exact-match against resolved visibility. */
+  itemVisibility?: ItemVisibility;
   /** Filter by producing agent name. Scalar or array form. */
   agentName?: string | string[];
 };
@@ -77,14 +77,14 @@ export type SessionItemViews = {
    * LLM-ready conversation history. Applies the transient filter, the type
    * allowlist, `resolveItemVisibility(item).history`, role filtering, and
    * limiting. Effectively returns only items whose resolved visibility
-   * includes them in history (agent-typed conversational items + user
+   * includes them in history (conversational items with history:true + user
    * messages).
    */
   history: (query?: ItemQuery) => Promise<LLMMessage[]>;
   /**
    * Raw-query view for custom context assembly. Returns `SessionItem[]`
    * unfiltered by visibility. Respects `includeTransient` per query, and
-   * honors the `agentType` / `agentName` filters. Use this to build
+   * honors the `itemVisibility` / `agentName` filters. Use this to build
    * custom prompt context that reaches beyond the conversation-history
    * default (e.g., a long-running sub-agent pulling its own prior outputs).
    */

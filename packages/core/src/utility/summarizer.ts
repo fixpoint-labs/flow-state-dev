@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const summarizerOutputSchema = z.object({
@@ -29,7 +29,7 @@ export interface SummarizerConfig<
    * edges only. Set to `"primary"` to surface the summary to the user, or
    * `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -60,7 +60,7 @@ export function summarizer<
     name: config.name,
     model: config.model ?? "intent/utility",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       "You are a summarization assistant.",
       instruction,

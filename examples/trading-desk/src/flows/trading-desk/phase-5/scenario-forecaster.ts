@@ -7,8 +7,8 @@
  * transcript, and persona critiques — and emits 3–5 named, probability-
  * weighted outcome scenarios for the ticker over the trade window.
  *
- * `agentType: "primary"` so the structured `TxStruct` card renders in the
- * transcript.
+ * `itemVisibility: { client: true, history: true }` so the structured
+ * `TxStruct` card renders in the transcript.
  *
  * The output schema lives inline here because only this generator emits the
  * shape; the Phase 5 writer imports the type back to project the commit.
@@ -61,7 +61,7 @@ export type ScenarioForecastOutput = z.infer<typeof scenarioForecastOutputSchema
 
 export const scenarioForecasterGenerator = generator({
   name: "scenario-forecaster-generator",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   agentName: PHASE_5_MEMO_KEYS.scenarioForecast.agentName,
   uses: [
     tradingDesk.presets({

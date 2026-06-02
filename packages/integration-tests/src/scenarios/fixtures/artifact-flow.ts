@@ -81,7 +81,7 @@ const builderGenerator = generator({
   outputSchema: z.string(),
   tools: [writeArtifact],
   resources: artifactResources,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   maxIterations: 4
 });
 

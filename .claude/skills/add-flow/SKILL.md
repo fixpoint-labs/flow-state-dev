@@ -100,7 +100,7 @@ const chatGenerator = generator({
   inputSchema: chatInputSchema,
   history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
 });
 
 // Generator `prompt` accepts arrays for composition (PromptSlot):

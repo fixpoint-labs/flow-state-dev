@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const composerOutputSchema = z.object({
@@ -20,7 +20,7 @@ export interface ComposerConfig<
    * graph edges only. Set to `"primary"` to surface it to the user, or
    * `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -49,7 +49,7 @@ export function composer<
     name: config.name,
     model: config.model ?? "intent/synthesize",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       "You are a composition assistant.",
       "Assemble a coherent artifact from provided parts.",

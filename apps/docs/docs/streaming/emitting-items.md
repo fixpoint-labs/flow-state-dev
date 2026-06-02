@@ -23,16 +23,16 @@ Most of the time you won't call `emitMessage()` directly — generators handle m
 
 ### Stamping identity on handler emits
 
-Handler-emitted messages default to agent-equivalent visibility (on the client, in conversation history). To mark a message as observability-only (devtool visible, hidden from user and LLM) or tie it to a sub-agent identity, pass `agentType` / `agentName`:
+Handler-emitted messages default to full visibility (on the client, in conversation history). To mark a message as observability-only (devtool visible, hidden from user and LLM) or tie it to a sub-agent identity, pass `itemVisibility` / `agentName`:
 
 ```ts
 ctx.emitMessage("Debug: classifier chose route A", {
-  agentType: "trace",
+  itemVisibility: { client: false, history: false },
   agentName: "classifier",
 });
 
 ctx.emitMessage("Background audit complete.", {
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: "auditor",
 });
 ```
@@ -171,7 +171,7 @@ A few pitfalls:
 - **Keys must be stable.** If a key changes between emissions for the same logical entity (e.g. you regenerate a UUID per call), the renderer treats it as a new entity and remounts. Use deterministic identity — a task id, a row primary key, a content hash.
 - **`key` is logical identity, not transport.** It's not the SSE `id:` field used for resume. The two are independent.
 - **Replay correctness.** Only `(transient: false, key: present)` items can drop intermediate snapshots safely. If a consumer needs every intermediate value (a log of state transitions, an audit trail), use append-only.
-- **`agentType: "trace"` filters items regardless of `transient`.** The matrix above describes persistence. Items with `agentType: "trace"` are filtered out for clients via `resolveItemVisibility`, even if non-transient. Persistence and visibility are separate concerns.
+- **Trace item types are filtered regardless of `transient`.** The matrix above describes persistence. Items whose `item.type` resolves to `itemVisibility: { client: false, history: false }` (e.g. `block_trace`, `router_decision`, `state_snapshot`) are filtered out for clients via `resolveItemVisibility`, even if non-transient. Persistence and visibility are separate concerns.
 
 The substrate's task-board uses keyed snapshots for both per-task lifecycle and board-level status. The reactive-blackboard uses them for entry append-but-update:
 
@@ -262,7 +262,7 @@ ctx.response.emit({
 });
 ```
 
-The patch is a shallow top-level merge — each key in `patch` replaces the existing value at that key on the tracked item. Nested fields require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped server-side and never apply.
+The patch is a shallow top-level merge — each key in `patch` replaces the existing value at that key on the tracked item. Nested fields require re-supplying the full nested object. Identity-invariant keys (`id`, `type`, `provenance`, `itemVisibility`, `transient`) are stripped server-side and never apply.
 
 Prefer this over re-emitting `item.added` + `item.done` for the same id when only a few fields change. Consumers see fewer flicker frames and the wire stays compact. Updates after `item.done` apply normally; updates referencing an unknown `itemId` are dropped with a debug event.
 

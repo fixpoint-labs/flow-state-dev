@@ -31,7 +31,7 @@ import type {
   DefinedResource,
 } from "@flow-state-dev/core/types";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   InstructionsSlot,
   UsesSlot,
@@ -132,11 +132,11 @@ export interface RoutedSpecialistsConfig<
   /** Capabilities to install on the default blocks (controller, synthesizer). */
   uses?: UsesSlot;
 
-  /** Agent type for the default controller. Default: `"sub"`. */
-  controllerAgentType?: AgentType;
+  /** Item visibility for the default controller. Default: `{ client: true, history: false }`. */
+  controllerVisibility?: ItemVisibility;
 
-  /** Agent type for the default synthesizer. Default: `"primary"`. */
-  synthesizerAgentType?: AgentType;
+  /** Item visibility for the default synthesizer. Default: `{ client: true, history: true }`. */
+  synthesizerVisibility?: ItemVisibility;
 
   /**
    * Final synthesis block — receives `{ workspace, iterations, history }`
@@ -169,7 +169,7 @@ function buildDefaultController(config: {
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }) {
   return generator({
     name: `${config.name}-controller`,
@@ -177,7 +177,7 @@ function buildDefaultController(config: {
     outputSchema: controllerOutputSchema,
     resources: { workspace: config.workspace },
     sequencerStateSchema: routedSpecialistsControlSchema,
-    agentType: config.agentType ?? "sub",
+    itemVisibility: config.itemVisibility ?? { client: true, history: false },
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
     prompt: async (_input, ctx) => {
@@ -257,7 +257,7 @@ function buildDefaultSynthesizer(config: {
   uses?: UsesSlot;
   outputSchema?: ZodTypeAny;
   instructions?: InstructionsSlot;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }) {
   const basePrompt = [
     "You are a synthesis assistant.",
@@ -270,7 +270,7 @@ function buildDefaultSynthesizer(config: {
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     resources: { workspace: config.workspace },
-    agentType: config.agentType ?? "primary",
+    itemVisibility: config.itemVisibility ?? { client: true, history: true },
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
@@ -362,7 +362,7 @@ export function routedSpecialists<
       context: config.context,
       uses: config.uses,
       instructions: config.instructions,
-      agentType: config.controllerAgentType,
+      itemVisibility: config.controllerVisibility,
     });
 
   // 3. RecordIteration: creates a Task in the collection capturing this
@@ -503,7 +503,7 @@ export function routedSpecialists<
           uses: config.uses,
           outputSchema: config.outputSchema,
           instructions: config.instructions,
-          agentType: config.synthesizerAgentType,
+          itemVisibility: config.synthesizerVisibility,
         });
 
   // 9. Pipeline.

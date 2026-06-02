@@ -16,9 +16,10 @@
  * + `phase2DebateFull` are the cost-preset-gated variants that render
  * empty when `costPreset !== "full"`.
  *
- * `agentType: "sub"` — per the design, P4 personas emit speak rows only
- * (no structured-output card in the transcript). The memo on the right
- * pane is the persona's structured artifact.
+ * `itemVisibility: { client: true, history: false }` — per the design, P4
+ * personas emit speak rows only (no structured-output card in the
+ * transcript). The memo on the right pane is the persona's structured
+ * artifact.
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
@@ -55,7 +56,7 @@ const tradingMemos = (reasoning: boolean) => [
 
 export const aggressiveRiskGenerator = generator({
   name: "aggressive-risk-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_4_MEMO_KEYS.aggressive.agentName,
   uses: tradingMemos(false),
   ...definePromptFile(aggressivePrompt),
@@ -65,7 +66,7 @@ export const aggressiveRiskGenerator = generator({
 
 export const conservativeRiskGenerator = generator({
   name: "conservative-risk-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_4_MEMO_KEYS.conservative.agentName,
   uses: tradingMemos(false),
   context: {
@@ -85,7 +86,7 @@ export const conservativeRiskGenerator = generator({
 // array stays default and only this persona gets the upgrade.
 export const neutralRiskGenerator = generator({
   name: "neutral-risk-generator",
-  agentType: "sub",
+  itemVisibility: { client: true, history: false },
   agentName: PHASE_4_MEMO_KEYS.neutral.agentName,
   uses: tradingMemos(true),
   context: {

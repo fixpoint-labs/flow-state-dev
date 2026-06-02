@@ -47,7 +47,7 @@ Both paths can coexist. See [Activation paths](./activation) for the full breakd
 A skill that has been matched runs in one of three modes, declared in its frontmatter:
 
 - **Inline** (default). The substituted skill body is injected into the parent generator's system prompt on the next step. The conversation continues in the parent context with the parent's tools.
-- **Fork.** Activation spawns a sub-agent — a framework `generator` with `agentType: "sub"` — running the skill body with a resolved subset of catalog tools. The sub-agent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history.
+- **Fork.** Activation spawns a sub-agent — a framework `generator` with `itemVisibility: { client: true, history: false }` — running the skill body with a resolved subset of catalog tools. The sub-agent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history.
 - **Pattern.** Activation materializes a task board (or any registered pattern) with named workers running in parallel. Use this when a skill is best handled by a small team rather than a single agent. See [Pattern skills](./pattern-skills) for the frontmatter shape and the worker catalog.
 
 Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist. Choose pattern when the work decomposes naturally into independent sub-tasks that can run concurrently.
@@ -72,7 +72,7 @@ export const skillsCap = createSkillsCapability({
   catalog: { search: search(), fetch: fetch(), crawl: crawl() },
   initialSkills,
   scope: "user",
-  agentType: "primary", // optional — see below
+  itemVisibility: { client: true, history: true }, // optional — see below
 });
 ```
 
@@ -89,7 +89,7 @@ import { generator } from "@flow-state-dev/core";
 
 export const assistant = generator({
   name: "assistant",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   model: "preset/medium",
   prompt: "You are a helpful assistant. Active skills override defaults.",
   uses: [skillsCap],
@@ -98,17 +98,17 @@ export const assistant = generator({
 
 The first time the collection is read (whether by `skillActivator` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
 
-## Main-agent scoping with `agentType`
+## Main-agent scoping with `itemVisibility`
 
 In multi-agent patterns like `planAndExecute`, `supervisor`, and `blackboard`, a coordinator delegates steps to workers. If the skills capability rides along into every worker, every step pays for skill context, and workers redundantly know about skills the coordinator is the one matching.
 
-The `agentType` option on `createSkillsCapability` is an allowlist:
+The `itemVisibility` option on `createSkillsCapability` is an allowlist:
 
 ```ts
-createSkillsCapability({ /* ... */, agentType: "primary" });
+createSkillsCapability({ /* ... */, itemVisibility: { client: true, history: true } });
 ```
 
-Set this way, the capability attaches only to generators with `agentType: "primary"` (or no `agentType` set, treated as primary). Workers tagged `agentType: "sub"` skip it. The default is undefined — the capability attaches everywhere.
+Set this way, the capability attaches only to generators with `itemVisibility: { client: true, history: true }` (or no `itemVisibility` set, treated as full visibility). Workers tagged `itemVisibility: { client: true, history: false }` skip it. The default is undefined — the capability attaches everywhere.
 
 ## Feature-flag gating
 

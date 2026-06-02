@@ -356,7 +356,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context: workerContext,
     ...(workerUses ? { uses: workerUses as any } : {}),
     search: true,
-    agentType: "sub",
+    itemVisibility: { client: true, history: false },
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
@@ -439,7 +439,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       context: workerContext,
       history: config.history,
       search: true,
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
         const state = ctx.resources.workspace.state;
@@ -697,7 +697,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     history: config.history,
     search: true,
     prompt: [instructions, rbBasePrompt.join("\n")],
-    agentType: "primary",
+    itemVisibility: { client: true, history: true },
     activeStatusMessage: "Synthesizing all of the findings...",
     user: (_input: any, ctx: any) => {
       const state = ctx.resources.eventedActors.state as {

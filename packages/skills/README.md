@@ -7,7 +7,7 @@ Runtime implementation of the Skills System. Skills are user-modifiable folders 
 A matched skill runs in one of three modes:
 
 - **`inline`** (default) — the substituted body is injected into the parent generator's system prompt on the next step.
-- **`fork`** — activation spawns a sub-agent (a framework `generator` with `agentType: "sub"`) running the body with a resolved subset of catalog tools.
+- **`fork`** — activation spawns a sub-agent (a framework `generator` with `itemVisibility: { client: true, history: false }`) running the body with a resolved subset of catalog tools.
 - **`pattern`** — activation materializes a multi-agent pattern (task board, supervisor, etc.) with workers declared in frontmatter. See [Pattern skills](https://flow-state.dev/docs/skills/pattern-skills).
 
 ## Quick start
@@ -38,7 +38,7 @@ Attach the capability to any generator via `uses: [skillsCap]`.
 | `initialSkills` | Bundled defaults seeded on first runSkill call. |
 | `scope` | Resource scope (`"org"`, `"user"`, `"session"`). Default `"org"`. |
 | `forkModelId` | Override the default model used by fork-mode sub-agents. |
-| `agentType` | Restrict the capability to blocks with a matching agent type. |
+| `itemVisibility` | Restrict the capability to blocks with a matching item visibility. |
 | `patternRegistry` | Enables pattern skills. Pattern factories from `@flow-state-dev/patterns` plug in here. |
 | `blockRegistry` | Optional registry for `block-ref:` workers in pattern skills. |
 | `taskTools` | Default `true` when `patternRegistry` is set. Pass `false` to skip composing the runtime mutation surface. |

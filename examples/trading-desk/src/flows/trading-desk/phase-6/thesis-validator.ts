@@ -8,9 +8,9 @@
  * analyst memos on the `full` preset, and the user's thesis via the
  * `userThesis` preset — the only generator in the flow that opts into it.
  *
- * `agentType: "primary"` so the structured `TxStruct` card renders in the
- * transcript (the navigator's `PRIMARY_STRUCT_AGENTS` set includes
- * `thesisValidator`).
+ * `itemVisibility: { client: true, history: true }` so the structured
+ * `TxStruct` card renders in the transcript (the navigator's
+ * `PRIMARY_STRUCT_AGENTS` set includes `thesisValidator`).
  *
  * The output schema lives inline here because only this generator emits the
  * shape; the Phase 6 writer imports the type back to project the commit. The
@@ -75,7 +75,7 @@ export type ThesisAlignmentOutput = z.infer<typeof thesisAlignmentOutputSchema>;
 
 export const thesisValidatorGenerator = generator({
   name: "thesis-validator-generator",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   agentName: PHASE_6_MEMO_KEYS.thesisAlignment.agentName,
   uses: [
     tradingDesk.presets({

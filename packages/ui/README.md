@@ -130,7 +130,7 @@ import { generativeUI } from "@flow-state-dev/ui/generative";
 
 const tripGenerator = generator({
   name: "trip-concierge",
-  agentType: "primary",
+  itemVisibility: { client: true, history: true },
   prompt: TRIP_CONCIERGE_PROMPT,
   tools: [...generativeUI.tools(), webSearch],
 });

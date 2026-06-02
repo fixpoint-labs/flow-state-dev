@@ -46,7 +46,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "ref-streaming",
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "mock-stream",
       prompt: "say hi",
     });
@@ -75,10 +75,10 @@ describe("FIX-480 generator block_output ref-to-message", () => {
     });
   });
 
-  it("does not emit a ref when agentType is undefined (no message emitted)", async () => {
+  it("does not emit a ref when itemVisibility is undefined (no message emitted)", async () => {
     const block = generator({
       name: "ref-streaming-no-identity",
-      // No agentType and no tools — the runtime takes the non-streaming
+      // No itemVisibility and no tools — the runtime takes the non-streaming
       // path and skips message emission entirely, so there is nothing to
       // ref. Returns the model.generate() text directly.
       model: "mock-stream",
@@ -99,7 +99,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
   it("does not emit a ref for object-output generators", async () => {
     const block = generator({
       name: "ref-streaming-object",
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "mock-stream",
       outputSchema: z.object({ result: z.string() }),
       prompt: "say hi",

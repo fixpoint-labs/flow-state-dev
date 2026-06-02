@@ -80,7 +80,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
   it("root streaming generator: block_output is a ref pointing at the emitted MessageItem", async () => {
     const gen = generator({
       name: "stream-gen",
-      agentType: "primary",
+      itemVisibility: { client: true, history: true },
       model: "mock-stream",
       prompt: "hi",
     });
@@ -119,7 +119,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
   it("nested streaming generator inside a sequencer: block_output is still a ref", async () => {
     const gen = generator({
       name: "nested-stream-gen",
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "mock-stream",
       prompt: "hi",
     });
@@ -185,7 +185,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     // plain string regardless of the block_output emission shape.
     const gen = generator({
       name: "worker-gen",
-      agentType: "sub",
+      itemVisibility: { client: true, history: false },
       model: "mock-stream",
       prompt: "hi",
     });

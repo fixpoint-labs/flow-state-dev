@@ -13,7 +13,7 @@ import type { ModelResolver } from "./model";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
-  AgentType,
+  ItemVisibility,
   BlockValueInternal,
   StructureShape,
   BlockTraceItem,
@@ -294,12 +294,12 @@ export interface BlockContext<
    */
   emitMessage(
     text: string,
-    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
   ): void;
   /** @deprecated Use `ctx.emit.message(...)` instead. Removed in next major. */
   emitMessage(
     content: Content[],
-    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
   ): void;
   /**
    * @deprecated Use `ctx.emit.component(...)` instead. Removed in next major.
@@ -321,7 +321,7 @@ export interface BlockContext<
     options?: {
       /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
       key?: string;
-      agentType?: AgentType;
+      itemVisibility?: ItemVisibility;
       agentName?: string;
       transient?: boolean;
     }
@@ -870,7 +870,7 @@ export interface BlockDefinition<
    * deterministic prefetch (e.g. inside a `.parallel({...})` step) and the
    * transcript should keep showing it as a tool pill.
    *
-   * Attribution (`agentType`, `agentName`) is supplied via opts; when omitted
+   * Attribution (`itemVisibility`, `agentName`) is supplied via opts; when omitted
    * the fields are not stamped on the emitted item.
    */
   asTool(
@@ -881,7 +881,7 @@ export interface BlockDefinition<
 /** Options for {@link BlockDefinition.asTool}. */
 export type AsToolOpts = {
   /** Stamped on the emitted `tool_output`; controls grouping under the parent agent's card. */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
   agentName?: string;
 };
 

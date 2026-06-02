@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
-import type { AgentType } from "../items/types";
+import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
 
 export const analyzerFindingSchema = z.object({
@@ -30,7 +30,7 @@ export interface AnalyzerConfig<
    * graph edges only. Set to `"primary"` to surface findings to the user, or
    * `"trace"` for observability-only runs.
    */
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 function toUserContent(input: unknown): string {
@@ -54,7 +54,7 @@ export function analyzer<
     name: config.name,
     model: config.model ?? "intent/utility",
     outputSchema,
-    agentType: config.agentType,
+    itemVisibility: config.itemVisibility,
     prompt: [
       "You are an analysis assistant.",
       "Evaluate the provided artifact against each criterion and return structured findings.",

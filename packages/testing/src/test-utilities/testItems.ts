@@ -1,4 +1,5 @@
-import type { AgentType, BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
@@ -64,8 +65,13 @@ export function testItems(items: OutputItem[]) {
     byAgent(agentName: string): OutputItem[] {
       return allItems.filter((item) => item.agentName === agentName);
     },
-    byAgentType(agentType: AgentType): OutputItem[] {
-      return allItems.filter((item) => item.agentType === agentType);
+    byVisibility(predicate: Partial<ItemVisibility>): OutputItem[] {
+      return allItems.filter((item) => {
+        const vis = resolveItemVisibility(item);
+        if (predicate.client !== undefined && vis.client !== predicate.client) return false;
+        if (predicate.history !== undefined && vis.history !== predicate.history) return false;
+        return true;
+      });
     }
   };
 }

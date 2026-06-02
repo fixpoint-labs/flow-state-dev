@@ -13,7 +13,7 @@ The SSE stream carries two kinds of items. Production items are what your user s
 | Production (default) | `message`, `reasoning`, `tool_output`, `component`, `container`, `source`, `status`, `error`, `state_change`, `resource_change` | Every client. |
 | Trace (opt-in) | `block_trace`, `router_decision`, `state_snapshot` | DevTool, opted in via `?include=trace`. |
 
-Trace items are stamped with `agentType: "trace"` at emit time. The visibility resolver short-circuits anything stamped that way to `{ client: false, history: false }`.
+Trace items resolve to `itemVisibility: { client: false, history: false }` based on their `item.type` (e.g. `block_trace`, `router_decision`, `state_snapshot`). The visibility resolver recognizes these trace types and short-circuits them to hidden.
 
 `block_trace` follows a three-event lifecycle: `item.added` (status `in_progress`, input known), zero or more `item.updated` patches (connector input, generator bundle, model usage), and `item.done` (terminal status, output written). When a block is invoked as a tool, both `block_trace` and `tool_output` are emitted — the called block's `block_trace.output` is a `ref` to the `tool_output` item, so the result is stored once and surfaced in two places. See [Items](./items#trace-items) for the field-level shape.
 
@@ -39,7 +39,7 @@ ctx.emit.trace.routerDecision(item);  // router selection
 ctx.emit.trace.stateSnapshot(item);   // sequencer state at step boundary
 ```
 
-User code rarely calls these directly. They exist so the framework's auto-emission sites flow through one path that stamps `agentType: "trace"` and persists to the trace store in one shot.
+User code rarely calls these directly. They exist so the framework's auto-emission sites flow through one path that resolves trace visibility by `item.type` and persists to the trace store in one shot.
 
 ## Trace retention
 

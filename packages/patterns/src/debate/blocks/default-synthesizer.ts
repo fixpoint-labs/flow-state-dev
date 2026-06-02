@@ -5,7 +5,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import type {
-  AgentType,
+  ItemVisibility,
   GeneratorSlot,
   ToolsSlot,
   UsesSlot,
@@ -25,7 +25,7 @@ export interface CreateSynthesizeOptions {
   tools?: ToolsSlot;
   instructions?: SynthesizerInstructions;
   model?: string;
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 /** Build the default debate synthesizer. */
@@ -76,7 +76,7 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
     ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
-    agentType: opts.agentType ?? "primary",
+    itemVisibility: opts.itemVisibility ?? { client: true, history: true },
     prompt: [opts.instructions, buildBasePrompt],
     user: (input: unknown) => {
       const data = input as DebateRawOutput;

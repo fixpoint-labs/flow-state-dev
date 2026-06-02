@@ -9,7 +9,8 @@
 import type { BlockKind, DeclaredResources } from "../../types/block";
 import type { CapabilityRef, UsesEntry } from "../../capability/types";
 import type { MergedCapabilitySurface, DynamicUsesResolver } from "../../capability/merge";
-import type { AgentType } from "../../items/types";
+import type { ItemVisibility } from "../../items/types";
+import { deepEqual } from "../../helpers/deep-equal";
 import {
   flattenCapabilities,
   mergeCapabilities,
@@ -18,30 +19,32 @@ import {
 } from "../../capability/merge";
 import { extractDeclaredResources } from "./build-block";
 
+const PRIMARY_VISIBILITY: ItemVisibility = { client: true, history: true };
+
 interface HasResources {
   resources?: Record<string, any>;
   uses?: readonly UsesEntry[];
-  agentType?: AgentType;
+  itemVisibility?: ItemVisibility;
 }
 
 /**
- * Test whether a capability should attach to a block with the given agentType.
- * Unscoped caps (no `agentType`) always match. Scoped caps must have the
- * block's effective agent type in their allowlist. A block with no agentType
- * is treated as `"primary"` (the safe default — blocks not tagged as workers
- * are assumed to be the main agent).
+ * Test whether a capability should attach to a block with the given itemVisibility.
+ * Unscoped caps (no `itemVisibility`) always match. Scoped caps must have the
+ * block's effective visibility in their allowlist. A block with no itemVisibility
+ * is treated as `{ client: true, history: true }` (the safe default — blocks
+ * not tagged as workers are assumed to be the main agent).
  *
  * Exported so runtime dynamic-capability resolvers in generator.ts can apply
  * the same rule to caps returned by dynamic `uses` functions.
  */
 export function capabilityMatchesAgent(
   cap: CapabilityRef,
-  blockAgentType: AgentType | undefined,
+  blockItemVisibility: ItemVisibility | undefined,
 ): boolean {
-  if (cap.agentType === undefined) return true;
-  const effective: AgentType = blockAgentType ?? "primary";
-  const allowed = Array.isArray(cap.agentType) ? cap.agentType : [cap.agentType];
-  return allowed.includes(effective);
+  if (cap.itemVisibility === undefined) return true;
+  const effective: ItemVisibility = blockItemVisibility ?? PRIMARY_VISIBILITY;
+  const allowed = Array.isArray(cap.itemVisibility) ? cap.itemVisibility : [cap.itemVisibility];
+  return allowed.some((v) => deepEqual(v, effective));
 }
 
 export interface ResolveResult {
@@ -101,14 +104,11 @@ export function resolveCapabilities(
   const { staticRefs: flattened, dynamicResolvers: nestedDynamic } =
     flattenCapabilities(topStaticRefs, { collectDynamic: true });
 
-  // Capability-level agentType filter: drop caps whose allowlist excludes
-  // the consuming block's agentType. Each cap is filtered independently
-  // against the block; filtering is not transitive through `uses` trees
-  // (a capability that depends on a "primary"-only cap still flattens it,
-  // but the nested ref is kept or dropped based on its own agentType and
-  // the block's, not the parent's).
+  // Capability-level itemVisibility filter: drop caps whose allowlist
+  // excludes the consuming block's itemVisibility. Each cap is filtered
+  // independently; filtering is not transitive through `uses` trees.
   const allDynamic = [...topDynamicFns, ...nestedDynamic];
-  const scoped = flattened.filter((cap) => capabilityMatchesAgent(cap, config.agentType));
+  const scoped = flattened.filter((cap) => capabilityMatchesAgent(cap, config.itemVisibility));
 
   const merged = mergeCapabilities(scoped, blockKind);
   const capResources = extractMergedResources(merged);
