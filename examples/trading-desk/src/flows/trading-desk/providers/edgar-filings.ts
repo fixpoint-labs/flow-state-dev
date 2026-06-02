@@ -122,8 +122,8 @@ const RISK_FACTORS_PATTERNS = [
   /Item\s+1A[\.\s]*Risk\s+Factors/i,
 ];
 const MDNA_PATTERNS = [
-  /Item\s+7[\.\s]*Management['']?s\s+Discussion/i,
-  /Item\s+2[\.\s]*Management['']?s\s+Discussion/i,
+  /Item\s+7[\.\s]*Management'?s\s+Discussion/i,
+  /Item\s+2[\.\s]*Management'?s\s+Discussion/i,
 ];
 
 /** Fetch the latest periodic filing and extract key sections. */

@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { commitMemo } from "../src/flows/trading-desk/phase-1/writer";
-import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import { emptyPayload, skippedDiscoveryPayload } from "../src/flows/trading-desk/phase-1/tools/empty-payloads";

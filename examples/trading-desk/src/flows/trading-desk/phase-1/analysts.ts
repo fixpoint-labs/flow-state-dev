@@ -346,17 +346,19 @@ export const quantAnalyst = defineAnalyst({
 // estimates, targets). The primary-document read the desk didn't have.
 // ---------------------------------------------------------------------------
 
+const disclosureInputSchema = z.object({
+  filings: toolOutputSchemas.get_sec_filings,
+  estimates: toolOutputSchemas.get_analyst_estimates,
+  transcript: toolOutputSchemas.get_earnings_transcript,
+  disclosureContext: toolOutputSchemas.discover_disclosure_context,
+});
+
 const disclosureGenerator = generator({
   name: "disclosure-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.disclosure.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
-  inputSchema: z.object({
-    filings: toolOutputSchemas.get_sec_filings,
-    estimates: toolOutputSchemas.get_analyst_estimates,
-    transcript: toolOutputSchemas.get_earnings_transcript,
-    disclosureContext: toolOutputSchemas.discover_disclosure_context,
-  }),
+  inputSchema: disclosureInputSchema,
   context: { data: (input) => asDataBlock(input) },
   ...definePromptFile(disclosurePrompt),
   outputSchema: thesisOutputSchema,
