@@ -1,7 +1,8 @@
 import type { Content } from "./content";
 import type { OutputItem } from "./types";
+import type { RequestStatus } from "../types/request";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
+export type { RequestStatus };
 
 export type RequestEventBase = {
   stream: "request";

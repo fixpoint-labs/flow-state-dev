@@ -9,7 +9,7 @@
  * and resources survive subsequent runs.
  */
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/server";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import type { TestFlowOptions, TestFlowResult } from "./types";
@@ -55,9 +55,12 @@ function toJsonObjectRecord(
 }
 
 function normalizeStatus(
-  value: "in_progress" | "completed" | "failed" | "incomplete" | "interrupted" | "aborted" | undefined
-): "completed" | "failed" | "incomplete" | "interrupted" | "aborted" {
-  if (value === "completed" || value === "failed" || value === "incomplete" || value === "interrupted" || value === "aborted") {
+  value: RequestStatus | undefined
+): "completed" | "failed" | "incomplete" | "interrupted" | "aborted" | "suspended" {
+  if (
+    value === "completed" || value === "failed" || value === "incomplete" ||
+    value === "interrupted" || value === "aborted" || value === "suspended"
+  ) {
     return value;
   }
 

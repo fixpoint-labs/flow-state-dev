@@ -23,6 +23,8 @@ export {
   createInMemoryStores,
   createInMemoryTraceStore,
   createInMemoryUserStore,
+  createInMemorySuspensionStore,
+  createInMemoryLeaseStore,
   createScopeStateOps,
   createStateContainer,
   filesystemStores,
@@ -51,6 +53,7 @@ export type {
   CheckpointStore,
   ContentScopeType,
   ContentStore,
+  LeaseStore,
   ResourceStateStore,
   ExpectedVersion,
   OrgListOptions,
@@ -67,6 +70,7 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  SuspensionStore,
   SubscribeToEventsOptions,
   TraceEvent,
   TraceStore,
@@ -165,6 +169,9 @@ export {
 
 export { createBindingCache, type CachedBindingProvider } from "./bindings";
 export * from "./middleware";
+
+export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
+export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
 
 export const serverPackageMarker = "@flow-state-dev/server";
 

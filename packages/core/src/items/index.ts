@@ -37,6 +37,7 @@ export type {
   StateSnapshotItem,
   SourceItem,
   StatusItem,
+  SuspensionItem,
   StructureShape,
   ToolOutputItem
 } from "./types";

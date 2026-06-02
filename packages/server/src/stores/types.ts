@@ -1,7 +1,9 @@
 import type {
   JournalEntry,
   RequestStatus,
-  SequencerCheckpoint
+  SequencerCheckpoint,
+  SuspensionFilter,
+  SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
@@ -11,6 +13,7 @@ import type {
   RouterDecisionItem,
   StateSnapshotItem
 } from "@flow-state-dev/core/items";
+import type { Lease, LeaseOptions } from "../durability/types";
 
 export type { RequestStatus };
 
@@ -542,6 +545,53 @@ export interface TraceStore {
   listRequestIds(): Promise<string[]>;
 }
 
+/**
+ * Suspension record persistence (FIX-140). Stores suspension metadata
+ * created by ctx.suspend() for later resolution via the resume endpoint.
+ */
+export interface SuspensionStore {
+  /** Create or update a suspension record. */
+  set(record: SuspensionRecord): Promise<void>;
+
+  /** Get a suspension by (requestId, suspensionId). */
+  get(
+    requestId: string,
+    suspensionId: string
+  ): Promise<SuspensionRecord | null>;
+
+  /** List suspensions matching a filter. */
+  list(filter?: SuspensionFilter): Promise<SuspensionRecord[]>;
+
+  /** Delete all suspensions for a request. */
+  deleteForRequest(requestId: string): Promise<void>;
+}
+
+/**
+ * Lease persistence for preventing concurrent resume (FIX-140). Each
+ * lease is keyed by requestId; only one active (non-expired) lease per
+ * request at a time.
+ */
+export interface LeaseStore {
+  /**
+   * Attempt to acquire a lease. Returns the lease on success, null if
+   * the request already has an active (non-expired) lease held by
+   * another holder.
+   */
+  acquire(
+    requestId: string,
+    options: LeaseOptions
+  ): Promise<Lease | null>;
+
+  /** Release a lease by (requestId, leaseId). */
+  release(requestId: string, leaseId: string): Promise<void>;
+
+  /** Get the current lease for a request, if any. */
+  get(requestId: string): Promise<Lease | null>;
+
+  /** Remove expired leases. Called periodically or on acquire. */
+  pruneExpired(): Promise<void>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
@@ -552,6 +602,8 @@ export type StoreRegistry = {
   resourceState: ResourceStateStore;
   checkpoints: CheckpointStore;
   traces: TraceStore;
+  suspensions: SuspensionStore;
+  leases: LeaseStore;
 };
 
 /**

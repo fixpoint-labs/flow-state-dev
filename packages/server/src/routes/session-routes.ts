@@ -1,7 +1,7 @@
 /**
  * Session CRUD route handlers: create, get, list, delete.
  */
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
@@ -207,7 +207,7 @@ export async function handleListSessionRequests(
   const requests = await ctx.stores.request.list({
     sessionId: route.sessionId,
     status: getString(url.searchParams.get("status")) as
-      | "in_progress" | "completed" | "failed" | "incomplete" | "aborted"
+      | RequestStatus
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))

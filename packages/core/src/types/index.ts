@@ -190,6 +190,14 @@ export type { BindingCacheOptions, BindingProvider } from "./binding";
 
 export type { RequestStatus, RequestStatusSnapshot } from "./request";
 
+export type {
+  ResumeContext,
+  SuspensionFilter,
+  SuspensionReason,
+  SuspensionRecord,
+  SuspensionStatus
+} from "./suspension";
+
 export type { SequencerCheckpoint } from "./checkpoints";
 
 export type { Middleware, MiddlewareContext, MiddlewareFn } from "./middleware";

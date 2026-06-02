@@ -1008,7 +1008,8 @@ export function useSession(
             event.status === "failed" ||
             event.status === "incomplete" ||
             event.status === "interrupted" ||
-            event.status === "aborted"
+            event.status === "aborted" ||
+            event.status === "suspended"
           ) {
             flushContentDeltas();
             setIsStreaming(false);

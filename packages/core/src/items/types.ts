@@ -1,5 +1,6 @@
 import type { Content } from "./content";
 import type { ModelIdentity } from "../types/model";
+import type { SuspensionReason, SuspensionStatus } from "../types/suspension";
 
 export type { ModelIdentity };
 
@@ -513,6 +514,23 @@ export type StateSnapshotItem = OutputItemBase & {
   terminal?: boolean;
 };
 
+/**
+ * Emitted when a block calls ctx.suspend() in a durable action. Carries
+ * the suspension metadata so clients can render a resume UI. Visibility:
+ * client=true, history=true (visible to client, LLM context, and devtool).
+ */
+export type SuspensionItem = OutputItemBase & {
+  type: "suspension";
+  suspensionId: string;
+  status: SuspensionStatus;
+  reason: SuspensionReason;
+  message: string;
+  data?: Record<string, unknown>;
+  resumeSchema?: Record<string, unknown>;
+  render?: { component: string; props?: Record<string, unknown> };
+  resumeData?: unknown;
+};
+
 export type OutputItem =
   | MessageItem
   | ReasoningItem
@@ -523,4 +541,5 @@ export type OutputItem =
   | StatusItem
   | ErrorItem
   | StateChangeItem
-  | ResourceChangeItem;
+  | ResourceChangeItem
+  | SuspensionItem;

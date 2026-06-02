@@ -15,3 +15,9 @@ export type {
   SequencerSchemaMismatchErrorDetails
 } from "./sequencer-output-schema-error";
 export { rootCause, isAbortLike } from "./abort";
+export {
+  SuspensionError,
+  SuspensionRejectedError,
+  SuspensionTimeoutError
+} from "./suspension-error";
+export type { SuspendOptions } from "./suspension-error";
