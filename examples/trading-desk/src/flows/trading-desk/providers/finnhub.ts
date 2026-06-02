@@ -36,6 +36,26 @@ function rangeToLookbackDays(range: string | undefined): number {
   }
 }
 
+/**
+ * Drop Finnhub's opaque news-redirect URLs (`finnhub.io/api/news?id=…`).
+ * These are undocumented redirectors that fail server-side; the canonical
+ * publisher URL is not recoverable from the payload. Returns `undefined`
+ * so the item is kept (headline/summary still inform the memo) but the
+ * dead link is removed. See FIX-644.
+ */
+function canonicalNewsUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  const host = parsed.hostname.replace(/^www\./, "");
+  if (host === "finnhub.io" && parsed.pathname === "/api/news") return undefined;
+  return url;
+}
+
 async function fetchJson<T>(
   path: string,
   params: Record<string, string | number>,
@@ -215,7 +235,7 @@ export async function fetchFinnhubCompanyNews(
     date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
     headline: n.headline,
     source: n.source,
-    url: n.url,
+    url: canonicalNewsUrl(n.url),
     category: n.category,
     summary: n.summary ?? null,
   }));
@@ -249,7 +269,7 @@ export async function fetchFinnhubMarketNews(
     date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
     headline: n.headline,
     source: n.source,
-    url: n.url,
+    url: canonicalNewsUrl(n.url),
     category: n.category,
     summary: n.summary ?? null,
   }));
@@ -304,7 +324,7 @@ export async function fetchFinnhubMacroNews(
       date: new Date(n.datetime * 1000).toISOString().slice(0, 10),
       headline: n.headline,
       source: n.source,
-      url: n.url,
+      url: canonicalNewsUrl(n.url),
       category: n.category,
       summary: n.summary ?? null,
     }));
