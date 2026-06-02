@@ -419,6 +419,27 @@ Memory, filesystem, SQLite, and Postgres adapters all ship with first-class impl
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
+## DurabilityProvider
+
+`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume. Wire it onto `RuntimeConfig.durabilityProvider` to enable `ctx.suspend()` in durable actions.
+
+```ts
+import { createCheckpointDurabilityProvider } from "@flow-state-dev/server";
+
+const provider = createCheckpointDurabilityProvider({
+  checkpoints: stores.checkpoints,
+  suspensions: stores.suspensions,
+  leases: stores.leases
+});
+
+// Pass to runtime config
+{ durabilityProvider: provider }
+```
+
+The interface has 8 methods: `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, and `cleanup`. `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
+
+`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+
 ## Connection resilience
 
 The server runs three coordinated mechanisms so a dropped SSE connection doesn't leave a request running forever with no way to recover:

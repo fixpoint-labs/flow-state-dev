@@ -214,6 +214,7 @@ const sidebars: SidebarsConfig = {
         "advanced/resource-templates-markdown",
         "advanced/error-handling",
         "advanced/idempotency",
+        "advanced/durable-execution",
         "advanced/voice",
         "advanced/sequencer-side-chains",
         "advanced/custom-model-resolver",
