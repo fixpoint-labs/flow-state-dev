@@ -353,16 +353,20 @@ const disclosureInputSchema = z.object({
   disclosureContext: toolOutputSchemas.discover_disclosure_context,
 });
 
+// TS 5.7 hits its inference-depth limit on the 4 disclosure tool output
+// schemas combined with generator()'s 20+ generic params.  The config
+// cast is safe — defineAnalyst consumes an unparameterised BlockDefinition.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const disclosureGenerator = generator({
   name: "disclosure-analyst-generator",
   agentType: "sub",
   agentName: PHASE_1_MEMO_KEYS.disclosure.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
-  inputSchema: disclosureInputSchema as z.ZodTypeAny,
-  context: { data: (input) => asDataBlock(input) },
+  inputSchema: disclosureInputSchema,
+  context: { data: (input: unknown) => asDataBlock(input) },
   ...definePromptFile(disclosurePrompt),
   outputSchema: thesisOutputSchema,
-});
+} as any);
 
 export const disclosureAnalyst = defineAnalyst({
   shortName: "disclosure",
