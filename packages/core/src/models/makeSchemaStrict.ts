@@ -13,6 +13,12 @@
  * optionals — the framework handles the provider constraint transparently.
  */
 import { z, type ZodTypeAny } from "zod";
+import {
+  getZodTypeName,
+  getZodInnerType,
+  getZodArrayElement,
+  getZodObjectShape,
+} from "../helpers/zod-introspect";
 
 /**
  * Recursively unwraps ZodOptional, ZodDefault, and ZodEffects wrappers from a
@@ -24,29 +30,26 @@ import { z, type ZodTypeAny } from "zod";
  * strict-provider schema is safe.
  */
 function unwrapOptionalAndDefault(schema: ZodTypeAny): ZodTypeAny {
-  const typeName = (schema as any)._def?.typeName as string | undefined;
+  const typeName = getZodTypeName(schema);
 
   if (typeName === "ZodOptional" || typeName === "ZodDefault") {
-    return unwrapOptionalAndDefault((schema as any)._def.innerType);
+    return unwrapOptionalAndDefault(getZodInnerType(schema)!);
   }
 
   if (typeName === "ZodEffects") {
-    return unwrapOptionalAndDefault((schema as any)._def.schema);
+    return unwrapOptionalAndDefault(getZodInnerType(schema)!);
   }
 
   if (typeName === "ZodNullable") {
-    const inner = unwrapOptionalAndDefault((schema as any)._def.innerType);
-    return inner;
+    return unwrapOptionalAndDefault(getZodInnerType(schema)!);
   }
 
-  // Recurse into nested objects
   if (typeName === "ZodObject") {
     return makeSchemaStrict(schema);
   }
 
-  // Recurse into array element types
   if (typeName === "ZodArray") {
-    const elementType = (schema as any)._def.type as ZodTypeAny;
+    const elementType = getZodArrayElement(schema)!;
     const strictElement = unwrapOptionalAndDefault(elementType);
     if (strictElement !== elementType) {
       return z.array(strictElement);
@@ -66,19 +69,16 @@ function unwrapOptionalAndDefault(schema: ZodTypeAny): ZodTypeAny {
  * strings, enums, etc.
  */
 export function makeSchemaStrict(schema: ZodTypeAny): ZodTypeAny {
-  // Unwrap ZodEffects so `.superRefine()` at the root doesn't bypass the
-  // strict-mode transform. Runtime refinements still apply to the original
-  // schema during response validation — this copy is provider-only.
-  const rootTypeName = (schema as any)._def?.typeName as string | undefined;
+  const rootTypeName = getZodTypeName(schema);
   if (rootTypeName === "ZodEffects") {
-    return makeSchemaStrict((schema as any)._def.schema);
+    return makeSchemaStrict(getZodInnerType(schema)!);
   }
 
   if (rootTypeName !== "ZodObject") {
     return schema;
   }
 
-  const shape = (schema as any)._def.shape() as Record<string, ZodTypeAny>;
+  const shape = getZodObjectShape(schema)!;
   const newShape: Record<string, ZodTypeAny> = {};
 
   for (const [key, value] of Object.entries(shape)) {

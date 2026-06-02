@@ -2,6 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
+import { getZodTypeName } from "../helpers/zod-introspect";
 import type {
   BlockCacheableConfig,
   BlockConfig,
@@ -1426,11 +1427,7 @@ async function applyRepairPolicy<TInput, TOutput>(
 }
 
 function isTextOutputSchema(schema: ZodTypeAny): boolean {
-  // Detect z.string() — the default text output schema.
-  // ZodString has _def.typeName === "ZodString".
-  // Guard against non-Zod schemas (e.g. passthrough mocks) that lack _def.
-  const def = (schema as { _def?: { typeName?: string } })._def;
-  return def?.typeName === "ZodString";
+  return getZodTypeName(schema) === "ZodString";
 }
 
 function resolveGenerationCandidate(result: GeneratorModelResult): unknown {
