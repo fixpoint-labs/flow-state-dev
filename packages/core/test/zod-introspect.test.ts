@@ -13,6 +13,7 @@ import {
   compareZodSchemasStructurally,
 } from "../src/helpers/zod-introspect";
 import { execSync } from "child_process";
+import { existsSync } from "fs";
 import path from "path";
 
 // ---------------------------------------------------------------------------
@@ -237,6 +238,7 @@ describe("compareZodSchemasStructurally", () => {
 describe("_def access guard", () => {
   it("no raw _def access outside zod-introspect.ts (with documented exceptions)", () => {
     const coreSrc = path.resolve(__dirname, "../src");
+    expect(existsSync(coreSrc)).toBe(true);
     const result = execSync(
       `grep -rn '\\._def' "${coreSrc}" --include='*.ts'` +
       ` | grep -v 'zod-introspect.ts'` +
