@@ -309,7 +309,7 @@ describe("createInboundTransportHost", () => {
       ).rejects.toThrow(/Unknown flow/);
     });
 
-    it("rejects a non-HTTP source envelope for org-required flow", async () => {
+    it("throws OrgRequiredError for org-required flow when non-HTTP source provides no org", async () => {
       const { host } = buildHost({ withOrgFlow: true });
       await expect(
         host.validateDispatch({

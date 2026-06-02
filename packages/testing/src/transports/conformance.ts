@@ -64,6 +64,7 @@ export function createMockTransportHost(
     registry: minimalRegistry(),
     stores: minimalStores(),
     middleware: [],
+    async validateDispatch() {},
     dispatch(envelope) {
       dispatchCalls.push({ envelope });
       const requestId = envelope.requestId ?? `req_mock_${dispatchCalls.length}`;

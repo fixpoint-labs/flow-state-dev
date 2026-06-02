@@ -194,7 +194,8 @@ export interface InboundTransportHost {
    *
    * Throws `OrgRequiredError` when the flow requires an org-bound session
    * but no orgId is present on the envelope, the principal, or the stored
-   * session.
+   * session. Also throws a plain `Error` for an unregistered `flowKind`
+   * (same shape as `dispatch`).
    */
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
 
