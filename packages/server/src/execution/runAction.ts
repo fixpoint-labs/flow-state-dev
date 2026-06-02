@@ -1061,11 +1061,18 @@ export async function runActionInternal<
     // Persist the final event list (includes terminal status event)
     await options.stores.request.flushEvents(requestId);
 
-    // Release durability lease on ANY terminal state so the resume endpoint
-    // doesn't 409 until TTL expires when the resumed action errors.
     if (resumeOf !== undefined && options.runtimeConfig.durabilityProvider !== undefined) {
       try {
-        await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
+        if (terminalStatus === "completed") {
+          await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
+        } else {
+          // On failure/abort, only release the lease — preserve suspension
+          // records so the operator can retry via the resume endpoint.
+          const lease = await options.stores.leases.get(resumeOf);
+          if (lease !== null) {
+            await options.stores.leases.release(resumeOf, lease.leaseId);
+          }
+        }
       } catch (err) {
         logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
           requestId, resumeOf, error: String(err)
