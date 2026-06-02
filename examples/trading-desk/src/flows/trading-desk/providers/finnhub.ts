@@ -419,3 +419,62 @@ export async function fetchFinnhubShortInterest(
     settlementDate: latest.date ?? now.toISOString().slice(0, 10),
   };
 }
+
+/** Recommendation trends from Finnhub `/stock/recommendation` (free endpoint).
+ *  Returns the latest period's ratings distribution. Throws on any failure. */
+export async function fetchFinnhubRecommendations(
+  ticker: string,
+): Promise<{
+  period: string;
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+} | null> {
+  type Row = {
+    period?: string;
+    strongBuy?: number;
+    buy?: number;
+    hold?: number;
+    sell?: number;
+    strongSell?: number;
+  };
+  const data = await fetchJson<Row[]>("/stock/recommendation", { symbol: ticker });
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const latest = data[0];
+  return {
+    period: latest.period ?? "",
+    strongBuy: latest.strongBuy ?? 0,
+    buy: latest.buy ?? 0,
+    hold: latest.hold ?? 0,
+    sell: latest.sell ?? 0,
+    strongSell: latest.strongSell ?? 0,
+  };
+}
+
+/** Earnings surprises from Finnhub `/stock/earnings` (free endpoint).
+ *  Returns the last ~4 quarters of actual-vs-estimate with surprise %. */
+export async function fetchFinnhubEarningsSurprises(
+  ticker: string,
+): Promise<Array<{
+  period: string;
+  actual: number | null;
+  estimate: number | null;
+  surprisePct: number | null;
+}>> {
+  type Row = {
+    period?: string;
+    actual?: number;
+    estimate?: number;
+    surprisePercent?: number;
+  };
+  const data = await fetchJson<Row[]>("/stock/earnings", { symbol: ticker });
+  if (!Array.isArray(data)) return [];
+  return data.slice(0, 8).map((r) => ({
+    period: r.period ?? "",
+    actual: r.actual ?? null,
+    estimate: r.estimate ?? null,
+    surprisePct: r.surprisePercent ?? null,
+  }));
+}

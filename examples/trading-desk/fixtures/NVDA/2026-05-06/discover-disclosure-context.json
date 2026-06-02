@@ -1,0 +1,24 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "query": "NVDA SEC filing earnings call transcript guidance consensus estimate analyst rating",
+  "items": [
+    {
+      "id": "1",
+      "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001045810",
+      "title": "NVIDIA Corp SEC Filings",
+      "snippet": "Recent SEC filings for NVIDIA Corporation including 10-K annual reports, 10-Q quarterly reports, and 8-K current reports.",
+      "publisher": "sec.gov",
+      "provider": "tavily"
+    },
+    {
+      "id": "2",
+      "url": "https://seekingalpha.com/article/nvidia-q4-fy2026-earnings",
+      "title": "NVIDIA Q4 FY2026: Another Beat And Raise, Blackwell Ramp Accelerating",
+      "snippet": "NVIDIA reported Q4 FY2026 EPS of $0.89 vs consensus of $0.84, with revenue of $39.3B beating estimates of $38.1B. Guidance for Q1 FY2027 of $43B also exceeded Street expectations.",
+      "publisher": "seekingalpha.com",
+      "provider": "tavily"
+    }
+  ]
+}

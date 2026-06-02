@@ -271,6 +271,40 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     query: "",
     items: [],
   }),
+  get_sec_filings: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    recentFilings: [],
+    latestPeriodic: null,
+    redFlagProbes: [],
+  }),
+  get_analyst_estimates: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    ratingsDistribution: null,
+    earningsSurprises: [],
+    consensusEstimates: null,
+    priceTargets: null,
+    recentRatingActions: [],
+  }),
+  get_earnings_transcript: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    available: false,
+    callDate: null,
+    quarter: null,
+    content: null,
+  }),
+  discover_disclosure_context: (i) => ({
+    source: "unavailable",
+    ticker: i.ticker,
+    asOf: i.date,
+    query: "",
+    items: [],
+  }),
 };
 
 export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): ToolOutput<T> {
@@ -291,7 +325,8 @@ type DiscoveryTool =
   | "discover_profile_context"
   | "discover_market_context"
   | "discover_macro_context"
-  | "discover_quant_context";
+  | "discover_quant_context"
+  | "discover_disclosure_context";
 
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,

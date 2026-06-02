@@ -1,0 +1,9 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "available": true,
+  "callDate": "2026-02-26",
+  "quarter": "Q4 FY2026",
+  "content": "Jensen Huang, CEO: Thank you and good afternoon everyone. We delivered another record quarter with revenue of $39.3 billion, up 78% year-over-year. Data Center revenue reached $35.6 billion, reflecting strong demand across cloud service providers, enterprises, and sovereign AI initiatives. Our Blackwell architecture is in full production ramp and customer demand continues to exceed supply...\n\nColette Kress, CFO: For Q1 FY2027, we expect revenue of approximately $43 billion, plus or minus 2%. We expect GAAP and non-GAAP gross margins of approximately 70.6% and 71.5%, respectively. Data Center revenue growth continues to be driven by demand for AI training and inference workloads...\n\nQ&A: Analyst question on China exposure and export controls — Huang noted diversified demand base, stated sovereign AI programs in multiple regions are expanding. On competitive dynamics, emphasized full-stack advantage and CUDA ecosystem moat. On gross margin trajectory, Kress acknowledged near-term mix pressure from new product ramps but expects stabilization in the mid-70s range over the next few quarters."
+}

@@ -6,16 +6,16 @@ A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
 watches analyst memo slots appear in the navigator, then watches a bull/bear
 debate unfold, a research manager synthesize an investment thesis, a trader
 propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, nineteen agents,
+manager hand down a five-tier final decision. Five phases, twenty agents,
 one structured artifact at every convergence point.
 
 ## What's included
 
 Phase 1 — analyst fan-out:
 
-- **Parallel analyst fan-out** — eight sub-agents (Fundamentals, Sentiment,
-  News, Technical, Company Profile, Market, Macro, Quant) running in parallel,
-  each with a distinct identity.
+- **Parallel analyst fan-out** — nine sub-agents (Fundamentals, Sentiment,
+  News, Technical, Company Profile, Market, Macro, Quant, Disclosure) running
+  in parallel, each with a distinct identity.
 - **Investigative discovery + auditable citations** — on the `full` cost
   preset each analyst gets a deterministic per-role web-search step
   (`discover_*_context`) that surfaces up to 5 numbered URLs. The analyst
@@ -56,6 +56,13 @@ Phase 1 — analyst fan-out:
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
   filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
   on failure, like other single-provider tools).
+- **Disclosure signal** — the disclosure analyst reads the latest SEC filing
+  (10-K / 10-Q / 8-K) text, sell-side ratings and earnings beat/miss history,
+  and (optionally) the latest earnings-call transcript. `get_sec_filings` is
+  keyless (EDGAR), `get_analyst_estimates` uses Finnhub (existing key),
+  `get_earnings_transcript` requires `FMP_API_KEY` (free tier, optional). When
+  a source is unavailable the analyst applies the standard missing-signal
+  treatment — the filing + ratings read ships without the transcript.
 - **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
   sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
   xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
@@ -97,7 +104,7 @@ Phase 3 — trader synthesis:
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
-  and its extension fields only; the full preset adds the eight analyst
+  and its extension fields only; the full preset adds the nine analyst
   memos and the full bull/bear debate transcript.
 
 Phase 4 — risk debate:
@@ -128,7 +135,7 @@ Phase 4 — risk debate:
   remaining personas still run.
 - **Cost-preset gates prompt depth** — the cheap preset reads the trade
   proposal, the investment thesis, and prior persona memos; the full
-  preset adds the seven analyst memos and the full bull/bear debate
+  preset adds the nine analyst memos and the full bull/bear debate
   transcript.
 
 Phase 5 — portfolio manager:
@@ -139,7 +146,7 @@ Phase 5 — portfolio manager:
 - **Final converging step** — a single `portfolioManager` generator reads
   the always-on upstream artifacts (Phase 2 investment thesis, Phase 3
   trade proposal, Phase 4 risk assessment) and writes a typed
-  `PortfolioDecision`. On the `full` preset it also reads the seven
+  `PortfolioDecision`. On the `full` preset it also reads the nine
   analyst memos, the full bull/bear debate transcript, and the three
   persona risk critiques.
 - **Five-tier rating** — `finalRating` is one of `Sell`, `Underweight`,
@@ -268,7 +275,9 @@ tools return `unavailable` and the relevant analyst treats the result as
 missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
 `xSearch` over X/Twitter; without it, `get_social_sentiment` returns
 `unavailable` and the sentiment analyst applies the same missing-signal
-treatment.
+treatment. `FMP_API_KEY` (optional, free tier) enables earnings-call
+transcripts via `get_earnings_transcript`; without it the disclosure
+analyst still runs on EDGAR filings and Finnhub ratings alone.
 
 Live investigative discovery on the `full` preset uses
 `@flow-state-dev/tools/search`'s auto-detected provider — Tavily, Exa,
@@ -284,7 +293,7 @@ skip investigation accordingly.
 analyze
   └─ seedSession                  (patch session state from input)
   └─ phase-1-analysts             (sub-sequencer, container item)
-        ├─ setupPhase1Memos       (.tap — pre-create 7 memos in `pending`)
+        ├─ setupPhase1Memos       (.tap — pre-create 9 memos in `pending`)
         └─ parallel
              ├─ fundamentalsAnalyst
              ├─ sentimentAnalyst
@@ -292,7 +301,9 @@ analyze
              ├─ technicalAnalyst
              ├─ companyProfileAnalyst
              ├─ marketAnalyst
-             └─ macroAnalyst
+             ├─ macroAnalyst
+             ├─ quantAnalyst
+             └─ disclosureAnalyst
   └─ phase-2-research-debate      (sub-sequencer, container item)
         ├─ setupPhase2Memos       (.tap — pre-create 3 memos in `pending`)
         ├─ deriveDebateGoal       (.step — { goal } from session state)

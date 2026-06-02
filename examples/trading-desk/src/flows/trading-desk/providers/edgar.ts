@@ -27,7 +27,7 @@ import {
 import type { FinancialPeriod } from "./financials-history";
 
 // SEC requires a descriptive User-Agent identifying the caller.
-const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
+export const USER_AGENT = "flow-state-dev-example (flow-state@fixpointlabs.co)";
 const TICKERS_URL = "https://www.sec.gov/files/company_tickers.json";
 const COMPANYFACTS_BASE = "https://data.sec.gov/api/xbrl/companyfacts";
 
@@ -61,7 +61,7 @@ async function getCikMap(): Promise<Map<string, number>> {
 
 /** Resolve a ticker to its zero-padded 10-digit CIK, or throw if unknown
  *  (non-US / not an SEC filer — the caller falls through to Yahoo). */
-async function resolveCik(ticker: string): Promise<string> {
+export async function resolveCik(ticker: string): Promise<string> {
   const map = await getCikMap();
   const cik = map.get(ticker.toUpperCase());
   if (cik == null) throw new Error(`No SEC CIK for ticker ${ticker} (non-US filer?)`);

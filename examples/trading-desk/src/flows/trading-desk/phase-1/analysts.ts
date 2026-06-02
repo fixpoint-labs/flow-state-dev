@@ -1,5 +1,5 @@
 /**
- * The eight Phase 1 analyst sub-sequencers.
+ * The nine Phase 1 analyst sub-sequencers.
  *
  * Each one is the same recipe — `defineAnalyst` captures it. The role
  * differences live in two places per analyst: the generator (which tools'
@@ -29,6 +29,7 @@ import { defineAnalyst } from "./analyst";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
+  discover_disclosure_context,
   discover_fundamentals_context,
   discover_macro_context,
   discover_market_context,
@@ -36,9 +37,11 @@ import {
   discover_quant_context,
   discover_sentiment_context,
   discover_technical_context,
+  get_analyst_estimates,
   get_balance_sheet,
   get_cashflow,
   get_company_profile,
+  get_earnings_transcript,
   get_factor_ranks,
   get_fundamentals,
   get_income_statement,
@@ -51,6 +54,7 @@ import {
   get_quant_composites,
   get_reddit_mentions,
   get_risk_regime,
+  get_sec_filings,
   get_sector_context,
   get_sector_peers,
   get_short_interest,
@@ -73,6 +77,7 @@ const marketContextPrompt = loadPrompt(
 );
 const macroPrompt = loadPrompt("phase-1/prompts/macro.prompt.md");
 const quantPrompt = loadPrompt("phase-1/prompts/quant.prompt.md");
+const disclosurePrompt = loadPrompt("phase-1/prompts/disclosure.prompt.md");
 
 // ---------------------------------------------------------------------------
 // Fundamentals
@@ -333,4 +338,43 @@ export const quantAnalyst = defineAnalyst({
     quantContext: discover_quant_context,
   },
   generator: quantGenerator,
+});
+
+// ---------------------------------------------------------------------------
+// Disclosure — SEC filings (10-K/10-Q/8-K text and red flags), earnings-call
+// transcript (FMP-key-gated), and Street consensus (ratings, beat/miss,
+// estimates, targets). The primary-document read the desk didn't have.
+// ---------------------------------------------------------------------------
+
+const disclosureInputSchema = z.object({
+  filings: toolOutputSchemas.get_sec_filings,
+  estimates: toolOutputSchemas.get_analyst_estimates,
+  transcript: toolOutputSchemas.get_earnings_transcript,
+  disclosureContext: toolOutputSchemas.discover_disclosure_context,
+});
+
+// TS 5.7 hits its inference-depth limit on the 4 disclosure tool output
+// schemas combined with generator()'s 20+ generic params.  The config
+// cast is safe — defineAnalyst consumes an unparameterised BlockDefinition.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const disclosureGenerator = generator({
+  name: "disclosure-analyst-generator",
+  agentType: "sub",
+  agentName: PHASE_1_MEMO_KEYS.disclosure.agentName,
+  uses: [tradingDesk.presets({ investigate: true })],
+  inputSchema: disclosureInputSchema,
+  context: { data: (input: unknown) => asDataBlock(input) },
+  ...definePromptFile(disclosurePrompt),
+  outputSchema: thesisOutputSchema,
+} as any);
+
+export const disclosureAnalyst = defineAnalyst({
+  shortName: "disclosure",
+  tools: {
+    filings: get_sec_filings,
+    estimates: get_analyst_estimates,
+    transcript: get_earnings_transcript,
+    disclosureContext: discover_disclosure_context,
+  },
+  generator: disclosureGenerator,
 });

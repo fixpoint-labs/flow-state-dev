@@ -17,6 +17,12 @@ import type { ZodTypeAny } from "zod";
 import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
 import { grokOutputSchema } from "../src/flows/trading-desk/phase-1/tools/get_social_sentiment";
 import {
+  secFilingsSchema,
+  analystEstimatesSchema,
+  earningsTranscriptSchema,
+  discoveryPayloadSchema,
+} from "../src/flows/trading-desk/phase-1/tools/schemas";
+import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
@@ -127,6 +133,10 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 5 scenarioForecastOutputSchema", scenarioForecastOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
   ["Phase 6 thesisAlignmentOutputSchema", thesisAlignmentOutputSchema],
+  ["Tool get_sec_filings secFilingsSchema", secFilingsSchema],
+  ["Tool get_analyst_estimates analystEstimatesSchema", analystEstimatesSchema],
+  ["Tool get_earnings_transcript earningsTranscriptSchema", earningsTranscriptSchema],
+  ["Tool discover_disclosure_context discoveryPayloadSchema", discoveryPayloadSchema],
 ];
 
 describe("Generator output schemas are OpenAI strict-mode compatible", () => {

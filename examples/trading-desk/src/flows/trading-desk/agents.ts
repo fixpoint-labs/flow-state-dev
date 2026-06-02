@@ -32,6 +32,7 @@ export const AGENTS = {
   marketAnalyst:         { role: "Market Analyst",          glyph: "Mk", hue: 108, team: "analyst" },
   macroAnalyst:          { role: "Macro Analyst",           glyph: "Ma", hue: 90, team: "analyst" },
   quantAnalyst:          { role: "Quant Analyst",           glyph: "Qt", hue: 168, team: "analyst" },
+  disclosureAnalyst:     { role: "Disclosure Analyst",     glyph: "Dx", hue: 320, team: "analyst" },
   // Phase 2 — research debate
   bullResearcher:      { role: "Bull Researcher",      glyph: "B+", hue: 158, team: "research" },
   bearResearcher:      { role: "Bear Researcher",      glyph: "B-", hue: 18, team: "research" },
@@ -65,7 +66,7 @@ export const PHASE_GROUPS: ReadonlyArray<{
   { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
-  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst", "marketAnalyst", "macroAnalyst", "quantAnalyst"] },
+  { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst", "marketAnalyst", "macroAnalyst", "quantAnalyst", "disclosureAnalyst"] },
 ];
 
 /** Resource storage keys for Phase 1 memos.
@@ -115,6 +116,11 @@ export const PHASE_1_MEMO_KEYS = {
     agentName: "quantAnalyst",
     memoKey: "memos/p1/quant",
     collectionKey: "p1/quant",
+  },
+  disclosure: {
+    agentName: "disclosureAnalyst",
+    memoKey: "memos/p1/disclosure",
+    collectionKey: "p1/disclosure",
   },
 } as const satisfies Record<
   string,
