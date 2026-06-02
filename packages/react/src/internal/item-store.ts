@@ -246,6 +246,19 @@ export function createItemStore(): ItemStore {
       const isNew = existing === undefined;
       const orderChanged = existing !== undefined && !sameChronologicalOrder(existing, item);
 
+      // Clean up stale ownership when ownedBy changes on an existing item.
+      if (existing !== undefined) {
+        const oldOwner = (existing as OutputItem & { ownedBy?: string }).ownedBy;
+        const newOwner = (item as OutputItem & { ownedBy?: string }).ownedBy;
+        if (oldOwner !== undefined && oldOwner !== newOwner) {
+          const set = ownershipIndex.get(oldOwner);
+          if (set !== undefined) {
+            set.delete(item.id);
+            if (set.size === 0) ownershipIndex.delete(oldOwner);
+          }
+        }
+      }
+
       itemsById.set(item.id, item);
       trackOwnership(ownershipIndex, item);
 

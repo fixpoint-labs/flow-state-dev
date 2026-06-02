@@ -28,7 +28,7 @@ import {
   isReducibleStateChange,
   mergeStateChangeIntoSnapshot
 } from "../internal/mergeStateChangeIntoSnapshot";
-import { createItemStore } from "../internal/item-store";
+import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -475,11 +475,7 @@ export function useSession(
             itemTypes: itemConfig.itemTypes
           })
         )
-        .sort((a, b) => {
-          const tsDiff = a.ts - b.ts;
-          if (tsDiff !== 0) return tsDiff;
-          return a.itemIndex - b.itemIndex;
-        });
+        .sort(compareItemOrder);
 
       storeRef.current.loadSnapshot(filtered);
       setItems(storeRef.current.getSorted());

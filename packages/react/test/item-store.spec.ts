@@ -259,6 +259,20 @@ describe("createItemStore — getOwnedBy", () => {
     const store = createItemStore();
     expect(store.getOwnedBy("unknown")).toEqual([]);
   });
+
+  it("cleans up old ownership when ownedBy changes on upsert", () => {
+    const store = createItemStore();
+    const item = makeItem({ id: "a", ts: 100 });
+    (item as OutputItem & { ownedBy?: string }).ownedBy = "scope-1";
+    store.upsert(item);
+    expect(store.getOwnedBy("scope-1")).toHaveLength(1);
+
+    const updated = makeItem({ id: "a", ts: 100 });
+    (updated as OutputItem & { ownedBy?: string }).ownedBy = "scope-2";
+    store.upsert(updated);
+    expect(store.getOwnedBy("scope-1")).toHaveLength(0);
+    expect(store.getOwnedBy("scope-2")).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
