@@ -885,7 +885,7 @@ export async function runActionInternal<
       if (suspendError instanceof SuspensionError) {
         const provider = options.runtimeConfig.durabilityProvider;
         if (provider !== undefined) {
-          const stepIndex = (suspendError as any)._stepIndex ?? -1;
+          const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
             suspensionId: suspendError.suspensionId,
             requestId,
@@ -901,7 +901,7 @@ export async function runActionInternal<
             status: "pending",
             blockInstanceId: ctx._blockIdentity?.blockInstanceId ?? "unknown",
             stepIndex,
-            stepInput: (suspendError as any)._currentValue,
+            stepInput: suspendError._currentValue,
             createdAt: Date.now(),
             expiresAt: suspendError.timeoutMs
               ? Date.now() + suspendError.timeoutMs

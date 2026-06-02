@@ -81,15 +81,6 @@ export async function handleResumeSuspension(
     });
   }
 
-  if (
-    suspension.resumeSchema !== undefined &&
-    action === "approve" &&
-    resumeData !== undefined
-  ) {
-    // Schema validation is deferred to the runtime for now — the resume
-    // endpoint validates shape presence; the sequencer validates content.
-  }
-
   const lease = await provider.acquireLease(route.requestId, {
     holder: generateId("resume"),
     durationMs: 60_000

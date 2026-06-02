@@ -71,7 +71,7 @@ export class FilesystemLeaseStore implements LeaseStore {
     const now = Date.now();
     const lease: Lease = {
       requestId,
-      leaseId: `lease_${++leaseCounter}_${Date.now()}`,
+      leaseId: `lease_${++leaseCounter}_${now}`,
       holder: options.holder,
       acquiredAt: now,
       expiresAt: now + options.durationMs

@@ -9,10 +9,6 @@ import path from "node:path";
 import type { SuspensionFilter, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { SuspensionStore } from "../types";
 
-function encodeDir(id: string): string {
-  return encodeURIComponent(id);
-}
-
 function encodeFilename(id: string): string {
   return `${encodeURIComponent(id)}.json`;
 }
@@ -25,7 +21,7 @@ export class FilesystemSuspensionStore implements SuspensionStore {
   }
 
   private requestDir(requestId: string): string {
-    return path.join(this.rootDir, encodeDir(requestId));
+    return path.join(this.rootDir, encodeURIComponent(requestId));
   }
 
   private filePath(requestId: string, suspensionId: string): string {

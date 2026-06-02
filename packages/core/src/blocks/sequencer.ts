@@ -809,9 +809,9 @@ function runSequencerOperations(
         // Stamp step context so runAction can build a correct SuspensionRecord
         // and the resume runtime can skip-and-inject up to this point.
         if (error instanceof SuspensionError) {
-          (error as any)._stepIndex = currentStepIndex;
-          (error as any)._currentValue = currentValue;
-          (error as any)._sequencerState = ctx.sequencer !== undefined
+          error._stepIndex = currentStepIndex;
+          error._currentValue = currentValue;
+          error._sequencerState = ctx.sequencer !== undefined
             ? (typeof ctx.sequencer.state === "object" ? { ...ctx.sequencer.state as Record<string, unknown> } : undefined)
             : undefined;
           throw error;
