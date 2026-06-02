@@ -22,6 +22,7 @@ export type {
 export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 export {
+  OrgRequiredError,
   PrincipalResolutionError,
   TransportRouteCollisionError
 } from "./errors";
