@@ -61,6 +61,7 @@ import {
   assembleMessages,
   buildSystemPrefix,
   asUserMessage,
+  type PromptFileConfigMeta,
 } from "./internal/message-assembly";
 import { buildToolExecutor } from "./internal/tool-executor";
 
@@ -585,22 +586,7 @@ function normalizeToArray(value: unknown): unknown[] {
 }
 
 
-/**
- * Post-resolution generator-config values exposed to PromptFile templates as
- * the `config` render variable. Distinct from `ctx`: this is "what the
- * generator will run with" (resolved model/tools/caching), not "what the call
- * brought" (state/resources). The aggregated context tag map is added per
- * call (it depends on resolved context entries).
- */
-export interface PromptFileConfigMeta {
-  model?: string;
-  intent?: string;
-  tools?: string[];
-  caching?: CachingConfig;
-  maxTokens?: number;
-  temperature?: number;
-  providerOptions?: Record<string, unknown>;
-}
+export type { PromptFileConfigMeta } from "./internal/message-assembly";
 
 
 async function resolveSlotValues<TInput, TCtx extends BlockContext>(
@@ -1509,7 +1495,6 @@ export function generator<
       const {
         messages,
         systemPrefixCount,
-        configView,
         promptText: prompt,
         userValues,
       } = await assembleMessages(

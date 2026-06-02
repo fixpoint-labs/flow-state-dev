@@ -13,7 +13,24 @@ import type {
   PromptFileBrand,
   PromptFileConfigView,
 } from "../../prompt/prompt-file";
-import type { PromptFileConfigMeta } from "../generator";
+import type { CachingConfig } from "../../types/model";
+
+/**
+ * Post-resolution generator-config values exposed to PromptFile templates as
+ * the `config` render variable. Distinct from `ctx`: this is "what the
+ * generator will run with" (resolved model/tools/caching), not "what the call
+ * brought" (state/resources). The aggregated context tag map is added per
+ * call (it depends on resolved context entries).
+ */
+export interface PromptFileConfigMeta {
+  model?: string;
+  intent?: string;
+  tools?: string[];
+  caching?: CachingConfig;
+  maxTokens?: number;
+  temperature?: number;
+  providerOptions?: Record<string, unknown>;
+}
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
 
