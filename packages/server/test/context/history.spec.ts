@@ -15,7 +15,6 @@ import {
   expandRequestToMessages,
   LLM_AUDIENCE_TYPES,
   loadLLMHistory,
-  outputItemToSessionItem,
   selectRequestsByLimit,
 } from "../../src/context/history";
 
