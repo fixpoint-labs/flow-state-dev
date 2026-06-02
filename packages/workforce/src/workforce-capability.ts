@@ -20,10 +20,12 @@ export interface WorkforceCapabilityOptions {
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  const _registry = Array.isArray(options.agents)
-    ? createAgentRegistry(options.agents)
-    : options.agents;
+  // Eagerly validate: duplicate-name check runs at construction time.
+  if (Array.isArray(options.agents)) {
+    createAgentRegistry(options.agents);
+  }
 
+  // TODO: wire registry into capability presets for DevTool agent listing
   return defineCapability({
     name: "workforce",
   });

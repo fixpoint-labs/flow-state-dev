@@ -101,6 +101,19 @@ function buildAgentGenerator(
 
   const isWorker = opts.shape === "worker";
 
+  if (isWorker) {
+    if (!opts.skillName) {
+      throw new Error(
+        `materializeAgent: worker shape requires skillName (agent "${agent.name}")`,
+      );
+    }
+    if (!opts.workerKey) {
+      throw new Error(
+        `materializeAgent: worker shape requires workerKey (agent "${agent.name}")`,
+      );
+    }
+  }
+
   return generator({
     name: isWorker
       ? `skillWorker_${opts.skillName}_${opts.workerKey}`

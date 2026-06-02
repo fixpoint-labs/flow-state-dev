@@ -75,4 +75,16 @@ describe("defineAgent", () => {
       state: { name: "world" },
     });
   });
+
+  it("rejects an empty path-based persona", () => {
+    expect(() =>
+      defineAgent({ name: "a", description: "d", persona: { path: "" } }),
+    ).toThrow("path-based persona must have a non-empty path");
+  });
+
+  it("rejects an empty inline template persona", () => {
+    expect(() =>
+      defineAgent({ name: "a", description: "d", persona: { template: "  " } }),
+    ).toThrow("inline template persona must have a non-empty template");
+  });
 });

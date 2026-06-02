@@ -53,7 +53,7 @@ describe("resolveAgentPersona", () => {
     const ctx = makeCtxWithResources([]);
     await expect(
       resolveAgentPersona({ path: "nonexistent" }, ctx),
-    ).rejects.toThrow("resolved to no content");
+    ).rejects.toThrow("was not found");
   });
 
   it("throws when { path } persona resolves to null content", async () => {
@@ -71,6 +71,6 @@ describe("resolveAgentPersona", () => {
     } as unknown as BlockContext;
     await expect(
       resolveAgentPersona({ path: "persona-empty" }, ctx),
-    ).rejects.toThrow("resolved to no content");
+    ).rejects.toThrow("readContent() returned null");
   });
 });

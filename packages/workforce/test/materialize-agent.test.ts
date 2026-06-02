@@ -203,4 +203,27 @@ describe("materializeAgent", () => {
       expect(inspectGenerator(block).agentName).toBe("trusted-name");
     });
   });
+
+  describe("worker shape validation", () => {
+    it("throws when worker shape is missing skillName", () => {
+      expect(() =>
+        materializeAgent(makeAgent(), makeOpts({ skillName: undefined })),
+      ).toThrow("worker shape requires skillName");
+    });
+
+    it("throws when worker shape is missing workerKey", () => {
+      expect(() =>
+        materializeAgent(makeAgent(), makeOpts({ workerKey: undefined })),
+      ).toThrow("worker shape requires workerKey");
+    });
+
+    it("does not throw for standalone shape without skillName/workerKey", () => {
+      expect(() =>
+        materializeAgent(
+          makeAgent(),
+          makeOpts({ shape: "standalone", skillName: undefined, workerKey: undefined }),
+        ),
+      ).not.toThrow();
+    });
+  });
 });

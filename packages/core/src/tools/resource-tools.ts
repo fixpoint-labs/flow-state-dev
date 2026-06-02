@@ -194,8 +194,10 @@ export async function resolveResourceByPath(
     if (key !== undefined) {
       try {
         return await ns.ref.get(key);
-      } catch {
-        continue;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/not found/i.test(msg)) continue;
+        throw err;
       }
     }
   }

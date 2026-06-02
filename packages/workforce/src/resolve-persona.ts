@@ -19,11 +19,17 @@ export async function resolveAgentPersona(
 
   if ("path" in persona) {
     const ref = await resolveResourceByPath(persona.path, ctx);
-    const content = await ref?.readContent();
+    if (!ref) {
+      throw new Error(
+        `Agent persona path "${persona.path}" was not found. ` +
+          `Ensure the persona resource or collection is declared in the resource graph.`,
+      );
+    }
+    const content = await ref.readContent();
     if (content == null) {
       throw new Error(
-        `Agent persona "${persona.path}" resolved to no content. ` +
-          `Ensure the persona resource or collection is declared in the resource graph.`,
+        `Agent persona "${persona.path}" resolved but readContent() returned null. ` +
+          `Ensure the resource has content or a contentTemplate configured.`,
       );
     }
     return content;
