@@ -80,10 +80,20 @@ interface InboundTransportHost {
   readonly stores: StoreRegistry;
   readonly resolvers?: { /* model, speech, transcription */ };
   readonly middleware?: Middleware[];
+  validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;
 }
 ```
+
+`host.validateDispatch` enforces async flow-level pre-conditions.
+Adapters must call it after `resolvePrincipal` and before `dispatch`.
+Currently it enforces `requiresOrg`: when a flow declares
+`requiresOrg: true`, the method checks `envelope.orgId`,
+`principal.orgId`, and the stored session's `orgId` in that order.
+If none provides an org, it throws `OrgRequiredError`. The error is
+transport-agnostic (no HTTP status); the HTTP adapter maps it to
+`400 { error: "OrgRequired", message }`.
 
 `host.dispatch` is fire-and-forget: it returns a synchronous
 `DispatchHandle` whose `liveStream` and `requestId` are available
@@ -124,6 +134,7 @@ A minimal adapter looks like this:
 
 ```ts
 import type { InboundTransportAdapter } from "@flow-state-dev/server";
+import { OrgRequiredError } from "@flow-state-dev/server";
 
 export function createEchoAdapter(): InboundTransportAdapter {
   return {
@@ -146,13 +157,15 @@ export function createEchoAdapter(): InboundTransportAdapter {
                   metadata: { body }
                 }
               });
-              const handle = host.dispatch({
-                source: "echo",
+              const envelope = {
+                source: "echo" as const,
                 flowKind: body.flowKind,
                 action: body.action,
                 input: body.input,
                 principal
-              });
+              };
+              await host.validateDispatch(envelope);
+              const handle = host.dispatch(envelope);
               const result = await handle.finished;
               return new Response(JSON.stringify(result), { status: 200 });
             }
@@ -273,6 +286,10 @@ notification adapters plug into the same harness.
 - `host.dispatch` called with an unknown `flowKind` → throws synchronously
   (the call path is fire-and-forget, so synchronous throw is the only
   meaningful failure shape).
+- `host.validateDispatch` called for a `requiresOrg` flow without an org
+  on the envelope, principal, or stored session → throws `OrgRequiredError`.
+  The HTTP adapter maps this to `400 { error: "OrgRequired" }`; other
+  adapters map it to their native error shape.
 - Adapter constructed but never passed to `createFlowApiRouter` → no
   effect. Adapters are inert factory objects until `createBindings` is
   called.

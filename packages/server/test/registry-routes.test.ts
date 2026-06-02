@@ -847,4 +847,65 @@ describe("createFlowApiRouter", () => {
   // exists. The `maxConcurrentStreams` knob is preserved for source-compat
   // but has no behavioral effect. The 503-at-capacity test was removed
   // along with the registry.
+
+  describe("requiresOrg via validateDispatch", () => {
+    function makeOrgFlow(): FlowInstance {
+      return defineFlow({
+        kind: "org-flow",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "org-flow-run",
+              requireOrg: true,
+              execute: () => ({ ok: true })
+            })
+          }
+        }
+      })({ id: "org-flow" });
+    }
+
+    it("returns 400 OrgRequired when orgId is missing", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeOrgFlow());
+      const router = createFlowApiRouter({
+        registry,
+        stores: createInMemoryStores()
+      });
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/org-flow/actions/run", {
+          method: "POST",
+          body: JSON.stringify({ userId: "u1", input: { value: "test" } })
+        }),
+        { params: { path: ["org-flow", "actions", "run"] } }
+      );
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string; message: string };
+      expect(body.error).toBe("OrgRequired");
+      expect(body.message).toContain("requires an org-bound session");
+    });
+
+    it("returns 202 when orgId is present", async () => {
+      const registry = createFlowRegistry();
+      registry.register(makeOrgFlow());
+      const router = createFlowApiRouter({
+        registry,
+        stores: createInMemoryStores()
+      });
+
+      const response = await router.POST(
+        new Request("http://localhost/api/flows/org-flow/actions/run", {
+          method: "POST",
+          body: JSON.stringify({
+            userId: "u1",
+            orgId: "o1",
+            input: { value: "test" }
+          })
+        }),
+        { params: { path: ["org-flow", "actions", "run"] } }
+      );
+      expect(response.status).toBe(202);
+    });
+  });
 });
