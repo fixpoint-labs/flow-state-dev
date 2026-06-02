@@ -236,7 +236,7 @@ generator({
 //   </memory>
 ```
 
-Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See the [blocks architecture reference](https://flow-state.dev/docs/architecture/blocks) for the full contract.
+Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See the [blocks reference](https://flow-state.dev/docs/fundamentals/blocks) for the full contract.
 
 **Slot types:**
 - `ToolsSlot` — Tools accepted by generators: static array or `(ctx) => tools[]`
@@ -408,7 +408,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
 
-**Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See the [prompt caching guide](https://flow-state.dev/docs/advanced/prompt-caching) for the full design, audit, and manual-mode guide.
+**Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See the [prompt caching guide](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md) for the full design, audit, and manual-mode guide.
 
 **Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies, and `ctx.wasRescued(name | blockDef)` to ask whether a prior block in the current sequencer scope was recovered by a `.rescue()` handler (transient, per-iteration under loops; returns `false` when not rescued or not found). See [Composing blocks → Querying rescue status](https://flow-state.dev/docs/sequencers/composing-blocks).
 
@@ -428,11 +428,11 @@ pnpm --filter @flow-state-dev/core test
 
 ## Architecture reference
 
-- [Blocks](https://flow-state.dev/docs/architecture/blocks) — Deep dive into all four block kinds
-- [Flows and Actions](https://flow-state.dev/docs/architecture/flows-and-actions) — defineFlow, actions, lifecycle hooks
-- [Sequencer DSL](https://flow-state.dev/docs/architecture/sequencer-dsl) — Full method reference for the composition DSL
-- [State and Scopes](https://flow-state.dev/docs/architecture/state-and-scopes) — Scoped state, atomic operations, CAS
-- [Resources and Client Data](https://flow-state.dev/docs/architecture/resources-and-client-data) — Data containers and derived client views
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — Deep dive into all four block kinds
+- [Flows](https://flow-state.dev/docs/fundamentals/flows) — defineFlow, actions, lifecycle hooks
+- [Sequencer DSL](https://flow-state.dev/docs/sequencers/overview) — Full method reference for the composition DSL
+- [State and Scopes](https://flow-state.dev/docs/fundamentals/state-and-scopes) — Scoped state, atomic operations, CAS
+- [Resources](https://flow-state.dev/docs/resources/overview) — Data containers and derived client views
 
 
 ## Model intents

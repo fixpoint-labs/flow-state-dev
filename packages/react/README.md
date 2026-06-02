@@ -273,5 +273,5 @@ pnpm --filter @flow-state-dev/react test
 
 ## Architecture reference
 
-- [Server and Client](https://flow-state.dev/docs/architecture/server-and-client) — React hooks contract, FlowProvider, rendering
-- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item types, content model, transience
+- [React Hooks](https://flow-state.dev/docs/client/react) — React hooks contract, FlowProvider, rendering
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item types, content model, transience

@@ -159,7 +159,7 @@ unambiguous at runtime. Every request carries a `source` field on its
 `RequestRecord` for provenance — `http` for the default adapter, set by
 each custom transport for its own.
 
-See the [inbound transports reference](https://flow-state.dev/docs/architecture/inbound-transports)
+See the [inbound transports reference](https://flow-state.dev/docs/advanced/inbound-transports)
 for the full contract reference and a walk-through of authoring a custom
 adapter.
 
@@ -210,7 +210,7 @@ for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
 
-See the [authentication reference](https://flow-state.dev/docs/architecture/authentication)
+See the [authentication reference](https://flow-state.dev/docs/server/authentication)
 for the full contract, resolution order, and `requireUser: false`
 semantics.
 
@@ -336,7 +336,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Cross-flow schema validation:**
 
-`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/fundamentals/flow-isolation) and the [state-and-scopes architecture doc](https://flow-state.dev/docs/architecture/state-and-scopes) for the full model.
+`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -359,7 +359,7 @@ interface ContentStore {
 
 Per-request loading is scoped to the resources a flow declares: the execution context reads fixed resources with `get` and collections with `getByPrefix` (an empty prefix loads every key in the scope), rather than `getAll`. `getAll` remains for the state endpoint's full-scope view.
 
-That scoped load runs in three waves. `createExecutionContext` fires Wave 1 (flow-level resources, at context creation) and Wave 2 (the dispatched action's declared resources, in one parallel burst — a context is bound to exactly one action, so this lives in the context rather than `runAction`). Wave 3 fires in the block runtime's `run`: a block's `prefetchMode: 'lazy'` single resources load when that block dispatches, and lazy collections defer further to a per-access on-demand accessor. A per-scope cache plus a single-flight in-flight map dedupe loads across all three waves and concurrent block dispatch. See the [resources-and-client-data architecture doc](https://flow-state.dev/docs/architecture/resources-and-client-data#three-wave-loading) for the full model.
+That scoped load runs in three waves. `createExecutionContext` fires Wave 1 (flow-level resources, at context creation) and Wave 2 (the dispatched action's declared resources, in one parallel burst — a context is bound to exactly one action, so this lives in the context rather than `runAction`). Wave 3 fires in the block runtime's `run`: a block's `prefetchMode: 'lazy'` single resources load when that block dispatches, and lazy collections defer further to a per-access on-demand accessor. A per-scope cache plus a single-flight in-flight map dedupe loads across all three waves and concurrent block dispatch. See the [resources reference](https://flow-state.dev/docs/resources/overview) for the full model.
 
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
@@ -509,6 +509,6 @@ pnpm --filter @flow-state-dev/server test
 
 ## Architecture reference
 
-- [Server and Client](https://flow-state.dev/docs/architecture/server-and-client) — Routes, transport, React hooks contract
-- [Execution and Errors](https://flow-state.dev/docs/architecture/execution-and-errors) — Retry, rescue, work queue
-- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item/content model, SSE protocol, resume semantics
+- [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, work queue
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

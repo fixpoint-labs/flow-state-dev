@@ -144,5 +144,5 @@ pnpm --filter @flow-state-dev/client test
 
 ## Architecture reference
 
-- [Server and Client](https://flow-state.dev/docs/architecture/server-and-client) — Routes, transport, React hooks contract
-- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item/content model, SSE protocol, resume semantics
+- [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

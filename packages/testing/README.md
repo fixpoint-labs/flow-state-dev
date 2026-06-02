@@ -192,6 +192,6 @@ Seeding is idempotent — already-present users/sessions/orgs aren't re-`set`, s
 
 ## Architecture Reference
 
-- [Blocks](https://flow-state.dev/docs/architecture/blocks) — block kinds, BlockContext
-- [Execution and Errors](https://flow-state.dev/docs/architecture/execution-and-errors) — retry, rescue, error model
-- [State and Scopes](https://flow-state.dev/docs/architecture/state-and-scopes) — scope hierarchy, state ops
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — block kinds, BlockContext
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — retry, rescue, error model
+- [State and Scopes](https://flow-state.dev/docs/fundamentals/state-and-scopes) — scope hierarchy, state ops

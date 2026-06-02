@@ -248,6 +248,6 @@ pnpm --filter @flow-state-dev/cli test
 
 ## Architecture reference
 
-- [Flows and Actions](https://flow-state.dev/docs/architecture/flows-and-actions) — defineFlow, actions, lifecycle
-- [Blocks](https://flow-state.dev/docs/architecture/blocks) — The four block kinds
-- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item/content model, event taxonomy
+- [Flows](https://flow-state.dev/docs/fundamentals/flows) — defineFlow, actions, lifecycle
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — The four block kinds
+- [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, event taxonomy
