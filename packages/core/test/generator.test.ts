@@ -1417,6 +1417,160 @@ describe("generator — observable model identity (FIX-518)", () => {
     expect(capturedIdentity).toEqual(identity);
   });
 
+  it("passes `meta.model` to onCompleted with the resolved identity (streaming)", async () => {
+    const identity = { actual: "openai/gpt-5.5", requested: "intent/chat" };
+    let capturedMeta: unknown;
+    const block = generator({
+      name: "meta-stream",
+      itemVisibility: { client: true, history: true },
+      model: "mock-model",
+      prompt: "Stream please",
+      onCompleted: async (_output, _ctx, meta) => {
+        capturedMeta = meta;
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async *stream() {
+          yield {
+            type: "text_delta" as const,
+            textDelta: "hi",
+            resolvedIdentity: identity,
+          };
+          yield {
+            type: "finish" as const,
+            fullResult: { text: "hi", resolvedIdentity: identity },
+            resolvedIdentity: identity,
+          };
+        },
+      }),
+      response: { emit: () => {} },
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(capturedMeta).toEqual({ model: identity });
+  });
+
+  it("passes `meta.model` to onCompleted with the resolved identity (non-streaming)", async () => {
+    const identity = { actual: "openai/gpt-5.4-mini", requested: "intent/utility" };
+    let capturedMeta: unknown;
+    const block = generator({
+      name: "meta-non-stream",
+      itemVisibility: { client: true, history: true },
+      model: "mock-model",
+      outputSchema: z.string(),
+      prompt: "Just respond",
+      onCompleted: async (_output, _ctx, meta) => {
+        capturedMeta = meta;
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "done", resolvedIdentity: identity };
+        },
+      }),
+      response: { emit: () => {} },
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(capturedMeta).toEqual({ model: identity });
+  });
+
+  it("delivers meta.model even when the generator emits no items", async () => {
+    let capturedMeta: unknown;
+    const block = generator({
+      name: "meta-no-items",
+      model: "mock-model",
+      outputSchema: z.string(),
+      prompt: "silent",
+      onCompleted: async (_output, _ctx, meta) => {
+        capturedMeta = meta;
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "done" };
+        },
+      }),
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(capturedMeta).toBeDefined();
+    expect((capturedMeta as { model: { actual: string } }).model.actual).toBe("mock-model");
+  });
+
+  it("two-arg onCompleted still works on a generator (back-compat)", async () => {
+    let callCount = 0;
+    const block = generator({
+      name: "meta-backcompat",
+      model: "mock-model",
+      outputSchema: z.string(),
+      prompt: "go",
+      onCompleted: async (_output, _ctx) => {
+        callCount++;
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "ok" };
+        },
+      }),
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(callCount).toBe(1);
+  });
+
+  it("enables state projection: onCompleted writes meta.model into session state", async () => {
+    const identity = { actual: "anthropic/sonnet", requested: "intent/reason" };
+    const patchState = vi.fn().mockResolvedValue(undefined);
+    const block = generator({
+      name: "meta-state-projection",
+      itemVisibility: { client: true, history: true },
+      model: "mock-model",
+      outputSchema: z.string(),
+      prompt: "go",
+      onCompleted: async (_output, ctx, meta) => {
+        ctx.session.patchState({ resolvedModel: meta.model.actual });
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "ok", resolvedIdentity: identity };
+        },
+      }),
+      response: { emit: () => {} },
+      session: {
+        identity: { type: "session", id: "sess_1" },
+        state: {},
+        patchState,
+        setState: async () => undefined,
+        incState: async () => undefined,
+        pushState: async () => undefined,
+        setStateRecord: async () => undefined,
+        deleteStateRecord: async () => undefined,
+        atomicState: async () => undefined,
+      },
+    } as any);
+
+    await runForTest(block, { value: "x" }, ctx);
+    expect(patchState).toHaveBeenCalledWith({ resolvedModel: "anthropic/sonnet" });
+  });
+
   it("handler-emitted items do not carry `model`", async () => {
     // Handlers emit messages via ctx.emitMessage. The framework only stamps
     // `model` on generator-emitted items; handler-emitted messages leave the

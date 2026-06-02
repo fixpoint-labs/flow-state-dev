@@ -334,6 +334,23 @@ export type TypedUserSlotFn<TInput, TCtx = BlockContext> = (
   ctx: TCtx
 ) => MaybePromise<unknown>;
 
+/**
+ * Runtime metadata passed as the third argument to a generator block's
+ * `onCompleted`. Carries framework-resolved data that is not part of the
+ * block's output — currently the identity of the model that produced the
+ * output. Typed per block kind: only generators receive this shape, so other
+ * kinds' `onCompleted` signatures stay free of generator-only fields.
+ */
+export interface GeneratorCompletedMeta {
+  /**
+   * Resolved identity of the model that produced this generator's output.
+   * Always populated on the success path — the generator seeds `actual`
+   * before invoking the model, so `onCompleted` (which fires only after a
+   * successful execute) always sees at least `{ actual }`.
+   */
+  model: ModelIdentity;
+}
+
 export interface GeneratorConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -367,7 +384,12 @@ export interface GeneratorConfig<
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities
   >,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "onCompleted"> {
+  onCompleted?: (
+    output: TOutput,
+    ctx: TCtx,
+    meta: GeneratorCompletedMeta
+  ) => Promise<void> | void;
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;

@@ -115,7 +115,7 @@ generator({ itemVisibility: { client: true, history: false }, agentName: `resear
 
 `agentName` defaults to the block's `name` when omitted.
 
-See [Generator identity](../streaming/items#generator-identity) for the full model.
+See [Generator identity](../streaming/items#generator-identity) for the full model. Generators also support block-level `onCompleted` callbacks with a `meta` argument carrying the resolved model — see [lifecycle hooks](./flows.md#block-level-completion-oncompleted).
 
 #### Any block can be a tool
 

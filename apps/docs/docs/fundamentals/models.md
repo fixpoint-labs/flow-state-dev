@@ -594,6 +594,35 @@ import { ModelBadge } from "@flow-state-dev/react";
 
 Items emitted by handlers do not carry `model`. See [streaming/items.md](../streaming/items.md#observable-model-identity) for the full surface, including `block_trace.model` semantics.
 
+### Reading the resolved model at completion time
+
+Items on the stream carry `model`, but sometimes you need to write the resolved identity into server-side state as the turn completes. Generators pass it to `onCompleted` as a third `meta` argument:
+
+```ts
+const responder = generator({
+  name: "responder",
+  model: "intent/chat",
+  prompt: "You are a helpful assistant.",
+  itemVisibility: { client: true, history: true },
+  onCompleted: async (output, ctx, meta) => {
+    // Write the concrete model into session state for display or audit.
+    await ctx.session.patchState({ lastModel: meta.model.actual });
+
+    // Detect fallback: requested differs from actual when an intent
+    // resolved to a different model or the provider substituted.
+    if (meta.model.requested && meta.model.requested !== meta.model.actual) {
+      await ctx.request.patchState({ fellBack: true });
+    }
+  },
+});
+```
+
+`meta.model` is a `ModelIdentity` — the same shape stamped on emitted items. It is always populated on the success path (the generator seeds it before calling the model). The same value can be written to `clientData` if you need it on the client.
+
+This is the supported path for completion-time state projection. The `meta` argument is typed per block kind: only generators receive `GeneratorCompletedMeta` today. Handlers, sequencers, and routers keep the existing two-argument `onCompleted(output, ctx)` signature.
+
+For the general hook mechanism, see [lifecycle hooks](../fundamentals/flows.md#lifecycle-hooks). For the per-item form, see [streaming/items.md](../streaming/items.md#observable-model-identity).
+
 ## Migration from presets
 
 The `preset/*` API was removed as part of the intents rollout. Any `preset/*` string now throws at construction time with this mapping:

@@ -212,7 +212,7 @@ describe("buildBlock", () => {
     });
 
     await expect(runForTest(okBlock, 1, ctx)).resolves.toBe(2);
-    expect(onCompleted).toHaveBeenCalledWith(2, ctx);
+    expect(onCompleted).toHaveBeenCalledWith(2, ctx, undefined);
 
     const failingBlock = buildBlock({
       kind: "handler",

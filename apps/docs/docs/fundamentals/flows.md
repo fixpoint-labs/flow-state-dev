@@ -186,6 +186,23 @@ request: {
 
 Hooks are **observational** — they run after the fact and can't modify the result. The past-tense naming (`onCompleted`, not `onComplete`) makes this intent clear.
 
+### Block-level completion (`onCompleted`)
+
+Individual blocks can also declare an `onCompleted` callback on their config. This is distinct from the action-level and request-level hooks shown above, which are lifecycle observers run by the request executor. A block-level `onCompleted` fires immediately after the block's `execute` succeeds:
+
+```ts
+generator({
+  name: "my-gen",
+  model: "intent/chat",
+  prompt: "...",
+  onCompleted: async (output, ctx, meta) => {
+    // meta.model carries the resolved ModelIdentity (generators only)
+  },
+});
+```
+
+For generators, `meta` is a `GeneratorCompletedMeta` carrying `{ model: ModelIdentity }` — the concrete model that produced the output. Other block kinds receive only `(output, ctx)` with no `meta` argument. See [models — reading the resolved model at completion time](./models.md#reading-the-resolved-model-at-completion-time) for a worked example projecting the model into session state.
+
 ## Registration
 
 Flows are registered with a server registry to be served via HTTP:
