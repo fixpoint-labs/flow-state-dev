@@ -1,6 +1,29 @@
 {
   "name": "@thought-fabric/core",
   "version": "0.0.1",
+  "description": "Cognitive architecture primitives built on flow-state-dev.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "thought-fabric",
+    "attention",
+    "identity",
+    "cognitive"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/thought-fabric-core"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -24,7 +47,8 @@
   },
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -49,6 +73,10 @@
       }
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",

@@ -62,7 +62,7 @@ docs/
 
 ## Versioning and Publishing
 
-This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps. The contributor walk-through — when to write a fragment, the pre-1.0 discipline, multi-package PRs — lives in [`release-notes-workflow.md`](release-notes-workflow.md).
+This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps. The contributor walk-through — when to write a fragment, the pre-1.0 discipline, multi-package PRs — lives in [`release-notes-workflow.md`](release-notes-workflow.md). The full publish runbook (CI pipeline, snapshots, first-publish ceremony) is in [`RELEASING.md`](RELEASING.md).
 
 | Command | Purpose |
 |---------|---------|
@@ -174,6 +174,7 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 | `README.md` | Project overview and onboarding |
 | `packages/*/CHANGELOG.md` | Per-package release notes (generated from `.changeset/` fragments) |
 | `.changeset/` | Pending release-note fragments; see [`release-notes-workflow.md`](release-notes-workflow.md) |
+| `docs/contributing/RELEASING.md` | Publish runbook (CI pipeline, snapshots, first-publish ceremony) |
 | `docs/architecture/` | Framework architecture reference |
 | `docs/contributing/best-practices.md` | Implementation standards (active BPs listed at top of file) |
 | `docs/contributing/architecture-reference.md` | Quick reference for locked contracts |

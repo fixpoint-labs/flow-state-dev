@@ -1,6 +1,28 @@
 {
   "name": "@flow-state-dev/devtool",
   "version": "0.0.0",
+  "description": "Pre-built DevTool assets served by fsdev dev.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "devtool",
+    "debugging",
+    "inspector"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/devtool"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -18,7 +40,8 @@
   "license": "MIT",
   "files": [
     "dist",
-    "dist-client"
+    "dist-client",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -36,6 +59,12 @@
       "./react/styles.css": "./dist/react/styles.css"
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",

@@ -2,6 +2,12 @@
 
 **The developer interface. Run flows, execute blocks, inspect definitions — all from the terminal.**
 
+## Installation
+
+```bash
+pnpm add -g @flow-state-dev/cli
+```
+
 ```bash
 fsdev run my-agent chat -i '{"message": "Hello!"}'
 ```
@@ -242,6 +248,6 @@ pnpm --filter @flow-state-dev/cli test
 
 ## Architecture reference
 
-- [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle
-- [Blocks](../../docs/architecture/blocks.md) — The four block kinds
-- [Streaming](../../docs/architecture/streaming.md) — Item/content model, event taxonomy
+- [Flows and Actions](https://flow-state.dev/docs/architecture/flows-and-actions) — defineFlow, actions, lifecycle
+- [Blocks](https://flow-state.dev/docs/architecture/blocks) — The four block kinds
+- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item/content model, event taxonomy

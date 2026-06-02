@@ -2,6 +2,12 @@
 
 **The runtime. Register flows, execute actions, stream results — one config object to a complete API.**
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/server
+```
+
 ```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
 import myFlow from "./flows/my-flow";
@@ -96,7 +102,7 @@ It's a `createFlowState` option, not a handler option, because the router is bui
 
 ### Connection resilience
 
-`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](../../apps/docs/docs/server/connection-resilience.md) for tuning.
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
 ## Lower-level: registry and router
 
@@ -153,7 +159,7 @@ unambiguous at runtime. Every request carries a `source` field on its
 `RequestRecord` for provenance — `http` for the default adapter, set by
 each custom transport for its own.
 
-See [`docs/architecture/inbound-transports.md`](../../docs/architecture/inbound-transports.md)
+See the [inbound transports reference](https://flow-state.dev/docs/architecture/inbound-transports)
 for the full contract reference and a walk-through of authoring a custom
 adapter.
 
@@ -204,7 +210,7 @@ for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
 
-See [`docs/architecture/authentication.md`](../../docs/architecture/authentication.md)
+See the [authentication reference](https://flow-state.dev/docs/architecture/authentication)
 for the full contract, resolution order, and `requireUser: false`
 semantics.
 
@@ -228,7 +234,7 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
-`createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](../../apps/docs/docs/streaming/trace-channel.md) for the full backend list and file layout.
+`createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](https://flow-state.dev/docs/streaming/trace-channel) for the full backend list and file layout.
 
 ```ts
 const stores = createFilesystemStores({
@@ -330,7 +336,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 **Cross-flow schema validation:**
 
-`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](../../apps/docs/docs/fundamentals/flow-isolation.md) and the [state-and-scopes architecture doc](../../docs/architecture/state-and-scopes.md) for the full model.
+`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](https://flow-state.dev/docs/fundamentals/flow-isolation) and the [state-and-scopes architecture doc](https://flow-state.dev/docs/architecture/state-and-scopes) for the full model.
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -399,7 +405,7 @@ The interface and loading semantics mirror `ContentStore` exactly: declared stat
 
 ## CheckpointStore
 
-`StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints (FIX-401). Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime (FIX-141) reads `latest(...)` to resume after an interruption.
+`StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints. Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime reads `latest(...)` to resume after an interruption.
 
 ```ts
 interface CheckpointStore {
@@ -503,6 +509,6 @@ pnpm --filter @flow-state-dev/server test
 
 ## Architecture reference
 
-- [Server and Client](../../docs/architecture/server-and-client.md) — Routes, transport, React hooks contract
-- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Streaming](../../docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
+- [Server and Client](https://flow-state.dev/docs/architecture/server-and-client) — Routes, transport, React hooks contract
+- [Execution and Errors](https://flow-state.dev/docs/architecture/execution-and-errors) — Retry, rescue, work queue
+- [Streaming](https://flow-state.dev/docs/architecture/streaming) — Item/content model, SSE protocol, resume semantics

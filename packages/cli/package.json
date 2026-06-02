@@ -1,6 +1,28 @@
 {
   "name": "@flow-state-dev/cli",
   "version": "0.0.0",
+  "description": "The fsdev command-line interface for flow-state-dev.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "cli",
+    "fsdev",
+    "terminal"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -12,7 +34,8 @@
   },
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "publishConfig": {
     "access": "public",
@@ -25,6 +48,13 @@
       }
     }
   },
+  "bin": {
+    "fsdev": "./dist/bin.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
@@ -45,9 +75,6 @@
     "@types/node": "^22.0.0",
     "tsx": "^4.19.4",
     "zod": "^4.3.6"
-  },
-  "bin": {
-    "fsdev": "./dist/bin.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

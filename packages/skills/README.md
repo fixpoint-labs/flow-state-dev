@@ -2,6 +2,12 @@
 
 Runtime implementation of the Skills System. Skills are user-modifiable folders (SKILL.md plus supporting files) stored as resources, invoked by the agent through a `runSkill` tool or matched up-front by `createSkillActivator`.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/skills
+```
+
 ## Activation modes
 
 A matched skill runs in one of three modes:

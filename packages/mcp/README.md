@@ -114,5 +114,4 @@ actions: {
 
 ## Status
 
-Implements [FIX-22](https://linear.app/fixpoint-labs/issue/FIX-22). See the
-spec for design rationale and explicit non-goals.
+See the spec for design rationale and explicit non-goals.

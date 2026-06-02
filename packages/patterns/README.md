@@ -4,6 +4,12 @@ Reference implementations of established AI composition patterns using the @flow
 
 Each pattern validates that the framework's block composition model handles a specific class of AI architecture cleanly, and serves as a reusable building block for consumer flows.
 
+## Installation
+
+```bash
+pnpm add @flow-state-dev/patterns
+```
+
 ## Patterns
 
 ### RLM (Recursive Language Model)
@@ -107,7 +113,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 
 **Termination modes (`onIdle`)**:
 
-- `"complete-or-blocked"` (default, FIX-626): exit on full drain OR when no `in_progress`/`awaiting_review` task is active and no `pending` task has all deps `completed`. Handles the DAG case where an upstream task errors and downstream pendings can never run.
+- `"complete-or-blocked"` (default): exit on full drain OR when no `in_progress`/`awaiting_review` task is active and no `pending` task has all deps `completed`. Handles the DAG case where an upstream task errors and downstream pendings can never run.
 - `"complete"`: exit only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 
@@ -152,7 +158,7 @@ const board = taskBoard({
 
 The collection then lives on `ctx.request` and survives every block boundary in the request, including subsequent `board.block` invocations. CAS semantics are identical to the sequencer-state default — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. Lifetime is the request, not the session; for cross-request boards, use a caller-supplied factory with a session/user/org-scoped resource collection.
 
-`awaiting_review` is fully supported per FIX-443 §10.1: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
+`awaiting_review` is fully supported: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 
 Workers are first-class block compositions, not callbacks. The pattern composes them via `.step(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 
@@ -277,7 +283,7 @@ Pre-migration workers that declared the legacy `executableTaskSchema` (input sha
 
 ## Accessing worker output items
 
-Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` (FIX-480) instead of forcing the worker to pack everything into a structured `outputSchema`.
+Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` instead of forcing the worker to pack everything into a structured `outputSchema`.
 
 ```typescript
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";

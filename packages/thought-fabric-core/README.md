@@ -4,6 +4,12 @@
 
 `@thought-fabric/core` provides general-purpose cognitive domains that shape how AI agents perceive, reason, and act. Each domain is a namespace you import by name.
 
+## Installation
+
+```bash
+pnpm add @thought-fabric/core
+```
+
 ## Status
 
 This package is in Wave 1 foundation mode.
@@ -338,7 +344,7 @@ const result = await audit.run({
 | `biasAnnotationSchema` | Zod schema | Per-bias annotation with type, confidence, description, evidence. |
 | `counterArgumentSchema` | Zod schema | Counter-argument with claim, counterpoint, strength, sources. |
 | `sycophancyScoreSchema` | Zod schema | Composite score with label and four-dimension breakdown. |
-| `analyzerResultSchema` | Zod schema | Generic AnalyzerResult contract (FIX-307 forward declaration). |
+| `analyzerResultSchema` | Zod schema | Generic AnalyzerResult contract. |
 | **Helpers** | | |
 | `labelForSycophancyScore(score)` | pure function | Maps score [0,1] to label: balanced / mild_bias / moderate_bias / sycophantic. |
 | `severityForSycophancyScore(score)` | pure function | Maps score to severity: info / warning / critical. |

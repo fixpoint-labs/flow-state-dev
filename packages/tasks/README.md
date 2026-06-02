@@ -1,7 +1,13 @@
 # @flow-state-dev/tasks
 
 Substrate package for task-shaped work primitives. Implements the unified
-Plan/Task primitive locked in [FIX-443](https://linear.app/fixpoint-labs/issue/FIX-443/plantask-design-task-shape-taskcollection-dispatcherworker-contracts).
+Plan/Task primitive.
+
+## Installation
+
+```bash
+pnpm add @flow-state-dev/tasks
+```
 
 This package ships four primitives:
 
@@ -36,10 +42,10 @@ const task: Task<{ q: string }, { a: number }> = {
 
 Status enum: `pending | in_progress | blocked | awaiting_review | completed |
 errored | cancelled`. `awaiting_review` is in the canonical vocabulary; v1
-ships it for HITL forward-compat (FIX-443 §10) — dispatchers skip it,
+ships it for HITL forward-compat — dispatchers skip it,
 `taskLoopBack` waits for it.
 
-State machine (FIX-443 §2):
+State machine:
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -92,7 +98,7 @@ interface TaskCollectionRef<TInput, TOutput> {
 }
 
 // Returned from list/get — Task data plus an `items()` accessor that
-// returns items the worker emitted during its claim window (FIX-480).
+// returns items the worker emitted during its claim window.
 type TaskHandle<TInput, TOutput> = Task<TInput, TOutput> & {
   items(): readonly OutputItem[];
 };
@@ -171,8 +177,7 @@ both win — `atomicState` is CAS-guarded by core's state container and retries
 on conflict.
 
 Durability follows the sequencer's checkpoint contract
-([FIX-401](https://linear.app/fixpoint-labs/issue/FIX-401/durable-sequencer-checkpoint-schema-replace-transient-true-snapshots),
-latest-only with always-on default). State-snapshots emit at every step
+(latest-only with always-on default). State-snapshots emit at every step
 boundary; the latest is persisted to `stores.checkpoints` and overwritten on
 each subsequent step.
 
@@ -256,7 +261,7 @@ so the substrate's CAS retry and lease stamping run uniformly. Custom
 dispatchers are user-supplied blocks satisfying the `TaskDispatcher`
 interface.
 
-All standard dispatchers skip `awaiting_review` tasks per FIX-443 §10.1.
+All standard dispatchers skip `awaiting_review` tasks.
 
 ## Workers
 
@@ -332,8 +337,8 @@ const loop = taskLoopBack();
 // loop.maxIterations → 10_000 (default cap)
 ```
 
-`awaiting_review` counts as in-flight (the loop waits, doesn't terminate)
-per FIX-443 §10.1. Pass a custom `until` predicate to override.
+`awaiting_review` counts as in-flight (the loop waits, doesn't terminate).
+Pass a custom `until` predicate to override.
 
 ### `dispatchAndExecute`
 
@@ -446,7 +451,7 @@ next attempt's behavior.
 
 ## HITL — what v1 ships
 
-Per FIX-443 §10.8:
+What v1 ships:
 
 ✅ `awaiting_review` status in the canonical enum
 ✅ Standard dispatchers skip `awaiting_review` tasks
@@ -471,10 +476,8 @@ Per-task selection policies that shape `TaskWorkerInput.priorWork` for Task Boar
 
 ## What's not in this package
 
-- `<Plan />` rendering — [FIX-445](https://linear.app/fixpoint-labs/issue/FIX-445)
-- The `taskBoard` pattern — [FIX-446](https://linear.app/fixpoint-labs/issue/FIX-446)
-- Migrations of existing patterns onto the substrate —
-  [FIX-447](https://linear.app/fixpoint-labs/issue/FIX-447) /
-  [FIX-448](https://linear.app/fixpoint-labs/issue/FIX-448)
-- Plan Mode reshape — [FIX-449](https://linear.app/fixpoint-labs/issue/FIX-449)
-- Skill-pattern frontmatter binding — [FIX-450](https://linear.app/fixpoint-labs/issue/FIX-450)
+- `<Plan />` rendering — planned for the UI package
+- The `taskBoard` pattern — planned for `@flow-state-dev/patterns`
+- Migrations of existing patterns onto the substrate
+- Plan Mode reshape
+- Skill-pattern frontmatter binding

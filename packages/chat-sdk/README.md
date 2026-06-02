@@ -148,7 +148,3 @@ const { requestId, cleanup } = withChatContext({
 cleanup();
 ```
 
-## Deviations from the original spec
-
-- **OAuth callback** is duck-typed against `adapter.handleOAuthCallback` because the Chat SDK doesn't yet expose it on the base `Adapter` type — only Slack-style adapters surface one in 4.29.0.
-- **Cross-thread sends** are not supported in this release (Chat SDK 4.29.0 has no `chat.getThread({ ... })`); utility blocks operate on the inbound thread only.
