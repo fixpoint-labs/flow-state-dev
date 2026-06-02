@@ -4,7 +4,7 @@
  * Stores each lease as a JSON file: rootDir/{encodeURIComponent(requestId)}.json
  * One active lease per request at a time.
  */
-import { readdir, readFile, rename, rm, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, rm, mkdir, open } from "node:fs/promises";
 import path from "node:path";
 import type { Lease, LeaseOptions } from "../../durability/types";
 import type { LeaseStore } from "../types";
@@ -38,12 +38,23 @@ export class FilesystemLeaseStore implements LeaseStore {
     }
   }
 
-  private async writeLease(lease: Lease): Promise<void> {
+  private async writeLeaseExclusive(lease: Lease): Promise<boolean> {
     await mkdir(this.rootDir, { recursive: true });
     const target = this.filePath(lease.requestId);
-    const tempPath = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    await writeFile(tempPath, JSON.stringify(lease, null, 2), "utf8");
-    await rename(tempPath, target);
+    try {
+      const fh = await open(target, "wx");
+      try {
+        await fh.writeFile(JSON.stringify(lease, null, 2), "utf8");
+      } finally {
+        await fh.close();
+      }
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private async deleteLease(requestId: string): Promise<void> {
@@ -58,12 +69,6 @@ export class FilesystemLeaseStore implements LeaseStore {
 
   async acquire(requestId: string, options: LeaseOptions): Promise<Lease | null> {
     const now = Date.now();
-    const existing = await this.readLease(requestId);
-
-    if (existing && existing.expiresAt > now && existing.holder !== options.holder) {
-      return null;
-    }
-
     const lease: Lease = {
       requestId,
       leaseId: `lease_${++leaseCounter}_${Date.now()}`,
@@ -72,8 +77,25 @@ export class FilesystemLeaseStore implements LeaseStore {
       expiresAt: now + options.durationMs
     };
 
-    await this.writeLease(lease);
-    return lease;
+    // Try exclusive create — only one caller can win.
+    if (await this.writeLeaseExclusive(lease)) {
+      return lease;
+    }
+
+    // File exists — check if the existing lease is expired or same holder.
+    const existing = await this.readLease(requestId);
+    if (existing && existing.expiresAt > now && existing.holder !== options.holder) {
+      return null;
+    }
+
+    // Expired or same holder — delete and retry exclusive create.
+    await this.deleteLease(requestId);
+    if (await this.writeLeaseExclusive(lease)) {
+      return lease;
+    }
+
+    // Another caller raced us on the retry — they won.
+    return null;
   }
 
   async release(requestId: string, leaseId: string): Promise<void> {
