@@ -150,6 +150,62 @@ describe("fetchFinnhubMacroNews provider", () => {
     expect(out.items[0].headline).toBe("Tariff review widens");
   });
 
+  it("strips Finnhub redirect URLs and preserves real URLs (FIX-644)", async () => {
+    mockByCategory(
+      [
+        {
+          datetime: 1746489600,
+          headline: "Real macro headline",
+          source: "Reuters",
+          url: "https://www.reuters.com/macro/rates",
+          summary: "Rates hold.",
+        },
+        {
+          datetime: 1746403200,
+          headline: "Redirect macro headline",
+          source: "Bloomberg",
+          url: "https://finnhub.io/api/news?id=deadbeef",
+          summary: "Still useful.",
+        },
+      ],
+      [],
+    );
+    const out = await fetchFinnhubMacroNews({ date: "2026-05-06" });
+    expect(out.items).toHaveLength(2);
+    expect(out.items[0].url).toBe("https://www.reuters.com/macro/rates");
+    expect(out.items[1].url).toBeUndefined();
+    expect(out.items[1].headline).toBe("Redirect macro headline");
+    expect(out.items[1].summary).toBe("Still useful.");
+  });
+
+  it("does not collapse distinct redirect-URL items during dedupe (FIX-644)", async () => {
+    mockByCategory(
+      [
+        {
+          datetime: 1746489600,
+          headline: "Redirect A",
+          source: "Wire",
+          url: "https://finnhub.io/api/news?id=aaa",
+          summary: "Summary A.",
+        },
+        {
+          datetime: 1746403200,
+          headline: "Redirect B",
+          source: "Wire",
+          url: "https://finnhub.io/api/news?id=bbb",
+          summary: "Summary B.",
+        },
+      ],
+      [],
+    );
+    const out = await fetchFinnhubMacroNews({ date: "2026-05-06" });
+    expect(out.items).toHaveLength(2);
+    expect(out.items[0].url).toBeUndefined();
+    expect(out.items[1].url).toBeUndefined();
+    expect(out.items[0].headline).toBe("Redirect A");
+    expect(out.items[1].headline).toBe("Redirect B");
+  });
+
   it("dedupes by url and caps the merged feed at 12 items", async () => {
     const dup = {
       datetime: 1746489600,

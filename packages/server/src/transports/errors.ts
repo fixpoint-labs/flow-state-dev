@@ -22,6 +22,24 @@ export class PrincipalResolutionError extends Error {
 }
 
 /**
+ * Thrown by the transport host when a flow requires an org-bound session
+ * but no orgId is present on the envelope, the principal, or the stored
+ * session. Layer-agnostic — carries no HTTP `status` field; the HTTP
+ * adapter maps it to 400 at the route level.
+ */
+export class OrgRequiredError extends Error {
+  readonly flowKind: string;
+
+  constructor(flowKind: string) {
+    super(
+      `Flow "${flowKind}" requires an org-bound session. Create a new session with orgId.`
+    );
+    this.name = "OrgRequiredError";
+    this.flowKind = flowKind;
+  }
+}
+
+/**
  * Thrown at host construction when two adapters declare the same
  * `(method, path)` pair. The message names both adapter sources and the
  * colliding path so the failure is actionable.

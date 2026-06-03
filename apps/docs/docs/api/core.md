@@ -65,6 +65,11 @@ const myGenerator = generator({
 - `itemVisibility?: { client: boolean; history: boolean }` — Declares the generator's visibility. Governs auto-emission of conversational items (messages, reasoning, tool outputs). `{ client: true, history: true }` = user-facing (client + history). `{ client: true, history: false }` = task-executor (client, not history). `{ client: false, history: false }` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_trace` flows via graph edges. No position-inferred default; every generator declares.
 - `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `itemVisibility` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
 
+**Callbacks:**
+
+- `onCompleted?: (output, ctx, meta: GeneratorCompletedMeta) => void | Promise<void>` — Fires after a successful execute. `meta.model` is a `ModelIdentity` with the resolved model that produced the output. Existing two-argument callbacks (`(output, ctx)`) continue to work. See [lifecycle hooks](../fundamentals/flows.md#block-level-completion-oncompleted) and the [worked example](../fundamentals/models.md#reading-the-resolved-model-at-completion-time).
+- `onErrored?: (error, ctx) => void | Promise<void>` — Fires when execute fails.
+
 **Search config:**
 
 - `search?: boolean | GeneratorSearchConfig` — Enable provider-native web search. `true` uses defaults; pass a config object for fine-grained control (`maxUses`, `allowedDomains`, `blockedDomains`, `userLocation`, `searchDepth`).

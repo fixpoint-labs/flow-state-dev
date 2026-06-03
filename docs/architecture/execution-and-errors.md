@@ -44,6 +44,7 @@ The framework calls `block.run(input, ctx)` which handles input/output validatio
 3. Run tool loop until `outputSchema` is satisfied (or repair fails)
 4. Emit items: reasoning, message (streaming), tool_output per tool invocation, and the block_trace lifecycle (added → updated → done)
 5. Return parsed `outputSchema` output
+6. Fire `onCompleted(output, ctx, meta)` / `onErrored(error, ctx)` observers — `meta` carries `{ model: ModelIdentity }` for generators
 
 **Sequencer:**
 1. Execute DSL steps in order

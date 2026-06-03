@@ -9,6 +9,7 @@ import type {
   ConnectorFn,
   DeclaredResources
 } from "../../types/block";
+import type { GeneratorCompletedMeta } from "../generator";
 import { asRuntime } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
@@ -246,7 +247,13 @@ export function buildBlock<
         );
 
         if (runtimeConfig.onCompleted !== undefined) {
-          await runtimeConfig.onCompleted(validatedOutput, ctx);
+          const meta: GeneratorCompletedMeta | undefined =
+            ctx._currentModelIdentity !== undefined ? { model: ctx._currentModelIdentity } : undefined;
+          await (runtimeConfig.onCompleted as (
+            output: TOutput,
+            ctx: BlockContext,
+            meta?: GeneratorCompletedMeta
+          ) => Promise<void> | void)(validatedOutput, ctx, meta);
         }
 
         return validatedOutput;

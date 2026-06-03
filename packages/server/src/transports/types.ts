@@ -188,6 +188,18 @@ export interface InboundTransportHost {
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
 
   /**
+   * Validate async flow-level pre-conditions before dispatch. Must be
+   * awaited between `resolvePrincipal` and `dispatch`. Currently enforces
+   * `requiresOrg`; future pre-conditions plug in here.
+   *
+   * Throws `OrgRequiredError` when the flow requires an org-bound session
+   * but no orgId is present on the envelope, the principal, or the stored
+   * session. Also throws a plain `Error` for an unregistered `flowKind`
+   * (same shape as `dispatch`).
+   */
+  validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
+
+  /**
    * Resolve the principal for a request. Phase 1 delegates to the body-
    * userId stub. FIX-23 will replace the stub with a configurable hook on
    * `createFlowApiRouter`. Adapter code does not change between phases —

@@ -14,6 +14,7 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
 import { taskBoard } from "../task-board";
+import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
 export type { SubTaskErrorStrategy } from "./schemas";
@@ -97,43 +98,10 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     onError: boardOnError,
   });
 
-  // Seeds tasks from the planner output into the board collection.
-  // Preserves all TaskInit fields (id, deps, priority, maxAttempts, assignee)
-  // that a custom planner may produce, mirroring plan-and-execute and
-  // supervisor seed steps. State mutation only (BP-012).
-  const seedTasksFromPlan = handler({
-    name: `${name}-seed-tasks`,
-    inputSchema: z.object({
-      tasks: z.array(z.object({
-        id: z.string().optional(),
-        goal: z.string(),
-        deps: z.array(z.string()).optional(),
-        dependencies: z.array(z.string()).optional(),
-        assignee: z.string().optional(),
-        // Accept string or number for compatibility with the default
-        // decomposer's "high"/"medium"/"low" output. Only numeric values
-        // forward to the substrate.
-        priority: z.union([z.number(), z.string()]).optional(),
-        maxAttempts: z.number().optional(),
-      }).passthrough())
-    }),
-    execute: async (planOutput, ctx) => {
-      const collection = await getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId: name,
-      });
-      const tasks = planOutput.tasks.map((t, i) => ({
-        id: t.id ?? `task-${i + 1}`,
-        goal: t.goal,
-        deps: t.deps ?? t.dependencies ?? [],
-        ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
-        ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
-        ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
-        input: t.goal,
-      }));
-      await collection.addTasks(tasks);
-    }
+  const seedTasks = createSeedTasksFromPlan({
+    name,
+    collectionId: name,
+    inputDefault: "goal",
   });
 
   // Collects completed task outputs after the board drains.
@@ -163,7 +131,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     activeStatusMessage: "Planning tasks",
   })
     .step(activePlanner)
-    .tap(seedTasksFromPlan)
+    .tap(seedTasks)
     .step(board.block)
     .step(collectResults)
     .step(finalize) as SequencerDefinition<any, any>;

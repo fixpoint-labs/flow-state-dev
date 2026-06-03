@@ -630,6 +630,14 @@ export interface BlockContext<
     error?: string;
     cached: boolean;
   }) => void;
+
+  /**
+   * @internal Resolved identity of the model currently producing this block's
+   * output. Written by the generator block during execute; read by build-block
+   * to construct the `meta.model` argument for `onCompleted`. Not part of the
+   * public surface — user code reads `meta.model`, never this slot.
+   */
+  _currentModelIdentity?: ModelIdentity;
 }
 
 /**

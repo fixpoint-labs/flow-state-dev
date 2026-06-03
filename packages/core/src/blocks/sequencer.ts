@@ -36,6 +36,7 @@ import {
 import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level";
 import { getRequestWorkPool } from "../execution/request-work-pool";
 import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
+import { compareZodSchemasStructurally } from "../helpers/zod-introspect";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -917,72 +918,6 @@ function wrapWithOutputValidation(
   };
 }
 
-/** Read a zod schema's discriminating `_def.typeName` (e.g. `"ZodObject"`). */
-function getZodTypeName(schema: ZodTypeAny): string | undefined {
-  return (schema as any)._def?.typeName;
-}
-
-/**
- * Conservative one-level structural comparison between a sequencer's declared
- * `outputSchema` and the schema its chain infers. Returns the first
- * incompatibility (with the specific kinds that differ at the point of the
- * mismatch), or `null` when structurally compatible.
- *
- * `declaredKind`/`inferredKind` report the kinds at the level where the
- * mismatch was found: the value kinds for an object-value mismatch, the element
- * kinds for an array mismatch, otherwise the top-level kinds. For a key-set
- * mismatch the kinds are equal (both objects); `reason` carries the key detail.
- *
- * Checks: top-level kind, object key sets, one level of object value kinds, and
- * array element kind. Deliberately does NOT recurse into nested shapes,
- * refinements, brands, or union variants — see `.validate()`'s JSDoc.
- */
-function compareSchemasStructurally(
-  declared: ZodTypeAny,
-  inferred: ZodTypeAny
-): { reason: string; declaredKind: string | undefined; inferredKind: string | undefined } | null {
-  const dKind = getZodTypeName(declared);
-  const iKind = getZodTypeName(inferred);
-  if (dKind !== iKind) {
-    return { reason: `declared ${dKind} but chain produces ${iKind}`, declaredKind: dKind, inferredKind: iKind };
-  }
-  if (dKind === "ZodObject") {
-    const dShape = (declared as any)._def.shape() as Record<string, ZodTypeAny>;
-    const iShape = (inferred as any)._def.shape() as Record<string, ZodTypeAny>;
-    const dKeys = Object.keys(dShape).sort();
-    const iKeys = Object.keys(iShape).sort();
-    if (dKeys.length !== iKeys.length || dKeys.some((k, idx) => k !== iKeys[idx])) {
-      return {
-        reason: `object key sets differ — declared [${dKeys.join(", ")}] vs chain [${iKeys.join(", ")}]`,
-        declaredKind: dKind,
-        inferredKind: iKind
-      };
-    }
-    for (const k of dKeys) {
-      const dvKind = getZodTypeName(dShape[k]);
-      const ivKind = getZodTypeName(iShape[k]);
-      if (dvKind !== ivKind) {
-        return {
-          reason: `object value kind differs at "${k}" — declared ${dvKind} vs chain ${ivKind}`,
-          declaredKind: dvKind,
-          inferredKind: ivKind
-        };
-      }
-    }
-  }
-  if (dKind === "ZodArray") {
-    const dElemKind = getZodTypeName((declared as any)._def.type);
-    const iElemKind = getZodTypeName((inferred as any)._def.type);
-    if (dElemKind !== iElemKind) {
-      return {
-        reason: `array element kind differs — declared ${dElemKind} vs chain ${iElemKind}`,
-        declaredKind: dElemKind,
-        inferredKind: iElemKind
-      };
-    }
-  }
-  return null;
-}
 
 function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | undefined = undefined>(
   config: SequencerConfig<any>,
@@ -2243,7 +2178,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       if (config.outputSchema === lastOutputSchema) {
         return;
       }
-      const mismatch = compareSchemasStructurally(config.outputSchema, lastOutputSchema);
+      const mismatch = compareZodSchemasStructurally(config.outputSchema, lastOutputSchema);
       if (mismatch !== null) {
         throw new SequencerSchemaMismatchError(
           `Sequencer "${config.name}" .validate() failed: ${mismatch.reason}`,

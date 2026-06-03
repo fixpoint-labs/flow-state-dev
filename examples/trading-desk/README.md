@@ -58,11 +58,15 @@ Phase 1 — analyst fan-out:
   on failure, like other single-provider tools).
 - **Disclosure signal** — the disclosure analyst reads the latest SEC filing
   (10-K / 10-Q / 8-K) text, sell-side ratings and earnings beat/miss history,
-  and (optionally) the latest earnings-call transcript. `get_sec_filings` is
-  keyless (EDGAR), `get_analyst_estimates` uses Finnhub (existing key),
-  `get_earnings_transcript` requires `FMP_API_KEY` (free tier, optional). When
-  a source is unavailable the analyst applies the standard missing-signal
-  treatment — the filing + ratings read ships without the transcript.
+  and (optionally) the latest earnings-call transcript. It also surfaces recent
+  material corporate events typed by 8-K item code (leadership changes, material
+  agreements, earnings, restructurings) as a dated, source-linked catalyst
+  signal within a trailing 90-day window. `get_sec_filings` is keyless (EDGAR,
+  no new API call for material events), `get_analyst_estimates` uses Finnhub
+  (existing key), `get_earnings_transcript` requires `FMP_API_KEY` (free tier,
+  optional). When a source is unavailable the analyst applies the standard
+  missing-signal treatment — the filing + ratings read ships without the
+  transcript, and "none observed" when there are no recent material events.
 - **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
   sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
   xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other

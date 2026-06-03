@@ -115,6 +115,31 @@ describe("fetchFinnhubMarketNews provider", () => {
     expect(out.items[1].summary).toBeNull();
   });
 
+  it("strips Finnhub redirect URLs and preserves real URLs (FIX-644)", async () => {
+    mockFetch([
+      {
+        datetime: 1746489600,
+        headline: "Real headline",
+        source: "Reuters",
+        url: "https://www.reuters.com/markets/fed-holds",
+        summary: "Fed holds.",
+      },
+      {
+        datetime: 1746403200,
+        headline: "Redirect headline",
+        source: "MarketWatch",
+        url: "https://finnhub.io/api/news?id=abc123def456",
+        summary: "Still useful summary.",
+      },
+    ]);
+    const out = await fetchFinnhubMarketNews({ date: "2026-05-06" });
+    expect(out.items).toHaveLength(2);
+    expect(out.items[0].url).toBe("https://www.reuters.com/markets/fed-holds");
+    expect(out.items[1].url).toBeUndefined();
+    expect(out.items[1].headline).toBe("Redirect headline");
+    expect(out.items[1].summary).toBe("Still useful summary.");
+  });
+
   it("caps the feed at 12 items for prompt budget", async () => {
     const many = Array.from({ length: 18 }, (_, i) => ({
       datetime: 1746489600 - i * 86400,

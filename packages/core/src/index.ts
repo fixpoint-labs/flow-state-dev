@@ -127,6 +127,7 @@ export type {
   BranchStep,
   BranchStepOutput,
   FactoryConfig,
+  GeneratorCompletedMeta,
   GeneratorConfig,
   GeneratorHistoryConfig,
   GeneratorLoopConfig,

@@ -9,7 +9,7 @@
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
-import { PrincipalResolutionError } from "../transports/errors";
+import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
@@ -135,38 +135,35 @@ export async function handleExecuteAction(
     }
   };
 
-  // Block flows that opted into `requireOrg` from running against unbound
-  // sessions. The body's orgId binds a new session; for existing sessions we
-  // consult the stored orgId because that's the immutable source of truth.
-  if (flow.requiresOrg) {
-    let hasOrg = resolvedActionInput.orgId !== undefined;
-    if (!hasOrg && resolvedActionInput.sessionId !== undefined) {
-      const existing = await ctx.stores.session.get(resolvedActionInput.sessionId);
-      hasOrg = existing?.orgId !== undefined;
-    }
-    if (!hasOrg) {
+  const dispatchEnvelope = {
+    source: "http" as const,
+    flowKind: resolvedActionInput.flowKind,
+    action: resolvedActionInput.actionName,
+    input: resolvedActionInput.input,
+    sessionId: resolvedActionInput.sessionId,
+    requestId: resolvedActionInput.requestId,
+    orgId: resolvedActionInput.orgId,
+    tenantId: resolvedActionInput.tenantId,
+    principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
+    metadata: resolvedActionInput.metadata,
+    signal: resolvedActionInput.signal
+  };
+
+  try {
+    await ctx.host.validateDispatch(dispatchEnvelope);
+  } catch (e) {
+    if (e instanceof OrgRequiredError) {
       return jsonResponse(400, {
         error: "OrgRequired",
-        message: `Flow "${flow.kind}" requires an org-bound session. Create a new session with orgId.`
+        message: e.message
       });
     }
+    throw e;
   }
 
   let handle;
   try {
-    handle = ctx.host.dispatch({
-      source: "http",
-      flowKind: resolvedActionInput.flowKind,
-      action: resolvedActionInput.actionName,
-      input: resolvedActionInput.input,
-      sessionId: resolvedActionInput.sessionId,
-      requestId: resolvedActionInput.requestId,
-      orgId: resolvedActionInput.orgId,
-      tenantId: resolvedActionInput.tenantId,
-      principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
-      metadata: resolvedActionInput.metadata,
-      signal: resolvedActionInput.signal
-    });
+    handle = ctx.host.dispatch(dispatchEnvelope);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("active stream capacity")) {

@@ -14,7 +14,7 @@ import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
 import { generateId } from "../../utils/generate-id";
-import { PrincipalResolutionError } from "../errors";
+import { OrgRequiredError, PrincipalResolutionError } from "../errors";
 import type {
   DispatchHandle,
   InboundRequestEnvelope,
@@ -134,6 +134,22 @@ export function createInboundTransportHost(
     };
   };
 
+  const validateDispatch = async (
+    envelope: InboundRequestEnvelope
+  ): Promise<void> => {
+    const flow = registry.get(envelope.flowKind);
+    if (flow === undefined) {
+      throw new Error(`Unknown flow "${envelope.flowKind}"`);
+    }
+    if (!flow.requiresOrg) return;
+    if ((envelope.orgId ?? envelope.principal.orgId) !== undefined) return;
+    if (envelope.sessionId !== undefined) {
+      const existing = await stores.session.get(envelope.sessionId);
+      if (existing?.orgId !== undefined) return;
+    }
+    throw new OrgRequiredError(envelope.flowKind);
+  };
+
   const resolve = async (
     context: PrincipalResolutionContext
   ): Promise<ResolvedPrincipal> => {
@@ -200,6 +216,7 @@ export function createInboundTransportHost(
     middleware: runtimeConfig.middleware,
     logger: runtimeConfig.logger,
     dispatch,
+    validateDispatch,
     resolvePrincipal: resolve
   };
 }

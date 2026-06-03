@@ -37,7 +37,9 @@ src/flows/trading-desk/
     yahoo.ts                     Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
     yahoo-timeseries.ts          pure mapper: fundamentals-timeseries → 3 statements
     edgar.ts                     SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
+    edgar-filings.ts             EDGAR filings: submissions list, section extraction, red-flag probes
     edgar-companyfacts.ts        pure mapper: us-gaap companyfacts → 3 statements
+    eight-k-items.ts             pure mapper: 8-K item codes → typed material events with signal tier
     web.ts                       homepage meta + web-search fallback
     xai.ts                       Grok (xAI) credentials + model id
   phase-1/

@@ -375,7 +375,7 @@ A sub-agent generator's emitted items carry the *sub-agent's* identity, not the 
 
 `model` is optional at the type level. It's absent for handler-emitted items, items persisted before the field existed, and generators that errored before any AI SDK call returned. UI code should treat the field as `model?: ModelIdentity` — the `<ModelBadge>` helper in `@flow-state-dev/react` renders nothing when `model` is undefined.
 
-See [fundamentals/models.md](../fundamentals/models.md) for how intents and gateways are configured.
+See [fundamentals/models.md](../fundamentals/models.md) for how intents and gateways are configured. To read the resolved model at block completion and project it into state, see [reading the resolved model at completion time](../fundamentals/models.md#reading-the-resolved-model-at-completion-time).
 
 ## React integration
 
