@@ -13,7 +13,8 @@ import {
 } from "@flow-state-dev/core";
 import { createInMemoryStores, createFlowRegistry } from "../src";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { StoreRegistry, SessionRecord } from "../src/stores/types";
+import type { StoreRegistry, SessionRecord, UserRecord } from "../src/stores/types";
+import { resolveUserStorageKey } from "../src/stores/scope-keys";
 import {
   handleListCollectionState,
   handleGetCollectionItemState,
@@ -55,6 +56,16 @@ const internalCollection = defineResourceCollection({
   // No client config — server-internal.
 });
 
+// User-scoped + flowIsolation: mirrors the trading-desk portfolio collections
+// (must persist across sessions). Exercises the user-scope read branch.
+const accountsCollection = defineResourceCollection({
+  pattern: "accounts/*",
+  scope: "user",
+  flowIsolation: true,
+  stateSchema: z.object({ name: z.string().optional() }),
+  client: { state: { read: true } },
+});
+
 const profileResource = defineResource({
   scope: "session",
   stateSchema: z.object({ name: z.string().default("anon") }),
@@ -69,6 +80,7 @@ function buildFlow() {
       private: privateCollection,
       internal: internalCollection,
       profile: profileResource,
+      accounts: accountsCollection,
     },
     execute: () => "ok",
   });
@@ -78,9 +90,21 @@ function buildFlow() {
   })();
 }
 
+/** Effective user storage key for the flowIsolation user-scoped collections. */
+function userKeyFor(flow: ReturnType<typeof buildFlow>, userId: string): string {
+  return resolveUserStorageKey(userId, {
+    kind: flow.kind,
+    isolateUserState: flow.isolateUserState ?? false,
+    isolateOrgState: flow.isolateOrgState ?? false,
+    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }>,
+  });
+}
+
 async function setupCtx(opts: {
   artifacts?: Record<string, { title?: string }>;
   privateItems?: Record<string, unknown>;
+  /** Seed a user-scoped `accounts/*` collection. Undefined → no user record at all. */
+  accounts?: Record<string, { name?: string }>;
 } = {}): Promise<{
   registry: FlowRegistry;
   stores: StoreRegistry;
@@ -91,6 +115,7 @@ async function setupCtx(opts: {
   const registry = createFlowRegistry();
   registry.register(flow);
   const sessionId = "sess_1";
+  const userId = "user_1";
 
   const resources: Record<string, unknown> = {};
   for (const [topic, state] of Object.entries(opts.artifacts ?? {})) {
@@ -103,7 +128,7 @@ async function setupCtx(opts: {
   const session: SessionRecord = {
     id: sessionId,
     flowKind: "test-flow",
-    userId: "user_1",
+    userId,
     state: {},
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -113,6 +138,26 @@ async function setupCtx(opts: {
   for (const [key, state] of Object.entries(resources)) {
     await stores.resourceState.set("session", sessionId, key, state as JsonObject);
   }
+
+  // Seed user-scope data only when accounts are provided. Omitting `accounts`
+  // leaves NO user record — exercising the "missing user record reads as empty"
+  // path that getPersistedData returns `undefined` for.
+  if (opts.accounts !== undefined) {
+    const userKey = userKeyFor(flow, userId);
+    const userRecord: UserRecord = {
+      id: userKey,
+      userId,
+      state: {},
+      version: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await stores.user.set(userKey, userRecord, "any");
+    for (const [topic, state] of Object.entries(opts.accounts)) {
+      await stores.resourceState.set("user", userKey, `accounts/${topic}`, state as JsonObject);
+    }
+  }
+
   return { registry, stores, sessionId };
 }
 
@@ -415,6 +460,94 @@ describe("handleGetCollectionItemState", () => {
 });
 
 // ---------------------------------------------------------------------------
+// user-scope reads (portfolio collections persist across sessions)
+// ---------------------------------------------------------------------------
+
+describe("user-scoped collection reads", () => {
+  it("lists persisted user-scope items (was 501)", async () => {
+    const ctx = await setupCtx({
+      accounts: { acct_a: { name: "Brokerage A" }, acct_b: { name: "Brokerage B" } },
+    });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/accounts"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "accounts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items.map((i: { topic: string }) => i.topic)).toEqual(["acct_a", "acct_b"]);
+    expect(body.items.map((i: { storageKey: string }) => i.storageKey)).toEqual([
+      "accounts/acct_a",
+      "accounts/acct_b",
+    ]);
+    expect(body.items[0].clientData).toEqual({ name: "Brokerage A" });
+    expect(body.pagination.total).toBe(2);
+  });
+
+  it("filters user-scope items by topicPrefix", async () => {
+    const ctx = await setupCtx({
+      accounts: {
+        acct_a__AAPL: { name: "x" },
+        acct_a__MSFT: { name: "y" },
+        acct_b__AAPL: { name: "z" },
+      },
+    });
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/accounts?topicPrefix=accounts/acct_a"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "accounts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    const body = await res.json();
+    expect(body.items.map((i: { topic: string }) => i.topic)).toEqual([
+      "acct_a__AAPL",
+      "acct_a__MSFT",
+    ]);
+    expect(body.pagination.total).toBe(2);
+  });
+
+  it("returns 200 + empty list when the user record is missing (not 500)", async () => {
+    // No `accounts` opt → no user record seeded at all.
+    const ctx = await setupCtx();
+    const res = await handleListCollectionState(
+      makeReq("http://localhost/sessions/sess_1/resources/accounts"),
+      { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "accounts" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toEqual([]);
+    expect(body.pagination.total).toBe(0);
+  });
+
+  it("returns a single user-scope item state (was 501)", async () => {
+    const ctx = await setupCtx({ accounts: { acct_a: { name: "Brokerage A" } } });
+    const res = await handleGetCollectionItemState(
+      makeReq("http://localhost/sessions/sess_1/resources/accounts/acct_a"),
+      { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "accounts", topic: "acct_a" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      topic: "acct_a",
+      storageKey: "accounts/acct_a",
+      clientData: { name: "Brokerage A" },
+    });
+  });
+
+  it("returns 200 + null for a missing user-scope item (no user record)", async () => {
+    const ctx = await setupCtx();
+    const res = await handleGetCollectionItemState(
+      makeReq("http://localhost/sessions/sess_1/resources/accounts/acct_a"),
+      { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "accounts", topic: "acct_a" },
+      { registry: ctx.registry, stores: ctx.stores }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // get_resource_manifest
 // ---------------------------------------------------------------------------
 
@@ -434,7 +567,7 @@ describe("handleGetResourceManifest", () => {
     const body = await res.json();
     expect(body.flowKind).toBe("test-flow");
     const refs = body.resources.map((r: { ref: string }) => r.ref).sort();
-    expect(refs).toEqual(["artifacts", "private", "profile"]);
+    expect(refs).toEqual(["accounts", "artifacts", "private", "profile"]);
   });
 
   it("omits resources with no client config", async () => {
