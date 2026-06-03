@@ -48,28 +48,33 @@ export async function extractPdfText(bytes: Uint8Array | Buffer): Promise<string
   // Buffer backing store.
   const data = new Uint8Array(bytes);
   const doc = await getDocumentProxy(data);
-  const pages: string[] = [];
+  try {
+    const pages: string[] = [];
 
-  for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
-    const page = await doc.getPage(pageNum);
-    const content = await page.getTextContent();
-    let line = "";
-    const lines: string[] = [];
-    for (const item of content.items) {
-      // `str`/`hasEOL` live on TextItem; marked-content items have neither.
-      if (!("str" in item)) continue;
-      line += item.str;
-      if (item.hasEOL) {
-        lines.push(line.trimEnd());
-        line = "";
-      } else {
-        line += " ";
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
+      const page = await doc.getPage(pageNum);
+      const content = await page.getTextContent();
+      let line = "";
+      const lines: string[] = [];
+      for (const item of content.items) {
+        // `str`/`hasEOL` live on TextItem; marked-content items have neither.
+        if (!("str" in item)) continue;
+        line += item.str;
+        if (item.hasEOL) {
+          lines.push(line.trimEnd());
+          line = "";
+        } else {
+          line += " ";
+        }
       }
+      if (line.trim().length > 0) lines.push(line.trimEnd());
+      pages.push(lines.join("\n"));
     }
-    if (line.trim().length > 0) lines.push(line.trimEnd());
-    pages.push(lines.join("\n"));
-  }
 
-  await doc.destroy();
-  return pages.join("\n\n");
+    return pages.join("\n\n");
+  } finally {
+    // Release the parser + buffers whether parsing succeeded or threw (a parse
+    // failure mid-document would otherwise leak the loading task's buffers).
+    await doc.destroy();
+  }
 }

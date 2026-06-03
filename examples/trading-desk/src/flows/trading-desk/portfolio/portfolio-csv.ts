@@ -159,7 +159,6 @@ export function parsePortfolioCsv(csvText: string): ParsedCsv {
 
   const lines = csvText
     .split(/\r?\n/)
-    .map((l) => l)
     .filter((l, idx) => !(idx > 0 && l.trim().length === 0));
 
   // Drop a leading blank header line if present, then require a header.
