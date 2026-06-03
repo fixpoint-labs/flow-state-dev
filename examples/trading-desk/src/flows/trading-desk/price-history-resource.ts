@@ -37,4 +37,9 @@ export const priceHistoryResource = defineResource({
   stateSchema: priceHistorySliceSchema.nullable(),
   default: null,
   writable: true,
+  // A single resource only surfaces in the client snapshot when it declares a
+  // client PROJECTION (`hasClientProjection`: expose/exclude/data) — an empty
+  // `client: {}` would never reach the client (the Summary's price overlay stays
+  // null). `exclude: []` = identity-expose the full state, type-safe on a nullable.
+  client: { exclude: [] },
 });

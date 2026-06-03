@@ -56,6 +56,20 @@ const COLLECTION_KEY_TO_SHORT = Object.fromEntries(
   >).map(([short, mapping]) => [mapping.collectionKey, short]),
 ) as Record<string, AnyMemoShortName>;
 
+/**
+ * A single resource that's unwritten surfaces in the client snapshot as `{}`
+ * (not null) — a projection-config quirk. Treat snapshot `clientData` as
+ * untrusted shape: coerce a non-object, or one missing its discriminating
+ * field, to null — the value every consumer below expects for "absent".
+ */
+function asState<T>(raw: unknown, discriminator: keyof T & string): T | null {
+  return raw !== null &&
+    typeof raw === "object" &&
+    (raw as Record<string, unknown>)[discriminator] !== undefined
+    ? (raw as T)
+    : null;
+}
+
 export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
   const { items } = useResourceCollectionList(session, "memos", { limit: 50 });
   const { clientData: spineRaw } = useResource(session, "valuationSpine");
@@ -76,10 +90,10 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       if (short === undefined) continue;
       byKey.set(short, (item.clientData ?? null) as MemoState | null);
     }
-    return buildReportSummary(byKey, (spineRaw ?? null) as ValuationSpineState | null);
+    return buildReportSummary(byKey, asState<ValuationSpineState>(spineRaw, "setupScore"));
   }, [items, spineRaw]);
 
-  const price = (priceRaw ?? null) as PriceHistorySlice | null;
+  const price = asState<PriceHistorySlice>(priceRaw, "bars");
 
   // Stopped run: show only the stop banner — never a half-built decision.
   if (stoppedReason !== null) {
@@ -114,10 +128,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         trade={summary.trade}
       />
 
-      <ConvictionStrip nodes={summary.conviction} />
-
-      <SectionLabel>Analyst TLDRs</SectionLabel>
-      <AnalystTldrGrid analysts={summary.analysts} />
+      <ConvictionStrip nodes={summary.conviction} />      
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
@@ -155,6 +166,9 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         criticalRisks={summary.criticalRisks}
         keyDependencies={summary.keyDependencies}
       />
+
+      <SectionLabel>Analyst TLDRs</SectionLabel>
+      <AnalystTldrGrid analysts={summary.analysts} />
 
       {summary.thesisAlignment.alignment !== null ? (
         <p className="text-[11px] text-[color:var(--c-fg-muted)]">
