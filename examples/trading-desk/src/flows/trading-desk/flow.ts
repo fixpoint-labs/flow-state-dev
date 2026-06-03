@@ -36,7 +36,9 @@ import {
   importHoldings,
   saveAccount,
 } from "./portfolio/portfolio-actions";
+import { extractHoldingsFromPdf } from "./portfolio/extract-holdings-action";
 import { portfolioQuotesResource } from "./portfolio/portfolio-quotes-resource";
+import { pdfImportResource } from "./portfolio/portfolio-pdf-resource";
 import {
   accountsCollection,
   holdingsCollection,
@@ -272,6 +274,11 @@ const tradingDeskFlow = defineFlow({
     importHoldings: { block: importHoldings },
     deleteHolding: { block: deleteHolding },
     getQuotes: { block: getQuotes },
+    // PDF holdings import (Slice 4b). The LLM transcription step; writes the
+    // extracted rows to `pdfImport` for the dialog to reconcile + confirm. The
+    // confirmed rows feed the EXISTING `importHoldings` — this action never
+    // imports.
+    extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
 
   session: {
@@ -322,6 +329,10 @@ const tradingDeskFlow = defineFlow({
     // Transient per-session price cache written by `getQuotes`; the Portfolio
     // pane reads it via `useResource` after a refresh. Not a durable snapshot.
     portfolioQuotes: portfolioQuotesResource,
+    // Transient per-session PDF-extraction channel written by
+    // `extractHoldingsFromPdf`; the import dialog reads it via `useResource` to
+    // reconcile + preview before the user confirms. Not a durable record.
+    pdfImport: pdfImportResource,
   },
 });
 

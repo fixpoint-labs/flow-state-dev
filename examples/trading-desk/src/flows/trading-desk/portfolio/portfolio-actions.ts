@@ -23,6 +23,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
+import { pdfImportResource } from "./portfolio-pdf-resource";
 import { accountTypeSchema, holdingKey } from "./portfolio-schema";
 import { portfolioResources } from "./portfolio-resources";
 
@@ -123,6 +124,12 @@ export const deleteHolding = handler({
  * Import a CSV into a target account. Parses (server-side re-parse, never trusts
  * the client preview), applies the merge mode, optionally patches the account's
  * cash balance, and returns the authoritative import report.
+ *
+ * Also resets the `pdfImport` scratch resource on completion. The PDF import flow
+ * routes its confirmed rows through this same action, so a finished import is
+ * where the now-consumed extraction is cleared — without it a stale extraction is
+ * read as the current one on the next PDF import (it surfaced the prior PDF's
+ * holdings). A no-op for the CSV path (the resource is already null).
  */
 export const importHoldings = handler({
   name: "import-holdings",
@@ -133,7 +140,7 @@ export const importHoldings = handler({
     cashBalance: z.number().nullable().default(null),
   }),
   outputSchema: importReportSchema,
-  resources: portfolioResources,
+  resources: { ...portfolioResources, pdfImport: pdfImportResource },
   execute: async (input, ctx) => {
     const parsed = parsePortfolioCsv(input.csvText);
     const errors: RowError[] = [...parsed.errors];
@@ -191,6 +198,11 @@ export const importHoldings = handler({
         });
       }
     }
+
+    // Clear the consumed PDF extraction scratch (no-op on the CSV path —
+    // already null). `setState(null)` replaces the whole nullable state;
+    // `patchState` (a partial merge) cannot express null.
+    await ctx.resources.pdfImport.setState(null);
 
     return { imported, updated, deleted, errors, warnings };
   },
