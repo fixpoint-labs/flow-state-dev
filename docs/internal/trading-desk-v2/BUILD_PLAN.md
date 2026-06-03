@@ -523,17 +523,27 @@ actions (`saveAccount`/`deleteAccount`/`importHoldings`/`deleteHolding`/`getQuot
 `extractHoldingsFromPdf`) + the portfolio resources. This couples portfolio management to the analysis
 flow's lifecycle. Portfolio management is a distinct concern.
 
-**Task.** Extract a standalone `portfolio` flow (its own `defineFlow` with the portfolio actions, the
-user-scoped `accounts`/`holdings` collections, `getQuotes`, and PDF import), leaving `trading-desk` as
-the analysis flow. Slice 5's portfolio-aware analysis then reads the portfolio flow's resources
-cross-flow.
+**Task.** Extract a standalone `portfolio` flow — its own `defineFlow` with the portfolio actions, the
+user-scoped `accounts` collection (holdings live inline on each account now), the session-scoped
+`portfolioQuotes` + `pdfImport` resources, `getQuotes`, and the PDF-import action — leaving
+`trading-desk` as the analysis flow. Register it alongside `trading-desk` in `lib/server.ts`
+(`registry.register(portfolioFlow)`); the one `createFlowApiRouter` already serves multiple flows by
+kind. Slice 5's portfolio-aware analysis then reads the portfolio flow's resources cross-flow.
 
 **Caveats / open questions.**
 - **Data migration.** User-scoped + `flowIsolation: true` resources persist under `{userId}:trading-desk`
   today; a `portfolio` flow changes the key to `{userId}:portfolio` — existing holdings would need a
-  migration or a dual-read shim.
-- **Session/binding.** The empty-state binding (spec §12.1) currently reuses an *analysis* session
-  snapshot to read user-scoped data; a standalone portfolio flow needs its own session/binding story.
+  migration or a dual-read shim. (Dev data is disposable, so a fresh start is the cheap path.)
+- **Session/binding — the real work.** The framework requires a *bound session* to read user-scoped
+  resources (spec §12.1), and the app today has a single `<FlowProvider flowKind="trading-desk">`; the
+  Portfolio view reads through the analysis session (`readSession`). A `portfolio` flow's "session" is
+  not an analysis run — it is just a vehicle for user-scoped data. The clean shape: wrap the Portfolio
+  view in a nested `<FlowProvider flowKind="portfolio" userId={USER_ID}>` and mint a **singleton
+  per-user "portfolio workspace" session** (auto-select the user's existing one, else create one), then
+  read `accounts` + dispatch the portfolio actions through it. The accounts persist independent of that
+  session; it is purely the read/write binding. This singleton-session-for-a-data-namespace pattern is
+  the new thing to get right (and worth checking whether the framework grows a first-class "data flow"
+  notion that avoids a synthetic session entirely).
 - **Sequencing.** Dovetails with the Layer-2 identity reorg (§4) and the standalone-flow direction —
   sequence with FIX-702 rather than ahead of it.
 
