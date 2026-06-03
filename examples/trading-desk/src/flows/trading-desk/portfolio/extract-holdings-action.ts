@@ -3,7 +3,7 @@
  *
  * Shape (BP-011-safe): a SEQUENCER, not a handler calling a block.
  *
- *   .step(decodeStatement)          // base64 PDF bytes -> statement text (server-side pdfjs)
+ *   .step(decodeStatement)          // base64 PDF bytes -> statement text (server-side unpdf)
  *   .step(extractHoldingsGenerator) // the LLM transcription (the only model step)
  *   .tap(commitExtraction)          // write rows + statedTotal to the pdfImport resource
  *
@@ -16,8 +16,9 @@
  * `getQuotes` uses). NOTHING is imported here.
  *
  * Why server-side extraction: the browser pdfjs path needed a web worker whose
- * URL turbopack resolved unreliably (the import hung). Node runs pdfjs's legacy
- * build on the main thread reliably. The bytes already become text that goes to
+ * URL turbopack resolved unreliably (the import hung). The server extracts with
+ * `unpdf` (a worker-free pdfjs build — see `extract-pdf-text.server.ts`), so
+ * there is no worker to mis-resolve. The bytes already become text that goes to
  * the server + the LLM, so uploading the bytes is no new privacy exposure.
  *
  * The deterministic reconciliation and the canonical mapping do NOT run in this

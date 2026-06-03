@@ -33,7 +33,7 @@ src/flows/trading-desk/
     get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
     portfolio-pdf.ts             pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
     portfolio-pdf-resource.ts    session-scoped pdfImport scratch resource (dialog reads via useResource)
-    extract-pdf-text.server.ts   NODE-ONLY: pdfjs legacy build, worker disabled — PDF bytes → statement text
+    extract-pdf-text.server.ts   NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
     extract-holdings-generator.ts broker-agnostic LLM transcription (statement text → strict rows)
     extract-holdings-action.ts   sequencer: decode bytes → extractPdfText → generator → commit pdfImport
   lib/                           app-level helpers and factories (no external IO)
@@ -204,11 +204,14 @@ owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 - **PDF import** uploads the PDF BYTES and extracts the text SERVER-SIDE. The
   dialog (`import-pdf-dialog.tsx`) base64-encodes the file and dispatches
   `extractHoldingsFromPdf`; the action's first step decodes the bytes and calls
-  `extract-pdf-text.server.ts` (pdfjs's legacy Node build, worker DISABLED —
-  `disableWorker: true`, main thread). There is **no browser pdfjs worker and no
-  `/public` build step** — the old client extractor needed a web worker whose URL
-  turbopack resolved unreliably (the import hung), and the stopgap that copied the
-  worker into `/public` is gone. Uploading the bytes is no new privacy exposure:
+  `extract-pdf-text.server.ts`, which extracts with **`unpdf`** (a worker-free,
+  serverless pdfjs build) on the Node main thread. There is **no browser pdfjs
+  worker and no `/public` build step** — the old client extractor needed a web
+  worker whose URL turbopack resolved unreliably (the import hung), and a direct
+  `pdfjs-dist` server path then tripped over its "fake worker" chunk under
+  turbopack. unpdf has no worker at all (and is kept out of the server bundle via
+  `serverExternalPackages` in `next.config.mjs`). Uploading the bytes is no new
+  privacy exposure:
   the extracted holdings already go to the server + the LLM. After extraction the
   LLM transcribes the text (`extract-holdings-generator`) into strict rows on the
   session-scoped `pdfImport` resource; the dialog reads them via `useResource`,

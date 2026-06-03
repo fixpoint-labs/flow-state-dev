@@ -37,6 +37,7 @@ import {
 } from "react";
 import type { SessionView } from "@flow-state-dev/react";
 import { useResource } from "@flow-state-dev/react";
+import { Loader2 } from "lucide-react";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import {
@@ -177,6 +178,11 @@ export function ImportPdfDialog({
     }
     setPhase("extracting");
     const token = extractTokenRef.current;
+    // Yield one paint frame so the "Processing…" state shows BEFORE the
+    // synchronous base64 encode + the dispatch. Otherwise the browser doesn't
+    // repaint until the first network await, and a large file makes the dialog
+    // look frozen with no feedback.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     try {
       // Read the bytes and base64-encode them; the SERVER extracts the text now
       // (no browser pdfjs worker). Empty / scanned-image PDFs surface as an
@@ -322,9 +328,21 @@ export function ImportPdfDialog({
           ) : null}
 
           {phase === "extracting" ? (
-            <p className="font-mono text-[11px] text-[color:var(--c-fg-muted)]">
-              Reading the statement… transcribing holdings.
-            </p>
+            <div className="flex items-center gap-3 rounded-md border border-[color:var(--c-accent)]/40 bg-[color:var(--c-surface-2)] px-3 py-3">
+              <Loader2
+                className="h-4 w-4 shrink-0 animate-spin text-[color:var(--c-accent)]"
+                aria-hidden
+              />
+              <div className="flex flex-col">
+                <span className="text-[12.5px] font-medium text-[color:var(--c-fg)]">
+                  Processing…
+                </span>
+                <span className="font-mono text-[10.5px] text-[color:var(--c-fg-muted)]">
+                  Reading the statement and transcribing holdings. This can take a
+                  moment.
+                </span>
+              </div>
+            </div>
           ) : null}
 
           {phase === "review" && recon !== null ? (
