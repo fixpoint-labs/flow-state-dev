@@ -27,14 +27,13 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Plus, Upload, RefreshCw } from "lucide-react";
+import { Plus, Upload, FileText, RefreshCw } from "lucide-react";
 import type { SessionView } from "@flow-state-dev/react";
 import {
   useResource,
   useResourceCollectionList,
 } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
-import type { DataSourceMode } from "@/components/topbar";
 import type {
   AccountState,
   HoldingState,
@@ -44,6 +43,7 @@ import type { PortfolioQuotesState } from "@/src/flows/trading-desk/portfolio/po
 import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
+import { ImportPdfDialog } from "./import-pdf-dialog";
 import {
   DASH,
   formatMoney,
@@ -58,8 +58,6 @@ type PortfolioPaneProps = {
   session: SessionView;
   /** Whether the bound session is resolvable (a snapshot exists to read). */
   hasSession: boolean;
-  /** Run prices through fixture or live data, mirroring the analysis toggle. */
-  dataSource: DataSourceMode;
 };
 
 /** Per-account computed rollups, indexed by accountId. */
@@ -68,7 +66,6 @@ type AccountRollup = { value: number | null; upl: number | null };
 export function PortfolioPane({
   session,
   hasSession,
-  dataSource,
 }: PortfolioPaneProps): ReactElement {
   const accountsList = useResourceCollectionList(session, "accounts", {
     limit: 50,
@@ -80,6 +77,7 @@ export function PortfolioPane({
 
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importPdfOpen, setImportPdfOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
     undefined,
   );
@@ -156,19 +154,23 @@ export function PortfolioPane({
     if (tickers.length === 0) return;
     setIsFetchingPrices(true);
     try {
-      await session.sendAction("getQuotes", { tickers, dataSource });
+      // Portfolio holdings are real, so prices are always LIVE — decoupled from
+      // the analysis fixture/live toggle (fixtures only cover the 3 demo
+      // tickers). getQuotes bounds the fan-out + retries, so a large portfolio
+      // isn't throttled into "—".
+      await session.sendAction("getQuotes", { tickers, dataSource: "live" });
       await session.refresh();
     } catch (err) {
       console.error("[trading-desk] getQuotes failed", err);
     } finally {
       setIsFetchingPrices(false);
     }
-  }, [holdings, dataSource, session]);
+  }, [holdings, session]);
 
   // Auto-fetch prices once holdings are loaded and we have none yet, and when
-  // the held-ticker set or data source changes. Genuine side effect (network +
-  // external resource sync), so an effect is correct here (BP-010). Keyed on the
-  // sorted ticker signature so it doesn't refire on unrelated re-renders.
+  // the held-ticker set changes. Genuine side effect (network + external
+  // resource sync), so an effect is correct here (BP-010). Keyed on the sorted
+  // ticker signature so it doesn't refire on unrelated re-renders.
   const tickerSignature = useMemo(
     () => [...new Set(holdings.map((h) => h.ticker.toUpperCase()))].sort().join(","),
     [holdings],
@@ -177,10 +179,9 @@ export function PortfolioPane({
     if (tickerSignature.length === 0) return;
     void fetchPrices();
     // fetchPrices is intentionally omitted: it closes over `holdings` which
-    // changes identity every render; the ticker signature + dataSource are the
-    // real triggers.
+    // changes identity every render; the ticker signature is the real trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerSignature, dataSource]);
+  }, [tickerSignature]);
 
   const handleAddAccount = useCallback(
     async (draft: NewAccountDraft) => {
@@ -281,6 +282,24 @@ export function PortfolioPane({
         </button>
         <button
           type="button"
+          onClick={() => setImportPdfOpen(true)}
+          disabled={accounts.length === 0}
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md border border-[color:var(--c-border)] px-2.5 text-[11.5px] font-medium",
+            accounts.length === 0
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-[color:var(--c-surface-2)]",
+          )}
+          title={
+            accounts.length === 0
+              ? "Add an account first"
+              : "Import holdings from a statement PDF"
+          }
+        >
+          <FileText className="h-3 w-3" aria-hidden /> Import PDF
+        </button>
+        <button
+          type="button"
           onClick={() => void fetchPrices()}
           disabled={holdings.length === 0 || isFetchingPrices}
           className={cn(
@@ -317,14 +336,13 @@ export function PortfolioPane({
         </div>
       </div>
 
-      {/* Provenance line (real-money gate): fixture-vs-live + as-of. */}
+      {/* Provenance line (real-money gate): live source + as-of. Portfolio
+          holdings are real, so prices are always live — independent of the
+          analysis fixture/live toggle. */}
       <div className="border-b border-[color:var(--c-border)] px-4 py-1 text-[10px] text-[color:var(--c-fg-faint)]">
-        Prices: {quotes ? quotes.dataSource : dataSource}
-        {quotes?.quotes[0]?.asOf ? ` · as of ${quotes.quotes[0].asOf}` : ""}.
+        Prices: {quotes?.dataSource ?? "live"}
+        {quotes?.quotes?.[0]?.asOf ? ` · as of ${quotes.quotes[0].asOf}` : ""}.
         Money figures are display approximations, not precise accounting.
-        {dataSource === "fixture"
-          ? " Fixture prices are a pinned snapshot, not live quotes."
-          : ""}
       </div>
 
       {/* Account sections */}
@@ -369,6 +387,17 @@ export function PortfolioPane({
       <ImportCsvDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
+        accounts={accounts}
+        defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
+        onSubmit={(submit) => {
+          setSelectedAccountId(submit.accountId);
+          void handleImport(submit);
+        }}
+      />
+      <ImportPdfDialog
+        open={importPdfOpen}
+        onClose={() => setImportPdfOpen(false)}
+        session={session}
         accounts={accounts}
         defaultAccountId={selectedAccountId ?? accounts[0]?.accountId}
         onSubmit={(submit) => {

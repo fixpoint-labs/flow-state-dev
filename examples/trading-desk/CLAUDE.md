@@ -202,12 +202,18 @@ owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
   live mode never silently substitutes fixture data. Because `sendAction` returns
   a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
   its result to the session-scoped `portfolioQuotes` resource; the pane reads it
-  via `useResource` after `session.refresh()`.
+  via `useResource` after `session.refresh()`. **The pane always requests `live`
+  prices, decoupled from the analysis fixture/live toggle** — holdings are real,
+  and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
+  real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
+  shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
+  `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
+  rate limiter and drop a random subset to `—`.
 - **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
   in `components/portfolio/portfolio-format.ts` (pure) and is computed in
   `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
-  portfolio total. Money figures are labeled display approximations; a
-  fixture-vs-live + as-of provenance line sits near the totals.
+  portfolio total. Money figures are labeled display approximations; a live +
+  as-of provenance line sits near the totals.
 - **Empty-state binding (spec §12.1):** user-scoped reads need a bound session
   snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
   session (option a) — the pane prompts the user to run an analysis first when no

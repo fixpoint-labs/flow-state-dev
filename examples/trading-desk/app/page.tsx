@@ -338,12 +338,11 @@ function TradingDeskApp(): ReactElement {
         <main className="flex flex-col overflow-hidden">
           {/* Portfolio reads user-scoped resources through a session snapshot.
               Reuse the same `readSession` fallback the settings dialog uses —
-              the active session, else the first session. `dataSource` mirrors the
-              analysis toggle so fixture/live prices stay consistent. */}
+              the active session, else the first session. Prices are always live
+              (real holdings), so the analysis fixture/live toggle is not passed. */}
           <PortfolioPane
             session={readSession}
             hasSession={readSessionId !== undefined}
-            dataSource={dataSource}
           />
         </main>
       ) : (
