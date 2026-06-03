@@ -57,7 +57,7 @@ async function buildWorkerRegistry(
 
 /** Convert a binding's initialTasks into substrate `TaskInit` records. */
 function toTaskInits(binding: PatternBinding): TaskInit[] {
-  return binding.initialTasks.map((t) => {
+  return (binding.initialTasks ?? []).map((t) => {
     const init: TaskInit = { goal: t.goal };
     if (t.id !== undefined) init.id = t.id;
     if (t.assignee !== undefined) init.assignee = t.assignee;
@@ -112,6 +112,11 @@ const taskBoardFactory: PatternFactory = {
   key: "task-board",
   configSchema: taskBoardConfigSchema,
   async fromConfig(binding, deps) {
+    if (!binding.initialTasks || binding.initialTasks.length === 0) {
+      throw new Error(
+        `task-board pattern requires at least one entry in \`initial-tasks:\``,
+      );
+    }
     const workers = await buildWorkerRegistry(binding, deps);
     const scope = binding.collection?.scope ?? "request";
     if (scope === "session") {

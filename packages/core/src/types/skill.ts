@@ -98,8 +98,8 @@ export interface PatternBinding {
   collection?: { scope: "request" | "session" };
   /** Map of worker key → spec. Keys match `^[a-z0-9_-]+$`. */
   workers: Record<string, WorkerSpec>;
-  /** Tasks seeded into the collection at activation. */
-  initialTasks: TaskInitYaml[];
+  /** Tasks seeded into the collection at activation. Required for task-board; optional for other patterns. */
+  initialTasks?: TaskInitYaml[];
   /** Verbatim kebab-case config forwarded to the pattern factory. */
   patternConfig?: Record<string, unknown>;
 }
