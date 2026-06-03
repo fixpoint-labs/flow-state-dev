@@ -180,6 +180,25 @@ function runResourceStateStoreTests(
       await s.set("session", "s1", "empty", {});
       expect(await s.get("session", "s1", "empty")).toEqual({});
     });
+
+    it("handles many concurrent writes to a fresh scope without losing writes", async () => {
+      const s = await setup();
+      // Mirrors a portfolio import: many holdings written to a brand-new user
+      // scope at once. The filesystem store must survive the concurrent
+      // recursive-mkdir race on the just-created scope dir that previously
+      // surfaced as an ENOENT on a stray `…/holdings%2F…__VRSK.tmp-…` write
+      // (failing the whole import — "nothing happened").
+      const count = 40;
+      await Promise.all(
+        Array.from({ length: count }, (_, i) =>
+          s.set("user", "u:trading-desk", `holdings/acct__T${i}`, { ticker: `T${i}` })
+        )
+      );
+      const all = await s.getAll("user", "u:trading-desk");
+      expect(Object.keys(all)).toHaveLength(count);
+      expect(all["holdings/acct__T0"]).toEqual({ ticker: "T0" });
+      expect(all["holdings/acct__T39"]).toEqual({ ticker: "T39" });
+    });
   });
 }
 
