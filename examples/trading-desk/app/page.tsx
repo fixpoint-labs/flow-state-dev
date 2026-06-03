@@ -22,6 +22,7 @@ import { NewAnalysisDialog } from "@/components/new-analysis-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
+import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
 import { buildAnalyzeInput } from "@/src/flows/trading-desk/analyze-input";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
@@ -331,6 +332,18 @@ function TradingDeskApp(): ReactElement {
           <PastReportsPane
             sessions={flow.sessions}
             onOpenReport={handleOpenReport}
+          />
+        </main>
+      ) : view === "portfolio" ? (
+        <main className="flex flex-col overflow-hidden">
+          {/* Portfolio reads user-scoped resources through a session snapshot.
+              Reuse the same `readSession` fallback the settings dialog uses —
+              the active session, else the first session. `dataSource` mirrors the
+              analysis toggle so fixture/live prices stay consistent. */}
+          <PortfolioPane
+            session={readSession}
+            hasSession={readSessionId !== undefined}
+            dataSource={dataSource}
           />
         </main>
       ) : (

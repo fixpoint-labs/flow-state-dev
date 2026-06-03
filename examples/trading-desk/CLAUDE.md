@@ -24,6 +24,13 @@ src/flows/trading-desk/
   report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
   decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
   capability.ts                  the tradingDesk capability — single import for every generator
+  portfolio/                     Portfolio domain (Spine B) — accounts + holdings + CSV + getQuotes
+    portfolio-schema.ts          pure leaf: account/holding schemas, holdingKey/parseHoldingKey, CanonicalRow
+    portfolio-csv.ts             pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
+    portfolio-resources.ts       BP-019 leaf: accountsCollection + holdingsCollection (user-scoped, flow-isolated)
+    portfolio-quotes-resource.ts session-scoped resource getQuotes writes (sendAction returns no output)
+    portfolio-actions.ts         saveAccount / deleteAccount / importHoldings / deleteHolding handlers
+    get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
   lib/                           app-level helpers and factories (no external IO)
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
@@ -157,6 +164,54 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   are NOT built here — they render nothing until the portfolio + lens features
   land. Phase 6 `alignment` is labeled **"Thesis alignment"**, never "portfolio
   fit".
+
+## Portfolio view
+
+The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed by
+the `portfolio/` flow folder (Spine B). It is the durable record of what the user
+owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
+
+- **Data model — two collections, NOT one blob.** `accounts` (`accounts/*`,
+  keyed `accountId`) and `holdings` (`holdings/*`, keyed `{accountId}__{ticker}`)
+  are user-scoped + `flowIsolation: true`, so they persist under
+  `{userId}:trading-desk` on the existing filesystem store — no new store
+  adapter, no `StoreRegistry` change. Per-holding keying gives last-write-wins
+  isolation under the no-CAS store: importing into one account never clobbers
+  another, and the same ticker in two accounts is two distinct holdings. A single
+  blob would re-serialize the whole portfolio on every row write and lose that
+  isolation. `holdingKey`/`parseHoldingKey` (in `portfolio-schema.ts`) encode the
+  composite key with `__` — `.` (BRK.B) is allowed in a ticker and round-trips.
+- **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
+  `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
+  them to `output-schemas-strict.spec.ts`. Cost basis is **average cost
+  (informational)**, forward-compatible to tax-lots; tax-lots / realized P/L /
+  dividends are documented future seams, not built.
+- **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
+  table maps real brokerage headers, bad rows are REPORTED (with 1-based row
+  numbers) never thrown, duplicate tickers merge to a quantity-weighted average
+  cost, a bare `price` column maps to cost basis with a warning. The dialog runs
+  it client-side for the live preview; the `importHoldings` action re-parses
+  server-side (never trusts the client) and returns an `ImportReport`. Default
+  mode is `upsert` (non-destructive); `replace-account` is destructive, non-atomic
+  (RISK-P6), and requires a typed `REPLACE` confirmation. See
+  `docs/portfolio-csv-format.md`.
+- **Prices** come from `getQuotes` — a read handler that reuses
+  `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
+  `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
+  unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
+  live mode never silently substitutes fixture data. Because `sendAction` returns
+  a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
+  its result to the session-scoped `portfolioQuotes` resource; the pane reads it
+  via `useResource` after `session.refresh()`.
+- **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
+  in `components/portfolio/portfolio-format.ts` (pure) and is computed in
+  `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
+  portfolio total. Money figures are labeled display approximations; a
+  fixture-vs-live + as-of provenance line sits near the totals.
+- **Empty-state binding (spec §12.1):** user-scoped reads need a bound session
+  snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
+  session (option a) — the pane prompts the user to run an analysis first when no
+  session exists. Once any session is bound, Add Account / Import work.
 
 ## Adding a new generator
 

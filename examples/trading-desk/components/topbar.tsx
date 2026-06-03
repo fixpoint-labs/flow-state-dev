@@ -17,9 +17,8 @@ import { FlowStateMark } from "@/components/flow-state-mark";
 export type CostPreset = "fast" | "full";
 export type DataSourceMode = "fixture" | "live";
 
-/** The in-page views the TopBar nav toggles between. `"portfolio"` is reserved
- *  by the shared view-switcher contract (BUILD_PLAN §8) for the Portfolio slice
- *  to add; only `"desk"` and `"reports"` render a nav item today. */
+/** The in-page views the TopBar nav toggles between. All three render a nav
+ *  item: Desk (analysis), Past Reports, and Portfolio (BUILD_PLAN §8 contract). */
 export type TradingDeskView = "desk" | "reports" | "portfolio";
 
 type TopBarProps = {
@@ -33,11 +32,11 @@ type TopBarProps = {
   onThemeToggle: () => void;
 };
 
-/** The nav items rendered today. Kept as a list so the reserved `"portfolio"`
- *  view is a one-entry addition for the Portfolio slice. */
+/** The nav items rendered today. */
 const NAV_ITEMS: ReadonlyArray<{ value: TradingDeskView; label: string }> = [
   { value: "desk", label: "Desk" },
   { value: "reports", label: "Past Reports" },
+  { value: "portfolio", label: "Portfolio" },
 ];
 
 export function TopBar({

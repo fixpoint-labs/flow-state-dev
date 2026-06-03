@@ -29,6 +29,18 @@ import { phase4Pipeline } from "./phase-4";
 import { phase5Pipeline, scenarioForecasterPipeline } from "./phase-5";
 import { phase6Pipeline } from "./phase-6";
 import { priceHistoryResource } from "./price-history-resource";
+import { getQuotes } from "./portfolio/get-quotes";
+import {
+  deleteAccount,
+  deleteHolding,
+  importHoldings,
+  saveAccount,
+} from "./portfolio/portfolio-actions";
+import { portfolioQuotesResource } from "./portfolio/portfolio-quotes-resource";
+import {
+  accountsCollection,
+  holdingsCollection,
+} from "./portfolio/portfolio-resources";
 import { resolveTicker } from "./lib/ticker-resolver";
 import { storePriceHistory } from "./store-price-history";
 import {
@@ -253,6 +265,13 @@ const tradingDeskFlow = defineFlow({
   actions: {
     analyze: { block: analyzePipeline },
     setInstructions: { block: setInstructions },
+    // Portfolio (Slice 4 / Spine B). User-scoped resource mutations + a
+    // read-only price fetch. None drives the analysis pipeline.
+    saveAccount: { block: saveAccount },
+    deleteAccount: { block: deleteAccount },
+    importHoldings: { block: importHoldings },
+    deleteHolding: { block: deleteHolding },
+    getQuotes: { block: getQuotes },
   },
 
   session: {
@@ -294,6 +313,15 @@ const tradingDeskFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
+    // Portfolio domain (Slice 4 / Spine B). Two user-scoped, flow-isolated
+    // collections keyed by accountId and {accountId}__{ticker}; persist under
+    // `{userId}:trading-desk` on the existing filesystem store. See
+    // `portfolio/portfolio-resources.ts` for why two collections, not one blob.
+    accounts: accountsCollection,
+    holdings: holdingsCollection,
+    // Transient per-session price cache written by `getQuotes`; the Portfolio
+    // pane reads it via `useResource` after a refresh. Not a durable snapshot.
+    portfolioQuotes: portfolioQuotesResource,
   },
 });
 
