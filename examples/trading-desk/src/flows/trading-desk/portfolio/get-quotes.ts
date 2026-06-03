@@ -21,10 +21,19 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { getOrFetch } from "../lib/cache";
+import { mapLimit, sleep } from "../lib/concurrency";
 import { loadFixture } from "../lib/fixtures";
 import { fetchFinnhubCandles, hasFinnhubKey } from "../providers/finnhub";
 import { fetchYahooChart } from "../providers/yahoo";
 import { portfolioQuotesResource } from "./portfolio-quotes-resource";
+
+/** Live quote fan-out throttle: at most this many provider requests in flight at
+ *  once, so a 20+ holding portfolio doesn't trip Yahoo's rate limiter and drop a
+ *  random subset of tickers to "—". */
+const QUOTE_CONCURRENCY = 5;
+/** Per-ticker retry budget for the live path — covers a transient throttle
+ *  (HTTP 429) or network blip with a short backoff before degrading to null. */
+const QUOTE_RETRIES = 2;
 
 /** One requested ticker's resolved current price + provenance. `price` is null
  *  when no source could answer — the UI degrades to "—". */
@@ -72,14 +81,27 @@ async function resolveQuote(
       "get_price_history",
       { ticker, date, range: "1mo" },
       async () => {
-        if (hasFinnhubKey()) {
+        // Retry the provider chain on transient failure (throttle / network).
+        // The loop is INSIDE the cache factory so a successful retry is the
+        // value that gets cached, and a final failure throws (caught below →
+        // null), never caching a miss.
+        let lastErr: unknown;
+        for (let attempt = 0; attempt <= QUOTE_RETRIES; attempt++) {
+          if (attempt > 0) await sleep(200 * attempt); // 200ms, then 400ms
           try {
-            return await fetchFinnhubCandles({ ticker, date, range: "1mo" });
-          } catch {
-            // fall through to Yahoo
+            if (hasFinnhubKey()) {
+              try {
+                return await fetchFinnhubCandles({ ticker, date, range: "1mo" });
+              } catch {
+                // fall through to Yahoo for this attempt
+              }
+            }
+            return await fetchYahooChart({ ticker, date, range: "1mo" });
+          } catch (err) {
+            lastErr = err; // transient — back off and retry
           }
         }
-        return await fetchYahooChart({ ticker, date, range: "1mo" });
+        throw lastErr;
       },
     );
     const { price, asOf } = lastClose(payload);
@@ -111,8 +133,11 @@ export const getQuotes = handler({
     // uses today as the range anchor. A real per-ticker date is not modeled.
     const date = new Intl.DateTimeFormat("en-CA").format(new Date());
     const unique = [...new Set(input.tickers.map((t) => t.toUpperCase()))];
-    const quotes = await Promise.all(
-      unique.map((ticker) => resolveQuote(ticker, date, mode)),
+    // Bounded fan-out (not Promise.all): a 20+ ticker portfolio fired all at
+    // once trips Yahoo's throttle and drops a random subset to "—". mapLimit
+    // caps in-flight requests and preserves the requested order.
+    const quotes = await mapLimit(unique, QUOTE_CONCURRENCY, (ticker) =>
+      resolveQuote(ticker, date, mode),
     );
     await ctx.resources.portfolioQuotes.patchState({
       dataSource: mode,

@@ -16,6 +16,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../../lib/cache";
+import { mapLimit, sleep } from "../../lib/concurrency";
 import { loadFixture } from "../../lib/fixtures";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
@@ -49,9 +50,6 @@ const FRED_SERIES = [
 type FredResponse = {
   observations?: Array<{ date: string; value: string }>;
 };
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Fetch one FRED series (most recent `limit` observations, newest-first),
@@ -94,30 +92,6 @@ async function fredSeries(seriesId: string, limit: number, key: string): Promise
     }
   }
   throw lastErr;
-}
-
-/**
- * Run `fn` over `items` with at most `limit` calls in flight at once,
- * preserving input order in the result. Keeps the FRED request burst under
- * FRED's concurrency throttle.
- */
-async function mapLimit<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
-  );
-  return out;
 }
 
 export const get_macro_indicators = handler({
