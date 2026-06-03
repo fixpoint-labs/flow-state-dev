@@ -14,7 +14,7 @@ import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   AccountState,
-  HoldingState,
+  Holding,
 } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
 import { HoldingsTable } from "./holdings-table";
@@ -22,7 +22,7 @@ import { DASH, formatMoney, formatSignedMoney } from "./portfolio-format";
 
 type AccountSectionProps = {
   account: AccountState;
-  holdings: HoldingState[];
+  holdings: Holding[];
   prices: Map<string, Quote>;
   /** Sum of holding market values for this account; `null` while prices load
    *  or when no holding has a known price. */

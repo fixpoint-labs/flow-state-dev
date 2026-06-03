@@ -4,9 +4,9 @@
  * import control, and a refresh-prices action.
  *
  * Data path:
- *  - Accounts + holdings come from the two user-scoped collections via
- *    `useResourceCollectionList`. Holdings are read in ONE list and grouped by
- *    account client-side (the hook can't be called per-account in a loop).
+ *  - Accounts come from the user-scoped `accounts` collection via
+ *    `useResourceCollectionList`. Holdings ride inline in each account record
+ *    (`account.holdings`) — there is no separate holdings collection.
  *  - Prices come from the `getQuotes` action: dispatch → `session.refresh()` →
  *    read the `portfolioQuotes` resource via `useResource`. `sendAction` does
  *    not return handler output in this runtime, so the resource is the channel.
@@ -36,7 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   AccountState,
-  HoldingState,
+  Holding,
 } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
 import type { PortfolioQuotesState } from "@/src/flows/trading-desk/portfolio/portfolio-quotes-resource";
@@ -70,9 +70,6 @@ export function PortfolioPane({
   const accountsList = useResourceCollectionList(session, "accounts", {
     limit: 50,
   });
-  const holdingsList = useResourceCollectionList(session, "holdings", {
-    limit: 200,
-  });
   const { clientData: quotesData } = useResource(session, "portfolioQuotes");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -92,24 +89,17 @@ export function PortfolioPane({
         .filter((a): a is AccountState => a !== undefined),
     [accountsList.items],
   );
-  const holdings = useMemo<HoldingState[]>(
-    () =>
-      holdingsList.items
-        .map((it) => it.clientData as HoldingState | undefined)
-        .filter((h): h is HoldingState => h !== undefined),
-    [holdingsList.items],
-  );
-
-  // Group holdings by account (the hook can't run per-account in a loop).
+  // Holdings ride inline in each account record. Index them by accountId for
+  // the per-account sections, and flatten them for the price fetch.
   const holdingsByAccount = useMemo(() => {
-    const map = new Map<string, HoldingState[]>();
-    for (const h of holdings) {
-      const list = map.get(h.accountId) ?? [];
-      list.push(h);
-      map.set(h.accountId, list);
-    }
+    const map = new Map<string, Holding[]>();
+    for (const account of accounts) map.set(account.accountId, account.holdings);
     return map;
-  }, [holdings]);
+  }, [accounts]);
+  const holdings = useMemo<Holding[]>(
+    () => accounts.flatMap((a) => a.holdings),
+    [accounts],
+  );
 
   // Price map: ticker (upper) → quote. Read from the resource the action wrote.
   const quotes = quotesData as PortfolioQuotesState | null;
@@ -199,26 +189,27 @@ export function PortfolioPane({
     async (submit: ImportSubmit) => {
       try {
         await session.sendAction("importHoldings", submit);
-        holdingsList.refetch();
+        // Holdings ride along inside the account record, so refetching accounts
+        // is enough — there is no separate holdings list to refresh.
         accountsList.refetch();
         await fetchPrices();
       } catch (err) {
         console.error("[trading-desk] importHoldings failed", err);
       }
     },
-    [session, holdingsList, accountsList, fetchPrices],
+    [session, accountsList, fetchPrices],
   );
 
   const handleDeleteHolding = useCallback(
     async (accountId: string, ticker: string) => {
       try {
         await session.sendAction("deleteHolding", { accountId, ticker });
-        holdingsList.refetch();
+        accountsList.refetch();
       } catch (err) {
         console.error("[trading-desk] deleteHolding failed", err);
       }
     },
-    [session, holdingsList],
+    [session, accountsList],
   );
 
   const handleDeleteAccount = useCallback(
@@ -226,12 +217,11 @@ export function PortfolioPane({
       try {
         await session.sendAction("deleteAccount", { accountId });
         accountsList.refetch();
-        holdingsList.refetch();
       } catch (err) {
         console.error("[trading-desk] deleteAccount failed", err);
       }
     },
-    [session, accountsList, holdingsList],
+    [session, accountsList],
   );
 
   // Empty-state: no bound session OR no accounts yet. Spec §12.1 recommendation

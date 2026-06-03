@@ -13,7 +13,7 @@
 import type { ReactElement } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { HoldingState } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
+import type { Holding } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
 import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
 import {
   DASH,
@@ -27,7 +27,7 @@ import {
 } from "./portfolio-format";
 
 type HoldingsTableProps = {
-  holdings: HoldingState[];
+  holdings: Holding[];
   /** ticker (upper-case) → resolved quote. Missing entry = price unknown. */
   prices: Map<string, Quote>;
   currency: string;

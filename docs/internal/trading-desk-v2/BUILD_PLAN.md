@@ -111,19 +111,22 @@ downstream is a read. Get it wrong and every consumer inherits the defect.
 The portfolio domain is genuinely new durable data and is the hard dependency for the two
 analysis features:
 
-- **04 builds the portfolio spine**: two user-scoped, flow-isolated resource collections —
-  `accounts` (`accounts/*`) and `holdings` (`holdings/*`, keyed `{accountId}__{ticker}`) — plus the
-  CSV parser, import actions, and the `getQuotes` read action. No store change; it rides the
-  existing filesystem store under `{userId}:trading-desk`.
+- **04 builds the portfolio spine**: one user-scoped, flow-isolated resource collection —
+  `accounts` (`accounts/*`), with each account's positions stored inline as a `holdings: Holding[]`
+  array — plus the CSV parser, import actions, and the `getQuotes` read action. No store change; it
+  rides the existing filesystem store under `{userId}:trading-desk`.
 - **05 consumes 04**: it reads a snapshot of that portfolio at dispatch, freezes it onto session
   state, and feeds `<portfolioContext>` into the trader and PM.
 - **07's sizing cap** and **06's portfolio-weight chart** also key off this data.
 
-**The load-bearing decision in Spine B is the `(accountId, ticker)` composite key and the
-two-collection-not-one-blob choice** (04 §2.1–2.4). Per-holding keying gives last-write-wins
-isolation under the no-CAS filesystem store; a single portfolio blob would clobber on concurrent
-writes. This is a real-money correctness property, not an optimization — get it right in 04 before
-anything reads it.
+**Note — model simplified.** The original Spine B design used two collections (`accounts` +
+`holdings`, keyed `{accountId}__{ticker}`) and a `(accountId, ticker)` composite key to get
+last-write-wins isolation under the no-CAS filesystem store. That was later collapsed to ONE
+collection with holdings stored inline in each account record: the data is small, rarely-changing
+JSON written in batches, so the per-account record is a fine write unit and there is no
+concurrent-row-write race to isolate — an import is now one write to one account, not ~21 concurrent
+holding writes. The text below describing the two-collection scheme is retained for historical
+context but no longer reflects the shipped model.
 
 ### What the spine does NOT require
 
@@ -503,11 +506,11 @@ and there is no "last known price / how stale" surface. Now that the portfolio a
 **Task.** On each live quote fetch, also persist `{ price, asOf, lastRefreshedAt, source }` to a
 durable store and surface "prices last refreshed <when>" in the pane.
 
-**Decision needed.** Store on the holding vs a separate durable cache. **Lean: a user-scoped
-`quoteCache` collection keyed by ticker** — it avoids re-serializing every holding on each refresh and
-dedupes the same ticker held in two accounts (consistent with the per-holding-key isolation rationale
-in §Spine B). Storing on the holding would re-write N holdings per refresh and duplicate the price for
-a ticker held twice.
+**Decision needed.** Store the price on the holding vs a separate durable cache. **Lean: a
+user-scoped `quoteCache` collection keyed by ticker** — it avoids re-writing account records on each
+refresh and naturally dedupes a ticker held in two accounts (which, under the inline-holdings model,
+is two separate entries — one per account's array — that would otherwise each carry their own copy of
+the price). A per-ticker cache keeps one price per ticker regardless of how many accounts hold it.
 
 **Real-money gates.** A persisted price MUST carry its own `asOf` so a stale cached price is shown
 **as stale**, never as live; never fabricate a price to fill the cache; a cache miss still degrades to

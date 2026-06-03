@@ -24,10 +24,10 @@ src/flows/trading-desk/
   report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
   decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
   capability.ts                  the tradingDesk capability — single import for every generator
-  portfolio/                     Portfolio domain (Spine B) — accounts + holdings + CSV + getQuotes
-    portfolio-schema.ts          pure leaf: account/holding schemas, holdingKey/parseHoldingKey, CanonicalRow
+  portfolio/                     Portfolio domain (Spine B) — accounts (holdings inline) + CSV + getQuotes
+    portfolio-schema.ts          pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
     portfolio-csv.ts             pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-    portfolio-resources.ts       BP-019 leaf: accountsCollection + holdingsCollection (user-scoped, flow-isolated)
+    portfolio-resources.ts       BP-019 leaf: accountsCollection (user-scoped, flow-isolated; holdings live inline)
     portfolio-quotes-resource.ts session-scoped resource getQuotes writes (sendAction returns no output)
     portfolio-actions.ts         saveAccount / deleteAccount / importHoldings / deleteHolding handlers
     get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
@@ -171,16 +171,17 @@ The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed
 the `portfolio/` flow folder (Spine B). It is the durable record of what the user
 owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 
-- **Data model — two collections, NOT one blob.** `accounts` (`accounts/*`,
-  keyed `accountId`) and `holdings` (`holdings/*`, keyed `{accountId}__{ticker}`)
-  are user-scoped + `flowIsolation: true`, so they persist under
-  `{userId}:trading-desk` on the existing filesystem store — no new store
-  adapter, no `StoreRegistry` change. Per-holding keying gives last-write-wins
-  isolation under the no-CAS store: importing into one account never clobbers
-  another, and the same ticker in two accounts is two distinct holdings. A single
-  blob would re-serialize the whole portfolio on every row write and lose that
-  isolation. `holdingKey`/`parseHoldingKey` (in `portfolio-schema.ts`) encode the
-  composite key with `__` — `.` (BRK.B) is allowed in a ticker and round-trips.
+- **Data model — one collection; holdings live inside the account.** `accounts`
+  (`accounts/*`, keyed `accountId`) is the only collection — user-scoped +
+  `flowIsolation: true`, so it persists under `{userId}:trading-desk` on the
+  existing filesystem store (no new store adapter, no `StoreRegistry` change).
+  Each account record carries its positions inline as
+  `accountStateSchema.holdings: Holding[]` (a `Holding` is exactly a
+  `CanonicalRow`). The per-account record is the write unit: an import is ONE
+  write to one account, not one write per ticker. That suits this small,
+  rarely-changing, batch-written JSON — there is no concurrent-row-write race to
+  isolate, so the earlier per-holding-key scheme was over-modeled. The same
+  ticker in two accounts is simply two entries, one per account's array.
 - **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
   `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
   them to `output-schemas-strict.spec.ts`. Cost basis is **average cost

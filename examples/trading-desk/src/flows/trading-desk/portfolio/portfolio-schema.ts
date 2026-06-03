@@ -1,19 +1,19 @@
 /**
- * Pure, browser-safe portfolio domain schemas + key helpers.
+ * Pure, browser-safe portfolio domain schemas.
  *
  * This is the load-bearing leaf for Spine B (the portfolio data model). It
  * imports ONLY `zod` — no `@flow-state-dev/core` — so it runs identically in
  * the client (the import dialog's live preview) and in the server action, and
  * is unit-testable without a runtime (BP-019: leaf module, no cycles).
  *
- * The model is two collections keyed by `(accountId, ticker)`:
- *   - one `account` resource per account (keyed `accountId`),
- *   - one `holding` resource per `(accountId, ticker)` pair (keyed
- *     `{accountId}__{ticker}`).
- * Per-holding keying gives last-write-wins isolation under the no-CAS
- * filesystem store: importing into one account never clobbers another, and the
- * same ticker in two accounts is two distinct holdings. A single portfolio blob
- * would re-serialize the whole map on every row write and lose that isolation.
+ * The model is ONE collection: `accounts` (keyed `accountId`). A holding is
+ * NOT its own resource — each account record carries its holdings inline as a
+ * `Holding[]` array. The per-account record is the write unit: importing a
+ * brokerage statement is a single write to one account, not one write per
+ * ticker. This is fine because the data is small and rarely-changing JSON
+ * written in batches (an import or a manual edit), so re-serializing an
+ * account's holdings array on each write costs nothing and there is no
+ * concurrent-row-write race to isolate.
  *
  * These are RESOURCE STATE schemas, not generator outputs — `.default()` /
  * `.nullable()` are fine here (BP-016 only constrains generator output shapes).
@@ -26,9 +26,36 @@ export const accountTypeSchema = z.enum(["taxable", "IRA", "Roth", "401k"]);
 export type AccountType = z.infer<typeof accountTypeSchema>;
 
 /**
- * One brokerage/retirement account. `cashBalance` lives here (it is per-account,
- * not per-ticker, so it is NOT a holding). Single-currency per account in v1;
- * multi-currency is a documented future seam.
+ * One holding — the `(account, ticker)` unit, stored inline in its account's
+ * `holdings` array. The `ticker` identifies the row within the account; the
+ * account is identified by the record it lives in (no `accountId` field — a
+ * holding is exactly a {@link CanonicalRow}).
+ *
+ * `costBasis` is AVERAGE cost per share, INFORMATIONAL only — it is tax-wrong
+ * (wash sales, specific-lot selection, holding-period are not modeled). The UI
+ * must not imply tax accuracy.
+ *
+ * FUTURE SEAM — tax-lots: add `lots: z.array(lotSchema)` later; `costBasis`
+ * becomes the derived average over lots and `acquiredDate` becomes
+ * `min(lot.date)`. No rename — these v1 avg-cost fields are forward-compatible.
+ */
+export const holdingSchema = z.object({
+  /** Normalized upper-case ticker (see `portfolio-csv.ts` validation). */
+  ticker: z.string(),
+  /** Fractional shares supported (e.g. 0.4213 of BRK.A). */
+  quantity: z.number(),
+  /** Average cost per share in the account's currency. Blank import → null. */
+  costBasis: z.number().nullable().default(null),
+  /** Earliest acquisition date (earliest lot date once lots exist). */
+  acquiredDate: z.string().nullable().default(null),
+});
+export type Holding = z.infer<typeof holdingSchema>;
+
+/**
+ * One brokerage/retirement account, with its holdings inline. `cashBalance`
+ * lives here (it is per-account, not per-ticker, so it is NOT a holding).
+ * Single-currency per account in v1; multi-currency is a documented future
+ * seam.
  *
  * FUTURE SEAM — realized P/L + dividends: a future `accountLedgerSchema`
  * collection (`pattern: "ledger/*"`, keyed by event id) records cash events.
@@ -46,63 +73,18 @@ export const accountStateSchema = z.object({
   /** Settled cash in the account's currency. Fractional allowed. v1 uses a
    *  JS float — display approximation, not precise accounting (RISK-P5). */
   cashBalance: z.number().default(0),
+  /** The account's positions. Empty on a fresh account; populated by import or
+   *  manual edit. Replacing this array IS the import write. */
+  holdings: z.array(holdingSchema).default([]),
   /** Audit timestamps. Plain ISO strings. */
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type AccountState = z.infer<typeof accountStateSchema>;
 
-/**
- * One holding — the `(accountId, ticker)` unit. Both identity fields are stored
- * explicitly so a row is self-describing without parsing the storage key.
- *
- * `costBasis` is AVERAGE cost per share, INFORMATIONAL only — it is tax-wrong
- * (wash sales, specific-lot selection, holding-period are not modeled). The UI
- * must not imply tax accuracy.
- *
- * FUTURE SEAM — tax-lots: add `lots: z.array(lotSchema)` later; `costBasis`
- * becomes the derived average over lots and `acquiredDate` becomes
- * `min(lot.date)`. No rename — these v1 avg-cost fields are forward-compatible.
- */
-export const holdingStateSchema = z.object({
-  accountId: z.string(),
-  /** Normalized upper-case ticker (see `portfolio-csv.ts` validation). */
-  ticker: z.string(),
-  /** Fractional shares supported (e.g. 0.4213 of BRK.A). */
-  quantity: z.number(),
-  /** Average cost per share in the account's currency. Blank import → null. */
-  costBasis: z.number().nullable().default(null),
-  /** Earliest acquisition date (earliest lot date once lots exist). */
-  acquiredDate: z.string().nullable().default(null),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type HoldingState = z.infer<typeof holdingStateSchema>;
-
-/**
- * Encode the composite holdings key. `__` (double underscore) cannot collide:
- * tickers are normalized to `[A-Z0-9.\-]` and accountIds are UUIDs/slugs, so
- * neither contains `__`. `.` (BRK.B) is allowed in a ticker but is not the
- * separator, so it round-trips cleanly through `parseHoldingKey`.
- */
-export function holdingKey(accountId: string, ticker: string): string {
-  return `${accountId}__${ticker}`;
-}
-
-/** Inverse of {@link holdingKey}. Splits on the FIRST `__` so a ticker that
- *  somehow contained `__` would keep its tail intact (defensive — validation
- *  forbids it). */
-export function parseHoldingKey(key: string): {
-  accountId: string;
-  ticker: string;
-} {
-  const i = key.indexOf("__");
-  if (i === -1) return { accountId: key, ticker: "" };
-  return { accountId: key.slice(0, i), ticker: key.slice(i + 2) };
-}
-
 /** The four canonical CSV columns the parser maps every brokerage export onto.
- *  Shared by the parser and the import action. */
+ *  Shared by the parser and the import action. A {@link Holding} is exactly a
+ *  `CanonicalRow`. */
 export type CanonicalRow = {
   ticker: string;
   quantity: number;

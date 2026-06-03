@@ -9,9 +9,9 @@
  *     envelope). The action imports NOTHING.
  *  2. The confirmed rows, mapped to canonical CSV by the pure
  *     `toCanonicalRows` / `canonicalRowsToCsv`, flow through the EXISTING
- *     `importHoldings` action: real holdings land in the `holdings` collection
- *     with `costBasis: null`, and the skipped junk rows (MMF, contra-CUSIP)
- *     never reach storage.
+ *     `importHoldings` action: real holdings land in the target account's inline
+ *     `holdings` array with `costBasis: null`, and the skipped junk rows (MMF,
+ *     contra-CUSIP) never reach storage.
  *
  * The reconciliation arithmetic itself is unit-tested in `portfolio-pdf.spec.ts`;
  * this spec verifies the wiring around it.
@@ -29,6 +29,19 @@ import {
 const USER_ID = "devuser";
 const ISOLATED_KEY = `${USER_ID}:trading-desk`;
 const ACCOUNT = "acct-pdf";
+
+/** Create the target account — `importHoldings` requires an existing account. */
+async function createAccount(
+  stores: ReturnType<typeof createInMemoryStores>,
+): Promise<void> {
+  await testFlow({
+    flow: tradingDeskFlow,
+    action: "saveAccount",
+    userId: USER_ID,
+    stores,
+    input: { accountId: ACCOUNT, name: "PDF Account", type: "taxable" },
+  });
+}
 
 /** What the (mocked) extraction generator "transcribes" from the statement. */
 function extractionOutput(): PdfExtraction {
@@ -74,13 +87,14 @@ describe("extractHoldingsFromPdf action", () => {
     expect(extraction?.rows).toHaveLength(4);
     expect(extraction?.statedTotal).toBe(3926.84);
 
-    // The action imported NOTHING — no holdings written.
+    // The action imported NOTHING — no account record (and thus no holdings)
+    // was written by the extract step.
     const userResources = (await stores.resourceState.getAll(
       "user",
       ISOLATED_KEY,
     )) as Record<string, unknown>;
     expect(
-      Object.keys(userResources).some((k) => k.startsWith("holdings/")),
+      Object.keys(userResources).some((k) => k.startsWith("accounts/")),
     ).toBe(false);
   });
 });
@@ -88,6 +102,7 @@ describe("extractHoldingsFromPdf action", () => {
 describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
   it("imports the real holdings (costBasis null) and skips MMF + contra-CUSIP", async () => {
     const stores = createInMemoryStores();
+    await createAccount(stores);
 
     // The dialog's confirm step: map the (reviewed) extraction to canonical CSV.
     const { rows, skipped } = toCanonicalRows(extractionOutput());
@@ -109,22 +124,33 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
     const userResources = (await stores.resourceState.getAll(
       "user",
       ISOLATED_KEY,
-    )) as Record<string, { ticker?: string; quantity?: number; costBasis?: number | null }>;
+    )) as Record<
+      string,
+      {
+        holdings?: Array<{
+          ticker: string;
+          quantity: number;
+          costBasis: number | null;
+        }>;
+      }
+    >;
+    const holdings = userResources[`accounts/${ACCOUNT}`]?.holdings ?? [];
 
     // Real holdings landed with costBasis null (a snapshot carries no cost).
-    expect(userResources[`holdings/${ACCOUNT}__AAPL`]).toMatchObject({
-      ticker: "AAPL",
-      quantity: 5.44149,
-      costBasis: null,
-    });
-    expect(userResources[`holdings/${ACCOUNT}__MSFT`]).toMatchObject({
-      ticker: "MSFT",
-      quantity: 2,
-      costBasis: null,
-    });
+    expect(holdings).toContainEqual(
+      expect.objectContaining({
+        ticker: "AAPL",
+        quantity: 5.44149,
+        costBasis: null,
+      }),
+    );
+    expect(holdings).toContainEqual(
+      expect.objectContaining({ ticker: "MSFT", quantity: 2, costBasis: null }),
+    );
     // The skipped junk rows never reached storage.
-    expect(userResources[`holdings/${ACCOUNT}__TIMXX`]).toBeUndefined();
-    expect(userResources[`holdings/${ACCOUNT}__436CVR021`]).toBeUndefined();
+    const tickers = holdings.map((h) => h.ticker);
+    expect(tickers).not.toContain("TIMXX");
+    expect(tickers).not.toContain("436CVR021");
   });
 });
 
@@ -132,6 +158,8 @@ describe("importHoldings clears the consumed pdfImport scratch", () => {
   it("resets pdfImport to null after a confirmed import, so a 2nd import can't read it", async () => {
     const stores = createInMemoryStores();
     const sessionId = "pdf-clear-session";
+    // The import only runs (and clears the scratch) against an existing account.
+    await createAccount(stores);
 
     // 1. Extraction populates the session-scoped scratch resource.
     const extractResult = await testFlow({

@@ -39,10 +39,7 @@ import {
 import { extractHoldingsFromPdf } from "./portfolio/extract-holdings-action";
 import { portfolioQuotesResource } from "./portfolio/portfolio-quotes-resource";
 import { pdfImportResource } from "./portfolio/portfolio-pdf-resource";
-import {
-  accountsCollection,
-  holdingsCollection,
-} from "./portfolio/portfolio-resources";
+import { accountsCollection } from "./portfolio/portfolio-resources";
 import { resolveTicker } from "./lib/ticker-resolver";
 import { storePriceHistory } from "./store-price-history";
 import {
@@ -320,12 +317,11 @@ const tradingDeskFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
-    // Portfolio domain (Slice 4 / Spine B). Two user-scoped, flow-isolated
-    // collections keyed by accountId and {accountId}__{ticker}; persist under
-    // `{userId}:trading-desk` on the existing filesystem store. See
-    // `portfolio/portfolio-resources.ts` for why two collections, not one blob.
+    // Portfolio domain (Slice 4 / Spine B). One user-scoped, flow-isolated
+    // collection keyed by accountId; persists under `{userId}:trading-desk` on
+    // the existing filesystem store. Holdings live inline in each account record
+    // — see `portfolio/portfolio-resources.ts`.
     accounts: accountsCollection,
-    holdings: holdingsCollection,
     // Transient per-session price cache written by `getQuotes`; the Portfolio
     // pane reads it via `useResource` after a refresh. Not a durable snapshot.
     portfolioQuotes: portfolioQuotesResource,
