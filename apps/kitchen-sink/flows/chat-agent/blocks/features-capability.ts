@@ -33,6 +33,7 @@ import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
 import { selectBashProvider } from "./bash-tools";
 import { mcpCapability } from "../../../lib/mcp";
+import { agentRegistry, materializeAgent } from "../agents";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +68,8 @@ const skillsCap = createSkillsCapability({
     fetch: fetchTool,
     crawl: crawlTool,
   },
+  agentRegistry,
+  materializeAgent,
   initialSkills,
   // User scope: skills are a per-user library that persists across sessions.
   // Org scope would be nicer for team-shared skills, but the chat-agent
