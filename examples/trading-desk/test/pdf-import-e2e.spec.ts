@@ -1,11 +1,18 @@
 /**
- * End-to-end integration spec for the PDF holdings import path, with the
- * extraction generator MOCKED (the suite is offline — no real LLM, no real PDF).
+ * End-to-end integration spec for the PDF holdings import path, with BOTH the
+ * server-side text extraction AND the extraction generator MOCKED (the suite is
+ * offline — no real LLM, no real PDF parsing).
+ *
+ * The action now takes `{ pdfBase64 }` and runs: decode base64 -> server
+ * `extractPdfText` (MOCKED here to return canned statement text) -> the
+ * extraction generator (MOCKED) -> commit. Mocking the extractor module keeps
+ * the test deterministic without bundling a real PDF; the extractor's own
+ * linearization logic is unit-tested in `extract-pdf-text.server.spec.ts`.
  *
  * Asserts the two seams the slice rests on:
- *  1. `extractHoldingsFromPdf` runs the (mocked) generator and writes the
- *     transcribed rows + stated total to the session-scoped `pdfImport` resource
- *     — the channel the dialog reads (sendAction returns only a status
+ *  1. `extractHoldingsFromPdf` runs the decode + (mocked) generator and writes
+ *     the transcribed rows + stated total to the session-scoped `pdfImport`
+ *     resource — the channel the dialog reads (sendAction returns only a status
  *     envelope). The action imports NOTHING.
  *  2. The confirmed rows, mapped to canonical CSV by the pure
  *     `toCanonicalRows` / `canonicalRowsToCsv`, flow through the EXISTING
@@ -16,7 +23,20 @@
  * The reconciliation arithmetic itself is unit-tested in `portfolio-pdf.spec.ts`;
  * this spec verifies the wiring around it.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock the server-side PDF text extractor so the decode step runs without a real
+// PDF. The action passes the decoded bytes to this fn; we ignore them and return
+// canned statement text. Hoisted by vitest above the flow import.
+vi.mock(
+  "../src/flows/trading-desk/portfolio/extract-pdf-text.server",
+  () => ({
+    extractPdfText: vi.fn(
+      async () => "AAPL ... MSFT ... TIMXX ... Total Holdings $3,926.84",
+    ),
+  }),
+);
+
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import tradingDeskFlow from "../src/flows/trading-desk/flow";
@@ -25,6 +45,10 @@ import {
   toCanonicalRows,
   type PdfExtraction,
 } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
+
+/** A base64 string standing in for an uploaded PDF. Its bytes are irrelevant —
+ *  `extractPdfText` is mocked — but the decode step requires non-empty bytes. */
+const PDF_BASE64 = Buffer.from("%PDF-1.4 fake bytes").toString("base64");
 
 const USER_ID = "devuser";
 const ISOLATED_KEY = `${USER_ID}:trading-desk`;
@@ -67,7 +91,7 @@ describe("extractHoldingsFromPdf action", () => {
       userId: USER_ID,
       sessionId,
       stores,
-      input: { statementText: "AAPL ... MSFT ... Total Holdings $3,926.84" },
+      input: { pdfBase64: PDF_BASE64 },
       generators: {
         "extract-holdings-generator": mockGenerator({
           name: "extract-holdings-generator",
@@ -168,7 +192,7 @@ describe("importHoldings clears the consumed pdfImport scratch", () => {
       userId: USER_ID,
       sessionId,
       stores,
-      input: { statementText: "AAPL ... MSFT ... Total Holdings $3,926.84" },
+      input: { pdfBase64: PDF_BASE64 },
       generators: {
         "extract-holdings-generator": mockGenerator({
           name: "extract-holdings-generator",

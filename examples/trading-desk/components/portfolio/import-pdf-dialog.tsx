@@ -4,10 +4,13 @@
  *
  * Flow (three phases, all in this dialog):
  *  1. PICK    — choose the target account + the statement PDF. On upload, the
- *               PDF is read to text CLIENT-SIDE (`extractPdfText`, pdfjs), then
- *               `extractHoldingsFromPdf` is dispatched with the text. The LLM
- *               transcription runs server-side and writes the extracted rows to
- *               the session-scoped `pdfImport` resource.
+ *               PDF bytes are base64-encoded and `extractHoldingsFromPdf` is
+ *               dispatched with them. The SERVER extracts the PDF text (pdfjs in
+ *               Node — see `extract-pdf-text.server.ts`; the browser worker that
+ *               turbopack resolved unreliably is gone) and the LLM transcription
+ *               writes the extracted rows to the session-scoped `pdfImport`
+ *               resource. Uploading the bytes is no new privacy exposure: the
+ *               extracted holdings already go to the server + the LLM.
  *  2. REVIEW  — after `session.refresh()`, the dialog reads `pdfImport` via
  *               `useResource`, runs the DETERMINISTIC `reconcile()` (pure, never
  *               the LLM) on the rows, and shows: the transcribed rows, the
@@ -46,8 +49,25 @@ import type {
   AccountState,
   ImportMode,
 } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
-import { extractPdfText } from "./pdf-text";
 import type { ImportSubmit } from "./import-csv-dialog";
+
+/** Reject obviously-too-large uploads before encoding/sending. A text brokerage
+ *  statement is well under this; the cap guards against a multi-hundred-MB file
+ *  ballooning the base64 string and the request body. */
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+/** Base64-encode bytes in chunks. `btoa(String.fromCharCode(...bytes))` blows
+ *  the call stack on large buffers (the spread passes every byte as an arg), so
+ *  build the binary string in fixed-size slices first. */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000; // 32KB per chunk — safely under the arg-count limit.
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
 
 type ImportPdfDialogProps = {
   open: boolean;
@@ -150,16 +170,20 @@ export function ImportPdfDialog({
   const handleFile = async (file: File): Promise<void> => {
     setFileName(file.name);
     setError(null);
+    if (file.size > MAX_PDF_BYTES) {
+      setError("That PDF is too large (over 20 MB). A statement should be well under this.");
+      setPhase("pick");
+      return;
+    }
     setPhase("extracting");
     const token = extractTokenRef.current;
     try {
-      const statementText = await extractPdfText(file);
-      if (statementText.trim().length === 0) {
-        throw new Error(
-          "No text found in this PDF (it may be a scanned image, which is not supported).",
-        );
-      }
-      await session.sendAction("extractHoldingsFromPdf", { statementText });
+      // Read the bytes and base64-encode them; the SERVER extracts the text now
+      // (no browser pdfjs worker). Empty / scanned-image PDFs surface as an
+      // error from the server-side decode step.
+      const buffer = await file.arrayBuffer();
+      const pdfBase64 = bytesToBase64(new Uint8Array(buffer));
+      await session.sendAction("extractHoldingsFromPdf", { pdfBase64 });
       await session.refresh();
       // Show the review only if the dialog wasn't closed+reopened mid-extract.
       // The ref reads the LATEST token (a closed-over state value could not).

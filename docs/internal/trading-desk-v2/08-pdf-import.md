@@ -8,9 +8,11 @@ half.
 ## The path, end to end
 
 ```
-PDF file  ──(client, pdfjs)──▶  statement text
-          ──sendAction("extractHoldingsFromPdf", { statementText })──▶  server
-server:   extract-holdings-generator (LLM, strict output)  ──▶  pdfImport resource
+PDF file  ──(client, base64-encode bytes)──▶
+          ──sendAction("extractHoldingsFromPdf", { pdfBase64 })──▶  server
+server:   decodeStatement handler: base64 → bytes → extractPdfText (pdfjs, Node)
+          ──▶  statement text
+          extract-holdings-generator (LLM, strict output)  ──▶  pdfImport resource
           ──session.refresh()──▶  client reads pdfImport via useResource
 client:   reconcile(extraction)  (pure, deterministic — NOT the LLM)
           ──▶  review table: per-row check + total check + skipped rows
@@ -20,34 +22,52 @@ client:   reconcile(extraction)  (pure, deterministic — NOT the LLM)
 
 Three responsibilities, three different mechanisms:
 
-1. **PDF → text**: deterministic, client-side, `pdfjs-dist`.
+1. **PDF → text**: deterministic, SERVER-side, `pdfjs-dist` (Node legacy build).
 2. **text → structured rows**: an LLM (broker-agnostic transcription). The ONLY
    model step.
 3. **rows → trust → import**: deterministic TS (reconciliation + canonical
    mapping) + the existing `importHoldings`. NEVER the LLM.
 
+> **Streaming progress is a deferred follow-up.** The dialog shows a static
+> "extracting" state for the whole server round-trip (decode → extract → LLM).
+> Streaming per-page / per-phase progress back to the dialog is a follow-up —
+> server-side extraction now makes it straightforward. See `BUILD_PLAN.md` §10.
+
 ## Decisions
 
-### Client-side text extraction (pdfjs-dist)
+### Server-side text extraction (pdfjs-dist, Node legacy build)
 
-`components/portfolio/pdf-text.ts` reads the PDF to text in the browser and sends
-only the TEXT to the server. Rationale:
+`src/flows/trading-desk/portfolio/extract-pdf-text.server.ts` extracts the PDF
+text on the SERVER. The dialog uploads the PDF bytes (base64-encoded); the
+`extractHoldingsFromPdf` action's first step decodes them and calls
+`extractPdfText`. Rationale:
 
-- **Mirrors the CSV dialog ergonomics.** The CSV path reads the file client-side
-  (`file.text()`) and previews before any server round-trip. The PDF path does
-  the same — the difference is just that "read to text" is async + needs a lib.
-- **Sensitive data.** A brokerage statement is real financial data; reading the
-  bytes locally and shipping only extracted text avoids a raw-binary upload
-  transport and keeps the file on the user's machine.
+- **The browser worker was the problem.** pdfjs needs a worker to parse a PDF. In
+  the browser that is a web worker whose URL turbopack (Next 16's dev bundler)
+  resolved unreliably — the worker intermittently failed to load and
+  `getDocument()` hung forever (the dialog stuck on "extracting", no progress).
+  The stopgap copied the worker into `/public` via a build-step script. Moving
+  extraction to the server removes the worker AND the build step: Node runs
+  pdfjs's `legacy/build/pdf.mjs` on the MAIN thread with the worker disabled
+  (`disableWorker: true`), deterministically.
+- **No new privacy exposure.** The extracted holdings already go to the server and
+  on to the LLM transcription, so the statement's content already leaves the
+  browser. The raw bytes simply travel the same path the text already did.
 - **Target PDFs are text-based, not scanned**, so a text extractor is enough — no
-  OCR. A scanned image PDF yields empty text; the dialog detects that and surfaces
-  an explicit error rather than importing nothing.
+  OCR. A scanned image PDF yields empty text; the decode step detects that and
+  throws a clear error the dialog surfaces rather than importing nothing.
 
-`pdf-text.ts` is browser-only (it configures the pdfjs web worker) and lives under
-`components/` so it never gets imported from server/flow code. It is excluded from
-the offline test suite (the suite runs in `node` and loads no real PDF).
+`extract-pdf-text.server.ts` is NODE-ONLY (it imports the legacy pdfjs build) and
+lives in the server flow tree, named `.server.ts`, so it never gets imported from
+client code. Its linearization logic (space-join within a line, newline on
+`hasEOL`, blank line between pages, marked-content items skipped) is unit-tested
+offline with a MOCKED pdfjs in `test/extract-pdf-text.server.spec.ts`.
 
-New dependency: `pdfjs-dist@^6` (added to `examples/trading-desk/package.json`).
+No new dependency: `pdfjs-dist` was already a dependency (it was the client
+extractor's lib) and is now used server-side. The browser-worker scaffolding —
+`components/portfolio/pdf-text.ts`, `scripts/copy-pdf-worker.mjs`, the copied
+`/public/pdf.worker.min.mjs`, the worker-only `.gitignore`, and the
+`copy-pdf-worker` prefix on the `dev`/`build` scripts — was REMOVED.
 
 ### LLM extraction, not a per-broker parser
 
@@ -163,28 +183,39 @@ New:
   `reconcile()`, `toCanonicalRows()`, `canonicalRowsToCsv()`.
 - `src/flows/trading-desk/portfolio/portfolio-pdf-resource.ts` — session-scoped
   `pdfImport` resource.
+- `src/flows/trading-desk/portfolio/extract-pdf-text.server.ts` — NODE-ONLY
+  server-side PDF→text extraction (pdfjs legacy build, worker disabled).
 - `src/flows/trading-desk/portfolio/extract-holdings-generator.ts` — the
   broker-agnostic extraction generator.
 - `src/flows/trading-desk/portfolio/extract-holdings-action.ts` — the
-  generator + commit-tap sequencer action.
-- `components/portfolio/pdf-text.ts` — client-side pdfjs text extraction.
+  decode + generator + commit-tap sequencer action.
 - `components/portfolio/import-pdf-dialog.tsx` — the review/confirm dialog.
 - `test/portfolio-pdf.spec.ts` — reconciliation + mapping unit tests.
-- `test/pdf-import-e2e.spec.ts` — action wiring (mocked generator) + flow into
-  the existing `importHoldings`.
+- `test/extract-pdf-text.server.spec.ts` — linearization unit tests (mocked pdfjs).
+- `test/pdf-import-e2e.spec.ts` — action wiring (mocked extractor + generator) +
+  flow into the existing `importHoldings`.
 
 Changed:
 - `src/flows/trading-desk/agents.ts` — added the `statementParser` agent.
 - `src/flows/trading-desk/flow.ts` — registered the action + resource.
 - `test/output-schemas-strict.spec.ts` — added `pdfExtractionSchema` to the walker.
 - `components/portfolio/portfolio-pane.tsx` — added the "Import PDF" button + dialog.
-- `examples/trading-desk/package.json` — added `pdfjs-dist`.
+- `examples/trading-desk/package.json` — `pdfjs-dist` is now used server-side; the
+  `dev`/`build` scripts reverted to plain `next dev` / `next build`.
+
+Removed (browser-worker scaffolding):
+- `components/portfolio/pdf-text.ts` — the client pdfjs extractor.
+- `scripts/copy-pdf-worker.mjs` — the build-step worker copier.
+- `public/pdf.worker.min.mjs` — the copied worker artifact.
+- `examples/trading-desk/.gitignore` — its only entry was the worker.
 
 ## What is NOT verified offline
 
 Live extraction ACCURACY on a real statement (column mapping, fractional shares,
 the TIMXX/contra-CUSIP/$0.00 rows) cannot be tested without a real PDF. The
-offline suite mocks the generator and tests only the deterministic
-reconciliation + mapping + wiring. Validate accuracy with a real Wealthfront /
+offline suite mocks pdfjs (the linearization-logic unit test) and the generator,
+and tests only the deterministic reconciliation + mapping + wiring. The real
+Node pdfjs setup (`legacy/build/pdf.mjs` + `disableWorker: true`) is exercised by
+the dev server, not the offline suite. Validate accuracy with a real Wealthfront /
 Schwab / Fidelity statement via `fsdev`/the dev server before relying on it.
 ```

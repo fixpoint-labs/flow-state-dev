@@ -31,6 +31,11 @@ src/flows/trading-desk/
     portfolio-quotes-resource.ts session-scoped resource getQuotes writes (sendAction returns no output)
     portfolio-actions.ts         saveAccount / deleteAccount / importHoldings / deleteHolding handlers
     get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
+    portfolio-pdf.ts             pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
+    portfolio-pdf-resource.ts    session-scoped pdfImport scratch resource (dialog reads via useResource)
+    extract-pdf-text.server.ts   NODE-ONLY: pdfjs legacy build, worker disabled — PDF bytes → statement text
+    extract-holdings-generator.ts broker-agnostic LLM transcription (statement text → strict rows)
+    extract-holdings-action.ts   sequencer: decode bytes → extractPdfText → generator → commit pdfImport
   lib/                           app-level helpers and factories (no external IO)
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
@@ -196,6 +201,21 @@ owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
   mode is `upsert` (non-destructive); `replace-account` is destructive, non-atomic
   (RISK-P6), and requires a typed `REPLACE` confirmation. See
   `docs/portfolio-csv-format.md`.
+- **PDF import** uploads the PDF BYTES and extracts the text SERVER-SIDE. The
+  dialog (`import-pdf-dialog.tsx`) base64-encodes the file and dispatches
+  `extractHoldingsFromPdf`; the action's first step decodes the bytes and calls
+  `extract-pdf-text.server.ts` (pdfjs's legacy Node build, worker DISABLED —
+  `disableWorker: true`, main thread). There is **no browser pdfjs worker and no
+  `/public` build step** — the old client extractor needed a web worker whose URL
+  turbopack resolved unreliably (the import hung), and the stopgap that copied the
+  worker into `/public` is gone. Uploading the bytes is no new privacy exposure:
+  the extracted holdings already go to the server + the LLM. After extraction the
+  LLM transcribes the text (`extract-holdings-generator`) into strict rows on the
+  session-scoped `pdfImport` resource; the dialog reads them via `useResource`,
+  runs the pure `reconcile()` for review, and the CONFIRM path serializes to CSV
+  through the EXISTING `importHoldings` (same as the CSV path). Streaming the
+  extraction progress to the dialog is a documented follow-up — the phase UX is
+  currently a static "extracting" state.
 - **Prices** come from `getQuotes` — a read handler that reuses
   `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
   `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /

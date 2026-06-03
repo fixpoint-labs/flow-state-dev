@@ -536,3 +536,19 @@ cross-flow.
   snapshot to read user-scoped data; a standalone portfolio flow needs its own session/binding story.
 - **Sequencing.** Dovetails with the Layer-2 identity reorg (§4) and the standalone-flow direction —
   sequence with FIX-702 rather than ahead of it.
+
+### Follow-up C — Stream `extractHoldingsFromPdf` progress to the import dialog
+
+**Problem.** The PDF import dialog shows a single static "extracting" state for the entire server
+round-trip (decode bytes → `extractPdfText` → LLM transcription). On a multi-page statement that is a
+long, opaque wait with no signal that anything is happening.
+
+**Task.** Stream progress back to the dialog — e.g. per-page extraction progress from
+`extract-pdf-text.server.ts` and a "transcribing" beat once the LLM step starts — and render it in the
+dialog's `extracting` phase instead of the static line.
+
+**Why it's straightforward now.** Extraction moved to the server (the bytes are uploaded and parsed
+server-side), so the page count and per-page progress are available inside the action where the SSE
+stream already flows — no client worker to instrument. The dialog already has the
+pick→extracting→review state machine; this only enriches the `extracting` phase. Keep degradation
+honest: a stream that drops still resolves to the existing `session.refresh()` → review path.

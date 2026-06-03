@@ -1,3 +1,0 @@
-# pdfjs worker copied from the installed pdfjs-dist by scripts/copy-pdf-worker.mjs
-# (run from `dev`/`build`). Generated, version-matched to node_modules — not source.
-/public/pdf.worker.min.mjs
