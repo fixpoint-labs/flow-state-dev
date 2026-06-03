@@ -18,10 +18,12 @@ import {
 } from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { NewAnalysisDialog } from "@/components/new-analysis-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
+import { buildAnalyzeInput } from "@/src/flows/trading-desk/analyze-input";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 import {
@@ -108,6 +110,7 @@ function TradingDeskApp(): ReactElement {
     (v) => typeof v === "string" && v.trim().length > 0,
   ).length;
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [newAnalysisOpen, setNewAnalysisOpen] = useState(false);
 
   // Direct session client for create-with-title. `flow.createSession` only
   // forwards `metadata`; persisted sessions need a `title` to be browsable.
@@ -239,13 +242,13 @@ function TradingDeskApp(): ReactElement {
       flow.selectSession(targetId);
     }
     // Freeze the thesis at click time so later edits don't reach this run.
-    const thesis = userThesis.trim();
-    const rationale = userThesisRationale.trim();
+    // `buildAnalyzeInput` owns the empty→null rule shared with the test suite.
+    const frozen = buildAnalyzeInput(tuple, userThesis, userThesisRationale);
     setPendingDispatch({
       sessionId: targetId,
       tuple,
-      userThesis: thesis.length > 0 ? thesis : null,
-      userThesisRationale: rationale.length > 0 ? rationale : null,
+      userThesis: frozen.userThesis,
+      userThesisRationale: frozen.userThesisRationale,
     });
   }, [
     tuple,
@@ -317,19 +320,7 @@ function TradingDeskApp(): ReactElement {
       style={{ gridTemplateRows: "44px 1fr 28px" }}
     >
       <TopBar
-        ticker={ticker}
-        date={date}
-        costPreset={costPreset}
-        dataSource={dataSource}
-        onTickerChange={setTicker}
-        onDateChange={setDate}
-        onCostPresetChange={setCostPreset}
-        onDataSourceChange={setDataSource}
-        onRun={() => {
-          void handleRun();
-        }}
-        isRunning={session.isStreaming}
-        isExistingSession={isExistingSession}
+        onNewAnalysis={() => setNewAnalysisOpen(true)}
         view={view}
         onViewChange={setView}
         theme={theme}
@@ -347,17 +338,7 @@ function TradingDeskApp(): ReactElement {
           className="grid overflow-hidden"
           style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
         >
-          <ThesesPane
-            session={session}
-            memoStatus={memoStatus}
-            thesisForm={{
-              userThesis,
-              userThesisRationale,
-              onUserThesisChange: setUserThesis,
-              onUserThesisRationaleChange: setUserThesisRationale,
-              disabled: session.isStreaming,
-            }}
-          />
+          <ThesesPane session={session} memoStatus={memoStatus} />
           <TranscriptPane session={session} />
         </main>
       )}
@@ -378,6 +359,27 @@ function TradingDeskApp(): ReactElement {
           session={readSession}
         />
       ) : null}
+      <NewAnalysisDialog
+        open={newAnalysisOpen}
+        onClose={() => setNewAnalysisOpen(false)}
+        ticker={ticker}
+        date={date}
+        costPreset={costPreset}
+        dataSource={dataSource}
+        onTickerChange={setTicker}
+        onDateChange={setDate}
+        onCostPresetChange={setCostPreset}
+        onDataSourceChange={setDataSource}
+        userThesis={userThesis}
+        userThesisRationale={userThesisRationale}
+        onUserThesisChange={setUserThesis}
+        onUserThesisRationaleChange={setUserThesisRationale}
+        onSubmit={() => {
+          void handleRun();
+        }}
+        isRunning={session.isStreaming}
+        isExistingSession={isExistingSession}
+      />
     </div>
   );
 }

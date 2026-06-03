@@ -50,21 +50,9 @@ import type {
 } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 
-/** Pre-run user-thesis form, surfaced in the empty-selection state. The
- *  fields are frozen into session state server-side at `seedSession`, so the
- *  form is disabled once a run is streaming. */
-type ThesisFormProps = {
-  userThesis: string;
-  userThesisRationale: string;
-  onUserThesisChange: (value: string) => void;
-  onUserThesisRationaleChange: (value: string) => void;
-  disabled: boolean;
-};
-
 type ThesesPaneProps = {
   session: SessionView;
   memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
-  thesisForm: ThesisFormProps;
 };
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
@@ -94,7 +82,6 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
 export function ThesesPane({
   session,
   memoStatus,
-  thesisForm,
 }: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
@@ -140,7 +127,7 @@ export function ThesesPane({
       />
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
         {selectedAgent === null ? (
-          <EmptySelection thesisForm={thesisForm} />
+          <EmptySelection />
         ) : (
           <MemoDoc
             session={session}
@@ -162,82 +149,12 @@ function statusForAgent(
   return memoStatus[shortName] ?? "pending";
 }
 
-function EmptySelection({
-  thesisForm,
-}: {
-  thesisForm: ThesisFormProps;
-}): ReactElement {
+function EmptySelection(): ReactElement {
   return (
-    <div className="m-auto flex w-full max-w-md flex-col gap-6">
-      <p className="text-center text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
-        Pick a phase entry on the left to see its memo. Each entry
-        becomes live once its agent runs.
-      </p>
-      <ThesisInput {...thesisForm} />
-    </div>
-  );
-}
-
-/** Optional pre-run thesis pair. The pipeline analyzes the ticker blind to
- *  this; the Phase 6 auditor tests the independent findings against it. */
-function ThesisInput({
-  userThesis,
-  userThesisRationale,
-  onUserThesisChange,
-  onUserThesisRationaleChange,
-  disabled,
-}: ThesisFormProps): ReactElement {
-  const fieldClass = cn(
-    "w-full resize-none rounded-md border bg-[color:var(--c-surface-2)] px-2.5 py-1.5",
-    "border-[color:var(--c-border)] text-[12px] text-[color:var(--c-fg)]",
-    "focus:outline-none focus:border-[color:var(--c-accent)]",
-    "disabled:opacity-50",
-  );
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 rounded-lg p-4",
-        "border border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
-      )}
-    >
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[12px] font-semibold text-[color:var(--c-fg)]">
-          Your thesis (optional)
-        </span>
-        <span className="text-[10.5px] leading-relaxed text-[color:var(--c-fg-muted)]">
-          What do you believe about this trade? We&apos;ll test our findings
-          against it.
-        </span>
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-          Thesis
-        </span>
-        <textarea
-          value={userThesis}
-          onChange={(e) => onUserThesisChange(e.currentTarget.value)}
-          disabled={disabled}
-          rows={3}
-          maxLength={1500}
-          placeholder="e.g. NVDA's data-center growth decelerates faster than consensus expects in H2"
-          className={fieldClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-          Why (optional)
-        </span>
-        <textarea
-          value={userThesisRationale}
-          onChange={(e) => onUserThesisRationaleChange(e.currentTarget.value)}
-          disabled={disabled}
-          rows={2}
-          maxLength={1500}
-          placeholder="What's the reasoning behind it?"
-          className={fieldClass}
-        />
-      </label>
-    </div>
+    <p className="m-auto max-w-md text-center text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
+      Click New Analysis to start a run, or pick a phase entry on the left to
+      see its memo. Each entry becomes live once its agent runs.
+    </p>
   );
 }
 
