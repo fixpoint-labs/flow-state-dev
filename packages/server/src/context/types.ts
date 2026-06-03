@@ -78,4 +78,6 @@ export type CreateExecutionContextOptions<
    * `resolveTracingLevel()` (env / observability default).
    */
   tracingLevel?: TracingLevel;
+  /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
+  durabilityEnabled?: boolean;
 };

@@ -2079,6 +2079,8 @@ export async function createExecutionContext<
     return promise;
   };
 
+  let resumeConsumed = false;
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -2305,11 +2307,17 @@ export async function createExecutionContext<
       runOnce,
       suspend: async (suspendOpts) => {
         const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
-        if (resumeCtx !== undefined) {
+        if (resumeCtx !== undefined && !resumeConsumed) {
+          resumeConsumed = true;
           if (resumeCtx.action === "reject") {
             throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
           }
           return resumeCtx.data;
+        }
+        if (!options.durabilityEnabled) {
+          throw new Error(
+            "ctx.suspend() requires a DurabilityProvider. Configure one in your server options."
+          );
         }
         const suspensionId = generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });

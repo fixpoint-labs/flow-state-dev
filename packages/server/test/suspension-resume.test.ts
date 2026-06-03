@@ -279,7 +279,7 @@ describe("resume after suspension", () => {
 });
 
 describe("suspension without durability provider", () => {
-  it("suspends but does not create a SuspensionRecord", async () => {
+  it("fails with a clear error instead of creating an irrecoverable suspended state", async () => {
     const step = handler({
       name: "suspendStep",
       inputSchema: z.any(),
@@ -313,8 +313,7 @@ describe("suspension without durability provider", () => {
       runtimeConfig: {}
     });
 
-    expect(result.output).toBeUndefined();
     const request = await stores.request.get(result.requestId!);
-    expect(request?.status).toBe("suspended");
+    expect(request?.status).toBe("failed");
   });
 });

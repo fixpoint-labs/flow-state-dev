@@ -803,7 +803,8 @@ export async function runActionInternal<
       response,
       stores: options.stores,
       logger,
-      tracingLevel: options.runtimeConfig.tracingLevel
+      tracingLevel: options.runtimeConfig.tracingLevel,
+      durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined
     });
   } catch (setupError) {
     deregisterAbortController(requestId);
