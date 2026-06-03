@@ -20,6 +20,7 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "./agents";
 import { computeAndStoreSpine } from "./compute-spine";
+import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
@@ -94,7 +95,7 @@ const seedSession = handler({
  * providers down), patches `stoppedReason: "unresolvable-ticker"` so the
  * following `.exitIf` bails before any model spend.
  */
-const checkTickerResolvable = handler({
+export const checkTickerResolvable = handler({
   name: "check-ticker-resolvable",
   inputSchema: analyzeInputSchema,
   outputSchema: z.void(),
@@ -107,6 +108,11 @@ const checkTickerResolvable = handler({
         stoppedMessage:
           result.reason ?? `Could not resolve ticker ${input.ticker}.`,
         runComplete: true,
+      });
+      // Badge the reports-index row so Past Reports renders a stopped run
+      // distinctly. Additive metadata merge — the four tuple keys are preserved.
+      await ctx.session.setMetadata({
+        metadata: { reportStatus: "stopped" },
       });
     }
   },
@@ -137,6 +143,10 @@ export const checkPhase1HasData = handler({
           `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
           "Halting before synthesis — no usable upstream data.",
         runComplete: true,
+      });
+      // Badge the reports-index row (see checkTickerResolvable). Additive merge.
+      await ctx.session.setMetadata({
+        metadata: { reportStatus: "stopped" },
       });
     }
   },
@@ -176,6 +186,10 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
         `Non-substitutable Phase 1 analyst failed (${which}) for ` +
         `${ctx.session.state.ticker}. Halting before synthesis.`,
       runComplete: true,
+    });
+    // Badge the reports-index row (see checkTickerResolvable). Additive merge.
+    await ctx.session.setMetadata({
+      metadata: { reportStatus: "stopped" },
     });
   },
 });
@@ -269,6 +283,9 @@ const tradingDeskFlow = defineFlow({
     specialInstructions: specialInstructionsResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
+    // Decision-of-record snapshot — written once at PM-commit; the durable
+    // audit record Past Reports and outcome tracking read.
+    decisionSnapshot: decisionSnapshotResource,
   },
 });
 
