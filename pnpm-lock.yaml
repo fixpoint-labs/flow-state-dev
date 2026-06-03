@@ -169,6 +169,9 @@ importers:
       '@flow-state-dev/voice-openai':
         specifier: workspace:*
         version: link:../../packages/voice-openai
+      '@flow-state-dev/workforce':
+        specifier: workspace:*
+        version: link:../../packages/workforce
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
