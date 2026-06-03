@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/copy-pdf-worker.mjs && next dev",
     "typecheck": "tsc --noEmit",
-    "build": "next build",
+    "build": "node scripts/copy-pdf-worker.mjs && next build",
     "start": "next start",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests"

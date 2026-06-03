@@ -17,13 +17,34 @@
  */
 import * as pdfjs from "pdfjs-dist";
 
-// Point pdfjs at its worker bundle. Next.js resolves the `?url` import to a
-// served asset URL; the worker runs the parse off the main thread.
+// Point pdfjs at its worker via a STATIC /public URL, served by Next at a fixed
+// path with no bundler indirection. The previous `new URL("pdfjs-dist/...",
+// import.meta.url)` form was resolved unreliably by turbopack (Next 16's dev
+// bundler) — the worker intermittently failed to load and `getDocument()` hung
+// forever (the dialog stuck on "extracting", no server request). The worker is
+// copied into /public from the installed pdfjs-dist by `scripts/copy-pdf-worker.mjs`
+// (run from `dev`/`build`), so its version always matches this imported API.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(pdfjs.GlobalWorkerOptions as any).workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+(pdfjs.GlobalWorkerOptions as any).workerSrc = "/pdf.worker.min.mjs";
+
+/** Reject if `promise` doesn't settle within `ms`. A pdfjs worker that fails to
+ *  load never settles `getDocument().promise`; this converts that silent hang
+ *  into a surfaced error the dialog can show, instead of an infinite spinner. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 /**
  * Extract the text of every page of a PDF, in reading order, as a single
@@ -42,7 +63,13 @@ import * as pdfjs from "pdfjs-dist";
 export async function extractPdfText(file: File): Promise<string> {
   const data = await file.arrayBuffer();
   const loadingTask = pdfjs.getDocument({ data });
-  const doc = await loadingTask.promise;
+  // 20s is generous for parsing a text PDF locally; if it elapses the worker
+  // didn't load (a turbopack/asset regression) rather than the parse being slow.
+  const doc = await withTimeout(
+    loadingTask.promise,
+    20_000,
+    "The PDF reader didn't start — please try again, or use CSV import.",
+  );
   const pages: string[] = [];
 
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
