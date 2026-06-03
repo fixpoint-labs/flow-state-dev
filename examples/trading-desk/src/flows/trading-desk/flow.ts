@@ -28,7 +28,9 @@ import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase5Pipeline, scenarioForecasterPipeline } from "./phase-5";
 import { phase6Pipeline } from "./phase-6";
+import { priceHistoryResource } from "./price-history-resource";
 import { resolveTicker } from "./lib/ticker-resolver";
+import { storePriceHistory } from "./store-price-history";
 import {
   memoResources,
   memosCollection,
@@ -215,6 +217,9 @@ const analyzePipeline = sequencer({
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(computeAndStoreSpine)
+  // Persist a thinned price-history slice for the Summary overlay. Reads the
+  // warm cache the technical analyst already populated — no extra fetch.
+  .tap(storePriceHistory)
   .step(phase2Pipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)
@@ -283,6 +288,9 @@ const tradingDeskFlow = defineFlow({
     specialInstructions: specialInstructionsResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
+    // Price-history slice — persisted after Phase 1, read by the Summary page's
+    // price overlay via `useResource(session, "priceHistory")`.
+    priceHistory: priceHistoryResource,
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,

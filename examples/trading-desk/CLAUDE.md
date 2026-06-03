@@ -115,6 +115,49 @@ path. Persistence is `developmentOnly: true` filesystem store — history does n
 survive an ephemeral/serverless redeploy; swap the `lib/server.ts` `stores:`
 seam for a real store before relying on it.
 
+## Summary view
+
+Each report has a **Theses | Summary** tab toggle inside `ThesesPane`. The
+**Summary** tab (`components/summary/`) is an at-a-glance aggregate of a finished
+report, built **entirely from already-stored session state — zero re-run, zero
+model spend.** A finished report (not streaming, items present) auto-opens on
+Summary; a streaming run stays on Theses; a manual tab pick or sidebar selection
+sticks (ref-guarded, mirroring the auto-follow idiom).
+
+- **`components/summary/aggregate.ts`** is the one place null-handling and the
+  stance→conviction-axis mapping live. `buildReportSummary(memosByKey, spine)` is
+  a **pure** function (UI-layer only — not a generator output, BP-016 does not
+  apply) mapping `Map<shortName, MemoState | null>` + the valuation spine to a
+  `ReportSummary` view model. Every field traces to a named stored field; absent
+  inputs collapse to `null` so the components stay dumb. Unit-tested in
+  `test/report-summary-aggregate.spec.ts` (the stance→axis mapping is the
+  intent-encoding test).
+- The view reads `useResourceCollectionList(session, "memos", { limit: 50 })`
+  (all ~20 memos in one page), `useResource(session, "valuationSpine")`,
+  `useResource(session, "priceHistory")`, and the stop fields via `useClientData`.
+  Each `item.topic` (bare collection key) is reverse-mapped to a short name. The
+  aggregate is built in `useMemo` (BP-010), not an effect.
+- **Charts are inline SVG / CSS bars — no chart library** (`charts/bar-group`,
+  `charts/scenario-strip`, `charts/price-overlay`). A chart never renders against
+  missing data; it shows a `ChartEmpty` gap note. The price overlay draws the
+  stored `priceHistory` close series with stop/target/fair-value/close overlay
+  lines; with `< 2` bars or a `source: "unavailable"` slice it falls back to a
+  trade-levels list.
+- **Price-history persistence:** `price-history-resource.ts` (leaf, BP-019) +
+  `store-price-history.ts` (a `.tap()` after the spine tap in `flow.ts`). The tap
+  reads the warm tool cache / fixture the technical analyst already populated — no
+  extra fetch, no `block.run()` — and persists a thinned `{ date, close }` series
+  + provenance `source`. On any miss it leaves the resource null and the chart
+  degrades. Tested in `test/store-price-history.spec.ts`.
+- **Real-money gates:** no fabricated numbers, `dataQuality` chips for
+  provenance, missing metrics shown as `—`/gap (never invented), a stopped run
+  shows only its stop banner, the `StatusBar` not-advice disclaimer stays visible.
+  `sizePct` is labeled "% of NAV" (the trader's proposal), never a dollar amount.
+- **Seams (later slices):** portfolio-fit weight chart and lens-convergence strip
+  are NOT built here — they render nothing until the portfolio + lens features
+  land. Phase 6 `alignment` is labeled **"Thesis alignment"**, never "portfolio
+  fit".
+
 ## Adding a new generator
 
 **Structured-output agents in Phases 3–5 are wrapped with an approach

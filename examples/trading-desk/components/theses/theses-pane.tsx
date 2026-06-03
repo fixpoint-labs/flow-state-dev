@@ -16,6 +16,13 @@
  * Auto-follow: when the user has not selected manually, selection tracks
  * the most-recently-published (or, failing that, currently-writing) memo.
  * `re-run` clears the manual-selection flag.
+ *
+ * Tab switch (Slice 3): a Theses | Summary toggle sits above the doc area.
+ * Theses is the existing sidebar+doc experience; Summary renders the
+ * `<ReportSummary>` at-a-glance aggregate over the SAME already-loaded session
+ * state (zero re-run). A finished report auto-opens on Summary; a streaming run
+ * stays on Theses for the live memo-follow. Selecting a sidebar entry switches
+ * back to Theses.
  */
 "use client";
 
@@ -27,7 +34,7 @@ import {
   type ReactElement,
 } from "react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useResourceCollectionItem } from "@flow-state-dev/react";
+import { useClientData, useResourceCollectionItem } from "@flow-state-dev/react";
 import { MemoSidebar } from "./memo-sidebar";
 import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
@@ -35,6 +42,7 @@ import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
+import { ReportSummary } from "@/components/summary/report-summary";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
@@ -85,15 +93,41 @@ export function ThesesPane({
 }: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
+  const [tab, setTab] = useState<"theses" | "summary">("theses");
+  const userPickedTabRef = useRef(false);
 
-  // Reset manual-selection flag on re-run (detected by streaming → 0 items).
-  // Effect (not derived state): synchronizes a ref with an external signal.
+  // Authoritative completion flag, read from the exposed session state. Stable
+  // across a transient stream re-attach (opening a stored report can briefly
+  // report isStreaming with 0 items) — unlike isStreaming/items, which flicker.
+  // A finished report (PM committed, or a stop guard tripped) has
+  // runComplete === true; a fresh or re-running session has it false.
+  const { session: live } = useClientData(session, { session: ["runComplete"] });
+  const runComplete = live?.runComplete === true;
+
+  // Reset manual-selection flags only on a genuine re-run — a run STARTING
+  // (streaming, 0 items) on a session that is NOT already complete. The
+  // `!runComplete` guard stops a finished report from snapping back to Theses
+  // when its stream merely re-attaches on open. Effect: synchronizes refs with
+  // the run-lifecycle signal.
   useEffect(() => {
-    if (session.isStreaming && session.items.length === 0) {
+    if (session.isStreaming && session.items.length === 0 && !runComplete) {
       userSelectedRef.current = false;
       setSelectedAgent(null);
+      userPickedTabRef.current = false;
+      setTab("theses");
     }
-  }, [session.isStreaming, session.items.length]);
+  }, [session.isStreaming, session.items.length, runComplete]);
+
+  // Auto-tab: when the user hasn't picked a tab manually, a FINISHED report
+  // (runComplete — the stable signal, with a not-streaming-with-items fallback)
+  // opens on Summary; an in-progress/streaming run stays on Theses for the live
+  // memo-follow. Mirrors userPickedTabRef so a manual choice sticks.
+  const finished =
+    runComplete || (!session.isStreaming && session.items.length > 0);
+  useEffect(() => {
+    if (userPickedTabRef.current) return;
+    setTab(finished ? "summary" : "theses");
+  }, [finished]);
 
   // Auto-follow selection if the user hasn't manually picked.
   useEffect(() => {
@@ -110,9 +144,18 @@ export function ThesesPane({
     }
   }, [memoStatus]);
 
+  // Selecting a sidebar entry always returns to the Theses tab (the memo lives
+  // there) and counts as a manual tab choice so the auto-rule won't override it.
   const handleSelectAgent = (agent: AgentName) => {
     userSelectedRef.current = true;
     setSelectedAgent(agent);
+    userPickedTabRef.current = true;
+    setTab("theses");
+  };
+
+  const handlePickTab = (next: "theses" | "summary") => {
+    userPickedTabRef.current = true;
+    setTab(next);
   };
 
   return (
@@ -126,7 +169,10 @@ export function ThesesPane({
         onSelectAgent={handleSelectAgent}
       />
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        {selectedAgent === null ? (
+        <TabSwitch tab={tab} onPick={handlePickTab} />
+        {tab === "summary" ? (
+          <ReportSummary session={session} />
+        ) : selectedAgent === null ? (
           <EmptySelection />
         ) : (
           <MemoDoc
@@ -137,6 +183,40 @@ export function ThesesPane({
         )}
       </div>
     </section>
+  );
+}
+
+function TabSwitch({
+  tab,
+  onPick,
+}: {
+  tab: "theses" | "summary";
+  onPick: (next: "theses" | "summary") => void;
+}): ReactElement {
+  return (
+    <div
+      className="mb-4 flex gap-1"
+      role="tablist"
+      aria-label="Report view"
+    >
+      {(["theses", "summary"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={tab === value}
+          onClick={() => onPick(value)}
+          className={cn(
+            "rounded-md px-3 py-1 font-mono text-[10.5px] uppercase tracking-wider transition-colors",
+            tab === value
+              ? "bg-[color:var(--c-surface-2)] text-[color:var(--c-fg)]"
+              : "text-[color:var(--c-fg-faint)] hover:bg-[color:var(--c-surface)]",
+          )}
+        >
+          {value === "theses" ? "Theses" : "Summary"}
+        </button>
+      ))}
+    </div>
   );
 }
 
