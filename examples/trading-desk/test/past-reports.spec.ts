@@ -27,7 +27,13 @@ import { checkTickerResolvable } from "../src/flows/trading-desk/flow";
 import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/phase-5/writer";
 import { decisionSnapshotResource } from "../src/flows/trading-desk/decision-snapshot-resource";
 import { memosCollection } from "../src/flows/trading-desk/resources";
-import { parseReportRow, type ReportSessionSummary } from "../src/flows/trading-desk/report-index";
+import {
+  parseReportRow,
+  relativeTime,
+  reportRowTuple,
+  type ReportRow,
+  type ReportSessionSummary,
+} from "../src/flows/trading-desk/report-index";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import {
   valuationSpineResource,
@@ -102,6 +108,128 @@ describe("parseReportRow", () => {
     const row = parseReportRow(summary({ metadata: { ...tuple, reportStatus: "stopped" } }));
     expect(row.status).toBe("stopped");
     expect(row.decision).toBeNull();
+  });
+});
+
+// ── 1b. Past Reports list surface (Slice 1) ──────────────────────────
+
+/** Build a complete-row SessionSummary with a given ticker + decidedAt, so
+ *  list ordering can be asserted by `sortKey` (= Date.parse(decidedAt)). */
+function completeSummary(
+  id: string,
+  ticker: string,
+  decidedAt: string,
+  createdAt: number,
+): ReportSessionSummary {
+  return {
+    id,
+    createdAt,
+    title: `${ticker} · 2026-05-06 · fast · fixture`,
+    metadata: {
+      ...tuple,
+      ticker,
+      decision: {
+        finalRating: "Hold",
+        decisionConfidence: 0.5,
+        summary: "x",
+        decidedAt,
+      },
+      reportStatus: "complete",
+    },
+  };
+}
+
+/** Mirror of the app's `findSessionForTuple` keying, used to prove the
+ *  open-report tuple-sync contract at the logic level (the harness has no DOM). */
+function findSessionForTuple(
+  sessions: ReadonlyArray<ReportSessionSummary>,
+  t: { ticker: string; date: string; costPreset: string; dataSource: string },
+): string | undefined {
+  return sessions.find((s) => {
+    const md = s.metadata;
+    return (
+      md?.ticker === t.ticker &&
+      md?.date === t.date &&
+      md?.costPreset === t.costPreset &&
+      md?.dataSource === t.dataSource
+    );
+  })?.id;
+}
+
+describe("Past Reports list ordering", () => {
+  it("sorts rows newest-first by sortKey (decidedAt for complete rows)", () => {
+    const sessions = [
+      completeSummary("old", "AAPL", "2026-05-01T00:00:00.000Z", 1),
+      completeSummary("new", "NVDA", "2026-05-06T00:00:00.000Z", 2),
+      completeSummary("mid", "TSLA", "2026-05-03T00:00:00.000Z", 3),
+    ];
+    const ordered = sessions
+      .map((s) => parseReportRow(s))
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .map((r) => r.id);
+    expect(ordered).toEqual(["new", "mid", "old"]);
+  });
+
+  it("interleaves in-progress (createdAt-keyed) and complete (decidedAt-keyed) rows in one desc list", () => {
+    // A legacy/in-progress row has no decision, so it sorts by createdAt. A
+    // recently-created in-progress row should outrank an older completed one.
+    const completed = completeSummary("done", "NVDA", "2026-05-01T00:00:00.000Z", 100);
+    const inProgress = summary({ id: "live-now", createdAt: Date.parse("2026-05-06T00:00:00.000Z"), metadata: { ...tuple } });
+    const ordered = [completed, inProgress]
+      .map((s) => parseReportRow(s))
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .map((r) => r.id);
+    expect(ordered).toEqual(["live-now", "done"]);
+  });
+});
+
+describe("open-report tuple sync (the #1 bug, spec 02 §6.5)", () => {
+  it("the row's tuple resolves findSessionForTuple back to the opened id", () => {
+    // The opened report's tuple differs from the current header inputs. The fix
+    // is: set the header to the ROW's tuple before selectSession, so the sync
+    // effect (which re-selects findSessionForTuple(headerTuple)) is a no-op
+    // pointing at the same id we just opened — never snapping selection away.
+    const opened = completeSummary("opened", "TSLA", "2026-05-06T00:00:00.000Z", 1);
+    const other = completeSummary("other", "NVDA", "2026-05-06T00:00:00.000Z", 2);
+    const sessions = [opened, other];
+
+    const row = parseReportRow(opened);
+    const newHeaderTuple = reportRowTuple(row);
+
+    // After the handler sets the header to the row's tuple, the sync effect
+    // resolves to exactly the opened id — confirming no re-dispatch / mis-key.
+    expect(findSessionForTuple(sessions, newHeaderTuple)).toBe("opened");
+  });
+
+  it("reportRowTuple round-trips the four keys from the parsed row", () => {
+    const row: ReportRow = parseReportRow(
+      summary({ metadata: { ...tuple, ticker: "AMD", date: "2026-05-06", costPreset: "full", dataSource: "live" } }),
+    );
+    expect(reportRowTuple(row)).toEqual({
+      ticker: "AMD",
+      date: "2026-05-06",
+      costPreset: "full",
+      dataSource: "live",
+    });
+  });
+});
+
+describe("relativeTime", () => {
+  const now = Date.parse("2026-05-06T12:00:00.000Z");
+  it("renders sub-minute as 'just now'", () => {
+    expect(relativeTime(now - 10_000, now)).toBe("just now");
+  });
+  it("renders minutes / hours / yesterday / days", () => {
+    expect(relativeTime(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(relativeTime(now - 2 * 3_600_000, now)).toBe("2h ago");
+    expect(relativeTime(now - 26 * 3_600_000, now)).toBe("yesterday");
+    expect(relativeTime(now - 4 * 86_400_000, now)).toBe("4d ago");
+  });
+  it("falls back to ISO date past a week", () => {
+    expect(relativeTime(Date.parse("2026-04-01T00:00:00.000Z"), now)).toBe("2026-04-01");
+  });
+  it("treats future timestamps (clock skew) as 'just now'", () => {
+    expect(relativeTime(now + 60_000, now)).toBe("just now");
   });
 });
 

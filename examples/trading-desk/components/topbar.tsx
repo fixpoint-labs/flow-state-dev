@@ -18,6 +18,11 @@ import { Segmented } from "@/components/ui/segmented";
 export type CostPreset = "fast" | "full";
 export type DataSourceMode = "fixture" | "live";
 
+/** The in-page views the TopBar nav toggles between. `"portfolio"` is reserved
+ *  by the shared view-switcher contract (BUILD_PLAN §8) for the Portfolio slice
+ *  to add; only `"desk"` and `"reports"` render a nav item today. */
+export type TradingDeskView = "desk" | "reports" | "portfolio";
+
 type TopBarProps = {
   ticker: string;
   date: string;
@@ -32,9 +37,20 @@ type TopBarProps = {
   /** Whether the current inputs map to an existing session. Drives the button
    *  label: "re-run" for an existing run, "Run" for a fresh tuple. */
   isExistingSession: boolean;
+  /** Current in-page view. The inline analyze form is desk-only and is hidden
+   *  in any non-desk view. */
+  view: TradingDeskView;
+  onViewChange: (view: TradingDeskView) => void;
   theme: "light" | "dark";
   onThemeToggle: () => void;
 };
+
+/** The nav items rendered today. Kept as a list so the reserved `"portfolio"`
+ *  view is a one-entry addition for the Portfolio slice. */
+const NAV_ITEMS: ReadonlyArray<{ value: TradingDeskView; label: string }> = [
+  { value: "desk", label: "Desk" },
+  { value: "reports", label: "Past Reports" },
+];
 
 const COST_PRESET_OPTIONS = [
   { value: "fast" as const, label: "fast", title: "Cheap utility models" },
@@ -63,6 +79,8 @@ export function TopBar({
   onRun,
   isRunning,
   isExistingSession,
+  view,
+  onViewChange,
   theme,
   onThemeToggle,
 }: TopBarProps): ReactElement {
@@ -92,6 +110,37 @@ export function TopBar({
         </span>
       </div>
 
+      {/* Nav toggle — its OWN flex group (BUILD_PLAN §8 / spec 02 §6.4) so it
+          coexists with either the inline analyze form (today) or the slimmed-
+          header "New Analysis" button a later slice swaps in. */}
+      <nav
+        className="ml-4 flex items-center gap-0.5 rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] p-0.5"
+        aria-label="View"
+      >
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.value === view;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => {
+                if (!isActive) onViewChange(item.value);
+              }}
+              className={cn(
+                "h-6 rounded px-2.5 text-[11.5px] font-medium",
+                isActive
+                  ? "bg-[color:var(--c-surface)] text-[color:var(--c-fg)]"
+                  : "text-[color:var(--c-fg-muted)] hover:text-[color:var(--c-fg)]",
+              )}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {view === "desk" ? (
       <form onSubmit={handleSubmit} className="ml-6 flex items-center gap-3">
         <label className="flex items-center gap-1.5">
           <span className="text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
@@ -152,6 +201,7 @@ export function TopBar({
           {isRunning ? "running…" : isExistingSession ? "re-run" : "Run"}
         </button>
       </form>
+      ) : null}
 
       <div className="ml-auto flex items-center gap-3">
         <span className="font-mono text-[10.5px] text-[color:var(--c-fg-faint)]">

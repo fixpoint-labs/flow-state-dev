@@ -21,6 +21,8 @@ src/flows/trading-desk/
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   agents.ts                      AGENTS map + per-phase memo key registries
   resources.ts                   memosCollection + thesisSection + phase2Contributions
+  report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
+  decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
   capability.ts                  the tradingDesk capability — single import for every generator
   lib/                           app-level helpers and factories (no external IO)
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
@@ -80,6 +82,38 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 - **`lib/` is for everything that's neither identity (`agents.ts`),
   contract (`resources.ts`, `state.ts`, `flow-schema.ts`), capability,
   nor phase code.** Helpers, factories, formatters, stateless utilities.
+
+## Past Reports
+
+The app lists prior runs in a **Past Reports** view (TopBar nav toggle →
+`components/reports/`). There is **no separate reports store**: the index *is*
+the session list. Each run is one persisted session, and `listSessions` already
+returns its `metadata` bag. Two seams make a run a durable, re-openable record:
+
+- **`report-index.ts`** (browser-safe; zod + types only) — the metadata
+  projection. At PM-commit the writer **additively merges** `decision` +
+  `reportStatus: "complete"` into session metadata (shallow-merge, so the four
+  tuple keys `ticker/date/costPreset/dataSource` that `findSessionForTuple`
+  matches on are preserved). `parseReportRow(summary)` turns a `SessionSummary`
+  into a render-ready row, degrading gracefully on legacy / in-progress /
+  malformed metadata (never throws). `reportRowTuple` / `relativeTime` are pure
+  helpers used by the list.
+- **`decision-snapshot-resource.ts`** — the full, machine-scoreable
+  decision-of-record (session-scoped, written once at PM-commit via
+  `patchState`). Separate from the metadata row (the cheap list projection) and
+  the memo (the human-rendered thesis). It records the **post-clamp**
+  `finalRating`; `entryPrice`/outcome fields are reserved `null` for a future
+  outcome-tracking feature.
+
+**Re-opening a report runs zero models.** The Past Reports view switcher lives
+in `app/page.tsx` (`view: "desk" | "reports"`, with `"portfolio"` reserved on
+`TradingDeskView` for a later slice). Opening a row sets the four header inputs
+to the row's tuple **before** `selectSession`, so the tuple-sync effect resolves
+back to the opened session and never re-dispatches or mis-keys the run. The
+stored report rehydrates through the existing `useSession` + `ThesesPane` read
+path. Persistence is `developmentOnly: true` filesystem store — history does not
+survive an ephemeral/serverless redeploy; swap the `lib/server.ts` `stores:`
+seam for a real store before relying on it.
 
 ## Adding a new generator
 

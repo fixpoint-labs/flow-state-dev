@@ -10,11 +10,18 @@ import {
   useResource,
   useResourceCollectionItem,
 } from "@flow-state-dev/react";
-import { TopBar, type CostPreset, type DataSourceMode } from "@/components/topbar";
+import {
+  TopBar,
+  type CostPreset,
+  type DataSourceMode,
+  type TradingDeskView,
+} from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
+import { PastReportsPane } from "@/components/reports/past-reports-pane";
+import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 import {
@@ -113,6 +120,10 @@ function TradingDeskApp(): ReactElement {
   const [costPreset, setCostPreset] = useState<CostPreset>("fast");
   const [dataSource, setDataSource] = useState<DataSourceMode>("fixture");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  // In-page view switcher (spec 02 §6.1: in-page branch, not new routes). The
+  // `view` enum reserves `"portfolio"` in the type (TradingDeskView) so the
+  // Portfolio slice extends it without churn; only desk/reports render today.
+  const [view, setView] = useState<TradingDeskView>("desk");
   // Optional per-run user thesis. Frozen into session state at `seedSession`
   // (server-side); editing here after a run starts doesn't touch the running
   // session. A non-null thesis gates the Phase 6 audit.
@@ -245,6 +256,36 @@ function TradingDeskApp(): ReactElement {
     sessionClient,
   ]);
 
+  // Open a stored report from the Past Reports list. THE #1 BUG (spec 02 §6.5):
+  // the tuple-sync effect above re-selects `activeSessionId` to whatever
+  // `findSessionForTuple(header tuple)` resolves to. If we selected the opened
+  // session WITHOUT first aligning the header inputs to its tuple, that effect
+  // would immediately snap selection back to the header's tuple (or clear it) —
+  // and worse, a mismatched tuple could mis-key a later run. So: set all four
+  // header inputs to the row's tuple FIRST (so `findSessionForTuple` resolves
+  // to exactly this id and the sync effect is a no-op), THEN select the session,
+  // THEN switch to the desk view. Re-opening loads the stored report with zero
+  // model spend — no `sendAction`, no dispatch handshake.
+  const handleOpenReport = useCallback(
+    (id: string) => {
+      const summary = flow.sessions.find((s) => s.id === id);
+      if (summary !== undefined) {
+        const t = reportRowTuple(parseReportRow(summary));
+        if (t.ticker !== "—" && t.ticker.length > 0) setTicker(t.ticker);
+        if (t.date.length > 0) setDate(t.date);
+        if (t.costPreset === "fast" || t.costPreset === "full") {
+          setCostPreset(t.costPreset);
+        }
+        if (t.dataSource === "fixture" || t.dataSource === "live") {
+          setDataSource(t.dataSource);
+        }
+      }
+      flow.selectSession(id);
+      setView("desk");
+    },
+    [flow],
+  );
+
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
   // would dispatch against the previously-active session because the hook's
@@ -289,26 +330,37 @@ function TradingDeskApp(): ReactElement {
         }}
         isRunning={session.isStreaming}
         isExistingSession={isExistingSession}
+        view={view}
+        onViewChange={setView}
         theme={theme}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
-      <main
-        className="grid overflow-hidden"
-        style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
-      >
-        <ThesesPane
-          session={session}
-          memoStatus={memoStatus}
-          thesisForm={{
-            userThesis,
-            userThesisRationale,
-            onUserThesisChange: setUserThesis,
-            onUserThesisRationaleChange: setUserThesisRationale,
-            disabled: session.isStreaming,
-          }}
-        />
-        <TranscriptPane session={session} />
-      </main>
+      {view === "reports" ? (
+        <main className="flex flex-col overflow-hidden">
+          <PastReportsPane
+            sessions={flow.sessions}
+            onOpenReport={handleOpenReport}
+          />
+        </main>
+      ) : (
+        <main
+          className="grid overflow-hidden"
+          style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
+        >
+          <ThesesPane
+            session={session}
+            memoStatus={memoStatus}
+            thesisForm={{
+              userThesis,
+              userThesisRationale,
+              onUserThesisChange: setUserThesis,
+              onUserThesisRationaleChange: setUserThesisRationale,
+              disabled: session.isStreaming,
+            }}
+          />
+          <TranscriptPane session={session} />
+        </main>
+      )}
       <StatusBar
         state={runState}
         eventCount={session.items.length}

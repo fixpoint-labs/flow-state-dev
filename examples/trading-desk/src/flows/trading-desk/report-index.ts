@@ -145,3 +145,48 @@ export function parseReportRow(summary: ReportSessionSummary): ReportRow {
     sortKey,
   };
 }
+
+/**
+ * The four-field run tuple a row maps to. This is the same shape the header
+ * inputs and `findSessionForTuple` key on — re-opening a report sets the header
+ * to this tuple BEFORE selecting the session so the tuple-sync effect is a
+ * no-op (see the Past Reports open-report fix). The values are the raw parsed
+ * strings; the caller narrows `costPreset`/`dataSource` to the input unions.
+ */
+export type ReportRowTuple = {
+  ticker: string;
+  date: string;
+  costPreset: string;
+  dataSource: string;
+};
+
+/** Extract the run tuple from a parsed row. Pure — used by the open-report
+ *  handler to align the header inputs with the report being opened. */
+export function reportRowTuple(row: ReportRow): ReportRowTuple {
+  return {
+    ticker: row.ticker,
+    date: row.asOfDate,
+    costPreset: row.costPreset,
+    dataSource: row.dataSource,
+  };
+}
+
+/**
+ * Render a millisecond timestamp as a short relative string (`"just now"`,
+ * `"3m ago"`, `"2h ago"`, `"yesterday"`, `"4d ago"`), falling back to the ISO
+ * date for anything older than a week. Inline so the example pulls no date
+ * library for one list column. `future` timestamps (clock skew) read
+ * `"just now"`.
+ */
+export function relativeTime(ms: number, now: number = Date.now()): string {
+  const delta = now - ms;
+  if (!Number.isFinite(delta) || delta < 45_000) return "just now";
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(delta / 3_600_000);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(delta / 86_400_000);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(ms).toISOString().slice(0, 10);
+}
