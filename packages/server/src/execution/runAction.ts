@@ -955,6 +955,21 @@ export async function runActionInternal<
         await registry.deregister(requestId).catch(() => {});
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
+        // Release the resumeOf lease so the original request can be resumed
+        // again (targeting this new suspension).
+        if (resumeOf !== undefined) {
+          try {
+            const lease = await options.stores.leases.get(resumeOf);
+            if (lease !== null) {
+              await options.stores.leases.release(resumeOf, lease.leaseId);
+            }
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
+              requestId, resumeOf, error: String(err)
+            });
+          }
+        }
+
         return {
           output: undefined,
           items: response.getItems(),
