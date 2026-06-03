@@ -30,6 +30,7 @@
     "streamdown": "^2.3.0",
     "tailwind-merge": "^3.5.0",
     "trading-signals": "^7.4.3",
+    "unpdf": "^1.6.2",
     "yahoo-finance2": "^3.14.0",
     "zod": "^3.25.76"
   },

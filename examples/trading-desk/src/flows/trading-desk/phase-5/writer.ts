@@ -31,12 +31,17 @@ import {
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
 } from "../agents";
+import {
+  decisionSnapshotResource,
+  type DecisionSnapshotState,
+} from "../decision-snapshot-resource";
 import { clampRatingToBand } from "../lib/rating-engine";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
 } from "../lib/memo-writer";
+import type { ReportDecisionMeta } from "../report-index";
 import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
 import { valuationSpineResource, type ValuationSpineState } from "../valuation-spine-resource";
@@ -135,7 +140,11 @@ export const commitPortfolioManagerMemo = handler({
   inputSchema: portfolioDecisionOutputSchema,
   outputSchema: z.void(),
   sessionStateSchema,
-  resources: { ...memoResources, valuationSpine: valuationSpineResource },
+  resources: {
+    ...memoResources,
+    valuationSpine: valuationSpineResource,
+    decisionSnapshot: decisionSnapshotResource,
+  },
   execute: async (decision, ctx) => {
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
     // is missing (defensive — should not happen post-Phase 3) or has no
@@ -144,7 +153,14 @@ export const commitPortfolioManagerMemo = handler({
       PHASE_3_MEMO_KEYS.trader.collectionKey,
     );
     const traderState = traderMemo?.state as
-      | { direction?: string | null; dependsOn?: string[] | null }
+      | {
+          direction?: string | null;
+          dependsOn?: string[] | null;
+          stopPrice?: number | null;
+          targetPrice?: number | null;
+          sizePct?: number | null;
+          holdingPeriod?: DecisionSnapshotState["holdingPeriod"];
+        }
       | undefined;
     const traderDirection = traderState?.direction;
 
@@ -234,6 +250,53 @@ export const commitPortfolioManagerMemo = handler({
         relativeRating,
       },
     );
+
+    // Durable decision-of-record snapshot for outcome tracking and Past
+    // Reports. Entry context comes from the trader memo's typed numeric
+    // mirrors; `entryPrice` is reserved (null) until a price-history resource
+    // exists (a Summary-feature concern). `patchState` is the session-scoped
+    // single-resource write verb — the resource handle (`ResourceRef`) exposes
+    // `patchState` / `setState` / `updateState`; there is no `.set()`. The
+    // first `patchState` on this defaultless resource initializes it (nullable
+    // fields the call omits fall back to their `.default(null)`), so passing
+    // the full object is correct. Non-CAS last-write-wins; one write per run.
+    const decidedAt = new Date().toISOString();
+    await ctx.resources.decisionSnapshot.patchState({
+      ticker: ctx.session.state.ticker,
+      asOfDate: ctx.session.state.date,
+      finalRating, // post-clamp value computed above
+      decisionConfidence: decision.decisionConfidence,
+      decisionSummary: decision.decisionSummary,
+      direction:
+        traderDirection === "long" ||
+        traderDirection === "short" ||
+        traderDirection === "flat"
+          ? traderDirection
+          : null,
+      entryPrice: null, // TODO(outcome-tracking): source from price-history resource
+      stopPrice: traderState?.stopPrice ?? null,
+      targetPrice: traderState?.targetPrice ?? null,
+      sizePct: traderState?.sizePct ?? null,
+      holdingPeriod: traderState?.holdingPeriod ?? null,
+      decidedAt,
+      outcomeRealizedPrice: null,
+      outcomeAsOf: null,
+      outcomeVerdict: null,
+    });
+
+    // Enrich the session-metadata reports-index row so Past Reports renders
+    // rich rows from `listSessions` alone. Additive shallow-merge — the four
+    // tuple keys (ticker/date/costPreset/dataSource) written at create time are
+    // preserved, so `findSessionForTuple`'s strict keying keeps matching.
+    const decisionMeta: ReportDecisionMeta = {
+      finalRating,
+      decisionConfidence: decision.decisionConfidence,
+      summary: decision.decisionSummary.slice(0, 160),
+      decidedAt,
+    };
+    await ctx.session.setMetadata({
+      metadata: { decision: decisionMeta, reportStatus: "complete" },
+    });
 
     // Phase 5 is terminal — mark the run complete so the navigator
     // renders the "done" state. This used to be an `afterCommit` callback

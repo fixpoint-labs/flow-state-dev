@@ -10,11 +10,21 @@ import {
   useResource,
   useResourceCollectionItem,
 } from "@flow-state-dev/react";
-import { TopBar, type CostPreset, type DataSourceMode } from "@/components/topbar";
+import {
+  TopBar,
+  type CostPreset,
+  type DataSourceMode,
+  type TradingDeskView,
+} from "@/components/topbar";
 import { StatusBar } from "@/components/status-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { NewAnalysisDialog } from "@/components/new-analysis-dialog";
 import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
+import { PastReportsPane } from "@/components/reports/past-reports-pane";
+import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
+import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
+import { buildAnalyzeInput } from "@/src/flows/trading-desk/analyze-input";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
 import {
@@ -101,6 +111,7 @@ function TradingDeskApp(): ReactElement {
     (v) => typeof v === "string" && v.trim().length > 0,
   ).length;
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [newAnalysisOpen, setNewAnalysisOpen] = useState(false);
 
   // Direct session client for create-with-title. `flow.createSession` only
   // forwards `metadata`; persisted sessions need a `title` to be browsable.
@@ -113,6 +124,10 @@ function TradingDeskApp(): ReactElement {
   const [costPreset, setCostPreset] = useState<CostPreset>("fast");
   const [dataSource, setDataSource] = useState<DataSourceMode>("fixture");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  // In-page view switcher (spec 02 §6.1: in-page branch, not new routes). The
+  // `view` enum reserves `"portfolio"` in the type (TradingDeskView) so the
+  // Portfolio slice extends it without churn; only desk/reports render today.
+  const [view, setView] = useState<TradingDeskView>("desk");
   // Optional per-run user thesis. Frozen into session state at `seedSession`
   // (server-side); editing here after a run starts doesn't touch the running
   // session. A non-null thesis gates the Phase 6 audit.
@@ -228,13 +243,13 @@ function TradingDeskApp(): ReactElement {
       flow.selectSession(targetId);
     }
     // Freeze the thesis at click time so later edits don't reach this run.
-    const thesis = userThesis.trim();
-    const rationale = userThesisRationale.trim();
+    // `buildAnalyzeInput` owns the empty→null rule shared with the test suite.
+    const frozen = buildAnalyzeInput(tuple, userThesis, userThesisRationale);
     setPendingDispatch({
       sessionId: targetId,
       tuple,
-      userThesis: thesis.length > 0 ? thesis : null,
-      userThesisRationale: rationale.length > 0 ? rationale : null,
+      userThesis: frozen.userThesis,
+      userThesisRationale: frozen.userThesisRationale,
     });
   }, [
     tuple,
@@ -244,6 +259,36 @@ function TradingDeskApp(): ReactElement {
     flow,
     sessionClient,
   ]);
+
+  // Open a stored report from the Past Reports list. THE #1 BUG (spec 02 §6.5):
+  // the tuple-sync effect above re-selects `activeSessionId` to whatever
+  // `findSessionForTuple(header tuple)` resolves to. If we selected the opened
+  // session WITHOUT first aligning the header inputs to its tuple, that effect
+  // would immediately snap selection back to the header's tuple (or clear it) —
+  // and worse, a mismatched tuple could mis-key a later run. So: set all four
+  // header inputs to the row's tuple FIRST (so `findSessionForTuple` resolves
+  // to exactly this id and the sync effect is a no-op), THEN select the session,
+  // THEN switch to the desk view. Re-opening loads the stored report with zero
+  // model spend — no `sendAction`, no dispatch handshake.
+  const handleOpenReport = useCallback(
+    (id: string) => {
+      const summary = flow.sessions.find((s) => s.id === id);
+      if (summary !== undefined) {
+        const t = reportRowTuple(parseReportRow(summary));
+        if (t.ticker !== "—" && t.ticker.length > 0) setTicker(t.ticker);
+        if (t.date.length > 0) setDate(t.date);
+        if (t.costPreset === "fast" || t.costPreset === "full") {
+          setCostPreset(t.costPreset);
+        }
+        if (t.dataSource === "fixture" || t.dataSource === "live") {
+          setDataSource(t.dataSource);
+        }
+      }
+      flow.selectSession(id);
+      setView("desk");
+    },
+    [flow],
+  );
 
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
@@ -276,39 +321,39 @@ function TradingDeskApp(): ReactElement {
       style={{ gridTemplateRows: "44px 1fr 28px" }}
     >
       <TopBar
-        ticker={ticker}
-        date={date}
-        costPreset={costPreset}
-        dataSource={dataSource}
-        onTickerChange={setTicker}
-        onDateChange={setDate}
-        onCostPresetChange={setCostPreset}
-        onDataSourceChange={setDataSource}
-        onRun={() => {
-          void handleRun();
-        }}
-        isRunning={session.isStreaming}
-        isExistingSession={isExistingSession}
+        onNewAnalysis={() => setNewAnalysisOpen(true)}
+        view={view}
+        onViewChange={setView}
         theme={theme}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
-      <main
-        className="grid overflow-hidden"
-        style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
-      >
-        <ThesesPane
-          session={session}
-          memoStatus={memoStatus}
-          thesisForm={{
-            userThesis,
-            userThesisRationale,
-            onUserThesisChange: setUserThesis,
-            onUserThesisRationaleChange: setUserThesisRationale,
-            disabled: session.isStreaming,
-          }}
-        />
-        <TranscriptPane session={session} />
-      </main>
+      {view === "reports" ? (
+        <main className="flex flex-col overflow-hidden">
+          <PastReportsPane
+            sessions={flow.sessions}
+            onOpenReport={handleOpenReport}
+          />
+        </main>
+      ) : view === "portfolio" ? (
+        <main className="flex flex-col overflow-hidden">
+          {/* Portfolio reads user-scoped resources through a session snapshot.
+              Reuse the same `readSession` fallback the settings dialog uses —
+              the active session, else the first session. Prices are always live
+              (real holdings), so the analysis fixture/live toggle is not passed. */}
+          <PortfolioPane
+            session={readSession}
+            hasSession={readSessionId !== undefined}
+          />
+        </main>
+      ) : (
+        <main
+          className="grid overflow-hidden"
+          style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
+        >
+          <ThesesPane session={session} memoStatus={memoStatus} />
+          <TranscriptPane session={session} />
+        </main>
+      )}
       <StatusBar
         state={runState}
         eventCount={session.items.length}
@@ -326,6 +371,27 @@ function TradingDeskApp(): ReactElement {
           session={readSession}
         />
       ) : null}
+      <NewAnalysisDialog
+        open={newAnalysisOpen}
+        onClose={() => setNewAnalysisOpen(false)}
+        ticker={ticker}
+        date={date}
+        costPreset={costPreset}
+        dataSource={dataSource}
+        onTickerChange={setTicker}
+        onDateChange={setDate}
+        onCostPresetChange={setCostPreset}
+        onDataSourceChange={setDataSource}
+        userThesis={userThesis}
+        userThesisRationale={userThesisRationale}
+        onUserThesisChange={setUserThesis}
+        onUserThesisRationaleChange={setUserThesisRationale}
+        onSubmit={() => {
+          void handleRun();
+        }}
+        isRunning={session.isStreaming}
+        isExistingSession={isExistingSession}
+      />
     </div>
   );
 }

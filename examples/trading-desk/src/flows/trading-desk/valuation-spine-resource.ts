@@ -64,4 +64,9 @@ export const valuationSpineResource = defineResource({
   stateSchema: valuationSpineStateSchema.nullable(),
   default: null,
   writable: true,
+  // A single resource only surfaces in the client snapshot when it declares a
+  // client PROJECTION (`hasClientProjection`: expose/exclude/data) — an empty
+  // `client: {}` would never reach the client (the Summary's spine read stays
+  // null). `exclude: []` = identity-expose the full state, type-safe on a nullable.
+  client: { exclude: [] },
 });

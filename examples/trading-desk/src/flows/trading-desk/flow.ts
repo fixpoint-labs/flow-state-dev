@@ -20,6 +20,7 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "./agents";
 import { computeAndStoreSpine } from "./compute-spine";
+import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
@@ -27,7 +28,20 @@ import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase5Pipeline, scenarioForecasterPipeline } from "./phase-5";
 import { phase6Pipeline } from "./phase-6";
+import { priceHistoryResource } from "./price-history-resource";
+import { getQuotes } from "./portfolio/get-quotes";
+import {
+  deleteAccount,
+  deleteHolding,
+  importHoldings,
+  saveAccount,
+} from "./portfolio/portfolio-actions";
+import { extractHoldingsFromPdf } from "./portfolio/extract-holdings-action";
+import { portfolioQuotesResource } from "./portfolio/portfolio-quotes-resource";
+import { pdfImportResource } from "./portfolio/portfolio-pdf-resource";
+import { accountsCollection } from "./portfolio/portfolio-resources";
 import { resolveTicker } from "./lib/ticker-resolver";
+import { storePriceHistory } from "./store-price-history";
 import {
   memoResources,
   memosCollection,
@@ -94,7 +108,7 @@ const seedSession = handler({
  * providers down), patches `stoppedReason: "unresolvable-ticker"` so the
  * following `.exitIf` bails before any model spend.
  */
-const checkTickerResolvable = handler({
+export const checkTickerResolvable = handler({
   name: "check-ticker-resolvable",
   inputSchema: analyzeInputSchema,
   outputSchema: z.void(),
@@ -107,6 +121,11 @@ const checkTickerResolvable = handler({
         stoppedMessage:
           result.reason ?? `Could not resolve ticker ${input.ticker}.`,
         runComplete: true,
+      });
+      // Badge the reports-index row so Past Reports renders a stopped run
+      // distinctly. Additive metadata merge — the four tuple keys are preserved.
+      await ctx.session.setMetadata({
+        metadata: { reportStatus: "stopped" },
       });
     }
   },
@@ -137,6 +156,10 @@ export const checkPhase1HasData = handler({
           `Every Phase 1 analyst failed for ${ctx.session.state.ticker}. ` +
           "Halting before synthesis — no usable upstream data.",
         runComplete: true,
+      });
+      // Badge the reports-index row (see checkTickerResolvable). Additive merge.
+      await ctx.session.setMetadata({
+        metadata: { reportStatus: "stopped" },
       });
     }
   },
@@ -177,6 +200,10 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
         `${ctx.session.state.ticker}. Halting before synthesis.`,
       runComplete: true,
     });
+    // Badge the reports-index row (see checkTickerResolvable). Additive merge.
+    await ctx.session.setMetadata({
+      metadata: { reportStatus: "stopped" },
+    });
   },
 });
 
@@ -201,6 +228,9 @@ const analyzePipeline = sequencer({
   .tap(checkPhase1HasData)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(computeAndStoreSpine)
+  // Persist a thinned price-history slice for the Summary overlay. Reads the
+  // warm cache the technical analyst already populated — no extra fetch.
+  .tap(storePriceHistory)
   .step(phase2Pipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)
@@ -234,6 +264,18 @@ const tradingDeskFlow = defineFlow({
   actions: {
     analyze: { block: analyzePipeline },
     setInstructions: { block: setInstructions },
+    // Portfolio (Slice 4 / Spine B). User-scoped resource mutations + a
+    // read-only price fetch. None drives the analysis pipeline.
+    saveAccount: { block: saveAccount },
+    deleteAccount: { block: deleteAccount },
+    importHoldings: { block: importHoldings },
+    deleteHolding: { block: deleteHolding },
+    getQuotes: { block: getQuotes },
+    // PDF holdings import (Slice 4b). The LLM transcription step; writes the
+    // extracted rows to `pdfImport` for the dialog to reconcile + confirm. The
+    // confirmed rows feed the EXISTING `importHoldings` — this action never
+    // imports.
+    extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
 
   session: {
@@ -269,6 +311,24 @@ const tradingDeskFlow = defineFlow({
     specialInstructions: specialInstructionsResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
+    // Price-history slice — persisted after Phase 1, read by the Summary page's
+    // price overlay via `useResource(session, "priceHistory")`.
+    priceHistory: priceHistoryResource,
+    // Decision-of-record snapshot — written once at PM-commit; the durable
+    // audit record Past Reports and outcome tracking read.
+    decisionSnapshot: decisionSnapshotResource,
+    // Portfolio domain (Slice 4 / Spine B). One user-scoped, flow-isolated
+    // collection keyed by accountId; persists under `{userId}:trading-desk` on
+    // the existing filesystem store. Holdings live inline in each account record
+    // — see `portfolio/portfolio-resources.ts`.
+    accounts: accountsCollection,
+    // Transient per-session price cache written by `getQuotes`; the Portfolio
+    // pane reads it via `useResource` after a refresh. Not a durable snapshot.
+    portfolioQuotes: portfolioQuotesResource,
+    // Transient per-session PDF-extraction channel written by
+    // `extractHoldingsFromPdf`; the import dialog reads it via `useResource` to
+    // reconcile + preview before the user confirms. Not a durable record.
+    pdfImport: pdfImportResource,
   },
 });
 

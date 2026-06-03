@@ -21,7 +21,21 @@ src/flows/trading-desk/
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   agents.ts                      AGENTS map + per-phase memo key registries
   resources.ts                   memosCollection + thesisSection + phase2Contributions
+  report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
+  decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
   capability.ts                  the tradingDesk capability — single import for every generator
+  portfolio/                     Portfolio domain (Spine B) — accounts (holdings inline) + CSV + getQuotes
+    portfolio-schema.ts          pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
+    portfolio-csv.ts             pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
+    portfolio-resources.ts       BP-019 leaf: accountsCollection (user-scoped, flow-isolated; holdings live inline)
+    portfolio-quotes-resource.ts session-scoped resource getQuotes writes (sendAction returns no output)
+    portfolio-actions.ts         saveAccount / deleteAccount / importHoldings / deleteHolding handlers
+    get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
+    portfolio-pdf.ts             pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
+    portfolio-pdf-resource.ts    session-scoped pdfImport scratch resource (dialog reads via useResource)
+    extract-pdf-text.server.ts   NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
+    extract-holdings-generator.ts broker-agnostic LLM transcription (statement text → strict rows)
+    extract-holdings-action.ts   sequencer: decode bytes → extractPdfText → generator → commit pdfImport
   lib/                           app-level helpers and factories (no external IO)
     helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
     memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
@@ -80,6 +94,154 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 - **`lib/` is for everything that's neither identity (`agents.ts`),
   contract (`resources.ts`, `state.ts`, `flow-schema.ts`), capability,
   nor phase code.** Helpers, factories, formatters, stateless utilities.
+
+## Past Reports
+
+The app lists prior runs in a **Past Reports** view (TopBar nav toggle →
+`components/reports/`). There is **no separate reports store**: the index *is*
+the session list. Each run is one persisted session, and `listSessions` already
+returns its `metadata` bag. Two seams make a run a durable, re-openable record:
+
+- **`report-index.ts`** (browser-safe; zod + types only) — the metadata
+  projection. At PM-commit the writer **additively merges** `decision` +
+  `reportStatus: "complete"` into session metadata (shallow-merge, so the four
+  tuple keys `ticker/date/costPreset/dataSource` that `findSessionForTuple`
+  matches on are preserved). `parseReportRow(summary)` turns a `SessionSummary`
+  into a render-ready row, degrading gracefully on legacy / in-progress /
+  malformed metadata (never throws). `reportRowTuple` / `relativeTime` are pure
+  helpers used by the list.
+- **`decision-snapshot-resource.ts`** — the full, machine-scoreable
+  decision-of-record (session-scoped, written once at PM-commit via
+  `patchState`). Separate from the metadata row (the cheap list projection) and
+  the memo (the human-rendered thesis). It records the **post-clamp**
+  `finalRating`; `entryPrice`/outcome fields are reserved `null` for a future
+  outcome-tracking feature.
+
+**Re-opening a report runs zero models.** The Past Reports view switcher lives
+in `app/page.tsx` (`view: "desk" | "reports"`, with `"portfolio"` reserved on
+`TradingDeskView` for a later slice). Opening a row sets the four header inputs
+to the row's tuple **before** `selectSession`, so the tuple-sync effect resolves
+back to the opened session and never re-dispatches or mis-keys the run. The
+stored report rehydrates through the existing `useSession` + `ThesesPane` read
+path. Persistence is `developmentOnly: true` filesystem store — history does not
+survive an ephemeral/serverless redeploy; swap the `lib/server.ts` `stores:`
+seam for a real store before relying on it.
+
+## Summary view
+
+Each report has a **Theses | Summary** tab toggle inside `ThesesPane`. The
+**Summary** tab (`components/summary/`) is an at-a-glance aggregate of a finished
+report, built **entirely from already-stored session state — zero re-run, zero
+model spend.** A finished report (not streaming, items present) auto-opens on
+Summary; a streaming run stays on Theses; a manual tab pick or sidebar selection
+sticks (ref-guarded, mirroring the auto-follow idiom).
+
+- **`components/summary/aggregate.ts`** is the one place null-handling and the
+  stance→conviction-axis mapping live. `buildReportSummary(memosByKey, spine)` is
+  a **pure** function (UI-layer only — not a generator output, BP-016 does not
+  apply) mapping `Map<shortName, MemoState | null>` + the valuation spine to a
+  `ReportSummary` view model. Every field traces to a named stored field; absent
+  inputs collapse to `null` so the components stay dumb. Unit-tested in
+  `test/report-summary-aggregate.spec.ts` (the stance→axis mapping is the
+  intent-encoding test).
+- The view reads `useResourceCollectionList(session, "memos", { limit: 50 })`
+  (all ~20 memos in one page), `useResource(session, "valuationSpine")`,
+  `useResource(session, "priceHistory")`, and the stop fields via `useClientData`.
+  Each `item.topic` (bare collection key) is reverse-mapped to a short name. The
+  aggregate is built in `useMemo` (BP-010), not an effect.
+- **Charts are inline SVG / CSS bars — no chart library** (`charts/bar-group`,
+  `charts/scenario-strip`, `charts/price-overlay`). A chart never renders against
+  missing data; it shows a `ChartEmpty` gap note. The price overlay draws the
+  stored `priceHistory` close series with stop/target/fair-value/close overlay
+  lines; with `< 2` bars or a `source: "unavailable"` slice it falls back to a
+  trade-levels list.
+- **Price-history persistence:** `price-history-resource.ts` (leaf, BP-019) +
+  `store-price-history.ts` (a `.tap()` after the spine tap in `flow.ts`). The tap
+  reads the warm tool cache / fixture the technical analyst already populated — no
+  extra fetch, no `block.run()` — and persists a thinned `{ date, close }` series
+  + provenance `source`. On any miss it leaves the resource null and the chart
+  degrades. Tested in `test/store-price-history.spec.ts`.
+- **Real-money gates:** no fabricated numbers, `dataQuality` chips for
+  provenance, missing metrics shown as `—`/gap (never invented), a stopped run
+  shows only its stop banner, the `StatusBar` not-advice disclaimer stays visible.
+  `sizePct` is labeled "% of NAV" (the trader's proposal), never a dollar amount.
+- **Seams (later slices):** portfolio-fit weight chart and lens-convergence strip
+  are NOT built here — they render nothing until the portfolio + lens features
+  land. Phase 6 `alignment` is labeled **"Thesis alignment"**, never "portfolio
+  fit".
+
+## Portfolio view
+
+The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed by
+the `portfolio/` flow folder (Spine B). It is the durable record of what the user
+owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
+
+- **Data model — one collection; holdings live inside the account.** `accounts`
+  (`accounts/*`, keyed `accountId`) is the only collection — user-scoped +
+  `flowIsolation: true`, so it persists under `{userId}:trading-desk` on the
+  existing filesystem store (no new store adapter, no `StoreRegistry` change).
+  Each account record carries its positions inline as
+  `accountStateSchema.holdings: Holding[]` (a `Holding` is exactly a
+  `CanonicalRow`). The per-account record is the write unit: an import is ONE
+  write to one account, not one write per ticker. That suits this small,
+  rarely-changing, batch-written JSON — there is no concurrent-row-write race to
+  isolate, so the earlier per-holding-key scheme was over-modeled. The same
+  ticker in two accounts is simply two entries, one per account's array.
+- **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
+  `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
+  them to `output-schemas-strict.spec.ts`. Cost basis is **average cost
+  (informational)**, forward-compatible to tax-lots; tax-lots / realized P/L /
+  dividends are documented future seams, not built.
+- **CSV import** (`portfolio-csv.ts`) is a PURE, browser-safe parser: a synonym
+  table maps real brokerage headers, bad rows are REPORTED (with 1-based row
+  numbers) never thrown, duplicate tickers merge to a quantity-weighted average
+  cost, a bare `price` column maps to cost basis with a warning. The dialog runs
+  it client-side for the live preview; the `importHoldings` action re-parses
+  server-side (never trusts the client) and returns an `ImportReport`. Default
+  mode is `upsert` (non-destructive); `replace-account` is destructive, non-atomic
+  (RISK-P6), and requires a typed `REPLACE` confirmation. See
+  `docs/portfolio-csv-format.md`.
+- **PDF import** uploads the PDF BYTES and extracts the text SERVER-SIDE. The
+  dialog (`import-pdf-dialog.tsx`) base64-encodes the file and dispatches
+  `extractHoldingsFromPdf`; the action's first step decodes the bytes and calls
+  `extract-pdf-text.server.ts`, which extracts with **`unpdf`** (a worker-free,
+  serverless pdfjs build) on the Node main thread. There is **no browser pdfjs
+  worker and no `/public` build step** — the old client extractor needed a web
+  worker whose URL turbopack resolved unreliably (the import hung), and a direct
+  `pdfjs-dist` server path then tripped over its "fake worker" chunk under
+  turbopack. unpdf has no worker at all (and is kept out of the server bundle via
+  `serverExternalPackages` in `next.config.mjs`). Uploading the bytes is no new
+  privacy exposure:
+  the extracted holdings already go to the server + the LLM. After extraction the
+  LLM transcribes the text (`extract-holdings-generator`) into strict rows on the
+  session-scoped `pdfImport` resource; the dialog reads them via `useResource`,
+  runs the pure `reconcile()` for review, and the CONFIRM path serializes to CSV
+  through the EXISTING `importHoldings` (same as the CSV path). Streaming the
+  extraction progress to the dialog is a documented follow-up — the phase UX is
+  currently a static "extracting" state.
+- **Prices** come from `getQuotes` — a read handler that reuses
+  `get_price_history`'s fetch idiom directly (`loadFixture` / `getOrFetch`, NOT
+  `block.run()` — BP-011-safe) and takes the last bar's `close`. A missing /
+  unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
+  live mode never silently substitutes fixture data. Because `sendAction` returns
+  a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
+  its result to the session-scoped `portfolioQuotes` resource; the pane reads it
+  via `useResource` after `session.refresh()`. **The pane always requests `live`
+  prices, decoupled from the analysis fixture/live toggle** — holdings are real,
+  and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
+  real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
+  shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
+  `QUOTE_RETRIES` with backoff) so a 20+ holding portfolio doesn't trip Yahoo's
+  rate limiter and drop a random subset to `—`.
+- **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
+  in `components/portfolio/portfolio-format.ts` (pure) and is computed in
+  `useMemo` (BP-010), never stored — it depends on a live quote and the whole-
+  portfolio total. Money figures are labeled display approximations; a live +
+  as-of provenance line sits near the totals.
+- **Empty-state binding (spec §12.1):** user-scoped reads need a bound session
+  snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
+  session (option a) — the pane prompts the user to run an analysis first when no
+  session exists. Once any session is bound, Add Account / Import work.
 
 ## Adding a new generator
 

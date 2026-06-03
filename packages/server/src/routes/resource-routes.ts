@@ -296,8 +296,10 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
  *
  * Returns one paginated page of a collection's per-item state. Items are
  * sorted lexicographically by storage key. Gated by `client.state.read`.
- * Session scope only at v1; non-session collections must be read via the
- * snapshot's `prefetched` window.
+ * Works for session, user, and org scope. Session scope keeps its prefix-
+ * scoped read optimization; user/org scope resolves the persisted record
+ * via `getPersistedData` (a missing user/org record reads as an empty
+ * collection, never an error).
  */
 export async function handleListCollectionState(
   request: Request,
@@ -316,12 +318,6 @@ export async function handleListCollectionState(
   const { config, scope } = found;
   if (!isCollectionConfig(config)) {
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
-  }
-
-  if (scope !== "session") {
-    return jsonResponse(501, {
-      error: `list endpoint not yet supported for ${scope} scope`
-    });
   }
 
   if (config.client?.state?.read !== true) {
@@ -345,12 +341,23 @@ export async function handleListCollectionState(
     return jsonResponse(400, { error: "offset must be >= 0" });
   }
 
-  // Read only this collection's keys (its pattern prefix) instead of the whole
-  // scope. An empty prefix (e.g. `[topic]/observations`) falls back to getAll.
-  const keyPrefix = getPatternPrefix(config.pattern);
-  const persisted = keyPrefix
-    ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-    : await ctx.stores.resourceState.getAll("session", session.id);
+  let persisted: Record<string, JsonObject>;
+  if (scope === "session") {
+    // Read only this collection's keys (its pattern prefix) instead of the
+    // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
+    // getAll.
+    const keyPrefix = getPatternPrefix(config.pattern);
+    persisted = keyPrefix
+      ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
+      : await ctx.stores.resourceState.getAll("session", session.id);
+  } else {
+    // User/org scope: resolve the persisted record via the shared scope
+    // resolver (honors flowIsolation). A missing user/org record is a valid
+    // empty collection — the user simply hasn't written anything yet — so it
+    // reads as `{}`, never a 500. The pattern filter below applies identically.
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+    persisted = data?.resources ?? {};
+  }
   const matchedKeys = Object.keys(persisted)
     .filter((k) => matchesPattern(config.pattern, k))
     .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
@@ -385,7 +392,9 @@ export async function handleListCollectionState(
  * GET /sessions/:sessionId/resources/:ref/:topic
  *
  * Returns a single collection item's state. 200 with `null` body if the topic
- * is not present in the collection. Gated by `client.state.read`.
+ * is not present in the collection. Gated by `client.state.read`. Works for
+ * session, user, and org scope; for user/org a missing scope record (no item
+ * written yet) reads as a not-present topic (200 + null), never an error.
  */
 export async function handleGetCollectionItemState(
   _request: Request,
@@ -406,12 +415,6 @@ export async function handleGetCollectionItemState(
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
   }
 
-  if (scope !== "session") {
-    return jsonResponse(501, {
-      error: `get-state endpoint not yet supported for ${scope} scope`
-    });
-  }
-
   if (config.client?.state?.read !== true) {
     return jsonResponse(403, { error: `State read not permitted for "${route.ref}"` });
   }
@@ -428,7 +431,16 @@ export async function handleGetCollectionItemState(
     }
   }
 
-  const value = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  let value: JsonObject | undefined;
+  if (scope === "session") {
+    value = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  } else {
+    // User/org scope: resolve via the shared scope resolver (honors
+    // flowIsolation). A missing user/org record means the topic isn't present
+    // yet, which the not-present branch below already handles as 200 + null.
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+    value = data?.resources[storageKey];
+  }
   if (value === undefined) {
     // 200 + null body: the topic isn't present, but the collection itself is
     // readable. Distinguishes "no such item" from "no permission" or "no

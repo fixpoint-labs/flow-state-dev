@@ -16,6 +16,13 @@
  * Auto-follow: when the user has not selected manually, selection tracks
  * the most-recently-published (or, failing that, currently-writing) memo.
  * `re-run` clears the manual-selection flag.
+ *
+ * Tab switch (Slice 3): a Theses | Summary toggle sits above the doc area.
+ * Theses is the existing sidebar+doc experience; Summary renders the
+ * `<ReportSummary>` at-a-glance aggregate over the SAME already-loaded session
+ * state (zero re-run). A finished report auto-opens on Summary; a streaming run
+ * stays on Theses for the live memo-follow. Selecting a sidebar entry switches
+ * back to Theses.
  */
 "use client";
 
@@ -27,7 +34,7 @@ import {
   type ReactElement,
 } from "react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useResourceCollectionItem } from "@flow-state-dev/react";
+import { useClientData, useResourceCollectionItem } from "@flow-state-dev/react";
 import { MemoSidebar } from "./memo-sidebar";
 import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
@@ -35,6 +42,7 @@ import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
+import { ReportSummary } from "@/components/summary/report-summary";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
@@ -50,21 +58,9 @@ import type {
 } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 
-/** Pre-run user-thesis form, surfaced in the empty-selection state. The
- *  fields are frozen into session state server-side at `seedSession`, so the
- *  form is disabled once a run is streaming. */
-type ThesisFormProps = {
-  userThesis: string;
-  userThesisRationale: string;
-  onUserThesisChange: (value: string) => void;
-  onUserThesisRationaleChange: (value: string) => void;
-  disabled: boolean;
-};
-
 type ThesesPaneProps = {
   session: SessionView;
   memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
-  thesisForm: ThesisFormProps;
 };
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
@@ -94,19 +90,44 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
 export function ThesesPane({
   session,
   memoStatus,
-  thesisForm,
 }: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
+  const [tab, setTab] = useState<"theses" | "summary">("theses");
+  const userPickedTabRef = useRef(false);
 
-  // Reset manual-selection flag on re-run (detected by streaming → 0 items).
-  // Effect (not derived state): synchronizes a ref with an external signal.
+  // Authoritative completion flag, read from the exposed session state. Stable
+  // across a transient stream re-attach (opening a stored report can briefly
+  // report isStreaming with 0 items) — unlike isStreaming/items, which flicker.
+  // A finished report (PM committed, or a stop guard tripped) has
+  // runComplete === true; a fresh or re-running session has it false.
+  const { session: live } = useClientData(session, { session: ["runComplete"] });
+  const runComplete = live?.runComplete === true;
+
+  // Reset manual-selection flags only on a genuine re-run — a run STARTING
+  // (streaming, 0 items) on a session that is NOT already complete. The
+  // `!runComplete` guard stops a finished report from snapping back to Theses
+  // when its stream merely re-attaches on open. Effect: synchronizes refs with
+  // the run-lifecycle signal.
   useEffect(() => {
-    if (session.isStreaming && session.items.length === 0) {
+    if (session.isStreaming && session.items.length === 0 && !runComplete) {
       userSelectedRef.current = false;
       setSelectedAgent(null);
+      userPickedTabRef.current = false;
+      setTab("theses");
     }
-  }, [session.isStreaming, session.items.length]);
+  }, [session.isStreaming, session.items.length, runComplete]);
+
+  // Auto-tab: when the user hasn't picked a tab manually, a FINISHED report
+  // (runComplete — the stable signal, with a not-streaming-with-items fallback)
+  // opens on Summary; an in-progress/streaming run stays on Theses for the live
+  // memo-follow. Mirrors userPickedTabRef so a manual choice sticks.
+  const finished =
+    runComplete || (!session.isStreaming && session.items.length > 0);
+  useEffect(() => {
+    if (userPickedTabRef.current) return;
+    setTab(finished ? "summary" : "theses");
+  }, [finished]);
 
   // Auto-follow selection if the user hasn't manually picked.
   useEffect(() => {
@@ -123,9 +144,18 @@ export function ThesesPane({
     }
   }, [memoStatus]);
 
+  // Selecting a sidebar entry always returns to the Theses tab (the memo lives
+  // there) and counts as a manual tab choice so the auto-rule won't override it.
   const handleSelectAgent = (agent: AgentName) => {
     userSelectedRef.current = true;
     setSelectedAgent(agent);
+    userPickedTabRef.current = true;
+    setTab("theses");
+  };
+
+  const handlePickTab = (next: "theses" | "summary") => {
+    userPickedTabRef.current = true;
+    setTab(next);
   };
 
   return (
@@ -139,8 +169,11 @@ export function ThesesPane({
         onSelectAgent={handleSelectAgent}
       />
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        {selectedAgent === null ? (
-          <EmptySelection thesisForm={thesisForm} />
+        <TabSwitch tab={tab} onPick={handlePickTab} />
+        {tab === "summary" ? (
+          <ReportSummary session={session} />
+        ) : selectedAgent === null ? (
+          <EmptySelection />
         ) : (
           <MemoDoc
             session={session}
@@ -153,6 +186,40 @@ export function ThesesPane({
   );
 }
 
+function TabSwitch({
+  tab,
+  onPick,
+}: {
+  tab: "theses" | "summary";
+  onPick: (next: "theses" | "summary") => void;
+}): ReactElement {
+  return (
+    <div
+      className="mb-4 flex gap-1"
+      role="tablist"
+      aria-label="Report view"
+    >
+      {(["theses", "summary"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={tab === value}
+          onClick={() => onPick(value)}
+          className={cn(
+            "rounded-md px-3 py-1 font-mono text-[10.5px] uppercase tracking-wider transition-colors",
+            tab === value
+              ? "bg-[color:var(--c-surface-2)] text-[color:var(--c-fg)]"
+              : "text-[color:var(--c-fg-faint)] hover:bg-[color:var(--c-surface)]",
+          )}
+        >
+          {value === "theses" ? "Theses" : "Summary"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function statusForAgent(
   agent: AgentName,
   memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>,
@@ -162,82 +229,12 @@ function statusForAgent(
   return memoStatus[shortName] ?? "pending";
 }
 
-function EmptySelection({
-  thesisForm,
-}: {
-  thesisForm: ThesisFormProps;
-}): ReactElement {
+function EmptySelection(): ReactElement {
   return (
-    <div className="m-auto flex w-full max-w-md flex-col gap-6">
-      <p className="text-center text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
-        Pick a phase entry on the left to see its memo. Each entry
-        becomes live once its agent runs.
-      </p>
-      <ThesisInput {...thesisForm} />
-    </div>
-  );
-}
-
-/** Optional pre-run thesis pair. The pipeline analyzes the ticker blind to
- *  this; the Phase 6 auditor tests the independent findings against it. */
-function ThesisInput({
-  userThesis,
-  userThesisRationale,
-  onUserThesisChange,
-  onUserThesisRationaleChange,
-  disabled,
-}: ThesisFormProps): ReactElement {
-  const fieldClass = cn(
-    "w-full resize-none rounded-md border bg-[color:var(--c-surface-2)] px-2.5 py-1.5",
-    "border-[color:var(--c-border)] text-[12px] text-[color:var(--c-fg)]",
-    "focus:outline-none focus:border-[color:var(--c-accent)]",
-    "disabled:opacity-50",
-  );
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 rounded-lg p-4",
-        "border border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
-      )}
-    >
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[12px] font-semibold text-[color:var(--c-fg)]">
-          Your thesis (optional)
-        </span>
-        <span className="text-[10.5px] leading-relaxed text-[color:var(--c-fg-muted)]">
-          What do you believe about this trade? We&apos;ll test our findings
-          against it.
-        </span>
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-          Thesis
-        </span>
-        <textarea
-          value={userThesis}
-          onChange={(e) => onUserThesisChange(e.currentTarget.value)}
-          disabled={disabled}
-          rows={3}
-          maxLength={1500}
-          placeholder="e.g. NVDA's data-center growth decelerates faster than consensus expects in H2"
-          className={fieldClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-          Why (optional)
-        </span>
-        <textarea
-          value={userThesisRationale}
-          onChange={(e) => onUserThesisRationaleChange(e.currentTarget.value)}
-          disabled={disabled}
-          rows={2}
-          maxLength={1500}
-          placeholder="What's the reasoning behind it?"
-          className={fieldClass}
-        />
-      </label>
-    </div>
+    <p className="m-auto max-w-md text-center text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
+      Click New Analysis to start a run, or pick a phase entry on the left to
+      see its memo. Each entry becomes live once its agent runs.
+    </p>
   );
 }
 

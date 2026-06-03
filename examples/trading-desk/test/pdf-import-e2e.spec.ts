@@ -1,0 +1,241 @@
+/**
+ * End-to-end integration spec for the PDF holdings import path, with BOTH the
+ * server-side text extraction AND the extraction generator MOCKED (the suite is
+ * offline — no real LLM, no real PDF parsing).
+ *
+ * The action now takes `{ pdfBase64 }` and runs: decode base64 -> server
+ * `extractPdfText` (MOCKED here to return canned statement text) -> the
+ * extraction generator (MOCKED) -> commit. Mocking the extractor module keeps
+ * the test deterministic without bundling a real PDF; the extractor's own
+ * linearization logic is unit-tested in `extract-pdf-text.server.spec.ts`.
+ *
+ * Asserts the two seams the slice rests on:
+ *  1. `extractHoldingsFromPdf` runs the decode + (mocked) generator and writes
+ *     the transcribed rows + stated total to the session-scoped `pdfImport`
+ *     resource — the channel the dialog reads (sendAction returns only a status
+ *     envelope). The action imports NOTHING.
+ *  2. The confirmed rows, mapped to canonical CSV by the pure
+ *     `toCanonicalRows` / `canonicalRowsToCsv`, flow through the EXISTING
+ *     `importHoldings` action: real holdings land in the target account's inline
+ *     `holdings` array with `costBasis: null`, and the skipped junk rows (MMF,
+ *     contra-CUSIP) never reach storage.
+ *
+ * The reconciliation arithmetic itself is unit-tested in `portfolio-pdf.spec.ts`;
+ * this spec verifies the wiring around it.
+ */
+import { describe, expect, it, vi } from "vitest";
+
+// Mock the server-side PDF text extractor so the decode step runs without a real
+// PDF. The action passes the decoded bytes to this fn; we ignore them and return
+// canned statement text. Hoisted by vitest above the flow import.
+vi.mock(
+  "../src/flows/trading-desk/portfolio/extract-pdf-text.server",
+  () => ({
+    extractPdfText: vi.fn(
+      async () => "AAPL ... MSFT ... TIMXX ... Total Holdings $3,926.84",
+    ),
+  }),
+);
+
+import { createInMemoryStores } from "@flow-state-dev/server";
+import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import tradingDeskFlow from "../src/flows/trading-desk/flow";
+import {
+  canonicalRowsToCsv,
+  toCanonicalRows,
+  type PdfExtraction,
+} from "../src/flows/trading-desk/portfolio/portfolio-pdf";
+
+/** A base64 string standing in for an uploaded PDF. Its bytes are irrelevant —
+ *  `extractPdfText` is mocked — but the decode step requires non-empty bytes. */
+const PDF_BASE64 = Buffer.from("%PDF-1.4 fake bytes").toString("base64");
+
+const USER_ID = "devuser";
+const ISOLATED_KEY = `${USER_ID}:trading-desk`;
+const ACCOUNT = "acct-pdf";
+
+/** Create the target account — `importHoldings` requires an existing account. */
+async function createAccount(
+  stores: ReturnType<typeof createInMemoryStores>,
+): Promise<void> {
+  await testFlow({
+    flow: tradingDeskFlow,
+    action: "saveAccount",
+    userId: USER_ID,
+    stores,
+    input: { accountId: ACCOUNT, name: "PDF Account", type: "taxable" },
+  });
+}
+
+/** What the (mocked) extraction generator "transcribes" from the statement. */
+function extractionOutput(): PdfExtraction {
+  return {
+    rows: [
+      { ticker: "AAPL", quantity: 5.44149, costBasis: null, price: 298.97, value: 1626.84 },
+      { ticker: "MSFT", quantity: 2, costBasis: null, price: 400, value: 800 },
+      { ticker: "TIMXX", quantity: 1500, costBasis: null, price: 1, value: 1500 },
+      { ticker: "436CVR021", quantity: 0, costBasis: null, price: 0, value: 0 },
+    ],
+    statedTotal: 3926.84,
+  };
+}
+
+describe("extractHoldingsFromPdf action", () => {
+  it("writes the transcribed rows to the pdfImport resource and imports nothing", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "pdf-extract-session";
+
+    const result = await testFlow({
+      flow: tradingDeskFlow,
+      action: "extractHoldingsFromPdf",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: { pdfBase64: PDF_BASE64 },
+      generators: {
+        "extract-holdings-generator": mockGenerator({
+          name: "extract-holdings-generator",
+          script: [{ structuredOutput: extractionOutput() }],
+        }),
+      },
+      unmockedGeneratorPolicy: "error",
+    });
+    expect(result.status).toBe("completed");
+
+    // The extraction landed on the session-scoped resource for the dialog.
+    const sessionResources = (await stores.resourceState.getAll(
+      "session",
+      sessionId,
+    )) as Record<string, { extraction?: PdfExtraction }>;
+    const extraction = sessionResources.pdfImport?.extraction;
+    expect(extraction?.rows).toHaveLength(4);
+    expect(extraction?.statedTotal).toBe(3926.84);
+
+    // The action imported NOTHING — no account record (and thus no holdings)
+    // was written by the extract step.
+    const userResources = (await stores.resourceState.getAll(
+      "user",
+      ISOLATED_KEY,
+    )) as Record<string, unknown>;
+    expect(
+      Object.keys(userResources).some((k) => k.startsWith("accounts/")),
+    ).toBe(false);
+  });
+});
+
+describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
+  it("imports the real holdings (costBasis null) and skips MMF + contra-CUSIP", async () => {
+    const stores = createInMemoryStores();
+    await createAccount(stores);
+
+    // The dialog's confirm step: map the (reviewed) extraction to canonical CSV.
+    const { rows, skipped } = toCanonicalRows(extractionOutput());
+    const csvText = canonicalRowsToCsv(rows);
+    // Sanity: the pure mapping already dropped the junk before import.
+    expect(rows.map((r) => r.ticker)).toEqual(["AAPL", "MSFT"]);
+    expect(skipped.map((s) => s.ticker)).toContain("TIMXX");
+    expect(skipped.map((s) => s.ticker)).toContain("436CVR021");
+
+    const result = await testFlow({
+      flow: tradingDeskFlow,
+      action: "importHoldings",
+      userId: USER_ID,
+      stores,
+      input: { accountId: ACCOUNT, mode: "upsert", csvText },
+    });
+    expect(result.status).toBe("completed");
+
+    const userResources = (await stores.resourceState.getAll(
+      "user",
+      ISOLATED_KEY,
+    )) as Record<
+      string,
+      {
+        holdings?: Array<{
+          ticker: string;
+          quantity: number;
+          costBasis: number | null;
+        }>;
+      }
+    >;
+    const holdings = userResources[`accounts/${ACCOUNT}`]?.holdings ?? [];
+
+    // Real holdings landed with costBasis null (a snapshot carries no cost).
+    expect(holdings).toContainEqual(
+      expect.objectContaining({
+        ticker: "AAPL",
+        quantity: 5.44149,
+        costBasis: null,
+      }),
+    );
+    expect(holdings).toContainEqual(
+      expect.objectContaining({ ticker: "MSFT", quantity: 2, costBasis: null }),
+    );
+    // The skipped junk rows never reached storage.
+    const tickers = holdings.map((h) => h.ticker);
+    expect(tickers).not.toContain("TIMXX");
+    expect(tickers).not.toContain("436CVR021");
+  });
+});
+
+describe("importHoldings clears the consumed pdfImport scratch", () => {
+  it("resets pdfImport to null after a confirmed import, so a 2nd import can't read it", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "pdf-clear-session";
+    // The import only runs (and clears the scratch) against an existing account.
+    await createAccount(stores);
+
+    // 1. Extraction populates the session-scoped scratch resource.
+    const extractResult = await testFlow({
+      flow: tradingDeskFlow,
+      action: "extractHoldingsFromPdf",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: { pdfBase64: PDF_BASE64 },
+      generators: {
+        "extract-holdings-generator": mockGenerator({
+          name: "extract-holdings-generator",
+          script: [{ structuredOutput: extractionOutput() }],
+        }),
+      },
+      unmockedGeneratorPolicy: "error",
+    });
+    expect(extractResult.status).toBe("completed");
+
+    // Precondition: the scratch holds the extraction.
+    const afterExtract = (await stores.resourceState.getAll(
+      "session",
+      sessionId,
+    )) as Record<string, { extraction?: PdfExtraction } | null>;
+    expect(afterExtract.pdfImport?.extraction?.rows).toHaveLength(4);
+
+    // 2. The confirmed import (same session) consumes the reviewed rows.
+    const { rows } = toCanonicalRows(extractionOutput());
+    const importResult = await testFlow({
+      flow: tradingDeskFlow,
+      action: "importHoldings",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: {
+        accountId: ACCOUNT,
+        mode: "upsert",
+        csvText: canonicalRowsToCsv(rows),
+      },
+    });
+    expect(importResult.status).toBe("completed");
+
+    // The scratch is cleared — the next PDF import opens against no extraction,
+    // never the prior one. "Cleared" is asserted the way the dialog reads it
+    // (`pdfData?.extraction ?? null`): the store may represent a nulled state as
+    // `null` OR `{}` (a framework representation quirk), so the intent is that
+    // `.extraction` is gone, not that the raw value is literally null. This is
+    // the bug fix — a stale extraction is no longer read as the current one.
+    const afterImport = (await stores.resourceState.getAll(
+      "session",
+      sessionId,
+    )) as Record<string, { extraction?: unknown } | null>;
+    expect(afterImport.pdfImport?.extraction ?? null).toBeNull();
+  });
+});

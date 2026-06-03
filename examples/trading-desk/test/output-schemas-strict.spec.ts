@@ -35,6 +35,7 @@ import {
 import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/scenario-forecaster";
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
+import { pdfExtractionSchema } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
 
 type Issue = { path: string; reason: string };
 
@@ -137,6 +138,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Tool get_analyst_estimates analystEstimatesSchema", analystEstimatesSchema],
   ["Tool get_earnings_transcript earningsTranscriptSchema", earningsTranscriptSchema],
   ["Tool discover_disclosure_context discoveryPayloadSchema", discoveryPayloadSchema],
+  ["Portfolio PDF extraction pdfExtractionSchema", pdfExtractionSchema],
 ];
 
 describe("Generator output schemas are OpenAI strict-mode compatible", () => {

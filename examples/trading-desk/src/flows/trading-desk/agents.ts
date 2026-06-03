@@ -51,6 +51,11 @@ export const AGENTS = {
   // sidebar renders it in the existing PM color group rather than minting a
   // new team for a single agent.
   thesisValidator:     { role: "Thesis Validator",     glyph: "TV", hue: 318, team: "pm" },
+  // Portfolio utility — broker-agnostic PDF statement extractor (Slice 4b).
+  // Not part of the analysis pipeline; runs only on the `extractHoldingsFromPdf`
+  // action. Reuses the `pm` team so it does not mint a new sidebar group for a
+  // single utility agent that never appears in `PHASE_GROUPS`.
+  statementParser:     { role: "Statement Parser",     glyph: "SP", hue: 60, team: "pm" },
 } as const satisfies Record<string, AgentMeta>;
 
 export type AgentName = keyof typeof AGENTS;

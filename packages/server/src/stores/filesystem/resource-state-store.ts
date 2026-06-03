@@ -52,13 +52,32 @@ export class FilesystemResourceStateStore implements ResourceStateStore {
 
   async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void> {
     const dir = this.scopeDir(scopeType, scopeId);
-    await mkdir(dir, { recursive: true });
-
     const target = this.filePath(scopeType, scopeId, resourceKey);
-    const tempPath = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const serialized = JSON.stringify(state);
 
-    await writeFile(tempPath, JSON.stringify(state), "utf8");
-    await rename(tempPath, target);
+    // The scope dir is created here, but it can be transiently absent at write
+    // time: concurrent writers racing to create a fresh scope tree (node's
+    // recursive `mkdir`), or a sibling request tearing the scope down, can leave
+    // the `writeFile`/`rename` to ENOENT on the just-ensured directory. That
+    // surfaced as a hard import failure ("nothing happened") with a stray
+    // `…/holdings%2F…__VRSK.tmp-…` path. Re-create the dir and retry once; a
+    // second ENOENT (or any other error) is real and propagates.
+    for (let attempt = 0; ; attempt += 1) {
+      await mkdir(dir, { recursive: true });
+      const tempPath = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try {
+        await writeFile(tempPath, serialized, "utf8");
+        await rename(tempPath, target);
+        return;
+      } catch (error) {
+        // Best-effort cleanup of the orphaned temp file (it may not exist).
+        await rm(tempPath, { force: true }).catch(() => {});
+        if ((error as NodeJS.ErrnoException).code === "ENOENT" && attempt === 0) {
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 
   async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {

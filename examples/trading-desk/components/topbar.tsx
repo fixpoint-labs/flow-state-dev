@@ -1,79 +1,51 @@
 /**
- * TopBar — 44px chrome with brand mark, ticker/date inputs, cost-preset and
- * data-source segmented toggles, re-run button, layout label, and theme
- * toggle.
+ * TopBar — 44px chrome with brand mark, view nav, a "New Analysis" button,
+ * layout label, and theme toggle.
  *
- * Inputs and toggles are controlled by the parent so submitting the form
- * invokes the `analyze` action with the current values. Theme toggle flips
+ * The run-input surface (ticker/date inputs, cost-preset and data-source
+ * toggles, the run button, and the thesis fields) now lives in
+ * `NewAnalysisDialog`; the header only opens it. Theme toggle flips
  * `data-theme` on the document root.
  */
 "use client";
 
-import { useCallback, type ReactElement } from "react";
-import { Sun, Moon, Play } from "lucide-react";
+import { type ReactElement } from "react";
+import { Sun, Moon, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FlowStateMark } from "@/components/flow-state-mark";
-import { Segmented } from "@/components/ui/segmented";
 
 export type CostPreset = "fast" | "full";
 export type DataSourceMode = "fixture" | "live";
 
+/** The in-page views the TopBar nav toggles between. All three render a nav
+ *  item: Desk (analysis), Past Reports, and Portfolio (BUILD_PLAN §8 contract). */
+export type TradingDeskView = "desk" | "reports" | "portfolio";
+
 type TopBarProps = {
-  ticker: string;
-  date: string;
-  costPreset: CostPreset;
-  dataSource: DataSourceMode;
-  onTickerChange: (value: string) => void;
-  onDateChange: (value: string) => void;
-  onCostPresetChange: (value: CostPreset) => void;
-  onDataSourceChange: (value: DataSourceMode) => void;
-  onRun: () => void;
-  isRunning: boolean;
-  /** Whether the current inputs map to an existing session. Drives the button
-   *  label: "re-run" for an existing run, "Run" for a fresh tuple. */
-  isExistingSession: boolean;
+  /** Opens the New Analysis modal, which owns the entire run-input surface. */
+  onNewAnalysis: () => void;
+  /** Current in-page view. The nav toggle is its own flex group and coexists
+   *  with the New Analysis button. */
+  view: TradingDeskView;
+  onViewChange: (view: TradingDeskView) => void;
   theme: "light" | "dark";
   onThemeToggle: () => void;
 };
 
-const COST_PRESET_OPTIONS = [
-  { value: "fast" as const, label: "fast", title: "Cheap utility models" },
-  { value: "full" as const, label: "full", title: "Higher-tier chat models" },
-];
-
-const DATA_SOURCE_OPTIONS = [
-  { value: "fixture" as const, label: "fixture", title: "Hand-curated JSON" },
-  {
-    value: "live" as const,
-    label: "live",
-    title:
-      "Live data — Yahoo for prices/fundamentals (no key); FINNHUB_API_KEY required for news",
-  },
+/** The nav items rendered today. */
+const NAV_ITEMS: ReadonlyArray<{ value: TradingDeskView; label: string }> = [
+  { value: "desk", label: "Desk" },
+  { value: "reports", label: "Past Reports" },
+  { value: "portfolio", label: "Portfolio" },
 ];
 
 export function TopBar({
-  ticker,
-  date,
-  costPreset,
-  dataSource,
-  onTickerChange,
-  onDateChange,
-  onCostPresetChange,
-  onDataSourceChange,
-  onRun,
-  isRunning,
-  isExistingSession,
+  onNewAnalysis,
+  view,
+  onViewChange,
   theme,
   onThemeToggle,
 }: TopBarProps): ReactElement {
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      onRun();
-    },
-    [onRun],
-  );
-
   return (
     <header
       className={cn(
@@ -92,66 +64,51 @@ export function TopBar({
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="ml-6 flex items-center gap-3">
-        <label className="flex items-center gap-1.5">
-          <span className="text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-            ticker
-          </span>
-          <input
-            value={ticker}
-            onChange={(e) => onTickerChange(e.currentTarget.value.toUpperCase())}
-            className={cn(
-              "h-7 w-[84px] rounded-md border bg-[color:var(--c-surface-2)] px-2",
-              "border-[color:var(--c-border)] font-mono text-[12px] text-[color:var(--c-fg)]",
-              "focus:outline-none focus:border-[color:var(--c-accent)]",
-            )}
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-            date
-          </span>
-          <input
-            value={date}
-            onChange={(e) => onDateChange(e.currentTarget.value)}
-            className={cn(
-              "h-7 w-[112px] rounded-md border bg-[color:var(--c-surface-2)] px-2",
-              "border-[color:var(--c-border)] font-mono text-[12px] text-[color:var(--c-fg)]",
-              "focus:outline-none focus:border-[color:var(--c-accent)]",
-            )}
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </label>
-        <Segmented
-          label="preset"
-          value={costPreset}
-          options={COST_PRESET_OPTIONS}
-          onChange={onCostPresetChange}
-          disabled={isRunning}
-        />
-        <Segmented
-          label="source"
-          value={dataSource}
-          options={DATA_SOURCE_OPTIONS}
-          onChange={onDataSourceChange}
-          disabled={isRunning}
-        />
-        <button
-          type="submit"
-          disabled={isRunning}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[11.5px] font-medium",
-            "bg-[color:var(--c-accent)] text-white",
-            "disabled:opacity-50",
-          )}
-        >
-          <Play className="h-3 w-3" aria-hidden />
-          {isRunning ? "running…" : isExistingSession ? "re-run" : "Run"}
-        </button>
-      </form>
+      {/* Nav toggle — its OWN flex group (BUILD_PLAN §8 / spec 02 §6.4) so it
+          coexists with either the inline analyze form (today) or the slimmed-
+          header "New Analysis" button a later slice swaps in. */}
+      <nav
+        className="ml-4 flex items-center gap-0.5 rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface-2)] p-0.5"
+        aria-label="View"
+      >
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.value === view;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => {
+                if (!isActive) onViewChange(item.value);
+              }}
+              className={cn(
+                "h-6 rounded px-2.5 text-[11.5px] font-medium",
+                isActive
+                  ? "bg-[color:var(--c-surface)] text-[color:var(--c-fg)]"
+                  : "text-[color:var(--c-fg-muted)] hover:text-[color:var(--c-fg)]",
+              )}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* New Analysis — its own flex group, coexisting with the nav. Opens the
+          modal that owns the entire run-input surface. Always enabled so the
+          user can configure a fresh run while another streams. */}
+      <button
+        type="button"
+        onClick={onNewAnalysis}
+        className={cn(
+          "ml-4 inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[11.5px] font-medium",
+          "bg-[color:var(--c-accent)] text-white",
+          "hover:opacity-90",
+        )}
+      >
+        <Plus className="h-3 w-3" aria-hidden />
+        New Analysis
+      </button>
 
       <div className="ml-auto flex items-center gap-3">
         <span className="font-mono text-[10.5px] text-[color:var(--c-fg-faint)]">
