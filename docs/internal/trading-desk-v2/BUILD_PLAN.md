@@ -486,3 +486,50 @@ reconciled lens pack per §7). Render the portfolio-fit and lens signals as fast
 the v2 critical path. Keep the eight real-money trust gates (§1) green on every slice. That order is
 reviewable slice by slice, front-loads the durable-data correctness decisions, and resolves the one
 genuine spec conflict before it can ship twice.
+
+## 10. Follow-ups / deferred backlog (post-Slice-4b)
+
+Captured during the Slice 4b (PDF import) + always-live-pricing work. Neither is on the Slice 5
+critical path — Slice 5 can proceed against the current model. Each is self-contained for an
+isolated executor session.
+
+### Follow-up A — Durable last-price cache (persist price + `lastRefreshedAt`)
+
+**Problem.** `getQuotes` writes only to the **session-scoped** `portfolioQuotes` resource (transient).
+The durable holding (user-scoped) carries no price, so prices vanish across sessions until re-fetched,
+and there is no "last known price / how stale" surface. Now that the portfolio always fetches **live**
+(see commit "always price the portfolio live"), a durable cache is the natural complement.
+
+**Task.** On each live quote fetch, also persist `{ price, asOf, lastRefreshedAt, source }` to a
+durable store and surface "prices last refreshed <when>" in the pane.
+
+**Decision needed.** Store on the holding vs a separate durable cache. **Lean: a user-scoped
+`quoteCache` collection keyed by ticker** — it avoids re-serializing every holding on each refresh and
+dedupes the same ticker held in two accounts (consistent with the per-holding-key isolation rationale
+in §Spine B). Storing on the holding would re-write N holdings per refresh and duplicate the price for
+a ticker held twice.
+
+**Real-money gates.** A persisted price MUST carry its own `asOf` so a stale cached price is shown
+**as stale**, never as live; never fabricate a price to fill the cache; a cache miss still degrades to
+`—`.
+
+### Follow-up B — Split the portfolio into its own flow
+
+**Problem.** The `trading-desk` flow currently owns BOTH the analysis pipeline AND all portfolio
+actions (`saveAccount`/`deleteAccount`/`importHoldings`/`deleteHolding`/`getQuotes`/
+`extractHoldingsFromPdf`) + the portfolio resources. This couples portfolio management to the analysis
+flow's lifecycle. Portfolio management is a distinct concern.
+
+**Task.** Extract a standalone `portfolio` flow (its own `defineFlow` with the portfolio actions, the
+user-scoped `accounts`/`holdings` collections, `getQuotes`, and PDF import), leaving `trading-desk` as
+the analysis flow. Slice 5's portfolio-aware analysis then reads the portfolio flow's resources
+cross-flow.
+
+**Caveats / open questions.**
+- **Data migration.** User-scoped + `flowIsolation: true` resources persist under `{userId}:trading-desk`
+  today; a `portfolio` flow changes the key to `{userId}:portfolio` — existing holdings would need a
+  migration or a dual-read shim.
+- **Session/binding.** The empty-state binding (spec §12.1) currently reuses an *analysis* session
+  snapshot to read user-scoped data; a standalone portfolio flow needs its own session/binding story.
+- **Sequencing.** Dovetails with the Layer-2 identity reorg (§4) and the standalone-flow direction —
+  sequence with FIX-702 rather than ahead of it.
