@@ -10,15 +10,15 @@
  * sentences), not the full Phase 1 / Phase 2 data depth the structured
  * trader reads.
  */
-import { PHASE_3_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { createApproachGenerator } from "../agents/_recipe/approach-generator";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_3_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { createApproachGenerator } from "../_recipe/approach-generator";
+import { loadPrompt } from "../../lib/prompt";
 
 export const traderApproachGenerator = createApproachGenerator({
   name: "trader-approach-generator",
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   artifactName: "TradeProposal",
-  prompt: loadPrompt("phase-3/prompts/trader-approach.prompt.md").prompt,
+  prompt: loadPrompt("agents/trader/prompts/trader-approach.prompt.md").prompt,
   uses: [tradingDesk.presets({ investmentThesis: true })],
 });

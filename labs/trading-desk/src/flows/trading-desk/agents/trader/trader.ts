@@ -15,13 +15,13 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_3_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { loadPrompt } from "../lib/prompt";
-import { thesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
+import { PHASE_3_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { loadPrompt } from "../../lib/prompt";
+import { thesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
 
-const traderPrompt = loadPrompt("phase-3/prompts/trader.prompt.md");
+const traderPrompt = loadPrompt("agents/trader/prompts/trader.prompt.md");
 
 export const tradeProposalOutputSchema = z.object({
   label: z.string(),

@@ -3,8 +3,8 @@
  * before the trader generator runs. Built via the shared `defineMemoSetup`
  * factory.
  */
-import { PHASE_3_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../agents/_recipe/memo-setup";
+import { PHASE_3_MEMO_KEYS } from "../../agents";
+import { defineMemoSetup } from "../_recipe/memo-setup";
 
 export const setupPhase3Memos = defineMemoSetup({
   phaseId: "p3",
