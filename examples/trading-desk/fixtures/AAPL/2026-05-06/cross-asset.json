@@ -1,0 +1,18 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "windowDays": 63,
+  "ratios": [
+    { "label": "stocks vs bonds (SPY/TLT)", "riskOnTicker": "SPY", "riskOffTicker": "TLT", "riskOnReturn": 0.041, "riskOffReturn": -0.012, "spread": 0.053, "leaning": "risk-on" },
+    { "label": "credit appetite (HYG/LQD)", "riskOnTicker": "HYG", "riskOffTicker": "LQD", "riskOnReturn": 0.018, "riskOffReturn": 0.006, "spread": 0.012, "leaning": "risk-on" },
+    { "label": "cyclicals vs defensives (XLY/XLP)", "riskOnTicker": "XLY", "riskOffTicker": "XLP", "riskOnReturn": 0.034, "riskOffReturn": 0.011, "spread": 0.023, "leaning": "risk-on" },
+    { "label": "high-beta vs low-vol (SPHB/SPLV)", "riskOnTicker": "SPHB", "riskOffTicker": "SPLV", "riskOnReturn": 0.052, "riskOffReturn": 0.014, "spread": 0.038, "leaning": "risk-on" }
+  ],
+  "riskAppetite": "risk-on",
+  "riskAppetiteScore": 0.0315,
+  "nameReturn": 0.052,
+  "broadMarketReturn": 0.041,
+  "nameVsBroadMarket": 0.011,
+  "liquidity": { "nfci": -0.41, "nfciTrend": "easing" }
+}

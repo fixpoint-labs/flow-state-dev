@@ -16,18 +16,15 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { getOrFetch } from "../../lib/cache";
-import { mapLimit, sleep } from "../../lib/concurrency";
+import { mapLimit } from "../../lib/concurrency";
 import { loadFixture } from "../../lib/fixtures";
+import { fetchFredSeries } from "../../providers/fred";
 import { emptyPayload } from "./empty-payloads";
 import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
-
-const FRED_BASE = "https://api.stlouisfed.org/fred/series/observations";
 
 /** Max simultaneous FRED requests. FRED throttles concurrent bursts, so keep
  *  this low; drop to 1 (fully sequential) if throttling still bites. */
 const FRED_CONCURRENCY = 3;
-/** Retry attempts for transient FRED failures (429 / 5xx / network). */
-const FRED_RETRIES = 2;
 
 /**
  * The nine series and how many recent observations to request. Daily series
@@ -47,53 +44,6 @@ const FRED_SERIES = [
   { id: "INDPRO", limit: 3 }, // monthly
 ] as const;
 
-type FredResponse = {
-  observations?: Array<{ date: string; value: string }>;
-};
-
-/**
- * Fetch one FRED series (most recent `limit` observations, newest-first),
- * retrying transient throttling / server errors with linear backoff. Returns
- * the finite values newest-first; throws after the final attempt so the
- * caller can degrade just that series to [].
- */
-async function fredSeries(seriesId: string, limit: number, key: string): Promise<number[]> {
-  const url = new URL(FRED_BASE);
-  url.searchParams.set("series_id", seriesId);
-  url.searchParams.set("api_key", key);
-  url.searchParams.set("file_type", "json");
-  url.searchParams.set("sort_order", "desc");
-  url.searchParams.set("limit", String(limit));
-
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= FRED_RETRIES; attempt++) {
-    if (attempt > 0) await sleep(150 * attempt); // 150ms, then 300ms
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        const err = new Error(`FRED ${seriesId}: HTTP ${res.status} ${body.slice(0, 120)}`);
-        // Retry transient throttling / server errors; give up on client errors.
-        if (res.status === 429 || res.status >= 500) {
-          lastErr = err;
-          continue;
-        }
-        throw err;
-      }
-      const data = (await res.json()) as FredResponse;
-      // FRED uses "." for missing observations; keep finite values newest-first.
-      return (data.observations ?? [])
-        .map((o) => o.value)
-        .filter((v) => v !== "." && v !== "")
-        .map(Number)
-        .filter(Number.isFinite);
-    } catch (err) {
-      lastErr = err; // network error — retry
-    }
-  }
-  throw lastErr;
-}
-
 export const get_macro_indicators = handler({
   name: "get_macro_indicators",
   description: "CPI, unemployment, fed-funds, 10y yield, oil — date-keyed snapshot.",
@@ -108,7 +58,7 @@ export const get_macro_indicators = handler({
         // Bounded concurrency + per-series retry (see module header). Each
         // series degrades to [] on final failure rather than throwing.
         const series = await mapLimit(FRED_SERIES, FRED_CONCURRENCY, ({ id, limit }) =>
-          fredSeries(id, limit, key).catch(() => [] as number[]),
+          fetchFredSeries(id, limit, key).catch(() => [] as number[]),
         );
         const [cpi, unrate, fedFunds, tenYear, wti, curve, hySpr, dollar, indProd] = series;
         if (series.every((s) => s.length === 0)) {

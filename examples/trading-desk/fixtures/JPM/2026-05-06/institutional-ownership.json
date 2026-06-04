@@ -1,0 +1,17 @@
+{
+  "source": "fixture",
+  "ticker": "JPM",
+  "asOf": "2026-05-06",
+  "reportDate": "2026-03-31",
+  "holderCount": 26,
+  "totalSharesHeld": 1980000000,
+  "netShareChange": 2100000,
+  "flowDirection": "neutral",
+  "topHolders": [
+    { "name": "Vanguard Group Inc", "shares": 268000000, "shareChange": 1900000 },
+    { "name": "BlackRock Inc", "shares": 241000000, "shareChange": 1200000 },
+    { "name": "State Street Corp", "shares": 138000000, "shareChange": -2400000 },
+    { "name": "FMR LLC", "shares": 84000000, "shareChange": 600000 },
+    { "name": "Geode Capital Management", "shares": 52000000, "shareChange": 800000 }
+  ]
+}

@@ -47,7 +47,8 @@ src/flows/trading-desk/
     ticker-resolver.ts           pre-flight ticker probe
     discover.ts                  web-search → DiscoveryPayload shape
   providers/                     external API clients (stateless, throw on failure)
-    finnhub.ts                   Finnhub fetch helpers
+    finnhub.ts                   Finnhub fetch helpers (incl. institutional ownership)
+    fred.ts                      FRED per-series fetch + retry (macro indicators + NFCI)
     yahoo.ts                     Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
     yahoo-timeseries.ts          pure mapper: fundamentals-timeseries → 3 statements
     edgar.ts                     SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
@@ -570,12 +571,25 @@ bodies, plus Grok (xAI) for social sentiment when `XAI_API_KEY` is set.
 Required environment variables:
 
 ```
-FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions
-FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
+FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions, institutional ownership
+FRED_API_KEY=...         # research.stlouisfed.org — macro indicators + NFCI financial conditions
 XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
 ```
 
 Polymarket, Yahoo Finance, and SEC EDGAR don't require keys.
+
+The macro-flow tools added for the macro-reflexive lens's data needs:
+`get_cross_asset_flow` (Macro Analyst) computes risk-on/risk-off ETF spreads
+from Yahoo (keyless) — stocks/bonds, credit, cyclicals/defensives,
+high-beta/low-vol — into a composite risk-appetite read plus the name's return
+vs the broad tape, and reads the Chicago Fed NFCI from FRED for liquidity
+directionality (the `liquidity` sub-block is null when `FRED_API_KEY` is
+absent; the ETF read still stands). `get_institutional_ownership` (Quant
+Analyst) reads 13F institutional positioning from Finnhub `/stock/ownership`
+(premium-gated on some plans; degrades to `unavailable`, never fabricated,
+when absent). Net-liquidity (WALCL − RRP − TGA) and options/COT positioning
+are documented follow-ups, not built. The lens reads both via the Macro and
+Quant memos (`phase1MemosFull`) — there is no lens-specific data wiring.
 
 The three financial statements (`get_balance_sheet` / `get_income_statement`
 / `get_cashflow`) source from **SEC EDGAR XBRL companyfacts first, then Yahoo

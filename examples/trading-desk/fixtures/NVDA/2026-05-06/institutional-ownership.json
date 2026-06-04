@@ -1,0 +1,17 @@
+{
+  "source": "fixture",
+  "ticker": "NVDA",
+  "asOf": "2026-05-06",
+  "reportDate": "2026-03-31",
+  "holderCount": 25,
+  "totalSharesHeld": 1480000000,
+  "netShareChange": 18500000,
+  "flowDirection": "accumulating",
+  "topHolders": [
+    { "name": "Vanguard Group Inc", "shares": 210000000, "shareChange": 3200000 },
+    { "name": "BlackRock Inc", "shares": 185000000, "shareChange": 2800000 },
+    { "name": "State Street Corp", "shares": 95000000, "shareChange": -1200000 },
+    { "name": "FMR LLC", "shares": 62000000, "shareChange": 900000 },
+    { "name": "Geode Capital Management", "shares": 41000000, "shareChange": 1500000 }
+  ]
+}

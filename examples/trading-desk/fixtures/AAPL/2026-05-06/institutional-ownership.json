@@ -1,0 +1,17 @@
+{
+  "source": "fixture",
+  "ticker": "AAPL",
+  "asOf": "2026-05-06",
+  "reportDate": "2026-03-31",
+  "holderCount": 28,
+  "totalSharesHeld": 9100000000,
+  "netShareChange": -42000000,
+  "flowDirection": "distributing",
+  "topHolders": [
+    { "name": "Vanguard Group Inc", "shares": 1320000000, "shareChange": -8500000 },
+    { "name": "BlackRock Inc", "shares": 1050000000, "shareChange": -6200000 },
+    { "name": "Berkshire Hathaway Inc", "shares": 790000000, "shareChange": -20000000 },
+    { "name": "State Street Corp", "shares": 580000000, "shareChange": -3100000 },
+    { "name": "FMR LLC", "shares": 360000000, "shareChange": 1400000 }
+  ]
+}

@@ -440,6 +440,74 @@ export async function fetchFinnhubShortInterest(
   };
 }
 
+/**
+ * Institutional ownership from Finnhub `/stock/ownership` (13F-derived;
+ * premium-gated on some plans). Returns the reported holders normalized to the
+ * canonical `get_institutional_ownership` shape, with the accumulation /
+ * distribution read derived deterministically from the summed QoQ changes
+ * against a deadband of total shares held (a near-zero net move reads
+ * "neutral", not a direction). Caps `topHolders` for prompt budget. Throws on
+ * any failure (no key, non-2xx, empty set) so the tool handler can fall through
+ * to `emptyPayload`.
+ */
+export async function fetchFinnhubInstitutionalOwnership(
+  input: ToolInput<"get_institutional_ownership">,
+): Promise<ToolOutput<"get_institutional_ownership">> {
+  type Row = {
+    name?: string;
+    share?: number;
+    change?: number;
+    filingDate?: string;
+  };
+  const data = await fetchJson<{ ownership?: Row[] }>("/stock/ownership", {
+    symbol: input.ticker,
+    limit: 30,
+  });
+  const rows = (data.ownership ?? []).filter((r) => typeof r.share === "number");
+  if (rows.length === 0) throw new Error(`No institutional ownership for ${input.ticker}`);
+
+  const holderCount = rows.length;
+  const totalSharesHeld = rows.reduce((a, r) => a + (r.share ?? 0), 0);
+  const netShareChange = rows.reduce((a, r) => a + (r.change ?? 0), 0);
+
+  // Deadband: a net move under 0.5% of total shares held is positioning noise,
+  // not a directional accumulation/distribution signal.
+  const deadband = Math.abs(totalSharesHeld) * 0.005;
+  const flowDirection: "accumulating" | "neutral" | "distributing" =
+    netShareChange > deadband
+      ? "accumulating"
+      : netShareChange < -deadband
+        ? "distributing"
+        : "neutral";
+
+  const filingDates = rows
+    .map((r) => r.filingDate)
+    .filter((d): d is string => typeof d === "string" && d.length > 0)
+    .sort();
+  const reportDate = filingDates.length > 0 ? filingDates[filingDates.length - 1] : null;
+
+  const topHolders = [...rows]
+    .sort((a, b) => (b.share ?? 0) - (a.share ?? 0))
+    .slice(0, 5)
+    .map((r) => ({
+      name: r.name ?? "",
+      shares: r.share ?? 0,
+      shareChange: r.change ?? 0,
+    }));
+
+  return {
+    source: "finnhub",
+    ticker: input.ticker,
+    asOf: input.date,
+    reportDate,
+    holderCount,
+    totalSharesHeld,
+    netShareChange,
+    flowDirection,
+    topHolders,
+  };
+}
+
 /** Recommendation trends from Finnhub `/stock/recommendation` (free endpoint).
  *  Returns the latest period's ratings distribution. Throws on any failure. */
 export async function fetchFinnhubRecommendations(
