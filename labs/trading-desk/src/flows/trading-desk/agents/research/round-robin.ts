@@ -18,10 +18,10 @@ import {
   type RoundRobinState,
 } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
-import { PHASE_2_MEMO_KEYS } from "../agents";
-import { sessionStateSchema, type SessionState } from "../state";
-import { tradingDesk } from "../capability";
-import { phase2Contributions } from "../resources";
+import { PHASE_2_MEMO_KEYS } from "../../agents";
+import { sessionStateSchema, type SessionState } from "../../state";
+import { tradingDesk } from "../../capability";
+import { phase2Contributions } from "../../resources";
 import { BEAR_ROLE, BULL_ROLE, ROUND_ROBIN_INSTRUCTIONS } from "./prompts";
 
 /**

@@ -26,7 +26,7 @@ import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
-} from "../src/flows/trading-desk/phase-2/generators";
+} from "../src/flows/trading-desk/agents/research/generators";
 import { tradeProposalOutputSchema } from "../src/flows/trading-desk/phase-3/trader";
 import {
   personaCritiqueOutputSchema,

@@ -8,12 +8,12 @@
  *     through a factory because each has a different output schema and a
  *     different projection — the body IS what varies.
  */
-import { PHASE_2_MEMO_KEYS } from "../agents";
+import { PHASE_2_MEMO_KEYS } from "../../agents";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../agents/_recipe/memo-writer";
+} from "../_recipe/memo-writer";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,

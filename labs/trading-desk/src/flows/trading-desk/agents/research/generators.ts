@@ -19,20 +19,20 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_2_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { loadPrompt } from "../lib/prompt";
-import { thesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
+import { PHASE_2_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { loadPrompt } from "../../lib/prompt";
+import { thesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
 
 const bullConsolidationPrompt = loadPrompt(
-  "phase-2/prompts/bull-consolidation.prompt.md"
+  "agents/research/prompts/bull-consolidation.prompt.md"
 );
 const bearConsolidationPrompt = loadPrompt(
-  "phase-2/prompts/bear-consolidation.prompt.md"
+  "agents/research/prompts/bear-consolidation.prompt.md"
 );
 const researchManagerPrompt = loadPrompt(
-  "phase-2/prompts/research-manager.prompt.md"
+  "agents/research/prompts/research-manager.prompt.md"
 );
 
 // ---------------------------------------------------------------------------

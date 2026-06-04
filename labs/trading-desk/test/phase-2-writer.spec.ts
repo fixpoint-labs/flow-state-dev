@@ -13,7 +13,7 @@ import {
   commitResearchManagerMemo,
   markErrorP2,
   markWritingP2,
-} from "../src/flows/trading-desk/phase-2/writer";
+} from "../src/flows/trading-desk/agents/research/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

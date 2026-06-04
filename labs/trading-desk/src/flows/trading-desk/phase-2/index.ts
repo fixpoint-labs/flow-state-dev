@@ -26,20 +26,20 @@ import {
   consolidateBearMemo,
   consolidateBullMemo,
   researchManagerGenerator,
-} from "./generators";
+} from "../agents/research/generators";
 import {
   deriveDebateGoal,
   phase2RoundRobin,
-} from "./round-robin";
-import { setupPhase2Memos } from "./setup";
-import { validateCitations } from "./validate-citations";
+} from "../agents/research/round-robin";
+import { setupPhase2Memos } from "../agents/research/setup";
+import { validateCitations } from "../agents/research/validate-citations";
 import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
   markErrorP2,
   markWritingP2,
-} from "./writer";
+} from "../agents/research/writer";
 
 const bullStep = sequencer({ name: "phase-2-bull-step" })
   .tap(markWritingP2("bull"))

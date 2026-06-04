@@ -34,7 +34,7 @@ import {
   fetch as createFetchTool,
   search as createSearchTool,
 } from "@flow-state-dev/tools";
-import { find_counter_evidence } from "./phase-2/tools/find_counter_evidence";
+import { find_counter_evidence } from "./agents/research/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,

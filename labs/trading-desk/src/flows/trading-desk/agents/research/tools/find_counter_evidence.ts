@@ -18,9 +18,9 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../agents";
-import { memoSectionTexts } from "../../lib/format";
-import { memosCollection, phase2Contributions } from "../../resources";
+import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../../agents";
+import { memoSectionTexts } from "../../../lib/format";
+import { memosCollection, phase2Contributions } from "../../../resources";
 import type { RoundRobinContributionEntry } from "@flow-state-dev/patterns/round-robin";
 
 /** Searchable analyst memos, derived from the Phase 1 registry so a sixth

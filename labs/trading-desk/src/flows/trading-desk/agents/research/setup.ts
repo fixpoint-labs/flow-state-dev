@@ -3,8 +3,8 @@
  * (bull, bear, research manager) in `pending` before the debate loop
  * starts. Built via the shared `defineMemoSetup` factory.
  */
-import { PHASE_2_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../agents/_recipe/memo-setup";
+import { PHASE_2_MEMO_KEYS } from "../../agents";
+import { defineMemoSetup } from "../_recipe/memo-setup";
 
 export const setupPhase2Memos = defineMemoSetup({
   phaseId: "p2",
