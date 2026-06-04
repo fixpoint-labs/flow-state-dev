@@ -45,6 +45,7 @@ export type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
+  FlowStateRuntime,
   FlowStateVoiceConfig
 } from "./flowstate/types";
 export type {

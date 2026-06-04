@@ -24,7 +24,8 @@ import { resolveProfileStores } from "./resolve-slots";
 import type {
   CreateFlowStateOptions,
   FlowState,
-  FlowStateModelsConfig
+  FlowStateModelsConfig,
+  FlowStateRuntime
 } from "./types";
 
 function toModelResolverOptions(
@@ -68,6 +69,7 @@ class InternalFlowState<TSettings extends object>
   readonly #profileKeys: string[];
   readonly #allAdapters: StoreAdapter[];
   #resolvedProfile: string | undefined;
+  #runtimePromise: Promise<FlowStateRuntime> | null = null;
   #initPromise: Promise<FlowApiRouter> | null = null;
   #disposed = false;
 
@@ -125,16 +127,22 @@ class InternalFlowState<TSettings extends object>
     return this.#init();
   }
 
+  getRuntime(): Promise<FlowStateRuntime> {
+    return this.#runtime();
+  }
+
   async dispose(): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
 
     // Let an in-flight init settle so adapters that opened pools mid-init
-    // still get a clean dispose. A failed init is swallowed here — disposal
-    // must proceed regardless.
-    if (this.#initPromise !== null) {
+    // still get a clean dispose. Either surface (getRuntime / getRouter) can
+    // be the one that opened the pools. A failed init is swallowed here —
+    // disposal must proceed regardless.
+    for (const pending of [this.#runtimePromise, this.#initPromise]) {
+      if (pending === null) continue;
       try {
-        await this.#initPromise;
+        await pending;
       } catch {
         // init failed; adapters may still hold partially-opened resources.
       }
@@ -159,6 +167,18 @@ class InternalFlowState<TSettings extends object>
       this.#initPromise = this.#doInit();
     }
     return this.#initPromise;
+  }
+
+  #runtime(): Promise<FlowStateRuntime> {
+    if (this.#disposed) {
+      throw new FlowStateDisposedError(
+        "FlowState.getRuntime() called after dispose()"
+      );
+    }
+    if (this.#runtimePromise === null) {
+      this.#runtimePromise = this.#buildRuntime();
+    }
+    return this.#runtimePromise;
   }
 
   #resolveProfileName(): string {
@@ -186,7 +206,13 @@ class InternalFlowState<TSettings extends object>
     return this.#resolvedProfile;
   }
 
-  async #doInit(): Promise<FlowApiRouter> {
+  /**
+   * Resolve the runtime internals once: open the active profile's stores and
+   * assemble the forwarded runtime-config bundle. Both `getRouter()` and
+   * `getRuntime()` share this memoized result, so they never double-init the
+   * stores or diverge on which `StoreRegistry` they use.
+   */
+  async #buildRuntime(): Promise<FlowStateRuntime> {
     const profileName = this.#resolveProfileName();
     const profile = this.#options.stores[profileName]!;
     const { stores } = await resolveProfileStores({ profileName, profile });
@@ -212,8 +238,14 @@ class InternalFlowState<TSettings extends object>
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs
     });
 
+    return { registry: this.#registry, stores, runtimeConfig };
+  }
+
+  async #doInit(): Promise<FlowApiRouter> {
+    const { registry, stores, runtimeConfig } = await this.#runtime();
+
     return createFlowApiRouter({
-      registry: this.#registry,
+      registry,
       stores,
       runtimeConfig,
       onError: this.#options.onError,
