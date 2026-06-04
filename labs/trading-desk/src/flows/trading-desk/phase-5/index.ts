@@ -20,17 +20,17 @@
  * Phase 5 divider lines.
  */
 import { sequencer } from "@flow-state-dev/core";
-import { portfolioManagerApproachGenerator } from "./approach";
+import { portfolioManagerApproachGenerator } from "../agents/portfolio-manager/approach";
 import { scenarioForecasterApproachGenerator } from "../agents/scenario-forecaster/approach";
-import { portfolioManagerGenerator } from "./portfolio-manager";
+import { portfolioManagerGenerator } from "../agents/portfolio-manager/portfolio-manager";
 import { scenarioForecasterGenerator } from "../agents/scenario-forecaster/scenario-forecaster";
-import { setupPhase5Memos } from "./setup";
+import { setupPhase5Memos } from "../agents/portfolio-manager/setup";
 import { setupScenarioForecastMemos } from "../agents/scenario-forecaster/setup";
 import {
   commitPortfolioManagerMemo,
   markErrorP5,
   markWritingP5,
-} from "./writer";
+} from "../agents/portfolio-manager/writer";
 import {
   commitScenarioForecastMemo,
   markErrorForecast,

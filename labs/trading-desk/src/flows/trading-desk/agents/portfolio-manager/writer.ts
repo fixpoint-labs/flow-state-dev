@@ -21,24 +21,24 @@ import {
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
-} from "../agents";
+} from "../../agents";
 import {
   decisionSnapshotResource,
   type DecisionSnapshotState,
-} from "../decision-snapshot-resource";
-import { clampRatingToBand } from "../lib/rating-engine";
+} from "../../decision-snapshot-resource";
+import { clampRatingToBand } from "../../lib/rating-engine";
 import {
   defineMemoStateBlocks,
   publishMemo,
-} from "../agents/_recipe/memo-writer";
-import type { ReportDecisionMeta } from "../report-index";
-import { memoResources } from "../resources";
-import { sessionStateSchema } from "../state";
-import { valuationSpineResource, type ValuationSpineState } from "../valuation-spine-resource";
+} from "../_recipe/memo-writer";
+import type { ReportDecisionMeta } from "../../report-index";
+import { memoResources } from "../../resources";
+import { sessionStateSchema } from "../../state";
+import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
 import {
   lensConvergenceResource,
   type LensConvergenceState,
-} from "../agents/lenses/lens-convergence-resource";
+} from "../lenses/lens-convergence-resource";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 
 // ── Portfolio manager ────────────────────────────────────────────────

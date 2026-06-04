@@ -22,14 +22,14 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_5_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { thesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_5_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { thesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
+import { loadPrompt } from "../../lib/prompt";
 
 const portfolioManagerPrompt = loadPrompt(
-  "phase-5/prompts/portfolio-manager.prompt.md"
+  "agents/portfolio-manager/prompts/portfolio-manager.prompt.md"
 );
 
 const adjustmentDecisionSchema = z.object({

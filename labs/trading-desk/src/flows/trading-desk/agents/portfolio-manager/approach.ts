@@ -8,13 +8,13 @@
  * analyst-memo / debate-transcript blocks the structured generator reads on
  * the `full` preset.
  */
-import { PHASE_5_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { createApproachGenerator } from "../agents/_recipe/approach-generator";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_5_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { createApproachGenerator } from "../_recipe/approach-generator";
+import { loadPrompt } from "../../lib/prompt";
 
 const portfolioManagerApproachPrompt = loadPrompt(
-  "phase-5/prompts/portfolio-manager-approach.prompt.md"
+  "agents/portfolio-manager/prompts/portfolio-manager-approach.prompt.md"
 );
 
 export const portfolioManagerApproachGenerator = createApproachGenerator({

@@ -33,7 +33,7 @@ import {
   riskAssessmentOutputSchema,
 } from "../src/flows/trading-desk/agents/risk/schemas";
 import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/agents/scenario-forecaster/scenario-forecaster";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/agents/portfolio-manager/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
 import { pdfExtractionSchema } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
 import { lensVerdictOutputSchema } from "../src/flows/trading-desk/agents/lenses/lens-verdict-schema";
