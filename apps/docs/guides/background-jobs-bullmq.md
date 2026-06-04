@@ -284,6 +284,5 @@ When `REDIS_URL` is set, the kitchen-sink creates a `BullmqRuntime` and logs its
 
 ## See also
 
-- [`@flow-state-dev/bullmq` API reference](/docs/api/bullmq) — full API docs
 - [Scheduled actions reference](/docs/server/scheduled) — framework scheduling contract
 - [Deploying with Docker](/guides/deploying-with-docker) — containerized deployment
