@@ -4,7 +4,7 @@
  * `defineMemoSetup` factory, mirroring Phase 3/5.
  */
 import { PHASE_6_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupPhase6Memos = defineMemoSetup({
   phaseId: "p6",

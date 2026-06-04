@@ -4,7 +4,7 @@
  * before any persona runs. Built via the shared `defineMemoSetup` factory.
  */
 import { PHASE_4_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupPhase4Memos = defineMemoSetup({
   phaseId: "p4",

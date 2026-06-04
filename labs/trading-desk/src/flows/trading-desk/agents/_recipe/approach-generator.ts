@@ -35,8 +35,8 @@
  */
 import { generator, type DefinedCapability } from "@flow-state-dev/core";
 import type { BrandedPromptSlot } from "@flow-state-dev/core/prompt-file";
-import type { AgentName } from "../agents";
-import { sessionStateSchema } from "../state";
+import type { AgentName } from "../../agents";
+import { sessionStateSchema } from "../../state";
 
 export interface ApproachGeneratorConfig {
   /** Generator ID. Must be unique across the flow. */

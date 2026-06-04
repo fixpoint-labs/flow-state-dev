@@ -11,7 +11,7 @@
  * never shows a stale convergence read.
  */
 import { PHASE_2B_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupLensMemos = defineMemoSetup({
   phaseId: "p2b",

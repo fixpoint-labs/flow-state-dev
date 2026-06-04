@@ -4,7 +4,7 @@
  * factory.
  */
 import { PHASE_3_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupPhase3Memos = defineMemoSetup({
   phaseId: "p3",

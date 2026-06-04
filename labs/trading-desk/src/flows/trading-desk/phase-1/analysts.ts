@@ -25,7 +25,7 @@ import { tradingDesk } from "../capability";
 import { asDataBlock } from "../lib/helpers";
 import { computeValuation, formatValuation } from "../lib/valuation";
 import { loadPrompt } from "../lib/prompt";
-import { defineAnalyst } from "./analyst";
+import { defineAnalyst } from "../agents/_recipe/define-analyst";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,

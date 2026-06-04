@@ -29,7 +29,7 @@ import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../lib/memo-writer";
+} from "../agents/_recipe/memo-writer";
 import { memoResources, type ThesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";

@@ -4,7 +4,7 @@
  * starts. Built via the shared `defineMemoSetup` factory.
  */
 import { PHASE_2_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupPhase2Memos = defineMemoSetup({
   phaseId: "p2",

@@ -15,7 +15,7 @@
  */
 import { PHASE_6_MEMO_KEYS } from "../agents";
 import { tradingDesk } from "../capability";
-import { createApproachGenerator } from "../lib/approach-generator";
+import { createApproachGenerator } from "../agents/_recipe/approach-generator";
 import { loadPrompt } from "../lib/prompt";
 
 const thesisValidatorApproachPrompt = loadPrompt(

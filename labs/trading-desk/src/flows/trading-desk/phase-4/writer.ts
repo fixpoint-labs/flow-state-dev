@@ -24,7 +24,7 @@ import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../lib/memo-writer";
+} from "../agents/_recipe/memo-writer";
 import { personaCritiqueOutputSchema, riskAssessmentOutputSchema } from "./schemas";
 
 /** The three persona memos share a commit shape; `riskAssessment` does not. */

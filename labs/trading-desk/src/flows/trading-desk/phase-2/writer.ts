@@ -13,7 +13,7 @@ import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../lib/memo-writer";
+} from "../agents/_recipe/memo-writer";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,

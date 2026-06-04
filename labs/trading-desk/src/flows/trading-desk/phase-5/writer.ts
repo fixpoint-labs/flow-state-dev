@@ -40,7 +40,7 @@ import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../lib/memo-writer";
+} from "../agents/_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../report-index";
 import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";

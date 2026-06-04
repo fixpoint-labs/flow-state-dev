@@ -8,7 +8,7 @@
  *   - `setupPhase5Memos` — the portfolio-manager memo.
  */
 import { PHASE_5_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../lib/memo-setup";
+import { defineMemoSetup } from "../agents/_recipe/memo-setup";
 
 export const setupScenarioForecastMemos = defineMemoSetup({
   phaseId: "p5",

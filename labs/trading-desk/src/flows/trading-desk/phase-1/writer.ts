@@ -16,7 +16,7 @@ import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../lib/memo-writer";
+} from "../agents/_recipe/memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
 
 export const { markWriting, markError } = defineMemoStateBlocks({
