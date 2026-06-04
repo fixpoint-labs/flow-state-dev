@@ -172,9 +172,6 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         keyDependencies={summary.keyDependencies}
       />
 
-      <SectionLabel>Analyst TLDRs</SectionLabel>
-      <AnalystTldrGrid analysts={summary.analysts} />
-
       {summary.thesisAlignment.alignment !== null ? (
         <p className="text-[11px] text-[color:var(--c-fg-muted)]">
           <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
@@ -206,6 +203,9 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
           <LensConvergenceBlock convergence={summary.lensConvergence} />
         </>
       ) : null}
+
+      <SectionLabel>Analyst TLDRs</SectionLabel>
+      <AnalystTldrGrid analysts={summary.analysts} />
     </div>
   );
 }
