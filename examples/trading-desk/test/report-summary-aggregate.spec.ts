@@ -343,3 +343,150 @@ describe("buildReportSummary — identity", () => {
     expect(summary.date).toBe("2026-05-06");
   });
 });
+
+/**
+ * Slice 6 portfolio-fit + lens-convergence mirrors. The aggregate reads these
+ * STRAIGHT off the PM memo (no recompute) so the Summary blocks render only from
+ * stored fields. The intent encoded here:
+ *   - the before/after weights + Δ are passed through verbatim — the aggregate
+ *     never recomputes a weight (every figure traces to a stored field).
+ *   - both mirrors collapse to null when absent so the Summary OMITS the block
+ *     cleanly (portfolio-blind / cost-gated-off run), never a stubbed position.
+ */
+const PORTFOLIO_FIT = {
+  action: "add",
+  targetWeightPct: 4.5,
+  sizingRationale: "Scale modestly into proven exposure.",
+  concentrationRisk: "Within single-name cap.",
+  convictionBasis: "Robust across the lens pack.",
+  suggestedAccount: "Taxable — Brokerage",
+  currentWeightPct: 2.5,
+  weightDeltaPct: 2.0,
+  hasPortfolioContext: true,
+  snapshotAsOf: "2026-05-06T14:30:00Z",
+} satisfies NonNullable<MemoState["portfolioFit"]>;
+
+const LENS_CONVERGENCE = {
+  verdicts: [
+    {
+      lensId: "quality-value",
+      label: "Quality-Value",
+      attribution: "Buffett/Munger",
+      glyph: "Qv",
+      stance: "bullish",
+      conviction: 0.7,
+      verdict: "Durable franchise at a fair price.",
+      keyDriver: "Returns on capital.",
+      dataGap: "",
+      missingData: [],
+    },
+    {
+      lensId: "forensic-skeptic",
+      label: "Forensic Skeptic",
+      attribution: "Burry",
+      glyph: "Fs",
+      stance: "bearish",
+      conviction: 0.6,
+      verdict: "Cycle-top risk underpriced.",
+      keyDriver: "Inventory build.",
+      dataGap: "no segment detail",
+      missingData: ["segment revenue"],
+    },
+  ],
+  netLean: 0.05,
+  agreementScore: 0.5,
+  classification: "mixed",
+  majorityStance: "bullish",
+  dissenters: ["forensic-skeptic"],
+} satisfies NonNullable<MemoState["lensConvergence"]>;
+
+describe("buildReportSummary — portfolio fit (Slice 6)", () => {
+  it("passes the PM memo's stored before/after weights + Δ through verbatim", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({ finalRating: "Overweight", portfolioFit: PORTFOLIO_FIT }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.portfolioFit).not.toBeNull();
+    // Read straight through — the aggregate recomputes no weight.
+    expect(summary.portfolioFit?.currentWeightPct).toBe(2.5);
+    expect(summary.portfolioFit?.targetWeightPct).toBe(4.5);
+    expect(summary.portfolioFit?.weightDeltaPct).toBe(2.0);
+    expect(summary.portfolioFit?.hasPortfolioContext).toBe(true);
+    expect(summary.portfolioFit?.suggestedAccount).toBe("Taxable — Brokerage");
+    expect(summary.portfolioFit?.snapshotAsOf).toBe("2026-05-06T14:30:00Z");
+  });
+
+  it("is null when the PM memo is absent (Summary omits the weight block)", () => {
+    expect(buildReportSummary(mapOf([]), null).portfolioFit).toBeNull();
+  });
+
+  it("is null when the run was portfolio-blind (PM published, no portfolioFit)", () => {
+    const summary = buildReportSummary(
+      mapOf([["portfolioManager", memo({ finalRating: "Hold" })]]),
+      null,
+    );
+    expect(summary.portfolioFit).toBeNull();
+  });
+
+  it("carries hasPortfolioContext:false through (block gates on it at render, not here)", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({
+            finalRating: "Hold",
+            portfolioFit: {
+              ...PORTFOLIO_FIT,
+              hasPortfolioContext: false,
+              currentWeightPct: 0,
+              weightDeltaPct: 4.5,
+              suggestedAccount: "",
+              snapshotAsOf: null,
+            },
+          }),
+        ],
+      ]),
+      null,
+    );
+    // The aggregate still surfaces it (not null); the no-current-weight gate is
+    // applied at the render layer (`report-summary.tsx`), not by dropping data.
+    expect(summary.portfolioFit).not.toBeNull();
+    expect(summary.portfolioFit?.hasPortfolioContext).toBe(false);
+  });
+});
+
+describe("buildReportSummary — lens convergence (Slice 6)", () => {
+  it("passes the PM memo's deterministic convergence mirror through verbatim", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({ finalRating: "Hold", lensConvergence: LENS_CONVERGENCE }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.lensConvergence).not.toBeNull();
+    expect(summary.lensConvergence?.classification).toBe("mixed");
+    expect(summary.lensConvergence?.majorityStance).toBe("bullish");
+    expect(summary.lensConvergence?.netLean).toBe(0.05);
+    expect(summary.lensConvergence?.verdicts).toHaveLength(2);
+    expect(summary.lensConvergence?.dissenters).toEqual(["forensic-skeptic"]);
+  });
+
+  it("is null when the lens pack was skipped (fast preset / no PM memo)", () => {
+    // No PM memo at all.
+    expect(buildReportSummary(mapOf([]), null).lensConvergence).toBeNull();
+    // PM published but cost-gated off → no lensConvergence mirror.
+    const summary = buildReportSummary(
+      mapOf([["portfolioManager", memo({ finalRating: "Buy" })]]),
+      null,
+    );
+    expect(summary.lensConvergence).toBeNull();
+  });
+});

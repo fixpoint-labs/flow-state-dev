@@ -165,10 +165,15 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   provenance, missing metrics shown as `—`/gap (never invented), a stopped run
   shows only its stop banner, the `StatusBar` not-advice disclaimer stays visible.
   `sizePct` is labeled "% of NAV" (the trader's proposal), never a dollar amount.
-- **Seams (later slices):** portfolio-fit weight chart and lens-convergence strip
-  are NOT built here — they render nothing until the portfolio + lens features
-  land. Phase 6 `alignment` is labeled **"Thesis alignment"**, never "portfolio
-  fit".
+- **Portfolio-fit + lens blocks (Slice 6):** the Summary renders a portfolio-fit
+  weight before/after block (current → target weight + Δ, action chip, validated
+  suggested account, snapshot-as-of) and a lens-convergence card, both read
+  straight from the PM memo's `portfolioFit` / `lensConvergence` mirrors with no
+  recompute, and both omitted cleanly when their field is null (a portfolio-blind
+  run, or a `fast`-preset run that skipped the lens pack). The lens read is a
+  dedicated card (not extra `ConvictionStrip` dots) so the per-lens dataGap,
+  dissenters, and robustness framing survive. Phase 6 `alignment` is labeled
+  **"Thesis alignment"**, never "portfolio fit".
 
 ## Portfolio view
 
@@ -326,6 +331,12 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   lens-convergence strip (per-lens stance bars, dissenters outlined, a data-gap
   line, classification pill, the three honesty lines). Inline SVG/flex only.
   `theses-pane.tsx`'s `MemoClientData` mirrors the two shapes off `MemoState`.
+  Each individual lens memo renders as a dedicated `LensCard`
+  (`components/theses/lens-card.tsx`, Slice 7) — attribution + stance +
+  conviction + the verdict + a ⚠ missing-data honesty line — routed from the
+  `MemoDoc` dispatcher for the four lens agents; `forensic-skeptic` carries a
+  "structural skeptic" label (UI only) so its by-design dissent reads as expected,
+  not alarming. The deterministic convergence math is untouched by the card.
 
 ## Adding a new generator
 
