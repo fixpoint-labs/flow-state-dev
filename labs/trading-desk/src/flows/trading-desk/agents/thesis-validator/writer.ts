@@ -11,12 +11,12 @@
  * `markErrorP6` rescue, so a yes-man verdict flips the memo to `error`
  * instead of publishing — same shape as Phase 5's lineage-violation throw.
  */
-import { PHASE_6_MEMO_KEYS } from "../agents";
+import { PHASE_6_MEMO_KEYS } from "../../agents";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../agents/_recipe/memo-writer";
+} from "../_recipe/memo-writer";
 import { thesisAlignmentOutputSchema } from "./thesis-validator";
 
 export const {

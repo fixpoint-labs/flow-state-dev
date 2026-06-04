@@ -23,14 +23,14 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_6_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { memoCitation, thesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_6_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { memoCitation, thesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
+import { loadPrompt } from "../../lib/prompt";
 
 const thesisValidatorPrompt = loadPrompt(
-  "phase-6/prompts/thesis-validator.prompt.md",
+  "agents/thesis-validator/prompts/thesis-validator.prompt.md",
 );
 
 const evidenceEntrySchema = z.object({

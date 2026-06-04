@@ -12,8 +12,8 @@ import {
   commitThesisAlignmentMemo,
   markErrorP6,
   markWritingP6,
-} from "../src/flows/trading-desk/phase-6/writer";
-import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
+} from "../src/flows/trading-desk/agents/thesis-validator/writer";
+import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/agents/thesis-validator/thesis-validator";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

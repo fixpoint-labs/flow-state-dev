@@ -13,13 +13,13 @@
  * block or the `verify` search tools — the preamble describes method, it
  * doesn't do the verification.
  */
-import { PHASE_6_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { createApproachGenerator } from "../agents/_recipe/approach-generator";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_6_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { createApproachGenerator } from "../_recipe/approach-generator";
+import { loadPrompt } from "../../lib/prompt";
 
 const thesisValidatorApproachPrompt = loadPrompt(
-  "phase-6/prompts/thesis-validator-approach.prompt.md",
+  "agents/thesis-validator/prompts/thesis-validator-approach.prompt.md",
 );
 
 export const thesisValidatorApproachGenerator = createApproachGenerator({

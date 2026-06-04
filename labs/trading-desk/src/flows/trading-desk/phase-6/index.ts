@@ -16,14 +16,14 @@
  * phase-divider predicate fires.
  */
 import { sequencer } from "@flow-state-dev/core";
-import { thesisValidatorApproachGenerator } from "./approach";
-import { thesisValidatorGenerator } from "./thesis-validator";
-import { setupPhase6Memos } from "./setup";
+import { thesisValidatorApproachGenerator } from "../agents/thesis-validator/approach";
+import { thesisValidatorGenerator } from "../agents/thesis-validator/thesis-validator";
+import { setupPhase6Memos } from "../agents/thesis-validator/setup";
 import {
   commitThesisAlignmentMemo,
   markErrorP6,
   markWritingP6,
-} from "./writer";
+} from "../agents/thesis-validator/writer";
 
 const validatorStep = sequencer({ name: "phase-6-validator-step" })
   .tap(markWritingP6("thesisAlignment"))
