@@ -198,13 +198,13 @@ Update policy:
     - **No `z.optional()` or `z.default()` on generator outputs.** They remove the key from the `required` set. Use `z.nullable()` (key stays required, value can be `null`).
     - **No `z.union([...])` of differently-shaped variants.** The variants produce conflicting `required` sets. Collapse to a single shape with nullable slots, or split into separate generators with their own schemas. Discriminated unions over differing shapes have the same problem.
   - Two examples in this repo:
-    - Fixed-shape metrics: [`examples/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts`](../../examples/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts) (closed `z.object({ conviction, horizon, target, stop })`).
-    - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`examples/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts`](../../examples/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts).
-  - Authors can sanity-check a schema in a test: import `makeSchemaStrict` from `@flow-state-dev/core` and run the result through a walker that fails on the patterns above. The trading-desk example ships such a guard at [`examples/trading-desk/test/output-schemas-strict.spec.ts`](../../examples/trading-desk/test/output-schemas-strict.spec.ts) — copy it into any package that defines generator outputs.
+    - Fixed-shape metrics: [`labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts`](../../labs/trading-desk/src/flows/trading-desk/phase-2/thesis-schemas.ts) (closed `z.object({ conviction, horizon, target, stop })`).
+    - Array-of-pairs metrics for variable keys + the canonical nullable section shape: [`labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts`](../../labs/trading-desk/src/flows/trading-desk/blocks/thesis-schema.ts).
+  - Authors can sanity-check a schema in a test: import `makeSchemaStrict` from `@flow-state-dev/core` and run the result through a walker that fails on the patterns above. The trading-desk example ships such a guard at [`labs/trading-desk/test/output-schemas-strict.spec.ts`](../../labs/trading-desk/test/output-schemas-strict.spec.ts) — copy it into any package that defines generator outputs.
 - Why:
   - The framework calls `makeSchemaStrict()` internally before handing schemas to the AI SDK ([`packages/core/src/models/createAiSdkModelResolver.ts`](../../packages/core/src/models/createAiSdkModelResolver.ts)), but the helper only unwraps `optional` / `default` / `nullable` — it does not transform `record` or `union` patterns. Those bypass the framework's safety net and fail at first generator call against OpenAI strict mode, surfacing as opaque "Invalid schema for response_format" errors that are hard to diagnose without context.
   - Catching the bug at test time (via the strict-mode walker) is cheaper than catching it at runtime on a real API call, especially because the framework's `intent/*` fallback wraps the strict-mode error in a "All models in group failed" message that hides the root cause.
-  - Phase 1 of the trading-desk example hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
+  - Phase 1 of the trading-desk app hit this bug three times in one day across three different schema patterns (record, optional, union) before BP-016 existed. The pattern is real and recurring.
 
 ### BP-017: Use the generator `context` slot for typed, segmented prompts
 
@@ -218,7 +218,7 @@ Update policy:
 - Why:
   - Hand-built user prompts duplicate boilerplate (`Ticker:`, `As-of date:`, role lines) across every generator. The trading-desk had ~8 generators all repeating the same 3-line preamble before BP-017 landed.
   - The `context` slot is type-checked against the session state schema and the capability surface. Hand-built strings drift silently when state shape changes.
-  - Models handle XML-tagged context segmentation better than markdown headers buried in a long user message — empirically the same model produces tighter outputs when fields are tagged rather than concatenated. See [`examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts) for the canonical pattern.
+  - Models handle XML-tagged context segmentation better than markdown headers buried in a long user message — empirically the same model produces tighter outputs when fields are tagged rather than concatenated. See [`labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts) for the canonical pattern.
 
 ### BP-018: Shared prompt formatters live in `services/`
 

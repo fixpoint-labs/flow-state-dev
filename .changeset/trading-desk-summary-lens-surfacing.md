@@ -3,7 +3,7 @@
 
 Trading Desk: surface the portfolio-fit verdict and the investor-lens
 convergence signal in the report UI of the private
-`@flow-state-dev/example-trading-desk` example.
+`@flow-state-dev/trading-desk` example.
 
 The at-a-glance Summary now shows a portfolio-fit weight before/after block
 (current → target weight, the action, the validated suggested account, and the

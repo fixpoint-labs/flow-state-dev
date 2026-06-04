@@ -60,7 +60,7 @@ export function TopBar({
         </span>
         <span className="text-[color:var(--c-fg-faint)]">/</span>
         <span className="font-mono text-[11.5px] text-[color:var(--c-fg-muted)]">
-          examples/trading-desk
+          labs/trading-desk
         </span>
       </div>
 

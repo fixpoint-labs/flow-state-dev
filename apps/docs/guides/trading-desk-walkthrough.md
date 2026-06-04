@@ -1,13 +1,13 @@
 ---
 sidebar_position: 5
-title: A walkthrough of the Trading Desk example
+title: A walkthrough of the Trading Desk
 ---
 
-# A walkthrough of the Trading Desk example
+# A walkthrough of the Trading Desk
 
-The Trading Desk example is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Nine analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call.
+The Trading Desk is a five-phase multi-agent pipeline that turns a ticker and a date into a structured trade decision. Nine analyst sub-agents read different data sources, two researchers argue bull versus bear, a synthesizer writes an investment thesis, a trader proposes a trade, three risk officers critique it, and a portfolio manager makes the final call. It's a real app — live data, durable reports, a real portfolio — that lives in `labs/`.
 
-It is a teaching demo. The agents reason in plain English about stocks because that domain has public, structured prior art to model against. Don't trade real money on it.
+This walkthrough uses it to show how the framework's pieces fit together. The agents reason in plain English about stocks because that domain has public, structured prior art to model against. It's research software. Don't trade real money on it.
 
 This walkthrough names the framework pieces the example uses, in roughly the order they show up during a run. Read [Anatomy of a Flow](/guides/anatomy-of-a-flow) first if the words "block," "generator," and "sequencer" don't already mean something concrete to you.
 
@@ -211,7 +211,7 @@ The generalized take on this pattern — "Projects": resource-backed agent state
 
 ```bash
 pnpm install
-pnpm --filter @flow-state-dev/example-trading-desk dev
+pnpm --filter @flow-state-dev/trading-desk dev
 ```
 
 The top bar exposes a ticker input, a date, a cost preset (`fast` or `full`), and a data source toggle (`fixture` or `live`). A disclaimer band sits above the transcript: this is a demo, not investment advice.
@@ -224,7 +224,7 @@ For provider keys, at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is re
 
 ## Session lifecycle and persistence
 
-Sessions are ephemeral by default in flow-state-dev. The trading-desk example opts into persistence by passing `createFilesystemStores` to the API router:
+Sessions are ephemeral by default in flow-state-dev. The trading desk opts into persistence by passing `createFilesystemStores` to the API router:
 
 ```ts
 // lib/server.ts
@@ -259,7 +259,7 @@ For the generalized pattern (resolve-or-create by metadata, with the current cav
 
 ## Where to look next
 
-- Browse the source: `examples/trading-desk/` in the repo. Each phase is its own directory.
+- Browse the source: `labs/trading-desk/` in the repo. Each phase is its own directory.
 - [Capabilities](/docs/fundamentals/capabilities) — how the `tradingDesk` capability bundles resources, model selection, and context formatters into one import.
 - [Patterns overview](/docs/patterns/overview) — the catalog of pre-built compositions, including Round Robin.
 

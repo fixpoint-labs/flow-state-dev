@@ -1,7 +1,7 @@
 # Trading Desk v2 — Feature 05: Portfolio-aware analysis (fit + sizing) + investor-lens conviction
 
 **Status:** spec, ready for execution
-**Target app:** `examples/trading-desk` (`@flow-state-dev/example-trading-desk`)
+**Target app:** `labs/trading-desk` (`@flow-state-dev/trading-desk`)
 **Owner gate:** This is the flagship example, not framework source. Per the root-oversight role,
 landing this needs explicit project-owner direction. The spec is written so a fresh-session
 sub-agent can execute it once green-lit.
@@ -70,8 +70,8 @@ After this feature:
 
 ### Verifiable success criteria
 
-- `pnpm --filter @flow-state-dev/example-trading-desk typecheck` passes.
-- `pnpm --filter @flow-state-dev/example-trading-desk test` passes, including the strict-output
+- `pnpm --filter @flow-state-dev/trading-desk typecheck` passes.
+- `pnpm --filter @flow-state-dev/trading-desk test` passes, including the strict-output
   walker (`test/output-schemas-strict.spec.ts`) with the new lens-verdict and portfolio-fit fields.
 - With a portfolio supplied: PM memo `portfolioFit.action ∈ {initiate,add,trim,exit,hold}`,
   `targetWeightPct` is a number, and the PM body references the existing position.
@@ -87,7 +87,7 @@ After this feature:
 ## 2. Data model / schemas
 
 All paths below are under
-`examples/trading-desk/src/flows/trading-desk/` unless noted.
+`labs/trading-desk/src/flows/trading-desk/` unless noted.
 
 ### 2.1 Caller input (`flow-schema.ts`) — NOT a generator output, defaults/records legal
 
@@ -663,7 +663,7 @@ the generic renderer shows them). Confirm `ALL_MEMO_KEYS` includes the lens keys
 | `components/theses/pm-hero.tsx` | Add portfolio-fit panel + lens-convergence strip; extend `PmHeroProps`. |
 | `app/page.tsx` | Thread `portfolio`/`selectedAccountIds` into the `analyze` `sendAction` payload (read from feature 3's source; default `null`/`[]` until 3 lands). |
 | `test/output-schemas-strict.spec.ts` | Add `lensVerdictOutputSchema` as a new case; the PM case auto-covers `portfolioFit`. Add explicit nested-`portfolioFit` assertion. |
-| `examples/trading-desk/CLAUDE.md` | Document the new `phase-2b/` lens pack, the `portfolioContext`/`lensConvergence` presets, and the portfolio-fit verdict. |
+| `labs/trading-desk/CLAUDE.md` | Document the new `phase-2b/` lens pack, the `portfolioContext`/`lensConvergence` presets, and the portfolio-fit verdict. |
 | `.changeset/*.md` | User-facing change → add a changeset (BP-022). |
 
 ### Tests to add

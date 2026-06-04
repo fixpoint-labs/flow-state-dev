@@ -15,7 +15,7 @@
  * (multi-round debate, referee, homogeneous roster, shared transcript
  * readback) apply here. Phase 2's bull/bear debate is the canonical
  * `roundRobin()` demo in this example; see the round-robin section of
- * `examples/trading-desk/CLAUDE.md`.
+ * `labs/trading-desk/CLAUDE.md`.
  *
  * Container `component` starts with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design comment

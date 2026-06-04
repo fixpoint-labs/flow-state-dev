@@ -21,7 +21,7 @@
     { "path": "./packages/skills" },
     { "path": "./packages/tasks" },
     { "path": "./examples/hello-chat" },
-    { "path": "./examples/trading-desk" },
+    { "path": "./labs/trading-desk" },
     { "path": "./apps/kitchen-sink" },
     { "path": "./packages/ui" }
   ]

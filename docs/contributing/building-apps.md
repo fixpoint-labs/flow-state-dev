@@ -1,7 +1,7 @@
 # Building Apps with `@flow-state-dev`
 
 Patterns and tradeoffs for putting a flow-state app together, distilled from
-the trading-desk example. This is taste-and-tradeoff guidance, not a rigid
+the trading-desk app. This is taste-and-tradeoff guidance, not a rigid
 rulebook — for hard rules see [`best-practices.md`](./best-practices.md).
 
 ## When to build a capability vs. inline
@@ -19,7 +19,7 @@ The trading-desk's `tradingDesk` capability hit the threshold easily: nine
 generators across four phases share model selection and ticker/date context,
 plus the heavy memo/contribution context bundles are reusable across
 multiple consolidation steps. See
-[`examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../examples/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts).
+[`labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts`](../../labs/trading-desk/src/flows/trading-desk/services/trading-desk-capability.ts).
 
 ## When per-tool files beat a dispatch abstraction
 
@@ -64,7 +64,7 @@ designed for this.
 The trading-desk's first cut used a session-scoped resource for market-data
 deduplication. That was over-architecting — every NVDA fundamentals fetch
 ran once per session. Switching to a process-wide 120s TTL cache (see
-[`examples/trading-desk/src/flows/trading-desk/services/cache.ts`](../../examples/trading-desk/src/flows/trading-desk/services/cache.ts))
+[`labs/trading-desk/src/flows/trading-desk/services/cache.ts`](../../labs/trading-desk/src/flows/trading-desk/services/cache.ts))
 let multiple sessions share warm fetches, dropped the cache plumbing
 (`ctx.resources.marketdata`, the `marketDataCollection` definition, the flow
 registration), and made the call sites cleaner.

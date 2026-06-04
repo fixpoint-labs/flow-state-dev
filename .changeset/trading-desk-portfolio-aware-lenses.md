@@ -2,7 +2,7 @@
 ---
 
 Trading Desk: portfolio-aware analysis + an investor-lens conviction signal in
-the private `@flow-state-dev/example-trading-desk` example.
+the private `@flow-state-dev/trading-desk` example.
 
 A run can now carry the live portfolio. The trader and the Portfolio Manager see
 a `<portfolioContext>` block — total NAV, the existing position and current

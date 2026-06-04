@@ -19,7 +19,7 @@
     "docs:serve": "pnpm --filter @flow-state-dev/docs serve",
     "storybook": "pnpm --filter @flow-state-dev/ui storybook",
     "kitchen-sink:dev": "pnpm --filter @flow-state-dev/kitchen-sink dev",
-    "trading-desk:dev": "pnpm --filter @flow-state-dev/example-trading-desk dev",
+    "trading-desk:dev": "pnpm --filter @flow-state-dev/trading-desk dev",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm packages:build && changeset publish --provenance",

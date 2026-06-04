@@ -757,7 +757,7 @@ verdicts (not a debate)", "Applying each investor's documented methodology",
 - `components/theses/theses-pane.tsx` — `MemoDoc` branch for `lensVerdict` → iterate `memos/p7/*` → `LensCard`; `PUBLISH_ORDER` entry; optional convergence strip under PM hero.
 - `components/transcript/transcript-pane.tsx` — add `lensVerdict` to `PRIMARY_STRUCT_AGENTS` (so its struct card renders) only if lens generators use `history:true`; with `history:false` (recommended) no change needed beyond the phase divider firing on `component: "phase-7-…"`.
 - `.changeset/*.md` — user-facing PR (BP-022).
-- `examples/trading-desk/CLAUDE.md` — document Phase 7 / lens pack / cost gate.
+- `labs/trading-desk/CLAUDE.md` — document Phase 7 / lens pack / cost gate.
 - `apps/docs` — if the lens feature is documented for end users, add a guide page (per "document user-facing functionality").
 
 ---

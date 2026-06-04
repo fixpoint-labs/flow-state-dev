@@ -1,7 +1,7 @@
 # Feature 03 — New Analysis button + modal
 
 > Status: spec / not yet implemented
-> Owner-direction required: this is the flagship example app (`examples/trading-desk`). Per the
+> Owner-direction required: this is the flagship example app (`labs/trading-desk`). Per the
 > root oversight role, implementation work here needs explicit owner sign-off before merge.
 > Scope: **UI only.** No flow, schema, or server changes are required by this feature.
 
@@ -41,7 +41,7 @@ selector on the *same* input surface, and there is nowhere to put it. The header
 Success is verifiable by: (a) clicking "New Analysis" opens the modal; (b) filling it and
 submitting starts a streaming run identical to today's header-form run (same session keying, same
 SSE behavior); (c) a sub-20-char thesis still produces the soft Phase 6 warning; (d) the header no
-longer contains any run-input fields; (e) `pnpm --filter @flow-state-dev/example-trading-desk
+longer contains any run-input fields; (e) `pnpm --filter @flow-state-dev/trading-desk
 typecheck` and `test` pass.
 
 ---
@@ -397,19 +397,19 @@ front-end for the same submit path. This is the critical constraint: do not reim
 
 **Create:**
 
-- `examples/trading-desk/components/new-analysis-dialog.tsx` — the modal. Native `<dialog>`,
+- `labs/trading-desk/components/new-analysis-dialog.tsx` — the modal. Native `<dialog>`,
   controlled, owns validation + the "Portfolio (coming soon)" slot + the segmented option consts.
   File header comment + doc comment on the exported component (BP-007).
 
 **Modify:**
 
-- `examples/trading-desk/components/topbar.tsx` — remove the inline form (ticker/date inputs, both
+- `labs/trading-desk/components/topbar.tsx` — remove the inline form (ticker/date inputs, both
   `Segmented` toggles, Run button, `handleSubmit`, `Play` import, the two option consts, the now-
   unused props); add the "New Analysis" button + `onNewAnalysis` prop. Update the file header
   comment to describe the slimmed chrome. Keep `CostPreset` / `DataSourceMode` type exports.
-- `examples/trading-desk/components/theses/theses-pane.tsx` — remove `thesisForm` prop,
+- `labs/trading-desk/components/theses/theses-pane.tsx` — remove `thesisForm` prop,
   `ThesisFormProps`, and the `ThesisInput` component; simplify `EmptySelection`.
-- `examples/trading-desk/app/page.tsx` — add `newAnalysisOpen` state; rewire `TopBar` props; drop
+- `labs/trading-desk/app/page.tsx` — add `newAnalysisOpen` state; rewire `TopBar` props; drop
   `thesisForm` from `ThesesPane`; mount `NewAnalysisDialog`. No change to `handleRun`, the tuple
   derivations, or the two dispatch effects.
 
@@ -417,14 +417,14 @@ front-end for the same submit path. This is the critical constraint: do not reim
 test harness for `TopBar` / `ThesesPane` (they are UI). Do **not** invent a React Testing Library
 setup for this feature — it's not in the project's test conventions for this example (the suite
 mocks providers/generators and asserts flow wiring). Verify via `typecheck` + manual `pnpm dev`
-(per `examples/trading-desk/CLAUDE.md` "Running and testing"). If the reviewer wants a guard, the
+(per `labs/trading-desk/CLAUDE.md` "Running and testing"). If the reviewer wants a guard, the
 cheapest meaningful one is a typecheck-level assertion that `ThesesPaneProps` no longer contains
 `thesisForm` — but that's implicit in the build passing.
 
 **Changeset:** this is user-facing UI behavior in the example app. Per BP-022, add a
 `.changeset/*.md` fragment describing the New Analysis modal. Scope it to
-`@flow-state-dev/example-trading-desk`. (If the example is marked `private` and excluded from the
-changeset/release flow, an empty changeset is acceptable — check `examples/trading-desk/package.json`
+`@flow-state-dev/trading-desk`. (If the example is marked `private` and excluded from the
+changeset/release flow, an empty changeset is acceptable — check `labs/trading-desk/package.json`
 `"private"` and the changeset config before deciding.)
 
 **Docs:** the example's `CLAUDE.md` describes layout/conventions, not the run UI, so no doc page is
@@ -465,7 +465,7 @@ feature specifically:
   single-user collision more visible. Flag (don't fix here): real multi-user requires threading a
   real user id through `FlowProvider`. Out of scope for the modal.
 - **Date semantics.** In fixture mode the `date` field is cosmetic — the loader ignores `args.date`
-  and reads the pinned `2026-05-06` snapshot (see `examples/trading-desk/CLAUDE.md` "Fixture
+  and reads the pinned `2026-05-06` snapshot (see `labs/trading-desk/CLAUDE.md` "Fixture
   mode"). The modal should not pretend an arbitrary date pulls historical fixture data. Consider a
   small inline note on the date field in `fixture` mode ("fixture mode uses the pinned snapshot;
   date is recorded but not fetched") — optional, but it's the honest-tradeoff voice the project

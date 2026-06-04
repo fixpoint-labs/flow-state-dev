@@ -144,7 +144,7 @@ If a correct seam exists:
 
 - Block / pattern unit tests live next to the source: `packages/<pkg>/src/.../foo.ts` → `packages/<pkg>/src/.../foo.spec.ts`. See the `fsd:write-block-tests` skill for the mock-context idiom.
 - Cross-package or flow-level regressions belong in `packages/integration-tests/` (Tier 1 suite). Add a flow there when the bug needs more than one package to reproduce.
-- Generator output-schema bugs: add a `makeSchemaStrict` walker assertion (see `examples/trading-desk/test/output-schemas-strict.spec.ts`). BP-016 requires this guard for any schema that's reachable from a generator output.
+- Generator output-schema bugs: add a `makeSchemaStrict` walker assertion (see `labs/trading-desk/test/output-schemas-strict.spec.ts`). BP-016 requires this guard for any schema that's reachable from a generator output.
 - **Verification per CLAUDE.md:** if the change is flow-logic, the default verification is `fsdev run`, not `pnpm test`. Reach for `pnpm test` for unit-level changes; reach for the browser for UI-layer changes.
 
 ## Phase 6 — Cleanup + post-mortem
