@@ -20,21 +20,22 @@
  * Phase 5 divider lines.
  */
 import { sequencer } from "@flow-state-dev/core";
-import {
-  portfolioManagerApproachGenerator,
-  scenarioForecasterApproachGenerator,
-} from "./approach";
+import { portfolioManagerApproachGenerator } from "./approach";
+import { scenarioForecasterApproachGenerator } from "../agents/scenario-forecaster/approach";
 import { portfolioManagerGenerator } from "./portfolio-manager";
-import { scenarioForecasterGenerator } from "./scenario-forecaster";
-import { setupPhase5Memos, setupScenarioForecastMemos } from "./setup";
+import { scenarioForecasterGenerator } from "../agents/scenario-forecaster/scenario-forecaster";
+import { setupPhase5Memos } from "./setup";
+import { setupScenarioForecastMemos } from "../agents/scenario-forecaster/setup";
 import {
   commitPortfolioManagerMemo,
-  commitScenarioForecastMemo,
-  markErrorForecast,
   markErrorP5,
-  markWritingForecast,
   markWritingP5,
 } from "./writer";
+import {
+  commitScenarioForecastMemo,
+  markErrorForecast,
+  markWritingForecast,
+} from "../agents/scenario-forecaster/writer";
 
 const scenarioForecasterStep = sequencer({
   name: "phase-5-scenario-forecaster-step",

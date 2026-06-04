@@ -17,14 +17,14 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_5_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { thesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_5_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { thesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
+import { loadPrompt } from "../../lib/prompt";
 
 const scenarioForecasterPrompt = loadPrompt(
-  "phase-5/prompts/scenario-forecaster.prompt.md",
+  "agents/scenario-forecaster/prompts/scenario-forecaster.prompt.md",
 );
 
 const scenarioSchema = z.object({

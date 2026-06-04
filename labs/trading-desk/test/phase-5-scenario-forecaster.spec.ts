@@ -12,8 +12,8 @@ import {
   commitScenarioForecastMemo,
   markErrorForecast,
   markWritingForecast,
-} from "../src/flows/trading-desk/phase-5/writer";
-import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/scenario-forecaster";
+} from "../src/flows/trading-desk/agents/scenario-forecaster/writer";
+import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/agents/scenario-forecaster/scenario-forecaster";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
