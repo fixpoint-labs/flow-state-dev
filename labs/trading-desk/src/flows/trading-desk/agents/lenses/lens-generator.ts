@@ -28,14 +28,14 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { PHASE_2B_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import type { InvestorLens } from "../lib/lenses";
-import { loadPrompt } from "../lib/prompt";
-import { sessionStateSchema } from "../state";
+import { PHASE_2B_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import type { InvestorLens } from "./lenses";
+import { loadPrompt } from "../../lib/prompt";
+import { sessionStateSchema } from "../../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";
 
-const lensPrompt = loadPrompt("phase-2b/prompts/lens.prompt.md");
+const lensPrompt = loadPrompt("agents/lenses/prompts/lens.prompt.md");
 
 /** Render the lens's documented methodology as the `<lens>` prompt block. The
  *  framing clause (documented methodology / not advice) leads so the model is

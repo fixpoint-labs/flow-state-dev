@@ -36,7 +36,7 @@ import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
 import { pdfExtractionSchema } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
-import { lensVerdictOutputSchema } from "../src/flows/trading-desk/phase-2b/lens-verdict-schema";
+import { lensVerdictOutputSchema } from "../src/flows/trading-desk/agents/lenses/lens-verdict-schema";
 
 type Issue = { path: string; reason: string };
 

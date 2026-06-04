@@ -43,7 +43,7 @@ import {
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
 import { valuationSpineResource } from "./valuation-spine-resource";
-import { lensConvergenceResource } from "./lens-convergence-resource";
+import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import {
   formatValuationSpine,
   formatRatingEnvelope,

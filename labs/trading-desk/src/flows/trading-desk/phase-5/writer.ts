@@ -48,7 +48,7 @@ import { valuationSpineResource, type ValuationSpineState } from "../valuation-s
 import {
   lensConvergenceResource,
   type LensConvergenceState,
-} from "../lens-convergence-resource";
+} from "../agents/lenses/lens-convergence-resource";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 import { scenarioForecastOutputSchema } from "./scenario-forecaster";
 

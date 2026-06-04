@@ -10,7 +10,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
-import { lensConvergenceStateSchema } from "./lens-convergence-resource";
+import { lensConvergenceStateSchema } from "./agents/lenses/lens-convergence-resource";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
  *  in `pending`, transitions to `writing` when the analyst generator starts,

@@ -33,10 +33,10 @@
  * `costPreset === "full"` (RISK-F3).
  */
 import { sequencer } from "@flow-state-dev/core";
-import { LENS_PACK } from "../lib/lenses";
-import { defineLensStep } from "./lens-step";
-import { setupLensMemos } from "./setup";
-import { computeAndStoreConvergence } from "./writer";
+import { LENS_PACK } from "../agents/lenses/lenses";
+import { defineLensStep } from "../agents/lenses/lens-step";
+import { setupLensMemos } from "../agents/lenses/setup";
+import { computeAndStoreConvergence } from "../agents/lenses/writer";
 
 /** One independent lens sub-sequencer per pack entry, chained SEQUENTIALLY (see
  *  the file header — each lens is blind to the others regardless). */

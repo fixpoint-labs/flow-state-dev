@@ -18,20 +18,20 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { LENS_IDS, PHASE_2B_MEMO_KEYS, type LensId } from "../agents";
-import { LENS_PACK } from "../lib/lenses";
-import { computeConvergence } from "../lib/convergence-math";
+import { LENS_IDS, PHASE_2B_MEMO_KEYS, type LensId } from "../../agents";
+import { LENS_PACK } from "./lenses";
+import { computeConvergence } from "./convergence-math";
 import {
   lensConvergenceResource,
   type LensVerdictRecord,
-} from "../lens-convergence-resource";
+} from "./lens-convergence-resource";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../agents/_recipe/memo-writer";
-import { memoResources, type ThesisSection } from "../resources";
-import { sessionStateSchema } from "../state";
+} from "../_recipe/memo-writer";
+import { memoResources, type ThesisSection } from "../../resources";
+import { sessionStateSchema } from "../../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";
 import { LENS_BODY_SECTION } from "./lens-body-sections";
 

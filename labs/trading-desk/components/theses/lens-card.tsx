@@ -36,8 +36,8 @@ import {
   type AgentName,
   type LensId,
 } from "@/src/flows/trading-desk/agents";
-import { LENS_PACK } from "@/src/flows/trading-desk/lib/lenses";
-import { LENS_BODY_SECTION } from "@/src/flows/trading-desk/phase-2b/lens-body-sections";
+import { LENS_PACK } from "@/src/flows/trading-desk/agents/lenses/lenses";
+import { LENS_BODY_SECTION } from "@/src/flows/trading-desk/agents/lenses/lens-body-sections";
 import type { ThesisSection } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 

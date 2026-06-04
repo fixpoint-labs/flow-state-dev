@@ -11,10 +11,10 @@
  * e2e, not here — here we lock the arithmetic.
  */
 import { describe, expect, it } from "vitest";
-import { computeConvergence } from "../src/flows/trading-desk/lib/convergence-math";
-import { LENS_PACK } from "../src/flows/trading-desk/lib/lenses";
+import { computeConvergence } from "../src/flows/trading-desk/agents/lenses/convergence-math";
+import { LENS_PACK } from "../src/flows/trading-desk/agents/lenses/lenses";
 import { LENS_IDS } from "../src/flows/trading-desk/agents";
-import type { LensVerdictRecord } from "../src/flows/trading-desk/lens-convergence-resource";
+import type { LensVerdictRecord } from "../src/flows/trading-desk/agents/lenses/lens-convergence-resource";
 
 /** Minimal verdict record builder — only the fields the math reads matter. */
 function verdict(

@@ -27,7 +27,7 @@
 import type {
   LensConvergenceState,
   LensVerdictRecord,
-} from "../lens-convergence-resource";
+} from "./lens-convergence-resource";
 
 type Stance = "bullish" | "neutral" | "bearish";
 
