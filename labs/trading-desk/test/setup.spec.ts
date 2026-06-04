@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { setupPhase1Memos } from "../src/flows/trading-desk/phase-1/setup";
+import { setupPhase1Memos } from "../src/flows/trading-desk/agents/analysts/setup";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

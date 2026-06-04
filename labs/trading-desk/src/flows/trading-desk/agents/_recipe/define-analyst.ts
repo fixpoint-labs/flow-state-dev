@@ -17,7 +17,7 @@
 import { sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../agents";
 import { attributedTools, memoLabel, tickerDate } from "../../lib/helpers";
-import { commitMemo, markError, markWriting } from "../../phase-1/writer";
+import { commitMemo, markError, markWriting } from "../analysts/writer";
 
 /** Convert camelCase to kebab-case for sequencer names. */
 function kebab(camel: string): string {

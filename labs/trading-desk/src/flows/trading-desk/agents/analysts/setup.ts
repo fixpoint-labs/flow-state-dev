@@ -5,8 +5,8 @@
  * `session.memoStatus` to render the five slots immediately, so all
  * Phase 1 memos appear before any generator runs.
  */
-import { PHASE_1_MEMO_KEYS } from "../agents";
-import { defineMemoSetup } from "../agents/_recipe/memo-setup";
+import { PHASE_1_MEMO_KEYS } from "../../agents";
+import { defineMemoSetup } from "../_recipe/memo-setup";
 
 export const setupPhase1Memos = defineMemoSetup({
   phaseId: "p1",

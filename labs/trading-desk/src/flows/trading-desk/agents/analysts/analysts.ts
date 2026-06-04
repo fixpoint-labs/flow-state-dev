@@ -20,12 +20,12 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "../agents";
-import { tradingDesk } from "../capability";
-import { asDataBlock } from "../lib/helpers";
-import { computeValuation, formatValuation } from "../lib/valuation";
-import { loadPrompt } from "../lib/prompt";
-import { defineAnalyst } from "../agents/_recipe/define-analyst";
+import { PHASE_1_MEMO_KEYS } from "../../agents";
+import { tradingDesk } from "../../capability";
+import { asDataBlock } from "../../lib/helpers";
+import { computeValuation, formatValuation } from "../../lib/valuation";
+import { loadPrompt } from "../../lib/prompt";
+import { defineAnalyst } from "../_recipe/define-analyst";
 import { thesisOutputSchema } from "./thesis-schema";
 import {
   compute_indicators,
@@ -62,24 +62,24 @@ import {
   get_short_interest,
   get_social_sentiment,
   search_news,
-} from "../tools";
-import { toolOutputSchemas } from "../tools/schemas";
+} from "../../tools";
+import { toolOutputSchemas } from "../../tools/schemas";
 
 const fundamentalsPrompt = loadPrompt(
-  "phase-1/prompts/fundamentals.prompt.md"
+  "agents/analysts/prompts/fundamentals.prompt.md"
 );
-const technicalPrompt = loadPrompt("phase-1/prompts/technical.prompt.md");
-const newsPrompt = loadPrompt("phase-1/prompts/news.prompt.md");
-const sentimentPrompt = loadPrompt("phase-1/prompts/sentiment.prompt.md");
+const technicalPrompt = loadPrompt("agents/analysts/prompts/technical.prompt.md");
+const newsPrompt = loadPrompt("agents/analysts/prompts/news.prompt.md");
+const sentimentPrompt = loadPrompt("agents/analysts/prompts/sentiment.prompt.md");
 const companyProfilePrompt = loadPrompt(
-  "phase-1/prompts/company-profile.prompt.md"
+  "agents/analysts/prompts/company-profile.prompt.md"
 );
 const marketContextPrompt = loadPrompt(
-  "phase-1/prompts/market-context.prompt.md"
+  "agents/analysts/prompts/market-context.prompt.md"
 );
-const macroPrompt = loadPrompt("phase-1/prompts/macro.prompt.md");
-const quantPrompt = loadPrompt("phase-1/prompts/quant.prompt.md");
-const disclosurePrompt = loadPrompt("phase-1/prompts/disclosure.prompt.md");
+const macroPrompt = loadPrompt("agents/analysts/prompts/macro.prompt.md");
+const quantPrompt = loadPrompt("agents/analysts/prompts/quant.prompt.md");
+const disclosurePrompt = loadPrompt("agents/analysts/prompts/disclosure.prompt.md");
 
 // ---------------------------------------------------------------------------
 // Fundamentals

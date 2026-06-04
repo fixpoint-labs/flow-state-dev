@@ -18,8 +18,8 @@ import {
   quantAnalyst,
   sentimentAnalyst,
   technicalAnalyst,
-} from "./analysts";
-import { setupPhase1Memos } from "./setup";
+} from "../agents/analysts/analysts";
+import { setupPhase1Memos } from "../agents/analysts/setup";
 
 export const phase1Pipeline = sequencer({
   name: "phase-1-analysts",

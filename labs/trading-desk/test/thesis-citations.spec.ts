@@ -4,7 +4,7 @@
  * default — the LLM must emit either `null` or an array.
  */
 import { describe, expect, it } from "vitest";
-import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
+import { thesisOutputSchema } from "../src/flows/trading-desk/agents/analysts/thesis-schema";
 
 const baseThesis = {
   label: "Fundamentals memo",
