@@ -43,7 +43,7 @@ structure makes adoption mostly imports — see §11.)
 
 ---
 
-## 2. The three decisions (agreed in brainstorming)
+## 2. The four decisions (agreed in brainstorming)
 
 1. **Move files, keep the memo lifecycle BUNDLED.** Each participant keeps its own
    `markWriting → generator → commit, rescue(markError)` step. We do **not** build the doc's
@@ -61,6 +61,21 @@ structure makes adoption mostly imports — see §11.)
    the DevTool TranscriptPane keys its phase-divider beats on that prefix. Phase dies as **code
    structure**; it lives on as the **user-visible sequence**. (Oversight doc Appendix A wrinkle.)
 
+4. **Resources co-locate with their owner — no `resources/` directory.** A central `resources/`
+   bucket groups by technical *kind*, which is the exact axis this reorg moves away from. Instead a
+   resource lives where its owner lives: a **participant-owned** resource moves into that agent
+   group; a **flow-contract** resource (the memo board) stays at the flow root; a **surface-owned**
+   resource (decision-record, reports, price-history) stays at root for now and moves with its
+   surface in the later surfaces reorg. The "what state does this flow persist" bird's-eye view is
+   already given by `flow.ts`'s `resources: { … }` registration, which needs no directory. In
+   practice the only participant-owned resource today is `lens-convergence-resource.ts` → it moves
+   into `agents/lenses/`; every other resource is flow- or surface-owned and stays put.
+   *One coupling the plan must handle:* `resources.ts` imports `lensConvergenceStateSchema` from this
+   file for the PM memo mirror, so after the move `resources.ts` imports a leaf from `agents/lenses/`.
+   That stays acyclic (the resource file is a leaf — it imports only core + zod, never back into
+   `resources.ts`), but if a contract→participant import reads as a smell, lift just the *schema* into
+   a shared leaf. Decide at plan time.
+
 ---
 
 ## 3. Scope
@@ -74,9 +89,12 @@ structure makes adoption mostly imports — see §11.)
 
 - The flow contract: `flow.ts` (defineFlow), `state.ts`, `flow-schema.ts`, `analyze-input.ts`,
   `resources.ts`.
-- All resources/data-layer files: `decision-snapshot-resource.ts`, `report-index.ts`,
-  `price-history-resource.ts`, `valuation-spine-resource.ts`, `lens-convergence-resource.ts`,
-  `compute-spine.ts`, `store-price-history.ts`, `special-instructions*.ts`.
+- Flow- + surface-owned resources (per decision §2.4): `decision-snapshot-resource.ts`,
+  `report-index.ts`, `price-history-resource.ts`, `valuation-spine-resource.ts`,
+  `compute-spine.ts`, `store-price-history.ts`, `special-instructions*.ts`. (The surface-owned
+  three — decision-snapshot / report-index / price-history — move with their surface in the later
+  surfaces reorg, not here.) **Exception:** `lens-convergence-resource.ts` is participant-owned and
+  moves into `agents/lenses/` (§2.4).
 - The **portfolio domain** (`portfolio/`), all UI (`components/`, `app/`), tests, fixtures.
 
 > The portfolio + reports/decision-record data layer is the most reuse-worthy eventual
@@ -103,7 +121,7 @@ labs/trading-desk/src/flows/trading-desk/
                           writer.ts, prompts/) + tools/find_counter_evidence.ts (FLOW-COUPLED — §6)
     lenses/            ← phase-2b: lens-generator.ts, lens-step.ts, lens-verdict-schema.ts,
                           lens-body-sections.ts, writer.ts, prompts/  (+ lib/lenses.ts pack config,
-                          lib/convergence-math.ts — both lens-domain)
+                          lib/convergence-math.ts, lens-convergence-resource.ts — all lens-owned)
     trader/            ← trader.ts, approach.ts, writer.ts, prompts/
     risk/              ← personas.ts (3), consolidator.ts, schemas.ts, approach.ts, writer.ts, prompts/
     scenario-forecaster/ ← scenario-forecaster.ts, approach.ts, writer.ts, prompts/
@@ -144,7 +162,7 @@ The implementation plan enumerates the per-file moves; this is the module-level 
 | `phase-1/{analysts,thesis-schema,writer,setup}.ts` + `prompts/` | `agents/analysts/` | bundled steps stay |
 | `phase-2/{generators,round-robin,validate-citations,writer,setup,prompts}.ts` + `prompts/` | `agents/research/` | |
 | `phase-2/tools/find_counter_evidence.ts` | `agents/research/tools/` | FLOW-COUPLED — not catalog (§6) |
-| `phase-2b/*` + `lib/{lenses,convergence-math}.ts` | `agents/lenses/` | lens generators + pack + convergence math |
+| `phase-2b/*` + `lib/{lenses,convergence-math}.ts` + `lens-convergence-resource.ts` | `agents/lenses/` | lens generators + pack + convergence math + the lens-owned resource (§2.4) |
 | `phase-3/{trader,approach,writer,setup}.ts` + `prompts/` | `agents/trader/` | |
 | `phase-4/{personas,consolidator,schemas,approach,writer,setup}.ts` + `prompts/` | `agents/risk/` | |
 | `phase-5/{scenario-forecaster,portfolio-manager,approach,writer,setup}.ts` + `prompts/` | `agents/scenario-forecaster/` + `agents/portfolio-manager/` | split the two participants |
