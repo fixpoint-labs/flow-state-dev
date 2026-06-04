@@ -59,11 +59,16 @@ export function wireDlqHandler(
 ): void {
   worker.on("failed", async (job, err) => {
     if (job && job.attemptsMade >= maxAttempts) {
-      await dlqQueue.add("dead-letter", {
-        ...job.data,
-        failedReason: err.message,
-        originalJobId: job.id,
-      });
+      try {
+        await dlqQueue.add("dead-letter", {
+          ...job.data,
+          failedReason: err.message,
+          originalJobId: job.id,
+        });
+      } catch {
+        // DLQ write failed (e.g. Redis unavailable); swallow so the
+        // worker process itself is not brought down.
+      }
     }
   });
 }
