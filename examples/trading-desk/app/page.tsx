@@ -119,6 +119,10 @@ function TradingDeskApp(): ReactElement {
   // recomputes weights, and a missing live price degrades to null (never
   // fabricated — see `buildPortfolioContext`). Null when the user has no
   // accounts → the run is portfolio-blind exactly as today.
+  // 50 is a generous ceiling for a demo. A real portfolio above this would
+  // produce a SILENTLY incomplete snapshot — missing accounts/holdings/cash, so
+  // the PM reasons from an under-counted NAV with no signal. Acceptable for the
+  // example; raise or paginate (and surface the truncation) before real use.
   const accountsList = useResourceCollectionList(readSession, "accounts", {
     limit: 50,
   });

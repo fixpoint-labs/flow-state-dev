@@ -43,7 +43,11 @@ const lensPrompt = loadPrompt("phase-2b/prompts/lens.prompt.md");
 function formatLens(lens: InvestorLens): string {
   return [
     `You are applying ${lens.attribution} to the evidence below. This is documented`,
-    `methodology — NOT a claim about what ${lens.attribution.split(" ")[0]} thinks today, and`,
+    // Use the documented-investor name, not a first-name slice: attribution is
+    // "<name> documented methodology" where the name may be multi-word ("Howard
+    // Marks") or a pair ("Buffett / Munger"), so strip the suffix rather than
+    // taking split(" ")[0] (which produced a bare, ambiguous "Howard").
+    `methodology — NOT a claim about what ${lens.attribution.replace(" documented methodology", "")} thinks today, and`,
     `NOT financial advice. Produce an independent verdict in this lens's voice.`,
     "",
     `Lens: ${lens.label} (id: ${lens.id})`,

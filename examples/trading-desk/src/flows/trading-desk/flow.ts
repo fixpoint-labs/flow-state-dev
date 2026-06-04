@@ -25,6 +25,7 @@ import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
 import { phase2bPipeline } from "./phase-2b";
+import { resetLensConvergence } from "./phase-2b/writer";
 import { lensConvergenceResource } from "./lens-convergence-resource";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
@@ -245,6 +246,12 @@ const analyzePipeline = sequencer({
   // multiply token spend, so a `fast` run skips the pack entirely (no memos, no
   // convergence resource). On `fast`, the PM still emits `portfolioFit` — just
   // without a convergence-derived `convictionBasis`.
+  //
+  // Reset any prior convergence FIRST, unconditionally (outside the gate), so a
+  // re-run never surfaces a stale read. Not reachable today (costPreset is in the
+  // keying tuple, so a session's preset is fixed) — defensive against a future
+  // tuple change. The `full` pack then overwrites it; `fast` leaves it null.
+  .tap(resetLensConvergence)
   .stepIf((_v, ctx) => ctx.session.state.costPreset === "full", phase2bPipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)

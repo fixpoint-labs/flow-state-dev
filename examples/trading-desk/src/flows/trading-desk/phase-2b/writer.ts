@@ -33,6 +33,7 @@ import {
 import { memoResources, type ThesisSection } from "../resources";
 import { sessionStateSchema } from "../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";
+import { LENS_BODY_SECTION } from "./lens-body-sections";
 
 export const {
   markWriting: markWritingP2b,
@@ -62,15 +63,15 @@ function lensBody(verdict: {
   missingData: string[];
 }): ThesisSection[] {
   const sections: ThesisSection[] = [
-    { h: "Verdict", p: verdict.verdict, items: null },
-    { h: "Key driver", p: verdict.keyDriver, items: null },
+    { h: LENS_BODY_SECTION.verdict, p: verdict.verdict, items: null },
+    { h: LENS_BODY_SECTION.keyDriver, p: verdict.keyDriver, items: null },
   ];
   if (verdict.disqualifierHit !== "") {
-    sections.push({ h: "What would flip this", p: verdict.disqualifierHit, items: null });
+    sections.push({ h: LENS_BODY_SECTION.disqualifier, p: verdict.disqualifierHit, items: null });
   }
   if (verdict.dataGap !== "" || verdict.missingData.length > 0) {
     sections.push({
-      h: "Data gaps (honesty)",
+      h: LENS_BODY_SECTION.dataGaps,
       p: verdict.dataGap !== "" ? verdict.dataGap : null,
       items: verdict.missingData.length > 0 ? verdict.missingData : null,
     });
@@ -158,8 +159,8 @@ export const computeAndStoreConvergence = handler({
       // Recover keyDriver / dataGap / missingData from the synthesized body so the
       // mirror is self-contained for the UI without a second source.
       const body = state.body ?? [];
-      const keyDriver = body.find((s) => s.h === "Key driver")?.p ?? "";
-      const gapSection = body.find((s) => s.h === "Data gaps (honesty)");
+      const keyDriver = body.find((s) => s.h === LENS_BODY_SECTION.keyDriver)?.p ?? "";
+      const gapSection = body.find((s) => s.h === LENS_BODY_SECTION.dataGaps);
       records.push({
         lensId: id,
         label: lens?.label ?? id,
@@ -176,5 +177,26 @@ export const computeAndStoreConvergence = handler({
 
     const convergence = computeConvergence(records);
     await ctx.resources.lensConvergence.patchState(convergence);
+  },
+});
+
+/**
+ * Defensive reset of the session-scoped `lensConvergence` resource, run on every
+ * analysis (OUTSIDE the cost gate) before the lens pack. Today a session's
+ * `costPreset` is fixed — it is part of the keying tuple — so a `full` session
+ * always recomputes convergence and a `fast` session never wrote it; the stale
+ * path is not reachable. This clear makes the "no stale convergence across
+ * re-runs" invariant explicit and robust if the tuple ever changes (e.g. if a
+ * session could be re-run at a different preset). On `full` the pack overwrites
+ * it via `computeAndStoreConvergence`; on `fast` it stays null. `.tap` (BP-012):
+ * mutation-only, no output, no `return input`.
+ */
+export const resetLensConvergence = handler({
+  name: "reset-lens-convergence",
+  inputSchema: z.unknown(),
+  outputSchema: z.void(),
+  resources: { lensConvergence: lensConvergenceResource },
+  execute: async (_input, ctx) => {
+    await ctx.resources.lensConvergence.setState(null);
   },
 });

@@ -37,6 +37,7 @@ import {
   type LensId,
 } from "@/src/flows/trading-desk/agents";
 import { LENS_PACK } from "@/src/flows/trading-desk/lib/lenses";
+import { LENS_BODY_SECTION } from "@/src/flows/trading-desk/phase-2b/lens-body-sections";
 import type { ThesisSection } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 
@@ -106,8 +107,8 @@ export function buildLensCardModel(
   const lensId = LENS_ID_BY_AGENT[agent] ?? null;
   const lens = lensId !== null ? LENS_PACK.find((l) => l.id === lensId) : undefined;
   const body = data?.body ?? [];
-  const keyDriver = body.find((s) => s.h === "Key driver")?.p ?? "";
-  const gapSection = body.find((s) => s.h === "Data gaps (honesty)");
+  const keyDriver = body.find((s) => s.h === LENS_BODY_SECTION.keyDriver)?.p ?? "";
+  const gapSection = body.find((s) => s.h === LENS_BODY_SECTION.dataGaps);
   return {
     lensId,
     label: data?.label ?? lens?.label ?? (lensId ?? agent),
