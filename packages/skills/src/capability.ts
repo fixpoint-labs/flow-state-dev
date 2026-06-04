@@ -29,6 +29,7 @@ import type {
   DefinedCapability as DefCap,
   InitialSkill,
   ItemVisibility,
+  MaterializeAgentFn,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import {
@@ -108,17 +109,21 @@ export interface SkillsCapabilityOptions {
 
   /**
    * Optional AgentRegistry for pattern workers using `agent-ref:`.
-   * Wired by the Agents primitive (Wave 2); declared today so the
-   * forward-compat slot is typed end-to-end.
+   * Wire alongside `materializeAgent` from `@flow-state-dev/workforce`.
    */
   agentRegistry?: AgentRegistry;
 
   /**
-   * Optional capability catalog forwarded to the Agents primitive's
-   * `materializeAgent` for resolving an agent's `uses-capabilities`.
-   * Not read by this work; declared today for the forward-compat slot.
+   * Optional capability catalog forwarded to `materializeAgent` for
+   * resolving an agent's `usesCapabilities`.
    */
   capabilityCatalog?: Record<string, DefCap>;
+
+  /**
+   * Injected materializer that turns a resolved Agent into a worker-shaped
+   * generator. Import from `@flow-state-dev/workforce`.
+   */
+  materializeAgent?: MaterializeAgentFn;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +169,7 @@ export function createSkillsCapability(
     ...(options.patternRegistry ? { patternRegistry: options.patternRegistry } : {}),
     ...(options.blockRegistry ? { blockRegistry: options.blockRegistry } : {}),
     ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
+    ...(options.materializeAgent ? { materializeAgent: options.materializeAgent } : {}),
     ...(options.capabilityCatalog ? { capabilityCatalog: options.capabilityCatalog } : {}),
   });
 

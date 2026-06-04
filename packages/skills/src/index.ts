@@ -81,7 +81,9 @@ export {
 } from "./pattern-registry";
 
 export {
+  buildUserMessage,
   materializeWorker,
+  workerInputSchema,
 } from "./worker-materializer";
 
 export {

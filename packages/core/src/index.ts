@@ -71,7 +71,15 @@ export type {
   WorkerSpec,
 } from "./types/skill";
 
-export type { Agent, AgentOverrides, AgentRegistry } from "./types/agent";
+export type {
+  Agent,
+  AgentOverrides,
+  AgentRegistry,
+  MaterializeAgentFn,
+  MaterializeAgentOptions,
+  PersonaInlineConfig,
+  PersonaSource,
+} from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,
@@ -113,6 +121,7 @@ export {
 } from "./blocks";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
+export { resolveResourceByPath } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
 export {
   DEFAULT_MODEL_LOOKUP,

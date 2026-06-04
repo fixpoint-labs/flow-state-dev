@@ -17,6 +17,7 @@ import type { ZodTypeAny } from "zod";
 import type {
   AgentRegistry,
   DefinedCapability,
+  MaterializeAgentFn,
   PatternBinding,
   ResourceCollectionRef,
   ToolCatalog,
@@ -39,11 +40,16 @@ export interface PatternRegistryDeps {
    */
   agentRegistry?: AgentRegistry;
   /**
-   * Optional capability catalog forwarded through to a future
-   * `materializeAgent` implementation. Not read by this work; reserved
-   * so the Agents primitive can resolve `uses-capabilities`.
+   * Optional capability catalog forwarded to `materializeAgent` for
+   * resolving an agent's `usesCapabilities`.
    */
   capabilityCatalog?: Record<string, DefinedCapability>;
+  /**
+   * Injected materializer that turns a resolved Agent into a worker-shaped
+   * generator. Supplied by `@flow-state-dev/workforce`; absent means
+   * `agent-ref` workers fail with a clear configuration error.
+   */
+  materializeAgent?: MaterializeAgentFn;
   /** Skill name — used for default collection/board ids. */
   skillName: string;
   /** Skill resource collection — supports `prompt-ref` reads. */

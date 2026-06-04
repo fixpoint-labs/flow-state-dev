@@ -27,7 +27,7 @@ import { taskTools as taskToolsCapability } from "./task-tools-capability";
 import type { WorkerSpec } from "@flow-state-dev/core";
 
 /** Input every materialized worker accepts — matches the substrate's TaskWorkerInput. */
-const workerInputSchema = z.object({
+export const workerInputSchema = z.object({
   taskId: z.string(),
   goal: z.string(),
   input: z.unknown().optional(),
@@ -73,25 +73,41 @@ export async function materializeWorker(
     return block;
   }
 
-  // 2. agent-ref — reserved forward-compat slot. The branch is shipped
-  //    as a stub: throws "no registry configured" when no registry was
-  //    supplied, and throws "registry supplied but implementation not
-  //    yet wired" when one was — so apps wiring the Agents registry get
-  //    a precise error pointing at the missing implementation step.
+  // 2. agent-ref — resolve a registered Agent via the injected registry
+  //    and materializeAgent function.
   if (spec.agentRef !== undefined) {
     if (!deps.agentRegistry) {
       throw new Error(
         `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
           `agentRegistry was supplied to createSkillsCapability. ` +
-          `The agent-ref resolution path is shipped by the Agents primitive; ` +
-          `until that lands (or until an app wires its own AgentRegistry), ` +
-          `workers should use prompt or prompt-ref.`,
+          `Wire an AgentRegistry via createSkillsCapability({ agentRegistry }) ` +
+          `or use prompt/prompt-ref instead.`,
       );
     }
-    throw new Error(
-      `agent-ref resolution requires @flow-state-dev/agents; ` +
-        `registry was supplied but the implementation is not yet wired.`,
-    );
+    if (!deps.materializeAgent) {
+      throw new Error(
+        `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
+          `materializeAgent function was supplied to createSkillsCapability. ` +
+          `Wire it via createSkillsCapability({ materializeAgent }).`,
+      );
+    }
+    const agent = await deps.agentRegistry.get(spec.agentRef);
+    if (!agent) {
+      const registered = (await deps.agentRegistry.list()).map((a) => a.name);
+      throw new Error(
+        `Worker '${workerKey}' references agent '${spec.agentRef}' which is not in the registry. ` +
+          `Registered agents: ${registered.join(", ") || "(none)"}.`,
+      );
+    }
+    return deps.materializeAgent(agent, {
+      catalog: deps.catalog,
+      capabilityCatalog: deps.capabilityCatalog,
+      defaultModelId: deps.defaultModelId,
+      overrides: spec.agentOverrides,
+      shape: "worker",
+      workerKey,
+      skillName: deps.skillName,
+    });
   }
 
   // 3 & 4. prompt-ref / prompt — both build a generator with the
@@ -177,7 +193,7 @@ function resolveTools(
 }
 
 /** Build the per-invocation user turn from the substrate's TaskWorkerInput. */
-function buildUserMessage(input: WorkerInput): string {
+export function buildUserMessage(input: WorkerInput): string {
   const parts: string[] = [`Task: ${input.goal}`];
   if (input.feedback) {
     parts.push("", `Reviewer feedback: ${input.feedback}`);

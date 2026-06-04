@@ -179,23 +179,21 @@ function parsePatternBinding(raw: Record<string, unknown>): PatternBinding {
       `SKILL.md \`pattern: ${patternKey}\` requires a \`workers:\` map`,
     );
   }
-  if (!("initial-tasks" in raw) || raw["initial-tasks"] === null) {
-    throw new Error(
-      `SKILL.md \`pattern: ${patternKey}\` requires an \`initial-tasks:\` list`,
-    );
-  }
 
   const collection = parseCollectionField(raw["collection"]);
   const workers = parseWorkersField(raw["workers"]);
   const workerKeys = new Set(Object.keys(workers));
-  const initialTasks = parseInitialTasksField(raw["initial-tasks"], workerKeys);
+  const hasInitialTasks = "initial-tasks" in raw && raw["initial-tasks"] !== null;
+  const initialTasks = hasInitialTasks
+    ? parseInitialTasksField(raw["initial-tasks"], workerKeys)
+    : undefined;
   const patternConfig = parsePatternConfigField(raw["pattern-config"]);
 
   const binding: PatternBinding = {
     pattern: patternKey.trim(),
     workers,
-    initialTasks,
   };
+  if (initialTasks) binding.initialTasks = initialTasks;
   if (collection) binding.collection = collection;
   if (patternConfig) binding.patternConfig = patternConfig;
   return binding;
@@ -1231,16 +1229,18 @@ function serializePatternBinding(lines: string[], binding: PatternBinding): void
     }
     if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
   }
-  lines.push("initial-tasks:");
-  for (const task of binding.initialTasks) {
-    lines.push(`  - id: ${yamlScalar(task.id ?? "")}`);
-    lines.push(`    goal: ${yamlScalar(task.goal)}`);
-    if (task.assignee !== undefined) lines.push(`    assignee: ${yamlScalar(task.assignee)}`);
-    if (task.deps && task.deps.length > 0)
-      lines.push(`    deps: [${task.deps.map((d) => yamlScalar(d)).join(", ")}]`);
-    if (task.priority !== undefined) lines.push(`    priority: ${task.priority}`);
-    if (task.maxAttempts !== undefined) lines.push(`    max-attempts: ${task.maxAttempts}`);
-    if (task.metadata !== undefined) lines.push(`    metadata: ${yamlValue(task.metadata)}`);
+  if (binding.initialTasks && binding.initialTasks.length > 0) {
+    lines.push("initial-tasks:");
+    for (const task of binding.initialTasks) {
+      lines.push(`  - id: ${yamlScalar(task.id ?? "")}`);
+      lines.push(`    goal: ${yamlScalar(task.goal)}`);
+      if (task.assignee !== undefined) lines.push(`    assignee: ${yamlScalar(task.assignee)}`);
+      if (task.deps && task.deps.length > 0)
+        lines.push(`    deps: [${task.deps.map((d) => yamlScalar(d)).join(", ")}]`);
+      if (task.priority !== undefined) lines.push(`    priority: ${task.priority}`);
+      if (task.maxAttempts !== undefined) lines.push(`    max-attempts: ${task.maxAttempts}`);
+      if (task.metadata !== undefined) lines.push(`    metadata: ${yamlValue(task.metadata)}`);
+    }
   }
   if (binding.patternConfig) {
     lines.push("pattern-config:");
