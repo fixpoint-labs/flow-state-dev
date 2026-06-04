@@ -23,7 +23,7 @@
  * explained in their prompts.
  */
 import { z } from "zod";
-import { thesisSection } from "../resources";
+import { thesisSection } from "../../resources";
 
 const adjustmentShape = z.object({
   sizing: z.enum(["larger", "smaller", "unchanged"]),

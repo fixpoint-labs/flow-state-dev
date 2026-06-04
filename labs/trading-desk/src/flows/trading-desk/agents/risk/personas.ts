@@ -23,20 +23,20 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { PHASE_4_MEMO_KEYS } from "../agents";
-import { sessionStateSchema } from "../state";
+import { PHASE_4_MEMO_KEYS } from "../../agents";
+import { sessionStateSchema } from "../../state";
 import {
   formatPersonaCritique,
   tradingDesk,
-} from "../capability";
-import { loadPrompt } from "../lib/prompt";
+} from "../../capability";
+import { loadPrompt } from "../../lib/prompt";
 import { personaCritiqueOutputSchema } from "./schemas";
 
-const aggressivePrompt = loadPrompt("phase-4/prompts/aggressive.prompt.md");
+const aggressivePrompt = loadPrompt("agents/risk/prompts/aggressive.prompt.md");
 const conservativePrompt = loadPrompt(
-  "phase-4/prompts/conservative.prompt.md"
+  "agents/risk/prompts/conservative.prompt.md"
 );
-const neutralPrompt = loadPrompt("phase-4/prompts/neutral.prompt.md");
+const neutralPrompt = loadPrompt("agents/risk/prompts/neutral.prompt.md");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function memoState(ctx: any, collectionKey: string): Promise<unknown> {

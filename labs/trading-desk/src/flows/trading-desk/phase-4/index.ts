@@ -28,21 +28,21 @@ import {
   conservativeApproachGenerator,
   neutralApproachGenerator,
   riskAssessmentApproachGenerator,
-} from "./approach";
-import { riskAssessmentGenerator } from "./consolidator";
+} from "../agents/risk/approach";
+import { riskAssessmentGenerator } from "../agents/risk/consolidator";
 import {
   aggressiveRiskGenerator,
   conservativeRiskGenerator,
   neutralRiskGenerator,
-} from "./personas";
-import { setupPhase4Memos } from "./setup";
+} from "../agents/risk/personas";
+import { setupPhase4Memos } from "../agents/risk/setup";
 import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
   markErrorP4,
   markWritingP4,
   type Phase4PersonaShortName,
-} from "./writer";
+} from "../agents/risk/writer";
 
 /** Build a persona step: `markWriting → approach → generator → commit`,
  *  wrapped in a per-step `.rescue` that flips only this persona's memo to

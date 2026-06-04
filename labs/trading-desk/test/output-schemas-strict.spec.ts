@@ -31,7 +31,7 @@ import { tradeProposalOutputSchema } from "../src/flows/trading-desk/agents/trad
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/trading-desk/phase-4/schemas";
+} from "../src/flows/trading-desk/agents/risk/schemas";
 import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/scenario-forecaster";
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";

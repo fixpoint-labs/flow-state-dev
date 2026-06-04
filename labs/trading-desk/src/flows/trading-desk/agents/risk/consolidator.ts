@@ -14,14 +14,14 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { PHASE_4_MEMO_KEYS } from "../agents";
-import { sessionStateSchema } from "../state";
-import { tradingDesk } from "../capability";
-import { loadPrompt } from "../lib/prompt";
+import { PHASE_4_MEMO_KEYS } from "../../agents";
+import { sessionStateSchema } from "../../state";
+import { tradingDesk } from "../../capability";
+import { loadPrompt } from "../../lib/prompt";
 import { riskAssessmentOutputSchema } from "./schemas";
 
 const riskAssessmentPrompt = loadPrompt(
-  "phase-4/prompts/risk-assessment.prompt.md"
+  "agents/risk/prompts/risk-assessment.prompt.md"
 );
 
 export const riskAssessmentGenerator = generator({

@@ -19,12 +19,12 @@
  *     `markErrorP4` flips to `error`), but keeping a typed non-empty
  *     rescue output simplifies the test seam.
  */
-import { PHASE_4_MEMO_KEYS } from "../agents";
+import { PHASE_4_MEMO_KEYS } from "../../agents";
 import {
   defineMemoStateBlocks,
   memoHandler,
   publishMemo,
-} from "../agents/_recipe/memo-writer";
+} from "../_recipe/memo-writer";
 import { personaCritiqueOutputSchema, riskAssessmentOutputSchema } from "./schemas";
 
 /** The three persona memos share a commit shape; `riskAssessment` does not. */
