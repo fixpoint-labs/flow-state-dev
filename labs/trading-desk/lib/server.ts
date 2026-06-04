@@ -8,7 +8,7 @@ import {
   createFlowRegistry,
 } from "@flow-state-dev/server";
 import tradingDeskFlow from "@/src/flows/trading-desk/flow";
-import { hasXaiKey } from "@/src/flows/trading-desk/providers/xai";
+import { hasXaiKey } from "@/src/flows/trading-desk/tools/providers/xai";
 
 // Filesystem-backed stores so analysis history survives `pnpm dev` restarts.
 // Defaults to `<example>/.fsdev/data` (covered by the root `.gitignore`'s

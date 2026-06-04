@@ -11,10 +11,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_cross_asset_flow } from "../src/flows/trading-desk/phase-1/tools/get_cross_asset_flow";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
-import { emptyPayload } from "../src/flows/trading-desk/phase-1/tools/empty-payloads";
-import { crossAssetFlowSchema } from "../src/flows/trading-desk/phase-1/tools/schemas";
+import { get_cross_asset_flow } from "../src/flows/trading-desk/tools/data/get_cross_asset_flow";
+import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
+import { emptyPayload } from "../src/flows/trading-desk/tools/empty-payloads";
+import { crossAssetFlowSchema } from "../src/flows/trading-desk/tools/schemas";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const fixtureFlow = defineFlow({

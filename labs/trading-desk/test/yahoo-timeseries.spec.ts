@@ -15,7 +15,7 @@ import {
   isEmptyTimeseries,
   YAHOO_TIMESERIES_TYPES,
   type YahooTimeseriesResponse,
-} from "../src/flows/trading-desk/providers/yahoo-timeseries";
+} from "../src/flows/trading-desk/tools/providers/yahoo-timeseries";
 
 import rawAapl from "./__fixtures__/yahoo-timeseries-aapl.json";
 

@@ -15,13 +15,13 @@ import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
-import { grokOutputSchema } from "../src/flows/trading-desk/phase-1/tools/get_social_sentiment";
+import { grokOutputSchema } from "../src/flows/trading-desk/tools/data/get_social_sentiment";
 import {
   secFilingsSchema,
   analystEstimatesSchema,
   earningsTranscriptSchema,
   discoveryPayloadSchema,
-} from "../src/flows/trading-desk/phase-1/tools/schemas";
+} from "../src/flows/trading-desk/tools/schemas";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,

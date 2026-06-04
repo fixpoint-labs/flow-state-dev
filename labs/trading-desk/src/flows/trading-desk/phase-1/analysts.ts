@@ -62,8 +62,8 @@ import {
   get_short_interest,
   get_social_sentiment,
   search_news,
-} from "./tools";
-import { toolOutputSchemas } from "./tools/schemas";
+} from "../tools";
+import { toolOutputSchemas } from "../tools/schemas";
 
 const fundamentalsPrompt = loadPrompt(
   "phase-1/prompts/fundamentals.prompt.md"
