@@ -249,6 +249,10 @@ type MemoDocProps = {
 type AcceptedAdjustment = NonNullable<
   MemoState["acceptedAdjustments"]
 >["sizing"];
+// Slice 5 — portfolio-fit + lens-convergence shapes, derived from the canonical
+// schema so the client-data type can't drift.
+type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
+type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
 
 type MemoClientData = {
   status: MemoStatus;
@@ -299,6 +303,9 @@ type MemoClientData = {
     | null;
   agreesWithTrader: boolean | null;
   primaryScenario: string | null;
+  // Slice 5 — only populated on `memos/p5/portfolio-manager`.
+  portfolioFit: PortfolioFit | null;
+  lensConvergence: LensConvergence | null;
 };
 
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
@@ -433,6 +440,9 @@ function PmHeroWithScenarios({
       upstreamReferences={data?.upstreamReferences ?? null}
       agreesWithTrader={data?.agreesWithTrader ?? null}
       scenarioStrip={scenarioStrip}
+      portfolioFit={data?.portfolioFit ?? null}
+      lensConvergence={data?.lensConvergence ?? null}
+      snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
     />
   );
 }

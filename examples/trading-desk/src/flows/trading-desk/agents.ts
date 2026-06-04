@@ -37,6 +37,16 @@ export const AGENTS = {
   bullResearcher:      { role: "Bull Researcher",      glyph: "B+", hue: 158, team: "research" },
   bearResearcher:      { role: "Bear Researcher",      glyph: "B-", hue: 18, team: "research" },
   researchManager:     { role: "Research Manager",     glyph: "RM", hue: 268, team: "research" },
+  // Phase 2b — investor-lens pack (Slice 5). Four documented-methodology lenses
+  // re-read the SAME post-Phase-2 bundle, blind to each other, and emit an
+  // independent verdict (chained sequentially for a runtime read-back reason —
+  // see phase-2b/index.ts — but each lens never sees another's output). Reuse
+  // the `research` team so the sidebar groups them near Phase 2. Glyphs match
+  // each lens's `glyph` in `lib/lenses.ts`.
+  qualityValueLens:    { role: "Quality-Value Lens",   glyph: "Qv", hue: 132, team: "research" },
+  cycleRiskLens:       { role: "Cycle / Risk Lens",    glyph: "Cy", hue: 208, team: "research" },
+  macroReflexiveLens:  { role: "Macro-Reflexive Lens", glyph: "Mr", hue: 38, team: "research" },
+  forensicSkepticLens: { role: "Forensic Skeptic Lens", glyph: "Fs", hue: 348, team: "research" },
   // Phase 3 — trader
   trader:              { role: "Trader",               glyph: "Tr", hue: 248, team: "trade" },
   // Phase 4 — risk debate
@@ -62,7 +72,7 @@ export type AgentName = keyof typeof AGENTS;
 
 /** Phase grouping the sidebar uses to bucket entries (rendered top-down P5 → P1). */
 export const PHASE_GROUPS: ReadonlyArray<{
-  id: "p6" | "p5" | "p4" | "p3" | "p2" | "p1";
+  id: "p6" | "p5" | "p4" | "p3" | "p2b" | "p2" | "p1";
   label: string;
   agents: ReadonlyArray<AgentName>;
 }> = [
@@ -70,9 +80,32 @@ export const PHASE_GROUPS: ReadonlyArray<{
   { id: "p5", label: "Phase 5 — Portfolio Management", agents: ["scenarioForecaster", "portfolioManager"] },
   { id: "p4", label: "Phase 4 — Risk Debate", agents: ["aggressiveRisk", "conservativeRisk", "neutralRisk", "riskAssessment"] },
   { id: "p3", label: "Phase 3 — Trader", agents: ["trader"] },
+  { id: "p2b", label: "Lens Pack — Independent Verdicts", agents: ["qualityValueLens", "cycleRiskLens", "macroReflexiveLens", "forensicSkepticLens"] },
   { id: "p2", label: "Phase 2 — Research Debate", agents: ["bullResearcher", "bearResearcher", "researchManager"] },
   { id: "p1", label: "Phase 1 — Analysts", agents: ["fundamentalsAnalyst", "sentimentAnalyst", "newsAnalyst", "technicalAnalyst", "companyProfileAnalyst", "marketAnalyst", "macroAnalyst", "quantAnalyst", "disclosureAnalyst"] },
 ];
+
+/** The lens pack's stable ids, in convergence-strip render order. Declared here
+ *  (not imported from `lib/lenses.ts`) so `agents.ts` stays a leaf — the persona
+ *  bodies live in `lib/lenses.ts`, which imports nothing from `agents.ts`. The
+ *  two MUST agree: `LENS_PACK[i].id === LENS_IDS[i]` (asserted in tests). */
+export const LENS_IDS = [
+  "quality-value",
+  "cycle-risk",
+  "macro-reflexive",
+  "forensic-skeptic",
+] as const;
+
+export type LensId = (typeof LENS_IDS)[number];
+
+/** Map a lens id → its `AGENTS` entry name. Lens memos are keyed by lens id; the
+ *  agent identity backs the sidebar badge/color. */
+const LENS_AGENT_BY_ID: Record<LensId, AgentName> = {
+  "quality-value": "qualityValueLens",
+  "cycle-risk": "cycleRiskLens",
+  "macro-reflexive": "macroReflexiveLens",
+  "forensic-skeptic": "forensicSkepticLens",
+};
 
 /** Resource storage keys for Phase 1 memos.
  *
@@ -158,6 +191,27 @@ export const PHASE_2_MEMO_KEYS = {
 >;
 
 export type Phase2MemoShortName = keyof typeof PHASE_2_MEMO_KEYS;
+
+/** Resource storage keys for the phase-2b lens pack (Slice 5), DERIVED from
+ *  `LENS_IDS` so adding a lens is one edit to that array (+ its persona in
+ *  `lib/lenses.ts`). The short-name IS the lens id (kebab-case), e.g.
+ *  `"quality-value"`; the memo key is `memos/p2b/<lensId>`. Same value shape as
+ *  the other phase maps. */
+export const PHASE_2B_MEMO_KEYS = Object.fromEntries(
+  LENS_IDS.map((id) => [
+    id,
+    {
+      agentName: LENS_AGENT_BY_ID[id],
+      memoKey: `memos/p2b/${id}`,
+      collectionKey: `p2b/${id}`,
+    },
+  ]),
+) as Record<
+  LensId,
+  { agentName: AgentName; memoKey: string; collectionKey: string }
+>;
+
+export type Phase2bMemoShortName = keyof typeof PHASE_2B_MEMO_KEYS;
 
 /** Resource storage keys for Phase 3 memos (trader). Same shape as the
  *  Phase 1 / 2 maps. */
@@ -246,6 +300,7 @@ export type Phase6MemoShortName = keyof typeof PHASE_6_MEMO_KEYS;
 export const ALL_MEMO_KEYS = {
   ...PHASE_1_MEMO_KEYS,
   ...PHASE_2_MEMO_KEYS,
+  ...PHASE_2B_MEMO_KEYS,
   ...PHASE_3_MEMO_KEYS,
   ...PHASE_4_MEMO_KEYS,
   ...PHASE_5_MEMO_KEYS,

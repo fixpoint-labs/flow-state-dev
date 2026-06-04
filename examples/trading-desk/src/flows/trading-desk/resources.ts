@@ -10,6 +10,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
+import { lensConvergenceStateSchema } from "./lens-convergence-resource";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
  *  in `pending`, transitions to `writing` when the analyst generator starts,
@@ -307,6 +308,38 @@ export const memoStateSchema = z.object({
     .default(null),
   blindSpots: z.array(z.string()).nullable().default(null),
   proposedRevision: z.string().nullable().default(null),
+  // Phase 5 PortfolioFit extension (Slice 5). Only the portfolioManager memo
+  // populates this. RESOURCE STATE (not a generator output) → `.nullable()
+  // .default(null)` is correct here, NOT the strict shape (BP-023). The five
+  // LLM-emitted fields (action / targetWeightPct / sizingRationale /
+  // concentrationRisk / convictionBasis) pass through from the PM output; the
+  // four echo fields (suggestedAccount / currentWeightPct / weightDeltaPct /
+  // hasPortfolioContext) are DERIVED in the commit handler, never trusted from
+  // the LLM (the agreesWithTrader / upstreamReferences precedent).
+  portfolioFit: z
+    .object({
+      action: z.enum(["initiate", "add", "trim", "exit", "hold"]),
+      targetWeightPct: z.number(),
+      sizingRationale: z.string(),
+      concentrationRisk: z.string(),
+      convictionBasis: z.string(),
+      // Resolved/validated in the commit handler, NOT from the LLM:
+      suggestedAccount: z.string(), // resolved account label (or "")
+      currentWeightPct: z.number(), // existing weight in this name (0 if none)
+      weightDeltaPct: z.number(), // targetWeightPct − currentWeightPct
+      hasPortfolioContext: z.boolean(), // true only when a portfolio was supplied
+      // As-of of the frozen portfolio snapshot (the quotes' fetch time). Mirrored
+      // here so the PmHero panel can render the staleness/provenance line
+      // client-side — session-state `portfolio` is not client-exposed (§2.2), so
+      // the memo is the transport. Null on no-portfolio runs.
+      snapshotAsOf: z.string().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+  // Lens convergence mirror (Slice 5), projected onto the PM memo at commit so
+  // the PmHero strip reads it without a second resource fetch. Reuses the
+  // resource's own state schema (z.record-free → safe to import here, no cycle).
+  lensConvergence: lensConvergenceStateSchema.nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

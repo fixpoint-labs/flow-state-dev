@@ -13,6 +13,8 @@ import type {
 } from "@flow-state-dev/patterns/round-robin";
 import { AGENTS, PHASE_1_MEMO_KEYS } from "../agents";
 import type { CitationIntegrity } from "../resources";
+import type { PortfolioContextInput } from "../flow-schema";
+import type { LensConvergenceState } from "../lens-convergence-resource";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
@@ -338,4 +340,157 @@ export function readContributionsEntries(
     | RoundRobinContributionsState
     | undefined;
   return state?.entries ?? [];
+}
+
+/**
+ * Render the frozen per-run portfolio snapshot as the `<portfolioContext>`
+ * prompt block for the trader (P3) and PM (P5). Two consumers → shared here
+ * (BP-018). Best-effort from whatever the client supplied at dispatch; it must
+ * never throw.
+ *
+ * Real-money discipline:
+ *  - Numbers trace to stored qty × a sourced quote — this only renders what the
+ *    snapshot carries; it fabricates nothing.
+ *  - A holding whose price was unknown has `marketValue: null` / `weightPct:
+ *    null` → rendered as "price unavailable", never a guessed value.
+ *  - `snapshotAsOf` is surfaced so the model labels the snapshot as as-of, not
+ *    live (RISK-P3); coverage ("priced X of Y") is stated honestly.
+ *  - The existing position in `<ticker>` is computed by summing this snapshot's
+ *    own rows for the ticker — no recomputation against external data.
+ *
+ * Returns `null` when no portfolio was supplied so the capability's XML renderer
+ * suppresses the tag entirely (portfolio-blind run, exactly as today).
+ */
+export function formatPortfolioContext(
+  portfolio: PortfolioContextInput | null | undefined,
+  selectedAccountIds: string[] | null | undefined,
+  ticker: string,
+): string | null {
+  // Guard on the required `accounts` array (not just null): a partial/empty
+  // snapshot suppresses the tag rather than throwing on a missing field.
+  if (
+    portfolio == null ||
+    typeof portfolio !== "object" ||
+    !Array.isArray((portfolio as Partial<PortfolioContextInput>).accounts) ||
+    !Array.isArray((portfolio as Partial<PortfolioContextInput>).holdings)
+  ) {
+    return null;
+  }
+  const tickerUpper = ticker.toUpperCase();
+  const selected = new Set(selectedAccountIds ?? []);
+  const accountById = new Map(portfolio.accounts.map((a) => [a.id, a]));
+
+  const lines: string[] = [];
+  lines.push(
+    `Total portfolio NAV: ~$${portfolio.totalNav.toLocaleString("en-US", {
+      maximumFractionDigits: 0,
+    })} (display approximation).`,
+  );
+  if (portfolio.snapshotAsOf != null && portfolio.snapshotAsOf !== "") {
+    lines.push(
+      `Snapshot as of ${portfolio.snapshotAsOf} — frozen at run start, NOT live. Treat positions as a snapshot.`,
+    );
+  }
+  lines.push(
+    `Price coverage: ${portfolio.pricedHoldings} of ${portfolio.totalHoldings} holdings priced; ` +
+      `unpriced holdings have no market value (do not assume one).`,
+  );
+
+  // Existing position in the analyzed ticker — summed from this snapshot's rows.
+  const tickerRows = portfolio.holdings.filter(
+    (h) => h.ticker.toUpperCase() === tickerUpper,
+  );
+  if (tickerRows.length > 0) {
+    const knownValue = tickerRows
+      .filter((h) => h.marketValue != null)
+      .reduce((s, h) => s + (h.marketValue ?? 0), 0);
+    const knownWeight = tickerRows
+      .filter((h) => h.weightPct != null)
+      .reduce((s, h) => s + (h.weightPct ?? 0), 0);
+    const accountsHolding = tickerRows
+      .map((h) => accountById.get(h.account)?.label ?? h.account)
+      .join(", ");
+    lines.push(
+      `Existing position in ${tickerUpper}: held in ${accountsHolding}; ` +
+        `current weight ~${knownWeight.toFixed(2)}% of NAV (~$${knownValue.toLocaleString(
+          "en-US",
+          { maximumFractionDigits: 0 },
+        )}).`,
+    );
+  } else {
+    lines.push(`Existing position in ${tickerUpper}: none — this would initiate a position.`);
+  }
+
+  // Accounts — flag which are in the user's selection.
+  lines.push("Accounts:");
+  for (const acc of portfolio.accounts) {
+    const mark = selected.size > 0 && selected.has(acc.id) ? " [selected for this trade]" : "";
+    lines.push(
+      `- ${acc.label} (${acc.type}): ~$${acc.cash.toLocaleString("en-US", {
+        maximumFractionDigits: 0,
+      })} investable cash${mark}.`,
+    );
+  }
+
+  // Top weights for a concentration read (best-effort; only priced rows).
+  const priced = portfolio.holdings.filter((h) => h.weightPct != null);
+  if (priced.length > 0) {
+    const top = [...priced]
+      .sort((a, b) => (b.weightPct ?? 0) - (a.weightPct ?? 0))
+      .slice(0, 6)
+      .map((h) => `${h.ticker.toUpperCase()} ${(h.weightPct ?? 0).toFixed(1)}%`)
+      .join(", ");
+    lines.push(`Top positions by weight: ${top}.`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Render the deterministic lens-convergence summary as the `<lensConvergence>`
+ * prompt block the PM reasons with to size `portfolioFit`. Single render path
+ * (no LLM re-narration). Frames convergence as ROBUSTNESS, not truth (real-money
+ * gate §1.6): "robust across philosophies", never "high probability of being
+ * right". Returns `null` (tag suppressed) when the pack did not run.
+ */
+export function formatLensConvergence(
+  convergence: LensConvergenceState | null | undefined,
+): string | null {
+  // A registered-but-unwritten nullable single resource can surface as `{}` (an
+  // empty object), not `null`, in the generator context. Guard on the required
+  // `classification` field so a not-yet-computed read suppresses the tag rather
+  // than throwing on a missing field (fast preset → pack skipped).
+  if (
+    convergence == null ||
+    typeof convergence !== "object" ||
+    (convergence as Partial<LensConvergenceState>).classification == null
+  ) {
+    return null;
+  }
+  const { classification, agreementScore, netLean, majorityStance, verdicts, dissenters } =
+    convergence;
+  const lines: string[] = [];
+  lines.push(
+    `Independent investor lenses re-read the SAME post-Phase-2 evidence (not a debate). ` +
+      `Each applies a documented methodology — robustness across philosophies, NOT a probability of being right.`,
+  );
+  lines.push(
+    `Read: ${classification.toUpperCase()} · majority ${majorityStance} · ` +
+      `agreement ${(agreementScore * 100).toFixed(0)}% · netLean ${netLean >= 0 ? "+" : ""}${netLean.toFixed(2)}.`,
+  );
+  if (verdicts.length > 0) {
+    lines.push("Per-lens verdicts:");
+    for (const v of verdicts) {
+      const dissent = dissenters.includes(v.lensId) ? " (dissents from majority)" : "";
+      const gap = v.dataGap !== "" ? ` [data gap: ${v.dataGap}]` : "";
+      lines.push(
+        `- ${v.label} (${v.attribution}): ${v.stance} @ ${v.conviction.toFixed(2)}${dissent} — ${v.keyDriver}${gap}`,
+      );
+    }
+  }
+  lines.push(
+    `Sizing rule: a CONVERGENT read permits the PM's full sizing; MIXED/DIVERGENT pulls toward a ` +
+      `smaller target or hold. Robustness adjusts size DOWN on divergence only — it never inflates a position.`,
+  );
+  return lines.join("\n");
 }

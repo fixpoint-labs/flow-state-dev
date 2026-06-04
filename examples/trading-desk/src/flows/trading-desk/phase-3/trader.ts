@@ -59,6 +59,10 @@ export const traderGenerator = generator({
       phase1MemosFull: true,
       phase2DebateFull: true,
       reasoning: true,
+      // Slice 5 — the trader sees the live portfolio for pre-trade sizing realism
+      // (it treats `sizePct` as % of NAV). No trader output-schema change: the
+      // portfolio-fit verdict lives solely on the PM (the final arbiter).
+      portfolioContext: true,
     }),
   ],
   ...definePromptFile(traderPrompt),

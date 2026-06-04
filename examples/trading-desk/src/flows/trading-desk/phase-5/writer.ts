@@ -45,6 +45,10 @@ import type { ReportDecisionMeta } from "../report-index";
 import { memoResources } from "../resources";
 import { sessionStateSchema } from "../state";
 import { valuationSpineResource, type ValuationSpineState } from "../valuation-spine-resource";
+import {
+  lensConvergenceResource,
+  type LensConvergenceState,
+} from "../lens-convergence-resource";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 import { scenarioForecastOutputSchema } from "./scenario-forecaster";
 
@@ -144,6 +148,9 @@ export const commitPortfolioManagerMemo = handler({
     ...memoResources,
     valuationSpine: valuationSpineResource,
     decisionSnapshot: decisionSnapshotResource,
+    // Slice 5 — read the deterministic convergence read to mirror it onto the
+    // memo (so the PmHero strip reads one place). Nullable; null on `fast` runs.
+    lensConvergence: lensConvergenceResource,
   },
   execute: async (decision, ctx) => {
     // `agreesWithTrader` is computed, not LLM-emitted. If the trader memo
@@ -219,6 +226,51 @@ export const commitPortfolioManagerMemo = handler({
       relativeRating = spine.envelope.relativeRating;
     }
 
+    // ── Portfolio-fit echo fields (Slice 5) ────────────────────────────
+    // Derived deterministically from the frozen session-state snapshot + the
+    // real account list — NOT trusted from the LLM (the agreesWithTrader /
+    // upstreamReferences precedent). The five LLM-emitted fields (action /
+    // targetWeightPct / sizingRationale / concentrationRisk / convictionBasis)
+    // pass through; the four echo fields are computed here.
+    // A null/absent portfolio can surface as `{}` in some runtime paths, so gate
+    // on the required `accounts` array, not `!== null`, to decide whether a real
+    // portfolio snapshot was supplied.
+    const rawPortfolio = ctx.session.state.portfolio;
+    const portfolio =
+      rawPortfolio != null && Array.isArray(rawPortfolio.accounts) ? rawPortfolio : null;
+    const hasPortfolioContext = portfolio !== null;
+    const tickerUpper = ctx.session.state.ticker.toUpperCase();
+    // Current weight in this name = sum of the snapshot's priced rows for the
+    // ticker (across all accounts). 0 when there is no portfolio or no priced
+    // position (never fabricated from an unpriced holding).
+    const currentWeightPct = hasPortfolioContext
+      ? (portfolio?.holdings ?? [])
+          .filter((h) => h.ticker.toUpperCase() === tickerUpper && h.weightPct != null)
+          .reduce((s, h) => s + (h.weightPct ?? 0), 0)
+      : 0;
+    const weightDeltaPct = decision.portfolioFit.targetWeightPct - currentWeightPct;
+    // Validate the LLM's suggested account LABEL against the real account list.
+    // A hallucinated / absent label (or no portfolio) resolves to "" — never
+    // invent an account the user does not have (real-money gate §1.8).
+    const realLabels = new Set((portfolio?.accounts ?? []).map((a) => a.label));
+    const suggestedAccount = realLabels.has(decision.portfolioFit.suggestedAccount)
+      ? decision.portfolioFit.suggestedAccount
+      : "";
+
+    // Mirror the deterministic convergence read onto the memo so the PmHero
+    // strip reads one place. Null on `fast` runs (the lens pack was skipped). A
+    // registered-but-unwritten nullable single resource can surface as `{}`
+    // (empty object), which would fail the memo's nullable schema if mirrored —
+    // so normalize a partial/empty read to null (gate on `classification`).
+    const rawConvergence = ctx.resources.lensConvergence?.state as
+      | LensConvergenceState
+      | null
+      | undefined;
+    const lensConvergence =
+      rawConvergence != null && rawConvergence.classification != null
+        ? rawConvergence
+        : null;
+
     await publishMemo(
       ctx,
       "portfolioManager",
@@ -248,6 +300,22 @@ export const commitPortfolioManagerMemo = handler({
         ratingOverrideReason,
         absoluteRating,
         relativeRating,
+        // Slice 5 — portfolio-fit verdict with the four derived echo fields.
+        portfolioFit: {
+          action: decision.portfolioFit.action,
+          targetWeightPct: decision.portfolioFit.targetWeightPct,
+          sizingRationale: decision.portfolioFit.sizingRationale,
+          concentrationRisk: decision.portfolioFit.concentrationRisk,
+          convictionBasis: decision.portfolioFit.convictionBasis,
+          suggestedAccount,
+          currentWeightPct,
+          weightDeltaPct,
+          hasPortfolioContext,
+          // Mirror the snapshot as-of so the UI labels the panel as a frozen
+          // snapshot, not live (RISK-P3 provenance). Null when no portfolio.
+          snapshotAsOf: portfolio?.snapshotAsOf ?? null,
+        },
+        lensConvergence,
       },
     );
 

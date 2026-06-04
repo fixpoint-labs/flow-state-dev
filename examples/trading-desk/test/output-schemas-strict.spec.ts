@@ -36,6 +36,7 @@ import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/
 import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
 import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
 import { pdfExtractionSchema } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
+import { lensVerdictOutputSchema } from "../src/flows/trading-desk/phase-2b/lens-verdict-schema";
 
 type Issue = { path: string; reason: string };
 
@@ -131,6 +132,7 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["Phase 3 tradeProposalOutputSchema", tradeProposalOutputSchema],
   ["Phase 4 personaCritiqueOutputSchema", personaCritiqueOutputSchema],
   ["Phase 4 riskAssessmentOutputSchema", riskAssessmentOutputSchema],
+  ["Phase 2b lensVerdictOutputSchema", lensVerdictOutputSchema],
   ["Phase 5 scenarioForecastOutputSchema", scenarioForecastOutputSchema],
   ["Phase 5 portfolioDecisionOutputSchema", portfolioDecisionOutputSchema],
   ["Phase 6 thesisAlignmentOutputSchema", thesisAlignmentOutputSchema],
@@ -157,4 +159,16 @@ describe("Generator output schemas are OpenAI strict-mode compatible", () => {
       expect(issues).toEqual([]);
     });
   }
+
+  // The nested `portfolioFit` object (Slice 5) is auto-covered by the
+  // portfolioDecisionOutputSchema case above, but assert it explicitly so a
+  // future change that loosens a portfolioFit field (e.g. `.optional()` on
+  // `suggestedAccount`) fails with a clear, named signal rather than buried in
+  // the parent walk.
+  it("Phase 5 portfolioFit nested object survives the walker with no violations", () => {
+    const strict = makeSchemaStrict(portfolioDecisionOutputSchema);
+    const issues = findStrictViolations(strict, "$");
+    const portfolioFitIssues = issues.filter((i) => i.path.includes("portfolioFit"));
+    expect(portfolioFitIssues).toEqual([]);
+  });
 });
