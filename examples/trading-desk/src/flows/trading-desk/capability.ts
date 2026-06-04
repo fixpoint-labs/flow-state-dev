@@ -43,6 +43,7 @@ import {
 } from "./agents";
 import { memosCollection, phase2Contributions } from "./resources";
 import { valuationSpineResource } from "./valuation-spine-resource";
+import { lensConvergenceResource } from "./lens-convergence-resource";
 import {
   formatValuationSpine,
   formatRatingEnvelope,
@@ -54,8 +55,10 @@ import {
   formatAnalystMemos,
   formatCitationIntegrity,
   formatDebate,
+  formatLensConvergence,
   formatMemoBlock,
   formatPersonaCritique,
+  formatPortfolioContext,
   formatRiskAssessmentExtensions,
   formatScenarioForecastExtensions,
   formatStanceContributions,
@@ -471,6 +474,34 @@ export const tradingDesk = defineCapability({
       },
     },
 
+    /** Live-portfolio context for the trader (P3) and PM (P5). Reads the frozen
+     *  session-state snapshot (no resource — it was frozen at seed time, same
+     *  pattern as `userThesis`). Returns null to suppress the `<portfolioContext>`
+     *  tag entirely when no portfolio was supplied — the run stays
+     *  portfolio-blind exactly as today. */
+    portfolioContext: {
+      context: {
+        portfolioContext: (_input, ctx) =>
+          formatPortfolioContext(
+            ctx.session.state.portfolio,
+            ctx.session.state.selectedAccountIds,
+            ctx.session.state.ticker,
+          ),
+      },
+    },
+
+    /** Deterministic lens-convergence read for the PM (P5). The PM consumes it
+     *  as the conviction input that sizes `portfolioFit` (convergence ->
+     *  conviction -> size). Returns null (tag suppressed) when the lens pack did
+     *  not run (fast preset) or has not computed yet. */
+    lensConvergence: {
+      resources: { lensConvergence: lensConvergenceResource },
+      context: {
+        lensConvergence: (_input, ctx) =>
+          formatLensConvergence(ctx.resources.lensConvergence?.state),
+      },
+    },
+
     // ────────────────────────────────────────────────────────────────────
     // Cost-preset-gated variants.
     //
@@ -551,8 +582,10 @@ export {
   formatAnalystMemos,
   formatCitationIntegrity,
   formatDebate,
+  formatLensConvergence,
   formatMemoBlock,
   formatPersonaCritique,
+  formatPortfolioContext,
   formatRiskAssessmentExtensions,
   formatScenarioForecastExtensions,
   formatStanceContributions,

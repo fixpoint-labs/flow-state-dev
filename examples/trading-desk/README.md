@@ -183,6 +183,33 @@ Phase 5 — portfolio manager:
   publishes, so the status bar (and any future affordance) can render
   a terminal "complete" state without inferring it from item counts.
 
+Portfolio-aware analysis + lens pack (optional):
+
+- **A supplied portfolio makes sizing concrete** — when a run carries a
+  portfolio snapshot (the user's accounts + live quotes, built client-side
+  at dispatch and frozen onto session state), the trader and PM see a
+  `<portfolioContext>` block: existing position, current weight, available
+  cash, account types. The PM then emits a `portfolioFit` verdict —
+  `action` (initiate / add / trim / exit / hold), a `targetWeightPct`, a
+  sizing rationale that references the existing position, a concentration
+  read, and a suggested account validated against the real account list
+  (a hallucinated label resolves to none, never an invented account).
+  With no portfolio supplied the run stays portfolio-blind exactly as
+  before. Market value, NAV, and weight are computed from stored quantity
+  × a sourced live quote; a missing quote degrades to a dash, never a
+  fabricated price, and the panel shows the snapshot's as-of so a frozen
+  snapshot never reads as live.
+- **An investor-lens convergence signal (Phase 2b, `full` only)** — after
+  Phase 2, four documented-methodology lenses (Quality-Value, Cycle/Risk,
+  Macro-Reflexive, Forensic-Skeptic) independently re-read the same
+  evidence bundle and each emit their own verdict, blind to one another. A
+  deterministic handler — not an LLM — computes whether they converge or
+  diverge, and the PM reads that as a conviction input: a call that holds
+  across philosophies can take the PM's full size, a philosophy-dependent
+  one is sized down. It is independent parallel reading, not a staged
+  debate, and convergence means "robust across philosophies," not "likely
+  correct." On the `fast` preset the pack is skipped entirely.
+
 ## Run it
 
 ```bash
@@ -426,11 +453,12 @@ data flow.
 
 ## What this example is not
 
-- **Not a trading product.** It does not execute. It does not size against
-  a real portfolio. It does not track P&L. `sizePct` is a suggested
-  percentage of NAV in the 0.5–2.5 range for a normal-conviction trade;
-  the trader's prompt is explicit that the trader does not have portfolio
-  context.
+- **Not a trading product.** It does not execute and it does not track
+  P&L. It can reason about a *supplied* portfolio snapshot (see
+  "Portfolio-aware analysis" above), but that snapshot is dev-only and
+  frozen at dispatch, the sizing is documented-methodology not advice, and
+  with no portfolio supplied `sizePct` is still a suggested percentage of a
+  notional NAV in the 0.5–2.5 range for a normal-conviction trade.
 - **Not a backtest.** There is no historical evaluation, no calibration
   against outcomes, no measure of decision quality. The Portfolio
   Manager's `decisionConfidence` is self-reported uncertainty, not a

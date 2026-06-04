@@ -40,12 +40,15 @@ import { AgentBadge } from "@/components/agent-badge";
 import { ThesisHeader } from "./thesis-header";
 import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
+import { LensCard } from "./lens-card";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
+  LENS_IDS,
+  PHASE_2B_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
@@ -62,6 +65,13 @@ type ThesesPaneProps = {
   session: SessionView;
   memoStatus: Partial<Record<AnyMemoShortName, MemoStatus>>;
 };
+
+/** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
+ *  `PHASE_2B_MEMO_KEYS` registry. A `published` memo for one of these agents
+ *  renders as a dedicated `LensCard` rather than the generic memo doc. */
+const LENS_AGENTS: ReadonlySet<AgentName> = new Set(
+  LENS_IDS.map((id) => PHASE_2B_MEMO_KEYS[id].agentName),
+);
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
 const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
@@ -249,6 +259,10 @@ type MemoDocProps = {
 type AcceptedAdjustment = NonNullable<
   MemoState["acceptedAdjustments"]
 >["sizing"];
+// Slice 5 — portfolio-fit + lens-convergence shapes, derived from the canonical
+// schema so the client-data type can't drift.
+type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
+type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
 
 type MemoClientData = {
   status: MemoStatus;
@@ -259,6 +273,10 @@ type MemoClientData = {
   metrics: Record<string, string> | null;
   citations: Array<{ url: string; title: string }> | null;
   errorMessage: string | null;
+  // Lens fields (Slice 5) — populated on `memos/p2b/<lensId>` lens memos; the
+  // 3-tier stance + self-reported conviction the LensCard (Slice 7) reads back.
+  stance: "bullish" | "neutral" | "bearish" | null;
+  conviction: number | null;
   // Phase 5 extension fields — only populated on `memos/p5/scenario-forecaster`.
   scenarios: Array<{
     name: string;
@@ -299,6 +317,9 @@ type MemoClientData = {
     | null;
   agreesWithTrader: boolean | null;
   primaryScenario: string | null;
+  // Slice 5 — only populated on `memos/p5/portfolio-manager`.
+  portfolioFit: PortfolioFit | null;
+  lensConvergence: LensConvergence | null;
 };
 
 function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
@@ -373,6 +394,13 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
     );
   }
 
+  // Slice 7 — a published lens memo renders as a dedicated LensCard (glyph +
+  // attribution framing, stance/conviction, the data-gap honesty line, and the
+  // structural-bear affordance) instead of the generic ThesisHeader+ThesisBody.
+  if (LENS_AGENTS.has(agent)) {
+    return <LensCard agent={agent} data={data} />;
+  }
+
   return (
     <article className="flex flex-col gap-5">
       <ThesisHeader
@@ -433,6 +461,9 @@ function PmHeroWithScenarios({
       upstreamReferences={data?.upstreamReferences ?? null}
       agreesWithTrader={data?.agreesWithTrader ?? null}
       scenarioStrip={scenarioStrip}
+      portfolioFit={data?.portfolioFit ?? null}
+      lensConvergence={data?.lensConvergence ?? null}
+      snapshotAsOf={data?.portfolioFit?.snapshotAsOf ?? null}
     />
   );
 }

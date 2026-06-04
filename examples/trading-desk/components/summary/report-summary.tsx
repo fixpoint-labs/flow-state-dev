@@ -15,8 +15,11 @@
  *   - a stopped run shows only its stop banner, never a half-built decision.
  *   - the persistent StatusBar not-advice disclaimer stays visible (owned by the
  *     page shell; this view never hides chrome).
- *   - portfolio-fit + lens-convergence are SEAMS ONLY (Slice 5/6) — rendered as
- *     nothing here, never stubbed with fabricated positions.
+ *   - portfolio-fit + lens-convergence (Slice 6) render the PM memo's stored
+ *     `portfolioFit` / `lensConvergence` mirrors and OMIT cleanly when absent —
+ *     a portfolio-blind or cost-gated run shows neither, never a stubbed
+ *     position. The weight before/after block additionally requires
+ *     `hasPortfolioContext` (a no-portfolio run has no current weight to chart).
  */
 "use client";
 
@@ -43,6 +46,8 @@ import { ChartEmpty } from "./chart-empty";
 import { BarGroup } from "./charts/bar-group";
 import { ScenarioStrip } from "./charts/scenario-strip";
 import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
+import { PortfolioFitBlock } from "./portfolio-fit-block";
+import { LensConvergenceBlock } from "./lens-convergence-block";
 import { cn } from "@/lib/utils";
 
 export type ReportSummaryProps = {
@@ -167,9 +172,6 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         keyDependencies={summary.keyDependencies}
       />
 
-      <SectionLabel>Analyst TLDRs</SectionLabel>
-      <AnalystTldrGrid analysts={summary.analysts} />
-
       {summary.thesisAlignment.alignment !== null ? (
         <p className="text-[11px] text-[color:var(--c-fg-muted)]">
           <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
@@ -182,9 +184,28 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
         </p>
       ) : null}
 
-      {/* SEAM (Slice 5/6): portfolio-fit weight chart + lens-convergence strip.
-          Rendered as nothing until the portfolio + lens features land — never a
-          stub with fabricated positions (spec 06 §9.5). */}
+      {/* Slice 6: portfolio weight before/after block + lens-convergence card,
+          read from the PM memo's stored `portfolioFit` / `lensConvergence`
+          mirrors. Each omits cleanly when absent — never a stubbed position
+          (spec 06 §9.5). The weight block additionally requires a real portfolio
+          (`hasPortfolioContext`); a no-portfolio run has no current weight. */}
+      {summary.portfolioFit !== null &&
+      summary.portfolioFit.hasPortfolioContext ? (
+        <>
+          <SectionLabel>Portfolio fit</SectionLabel>
+          <PortfolioFitBlock fit={summary.portfolioFit} />
+        </>
+      ) : null}
+
+      {summary.lensConvergence !== null ? (
+        <>
+          <SectionLabel>Investor lenses</SectionLabel>
+          <LensConvergenceBlock convergence={summary.lensConvergence} />
+        </>
+      ) : null}
+
+      <SectionLabel>Analyst TLDRs</SectionLabel>
+      <AnalystTldrGrid analysts={summary.analysts} />
     </div>
   );
 }

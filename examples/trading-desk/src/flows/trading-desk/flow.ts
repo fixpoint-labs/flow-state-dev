@@ -24,6 +24,9 @@ import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyzeInputSchema } from "./flow-schema";
 import { phase1Pipeline } from "./phase-1";
 import { phase2Pipeline } from "./phase-2";
+import { phase2bPipeline } from "./phase-2b";
+import { resetLensConvergence } from "./phase-2b/writer";
+import { lensConvergenceResource } from "./lens-convergence-resource";
 import { phase3Pipeline } from "./phase-3";
 import { phase4Pipeline } from "./phase-4";
 import { phase5Pipeline, scenarioForecasterPipeline } from "./phase-5";
@@ -97,6 +100,11 @@ const seedSession = handler({
       userThesis,
       userThesisRationale: userThesis === null ? null : input.userThesisRationale,
       userThesisWarning,
+      // Freeze the per-run portfolio snapshot (Slice 5), same discipline as
+      // `userThesis`. Null → portfolio-blind run. The pipeline (P1–P2) runs
+      // blind; only the lens pack, the trader, and the PM read it.
+      portfolio: input.portfolio,
+      selectedAccountIds: input.selectedAccountIds,
     });
     return input;
   },
@@ -232,6 +240,19 @@ const analyzePipeline = sequencer({
   // warm cache the technical analyst already populated — no extra fetch.
   .tap(storePriceHistory)
   .step(phase2Pipeline)
+  // Phase 2b — investor-lens pack (Slice 5). Pre-decision: runs after Phase 2
+  // and before Phase 3 so convergence is a context input the PM reasons with.
+  // COST-GATED on the `full` preset only (RISK-F3): N parallel heavy generators
+  // multiply token spend, so a `fast` run skips the pack entirely (no memos, no
+  // convergence resource). On `fast`, the PM still emits `portfolioFit` — just
+  // without a convergence-derived `convictionBasis`.
+  //
+  // Reset any prior convergence FIRST, unconditionally (outside the gate), so a
+  // re-run never surfaces a stale read. Not reachable today (costPreset is in the
+  // keying tuple, so a session's preset is fixed) — defensive against a future
+  // tuple change. The `full` pack then overwrites it; `fast` leaves it null.
+  .tap(resetLensConvergence)
+  .stepIf((_v, ctx) => ctx.session.state.costPreset === "full", phase2bPipeline)
   .step(phase3Pipeline)
   .step(phase4Pipeline)
   .step(scenarioForecasterPipeline)
@@ -311,6 +332,10 @@ const tradingDeskFlow = defineFlow({
     specialInstructions: specialInstructionsResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
+    // Lens convergence — computed deterministically after the phase-2b lens
+    // pack (full preset only), read by the PM as a sizing-conviction input and
+    // by the PmHero lens strip. Nullable; null on `fast` runs (pack skipped).
+    lensConvergence: lensConvergenceResource,
     // Price-history slice — persisted after Phase 1, read by the Summary page's
     // price overlay via `useResource(session, "priceHistory")`.
     priceHistory: priceHistoryResource,

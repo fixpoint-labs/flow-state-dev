@@ -80,6 +80,21 @@ export type FactorScores = {
   momentum: number | null;
 } | null;
 
+/**
+ * The PM's portfolio-fit verdict (Slice 5), read straight off the PM memo's
+ * `portfolioFit` mirror. NOT recomputed here — every number is a stored field
+ * (the commit handler derived the four echo fields; the LLM emitted the rest).
+ * Null when the run was portfolio-blind (no PM memo / no `portfolioFit`).
+ */
+export type PortfolioFit = NonNullable<MemoState["portfolioFit"]>;
+
+/**
+ * The deterministic lens-convergence read (Slice 5), mirrored onto the PM memo
+ * at commit. Null when the lens pack did not run (the `fast` cost preset skips
+ * it — RISK-F3 — or no PM memo).
+ */
+export type LensConvergence = NonNullable<MemoState["lensConvergence"]>;
+
 export type ReportSummary = {
   ticker: string;
   date: string;
@@ -102,6 +117,19 @@ export type ReportSummary = {
   distribution: string | null;
   /** Labeled "Thesis alignment" in the UI — NOT portfolio fit (spec 06 §9.4). */
   thesisAlignment: { alignment: string | null; confidence: number | null };
+  /**
+   * The PM's portfolio-fit verdict (Slice 5 mirror), or null when the run was
+   * portfolio-blind. The Summary renders the before/after weight block ONLY
+   * when this is non-null AND `hasPortfolioContext` is true (a no-portfolio run
+   * sizes against a notional NAV and has no current weight to chart).
+   */
+  portfolioFit: PortfolioFit | null;
+  /**
+   * The deterministic lens-convergence read (Slice 5 mirror), or null when the
+   * lens pack was skipped (`fast` cost preset / no PM memo). The Summary renders
+   * the lens card ONLY when this is non-null.
+   */
+  lensConvergence: LensConvergence | null;
 };
 
 /**
@@ -297,6 +325,13 @@ export function buildReportSummary(
     confidence: align?.alignmentConfidence ?? null,
   };
 
+  // Slice 5 portfolio-fit + lens-convergence mirrors (PM memo). Read straight
+  // through — every number was stored at PM-commit; nothing is recomputed here.
+  // Absent on portfolio-blind / cost-gated-off / unpublished-PM runs → null, so
+  // the Summary omits the corresponding block cleanly (spec 06 §9.5).
+  const portfolioFit = pm?.portfolioFit ?? null;
+  const lensConvergence = pm?.lensConvergence ?? null;
+
   return {
     ticker,
     date,
@@ -311,6 +346,8 @@ export function buildReportSummary(
     scenarios,
     distribution,
     thesisAlignment,
+    portfolioFit,
+    lensConvergence,
   };
 }
 

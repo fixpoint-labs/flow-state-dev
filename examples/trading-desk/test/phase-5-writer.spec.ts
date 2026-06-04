@@ -156,6 +156,18 @@ function portfolioDecision(
         ? "Data-center beat, +12%"
         : "",
     ratingOverrideReason: "",
+    portfolioFit: {
+      action:
+        finalRating === "Buy" || finalRating === "Overweight"
+          ? ("initiate" as const)
+          : ("hold" as const),
+      targetWeightPct:
+        finalRating === "Buy" || finalRating === "Overweight" ? 2.5 : 0,
+      sizingRationale: "Sized without portfolio context (none supplied).",
+      concentrationRisk: "",
+      suggestedAccount: "",
+      convictionBasis: "",
+    },
   };
 }
 

@@ -47,7 +47,8 @@ src/flows/trading-desk/
     ticker-resolver.ts           pre-flight ticker probe
     discover.ts                  web-search → DiscoveryPayload shape
   providers/                     external API clients (stateless, throw on failure)
-    finnhub.ts                   Finnhub fetch helpers
+    finnhub.ts                   Finnhub fetch helpers (incl. institutional ownership)
+    fred.ts                      FRED per-series fetch + retry (macro indicators + NFCI)
     yahoo.ts                     Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
     yahoo-timeseries.ts          pure mapper: fundamentals-timeseries → 3 statements
     edgar.ts                     SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
@@ -165,10 +166,15 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   provenance, missing metrics shown as `—`/gap (never invented), a stopped run
   shows only its stop banner, the `StatusBar` not-advice disclaimer stays visible.
   `sizePct` is labeled "% of NAV" (the trader's proposal), never a dollar amount.
-- **Seams (later slices):** portfolio-fit weight chart and lens-convergence strip
-  are NOT built here — they render nothing until the portfolio + lens features
-  land. Phase 6 `alignment` is labeled **"Thesis alignment"**, never "portfolio
-  fit".
+- **Portfolio-fit + lens blocks (Slice 6):** the Summary renders a portfolio-fit
+  weight before/after block (current → target weight + Δ, action chip, validated
+  suggested account, snapshot-as-of) and a lens-convergence card, both read
+  straight from the PM memo's `portfolioFit` / `lensConvergence` mirrors with no
+  recompute, and both omitted cleanly when their field is null (a portfolio-blind
+  run, or a `fast`-preset run that skipped the lens pack). The lens read is a
+  dedicated card (not extra `ConvictionStrip` dots) so the per-lens dataGap,
+  dissenters, and robustness framing survive. Phase 6 `alignment` is labeled
+  **"Thesis alignment"**, never "portfolio fit".
 
 ## Portfolio view
 
@@ -242,6 +248,96 @@ owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
   snapshot. We take the honest empty-state CTA (option b), NOT auto-minting a junk
   session (option a) — the pane prompts the user to run an analysis first when no
   session exists. Once any session is bound, Add Account / Import work.
+
+## Portfolio-aware analysis + lens pack (Slice 5)
+
+A run can carry the live portfolio so the trader and the PM size against real
+positions, and a pack of documented-methodology investor LENSES re-reads the
+evidence to produce a convergence signal the PM uses for sizing conviction.
+
+- **The portfolio snapshot is built CLIENT-SIDE at dispatch.** Slice 4 stores
+  `quantity` / `costBasis` per holding but NOT market value, weight, NAV, or
+  sector. `app/page.tsx` reads the Slice-4 `accounts` + the live
+  `portfolioQuotes` resource and calls
+  `portfolio/build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
+  per-holding `marketValue = quantity × live quote`, `totalNav = Σ known
+  marketValue + Σ cash`, `weightPct = marketValue / totalNav`. A ticker with no
+  live quote degrades to `marketValue: null` / `weightPct: null` — NEVER a
+  fabricated price. The snapshot carries `snapshotAsOf` (the quotes' as-of) and
+  `pricedHoldings` / `totalHoldings` so the prompt + UI label staleness and
+  coverage honestly. The flow freezes it onto session state at `seedSession`
+  (the `userThesis` precedent) and NEVER recomputes weights. Null → the run is
+  portfolio-blind exactly as before. The input/state field names are the flow's
+  own (`portfolioContextInput`), mapped from the Slice-4 account shape in the
+  builder.
+- **`portfolioContext` + `lensConvergence` capability presets.** The
+  `portfolioContext` preset renders `<portfolioContext>` from frozen session
+  state (no resource — like `userThesis`); returns `null` to suppress the tag
+  when no portfolio. The `lensConvergence` preset renders `<lensConvergence>`
+  from the deterministic convergence resource (PM only). Both formatters
+  (`lib/format.ts`, BP-018) GUARD on a required field, not just `!== null`: an
+  unwritten nullable single resource can surface as `{}` in the generator
+  context, so a partial/empty read suppresses the tag rather than throwing.
+- **The trader (P3) and PM (P5) opt into `portfolioContext`.** The trader sizes
+  realistically when it sees existing exposure (no output-schema change — the
+  portfolio-fit verdict lives only on the PM, the final arbiter). The PM also
+  opts into `lensConvergence` and emits a STRICT `portfolioFit` object on
+  `portfolioDecisionOutputSchema`: `{ action ∈ initiate|add|trim|exit|hold,
+  targetWeightPct, sizingRationale, concentrationRisk, suggestedAccount,
+  convictionBasis }`. The commit handler DERIVES four echo fields (never trusts
+  the LLM, the `agreesWithTrader` precedent): `currentWeightPct` (summed from
+  the snapshot's priced rows for the ticker), `weightDeltaPct`,
+  `hasPortfolioContext`, and a VALIDATED `suggestedAccount` (a label not in the
+  real account list → `""` — never invent an account the user lacks).
+- **The lens pack lives in `phase-2b/` and runs PRE-DECISION** (after Phase 2,
+  before Phase 3), so convergence is a CONTEXT INPUT the PM reasons with
+  (convergence → conviction → size, INSIDE the decision — not a post-hoc cap).
+  The pack is EXACTLY 4 lenses (`lib/lenses.ts` `LENS_PACK`): quality-value
+  (Buffett/Munger), cycle-risk (Howard Marks), macro-reflexive
+  (Druckenmiller/Soros), forensic-skeptic (Burry — the structural bear).
+  Mechanical-deep-value + GARP are DEFERRED (they need EV-multiple/PEG numbers
+  the surface lacks, FIX-705); the pack is a config array, so adding them later
+  is one edit to `LENS_PACK` + one to `LENS_IDS` in `agents.ts`.
+- **Lenses are INDEPENDENT and BLIND, not a debate (FIX-655).** Each lens
+  generator (`defineLensGenerator`, BP-024 factory) reads ONLY the shared
+  post-Phase-2 bundle (`investmentThesis` + `phase1MemosFull` + `valuationSpine`)
+  plus its own persona via a per-generator `context` slot — NEVER another lens's
+  memo. The steps are chained SEQUENTIALLY (not `.parallel`) for a runtime
+  reason: this runtime does not merge all parallel branches' collection writes
+  back into the continuation's resource cache, so a convergence tap after a
+  parallel fan-out reads a stale view (3 of 4 lens memos still `pending`). A
+  sequential chain commits each memo before the next runs, so the convergence
+  tap sees all N. Sequential ≠ debate — each lens is still blind. Lens verdict
+  schema (`phase-2b/lens-verdict-schema.ts`) is STRICT per BP-016 (3-tier
+  `stance` + `conviction` + `missingData` honesty array; in the strict walker).
+- **Convergence is DETERMINISTIC (no LLM).** `computeAndStoreConvergence` (a
+  `.tap`) reads the committed lens memos, runs the pure `lib/convergence-math.ts`
+  `computeConvergence` (agreementScore ≥ 0.8 → convergent, ≥ 0.5 → mixed, else
+  divergent; netLean = Σ(stanceSign × conviction)/N; ties → neutral; equal-weight
+  by conviction in v1), and writes `lensConvergenceResource.patchState(...)`. The
+  PM memo mirrors the read so the PmHero strip reads one place. Robustness
+  adjusts sizing DOWN on divergence only — it never inflates a position; the UI
+  + `convictionBasis` say "robust across philosophies", never "likely correct".
+- **COST GATE (RISK-F3):** the lens pack runs on `costPreset === "full"` ONLY
+  (the `.stepIf(costPreset === "full", phase2bPipeline)` in `flow.ts`). On
+  `fast` it is skipped entirely (no lens memos, no convergence resource); the PM
+  still emits `portfolioFit`, just without a convergence-derived
+  `convictionBasis`. `selectedAccountIds` does NOT join the session keying tuple
+  in v1 — account selection is a refinement, not a new report. Re-runs re-default
+  the lens memos (`{ replace: true }` setup) and re-`patchState` the convergence
+  resource, so no stale read survives.
+- **UI:** `PmHero` (`components/theses/pm-hero.tsx`) renders the portfolio-fit
+  panel (action chip, current→target weights + Δ, suggested account,
+  concentration, sizing, conviction, snapshot-as-of + not-advice line) and the
+  lens-convergence strip (per-lens stance bars, dissenters outlined, a data-gap
+  line, classification pill, the three honesty lines). Inline SVG/flex only.
+  `theses-pane.tsx`'s `MemoClientData` mirrors the two shapes off `MemoState`.
+  Each individual lens memo renders as a dedicated `LensCard`
+  (`components/theses/lens-card.tsx`, Slice 7) — attribution + stance +
+  conviction + the verdict + a ⚠ missing-data honesty line — routed from the
+  `MemoDoc` dispatcher for the four lens agents; `forensic-skeptic` carries a
+  "structural skeptic" label (UI only) so its by-design dissent reads as expected,
+  not alarming. The deterministic convergence math is untouched by the card.
 
 ## Adding a new generator
 
@@ -475,12 +571,25 @@ bodies, plus Grok (xAI) for social sentiment when `XAI_API_KEY` is set.
 Required environment variables:
 
 ```
-FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions
-FRED_API_KEY=...         # research.stlouisfed.org — macro indicators
+FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions, institutional ownership
+FRED_API_KEY=...         # research.stlouisfed.org — macro indicators + NFCI financial conditions
 XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
 ```
 
 Polymarket, Yahoo Finance, and SEC EDGAR don't require keys.
+
+The macro-flow tools added for the macro-reflexive lens's data needs:
+`get_cross_asset_flow` (Macro Analyst) computes risk-on/risk-off ETF spreads
+from Yahoo (keyless) — stocks/bonds, credit, cyclicals/defensives,
+high-beta/low-vol — into a composite risk-appetite read plus the name's return
+vs the broad tape, and reads the Chicago Fed NFCI from FRED for liquidity
+directionality (the `liquidity` sub-block is null when `FRED_API_KEY` is
+absent; the ETF read still stands). `get_institutional_ownership` (Quant
+Analyst) reads 13F institutional positioning from Finnhub `/stock/ownership`
+(premium-gated on some plans; degrades to `unavailable`, never fabricated,
+when absent). Net-liquidity (WALCL − RRP − TGA) and options/COT positioning
+are documented follow-ups, not built. The lens reads both via the Macro and
+Quant memos (`phase1MemosFull`) — there is no lens-specific data wiring.
 
 The three financial statements (`get_balance_sheet` / `get_income_statement`
 / `get_cashflow`) source from **SEC EDGAR XBRL companyfacts first, then Yahoo

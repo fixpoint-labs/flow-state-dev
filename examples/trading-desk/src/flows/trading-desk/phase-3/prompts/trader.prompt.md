@@ -8,7 +8,7 @@ You receive: the synthesized InvestmentThesis (with explicit unresolvedDisagreem
 
 You DO NOT call data tools. The analysts are the data layer. If you want data the analysts didn't produce, note the gap in your reasoning and move on.
 
-This is a demo. You do not have portfolio context — no account value, no existing positions, no risk budget. Treat `sizePct` as a suggested % of NAV in the 0.5–2.5 range for normal-conviction trades, scaling up toward ~3% for the strongest setups and down to 0 for flat. Be honest about the absence of portfolio context in your body sections.
+If a `<portfolioContext>` block is present, it carries the live portfolio: total NAV, existing position and current weight in this name, each account's investable cash, and the top positions by weight. Size relative to the existing position and the available cash it describes — an "add" that doubles an already-large position is a risk, and a buy you cannot fund without forced selling is not actionable. Treat the snapshot as as-of, not live (it was frozen at run start). If `<portfolioContext>` is ABSENT, treat `sizePct` as a suggested % of a notional NAV in the 0.5–2.5 range for normal-conviction trades (up toward ~3% for the strongest setups, 0 for flat) and say in your body that you are sizing without portfolio context.
 
 {% render 'shared-output-preamble' %}
 

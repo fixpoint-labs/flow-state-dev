@@ -192,6 +192,91 @@ export const macroIndicatorsSchema = z.object({
   industrialProduction: z.number(),
 });
 
+/**
+ * Cross-asset flow & liquidity directionality. The macro-flow read the Macro
+ * Analyst lacked: which way money is leaning across asset classes (risk-on vs
+ * risk-off), whether the name is confirming or fighting the broad tape, and
+ * which way financial conditions are trending. Computed deterministically from
+ * trailing ETF returns (Yahoo, keyless) plus the Chicago Fed NFCI (FRED).
+ *
+ * Every field is nullable so a thin/throttled live read degrades honestly
+ * (BP-020): an unpriced pair → null spread, FRED unavailable → null `liquidity`
+ * block — never a fabricated directional signal.
+ */
+export const crossAssetFlowSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** Trailing window the returns were measured over (~63 trading days). */
+  windowDays: z.number(),
+  /** One entry per risk-on/risk-off ETF pair. `spread` is the risk-on leg's
+   *  trailing return minus the risk-off leg's; positive = the risk-on leg is
+   *  leading. `null` legs/spread mean that pair could not be priced. */
+  ratios: z.array(
+    z.object({
+      label: z.string(),
+      riskOnTicker: z.string(),
+      riskOffTicker: z.string(),
+      riskOnReturn: z.number().nullable(),
+      riskOffReturn: z.number().nullable(),
+      spread: z.number().nullable(),
+      leaning: z.enum(["risk-on", "neutral", "risk-off"]).nullable(),
+    }),
+  ),
+  /** Composite lean across the pairs that priced — the headline read. Null when
+   *  no pair priced (unknown, not neutral). */
+  riskAppetite: z.enum(["risk-on", "neutral", "risk-off"]).nullable(),
+  /** Mean of the resolved spreads backing `riskAppetite`. */
+  riskAppetiteScore: z.number().nullable(),
+  /** The name's own trailing return, the broad-market (SPY) trailing return,
+   *  and their difference — is price action confirming or fighting the tape
+   *  (the macro-reflexive "tape confirmation" weight). */
+  nameReturn: z.number().nullable(),
+  broadMarketReturn: z.number().nullable(),
+  nameVsBroadMarket: z.number().nullable(),
+  /** Financial-conditions / liquidity sub-block (FRED NFCI). Null when FRED is
+   *  unavailable — the ETF-based cross-asset read above still stands. NFCI > 0
+   *  is tighter-than-average conditions; a rising NFCI is tightening. */
+  liquidity: z
+    .object({
+      nfci: z.number().nullable(),
+      nfciTrend: z.enum(["tightening", "stable", "easing"]).nullable(),
+    })
+    .nullable(),
+});
+
+/**
+ * Broad institutional positioning: who owns the name and whether institutions
+ * are accumulating or distributing. Quarterly 13F-derived data (Finnhub),
+ * lagged ~45 days — a slow-moving ownership-trend signal, not a short-term one.
+ * The Quant Analyst's positioning lane alongside short interest.
+ */
+export const institutionalOwnershipSchema = z.object({
+  source: sourceTag,
+  ticker: z.string(),
+  asOf: z.string(),
+  /** Latest filing date across the reported holders. */
+  reportDate: z.string().nullable(),
+  /** Number of institutional holders in the reported set. */
+  holderCount: z.number().nullable(),
+  /** Sum of shares held across the reported holders. */
+  totalSharesHeld: z.number().nullable(),
+  /** Sum of the quarter-over-quarter share changes — net accumulation (+) or
+   *  distribution (−) across the reported holders. */
+  netShareChange: z.number().nullable(),
+  /** Direction derived from `netShareChange` against a deadband of total shares
+   *  held. Null when ownership could not be resolved. */
+  flowDirection: z.enum(["accumulating", "neutral", "distributing"]).nullable(),
+  /** Largest holders by shares, with their QoQ change. Capped for prompt budget. */
+  topHolders: z.array(
+    z.object({
+      name: z.string(),
+      shares: z.number(),
+      shareChange: z.number(),
+    }),
+  ),
+});
+
 /** A single retrieved X post used as evidence for the sentiment score.
  *  `polarity` reflects the model's classification of THIS post (not overall
  *  sentiment). Excerpts are one short sentence — no paraphrasing of meaning. */
@@ -624,12 +709,14 @@ export const toolInputSchemas = {
   discover_profile_context: periodInput,
   get_sector_context: periodInput,
   get_sector_peers: periodInput,
+  get_cross_asset_flow: periodInput,
   discover_market_context: periodInput,
   discover_macro_context: periodInput,
   get_factor_ranks: periodInput,
   get_risk_regime: periodInput,
   get_quant_composites: periodInput,
   get_short_interest: periodInput,
+  get_institutional_ownership: periodInput,
   discover_quant_context: periodInput,
   get_sec_filings: periodInput,
   get_analyst_estimates: periodInput,
@@ -659,12 +746,14 @@ export const toolOutputSchemas = {
   discover_profile_context: discoveryPayloadSchema,
   get_sector_context: sectorContextSchema,
   get_sector_peers: sectorPeersSchema,
+  get_cross_asset_flow: crossAssetFlowSchema,
   discover_market_context: discoveryPayloadSchema,
   discover_macro_context: discoveryPayloadSchema,
   get_factor_ranks: factorRanksSchema,
   get_risk_regime: riskRegimeSchema,
   get_quant_composites: quantCompositesSchema,
   get_short_interest: shortInterestSchema,
+  get_institutional_ownership: institutionalOwnershipSchema,
   discover_quant_context: discoveryPayloadSchema,
   get_sec_filings: secFilingsSchema,
   get_analyst_estimates: analystEstimatesSchema,
@@ -699,12 +788,14 @@ const TOOL_FILE_NAMES: Record<ToolName, string> = {
   discover_profile_context: "discover-profile-context.json",
   get_sector_context: "sector-context.json",
   get_sector_peers: "sector-peers.json",
+  get_cross_asset_flow: "cross-asset.json",
   discover_market_context: "discover-market-context.json",
   discover_macro_context: "discover-macro-context.json",
   get_factor_ranks: "factor-ranks.json",
   get_risk_regime: "risk-regime.json",
   get_quant_composites: "quant-composites.json",
   get_short_interest: "short-interest.json",
+  get_institutional_ownership: "institutional-ownership.json",
   discover_quant_context: "discover-quant-context.json",
   get_sec_filings: "sec-filings.json",
   get_analyst_estimates: "analyst-estimates.json",

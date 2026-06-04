@@ -32,6 +32,7 @@
  */
 import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
+import { portfolioContextInput } from "./flow-schema";
 
 export const sessionStateSchema = z.object({
   ticker: z.string().default("NVDA"),
@@ -69,6 +70,14 @@ export const sessionStateSchema = z.object({
   // thesis is treated as no thesis and Phase 6 is skipped.
   userThesisWarning: z.string().nullable().default(null),
   citationIntegrity: citationIntegritySchema.nullable().default(null),
+  // Per-run portfolio snapshot (Slice 5), frozen at `seedSession` from caller
+  // input (same precedent as `userThesis`). The pipeline runs blind to these —
+  // only the lens pack (phase-2b), the trader (P3), and the PM (P5) read them
+  // via the `portfolioContext` capability preset. Null → portfolio-blind run.
+  portfolio: portfolioContextInput.nullable().default(null),
+  // Which account(s) the user is considering this position for; subset of
+  // `portfolio.accounts[].id`. Empty → let the PM suggest.
+  selectedAccountIds: z.array(z.string()).default([]),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

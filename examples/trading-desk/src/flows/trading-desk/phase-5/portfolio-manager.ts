@@ -88,6 +88,37 @@ export const portfolioDecisionOutputSchema = z.object({
   // Override reason: non-empty when the PM chooses a rating outside the
   // model-implied band. Empty string when staying within the band.
   ratingOverrideReason: z.string(),
+  // Portfolio-fit verdict (Slice 5). STRICT per BP-016: an object of primitives
+  // + one enum-of-literals (`action`); no record/optional/default/union, empty
+  // string for the no-account case (the `asymmetricEdge` pattern). The PM is the
+  // SOLE portfolio-fit arbiter. `suggestedAccount` is the account LABEL the LLM
+  // reasons toward — the commit handler validates it against the real account
+  // list (a hallucinated/absent label resolves to ""). The derived echo fields
+  // (currentWeightPct / weightDeltaPct / hasPortfolioContext) are computed in the
+  // commit, NOT emitted here.
+  portfolioFit: z.object({
+    action: z.enum(["initiate", "add", "trim", "exit", "hold"]),
+    // Target weight as % of total NAV, post-trade. 0 for exit; current weight
+    // for hold. When no portfolio was supplied, a weight relative to a notional
+    // NAV (the prompt says to say so).
+    targetWeightPct: z.number(),
+    // Why this size, referencing existing position / cash / concentration / tax
+    // account suitability. Non-empty always (the prompt instructs a
+    // "no portfolio supplied" sentence when none).
+    sizingRationale: z.string(),
+    // One-line concentration read (sector/factor/overlap). Empty string only
+    // when no portfolio context was available.
+    concentrationRisk: z.string(),
+    // The account LABEL the PM reasons toward (tax-suitability aware). Empty
+    // string when no account is selected/available — the commit handler resolves
+    // and validates this against the real account list.
+    suggestedAccount: z.string(),
+    // How lens convergence shaped the size. Required — forces the PM to state
+    // the conviction→size link explicitly, framed as robustness not truth.
+    // References <lensConvergence>; empty string only when the lens pack did not
+    // run (fast preset).
+    convictionBasis: z.string(),
+  }),
 });
 
 export type PortfolioDecisionOutput = z.infer<typeof portfolioDecisionOutputSchema>;
@@ -107,6 +138,10 @@ export const portfolioManagerGenerator = generator({
       phase2DebateFull: true,
       riskCritiquesFull: true,
       highReasoning: true,
+      // Slice 5 — the PM sees the live portfolio and the lens-convergence read,
+      // and reasons convergence -> conviction -> size to emit `portfolioFit`.
+      portfolioContext: true,
+      lensConvergence: true,
     }),
   ],
   ...definePromptFile(portfolioManagerPrompt),

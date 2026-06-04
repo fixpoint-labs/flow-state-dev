@@ -330,6 +330,14 @@ function portfolioDecision(
     }[],
     primaryScenario: "Data-center beat, +12%",
     ratingOverrideReason: "",
+    portfolioFit: {
+      action: "initiate" as const,
+      targetWeightPct: 2.5,
+      sizingRationale: "Sized without portfolio context (none supplied).",
+      concentrationRisk: "",
+      suggestedAccount: "",
+      convictionBasis: "",
+    },
   };
 }
 

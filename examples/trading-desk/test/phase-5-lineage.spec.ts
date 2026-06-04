@@ -113,6 +113,14 @@ function decision(opts: {
     traderDependencyDispositions: opts.traderDependencyDispositions ?? [],
     primaryScenario: "",
     ratingOverrideReason: "",
+    portfolioFit: {
+      action: "hold" as const,
+      targetWeightPct: 0,
+      sizingRationale: "Sized without portfolio context (none supplied).",
+      concentrationRisk: "",
+      suggestedAccount: "",
+      convictionBasis: "",
+    },
   };
 }
 
