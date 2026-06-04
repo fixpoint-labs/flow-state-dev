@@ -1,7 +1,7 @@
 # Trading Desk v2 — Feature 06: Per-Report Summary Page
 
 **Status:** Spec (ready to execute)
-**Owner area:** `examples/trading-desk` (example app only — not framework source)
+**Owner area:** `labs/trading-desk` (example app only — not framework source)
 **Author note:** This is a self-contained spec. A fresh-session executor should be able to build this without reading the other v2 specs. Cross-feature touch points are called out explicitly where they exist.
 
 ---
@@ -437,29 +437,29 @@ A tight cluster = convergence; a spread = divergence. Label the two ends.
 
 **Create:**
 
-- `examples/trading-desk/components/summary/aggregate.ts` — `ReportSummary` types + `buildReportSummary()` (pure).
-- `examples/trading-desk/components/summary/report-summary.tsx` — `<ReportSummary>` top-level.
-- `examples/trading-desk/components/summary/decision-header.tsx`
-- `examples/trading-desk/components/summary/conviction-strip.tsx`
-- `examples/trading-desk/components/summary/analyst-tldr-grid.tsx`
-- `examples/trading-desk/components/summary/risk-panel.tsx`
-- `examples/trading-desk/components/summary/chart-empty.tsx`
-- `examples/trading-desk/components/summary/charts/bar-group.tsx`
-- `examples/trading-desk/components/summary/charts/scenario-strip.tsx`
-- `examples/trading-desk/components/summary/charts/price-overlay.tsx`
-- `examples/trading-desk/test/report-summary-aggregate.spec.ts` — unit tests for `buildReportSummary` (stance→axis mapping, null/partial memo handling, ordering). Pure function → fast, offline, matches the suite's "verify wiring, not LLM" stance.
+- `labs/trading-desk/components/summary/aggregate.ts` — `ReportSummary` types + `buildReportSummary()` (pure).
+- `labs/trading-desk/components/summary/report-summary.tsx` — `<ReportSummary>` top-level.
+- `labs/trading-desk/components/summary/decision-header.tsx`
+- `labs/trading-desk/components/summary/conviction-strip.tsx`
+- `labs/trading-desk/components/summary/analyst-tldr-grid.tsx`
+- `labs/trading-desk/components/summary/risk-panel.tsx`
+- `labs/trading-desk/components/summary/chart-empty.tsx`
+- `labs/trading-desk/components/summary/charts/bar-group.tsx`
+- `labs/trading-desk/components/summary/charts/scenario-strip.tsx`
+- `labs/trading-desk/components/summary/charts/price-overlay.tsx`
+- `labs/trading-desk/test/report-summary-aggregate.spec.ts` — unit tests for `buildReportSummary` (stance→axis mapping, null/partial memo handling, ordering). Pure function → fast, offline, matches the suite's "verify wiring, not LLM" stance.
 
 **Create only if §4 (price series) is built:**
 
-- `examples/trading-desk/src/flows/trading-desk/price-history-resource.ts`
-- `examples/trading-desk/src/flows/trading-desk/store-price-history.ts`
-- `examples/trading-desk/test/store-price-history.spec.ts` — verifies the tap patches the resource from a fixture payload and leaves it null on cache miss (mirrors a `compute-spine` test if one exists).
+- `labs/trading-desk/src/flows/trading-desk/price-history-resource.ts`
+- `labs/trading-desk/src/flows/trading-desk/store-price-history.ts`
+- `labs/trading-desk/test/store-price-history.spec.ts` — verifies the tap patches the resource from a fixture payload and leaves it null on cache miss (mirrors a `compute-spine` test if one exists).
 
 **Modify:**
 
-- `examples/trading-desk/components/theses/theses-pane.tsx` — add the `tab` state, the Theses|Summary switch UI, and the auto-tab effect; render `<ReportSummary>` in the Summary tab. (Sidebar selection sets `tab = "theses"`.)
-- `examples/trading-desk/src/flows/trading-desk/flow.ts` — **only if §4 built:** import + `.tap(storePriceHistory)` after `.tap(computeAndStoreSpine)`, and add `priceHistory: priceHistoryResource` to `defineFlow({ resources })`.
-- `examples/trading-desk/CLAUDE.md` — add a short "Summary view" note under the layout/conventions section (per "document user-facing functionality" rule).
+- `labs/trading-desk/components/theses/theses-pane.tsx` — add the `tab` state, the Theses|Summary switch UI, and the auto-tab effect; render `<ReportSummary>` in the Summary tab. (Sidebar selection sets `tab = "theses"`.)
+- `labs/trading-desk/src/flows/trading-desk/flow.ts` — **only if §4 built:** import + `.tap(storePriceHistory)` after `.tap(computeAndStoreSpine)`, and add `priceHistory: priceHistoryResource` to `defineFlow({ resources })`.
+- `labs/trading-desk/CLAUDE.md` — add a short "Summary view" note under the layout/conventions section (per "document user-facing functionality" rule).
 - `.changeset/*.md` — a user-facing changeset for the example (BP-022). The example app does publish a changeset for user-visible changes; if the example is marked private/no-publish in the repo's changeset config, ship an empty changeset instead.
 
 **Do NOT modify:**

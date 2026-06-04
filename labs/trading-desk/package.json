@@ -1,5 +1,5 @@
 {
-  "name": "@flow-state-dev/example-trading-desk",
+  "name": "@flow-state-dev/trading-desk",
   "version": "0.0.0",
   "private": true,
   "type": "module",

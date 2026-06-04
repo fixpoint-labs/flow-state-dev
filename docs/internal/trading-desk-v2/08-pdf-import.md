@@ -204,7 +204,7 @@ Changed:
 - `src/flows/trading-desk/flow.ts` — registered the action + resource.
 - `test/output-schemas-strict.spec.ts` — added `pdfExtractionSchema` to the walker.
 - `components/portfolio/portfolio-pane.tsx` — added the "Import PDF" button + dialog.
-- `examples/trading-desk/package.json` — `unpdf` added, `pdfjs-dist` removed; the
+- `labs/trading-desk/package.json` — `unpdf` added, `pdfjs-dist` removed; the
   `dev`/`build` scripts reverted to plain `next dev` / `next build`.
 - `next.config.mjs` — `serverExternalPackages: ["unpdf"]` (keep it out of the
   server bundle so its worker-free pdfjs loads from node_modules).
@@ -213,7 +213,7 @@ Removed (browser-worker scaffolding):
 - `components/portfolio/pdf-text.ts` — the client pdfjs extractor.
 - `scripts/copy-pdf-worker.mjs` — the build-step worker copier.
 - `public/pdf.worker.min.mjs` — the copied worker artifact.
-- `examples/trading-desk/.gitignore` — its only entry was the worker.
+- `labs/trading-desk/.gitignore` — its only entry was the worker.
 
 ## What is NOT verified offline
 

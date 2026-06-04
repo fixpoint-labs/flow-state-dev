@@ -2,7 +2,7 @@
 
 > Self-contained implementation spec. A sub-agent in a fresh session must be able to
 > execute this without reading the other v2 specs. Paths are absolute or relative to
-> `examples/trading-desk/`. Read the cited best-practices before coding:
+> `labs/trading-desk/`. Read the cited best-practices before coding:
 > `docs/contributing/best-practices.md` (BP-007, BP-011, BP-012, BP-014, BP-016, BP-019).
 
 ---
@@ -39,7 +39,7 @@ cost basis, live value, weight, and unrealized P/L — persisted across server r
 - The same ticker in two accounts renders as two rows keyed `(accountId, ticker)`.
 - A canonical-format CSV imports with zero errors; a messy real-world CSV imports the
   valid rows and reports the bad ones with row numbers + reasons.
-- `pnpm --filter @flow-state-dev/example-trading-desk typecheck` and `test` pass; a new
+- `pnpm --filter @flow-state-dev/trading-desk typecheck` and `test` pass; a new
   parser test + a strict-output guard pass.
 
 ---
@@ -193,7 +193,7 @@ which already exists in both fixture and live modes
 
 ### 3.1 Canonical documented format
 
-Ship `examples/trading-desk/docs/portfolio-csv-format.md` documenting the canonical
+Ship `labs/trading-desk/docs/portfolio-csv-format.md` documenting the canonical
 header row (case-insensitive, order-independent):
 
 ```
@@ -599,7 +599,7 @@ Weight bars (if desired) are inline flex/SVG like `PmHero`'s rating bar — no n
   `<form>` behind `view === "analysis"`.
 - `components/status-bar.tsx` — optional: portfolio-view summary (account count /
   total value) instead of run state.
-- `examples/trading-desk/CLAUDE.md` — document the `portfolio/` folder.
+- `labs/trading-desk/CLAUDE.md` — document the `portfolio/` folder.
 - `.changeset/*.md` — user-facing change (BP-022). Update any relevant
   `apps/docs` page only if portfolio is a documented user concept (likely an internal
   example — confirm; an empty changeset is acceptable if internal-only).
@@ -623,7 +623,7 @@ Weight bars (if desired) are inline flex/SVG like `PmHero`'s rating bar — no n
 - Do **not** add the resource-state schemas to `output-schemas-strict.spec.ts` — they
   are resource state, not generator outputs (they use `.default()`; strict mode would
   fail them, correctly, because they shouldn't be strict).
-- `pnpm --filter @flow-state-dev/example-trading-desk typecheck` and `test` green.
+- `pnpm --filter @flow-state-dev/trading-desk typecheck` and `test` green.
 
 ---
 

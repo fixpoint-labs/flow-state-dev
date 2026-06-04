@@ -1,11 +1,13 @@
-# Trading Desk Example — Agent Guide
+# Trading Desk — Agent Guide
 
 The trading-desk is a five-phase multi-agent flow that produces a structured
-trade recommendation for a given ticker. It's a working example of how to put
-a non-trivial flow together with capabilities, services, per-tool files, and
-fixture/live data modes.
+trade recommendation for a given ticker. It's a real app — live market data,
+durable re-openable reports, a real imported portfolio — built on a non-trivial
+flow with capabilities, services, per-tool files, and fixture/live data modes.
+It lives in `labs/`, not `examples/`: past a teaching snippet, still research
+software.
 
-When modifying this example, follow the conventions below. The patterns here
+When modifying this app, follow the conventions below. The patterns here
 are also written up in the project-level docs — read those first if you
 haven't:
 
@@ -348,7 +350,7 @@ built via `createApproachGenerator()` in
 generator in its step sequencer. Use the factory — don't hand-roll a
 new `generator({...})` for a preamble.
 
-Every generator in this example uses the `tradingDesk` capability for model
+Every generator in this app uses the `tradingDesk` capability for model
 selection + ticker/date context. The minimum scaffold:
 
 ```ts
@@ -505,14 +507,14 @@ call with `getOrFetch`).
 
 ## Round-robin patterns
 
-**Phase 2's bull/bear debate is the canonical `roundRobin()` demo in this
-example.** It uses the pattern's distinguishing features: `terminateWhen`
+**Phase 2's bull/bear debate is the canonical `roundRobin()` example in this
+app.** It uses the pattern's distinguishing features: `terminateWhen`
 drives the round count from session state (`maxDebateRounds`),
 `uses: [tradingDesk]` resolves the model from `costPreset`, and the two
 researcher slots share a single transcript via the contributions accessor.
 No referee.
 
-Two conventions when using `roundRobin()` in this example:
+Two conventions when using `roundRobin()` in this app:
 
 1. **Always set `accessorKey` explicitly.** Default `"contributions"` collides
    when multiple round-robins coexist in the same flow. Phase 2 uses
@@ -620,9 +622,9 @@ missing signal, not bearish.
 ## Running and testing
 
 ```bash
-pnpm --filter @flow-state-dev/example-trading-desk dev          # Next.js dev server
-pnpm --filter @flow-state-dev/example-trading-desk typecheck    # tsc --noEmit
-pnpm --filter @flow-state-dev/example-trading-desk test         # vitest run
+pnpm --filter @flow-state-dev/trading-desk dev          # Next.js dev server
+pnpm --filter @flow-state-dev/trading-desk typecheck    # tsc --noEmit
+pnpm --filter @flow-state-dev/trading-desk test         # vitest run
 ```
 
 The test suite is offline — every live provider is mocked, every analyst

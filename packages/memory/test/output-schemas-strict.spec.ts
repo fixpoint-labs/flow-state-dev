@@ -10,7 +10,7 @@
  *
  * See BP-016 (docs/contributing/best-practices.md) for the rules these
  * checks enforce. The walker is copied from
- * `examples/trading-desk/test/output-schemas-strict.spec.ts` so each
+ * `labs/trading-desk/test/output-schemas-strict.spec.ts` so each
  * package guards itself independently.
  */
 import { describe, expect, it } from 'vitest'

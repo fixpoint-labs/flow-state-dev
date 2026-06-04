@@ -5,7 +5,7 @@
 > are called out where they matter, but nothing here depends on another v2
 > feature shipping first.
 
-App root: `examples/trading-desk` (package `@flow-state-dev/example-trading-desk`).
+App root: `labs/trading-desk` (package `@flow-state-dev/trading-desk`).
 All paths below are relative to that directory unless prefixed with `packages/`.
 
 ---
@@ -508,7 +508,7 @@ key exists (legacy rows, in-progress rows).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ flow-state / examples/trading-desk      [ Desk ] [▸Past Reports ]  ☀  │  ← TopBar
+│ flow-state / labs/trading-desk      [ Desk ] [▸Past Reports ]  ☀  │  ← TopBar
 ├──────────────────────────────────────────────────────────────────────┤
 │  Past Reports                                       12 reports · you   │
 │  ───────────────────────────────────────────────────────────────────  │
@@ -592,38 +592,38 @@ to handle in `ThesesPane` (already mostly handled — confirm during impl):
 
 **Create:**
 
-1. `examples/trading-desk/src/flows/trading-desk/report-index.ts` —
+1. `labs/trading-desk/src/flows/trading-desk/report-index.ts` —
    `reportDecisionMetaSchema`, `reportStatusMetaSchema`, `ReportRow` type,
    `parseReportRow(summary)`. Import-safe in the browser (zod + types only; no
    `@flow-state-dev/core` resource imports).
-2. `examples/trading-desk/src/flows/trading-desk/decision-snapshot-resource.ts` —
+2. `labs/trading-desk/src/flows/trading-desk/decision-snapshot-resource.ts` —
    `decisionSnapshotStateSchema`, `decisionSnapshotResource`. (Server-side; pulls
    `defineResource`. Keep schema/types importable by the writer.)
-3. `examples/trading-desk/components/reports/past-reports-pane.tsx` —
+3. `labs/trading-desk/components/reports/past-reports-pane.tsx` —
    `PastReportsPane({ sessions, onOpenReport })`.
-4. `examples/trading-desk/components/reports/report-row.tsx` —
+4. `labs/trading-desk/components/reports/report-row.tsx` —
    `ReportRow({ row, onOpen })`.
-5. `examples/trading-desk/test/past-reports.spec.ts` — unit tests (Section 8).
+5. `labs/trading-desk/test/past-reports.spec.ts` — unit tests (Section 8).
 
 **Modify:**
 
-6. `examples/trading-desk/src/flows/trading-desk/flow.ts` — register
+6. `labs/trading-desk/src/flows/trading-desk/flow.ts` — register
    `decisionSnapshot` resource (5.1); add `setMetadata({ reportStatus:
    "stopped" })` to the three stop guards (5.3).
-7. `examples/trading-desk/src/flows/trading-desk/phase-5/writer.ts` — extend
+7. `labs/trading-desk/src/flows/trading-desk/phase-5/writer.ts` — extend
    `commitPortfolioManagerMemo`: add `decisionSnapshot` to resources, write the
    snapshot + merge the `decision`/`reportStatus: "complete"` metadata (5.2).
-8. `examples/trading-desk/app/page.tsx` — add `view` state to `TradingDeskApp`;
+8. `labs/trading-desk/app/page.tsx` — add `view` state to `TradingDeskApp`;
    branch `main` on view; implement `onOpenReport` (sets tuple + selects +
    switches view per 6.5); pass `view`/`onViewChange` to `TopBar`.
-9. `examples/trading-desk/components/topbar.tsx` — add `view`/`onViewChange`
+9. `labs/trading-desk/components/topbar.tsx` — add `view`/`onViewChange`
    props, the two-item nav, and hide the analyze form in reports view (6.4).
-10. `examples/trading-desk/CLAUDE.md` — document the new `report-index.ts`,
+10. `labs/trading-desk/CLAUDE.md` — document the new `report-index.ts`,
     `decision-snapshot-resource.ts`, and the metadata-as-reports-index pattern
     under "Layout" / a short "Past Reports" subsection. (BP: document changed
     user-facing functionality.)
 11. `.changeset/*.md` — user-facing change (new Past Reports surface). Non-empty
-    changeset describing the feature for `@flow-state-dev/example-trading-desk`.
+    changeset describing the feature for `@flow-state-dev/trading-desk`.
 
 > No `packages/*` files change. No store adapter. No route handler. No new HTTP
 > endpoint. The example app already exposes everything needed.
@@ -666,8 +666,8 @@ test posture — generators/providers mocked). Cover:
    `findSessionForTuple(sessions, newTuple)` resolves to the opened id (the
    sync effect becomes a no-op). This is the regression guard for 6.5.
 
-Run: `pnpm --filter @flow-state-dev/example-trading-desk test`.
-Typecheck: `pnpm --filter @flow-state-dev/example-trading-desk typecheck`.
+Run: `pnpm --filter @flow-state-dev/trading-desk test`.
+Typecheck: `pnpm --filter @flow-state-dev/trading-desk typecheck`.
 
 ---
 

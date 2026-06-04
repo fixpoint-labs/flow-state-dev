@@ -2,7 +2,7 @@
 
 **Status:** Lead-architect build plan. Sequencing + dispatch authority for the six v2 specs.
 **Branch:** `experiment/trading-desk-extended` (build here, slice by slice).
-**App:** `examples/trading-desk` (`@flow-state-dev/example-trading-desk`, `private: true`).
+**App:** `labs/trading-desk` (`@flow-state-dev/trading-desk`, `private: true`).
 **Date:** 2026-06-02
 
 This plan sits **above** the six self-contained feature specs. Each spec is written so a
@@ -229,7 +229,7 @@ Scope (a strict subset of spec 02):
 ticker to completion; confirm the session metadata now carries `decision` + `reportStatus`, the
 `decisionSnapshot` resource hydrates on re-select with zero model spend, the four tuple keys are
 **not** clobbered (so `findSessionForTuple` still matches), and legacy sessions still parse. Then
-`pnpm --filter @flow-state-dev/example-trading-desk typecheck && test`.
+`pnpm --filter @flow-state-dev/trading-desk typecheck && test`.
 
 **Why this is the right tracer:** it touches the exact spine seam every durable feature depends on
 (the PM commit write path), proves persistence + rehydration end to end, exercises the

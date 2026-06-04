@@ -2,7 +2,7 @@
 ---
 
 Trading Desk: add a **Portfolio** section to the private
-`@flow-state-dev/example-trading-desk` example. A TopBar nav toggle opens a
+`@flow-state-dev/trading-desk` example. A TopBar nav toggle opens a
 Portfolio view with per-account holdings tables (ticker, quantity, average cost,
 current price, market value, weight %, unrealized P/L), per-account and total
 rollups, an Add Account control, and a CSV import (paste or upload) into a chosen

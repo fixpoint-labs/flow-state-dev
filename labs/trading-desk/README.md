@@ -1,13 +1,19 @@
-# Trading Desk — `@flow-state-dev` example
+# Trading Desk
 
-> **Research / demo only.** Not financial advice. No execution. No P&L.
+> **Research only.** Not financial advice. No order execution. No P&L tracking.
 
-A multi-phase agent-pipeline showcase. A first-time developer types a ticker,
-watches analyst memo slots appear in the navigator, then watches a bull/bear
-debate unfold, a research manager synthesize an investment thesis, a trader
-propose a sized trade, three risk officers critique it, and a portfolio
-manager hand down a five-tier final decision. Five phases, twenty agents,
-one structured artifact at every convergence point.
+A multi-phase AI research desk for a single stock. Type a ticker: analyst memo
+slots appear in the navigator, a bull/bear debate unfolds, a research manager
+synthesizes an investment thesis, a trader proposes a sized trade, three risk
+officers critique it, and a portfolio manager hands down a five-tier rating plus
+a portfolio-fit verdict. Five phases, twenty-plus agents, one structured artifact
+at every convergence point.
+
+Built on `@flow-state-dev`. It lives in `labs/`, not `examples/`, because it has
+outgrown a teaching snippet: it pulls live market data, imports a real portfolio,
+persists re-openable reports, and reasons about position sizing across accounts.
+It is still research software — see "What this is not" — but a working app, not a
+demo.
 
 ## What's included
 
@@ -214,7 +220,7 @@ Portfolio-aware analysis + lens pack (optional):
 
 ```bash
 pnpm install
-pnpm --filter @flow-state-dev/example-trading-desk dev
+pnpm --filter @flow-state-dev/trading-desk dev
 ```
 
 Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
@@ -252,13 +258,13 @@ four inputs at the top of the page name it: `(ticker, date, preset, source)`.
   derived from the tuple (`NVDA · 2026-05-06 · fast · fixture`), so prior
   runs stay identifiable for a future session-browser UI.
 
-Data lives under `<example-dir>/.fsdev/data/` (already covered by the root
+Data lives under `labs/trading-desk/.fsdev/data/` (already covered by the root
 `.gitignore`'s `**/.fsdev/**` rule). To wipe history, delete the directory.
 To redirect storage — for an isolated test run, for example — set
 `FSDEV_DATA_DIR`:
 
 ```bash
-FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/example-trading-desk dev
+FSDEV_DATA_DIR=/tmp/td-test pnpm --filter @flow-state-dev/trading-desk dev
 ```
 
 The wiring lives in [`lib/server.ts`](lib/server.ts) (filesystem stores) and
@@ -296,7 +302,7 @@ same user never see these instructions). The directory is covered by
 
 The flow uses the framework's model resolver. Configure at least one provider
 key (typically `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) so the `intent/utility`
-and `intent/chat` intents can resolve. The example does not bundle a
+and `intent/chat` intents can resolve. The app does not bundle a
 default-model assumption — extend `lib/server.ts`'s `createModelResolver` call
 if you want to wire intents to specific gateway models.
 
@@ -451,7 +457,7 @@ The PM Hero renderer reads from the same `useResourceCollectionItem`
 hook every other memo uses. The marquee surface has no special-case
 data flow.
 
-## What this example is not
+## What this is not
 
 - **Not a trading product.** It does not execute and it does not track
   P&L. It can reason about a *supplied* portfolio snapshot (see
@@ -479,7 +485,7 @@ data flow.
 ## Further reading
 
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
-- [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the example phase by phase.
+- [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.
 
 ## Disclaimer
 

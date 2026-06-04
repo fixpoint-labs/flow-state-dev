@@ -2,7 +2,7 @@
 ---
 
 Trading Desk: add a per-report **Summary** view to the private
-`@flow-state-dev/example-trading-desk` example. An in-report **Theses | Summary**
+`@flow-state-dev/trading-desk` example. An in-report **Theses | Summary**
 tab (inside `ThesesPane`) renders an at-a-glance aggregate of a finished report
 from already-stored session state — decision header, conviction strip, analyst
 TLDR grid, factor + scenario charts, a price overlay with stop/target/fair-value

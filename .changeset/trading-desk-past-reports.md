@@ -2,7 +2,7 @@
 ---
 
 Trading Desk: add a **Past Reports** surface to the private
-`@flow-state-dev/example-trading-desk` example. A TopBar nav toggle switches
+`@flow-state-dev/trading-desk` example. A TopBar nav toggle switches
 between the Desk and a Past Reports list of prior runs (newest-first, with PM
 decision + status chips); opening a row re-renders the stored thesis from
 persisted state with zero model spend. Internal-only — no publishable package
