@@ -39,6 +39,7 @@ import { useActionDispatch } from "./hooks/use-action-dispatch";
 import { useSessionRequests } from "./hooks/use-session-requests";
 import { useReplay } from "./hooks/use-replay";
 import { useLiveMode } from "./hooks/use-live-mode";
+import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -147,6 +148,33 @@ function PanelContent({ className }: { className?: string }) {
 
   const [stateRefreshKey, setStateRefreshKey] = useState(0);
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
+
+  // Refresh the open session as one unit: the transcript (which the trace and
+  // token-usage views derive from) plus the state and resource panels via the
+  // shared stateRefreshKey fan-out. Used by the Sessions ⟳ button and on focus
+  // revalidation. Does not re-list sessions — callers that need that bump
+  // sessionRefreshKey themselves.
+  const refreshActiveSession = useCallback(() => {
+    void refreshRequests();
+    setStateRefreshKey((k) => k + 1);
+  }, [refreshRequests]);
+
+  // Bring the open session current when the developer returns to the DevTool
+  // (tab visible again or window refocused), so out-of-band changes show up
+  // without a manual refresh. Stands down while SSE is actively delivering —
+  // the live path already keeps the view fresh there.
+  useFocusRevalidate(
+    useCallback(() => {
+      refreshActiveSession();
+      setSessionRefreshKey((k) => k + 1);
+    }, [refreshActiveSession]),
+    {
+      enabled:
+        !!effectiveSessionId &&
+        streamStatus !== "streaming" &&
+        streamStatus !== "connecting",
+    },
+  );
 
   const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, latestRequest, showToggle, toggleLiveMode } =
     useLiveMode({
@@ -365,7 +393,10 @@ function PanelContent({ className }: { className?: string }) {
                 <span className="text-[10px] font-medium uppercase text-slate-500">Flows</span>
               </div>
               <div className="flex-1 overflow-auto px-1">
-                <FlowList sessionRefreshKey={sessionRefreshKey} />
+                <FlowList
+                  sessionRefreshKey={sessionRefreshKey}
+                  onRefreshActiveSession={refreshActiveSession}
+                />
               </div>
               <Separator />
               <div className="p-2 space-y-1">
