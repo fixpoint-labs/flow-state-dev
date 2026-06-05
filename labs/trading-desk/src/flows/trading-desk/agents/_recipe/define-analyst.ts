@@ -1,23 +1,25 @@
 /**
- * `defineAnalyst` — Phase 1 analyst sub-sequencer factory.
+ * `defineAnalyst` — Phase 1 analyst factory, now a thin wrapper over
+ * `defineMemoStep`.
  *
- * Every Phase 1 analyst follows the same five-step recipe:
+ * Every Phase 1 analyst follows the same memo lifecycle as every other
+ * participant — `markWriting → body → commit → rescue(markError)`. The only
+ * analyst-specific content is the pre-commit BODY: reshape session state to
+ * `{ ticker, date }`, fan the role's tools out in parallel (attributed so the
+ * transcript pills attach to this analyst), then synthesize the Thesis. That
+ * body is composed here and handed to `defineMemoStep`, which owns the
+ * lifecycle — so the analyst recipe is no longer a separate apparatus, just a
+ * body-composition + delegation.
  *
- *   .tap(markWriting)              // pre-mark memo + stamp startedAt
- *   .map(tickerDate)               // reshape to { ticker, date } from session state
- *   .parallel(attributedTools)     // fan-out the role's tools, attributed
- *   .step(generator)               // synthesize the Thesis
- *   .tap(commitMemo)               // publish memo + flip status
- *   .rescue([markError])           // localized failure handling
- *
- * The factory captures the recipe; the call site supplies what varies:
- * the memo short-name, the tool record, and the generator. Each analyst
- * becomes ~5 lines.
+ * The body sequencer keeps the `analyst-card` container so the per-analyst card
+ * item still streams (the label is the analyst's `<role> memo`), and the
+ * analyst-named sequencer survives as the body's name.
  */
 import { sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../registry";
 import { attributedTools, memoLabel, tickerDate } from "../../lib/helpers";
-import { commitMemo, markError, markWriting } from "../analysts/writer";
+import { commitAnalystMemo } from "../analysts/writer";
+import { defineMemoStep } from "./memo-writer";
 
 /** Convert camelCase to kebab-case for sequencer names. */
 function kebab(camel: string): string {
@@ -26,7 +28,8 @@ function kebab(camel: string): string {
 
 export interface AnalystConfig {
   /** Phase-1 memo short-name — drives the sequencer name, the agentName
-   *  used to attribute tool pills, and the memo key the writer resolves. */
+   *  used to attribute tool pills, the `analyst-card` container label, and
+   *  the memo key `defineMemoStep` resolves identity from. */
   shortName: Phase1MemoShortName;
   /** Tools fanned out in parallel. Each value is decorated with
    *  `.asTool({ itemVisibility: { client: true, history: false }, agentName })` before being placed in
@@ -38,20 +41,20 @@ export interface AnalystConfig {
 }
 
 /**
- * Build a Phase 1 analyst sub-sequencer. Returns the assembled sequencer
- * ready to be placed in the phase-1 fan-out `.parallel({...})` record.
+ * Build a Phase 1 analyst step. Composes the analyst body (tool fan-out →
+ * synthesis generator, under the `analyst-card` container) and delegates the
+ * memo lifecycle to `defineMemoStep`. Returns the assembled step ready to be
+ * placed in the phase-1 fan-out `.parallel({...})` record.
  */
 export function defineAnalyst(config: AnalystConfig): BlockDefinition {
   const { shortName, tools, generator } = config;
   const { agentName } = PHASE_1_MEMO_KEYS[shortName];
-  return sequencer({
+  const body = sequencer({
     name: `analyst-${kebab(shortName)}`,
     container: { component: "analyst-card", label: memoLabel(agentName) },
   })
-    .tap(markWriting(shortName))
     .map(tickerDate)
     .parallel(attributedTools(agentName, tools))
-    .step(generator)
-    .tap(commitMemo(shortName))
-    .rescue([{ block: markError(shortName) }]);
+    .step(generator);
+  return defineMemoStep(body, { key: shortName, commit: commitAnalystMemo(shortName) });
 }

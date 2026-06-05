@@ -1,30 +1,21 @@
 /**
  * Phase 1 memo-writing blocks.
  *
- *   - `markWriting` / `markError` — built via the shared
- *     `defineMemoStateBlocks` factory (identity-only parameterization).
- *   - `commitMemo(shortName)` — returns a plain handler whose body calls
- *     `publishMemo` with the analyst's thesis projected onto the memo's
+ *   - `commitAnalystMemo(shortName)` — returns a plain handler whose body
+ *     calls `publishMemo` with the analyst's thesis projected onto the memo's
  *     extension fields. Phase 1 keeps the factory shape for the commit
  *     because all five analysts share the same projection (the only
  *     difference is the memo key the patch goes to). When commits diverge
  *     per phase (Phase 2's bull/bear/RM, Phase 3's trader, Phase 5's PM),
  *     they're written as plain handlers — see those files.
+ *
+ * The memo state-transition blocks (`markWriting` / `markError`) are no longer
+ * built here: `defineAnalyst` wraps this commit with the key-driven lifecycle
+ * via `defineMemoStep`, which resolves identity from `ALL_MEMO_KEYS`.
  */
 import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { thesisOutputSchema } from "./thesis-schema";
-
-export const { markWriting, markError } = defineMemoStateBlocks({
-  phaseId: "p1",
-  agentTeam: "analyst",
-  keys: PHASE_1_MEMO_KEYS,
-  errorMessageFallback: "Analyst run failed.",
-});
 
 /**
  * Commit an analyst's `Thesis` to its memo. The `metrics` array-of-pairs
@@ -32,7 +23,7 @@ export const { markWriting, markError } = defineMemoStateBlocks({
  * pair shape (OpenAI strict-mode requirement) and the stored shape is
  * the dict.
  */
-export function commitMemo(shortName: Phase1MemoShortName) {
+export function commitAnalystMemo(shortName: Phase1MemoShortName) {
   const { collectionKey } = PHASE_1_MEMO_KEYS[shortName];
   return memoHandler({
     name: `commit-memo-p1-${shortName}`,
