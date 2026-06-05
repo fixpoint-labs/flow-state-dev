@@ -136,6 +136,19 @@ describe("createSessionClient", () => {
     expect(fetcher.mock.calls[2]?.[0]).toBe("/api/flows/sessions/sess_1/state");
   });
 
+  it("maps listSessionRequests includeItems to the include_items query param", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      createJsonResponse({ requests: REQUESTS })
+    );
+    const client = createSessionClient({ fetcher });
+
+    await client.listSessionRequests("sess_1", { includeItems: true });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/requests?include_items=true"
+    );
+  });
+
   it("supports snapshot query options for items and clientData filters", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(SNAPSHOT));
     const client = createSessionClient({ fetcher });

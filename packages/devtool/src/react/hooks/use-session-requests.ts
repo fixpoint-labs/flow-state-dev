@@ -16,7 +16,11 @@ export function useSessionRequests(sessionId: string | null) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await sessionClient.listSessionRequests(sessionId);
+      // Request full item logs so requests that completed before this view
+      // opened still render their trace tree (FIX-733).
+      const result = await sessionClient.listSessionRequests(sessionId, {
+        includeItems: true
+      });
       setRequests(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch requests");

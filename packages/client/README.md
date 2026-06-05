@@ -69,6 +69,13 @@ const snapshot = await sessions.getSessionState("sess_1", {
   includeItems: true,
   clientData: ["session.artifactsList", "user.preferences"],
 });
+
+// List a session's requests. Returns summaries only by default; pass
+// `includeItems` to back-fill each request's item log — useful for inspecting
+// requests that already completed (e.g. the DevTool's trace view).
+const requests = await sessions.listSessionRequests("sess_1", {
+  includeItems: true,
+});
 ```
 
 ## `createClient` vs `createTypedClient`

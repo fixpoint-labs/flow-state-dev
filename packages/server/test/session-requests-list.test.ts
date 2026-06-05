@@ -3,6 +3,10 @@
  * Slice D). `GET /sessions/:id/requests` must not request full item logs
  * (`withItems: true`) just to list request summaries; pagination filters
  * still pass through to the store.
+ *
+ * Also covers the `include_items` opt-in (FIX-733): inspection surfaces (the
+ * DevTool) pass `include_items=true` to back-fill the item tree for requests
+ * that completed before the view opened.
  */
 import { describe, expect, it, vi } from "vitest";
 import { handleListSessionRequests } from "../src/routes/session-routes";
@@ -49,5 +53,22 @@ describe("session-requests list over-fetch (Slice D)", () => {
     const args = listSpy.mock.calls[0]![0]!;
     expect(args.withItems).not.toBe(true);
     expect(args).toMatchObject({ sessionId: "sess_1", limit: 5, offset: 2, status: "completed" });
+  });
+
+  it("requests item logs when include_items=true (FIX-733)", async () => {
+    const stores: StoreRegistry = createInMemoryStores();
+    await stores.session.set("sess_1", sessionRecord("sess_1"), "any");
+
+    const listSpy = vi.spyOn(stores.request, "list");
+
+    const response = await handleListSessionRequests(
+      new Request("https://x/api/flows/sessions/sess_1/requests?include_items=true"),
+      route("sess_1"),
+      { registry, stores }
+    );
+
+    expect(response.status).toBe(200);
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy.mock.calls[0]![0]!.withItems).toBe(true);
   });
 });
