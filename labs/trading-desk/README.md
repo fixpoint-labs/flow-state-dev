@@ -352,12 +352,12 @@ analyze
         └─ researchManagerGenerator (.step — write `InvestmentThesis`)
   └─ phase-3-trader               (sub-sequencer, container item)
         ├─ setupPhase3Memos       (.tap — pre-create p3/trader in `pending`)
-        └─ traderStep
-             ├─ markWritingP3
+        └─ traderStep              (defineMemoStep)
+             ├─ markWriting("trader")
              ├─ traderApproachGenerator (sub, streams message item)
              ├─ traderGenerator   (.step — write `TradeProposal`)
              ├─ commitTraderMemo  (.tap)
-             └─ markErrorP3       (.rescue)
+             └─ markError("trader")  (.rescue)
   └─ phase-4-risk-debate          (sub-sequencer, container item)
         ├─ setupPhase4Memos       (.tap — pre-create 4 p4 memos in `pending`)
         ├─ aggressiveStep         (.step — markWriting + approach preamble +
@@ -370,13 +370,13 @@ analyze
   └─ phase-5-portfolio-manager    (sub-sequencer, container item)
         ├─ setupPhase5Memos       (.tap — pre-create p5/portfolio-manager
         │                            in `pending`)
-        └─ portfolioManagerStep
-             ├─ markWritingP5
+        └─ portfolioManagerStep    (defineMemoStep)
+             ├─ markWriting("portfolioManager")
              ├─ portfolioManagerApproachGenerator (sub, streams message item)
              ├─ portfolioManagerGenerator (.step — write `PortfolioDecision`)
              ├─ commitPortfolioManagerMemo (.tap — also flips
              │                                `session.runComplete = true`)
-             └─ markErrorP5           (.rescue)
+             └─ markError("portfolioManager")  (.rescue)
 ```
 
 All eight Phase 3–6 approach preamble generators are built via the
@@ -393,9 +393,10 @@ read entries via `ctx.resources`. Phase 4 doesn't use `roundRobin()`
 (see "Why Round Robin and not Debate" below), so there's no Phase 4
 contributions resource.
 
-Each analyst is a sub-sequencer that taps `markWriting`, runs a generator
-with role-specific tools, taps `commitMemo` (or `markError` on rescue), and
-publishes the structured memo body.
+Each analyst is built by `defineAnalyst`, which composes the analyst body
+(role-specific tools + synthesis generator) and delegates the memo lifecycle
+to `defineMemoStep`: tap `markWriting`, run the body, tap `commitAnalystMemo`
+(or `markError` on rescue), publishing the structured memo body.
 
 ### Why Round Robin and not Debate
 
