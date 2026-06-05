@@ -14,6 +14,9 @@ import type {
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
 import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
+import type { FlowRegistry } from "../registry/flow-registry";
+import type { StoreRegistry } from "../stores/types";
+import type { RuntimeConfig } from "../runtime-config";
 
 /** Model-resolver config, re-shaped for the FlowState surface. */
 export interface FlowStateModelsConfig {
@@ -119,12 +122,35 @@ export interface CreateFlowStateOptions<
 }
 
 /**
+ * The runtime internals of a {@link FlowState}, resolved alongside the router.
+ * Off-transport consumers — background workers, queue processors, scripts —
+ * need these directly rather than reaching through the HTTP router. The shape
+ * is exactly what a worker runtime's `createWorker(deps)` consumes.
+ */
+export interface FlowStateRuntime {
+  /** The flow registry built from the configured `flows`. */
+  registry: FlowRegistry;
+  /** The resolved store registry for the active profile; stores are open. */
+  stores: StoreRegistry;
+  /** The forwarded instance-level runtime configuration bundle. */
+  runtimeConfig: RuntimeConfig;
+}
+
+/**
  * The handle returned by `createFlowState`. The runtime router is built
  * lazily on first `getRouter()` / `ready()`; adapters open pools then.
  */
 export interface FlowState<TSettings extends object = FlowStateSettings> {
   /** Resolve the lazy router. First call triggers async store init. */
   getRouter(): Promise<FlowApiRouter>;
+
+  /**
+   * Resolve the runtime internals for off-transport consumers (background
+   * workers, queue processors, scripts). Triggers async store init like
+   * `getRouter()` and is idempotent and memoized — it returns the same
+   * `{ registry, stores, runtimeConfig }` instances the router uses.
+   */
+  getRuntime(): Promise<FlowStateRuntime>;
 
   /** Eager warmup. Idempotent. Useful in `instrumentation.ts` / tests. */
   ready(): Promise<void>;

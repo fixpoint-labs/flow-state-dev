@@ -1,7 +1,7 @@
 {
-  "name": "@flow-state-dev/cli",
+  "name": "@flow-state-dev/node",
   "version": "0.0.0",
-  "description": "The fsdev command-line interface for flow-state-dev.",
+  "description": "Node HTTP host adapter for flow-state-dev — serve a long-lived FSD server in one call.",
   "keywords": [
     "ai",
     "agents",
@@ -9,15 +9,17 @@
     "workflow",
     "typescript",
     "flow-state-dev",
-    "cli",
-    "fsdev",
-    "terminal"
+    "node",
+    "http",
+    "server",
+    "sse",
+    "self-host"
   ],
   "homepage": "https://flow-state.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
-    "directory": "packages/cli"
+    "directory": "packages/node"
   },
   "bugs": {
     "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
@@ -48,41 +50,23 @@
       }
     }
   },
-  "bin": {
-    "fsdev": "./dist/bin.js"
-  },
   "engines": {
     "node": ">=20"
   },
   "sideEffects": false,
   "dependencies": {
-    "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/node": "workspace:*",
-    "@flow-state-dev/server": "workspace:*",
-    "@flow-state-dev/store-sqlite": "workspace:*",
-    "@flow-state-dev/testing": "workspace:*",
-    "commander": "^13.1.0"
-  },
-  "peerDependencies": {
-    "@flow-state-dev/devtool": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@flow-state-dev/devtool": {
-      "optional": true
-    }
+    "@flow-state-dev/server": "workspace:*"
   },
   "devDependencies": {
-    "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.4",
-    "zod": "^4.3.6"
+    "zod": "^3.24.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
-    "test:watch": "vitest --root .",
-    "fsdev": "tsx src/bin.ts"
+    "test:watch": "vitest --root ."
   }
 }
