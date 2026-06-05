@@ -46,8 +46,6 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
-  markErrorP2,
-  markWritingP2,
 } from "../agents/research/writer";
 import { LENS_PACK } from "../agents/lenses/lenses";
 import { defineLensGenerator } from "../agents/lenses/lens-generator";
@@ -163,23 +161,20 @@ export const analystFanOut = sequencer({
  * read the running transcript via `ctx.resources` rather than threading it
  * through the sub-sequencer's state.
  */
-const bullStep = sequencer({ name: "phase-2-bull-step" })
-  .tap(markWritingP2("bull"))
-  .step(consolidateBullMemo)
-  .tap(commitBullMemo)
-  .rescue([{ block: markErrorP2("bull") }]);
+const bullStep = defineMemoStep(consolidateBullMemo, {
+  key: "bull",
+  commit: commitBullMemo,
+});
 
-const bearStep = sequencer({ name: "phase-2-bear-step" })
-  .tap(markWritingP2("bear"))
-  .step(consolidateBearMemo)
-  .tap(commitBearMemo)
-  .rescue([{ block: markErrorP2("bear") }]);
+const bearStep = defineMemoStep(consolidateBearMemo, {
+  key: "bear",
+  commit: commitBearMemo,
+});
 
-const researchManagerStep = sequencer({ name: "phase-2-research-manager-step" })
-  .tap(markWritingP2("researchManager"))
-  .step(researchManagerGenerator)
-  .tap(commitResearchManagerMemo)
-  .rescue([{ block: markErrorP2("researchManager") }]);
+const researchManagerStep = defineMemoStep(researchManagerGenerator, {
+  key: "researchManager",
+  commit: commitResearchManagerMemo,
+});
 
 export const researchStage = sequencer({
   name: "phase-2-research-debate",

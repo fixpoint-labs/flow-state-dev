@@ -1,34 +1,21 @@
 /**
- * Phase 2 memo-writing blocks.
+ * Phase 2 commit handlers.
  *
- *   - `markWritingP2` / `markErrorP2` — built via `defineMemoStateBlocks`.
- *   - The three commit handlers (`commitBullMemo`, `commitBearMemo`,
- *     `commitResearchManagerMemo`) are plain handlers that project their
- *     LLM output and hand the patch to `publishMemo`. They're not run
- *     through a factory because each has a different output schema and a
- *     different projection — the body IS what varies.
+ * The three commit handlers (`commitBullMemo`, `commitBearMemo`,
+ * `commitResearchManagerMemo`) are plain handlers that project their LLM
+ * output and hand the patch to `publishMemo`. They're not run through a
+ * factory because each has a different output schema and a different
+ * projection — the body IS what varies. The `writing` / `error` lifecycle
+ * taps come from the shared key-driven `markWriting` / `markError` in
+ * `_recipe/memo-writer` (placed via `defineMemoStep` in `orchestration/stages.ts`).
  */
 import { PHASE_2_MEMO_KEYS } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
 } from "./generators";
-
-export const {
-  markWriting: markWritingP2,
-  markError: markErrorP2,
-} = defineMemoStateBlocks({
-  phaseId: "p2",
-  agentTeam: "research",
-  keys: PHASE_2_MEMO_KEYS,
-  errorMessageFallback: "Phase 2 generator failed.",
-});
 
 export const commitBullMemo = memoHandler({
   name: "commit-memo-p2-bull",
