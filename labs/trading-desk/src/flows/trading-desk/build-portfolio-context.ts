@@ -29,8 +29,8 @@
  * Pure leaf: imports only the portfolio schema types + the flow input type
  * (types only — no runtime). Unit-testable without a browser.
  */
-import type { PortfolioContextInput } from "../flow-schema";
-import type { AccountState } from "./portfolio-schema";
+import type { PortfolioContextInput } from "./flow-schema";
+import type { AccountState } from "../trading-desk-portfolio/portfolio-schema";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };

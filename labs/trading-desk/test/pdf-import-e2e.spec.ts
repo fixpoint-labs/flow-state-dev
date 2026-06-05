@@ -29,7 +29,7 @@ import { describe, expect, it, vi } from "vitest";
 // PDF. The action passes the decoded bytes to this fn; we ignore them and return
 // canned statement text. Hoisted by vitest above the flow import.
 vi.mock(
-  "../src/flows/trading-desk/portfolio/extract-pdf-text.server",
+  "../src/flows/trading-desk-portfolio/extract-pdf-text.server",
   () => ({
     extractPdfText: vi.fn(
       async () => "AAPL ... MSFT ... TIMXX ... Total Holdings $3,926.84",
@@ -39,12 +39,16 @@ vi.mock(
 
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+// The PDF-import + holdings actions moved to the `trading-desk-portfolio` flow
+// (FIX-736); build that flow to exercise them end-to-end. The `accounts`
+// collection is shared (flowIsolation: false → bare `{userId}`), so the state
+// reads below resolve the same key regardless of the writing flow.
+import tradingDeskFlow from "../src/flows/trading-desk-portfolio/flow";
 import {
   canonicalRowsToCsv,
   toCanonicalRows,
   type PdfExtraction,
-} from "../src/flows/trading-desk/portfolio/portfolio-pdf";
+} from "../src/flows/trading-desk-portfolio/portfolio-pdf";
 
 /** A base64 string standing in for an uploaded PDF. Its bytes are irrelevant —
  *  `extractPdfText` is mocked — but the decode step requires non-empty bytes. */

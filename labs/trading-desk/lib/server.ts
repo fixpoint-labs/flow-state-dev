@@ -8,6 +8,7 @@ import {
   createFlowRegistry,
 } from "@flow-state-dev/server";
 import tradingDeskFlow from "@/src/flows/trading-desk/flow";
+import portfolioFlow from "@/src/flows/trading-desk-portfolio/flow";
 import { hasXaiKey } from "@/src/flows/trading-desk/tools/providers/xai";
 
 // Filesystem-backed stores so analysis history survives `pnpm dev` restarts.
@@ -51,6 +52,7 @@ const modelResolver = createModelResolver({
 
 const registry = createFlowRegistry();
 registry.register(tradingDeskFlow);
+registry.register(portfolioFlow);
 
 export const router = createFlowApiRouter({
   registry,

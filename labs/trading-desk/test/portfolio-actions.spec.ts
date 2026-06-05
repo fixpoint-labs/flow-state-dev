@@ -15,7 +15,11 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+// The portfolio actions moved to the `trading-desk-portfolio` flow (FIX-736);
+// build that flow to exercise them. The `accounts` collection is shared
+// (flowIsolation: false → bare `{userId}`), so the state assertions below read
+// the same key regardless of which flow wrote them.
+import tradingDeskFlow from "../src/flows/trading-desk-portfolio/flow";
 
 const USER_ID = "devuser";
 // accounts collection is now user-scoped with flowIsolation: false, so state

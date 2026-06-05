@@ -17,17 +17,10 @@ import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import { priceHistoryResource } from "./price-history-resource";
-import { getQuotes } from "./portfolio/get-quotes";
 import {
-  deleteAccount,
-  deleteHolding,
-  importHoldings,
-  saveAccount,
-} from "./portfolio/portfolio-actions";
-import { extractHoldingsFromPdf } from "./portfolio/extract-holdings-action";
-import { portfolioQuotesResource } from "./portfolio/portfolio-quotes-resource";
-import { pdfImportResource } from "./portfolio/portfolio-pdf-resource";
-import { accountsCollection } from "./portfolio/portfolio-resources";
+  accountsCollection,
+  portfolioQuotesResource,
+} from "../trading-desk-portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -46,18 +39,6 @@ const tradingDeskFlow = defineFlow({
   actions: {
     analyze: { block: analyze },
     setInstructions: { block: setInstructions },
-    // Portfolio (Slice 4 / Spine B). User-scoped resource mutations + a
-    // read-only price fetch. None drives the analysis pipeline.
-    saveAccount: { block: saveAccount },
-    deleteAccount: { block: deleteAccount },
-    importHoldings: { block: importHoldings },
-    deleteHolding: { block: deleteHolding },
-    getQuotes: { block: getQuotes },
-    // PDF holdings import (Slice 4b). The LLM transcription step; writes the
-    // extracted rows to `pdfImport` for the dialog to reconcile + confirm. The
-    // confirmed rows feed the EXISTING `importHoldings` — this action never
-    // imports.
-    extractHoldingsFromPdf: { block: extractHoldingsFromPdf },
   },
 
   session: {
@@ -103,19 +84,14 @@ const tradingDeskFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
-    // Portfolio domain (Slice 4 / Spine B). One user-scoped collection keyed by
-    // accountId (flowIsolation: false → bare `{userId}`, shared across flows);
-    // persists on the existing filesystem store. Holdings live inline in each
-    // account record — see `portfolio/portfolio-resources.ts`.
+    // Portfolio domain (Spine B), owned + written by the
+    // `trading-desk-portfolio` flow. Declared here READ-ONLY: `seedSession`
+    // reads the shared user-scoped `accounts` (flowIsolation: false → bare
+    // `{userId}`) and the last-known `portfolioQuotes` to compute the per-run
+    // portfolio snapshot. Declaring them makes `resolveUserStorageKey` derive
+    // the same bare key both flows use — no client bridge.
     accounts: accountsCollection,
-    // User-scoped per-user last-known-quotes cache written by `getQuotes`
-    // (flowIsolation: false → readable cross-flow); the Portfolio pane reads it
-    // via `useResource` after a refresh. Not a durable snapshot.
     portfolioQuotes: portfolioQuotesResource,
-    // Transient per-session PDF-extraction channel written by
-    // `extractHoldingsFromPdf`; the import dialog reads it via `useResource` to
-    // reconcile + preview before the user confirms. Not a durable record.
-    pdfImport: pdfImportResource,
   },
 });
 

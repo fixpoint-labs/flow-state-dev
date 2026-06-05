@@ -7,8 +7,8 @@
  * (portfolio-blind).
  */
 import { describe, expect, it } from "vitest";
-import { buildPortfolioContext } from "../src/flows/trading-desk/portfolio/build-portfolio-context";
-import type { AccountState } from "../src/flows/trading-desk/portfolio/portfolio-schema";
+import { buildPortfolioContext } from "../src/flows/trading-desk/build-portfolio-context";
+import type { AccountState } from "../src/flows/trading-desk-portfolio/portfolio-schema";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {

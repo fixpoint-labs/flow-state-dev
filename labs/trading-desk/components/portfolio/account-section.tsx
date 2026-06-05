@@ -14,8 +14,8 @@ import { Trash2 } from "lucide-react";
 import type {
   AccountState,
   Holding,
-} from "@/src/flows/trading-desk/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
+} from "@/src/flows/trading-desk-portfolio/portfolio-schema";
+import type { Quote } from "@/src/flows/trading-desk-portfolio/get-quotes";
 import { HoldingsTable } from "./holdings-table";
 import { DASH, formatMoney, formatSignedMoney } from "./portfolio-format";
 

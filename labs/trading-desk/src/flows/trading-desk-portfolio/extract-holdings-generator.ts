@@ -1,9 +1,10 @@
 /**
  * `extractHoldingsGenerator` — the broker-agnostic PDF holdings extractor.
  *
- * Reads the raw text of a brokerage statement (already extracted from the PDF
- * client-side via pdfjs) and TRANSCRIBES the holdings table into a strict,
- * structured shape. It is the only LLM step in the PDF import path. It does NO
+ * Reads the raw text of a brokerage statement (already extracted server-side
+ * from the PDF bytes — see `extract-pdf-text.server.ts`) and TRANSCRIBES the
+ * holdings table into a strict, structured shape. It is the only LLM step in
+ * the PDF import path. It does NO
  * arithmetic verification and NO importing — the deterministic `reconcile()` and
  * `toCanonicalRows()` (in `portfolio-pdf.ts`) do that. The model's single job is
  * to read columns off the page accurately, broker-agnostically.
@@ -32,8 +33,8 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENTS } from "../registry";
-import { tradingDesk } from "../capability";
+import { AGENTS } from "../trading-desk/registry";
+import { tradingDesk } from "../trading-desk/capability";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 
 /** The statement text, supplied by the action from the client extraction. */

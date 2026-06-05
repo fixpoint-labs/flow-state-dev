@@ -26,9 +26,11 @@ import { memoResources, type MemoStatus } from "../resources";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
-import { accountsCollection } from "../portfolio/portfolio-resources";
-import { portfolioQuotesResource } from "../portfolio/portfolio-quotes-resource";
-import { buildPortfolioContext } from "../portfolio/build-portfolio-context";
+import {
+  accountsCollection,
+  portfolioQuotesResource,
+} from "../../trading-desk-portfolio/portfolio-resources";
+import { buildPortfolioContext } from "../build-portfolio-context";
 
 /**
  * Patches session state from action input and resets the memo-status

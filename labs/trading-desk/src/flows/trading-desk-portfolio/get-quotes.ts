@@ -20,12 +20,12 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrFetch } from "../tools/runtime/cache";
-import { mapLimit, sleep } from "../lib/concurrency";
-import { loadFixture } from "../tools/runtime/fixtures";
-import { fetchFinnhubCandles, hasFinnhubKey } from "../tools/providers/finnhub";
-import { fetchYahooChart } from "../tools/providers/yahoo";
-import { portfolioQuotesResource } from "./portfolio-quotes-resource";
+import { getOrFetch } from "../trading-desk/tools/runtime/cache";
+import { mapLimit, sleep } from "../trading-desk/lib/concurrency";
+import { loadFixture } from "../trading-desk/tools/runtime/fixtures";
+import { fetchFinnhubCandles, hasFinnhubKey } from "../trading-desk/tools/providers/finnhub";
+import { fetchYahooChart } from "../trading-desk/tools/providers/yahoo";
+import { portfolioQuotesResource } from "./portfolio-resources";
 
 /** Live quote fan-out throttle: at most this many provider requests in flight at
  *  once, so a 20+ holding portfolio doesn't trip Yahoo's rate limiter and drop a
@@ -117,7 +117,7 @@ async function resolveQuote(
  * the Portfolio view works offline. Dedupes tickers; preserves the requested
  * order in the response.
  *
- * Writes the result to the session-scoped `portfolioQuotes` resource so the UI
+ * Writes the result to the user-scoped `portfolioQuotes` resource so the UI
  * can read it via `useResource` after `session.refresh()` — `sendAction` does
  * not return handler output to the client in this runtime (see the resource's
  * doc comment). Also returns the report, which is what the unit test asserts on.

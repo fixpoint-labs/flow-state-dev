@@ -21,8 +21,8 @@ import {
   reconcile,
   toCanonicalRows,
   type PdfExtraction,
-} from "../src/flows/trading-desk/portfolio/portfolio-pdf";
-import { parsePortfolioCsv } from "../src/flows/trading-desk/portfolio/portfolio-csv";
+} from "../src/flows/trading-desk-portfolio/portfolio-pdf";
+import { parsePortfolioCsv } from "../src/flows/trading-desk-portfolio/portfolio-csv";
 
 /** A small synthetic extraction modeled on a Wealthfront-style holdings table:
  *  two real fractional holdings, one money-market fund, one contra-CUSIP, plus a

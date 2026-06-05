@@ -9,7 +9,7 @@
  * real holdings would silently corrupt cost basis or drop positions.
  */
 import { describe, expect, it } from "vitest";
-import { parsePortfolioCsv } from "../src/flows/trading-desk/portfolio/portfolio-csv";
+import { parsePortfolioCsv } from "../src/flows/trading-desk-portfolio/portfolio-csv";
 
 describe("parsePortfolioCsv", () => {
   it("parses the canonical format with zero errors", () => {

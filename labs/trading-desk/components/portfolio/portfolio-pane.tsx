@@ -37,9 +37,9 @@ import { cn } from "@/lib/utils";
 import type {
   AccountState,
   Holding,
-} from "@/src/flows/trading-desk/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
-import type { PortfolioQuotesState } from "@/src/flows/trading-desk/portfolio/portfolio-quotes-resource";
+} from "@/src/flows/trading-desk-portfolio/portfolio-schema";
+import type { Quote } from "@/src/flows/trading-desk-portfolio/get-quotes";
+import type { PortfolioQuotesState } from "@/src/flows/trading-desk-portfolio/portfolio-resources";
 import { AccountSection } from "./account-section";
 import { AddAccountDialog, type NewAccountDraft } from "./add-account-dialog";
 import { ImportCsvDialog, type ImportSubmit } from "./import-csv-dialog";
