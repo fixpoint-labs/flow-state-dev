@@ -1,5 +1,5 @@
 import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
-import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings } from "@flow-state-dev/core/types";
+import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
   MockGeneratorInstance,
@@ -45,6 +45,8 @@ export type TestBlockOptions<TInput> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /** Real resolver to route generation through; overrides the mock resolver when set. */
+  modelResolver?: ModelResolver;
 };
 
 export type StateChange = {

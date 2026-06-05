@@ -489,7 +489,9 @@ export async function createTestContext<TInput = unknown>(
     }
   });
 
-  const modelResolver = createMockModelResolver({
+  // A real resolver injected by the caller (e.g. the benchmark engine) wins over
+  // the deterministic mock resolver; absent one, fall back to the scripted mock.
+  const modelResolver = options.modelResolver ?? createMockModelResolver({
     generators: options.generators,
     models: options.models,
     policy: options.unmockedGeneratorPolicy

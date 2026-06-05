@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { utility } from "@flow-state-dev/core";
 import type { GeneratorConfig } from "@flow-state-dev/core";
+import type { ModelResolver } from "@flow-state-dev/core/types";
 import { testBlock } from "../test-utilities/testBlock";
 import type { Scorer, ScoreResult } from "./types";
 
@@ -46,6 +47,8 @@ export interface AnalyzerScorerConfig {
   name?: string;
   /** Pass/fail threshold (0-1). Default: 0.5. */
   threshold?: number;
+  /** Real resolver for the judge LLM; when set, the analyzer runs against it instead of the mock/noop path. */
+  modelResolver?: ModelResolver;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +149,7 @@ export function analyzerScorer(config: AnalyzerScorerConfig): Scorer<unknown> {
         const result = await testBlock(analyzerBlock, {
           input: evalInput,
           unmockedGeneratorPolicy: "allow",
+          modelResolver: config.modelResolver,
         });
 
         if (result.error) {
