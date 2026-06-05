@@ -18,7 +18,9 @@ import { testFlow } from "@flow-state-dev/testing";
 import tradingDeskFlow from "../src/flows/trading-desk/flow";
 
 const USER_ID = "devuser";
-const ISOLATED_KEY = `${USER_ID}:trading-desk`;
+// accounts collection is now user-scoped with flowIsolation: false, so state
+// keys at bare {userId} rather than {userId}:trading-desk.
+const USER_KEY = USER_ID;
 
 type StoredHolding = {
   ticker: string;
@@ -37,7 +39,7 @@ type StoredAccount = {
 async function userResources(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<Record<string, Record<string, unknown>>> {
-  return (await stores.resourceState.getAll("user", ISOLATED_KEY)) as Record<
+  return (await stores.resourceState.getAll("user", USER_KEY)) as Record<
     string,
     Record<string, unknown>
   >;
@@ -364,12 +366,13 @@ describe("getQuotes action", () => {
     });
     expect(result.status).toBe("completed");
 
-    // The quotes are written to the session-scoped resource for the UI to read.
-    const sessionResources = (await stores.resourceState.getAll(
-      "session",
-      "quotes-session",
+    // portfolioQuotes is now user-scoped (flowIsolation: false), keyed at bare
+    // {userId} — readable cross-flow so the report flow can seed from it.
+    const userResources = (await stores.resourceState.getAll(
+      "user",
+      USER_KEY,
     )) as Record<string, { quotes?: Array<{ ticker: string; price: number | null }> }>;
-    const quotes = sessionResources.portfolioQuotes?.quotes ?? [];
+    const quotes = userResources.portfolioQuotes?.quotes ?? [];
     const nvda = quotes.find((q) => q.ticker === "NVDA");
     expect(nvda).toBeDefined();
     // Fixture NVDA last bar close is 131.4 (pinned snapshot).
@@ -386,11 +389,11 @@ describe("getQuotes action", () => {
       stores,
       input: { tickers: ["ZZZZ"], dataSource: "fixture" },
     });
-    const sessionResources = (await stores.resourceState.getAll(
-      "session",
-      "quotes-missing",
+    const userResources = (await stores.resourceState.getAll(
+      "user",
+      USER_KEY,
     )) as Record<string, { quotes?: Array<{ ticker: string; price: number | null }> }>;
-    const quotes = sessionResources.portfolioQuotes?.quotes ?? [];
+    const quotes = userResources.portfolioQuotes?.quotes ?? [];
     const missing = quotes.find((q) => q.ticker === "ZZZZ");
     expect(missing).toBeDefined();
     expect(missing?.price).toBeNull();

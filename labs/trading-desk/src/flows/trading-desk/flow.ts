@@ -86,10 +86,10 @@ const tradingDeskFlow = defineFlow({
     // Phase 2 transcript — shared by the round-robin, the consolidator
     // generators, and the `tradingDesk` capability's stance/debate presets.
     p2Contributions: phase2Contributions,
-    // User-scoped, flow-isolated standing instructions. Declared here so
-    // `resolveUserStorageKey` picks up `flowIsolation: true` for storage-key
-    // derivation; the capability's `core` preset also declares it for
-    // runtime context access.
+    // User-scoped standing instructions (flowIsolation: false → bare
+    // `{userId}`, shared across flows). Declared here so `resolveUserStorageKey`
+    // derives the storage key; the capability's `core` preset also declares it
+    // for runtime context access.
     specialInstructions: specialInstructionsResource,
     // Valuation spine — computed after Phase 1, read by Phases 2–5.
     valuationSpine: valuationSpineResource,
@@ -103,13 +103,14 @@ const tradingDeskFlow = defineFlow({
     // Decision-of-record snapshot — written once at PM-commit; the durable
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
-    // Portfolio domain (Slice 4 / Spine B). One user-scoped, flow-isolated
-    // collection keyed by accountId; persists under `{userId}:trading-desk` on
-    // the existing filesystem store. Holdings live inline in each account record
-    // — see `portfolio/portfolio-resources.ts`.
+    // Portfolio domain (Slice 4 / Spine B). One user-scoped collection keyed by
+    // accountId (flowIsolation: false → bare `{userId}`, shared across flows);
+    // persists on the existing filesystem store. Holdings live inline in each
+    // account record — see `portfolio/portfolio-resources.ts`.
     accounts: accountsCollection,
-    // Transient per-session price cache written by `getQuotes`; the Portfolio
-    // pane reads it via `useResource` after a refresh. Not a durable snapshot.
+    // User-scoped per-user last-known-quotes cache written by `getQuotes`
+    // (flowIsolation: false → readable cross-flow); the Portfolio pane reads it
+    // via `useResource` after a refresh. Not a durable snapshot.
     portfolioQuotes: portfolioQuotesResource,
     // Transient per-session PDF-extraction channel written by
     // `extractHoldingsFromPdf`; the import dialog reads it via `useResource` to

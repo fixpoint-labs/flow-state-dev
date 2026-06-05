@@ -185,7 +185,7 @@ export const checkPhase1HasFundamentalsAndProfile = handler({
 
 /**
  * Persists the user's standing special instructions (global + per-phase) to
- * the user-scoped, flow-isolated `specialInstructionsResource`.
+ * the user-scoped `specialInstructionsResource`.
  */
 export const setInstructions = handler({
   name: "set-instructions",

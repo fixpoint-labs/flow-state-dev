@@ -51,7 +51,9 @@ import {
 const PDF_BASE64 = Buffer.from("%PDF-1.4 fake bytes").toString("base64");
 
 const USER_ID = "devuser";
-const ISOLATED_KEY = `${USER_ID}:trading-desk`;
+// accounts collection is now user-scoped with flowIsolation: false, so state
+// keys at bare {userId} rather than {userId}:trading-desk.
+const USER_KEY = USER_ID;
 const ACCOUNT = "acct-pdf";
 
 /** Create the target account — `importHoldings` requires an existing account. */
@@ -115,7 +117,7 @@ describe("extractHoldingsFromPdf action", () => {
     // was written by the extract step.
     const userResources = (await stores.resourceState.getAll(
       "user",
-      ISOLATED_KEY,
+      USER_KEY,
     )) as Record<string, unknown>;
     expect(
       Object.keys(userResources).some((k) => k.startsWith("accounts/")),
@@ -147,7 +149,7 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
 
     const userResources = (await stores.resourceState.getAll(
       "user",
-      ISOLATED_KEY,
+      USER_KEY,
     )) as Record<
       string,
       {

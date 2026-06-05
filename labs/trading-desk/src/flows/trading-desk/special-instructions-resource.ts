@@ -6,9 +6,12 @@
  * sibling `./special-instructions` module, which is import-safe in the
  * browser.
  *
- * Storage: user-scope with `flowIsolation: true`, so the record lives under
- * `{userId}:trading-desk` and never bleeds into other flows that share the
- * same user identity.
+ * Storage: user-scope with `flowIsolation: false`, so the record lives under
+ * bare `{userId}`, shared across flows for the user. This is required so that
+ * `effectiveScopeIsolation` is consistent across all user-scoped resources on
+ * the same flow (see FIX-735) — if any user-scoped resource keeps isolation on,
+ * the whole flow's user record would namespace to `{userId}:{flowKind}` and the
+ * report flow's cross-flow reads would resolve to the wrong key.
  */
 import { defineResource } from "@flow-state-dev/core";
 import {
@@ -23,7 +26,7 @@ import {
  */
 export const specialInstructionsResource = defineResource({
   scope: "user",
-  flowIsolation: true,
+  flowIsolation: false,
   ref: "tradingDeskSpecialInstructions",
   stateSchema: specialInstructionsStateSchema,
   default: EMPTY_INSTRUCTIONS,

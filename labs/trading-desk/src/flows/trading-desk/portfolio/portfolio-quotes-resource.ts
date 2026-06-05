@@ -1,5 +1,5 @@
 /**
- * Session-scoped resource holding the most-recent `getQuotes` result so the
+ * User-scoped shared resource holding the most-recent `getQuotes` result so the
  * Portfolio UI can read fetched prices via `useResource`.
  *
  * Why a resource and not the action's return value: in this runtime
@@ -10,10 +10,11 @@
  * (`session.refresh()` → `useResource`). `getQuotes` writes here; the Portfolio
  * pane refreshes after dispatch and reads it.
  *
- * Session-scoped (transient, per the bound read session) rather than persisted:
- * a persisted `quotes/*` snapshot with a refresh cadence is an explicit
- * out-of-scope future seam (spec §2.5). This is a read-on-demand cache, not a
- * durable record.
+ * Scoped to `user` with `flowIsolation: false` (keys at bare `{userId}`). This
+ * makes it a per-user last-known-quotes cache readable cross-flow, so the report
+ * flow can read the latest prices at seed without a separate fetch. The previous
+ * session scope was a transient-only cache; the user scope persists across
+ * sessions while still being refreshed on every `getQuotes` call.
  *
  * `price` is nullable per quote: a missing/unavailable price stays null so the
  * UI renders "—", never a fabricated number (BP-020 spirit). `asOf` carries the
@@ -41,7 +42,8 @@ export const portfolioQuotesStateSchema = z.object({
 export type PortfolioQuotesState = z.infer<typeof portfolioQuotesStateSchema>;
 
 export const portfolioQuotesResource = defineResource({
-  scope: "session",
+  scope: "user",
+  flowIsolation: false,
   ref: "portfolioQuotes",
   stateSchema: portfolioQuotesStateSchema.nullable(),
   default: null,
