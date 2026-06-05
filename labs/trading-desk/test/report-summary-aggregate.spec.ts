@@ -18,8 +18,8 @@ import {
   buildReportSummary,
   stanceToAxis,
 } from "../components/summary/aggregate";
-import type { MemoState } from "../src/flows/analysis/resources";
-import type { ValuationSpineState } from "../src/flows/analysis/valuation-spine-resource";
+import type { MemoState } from "../src/flows/analysis/resources/memos";
+import type { ValuationSpineState } from "../src/flows/analysis/resources/valuation-spine";
 import type { AnyMemoShortName } from "../src/flows/analysis/registry";
 
 /** Build a minimal published MemoState, overriding only the fields under test. */

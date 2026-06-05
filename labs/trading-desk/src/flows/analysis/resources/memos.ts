@@ -8,9 +8,8 @@
  * without an extra fetch.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
 import { z } from "zod";
-import { lensConvergenceStateSchema } from "./agents/lenses/lens-convergence-resource";
+import { lensConvergenceStateSchema } from "./lens-convergence";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
  *  in `pending`, transitions to `writing` when the analyst generator starts,
@@ -359,15 +358,3 @@ export const memosCollection = defineResourceCollection({
 export const memoResources = {
   memos: memosCollection,
 } as const;
-
-/**
- * Phase 2 round-robin contributions resource. Created as a free resource ref
- * (no surrounding collection) so the bull/bear round-robin can share its
- * transcript with the three post-loop consolidation generators and with the
- * `tradingDesk` capability's stance/debate presets.
- *
- * Lives in this top-level resources module so importers (the round-robin
- * instance, the capability, the flow registration) all pull from one place —
- * keeping the import graph cycle-free without a per-phase leaf module.
- */
-export const phase2Contributions = createRoundRobinContributions();

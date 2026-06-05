@@ -5,7 +5,7 @@
  * client components (`app/page.tsx`, `components/settings-dialog.tsx`) without
  * pulling `@flow-state-dev/core`'s root barrel — which transitively reaches
  * Node-only model resolvers — into the browser bundle. The matching
- * `defineResource` lives next door in `./special-instructions-resource`.
+ * `defineResource` lives in `./resources/special-instructions`.
  *
  * Injection: a `userInstructions` context entry on the `tradingDesk`
  * capability's always-on `core` preset renders `formatUserInstructions(...)`

@@ -39,12 +39,16 @@ src/flows/analysis/
   flow-schema.ts                 analyzeInputSchema (the required caller input)
   analyze-input.ts               the analyze action input adapter
   registry.ts                    AGENTS map + per-phase memo key registries (was agents.ts — still hand-rolled)
-  resources.ts                   memosCollection + thesisSection + phase2Contributions
   report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
-  decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
-  price-history-resource.ts      thinned { date, close } series + provenance (surface-owned)
-  valuation-spine-resource.ts    the shared valuation spine (surface-owned)
-  special-instructions*.ts       per-run special-instructions resource + helpers
+  special-instructions.ts        pure browser-safe leaf: schema + EMPTY_INSTRUCTIONS + formatUserInstructions
+  resources/                     every analysis-flow resource definition, one file per resource
+    memos.ts                     memo shape schemas + thesisSection + memosCollection + memoResources
+    phase2-contributions.ts      the bull/bear round-robin contributions resource
+    decision-snapshot.ts         durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
+    price-history.ts             thinned { date, close } series + provenance (surface-owned)
+    valuation-spine.ts           the shared valuation spine (surface-owned)
+    special-instructions.ts      the per-run special-instructions resource (defineResource; leaf lives at flow root)
+    lens-convergence.ts          the lens-owned convergence resource (§2.4)
   compute-spine.ts               .tap that computes + stores the valuation spine
   store-price-history.ts         .tap that persists the thinned price series
   capability.ts                  the tradingDesk capability — single import for every generator
@@ -68,11 +72,10 @@ src/flows/analysis/
       generators.ts round-robin.ts validate-citations.ts writer.ts setup.ts prompts.ts
       prompts/                   bull/bear/manager *.prompt.md
       tools/find_counter_evidence.ts  FLOW-COUPLED tool (imports memo keys — NOT in the catalog)
-    lenses/                      the lens pack (was phase-2b/ + lens-owned lib + resource)
+    lenses/                      the lens pack (was phase-2b/ + lens-owned lib; the convergence resource now lives in resources/)
       lens-generator.ts lens-verdict-schema.ts lens-body-sections.ts writer.ts setup.ts
       lenses.ts                  LENS_PACK config (was lib/lenses.ts)
       convergence-math.ts        pure convergence math (was lib/convergence-math.ts)
-      lens-convergence-resource.ts  the lens-owned convergence resource (§2.4)
       prompts/                   lens.prompt.md
     trader/                      trader.ts approach.ts writer.ts setup.ts prompts/ (was phase-3/; owns its output schema)
     risk/                        personas.ts (3) consolidator.ts schemas.ts approach.ts writer.ts setup.ts prompts/ (was phase-4/)
@@ -165,7 +168,7 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 - **`lib/` is for pure IO-free utilities that are neither tool-runtime nor a
   recipe** — formatters, the ticker resolver, concurrency, and the valuation /
   scoring math. Identity lives in `registry.ts`; contract lives in
-  `resources.ts` / `state.ts` / `flow-schema.ts`.
+  `resources/` / `state.ts` / `flow-schema.ts`.
 
 ## Past Reports
 
@@ -182,7 +185,7 @@ returns its `metadata` bag. Two seams make a run a durable, re-openable record:
   into a render-ready row, degrading gracefully on legacy / in-progress /
   malformed metadata (never throws). `reportRowTuple` / `relativeTime` are pure
   helpers used by the list.
-- **`decision-snapshot-resource.ts`** — the full, machine-scoreable
+- **`resources/decision-snapshot.ts`** — the full, machine-scoreable
   decision-of-record (session-scoped, written once at PM-commit via
   `patchState`). Separate from the metadata row (the cheap list projection) and
   the memo (the human-rendered thesis). It records the **post-clamp**
@@ -227,7 +230,7 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   stored `priceHistory` close series with stop/target/fair-value/close overlay
   lines; with `< 2` bars or a `source: "unavailable"` slice it falls back to a
   trade-levels list.
-- **Price-history persistence:** `price-history-resource.ts` (leaf, BP-019) +
+- **Price-history persistence:** `resources/price-history.ts` (leaf, BP-019) +
   `store-price-history.ts` (a `.tap()` after the spine tap in `flow.ts`). The tap
   reads the warm tool cache / fixture the technical analyst already populated — no
   extra fetch, no `block.run()` — and persists a thinned `{ date, close }` series
@@ -648,10 +651,11 @@ Two conventions when using `roundRobin()` in this app:
    when multiple round-robins coexist in the same flow. Phase 2 uses
    `accessorKey: "p2Contributions"`.
 
-2. **Declare the contributions resource at the flow root (`resources.ts`,
-   the `phase2Contributions` accessor).** Importers (the round-robin instance
-   in `agents/research/round-robin.ts`, the capability, the consolidator) all
-   pull from there. This keeps the group's import graph cycle-free (see BP-019).
+2. **Declare the contributions resource in its own module
+   (`resources/phase2-contributions.ts`, the `phase2Contributions` accessor).**
+   Importers (the round-robin instance in `agents/research/round-robin.ts`, the
+   capability, the consolidator) all pull from there. This keeps the group's
+   import graph cycle-free (see BP-019).
 
 **Phase 4 deliberately does NOT use `roundRobin()`.** It's a plain
 sequencer chain — `aggressiveStep.step(conservativeStep).step(neutralStep)`

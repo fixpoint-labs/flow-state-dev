@@ -41,15 +41,16 @@ import {
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
 } from "./registry";
-import { memosCollection, phase2Contributions } from "./resources";
-import { valuationSpineResource } from "./valuation-spine-resource";
-import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
+import { memosCollection } from "./resources/memos";
+import { phase2Contributions } from "./resources/phase2-contributions";
+import { valuationSpineResource } from "./resources/valuation-spine";
+import { lensConvergenceResource } from "./resources/lens-convergence";
 import {
   formatValuationSpine,
   formatRatingEnvelope,
 } from "./lib/valuation-spine";
 import { formatUserInstructions } from "./special-instructions";
-import { specialInstructionsResource } from "./special-instructions-resource";
+import { specialInstructionsResource } from "./resources/special-instructions";
 import { sessionStateSchema, type SessionState } from "./state";
 import {
   formatAnalystMemos,

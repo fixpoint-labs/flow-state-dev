@@ -11,9 +11,9 @@ import { testBlock } from "@flow-state-dev/testing";
 import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
 import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
 import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import { sessionStateSchema } from "../src/flows/analysis/state";
-import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
+import { valuationSpineResource } from "../src/flows/analysis/resources/valuation-spine";
 
 const writePm = markWriting("portfolioManager");
 const errorPm = markError("portfolioManager");

@@ -27,7 +27,7 @@ import {
   type LensMemoData,
 } from "../components/theses/lens-card";
 import { LENS_PACK } from "../src/flows/analysis/agents/lenses/lenses";
-import type { ThesisSection } from "../src/flows/analysis/resources";
+import type { ThesisSection } from "../src/flows/analysis/resources/memos";
 
 /** Build a lens memo's client-data subset the way the Slice-5 writer's
  *  `lensBody` synthesizes it: a Verdict + Key driver section, plus an optional

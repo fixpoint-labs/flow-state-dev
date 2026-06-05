@@ -31,7 +31,7 @@
  * reset to `null` by `seedSession` at the start of each run.
  */
 import { z } from "zod";
-import { citationIntegritySchema } from "./resources";
+import { citationIntegritySchema } from "./resources/memos";
 import { portfolioContextInput } from "./flow-schema";
 
 export const sessionStateSchema = z.object({

@@ -3,7 +3,7 @@
  * its own file so importing the resource (which pulls in
  * `@flow-state-dev/core`'s root barrel and its Node-only model resolvers)
  * never reaches client bundles. Pure schema/types/formatters live in the
- * sibling `./special-instructions` module, which is import-safe in the
+ * flow-root `../special-instructions` module, which is import-safe in the
  * browser.
  *
  * Storage: user-scope with `flowIsolation: false`, so the record lives under
@@ -17,7 +17,7 @@ import { defineResource } from "@flow-state-dev/core";
 import {
   EMPTY_INSTRUCTIONS,
   specialInstructionsStateSchema,
-} from "./special-instructions";
+} from "../special-instructions";
 
 /**
  * The user-scoped, flow-isolated singleton resource that backs the settings

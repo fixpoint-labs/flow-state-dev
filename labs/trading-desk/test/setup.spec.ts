@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { setupPhase1Memos } from "../src/flows/analysis/agents/analysts/setup";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({

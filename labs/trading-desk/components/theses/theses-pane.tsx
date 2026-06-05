@@ -58,7 +58,7 @@ import type {
   MemoState,
   MemoStatus,
   ThesisSection,
-} from "@/src/flows/analysis/resources";
+} from "@/src/flows/analysis/resources/memos";
 import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {

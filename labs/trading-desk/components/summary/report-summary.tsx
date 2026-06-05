@@ -34,9 +34,9 @@ import {
   ALL_MEMO_KEYS,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
-import type { MemoState } from "@/src/flows/analysis/resources";
-import type { ValuationSpineState } from "@/src/flows/analysis/valuation-spine-resource";
-import type { PriceHistorySlice } from "@/src/flows/analysis/price-history-resource";
+import type { MemoState } from "@/src/flows/analysis/resources/memos";
+import type { ValuationSpineState } from "@/src/flows/analysis/resources/valuation-spine";
+import type { PriceHistorySlice } from "@/src/flows/analysis/resources/price-history";
 import { buildReportSummary } from "./aggregate";
 import { DecisionHeader } from "./decision-header";
 import { ConvictionStrip } from "./conviction-strip";

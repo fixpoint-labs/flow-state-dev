@@ -38,7 +38,7 @@ import {
 } from "@/src/flows/analysis/registry";
 import { LENS_PACK } from "@/src/flows/analysis/agents/lenses/lenses";
 import { LENS_BODY_SECTION } from "@/src/flows/analysis/agents/lenses/lens-body-sections";
-import type { ThesisSection } from "@/src/flows/analysis/resources";
+import type { ThesisSection } from "@/src/flows/analysis/resources/memos";
 import { cn } from "@/lib/utils";
 
 /** The lensId whose lens is the pack's permanent structural bear (Burry —
