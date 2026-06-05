@@ -47,22 +47,22 @@ src/flows/trading-desk/
 
   agents/                        participants grouped by identity; each module exports its BUNDLED step
     _recipe/                     shared per-group factories
-      define-analyst.ts          defineAnalyst — per-analyst sub-sequencer factory (was phase-1/analyst.ts)
+      define-analyst.ts          defineAnalyst — thin wrapper over defineMemoStep (composes the body, delegates the lifecycle)
       approach-generator.ts      createApproachGenerator — fast-model approach preamble (was lib/)
-      memo-writer.ts             defineMemoWriter — per-group markWriting / markError / commit factory (was lib/)
+      memo-writer.ts             defineMemoStep + key-driven markWriting / markError + publishMemo (the ONE memo lifecycle)
       memo-setup.ts              defineMemoSetup — pre-create memo scaffolds per group (was lib/)
     analysts/                    the nine analysts (was phase-1/)
       analysts.ts                the analyst sub-sequencers (each ~10 lines via defineAnalyst)
       thesis-schema.ts           Thesis output shape (shared by every analyst generator + writer)
       setup.ts                   setupPhase1Memos (defineMemoSetup)
-      writer.ts                  markWriting / commitMemo / markError (defineMemoWriter)
+      writer.ts                  commitAnalystMemo (commit projection only; the lifecycle lives in defineMemoStep)
       prompts/                   per-analyst *.prompt.md system prompts
     research/                    bull / bear / research manager (was phase-2/)
       generators.ts round-robin.ts validate-citations.ts writer.ts setup.ts prompts.ts
       prompts/                   bull/bear/manager *.prompt.md
       tools/find_counter_evidence.ts  FLOW-COUPLED tool (imports memo keys — NOT in the catalog)
     lenses/                      the lens pack (was phase-2b/ + lens-owned lib + resource)
-      lens-generator.ts lens-step.ts lens-verdict-schema.ts lens-body-sections.ts writer.ts setup.ts
+      lens-generator.ts lens-verdict-schema.ts lens-body-sections.ts writer.ts setup.ts
       lenses.ts                  LENS_PACK config (was lib/lenses.ts)
       convergence-math.ts        pure convergence math (was lib/convergence-math.ts)
       lens-convergence-resource.ts  the lens-owned convergence resource (§2.4)
@@ -131,7 +131,7 @@ fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
   bundles its generators, its memo `setup.ts` + `writer.ts`, its output schema,
   and its `prompts/`. To read or edit the trader you open `agents/trader/`, not
   three scattered files.
-- **Shared factories live in `agents/_recipe/`.** `defineMemoWriter`,
+- **Shared factories live in `agents/_recipe/`.** `defineMemoStep`,
   `defineMemoSetup`, `createApproachGenerator`, and `defineAnalyst` capture the
   shapes every group repeats. Each group's `setup.ts` and `writer.ts` is ≤ 15
   lines + the per-group commit projections.
@@ -443,11 +443,61 @@ uses: [tradingDesk.presets({
 See the capability's available presets in
 [`capability.ts`](src/flows/trading-desk/capability.ts).
 
+### The memo lifecycle: one `defineMemoStep` convention
+
+Every participant — the nine analysts, the four lenses, the trader, the
+three risk personas + risk-assessment, the scenario-forecaster, the PM, the
+thesis-validator, and the three research consolidations — wears the **same**
+memo lifecycle: pre-mark the memo `writing`, run the participant's body,
+commit the result, and on failure rescue to `error`. There is exactly **one**
+apparatus that expresses it, in
+[`agents/_recipe/memo-writer.ts`](src/flows/trading-desk/agents/_recipe/memo-writer.ts):
+
+```ts
+defineMemoStep(body, { key, commit })
+// builds: sequencer()
+//   .tap(markWriting(key))      // pre-mark `writing`
+//   .step(body)                 // the participant's pre-commit work
+//   .tap(commit)                // the per-participant commit projection
+//   .rescue([{ block: markError(key) }])
+```
+
+- **`body`** — the participant's pre-commit work: a bare generator, or a
+  composed sub-sequencer (approach→gen, or tool-fan-out→gen). It does **no**
+  memo writes. Each non-analyst/non-lens participant module exports its body.
+- **`key`** — a typed memo short-name (`AnyMemoShortName = keyof typeof
+  ALL_MEMO_KEYS`), **not** a raw string. A typo is a compile error, never a
+  runtime skip.
+- **`commit`** — the per-participant commit handler, which stays in that
+  group's `agents/<group>/writer.ts`.
+
+**Memo identity lives in the registry, not in the lifecycle.** `markWriting`
+and `markError` are a single key-driven pair: they resolve `collectionKey` /
+`agentName` / `agentTeam` / `phaseId` / `errorMessageFallback` /
+`errorPlaceholder` from `ALL_MEMO_KEYS[key]` — the single source of truth.
+The `MemoKeyEntry` type **requires** `agentTeam` / `phaseId` /
+`errorMessageFallback`, so a half-specified entry won't type-check. (Phase 4
+personas also carry an `errorPlaceholder`; nothing else passes a lifecycle
+arg.)
+
+**The two recipes are thin wrappers over `defineMemoStep`, not separate
+apparatuses.** `defineAnalyst` composes the analyst-specific body (the tool
+fan-out + synthesis generator) and delegates the lifecycle; the lens fan-out in
+`orchestration/stages.ts` calls `defineMemoStep(defineLensGenerator(lens),
+{ key, commit })` directly. `stages.ts` reads as a flat staffing plan — one
+`defineMemoStep(...)` line per participant.
+
+A `test/memo-step-coverage.spec.ts` coverage guard asserts that the keys placed
+via `defineMemoStep` across `stages.ts` equal exactly the keys in
+`ALL_MEMO_KEYS` — so a participant added to the registry but never placed (or
+placed under a stale key) fails loudly.
+
 ### Adding a Phase 1 analyst
 
 Each analyst is one `defineAnalyst({ shortName, tools, generator })` call.
-The factory captures the universal recipe: `markWriting → .map(tickerDate)
-→ .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
+The factory composes the analyst-specific body — `.map(tickerDate) →
+.parallel(attributedTools) → generator` — and hands it to `defineMemoStep`,
+which owns the `markWriting → body → commit → rescue(markError)` lifecycle.
 The call site supplies only what varies — the role's tools and its
 synthesis generator. See [`agents/analysts/analysts.ts`](src/flows/trading-desk/agents/analysts/analysts.ts)
 for the nine existing analysts.
@@ -463,21 +513,24 @@ To add another:
 
 ### Adding a group setup or writer
 
-Two factories collapse the per-group boilerplate (both in `agents/_recipe/`):
+The per-group boilerplate splits across two `agents/_recipe/` helpers and the
+registry:
 
 - `defineMemoSetup({ phaseId, agentTeam, keys, activePhase })` in
   `agents/_recipe/memo-setup.ts` — pre-creates the group's memos in `pending`. The
   memoStatus seed is derived from `Object.keys(keys)` so adding a new
   memo to a group is a one-line edit to `registry.ts`.
-- `defineMemoWriter({ phaseId, agentTeam, keys, errorMessageFallback,
-  errorTextPlaceholder? })` in `agents/_recipe/memo-writer.ts` — returns
-  `{ markWriting, markError, defineCommit }`. Each group's `writer.ts`
-  destructures `markWriting` and `markError`, then calls
-  `writer.defineCommit({ shortName, inputSchema, project, afterCommit? })`
-  for each commit handler. `project` returns the patch applied on top of
-  the standard `status: "published" / completedAt / errorMessage: null`
-  fields; `afterCommit` runs any group-terminal session-state work (the PM
-  group uses it to flip `runComplete`).
+- The **memo lifecycle is not built per group.** `markWriting` / `markError`
+  are the single key-driven pair from `defineMemoStep` (see the section above);
+  they read `agentTeam` / `phaseId` / `errorMessageFallback` /
+  `errorPlaceholder` from the registry entry, so a `writer.ts` no longer
+  declares them. A group's `writer.ts` is **just its commit handlers**: each is
+  a plain `memoHandler({ name, inputSchema, execute })` whose body calls
+  `publishMemo(ctx, shortName, collectionKey, patch)` (BP-024 — a helper, not a
+  callback factory). `patch` is applied on top of the standard `status:
+  "published" / completedAt / errorMessage: null` fields. Any group-terminal
+  session-state work (the PM group flipping `runComplete`) runs inside that
+  commit handler's `execute`.
 
 ### The `investigate` preset
 
