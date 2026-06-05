@@ -20,7 +20,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+import analysisFlow from "../src/flows/analysis/flow";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -183,7 +183,7 @@ describe("Phase 2 end-to-end", () => {
     });
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "test-user",
       sessionId,
@@ -249,7 +249,7 @@ describe("Phase 2 end-to-end", () => {
     const sessionId = "p2-e2e-bull-fails";
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "test-user",
       sessionId,

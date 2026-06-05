@@ -1,6 +1,6 @@
 /**
  * Portfolio resource definitions (BP-019 leaf) — the three resources the
- * `trading-desk-portfolio` flow owns, grouped in one module so consumers (the
+ * `portfolio` flow owns, grouped in one module so consumers (the
  * report flow's seed snapshot, the portfolio action handlers, the UI) import
  * from a single place.
  *

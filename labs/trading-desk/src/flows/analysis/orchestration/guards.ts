@@ -29,7 +29,7 @@ import { sessionStateSchema } from "../state";
 import {
   accountsCollection,
   portfolioQuotesResource,
-} from "../../trading-desk-portfolio/portfolio-resources";
+} from "../../portfolio/portfolio-resources";
 import { buildPortfolioContext } from "../build-portfolio-context";
 
 /**

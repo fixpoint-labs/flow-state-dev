@@ -8,11 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitScenarioForecastMemo } from "../src/flows/trading-desk/agents/scenario-forecaster/writer";
-import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/agents/scenario-forecaster/scenario-forecaster";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitScenarioForecastMemo } from "../src/flows/analysis/agents/scenario-forecaster/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const writeSf = markWriting("scenarioForecast");
 const errorSf = markError("scenarioForecast");

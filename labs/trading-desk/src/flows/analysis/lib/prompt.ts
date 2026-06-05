@@ -16,12 +16,12 @@
 import path from "node:path";
 import { createPromptLoader } from "@flow-state-dev/core/prompt-file/node";
 
-const FLOW_ROOT = path.resolve(process.cwd(), "src/flows/trading-desk");
+const FLOW_ROOT = path.resolve(process.cwd(), "src/flows/analysis");
 const PARTIALS_DIR = path.join(FLOW_ROOT, "prompts", "_partials");
 
 /**
  * Load a trading-desk `.md` prompt. The argument is relative to the
- * `src/flows/trading-desk` directory (e.g. `"phase-5/prompts/portfolio-manager.prompt.md"`);
+ * `src/flows/analysis` directory (e.g. `"phase-5/prompts/portfolio-manager.prompt.md"`);
  * the shared `prompts/_partials` directory backs every `{% render %}`. Pass
  * `{ filters }` as a second argument for per-prompt Liquid filters.
  */

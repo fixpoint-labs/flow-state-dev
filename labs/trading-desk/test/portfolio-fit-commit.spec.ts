@@ -18,7 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+import analysisFlow from "../src/flows/analysis/flow";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -391,7 +391,7 @@ async function runAndReadPmMemo(opts: {
 }): Promise<PmMemo | undefined> {
   const stores = createInMemoryStores();
   const result = await testFlow({
-    flow: tradingDeskFlow,
+    flow: analysisFlow,
     action: "analyze",
     userId: USER_ID,
     sessionId: opts.sessionId,

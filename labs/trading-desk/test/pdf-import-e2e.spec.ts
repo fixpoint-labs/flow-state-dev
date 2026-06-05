@@ -29,7 +29,7 @@ import { describe, expect, it, vi } from "vitest";
 // PDF. The action passes the decoded bytes to this fn; we ignore them and return
 // canned statement text. Hoisted by vitest above the flow import.
 vi.mock(
-  "../src/flows/trading-desk-portfolio/extract-pdf-text.server",
+  "../src/flows/portfolio/extract-pdf-text.server",
   () => ({
     extractPdfText: vi.fn(
       async () => "AAPL ... MSFT ... TIMXX ... Total Holdings $3,926.84",
@@ -39,16 +39,16 @@ vi.mock(
 
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-// The PDF-import + holdings actions moved to the `trading-desk-portfolio` flow
+// The PDF-import + holdings actions moved to the `portfolio` flow
 // (FIX-736); build that flow to exercise them end-to-end. The `accounts`
 // collection is shared (flowIsolation: false → bare `{userId}`), so the state
 // reads below resolve the same key regardless of the writing flow.
-import tradingDeskFlow from "../src/flows/trading-desk-portfolio/flow";
+import portfolioFlow from "../src/flows/portfolio/flow";
 import {
   canonicalRowsToCsv,
   toCanonicalRows,
   type PdfExtraction,
-} from "../src/flows/trading-desk-portfolio/portfolio-pdf";
+} from "../src/flows/portfolio/portfolio-pdf";
 
 /** A base64 string standing in for an uploaded PDF. Its bytes are irrelevant —
  *  `extractPdfText` is mocked — but the decode step requires non-empty bytes. */
@@ -65,7 +65,7 @@ async function createAccount(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<void> {
   await testFlow({
-    flow: tradingDeskFlow,
+    flow: portfolioFlow,
     action: "saveAccount",
     userId: USER_ID,
     stores,
@@ -92,7 +92,7 @@ describe("extractHoldingsFromPdf action", () => {
     const sessionId = "pdf-extract-session";
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "extractHoldingsFromPdf",
       userId: USER_ID,
       sessionId,
@@ -143,7 +143,7 @@ describe("confirmed PDF rows flow into the EXISTING importHoldings", () => {
     expect(skipped.map((s) => s.ticker)).toContain("436CVR021");
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -193,7 +193,7 @@ describe("importHoldings clears the consumed pdfImport scratch", () => {
 
     // 1. Extraction populates the session-scoped scratch resource.
     const extractResult = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "extractHoldingsFromPdf",
       userId: USER_ID,
       sessionId,
@@ -219,7 +219,7 @@ describe("importHoldings clears the consumed pdfImport scratch", () => {
     // 2. The confirmed import (same session) consumes the reviewed rows.
     const { rows } = toCanonicalRows(extractionOutput());
     const importResult = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       sessionId,

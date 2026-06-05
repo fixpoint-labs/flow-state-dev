@@ -8,11 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitThesisAlignmentMemo } from "../src/flows/trading-desk/agents/thesis-validator/writer";
-import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/agents/thesis-validator/thesis-validator";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitThesisAlignmentMemo } from "../src/flows/analysis/agents/thesis-validator/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const writeTv = markWriting("thesisAlignment");
 const errorTv = markError("thesisAlignment");

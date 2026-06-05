@@ -9,7 +9,7 @@
  * i must line up with ticker i).
  */
 import { describe, expect, it } from "vitest";
-import { mapLimit, sleep } from "../src/flows/trading-desk/lib/concurrency";
+import { mapLimit, sleep } from "../src/flows/analysis/lib/concurrency";
 
 describe("mapLimit", () => {
   it("preserves input order even when later items finish first", async () => {

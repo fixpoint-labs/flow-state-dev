@@ -18,9 +18,9 @@ import {
   buildReportSummary,
   stanceToAxis,
 } from "../components/summary/aggregate";
-import type { MemoState } from "../src/flows/trading-desk/resources";
-import type { ValuationSpineState } from "../src/flows/trading-desk/valuation-spine-resource";
-import type { AnyMemoShortName } from "../src/flows/trading-desk/registry";
+import type { MemoState } from "../src/flows/analysis/resources";
+import type { ValuationSpineState } from "../src/flows/analysis/valuation-spine-resource";
+import type { AnyMemoShortName } from "../src/flows/analysis/registry";
 
 /** Build a minimal published MemoState, overriding only the fields under test. */
 function memo(overrides: Partial<MemoState>): MemoState {

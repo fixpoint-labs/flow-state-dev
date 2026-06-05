@@ -14,8 +14,8 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
-import { LENS_IDS } from "../src/flows/trading-desk/registry";
+import analysisFlow from "../src/flows/analysis/flow";
+import { LENS_IDS } from "../src/flows/analysis/registry";
 
 const ticker = "NVDA";
 const date = "2026-05-06";
@@ -260,7 +260,7 @@ describe("phase-2b lens pack", () => {
     const stores = createInMemoryStores();
     const sessionId = "p2b-full";
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "u",
       sessionId,
@@ -291,7 +291,7 @@ describe("phase-2b lens pack", () => {
     const stores = createInMemoryStores();
     const sessionId = "p2b-fast";
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "u",
       sessionId,
@@ -316,7 +316,7 @@ describe("phase-2b lens pack", () => {
     const stores = createInMemoryStores();
     const sessionId = "p2b-one-fails";
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "u",
       sessionId,

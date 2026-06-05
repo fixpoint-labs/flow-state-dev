@@ -23,17 +23,17 @@ import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
-import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
-import { buildAnalyzeInput } from "@/src/flows/trading-desk/analyze-input";
-import type { MemoStatus } from "@/src/flows/trading-desk/resources";
-import type { AnyMemoShortName } from "@/src/flows/trading-desk/registry";
+import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
+import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
+import type { MemoStatus } from "@/src/flows/analysis/resources";
+import type { AnyMemoShortName } from "@/src/flows/analysis/registry";
 import {
   EMPTY_INSTRUCTIONS,
   type SpecialInstructionsState,
-} from "@/src/flows/trading-desk/special-instructions";
+} from "@/src/flows/analysis/special-instructions";
 
 const DEFAULT_TICKER = "NVDA";
-const FLOW_KIND = "trading-desk";
+const FLOW_KIND = "analysis";
 const USER_ID = "devuser";
 
 /** The four user-visible inputs that identify one analysis run. Sessions are
@@ -76,7 +76,7 @@ function titleForTuple(t: AnalyzeTuple): string {
 }
 
 /** Binds a portfolio-flow session and passes it to PortfolioPane.
- *  Rendered inside a <FlowProvider flowKind="trading-desk-portfolio">, so its
+ *  Rendered inside a <FlowProvider flowKind="portfolio">, so its
  *  useFlow + useSession calls dispatch to the portfolio flow. Sessions are
  *  incidental — accounts and quotes are user-scoped, so any session sees the
  *  same data. Auto-create/select so the pane is usable immediately. */
@@ -355,11 +355,11 @@ function TradingDeskApp(): ReactElement {
       ) : view === "portfolio" ? (
         <main className="flex flex-col overflow-hidden">
           {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
-              trading-desk-portfolio flow, so the Portfolio view gets its own
+              portfolio flow, so the Portfolio view gets its own
               provider + session binding that dispatches to that flow. User-scoped
               storage (accounts, portfolioQuotes) is shared at the storage layer —
               no data bridge between providers is needed. */}
-          <FlowProvider flowKind="trading-desk-portfolio" userId={USER_ID} baseUrl="">
+          <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
             <PortfolioView />
           </FlowProvider>
         </main>

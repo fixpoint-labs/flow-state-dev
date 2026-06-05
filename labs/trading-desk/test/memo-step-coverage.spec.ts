@@ -9,9 +9,9 @@
  * catch typos at compile time; this guard catches a forgotten placement.
  */
 import { describe, it, expect } from "vitest";
-import "../src/flows/trading-desk/orchestration/stages"; // import for side effect: builds every step → records placements
-import { placedMemoKeys } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { ALL_MEMO_KEYS } from "../src/flows/trading-desk/registry";
+import "../src/flows/analysis/orchestration/stages"; // import for side effect: builds every step → records placements
+import { placedMemoKeys } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { ALL_MEMO_KEYS } from "../src/flows/analysis/registry";
 
 describe("defineMemoStep coverage", () => {
   it("places exactly the registry's memo keys — no orphan registered, none placed under a stale key", () => {

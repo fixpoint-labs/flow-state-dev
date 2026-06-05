@@ -20,7 +20,7 @@ import { priceHistoryResource } from "./price-history-resource";
 import {
   accountsCollection,
   portfolioQuotesResource,
-} from "../trading-desk-portfolio/portfolio-resources";
+} from "../portfolio/portfolio-resources";
 import {
   memosCollection,
   phase2Contributions,
@@ -32,8 +32,8 @@ import { valuationSpineResource } from "./valuation-spine-resource";
 export { sessionStateSchema, type SessionState } from "./state";
 export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";
 
-const tradingDeskFlow = defineFlow({
-  kind: "trading-desk",
+const analysisFlow = defineFlow({
+  kind: "analysis",
   requireUser: true,
 
   actions: {
@@ -85,7 +85,7 @@ const tradingDeskFlow = defineFlow({
     // audit record Past Reports and outcome tracking read.
     decisionSnapshot: decisionSnapshotResource,
     // Portfolio domain (Spine B), owned + written by the
-    // `trading-desk-portfolio` flow. Declared here READ-ONLY: `seedSession`
+    // `portfolio` flow. Declared here READ-ONLY: `seedSession`
     // reads the shared user-scoped `accounts` (flowIsolation: false → bare
     // `{userId}`) and the last-known `portfolioQuotes` to compute the per-run
     // portfolio snapshot. Declaring them makes `resolveUserStorageKey` derive
@@ -95,6 +95,6 @@ const tradingDeskFlow = defineFlow({
   },
 });
 
-const flow = tradingDeskFlow({ id: "default" });
+const flow = analysisFlow({ id: "default" });
 
 export default flow;

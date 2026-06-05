@@ -20,7 +20,7 @@ import { ReportRow } from "./report-row";
 import {
   parseReportRow,
   type ReportRow as ReportRowData,
-} from "@/src/flows/trading-desk/report-index";
+} from "@/src/flows/analysis/report-index";
 
 type PastReportsPaneProps = {
   sessions: ReadonlyArray<SessionSummary>;

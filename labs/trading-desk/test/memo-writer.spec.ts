@@ -6,10 +6,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitAnalystMemo } from "../src/flows/trading-desk/agents/analysts/writer";
-import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const writeBlock = markWriting("fundamentals");
 const commitBlock = commitAnalystMemo("fundamentals");

@@ -10,8 +10,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { seedSession } from "../src/flows/trading-desk/orchestration/guards";
-import flow from "../src/flows/trading-desk/flow";
+import { seedSession } from "../src/flows/analysis/orchestration/guards";
+import flow from "../src/flows/analysis/flow";
 
 const ACCOUNT_ID = "acc-taxable-01";
 

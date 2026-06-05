@@ -15,11 +15,11 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-// The portfolio actions moved to the `trading-desk-portfolio` flow (FIX-736);
+// The portfolio actions moved to the `portfolio` flow (FIX-736);
 // build that flow to exercise them. The `accounts` collection is shared
 // (flowIsolation: false → bare `{userId}`), so the state assertions below read
 // the same key regardless of which flow wrote them.
-import tradingDeskFlow from "../src/flows/trading-desk-portfolio/flow";
+import portfolioFlow from "../src/flows/portfolio/flow";
 
 const USER_ID = "devuser";
 // accounts collection is now user-scoped with flowIsolation: false, so state
@@ -66,7 +66,7 @@ async function createAccount(
   name = "Test Account",
 ): Promise<void> {
   await testFlow({
-    flow: tradingDeskFlow,
+    flow: portfolioFlow,
     action: "saveAccount",
     userId: USER_ID,
     stores,
@@ -82,7 +82,7 @@ describe("importHoldings action", () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1);
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -106,7 +106,7 @@ describe("importHoldings action", () => {
   it("reports an error and imports nothing when the account does not exist", async () => {
     const stores = createInMemoryStores();
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -138,7 +138,7 @@ describe("importHoldings action", () => {
     await createAccount(stores, A1);
     // First import: NVDA + AAPL.
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -150,7 +150,7 @@ describe("importHoldings action", () => {
     });
     // Second import: only NVDA, new quantity. AAPL must survive.
     const second = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -176,7 +176,7 @@ describe("importHoldings action", () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1);
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -188,7 +188,7 @@ describe("importHoldings action", () => {
     });
     // Replace with a snapshot that has only TSLA.
     const replace = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -215,7 +215,7 @@ describe("importHoldings action", () => {
     await createAccount(stores, A1);
     await createAccount(stores, A2);
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -226,7 +226,7 @@ describe("importHoldings action", () => {
       },
     });
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -257,7 +257,7 @@ describe("saveAccount", () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1, "Original Name");
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -269,7 +269,7 @@ describe("saveAccount", () => {
     });
     // Edit metadata only (rename). The holdings array must survive.
     const edit = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "saveAccount",
       userId: USER_ID,
       stores,
@@ -296,7 +296,7 @@ describe("deleteHolding", () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1);
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -307,7 +307,7 @@ describe("deleteHolding", () => {
       },
     });
     const del = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "deleteHolding",
       userId: USER_ID,
       stores,
@@ -325,7 +325,7 @@ describe("deleteAccount", () => {
     const stores = createInMemoryStores();
     await createAccount(stores, A1, "My Roth IRA");
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "importHoldings",
       userId: USER_ID,
       stores,
@@ -346,7 +346,7 @@ describe("deleteAccount", () => {
     );
 
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "deleteAccount",
       userId: USER_ID,
       stores,
@@ -361,7 +361,7 @@ describe("getQuotes action", () => {
   it("resolves a fixture-backed ticker's last close", async () => {
     const stores = createInMemoryStores();
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "getQuotes",
       userId: USER_ID,
       sessionId: "quotes-session",
@@ -386,7 +386,7 @@ describe("getQuotes action", () => {
   it("degrades a missing fixture to a null price, never a fabricated number", async () => {
     const stores = createInMemoryStores();
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: portfolioFlow,
       action: "getQuotes",
       userId: USER_ID,
       sessionId: "quotes-missing",

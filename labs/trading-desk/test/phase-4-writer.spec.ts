@@ -11,21 +11,21 @@ import { testBlock } from "@flow-state-dev/testing";
 import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
-} from "../src/flows/trading-desk/agents/risk/writer";
+} from "../src/flows/analysis/agents/risk/writer";
 import {
   markError,
   markWriting,
-} from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+} from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/trading-desk/agents/risk/schemas";
+} from "../src/flows/analysis/agents/risk/schemas";
 
 // The phase-4 prompts now live as `.md` files; read them raw to assert their
 // prose names every dismissal category (parity with the prior string-export).
-const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/agents/risk/prompts");
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/analysis/agents/risk/prompts");
 const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
 const RISK_ASSESSMENT_PROMPT = readFileSync(
   path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),

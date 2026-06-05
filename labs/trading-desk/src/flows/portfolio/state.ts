@@ -1,5 +1,5 @@
 /**
- * Session-state contract for the `trading-desk-portfolio` flow.
+ * Session-state contract for the `portfolio` flow.
  *
  * The portfolio domain is a system of record: every durable value lives in the
  * flow's RESOURCES (`accounts`, `portfolioQuotes`, `pdfImport`), not in session

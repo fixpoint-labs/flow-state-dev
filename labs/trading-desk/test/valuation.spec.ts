@@ -8,7 +8,7 @@ import {
   computeValuation,
   formatValuation,
   type DerivedValuation,
-} from "../src/flows/trading-desk/lib/valuation";
+} from "../src/flows/analysis/lib/valuation";
 
 import nvdaFundamentals from "../fixtures/NVDA/2026-05-06/fundamentals.json";
 import nvdaBalanceSheet from "../fixtures/NVDA/2026-05-06/balance-sheet.json";

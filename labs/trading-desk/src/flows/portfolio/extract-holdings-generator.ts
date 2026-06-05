@@ -33,8 +33,8 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENTS } from "../trading-desk/registry";
-import { tradingDesk } from "../trading-desk/capability";
+import { AGENTS } from "../analysis/registry";
+import { tradingDesk } from "../analysis/capability";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 
 /** The statement text, supplied by the action from the client extraction. */

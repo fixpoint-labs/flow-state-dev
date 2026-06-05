@@ -1,5 +1,5 @@
 /**
- * The `trading-desk-portfolio` flow definition.
+ * The `portfolio` flow definition.
  *
  * The portfolio domain (Spine B) is the system of record for what the user
  * owns and the write surface for it: the account/holdings mutations, the price
@@ -28,7 +28,7 @@ import { sessionStateSchema } from "./state";
 export { sessionStateSchema, type SessionState } from "./state";
 
 const portfolioFlow = defineFlow({
-  kind: "trading-desk-portfolio",
+  kind: "portfolio",
   requireUser: true,
 
   actions: {

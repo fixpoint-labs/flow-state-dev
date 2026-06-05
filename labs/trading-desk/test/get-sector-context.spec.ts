@@ -6,11 +6,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_sector_context } from "../src/flows/trading-desk/tools/data/get_sector_context";
-import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
-import { emptyPayload } from "../src/flows/trading-desk/tools/empty-payloads";
-import { sectorContextSchema } from "../src/flows/trading-desk/tools/schemas";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { get_sector_context } from "../src/flows/analysis/tools/data/get_sector_context";
+import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { emptyPayload } from "../src/flows/analysis/tools/empty-payloads";
+import { sectorContextSchema } from "../src/flows/analysis/tools/schemas";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-test",

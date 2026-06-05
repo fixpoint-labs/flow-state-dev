@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+import analysisFlow from "../src/flows/analysis/flow";
 
 const USER_ID = "devuser";
 // specialInstructions is now user-scoped with flowIsolation: false, so state
@@ -23,7 +23,7 @@ describe("setInstructions action", () => {
     const stores = createInMemoryStores();
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "setInstructions",
       userId: USER_ID,
       stores,
@@ -59,7 +59,7 @@ describe("setInstructions action", () => {
     const stores = createInMemoryStores();
 
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "setInstructions",
       userId: USER_ID,
       stores,
@@ -74,7 +74,7 @@ describe("setInstructions action", () => {
     });
 
     await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "setInstructions",
       userId: USER_ID,
       stores,

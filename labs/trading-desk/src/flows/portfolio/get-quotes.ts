@@ -20,11 +20,11 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrFetch } from "../trading-desk/tools/runtime/cache";
-import { mapLimit, sleep } from "../trading-desk/lib/concurrency";
-import { loadFixture } from "../trading-desk/tools/runtime/fixtures";
-import { fetchFinnhubCandles, hasFinnhubKey } from "../trading-desk/tools/providers/finnhub";
-import { fetchYahooChart } from "../trading-desk/tools/providers/yahoo";
+import { getOrFetch } from "../analysis/tools/runtime/cache";
+import { mapLimit, sleep } from "../analysis/lib/concurrency";
+import { loadFixture } from "../analysis/tools/runtime/fixtures";
+import { fetchFinnhubCandles, hasFinnhubKey } from "../analysis/tools/providers/finnhub";
+import { fetchYahooChart } from "../analysis/tools/providers/yahoo";
 import { portfolioQuotesResource } from "./portfolio-resources";
 
 /** Live quote fan-out throttle: at most this many provider requests in flight at

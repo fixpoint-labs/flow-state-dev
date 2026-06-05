@@ -2,7 +2,7 @@
  * Cross-flow portfolio sharing guard (FIX-736).
  *
  * Proves the core mechanism of the portfolio/report flow split: data written
- * through the `trading-desk-portfolio` flow is readable through the
+ * through the `portfolio` flow is readable through the
  * `trading-desk` (report) flow at bare `{userId}`.
  *
  * HOW THE TEST PROVES IT:
@@ -19,7 +19,7 @@
  *
  * WHY THIS IS A REAL GUARD (not a false pass):
  *   - If either resource were re-isolated (`flowIsolation: true`), the portfolio
- *     flow would write at `{userId}:trading-desk-portfolio` and the report flow
+ *     flow would write at `{userId}:portfolio` and the report flow
  *     would read at `{userId}:trading-desk` — two separate keys in the same
  *     store — and `session.state.portfolio` would be `null` (no accounts in the
  *     report flow's namespace), failing the assertion.
@@ -31,8 +31,8 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import portfolioFlow from "../src/flows/trading-desk-portfolio/flow";
-import reportFlow from "../src/flows/trading-desk/flow";
+import portfolioFlow from "../src/flows/portfolio/flow";
+import reportFlow from "../src/flows/analysis/flow";
 
 const USER_ID = "shared-user";
 const SESSION_ID = "cross-flow-session";

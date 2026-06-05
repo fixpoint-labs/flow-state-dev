@@ -13,8 +13,8 @@ import {
   mapEdgarCompanyFacts,
   mapEdgarFinancialsHistory,
   type EdgarCompanyFacts,
-} from "../src/flows/trading-desk/tools/providers/edgar-companyfacts";
-import { altmanZDoublePrime } from "../src/flows/trading-desk/tools/data/composite-math";
+} from "../src/flows/analysis/tools/providers/edgar-companyfacts";
+import { altmanZDoublePrime } from "../src/flows/analysis/tools/data/composite-math";
 
 import rawAapl from "./__fixtures__/edgar-companyfacts-aapl.json";
 
