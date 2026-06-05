@@ -1,11 +1,17 @@
 # Trading Desk — Agent Guide
 
-The trading-desk is a five-phase multi-agent flow that produces a structured
+The trading-desk is a multi-agent flow that produces a structured
 trade recommendation for a given ticker. It's a real app — live market data,
 durable re-openable reports, a real imported portfolio — built on a non-trivial
-flow with capabilities, services, per-tool files, and fixture/live data modes.
-It lives in `labs/`, not `examples/`: past a teaching snippet, still research
-software.
+flow with capabilities, a self-contained tool catalog, per-tool files, and
+fixture/live data modes. It lives in `labs/`, not `examples/`: past a teaching
+snippet, still research software.
+
+The pipeline is organized by **identity, not phase**: participants live under
+`agents/` (one directory per analyst group / trader / risk / PM / etc.), the
+tool catalog lives under `tools/`, and the only code that knows execution order
+lives under `orchestration/`. "Phase" survives as render-time labels
+(`component: "phase-*"`), not as code structure.
 
 When modifying this app, follow the conventions below. The patterns here
 are also written up in the project-level docs — read those first if you
@@ -17,15 +23,90 @@ haven't:
 
 ## Layout
 
+The tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and
+**composition** (`orchestration/`). The flow contract stays at the root.
+
 ```
 src/flows/trading-desk/
-  flow.ts                        flow definition (actions, resources, session state)
+  flow.ts                        flow definition — defineFlow only (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
-  agents.ts                      AGENTS map + per-phase memo key registries
+  flow-schema.ts                 analyzeInputSchema (the required caller input)
+  analyze-input.ts               the analyze action input adapter
+  registry.ts                    AGENTS map + per-phase memo key registries (was agents.ts — still hand-rolled)
   resources.ts                   memosCollection + thesisSection + phase2Contributions
   report-index.ts                Past Reports: browser-safe metadata schemas + parseReportRow + relativeTime
   decision-snapshot-resource.ts  durable, machine-scoreable decision-of-record (session-scoped, PM-commit)
+  price-history-resource.ts      thinned { date, close } series + provenance (surface-owned)
+  valuation-spine-resource.ts    the shared valuation spine (surface-owned)
+  special-instructions*.ts       per-run special-instructions resource + helpers
+  compute-spine.ts               .tap that computes + stores the valuation spine
+  store-price-history.ts         .tap that persists the thinned price series
   capability.ts                  the tradingDesk capability — single import for every generator
+
+  agents/                        participants grouped by identity; each module exports its BUNDLED step
+    _recipe/                     shared per-group factories
+      define-analyst.ts          defineAnalyst — per-analyst sub-sequencer factory (was phase-1/analyst.ts)
+      approach-generator.ts      createApproachGenerator — fast-model approach preamble (was lib/)
+      memo-writer.ts             defineMemoWriter — per-group markWriting / markError / commit factory (was lib/)
+      memo-setup.ts              defineMemoSetup — pre-create memo scaffolds per group (was lib/)
+    analysts/                    the nine analysts (was phase-1/)
+      analysts.ts                the analyst sub-sequencers (each ~10 lines via defineAnalyst)
+      thesis-schema.ts           Thesis output shape (shared by every analyst generator + writer)
+      setup.ts                   setupPhase1Memos (defineMemoSetup)
+      writer.ts                  markWriting / commitMemo / markError (defineMemoWriter)
+      prompts/                   per-analyst *.prompt.md system prompts
+    research/                    bull / bear / research manager (was phase-2/)
+      generators.ts round-robin.ts validate-citations.ts writer.ts setup.ts prompts.ts
+      prompts/                   bull/bear/manager *.prompt.md
+      tools/find_counter_evidence.ts  FLOW-COUPLED tool (imports memo keys — NOT in the catalog)
+    lenses/                      the lens pack (was phase-2b/ + lens-owned lib + resource)
+      lens-generator.ts lens-step.ts lens-verdict-schema.ts lens-body-sections.ts writer.ts setup.ts
+      lenses.ts                  LENS_PACK config (was lib/lenses.ts)
+      convergence-math.ts        pure convergence math (was lib/convergence-math.ts)
+      lens-convergence-resource.ts  the lens-owned convergence resource (§2.4)
+      prompts/                   lens.prompt.md
+    trader/                      trader.ts approach.ts writer.ts setup.ts prompts/ (was phase-3/; owns its output schema)
+    risk/                        personas.ts (3) consolidator.ts schemas.ts approach.ts writer.ts setup.ts prompts/ (was phase-4/)
+    scenario-forecaster/         scenario-forecaster.ts approach.ts writer.ts setup.ts prompts/ (was phase-5/)
+    portfolio-manager/           portfolio-manager.ts approach.ts writer.ts setup.ts prompts/ (was phase-5/; owns its output schema)
+    thesis-validator/            thesis-validator.ts approach.ts writer.ts setup.ts prompts/ (was phase-6/)
+
+  tools/                         THE catalog — self-contained, liftable
+    data/                        one file per data tool — get_*.ts + discover_*_context.ts (mode branch + provider chain)
+    schemas.ts                   shared zod schemas + ToolName / ToolInput / ToolOutput
+    empty-payloads.ts            schema-valid zeros for "unavailable" results
+    indicators-math.ts           pure RSI/MACD/ATR/SMA functions
+    index.ts                     barrel re-export
+    runtime/                     tool runtime (was lib/)
+      cache.ts                   process-wide TTL cache (getOrFetch)
+      fixtures.ts                loadFixture(tool, args)
+      discover.ts                web-search → DiscoveryPayload shape
+    providers/                   external API clients — stateless, throw on failure (was ../providers/)
+      finnhub.ts                 Finnhub fetch helpers (incl. institutional ownership)
+      fred.ts                    FRED per-series fetch + retry (macro indicators + NFCI)
+      yahoo.ts                   Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
+      yahoo-timeseries.ts        pure mapper: fundamentals-timeseries → 3 statements
+      edgar.ts                   SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
+      edgar-filings.ts           EDGAR filings: submissions list, section extraction, red-flag probes
+      edgar-companyfacts.ts      pure mapper: us-gaap companyfacts → 3 statements
+      eight-k-items.ts           pure mapper: 8-K item codes → typed material events with signal tier
+      web.ts                     homepage meta + web-search fallback
+      xai.ts                     Grok (xAI) credentials + model id
+
+  orchestration/                 composition only — the ONLY code that knows execution order
+    analyze.ts                   the analyze sequence + guard wiring (was flow.ts's analyzePipeline body)
+    stages.ts                    per-group setup taps + fan-out / round-robin / chain assembly (was every phase-*/index.ts)
+    guards.ts                    seedSession, checkTickerResolvable, checkPhase1HasData/FundamentalsAndProfile, setInstructions
+
+  lib/                           pure IO-free utilities — neither tool-runtime nor recipe
+    helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
+    format.ts                    shared prompt formatters (memo, debate, contributions)
+    prompt.ts                    loadPrompt(path) — resolves *.prompt.md relative to the flow root
+    ticker-resolver.ts           pre-flight ticker probe
+    concurrency.ts               mapLimit — bounded + retried fan-out
+    valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
+    rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
+
   portfolio/                     Portfolio domain (Spine B) — accounts (holdings inline) + CSV + getQuotes
     portfolio-schema.ts          pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
     portfolio-csv.ts             pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
@@ -38,65 +119,42 @@ src/flows/trading-desk/
     extract-pdf-text.server.ts   NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
     extract-holdings-generator.ts broker-agnostic LLM transcription (statement text → strict rows)
     extract-holdings-action.ts   sequencer: decode bytes → extractPdfText → generator → commit pdfImport
-  lib/                           app-level helpers and factories (no external IO)
-    helpers.ts                   tickerDate / asDataBlock / memoLabel / attributedTools
-    memo-writer.ts               defineMemoWriter — per-phase markWriting / markError / commit factory
-    memo-setup.ts                defineMemoSetup — pre-create memo scaffolds per phase
-    approach-generator.ts        createApproachGenerator — Phases 3–5 fast-model preamble
-    format.ts                    shared prompt formatters (memo, debate, contributions)
-    cache.ts                     process-wide TTL cache (getOrFetch)
-    fixtures.ts                  loadFixture(tool, args)
-    ticker-resolver.ts           pre-flight ticker probe
-    discover.ts                  web-search → DiscoveryPayload shape
-  providers/                     external API clients (stateless, throw on failure)
-    finnhub.ts                   Finnhub fetch helpers (incl. institutional ownership)
-    fred.ts                      FRED per-series fetch + retry (macro indicators + NFCI)
-    yahoo.ts                     Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
-    yahoo-timeseries.ts          pure mapper: fundamentals-timeseries → 3 statements
-    edgar.ts                     SEC EDGAR client (ticker→CIK lookup + companyfacts fetch)
-    edgar-filings.ts             EDGAR filings: submissions list, section extraction, red-flag probes
-    edgar-companyfacts.ts        pure mapper: us-gaap companyfacts → 3 statements
-    eight-k-items.ts             pure mapper: 8-K item codes → typed material events with signal tier
-    web.ts                       homepage meta + web-search fallback
-    xai.ts                       Grok (xAI) credentials + model id
-  phase-1/
-    index.ts                     phase1Pipeline (the sub-sequencer)
-    analyst.ts                   defineAnalyst — per-analyst sub-sequencer factory
-    analysts.ts                  the nine analyst sub-sequencers (9 × ~10 lines via defineAnalyst)
-    setup.ts                     setupPhase1Memos (defineMemoSetup)
-    writer.ts                    Phase-1 markWriting / commitMemo / markError (defineMemoWriter)
-    prompts.ts                   per-analyst system prompts
-    thesis-schema.ts             Thesis output shape (shared by all 5 analyst generators + writer)
-    tools/                       one file per tool (get_balance_sheet.ts, etc.)
-      schemas.ts                 shared zod schemas + ToolName / ToolInput / ToolOutput
-      empty-payloads.ts          schema-valid zeros for "unavailable" results
-      indicators-math.ts         pure RSI/MACD/ATR/SMA functions
-      get_*.ts                   one per tool — mode branch + provider chain
-      index.ts                   barrel re-export
-  phase-2/                       (same shape — setup.ts + writer.ts + generators.ts + round-robin.ts)
-  phase-3/                       (single trader — trader.ts owns its output schema)
-  phase-4/                       (3 personas + risk-assessment consolidator)
-  phase-5/                       (scenario forecaster + PM — two stages; each generator owns its output schema)
+
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
 
 ### Conventions enforced by this layout
 
-- **Factories live in `lib/`.** `defineMemoWriter`, `defineMemoSetup`, and
-  `defineAnalyst` (the last one is phase-1-specific, in `phase-1/analyst.ts`)
-  capture the shapes every phase repeats. Each phase's `setup.ts` and
-  `writer.ts` is now ≤ 15 lines + the per-phase commit projections.
+- **A participant is found in one place.** Each agent group under `agents/`
+  bundles its generators, its memo `setup.ts` + `writer.ts`, its output schema,
+  and its `prompts/`. To read or edit the trader you open `agents/trader/`, not
+  three scattered files.
+- **Shared factories live in `agents/_recipe/`.** `defineMemoWriter`,
+  `defineMemoSetup`, `createApproachGenerator`, and `defineAnalyst` capture the
+  shapes every group repeats. Each group's `setup.ts` and `writer.ts` is ≤ 15
+  lines + the per-group commit projections.
 - **Single-consumer output schemas live next to the generator that emits
-  them.** `phase-3/trader.ts` and `phase-5/portfolio-manager.ts` declare
-  their output schemas inline; the writer imports the type back. Multi-
-  consumer schemas (Phase 1's `thesisOutputSchema`, Phase 4's persona +
-  risk-assessment schemas) stay in a `*-schema.ts` / `schemas.ts` file.
-- **`providers/` is for external API clients only.** Stateless,
-  throw-on-failure modules with no caching (callers wrap with
-  `getOrFetch` from `lib/cache.ts`).
-- **`lib/` is for everything that's neither identity (`agents.ts`),
-  contract (`resources.ts`, `state.ts`, `flow-schema.ts`), capability,
-  nor phase code.** Helpers, factories, formatters, stateless utilities.
+  them.** `agents/trader/trader.ts` and `agents/portfolio-manager/portfolio-manager.ts`
+  declare their output schemas inline; the writer imports the type back. Multi-
+  consumer schemas (the analysts' `thesisOutputSchema`, risk's persona +
+  risk-assessment schemas) stay in a `thesis-schema.ts` / `schemas.ts` file in
+  the group.
+- **`tools/` is the self-contained catalog.** `tools/data/` is one file per
+  data tool, `tools/providers/` is external API clients (stateless,
+  throw-on-failure, no caching — callers wrap with `getOrFetch` from
+  `tools/runtime/cache.ts`), `tools/runtime/` is the cache + fixtures +
+  discovery runtime. A flow-coupled tool (one that imports flow internals, like
+  `find_counter_evidence`) stays with its consumer under `agents/`, NOT in the
+  catalog.
+- **`orchestration/` is the only code that knows execution order.** `stages.ts`
+  assembles each group's setup tap + step into a stage; `analyze.ts` chains the
+  stages behind the guards; `flow.ts` is `defineFlow` only. Import direction is
+  one-way: orchestration imports agents; agents never import orchestration
+  (BP-019 — acyclic).
+- **`lib/` is for pure IO-free utilities that are neither tool-runtime nor a
+  recipe** — formatters, the ticker resolver, concurrency, and the valuation /
+  scoring math. Identity lives in `registry.ts`; contract lives in
+  `resources.ts` / `state.ts` / `flow-schema.ts`.
 
 ## Past Reports
 
@@ -291,15 +349,16 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   the snapshot's priced rows for the ticker), `weightDeltaPct`,
   `hasPortfolioContext`, and a VALIDATED `suggestedAccount` (a label not in the
   real account list → `""` — never invent an account the user lacks).
-- **The lens pack lives in `phase-2b/` and runs PRE-DECISION** (after Phase 2,
-  before Phase 3), so convergence is a CONTEXT INPUT the PM reasons with
+- **The lens pack lives in `agents/lenses/` and runs PRE-DECISION** (after Phase 2,
+  before Phase 3 in the orchestration order), so convergence is a CONTEXT INPUT the PM reasons with
   (convergence → conviction → size, INSIDE the decision — not a post-hoc cap).
-  The pack is EXACTLY 4 lenses (`lib/lenses.ts` `LENS_PACK`): quality-value
+  The pack is EXACTLY 4 lenses (`agents/lenses/lenses.ts` `LENS_PACK`): quality-value
   (Buffett/Munger), cycle-risk (Howard Marks), macro-reflexive
   (Druckenmiller/Soros), forensic-skeptic (Burry — the structural bear).
   Mechanical-deep-value + GARP are DEFERRED (they need EV-multiple/PEG numbers
   the surface lacks, FIX-705); the pack is a config array, so adding them later
-  is one edit to `LENS_PACK` + one to `LENS_IDS` in `agents.ts`.
+  is one edit to `LENS_PACK` (`agents/lenses/lenses.ts`) + one to `LENS_IDS` in
+  `registry.ts`.
 - **Lenses are INDEPENDENT and BLIND, not a debate (FIX-655).** Each lens
   generator (`defineLensGenerator`, BP-024 factory) reads ONLY the shared
   post-Phase-2 bundle (`investmentThesis` + `phase1MemosFull` + `valuationSpine`)
@@ -310,10 +369,10 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   parallel fan-out reads a stale view (3 of 4 lens memos still `pending`). A
   sequential chain commits each memo before the next runs, so the convergence
   tap sees all N. Sequential ≠ debate — each lens is still blind. Lens verdict
-  schema (`phase-2b/lens-verdict-schema.ts`) is STRICT per BP-016 (3-tier
+  schema (`agents/lenses/lens-verdict-schema.ts`) is STRICT per BP-016 (3-tier
   `stance` + `conviction` + `missingData` honesty array; in the strict walker).
 - **Convergence is DETERMINISTIC (no LLM).** `computeAndStoreConvergence` (a
-  `.tap`) reads the committed lens memos, runs the pure `lib/convergence-math.ts`
+  `.tap`) reads the committed lens memos, runs the pure `agents/lenses/convergence-math.ts`
   `computeConvergence` (agreementScore ≥ 0.8 → convergent, ≥ 0.5 → mixed, else
   divergent; netLean = Σ(stanceSign × conviction)/N; ties → neutral; equal-weight
   by conviction in v1), and writes `lensConvergenceResource.patchState(...)`. The
@@ -343,12 +402,13 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
 
 ## Adding a new generator
 
-**Structured-output agents in Phases 3–5 are wrapped with an approach
-preamble.** Each such agent has a sibling `<agent>ApproachGenerator`
-built via `createApproachGenerator()` in
-`lib/approach-generator.ts` and inserted before the structured
-generator in its step sequencer. Use the factory — don't hand-roll a
-new `generator({...})` for a preamble.
+**Structured-output agents in the trader / risk / forecaster / PM /
+thesis-validator groups are wrapped with an approach preamble.** Each such
+agent has a sibling `<agent>ApproachGenerator` built via
+`createApproachGenerator()` in
+`agents/_recipe/approach-generator.ts` and inserted before the structured
+generator in its step sequencer (the `approach.ts` in the group). Use the
+factory — don't hand-roll a new `generator({...})` for a preamble.
 
 Every generator in this app uses the `tradingDesk` capability for model
 selection + ticker/date context. The minimum scaffold:
@@ -387,35 +447,35 @@ Each analyst is one `defineAnalyst({ shortName, tools, generator })` call.
 The factory captures the universal recipe: `markWriting → .map(tickerDate)
 → .parallel(attributedTools) → generator → commitMemo, rescue(markError)`.
 The call site supplies only what varies — the role's tools and its
-synthesis generator. See [`phase-1/analysts.ts`](src/flows/trading-desk/phase-1/analysts.ts)
+synthesis generator. See [`agents/analysts/analysts.ts`](src/flows/trading-desk/agents/analysts/analysts.ts)
 for the nine existing analysts.
 
 To add another:
 
-1. Add the agent to `AGENTS` and `PHASE_1_MEMO_KEYS` in `agents.ts`.
+1. Add the agent to `AGENTS` and `PHASE_1_MEMO_KEYS` in `registry.ts`.
 2. Add a new `discover_<role>_context.ts` tool if it needs web discovery,
-   plus any role-specific `get_*` tools.
+   plus any role-specific `get_*` tools (in `tools/data/`).
 3. Write the generator (output `thesisOutputSchema`).
-4. Call `defineAnalyst({...})` in `analysts.ts`.
-5. Wire it into `phase-1/index.ts`'s `.parallel({...})`.
+4. Call `defineAnalyst({...})` in `agents/analysts/analysts.ts`.
+5. Wire it into the `analystFanOut` `.parallel({...})` in `orchestration/stages.ts`.
 
-### Adding a phase setup or writer
+### Adding a group setup or writer
 
-Two factories collapse the per-phase boilerplate:
+Two factories collapse the per-group boilerplate (both in `agents/_recipe/`):
 
 - `defineMemoSetup({ phaseId, agentTeam, keys, activePhase })` in
-  `lib/memo-setup.ts` — pre-creates the phase's memos in `pending`. The
+  `agents/_recipe/memo-setup.ts` — pre-creates the group's memos in `pending`. The
   memoStatus seed is derived from `Object.keys(keys)` so adding a new
-  memo to a phase is a one-line edit to `agents.ts`.
+  memo to a group is a one-line edit to `registry.ts`.
 - `defineMemoWriter({ phaseId, agentTeam, keys, errorMessageFallback,
-  errorTextPlaceholder? })` in `lib/memo-writer.ts` — returns
-  `{ markWriting, markError, defineCommit }`. Each phase's `writer.ts`
+  errorTextPlaceholder? })` in `agents/_recipe/memo-writer.ts` — returns
+  `{ markWriting, markError, defineCommit }`. Each group's `writer.ts`
   destructures `markWriting` and `markError`, then calls
   `writer.defineCommit({ shortName, inputSchema, project, afterCommit? })`
   for each commit handler. `project` returns the patch applied on top of
   the standard `status: "published" / completedAt / errorMessage: null`
-  fields; `afterCommit` runs any phase-terminal session-state work (Phase
-  5 uses it to flip `runComplete`).
+  fields; `afterCommit` runs any group-terminal session-state work (the PM
+  group uses it to flip `runComplete`).
 
 ### The `investigate` preset
 
@@ -464,13 +524,13 @@ Tools follow the per-tool-file pattern. Each tool file owns its mode
 branch, provider preference, and fallback chain.
 
 ```ts
-// phase-1/tools/get_my_tool.ts
+// tools/data/get_my_tool.ts
 import { handler } from "@flow-state-dev/core";
-import { getOrFetch } from "../../services/cache";
-import { loadFixture } from "../../services/fixtures";
-import { fetchFromProviderA } from "../../services/providerA";
-import { emptyPayload } from "./empty-payloads";
-import { pickMode, toolInputSchemas, toolOutputSchemas } from "./schemas";
+import { getOrFetch } from "../runtime/cache";
+import { loadFixture } from "../runtime/fixtures";
+import { fetchFromProviderA } from "../providers/providerA";
+import { emptyPayload } from "../empty-payloads";
+import { pickMode, toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const get_my_tool = handler({
   name: "get_my_tool",
@@ -489,21 +549,23 @@ export const get_my_tool = handler({
 
 Then:
 
-1. Add the tool's input/output schemas to `phase-N/tools/schemas.ts` (both
+1. Add the tool's input/output schemas to `tools/schemas.ts` (both
    `toolInputSchemas` and `toolOutputSchemas`, plus the file-name mapping
    for fixture loading).
-2. Add an empty-payload builder to `phase-N/tools/empty-payloads.ts`.
-3. Re-export from `phase-N/tools/index.ts`.
+2. Add an empty-payload builder to `tools/empty-payloads.ts`.
+3. Re-export from `tools/index.ts`.
 4. Add to the appropriate analyst's `tools: [...]` list in
-   `phase-N/analysts.ts`.
+   `agents/analysts/analysts.ts`.
 5. Add a curated fixture JSON under
    `fixtures/<TICKER>/2026-05-06/<tool-file-name>.json` so fixture mode
    still works.
 
 If the tool needs a new external API, add its fetch helper to a new
-`services/<provider>.ts` file (one per provider). Keep it stateless — read
+`tools/providers/<provider>.ts` file (one per provider). Keep it stateless — read
 keys from env, throw on any failure, no caching (the tool handler wraps the
-call with `getOrFetch`).
+call with `getOrFetch`). A tool that imports flow internals (memo keys, a
+flow resource) is **flow-coupled** — it stays with its consumer under
+`agents/<group>/tools/`, NOT in the catalog (see `find_counter_evidence`).
 
 ## Round-robin patterns
 
@@ -520,10 +582,10 @@ Two conventions when using `roundRobin()` in this app:
    when multiple round-robins coexist in the same flow. Phase 2 uses
    `accessorKey: "p2Contributions"`.
 
-2. **Declare the contributions resource in `phase-N/contributions.ts`.**
-   Importers (the round-robin instance, the capability, the consolidator)
-   all pull from there. This keeps the phase's import graph cycle-free
-   (see BP-019).
+2. **Declare the contributions resource at the flow root (`resources.ts`,
+   the `phase2Contributions` accessor).** Importers (the round-robin instance
+   in `agents/research/round-robin.ts`, the capability, the consolidator) all
+   pull from there. This keeps the group's import graph cycle-free (see BP-019).
 
 **Phase 4 deliberately does NOT use `roundRobin()`.** It's a plain
 sequencer chain — `aggressiveStep.step(conservativeStep).step(neutralStep)`
@@ -551,7 +613,7 @@ of them with no consumer. Keep it a plain chain.
 
 Fixtures are a single pinned snapshot at `2026-05-06` (the
 `FIXTURE_SNAPSHOT` constant in
-[`services/fixtures.ts`](src/flows/trading-desk/services/fixtures.ts)). The
+[`tools/runtime/fixtures.ts`](src/flows/trading-desk/tools/runtime/fixtures.ts)). The
 loader ignores `args.date` and always reads from the snapshot directory. The
 returned payload carries the fixture's own `asOf` field, so analysts see the
 actual data date.
@@ -610,7 +672,7 @@ live-Grok path is a generator with the `xSearch` provider tool installed.
 The dispatch primitive is a `router` (block kinds differ across routes —
 the rest of the Phase 1 tools use `if` inside a handler because every
 branch is the same kind). See
-[`phase-1/tools/get_social_sentiment.ts`](src/flows/trading-desk/phase-1/tools/get_social_sentiment.ts)
+[`tools/data/get_social_sentiment.ts`](src/flows/trading-desk/tools/data/get_social_sentiment.ts)
 as the canonical example of a router-with-LLM-route pattern.
 
 If a live provider fails for a given tool, the tool returns an empty payload
