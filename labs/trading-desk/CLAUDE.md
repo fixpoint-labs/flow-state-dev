@@ -42,6 +42,8 @@ src/flows/trading-desk/
   compute-spine.ts               .tap that computes + stores the valuation spine
   store-price-history.ts         .tap that persists the thinned price series
   capability.ts                  the tradingDesk capability — single import for every generator
+  prompts/_partials/             shared prompt fragments ({% render %} targets); the loader anchors
+                                 PARTIALS_DIR here, so this stays at the flow root (not per-agent)
 
   agents/                        participants grouped by identity; each module exports its BUNDLED step
     _recipe/                     shared per-group factories
