@@ -50,9 +50,11 @@ import {
   markWritingP2,
 } from "../agents/research/writer";
 import { LENS_PACK } from "../agents/lenses/lenses";
-import { defineLensStep } from "../agents/lenses/lens-step";
+import { defineLensGenerator } from "../agents/lenses/lens-generator";
 import { setupLensMemos } from "../agents/lenses/setup";
-import { computeAndStoreConvergence } from "../agents/lenses/writer";
+import { commitLensVerdict, computeAndStoreConvergence } from "../agents/lenses/writer";
+import { defineMemoStep } from "../agents/_recipe/memo-writer";
+import type { LensId } from "../registry";
 import { traderApproachGenerator } from "../agents/trader/approach";
 import { setupPhase3Memos } from "../agents/trader/setup";
 import { traderGenerator } from "../agents/trader/trader";
@@ -230,8 +232,17 @@ export const researchStage = sequencer({
  * `costPreset === "full"` (RISK-F3).
  */
 /** One independent lens sub-sequencer per pack entry, chained SEQUENTIALLY (see
- *  the file header — each lens is blind to the others regardless). */
-const lensSteps = LENS_PACK.map((lens) => defineLensStep(lens));
+ *  the file header — each lens is blind to the others regardless). Each lens is
+ *  placed via the shared `defineMemoStep` apparatus: its generator is the body,
+ *  the per-lens commit is `commitLensVerdict`, and the keyed memo lifecycle
+ *  (`markWriting → … → rescue(markError)`) is resolved from the registry. */
+const lensSteps = LENS_PACK.map((lens) => {
+  const lensId = lens.id as LensId;
+  return defineMemoStep(defineLensGenerator(lens), {
+    key: lensId,
+    commit: commitLensVerdict(lensId),
+  });
+});
 
 export const lensStage = lensSteps
   .reduce(
