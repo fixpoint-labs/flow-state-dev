@@ -8,7 +8,7 @@
  * analyst-memo / debate-transcript blocks the structured generator reads on
  * the `full` preset.
  */
-import { PHASE_5_MEMO_KEYS } from "../../agents";
+import { PHASE_5_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { createApproachGenerator } from "../_recipe/approach-generator";
 import { loadPrompt } from "../../lib/prompt";

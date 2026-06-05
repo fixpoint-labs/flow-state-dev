@@ -19,7 +19,7 @@ import {
   checkPhase1HasData,
   checkPhase1HasFundamentalsAndProfile,
 } from "../src/flows/trading-desk/flow";
-import { PHASE_1_MEMO_KEYS } from "../src/flows/trading-desk/agents";
+import { PHASE_1_MEMO_KEYS } from "../src/flows/trading-desk/registry";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

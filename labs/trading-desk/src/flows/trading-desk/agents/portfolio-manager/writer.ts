@@ -21,7 +21,7 @@ import {
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
-} from "../../agents";
+} from "../../registry";
 import {
   decisionSnapshotResource,
   type DecisionSnapshotState,

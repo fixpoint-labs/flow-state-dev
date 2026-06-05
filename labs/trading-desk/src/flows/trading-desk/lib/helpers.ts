@@ -4,7 +4,7 @@
  * the block files about block composition, not text mechanics.
  */
 import type { BlockDefinition } from "@flow-state-dev/core";
-import { AGENTS, type AgentName } from "../agents";
+import { AGENTS, type AgentName } from "../registry";
 import type { SessionState } from "../state";
 
 /**

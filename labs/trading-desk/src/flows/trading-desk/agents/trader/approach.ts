@@ -10,7 +10,7 @@
  * sentences), not the full Phase 1 / Phase 2 data depth the structured
  * trader reads.
  */
-import { PHASE_3_MEMO_KEYS } from "../../agents";
+import { PHASE_3_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { createApproachGenerator } from "../_recipe/approach-generator";
 import { loadPrompt } from "../../lib/prompt";

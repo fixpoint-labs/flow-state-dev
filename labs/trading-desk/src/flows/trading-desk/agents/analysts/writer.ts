@@ -11,7 +11,7 @@
  *     per phase (Phase 2's bull/bear/RM, Phase 3's trader, Phase 5's PM),
  *     they're written as plain handlers — see those files.
  */
-import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../agents";
+import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../registry";
 import {
   defineMemoStateBlocks,
   memoHandler,

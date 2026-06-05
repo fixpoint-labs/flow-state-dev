@@ -19,7 +19,7 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_2_MEMO_KEYS } from "../../agents";
+import { PHASE_2_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
 import { thesisSection } from "../../resources";

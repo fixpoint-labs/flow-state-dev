@@ -12,7 +12,7 @@
  */
 import type { ReactElement } from "react";
 import { AgentBadge } from "@/components/agent-badge";
-import { AGENTS, type AgentName } from "@/src/flows/trading-desk/agents";
+import { AGENTS, type AgentName } from "@/src/flows/trading-desk/registry";
 import { ThesisBody } from "./thesis-body";
 import type { ThesisSection } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";

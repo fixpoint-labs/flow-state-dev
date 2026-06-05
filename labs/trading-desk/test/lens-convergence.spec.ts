@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { computeConvergence } from "../src/flows/trading-desk/agents/lenses/convergence-math";
 import { LENS_PACK } from "../src/flows/trading-desk/agents/lenses/lenses";
-import { LENS_IDS } from "../src/flows/trading-desk/agents";
+import { LENS_IDS } from "../src/flows/trading-desk/registry";
 import type { LensVerdictRecord } from "../src/flows/trading-desk/agents/lenses/lens-convergence-resource";
 
 /** Minimal verdict record builder — only the fields the math reads matter. */

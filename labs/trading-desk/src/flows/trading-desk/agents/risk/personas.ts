@@ -23,7 +23,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { PHASE_4_MEMO_KEYS } from "../../agents";
+import { PHASE_4_MEMO_KEYS } from "../../registry";
 import { sessionStateSchema } from "../../state";
 import {
   formatPersonaCritique,

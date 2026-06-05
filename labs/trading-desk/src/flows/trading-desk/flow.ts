@@ -18,7 +18,7 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "./agents";
+import { PHASE_1_MEMO_KEYS } from "./registry";
 import { computeAndStoreSpine } from "./compute-spine";
 import { decisionSnapshotResource } from "./decision-snapshot-resource";
 import { analyzeInputSchema } from "./flow-schema";

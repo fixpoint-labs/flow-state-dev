@@ -10,7 +10,7 @@
  * which re-`patchState`s a freshly-computed value on every run — so a re-run
  * never shows a stale convergence read.
  */
-import { PHASE_2B_MEMO_KEYS } from "../../agents";
+import { PHASE_2B_MEMO_KEYS } from "../../registry";
 import { defineMemoSetup } from "../_recipe/memo-setup";
 
 export const setupLensMemos = defineMemoSetup({

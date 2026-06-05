@@ -20,7 +20,7 @@ import {
 } from "../components/summary/aggregate";
 import type { MemoState } from "../src/flows/trading-desk/resources";
 import type { ValuationSpineState } from "../src/flows/trading-desk/valuation-spine-resource";
-import type { AnyMemoShortName } from "../src/flows/trading-desk/agents";
+import type { AnyMemoShortName } from "../src/flows/trading-desk/registry";
 
 /** Build a minimal published MemoState, overriding only the fields under test. */
 function memo(overrides: Partial<MemoState>): MemoState {

@@ -14,7 +14,7 @@
  *   - The consolidator reads `tradeProposal` + `riskCritiques` so its
  *     preamble can hint at synthesis across the three personas.
  */
-import { PHASE_4_MEMO_KEYS } from "../../agents";
+import { PHASE_4_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { createApproachGenerator } from "../_recipe/approach-generator";
 import { loadPrompt } from "../../lib/prompt";

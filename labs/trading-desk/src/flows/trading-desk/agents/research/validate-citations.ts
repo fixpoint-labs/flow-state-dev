@@ -19,7 +19,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "../../agents";
+import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { memoSectionTexts, normalizeWhitespace } from "../../lib/format";
 import { memosCollection, phase2Contributions } from "../../resources";
 import { sessionStateSchema } from "../../state";

@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import tradingDeskFlow from "../src/flows/trading-desk/flow";
-import { LENS_IDS } from "../src/flows/trading-desk/agents";
+import { LENS_IDS } from "../src/flows/trading-desk/registry";
 
 const ticker = "NVDA";
 const date = "2026-05-06";

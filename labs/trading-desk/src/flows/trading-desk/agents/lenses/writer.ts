@@ -18,7 +18,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { LENS_IDS, PHASE_2B_MEMO_KEYS, type LensId } from "../../agents";
+import { LENS_IDS, PHASE_2B_MEMO_KEYS, type LensId } from "../../registry";
 import { LENS_PACK } from "./lenses";
 import { computeConvergence } from "./convergence-math";
 import {

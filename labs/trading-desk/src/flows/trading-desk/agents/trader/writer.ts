@@ -7,7 +7,7 @@
  *     string-only per the Claude Design handoff; the structured 0..1
  *     number is what Phase 5 reads).
  */
-import { PHASE_3_MEMO_KEYS } from "../../agents";
+import { PHASE_3_MEMO_KEYS } from "../../registry";
 import {
   defineMemoStateBlocks,
   memoHandler,

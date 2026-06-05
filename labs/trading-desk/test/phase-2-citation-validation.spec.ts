@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { validateCitations } from "../src/flows/trading-desk/agents/research/validate-citations";
-import { PHASE_1_MEMO_KEYS } from "../src/flows/trading-desk/agents";
+import { PHASE_1_MEMO_KEYS } from "../src/flows/trading-desk/registry";
 import { memosCollection, phase2Contributions } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

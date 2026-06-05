@@ -3,7 +3,7 @@
  * `pending` before the validator generator runs. Built via the shared
  * `defineMemoSetup` factory, mirroring Phase 3/5.
  */
-import { PHASE_6_MEMO_KEYS } from "../../agents";
+import { PHASE_6_MEMO_KEYS } from "../../registry";
 import { defineMemoSetup } from "../_recipe/memo-setup";
 
 export const setupPhase6Memos = defineMemoSetup({

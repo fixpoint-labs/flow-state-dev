@@ -35,7 +35,7 @@ import {
   PHASE_2B_MEMO_KEYS,
   type AgentName,
   type LensId,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/trading-desk/registry";
 import { LENS_PACK } from "@/src/flows/trading-desk/agents/lenses/lenses";
 import { LENS_BODY_SECTION } from "@/src/flows/trading-desk/agents/lenses/lens-body-sections";
 import type { ThesisSection } from "@/src/flows/trading-desk/resources";

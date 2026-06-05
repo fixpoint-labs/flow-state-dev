@@ -32,7 +32,7 @@ import {
   type LooseBlockContext,
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { AgentName, AgentTeam } from "../../agents";
+import type { AgentName, AgentTeam } from "../../registry";
 import { memoResources, type MemoState } from "../../resources";
 import { sessionStateSchema, type SessionState } from "../../state";
 

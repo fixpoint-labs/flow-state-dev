@@ -8,7 +8,7 @@
  *     `probability-violation` when the raw probabilities sum outside
  *     [0.8, 1.2], caught by the pipeline's per-step rescue.
  */
-import { PHASE_3_MEMO_KEYS, PHASE_5_MEMO_KEYS } from "../../agents";
+import { PHASE_3_MEMO_KEYS, PHASE_5_MEMO_KEYS } from "../../registry";
 import {
   defineMemoStateBlocks,
   memoHandler,

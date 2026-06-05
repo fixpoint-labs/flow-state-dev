@@ -8,7 +8,7 @@
  *     through a factory because each has a different output schema and a
  *     different projection — the body IS what varies.
  */
-import { PHASE_2_MEMO_KEYS } from "../../agents";
+import { PHASE_2_MEMO_KEYS } from "../../registry";
 import {
   defineMemoStateBlocks,
   memoHandler,

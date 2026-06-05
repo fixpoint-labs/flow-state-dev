@@ -19,7 +19,7 @@
  *     `markErrorP4` flips to `error`), but keeping a typed non-empty
  *     rescue output simplifies the test seam.
  */
-import { PHASE_4_MEMO_KEYS } from "../../agents";
+import { PHASE_4_MEMO_KEYS } from "../../registry";
 import {
   defineMemoStateBlocks,
   memoHandler,

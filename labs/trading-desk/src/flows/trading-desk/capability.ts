@@ -40,7 +40,7 @@ import {
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
-} from "./agents";
+} from "./registry";
 import { memosCollection, phase2Contributions } from "./resources";
 import { valuationSpineResource } from "./valuation-spine-resource";
 import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";

@@ -20,7 +20,7 @@ import {
   PHASE_1_MEMO_KEYS,
   type AgentName,
   type AnyMemoShortName,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/trading-desk/registry";
 
 /** One analyst's TLDR line for the Summary grid. */
 export type AnalystTldr = {

@@ -32,7 +32,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENTS } from "../agents";
+import { AGENTS } from "../registry";
 import { tradingDesk } from "../capability";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 

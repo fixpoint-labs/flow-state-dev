@@ -13,7 +13,7 @@
  * block or the `verify` search tools — the preamble describes method, it
  * doesn't do the verification.
  */
-import { PHASE_6_MEMO_KEYS } from "../../agents";
+import { PHASE_6_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { createApproachGenerator } from "../_recipe/approach-generator";
 import { loadPrompt } from "../../lib/prompt";

@@ -15,7 +15,7 @@
  * becomes ~5 lines.
  */
 import { sequencer, type BlockDefinition } from "@flow-state-dev/core";
-import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../agents";
+import { PHASE_1_MEMO_KEYS, type Phase1MemoShortName } from "../../registry";
 import { attributedTools, memoLabel, tickerDate } from "../../lib/helpers";
 import { commitMemo, markError, markWriting } from "../analysts/writer";
 

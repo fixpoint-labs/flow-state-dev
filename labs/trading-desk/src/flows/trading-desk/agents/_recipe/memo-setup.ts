@@ -16,7 +16,7 @@
  * memo to a phase doesn't require touching this file.
  */
 import { z } from "zod";
-import type { AgentName, AgentTeam } from "../../agents";
+import type { AgentName, AgentTeam } from "../../registry";
 import type { SessionState } from "../../state";
 import { memoHandler } from "./memo-writer";
 

@@ -14,7 +14,7 @@
  * is the honesty contract (FIX-655).
  */
 import { sequencer, type BlockDefinition } from "@flow-state-dev/core";
-import type { LensId } from "../../agents";
+import type { LensId } from "../../registry";
 import type { InvestorLens } from "./lenses";
 import { defineLensGenerator } from "./lens-generator";
 import { commitLensVerdict, markErrorP2b, markWritingP2b } from "./writer";

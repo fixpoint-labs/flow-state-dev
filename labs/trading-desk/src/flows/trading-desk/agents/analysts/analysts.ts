@@ -20,7 +20,7 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_1_MEMO_KEYS } from "../../agents";
+import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { asDataBlock } from "../../lib/helpers";
 import { computeValuation, formatValuation } from "../../lib/valuation";

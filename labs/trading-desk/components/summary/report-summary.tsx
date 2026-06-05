@@ -33,7 +33,7 @@ import {
 import {
   ALL_MEMO_KEYS,
   type AnyMemoShortName,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/trading-desk/registry";
 import type { MemoState } from "@/src/flows/trading-desk/resources";
 import type { ValuationSpineState } from "@/src/flows/trading-desk/valuation-spine-resource";
 import type { PriceHistorySlice } from "@/src/flows/trading-desk/price-history-resource";

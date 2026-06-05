@@ -22,7 +22,7 @@
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
-import { PHASE_5_MEMO_KEYS } from "../../agents";
+import { PHASE_5_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";

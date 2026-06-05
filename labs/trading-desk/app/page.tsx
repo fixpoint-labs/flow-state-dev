@@ -31,7 +31,7 @@ import type { AccountState } from "@/src/flows/trading-desk/portfolio/portfolio-
 import type { PortfolioQuotesState } from "@/src/flows/trading-desk/portfolio/portfolio-quotes-resource";
 import type { PortfolioContextInput } from "@/src/flows/trading-desk/flow-schema";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
-import type { AnyMemoShortName } from "@/src/flows/trading-desk/agents";
+import type { AnyMemoShortName } from "@/src/flows/trading-desk/registry";
 import {
   EMPTY_INSTRUCTIONS,
   type SpecialInstructionsState,

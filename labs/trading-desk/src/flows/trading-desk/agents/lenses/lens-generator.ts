@@ -28,7 +28,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
-import { PHASE_2B_MEMO_KEYS } from "../../agents";
+import { PHASE_2B_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import type { InvestorLens } from "./lenses";
 import { loadPrompt } from "../../lib/prompt";

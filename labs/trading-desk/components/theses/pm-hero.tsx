@@ -13,7 +13,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/trading-desk/registry";
 import { ThesisBody } from "./thesis-body";
 import type {
   MemoState,
