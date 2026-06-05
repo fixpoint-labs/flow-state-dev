@@ -239,15 +239,25 @@ describe("materializeAgent", () => {
   describe("capability refs (FIX-732)", () => {
     it("passes a .presets()-configured capability ref through to uses (no catalog needed)", () => {
       const cap = defineCapability({ name: "testCap", presets: { a: {} } });
+      const configured = cap.presets({ a: true });
       const block = materializeAgent(
-        makeAgent({ usesCapabilities: [cap.presets({ a: true })] }),
+        makeAgent({ usesCapabilities: [configured] }),
         makeOpts({ shape: "standalone" }),
       ) as any;
-      const used = (inspectGenerator(block).uses ?? []).find(
-        (u: any) => u?.name === "testCap",
-      );
-      expect(used).toBeDefined();
-      expect(used.__presetOverrides).toEqual({ a: true });
+      // The configured ref passes through unchanged (observable contract — no
+      // coupling to how the capability factory stores its preset overrides).
+      expect(inspectGenerator(block).uses ?? []).toContain(configured);
+    });
+
+    it("skips a string key silently when no capabilityCatalog is provided (backward-compat)", () => {
+      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const block = materializeAgent(
+        makeAgent({ usesCapabilities: ["k"] }),
+        makeOpts({ shape: "standalone" }), // no capabilityCatalog
+      ) as any;
+      expect(inspectGenerator(block).uses ?? []).toEqual([]);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
 
     it("still resolves a string key against the capabilityCatalog", () => {

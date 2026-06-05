@@ -52,7 +52,12 @@ function resolveCapabilities(
     // A string is a catalog key (registry-resolved); a capability reference
     // (base or `.presets()`-configured) is used as-is — refs need no catalog.
     if (typeof entry === "string") {
-      const cap = catalog?.[entry];
+      // No catalog → a string key can't be resolved; skip SILENTLY, preserving
+      // the pre-FIX-732 behavior for string-key agents materialized without a
+      // capabilityCatalog (the change stays purely additive). The warn below
+      // fires only when a catalog IS present but the key is unknown.
+      if (!catalog) continue;
+      const cap = catalog[entry];
       if (!cap) {
         console.warn(
           `[workforce] agent "${agentName}": unknown capability "${entry}" — skipped`,
