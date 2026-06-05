@@ -29,6 +29,13 @@ export class SuspensionError extends Error {
   readonly render?: { component: string; props?: Record<string, unknown> };
   readonly timeoutMs?: number;
 
+  /** @internal Stamped by the sequencer so runAction can build a SuspensionRecord. */
+  _stepIndex?: number;
+  /** @internal The currentValue at the point of suspension (input for the suspended step). */
+  _currentValue?: unknown;
+  /** @internal Snapshot of sequencer state at the point of suspension. */
+  _sequencerState?: Record<string, unknown>;
+
   constructor(options: SuspendOptions & { suspensionId: string }) {
     super(options.message ?? `Flow suspended: ${options.reason}`);
     this.name = "SuspensionError";

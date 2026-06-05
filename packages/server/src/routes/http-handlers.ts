@@ -21,6 +21,7 @@ import {
   jsonResponse
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
+import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
@@ -390,6 +391,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "abort_request") {
         return await handleAbortRequest(request, route, {
           stores
+        });
+      }
+
+      if (route.kind === "resume_suspension") {
+        return await handleResumeSuspension(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
+          seams,
+          requestContext
         });
       }
 

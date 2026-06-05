@@ -31,6 +31,7 @@ export type ParsedFlowRoute =
   | { kind: "get_collection_item_state"; sessionId: string; ref: string; topic: string }
   | { kind: "get_resource_manifest"; sessionId: string }
   | { kind: "abort_request"; flowKind: string; requestId: string }
+  | { kind: "resume_suspension"; flowKind: string; requestId: string }
   | { kind: "request_status"; flowKind: string; requestId: string }
   | { kind: "debug_list_resources"; sessionId: string }
   | { kind: "debug_list_collection_items"; sessionId: string; ref: string }

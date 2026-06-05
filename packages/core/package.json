@@ -75,6 +75,10 @@
     "./resource-template/node": {
       "types": "./dist/resource-template/load-resource-template.node.d.ts",
       "default": "./src/resource-template/load-resource-template.node.ts"
+    },
+    "./errors/suspension-error": {
+      "types": "./dist/errors/suspension-error.d.ts",
+      "default": "./src/errors/suspension-error.ts"
     }
   },
   "license": "MIT",
@@ -134,6 +138,10 @@
       "./resource-template/node": {
         "types": "./dist/resource-template/load-resource-template.node.d.ts",
         "default": "./dist/resource-template/load-resource-template.node.js"
+      },
+      "./errors/suspension-error": {
+        "types": "./dist/errors/suspension-error.d.ts",
+        "default": "./dist/errors/suspension-error.js"
       }
     }
   },

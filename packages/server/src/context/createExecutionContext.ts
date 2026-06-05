@@ -57,6 +57,9 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
+import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
+import type { ResumeContext } from "@flow-state-dev/core/types";
+import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
   resolveOrgStorageKey
@@ -2076,6 +2079,8 @@ export async function createExecutionContext<
     return promise;
   };
 
+  let resumeConsumed = false;
+
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
@@ -2300,6 +2305,24 @@ export async function createExecutionContext<
       // store ref so it works across every scoped child context.
       idempotencyKey: undefined,
       runOnce,
+      suspend: async (suspendOpts) => {
+        const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
+        if (resumeCtx !== undefined && !resumeConsumed) {
+          resumeConsumed = true;
+          if (resumeCtx.action === "reject") {
+            throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+          }
+          return resumeCtx.data;
+        }
+        if (!options.durabilityEnabled) {
+          throw new Error(
+            "ctx.suspend() requires a DurabilityProvider. Configure one in your server options."
+          );
+        }
+        const suspensionId = generateId("susp");
+        throw new SuspensionError({ ...suspendOpts, suspensionId });
+      },
+      saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per
       // claimed task; child scopes constructed afterward inherit it (see the

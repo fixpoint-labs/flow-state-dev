@@ -220,6 +220,34 @@ CREATE TABLE IF NOT EXISTS schedule_index (
 CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at);
 `;
 
+// FIX-140: suspension records for durable execution. Identity is
+// (request_id, suspension_id); the `data` column stores the full
+// SuspensionRecord as JSON. Scalar columns enable indexed queries.
+const SUSPENSION_RECORDS_TABLE = `
+CREATE TABLE IF NOT EXISTS suspension_records (
+  request_id    TEXT NOT NULL,
+  suspension_id TEXT NOT NULL,
+  data          TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  PRIMARY KEY (request_id, suspension_id)
+);
+CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id);
+CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at);
+`;
+
+// FIX-140: lease records for preventing concurrent resume. One active
+// lease per request at a time.
+const LEASES_TABLE = `
+CREATE TABLE IF NOT EXISTS leases (
+  request_id  TEXT PRIMARY KEY,
+  lease_id    TEXT NOT NULL,
+  holder      TEXT NOT NULL,
+  acquired_at INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at);
+`;
+
 /**
  * One-shot rename migrations for databases initialised under the pre-FIX-428
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
@@ -310,6 +338,8 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(TRACE_REQUEST_ROSTER_TABLE);
   db.exec(TRACE_EVENTS_TABLE);
   db.exec(SCHEDULE_INDEX_TABLE);
+  db.exec(SUSPENSION_RECORDS_TABLE);
+  db.exec(LEASES_TABLE);
 }
 
 /**

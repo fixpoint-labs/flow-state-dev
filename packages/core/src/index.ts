@@ -302,6 +302,9 @@ export {
   OutputValidationError,
   SequencerOutputSchemaError,
   SequencerSchemaMismatchError,
+  SuspensionError,
+  SuspensionRejectedError,
+  SuspensionTimeoutError,
   rootCause,
   isAbortLike
 } from "./errors";
@@ -310,5 +313,6 @@ export type {
   FlowErrorScope,
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
-  SequencerSchemaMismatchErrorDetails
+  SequencerSchemaMismatchErrorDetails,
+  SuspendOptions
 } from "./errors";

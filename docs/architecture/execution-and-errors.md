@@ -279,7 +279,7 @@ Actions may define `tokenBudget` with `maxTotalTokens`, optional `warnAt`, and `
 
 ## Sequencer State Persistence
 
-Sequencers checkpoint their state at every step boundary so a future durable execution runtime (FIX-141) can resume an interrupted request mid-sequencer without losing progress. The mechanism is on by default and ships ahead of the resume runtime so the persisted shape can stabilize before consumers depend on it.
+Sequencers checkpoint their state at every step boundary so the durable execution runtime can resume an interrupted request mid-sequencer without losing progress. The mechanism is on by default; combine it with a `DurabilityProvider` on `RuntimeConfig` to enable `ctx.suspend()` and the resume endpoint.
 
 ### Wire model
 
@@ -329,9 +329,19 @@ Nested sequencers each get their own keyed checkpoint, and (when cleanup is enab
 
 Latest-only persistence keeps storage bounded regardless of the retention setting (one record per sequencer instance per request), so retention doesn't compound across step counts.
 
+### Durable execution: suspend and resume
+
+When a block calls `ctx.suspend()` inside a durable action, the runtime:
+1. Catches the `SuspensionError` at the sequencer boundary (bypassing rescue handlers).
+2. Creates a `SuspensionRecord` via the `DurabilityProvider`.
+3. Emits a `SuspensionItem` on the response stream.
+4. Sets the request status to `"suspended"` and closes the SSE stream.
+
+The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes the action with `_resumeState` on the execution context. The sequencer skips completed steps (injecting cached outputs) and re-executes the step that suspended. On this re-run, `ctx.suspend()` returns the `resumeData` provided by the external actor instead of throwing.
+
+`SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
+
 ### Out of scope
 
-- Resume-from-checkpoint execution (FIX-141, Wave 2).
 - Append-and-prune step-history retention. The latest-only model is intentional; an opt-in `persistFullHistory` mode is a future ask if it materializes.
-- HITL suspend/approve flows (Wave 3 territory).
 

@@ -100,3 +100,7 @@ const flaky = handler({
 `invocations` stays at `1` no matter how many times the handler retries. The charge fires once, on the attempt that first reached the `runOnce` call. Every later retry replays the persisted result and proceeds to whatever logic follows it.
 
 The `attempt` counter on `ctx` still increments per retry — that's what lets you observe how many attempts ran, even though the wrapped work only fired once.
+
+## See also
+
+- [Durable execution](./durable-execution.md) — checkpoint-based crash recovery and human-in-the-loop suspend/resume, which pairs naturally with idempotent handlers to make long-running flows safe to restart.
