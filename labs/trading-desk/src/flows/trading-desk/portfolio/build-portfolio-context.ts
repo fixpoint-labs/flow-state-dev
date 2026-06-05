@@ -4,9 +4,9 @@
  *
  * THE LOAD-BEARING INTEGRATION (BUILD_PLAN portfolio-shape alignment). Slice 4
  * stores `quantity` / `costBasis` per holding but NOT market value, weight, NAV,
- * or sector. Spec 05 says weights are computed BEFORE dispatch; the flow never
- * recomputes. So this pure, browser-safe function (called at dispatch in
- * `app/page.tsx`) computes the snapshot:
+ * or sector. Weights are computed once at seed; the flow never recomputes. So
+ * this pure, browser-safe function (called server-side in `seedSession`,
+ * `orchestration/guards.ts`) computes the snapshot:
  *   - per-holding `marketValue` = quantity × live quote (null when no quote)
  *   - `totalNav` = Σ(known marketValue) + Σ(account.cashBalance)
  *   - per-holding `weightPct` = marketValue / totalNav × 100 (null when either
@@ -36,11 +36,13 @@ import type { AccountState } from "./portfolio-schema";
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
 
 /**
- * Build the dispatch snapshot. `quotes` is the `portfolioQuotes` resource's
- * quote array (may be empty/stale); `snapshotAsOf` is its fetch time.
+ * Build the snapshot. `quotes` is the `portfolioQuotes` resource's quote array
+ * (may be empty/stale); `snapshotAsOf` is its fetch time. `accounts` is read-only
+ * (never mutated) so callers can pass a `Readonly<AccountState>[]` straight from
+ * a resource ref without copying.
  */
 export function buildPortfolioContext(
-  accounts: AccountState[],
+  accounts: ReadonlyArray<Readonly<AccountState>>,
   quotes: QuoteLike[],
   snapshotAsOf: string | null,
 ): PortfolioContextInput | null {

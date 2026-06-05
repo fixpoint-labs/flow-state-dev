@@ -1,15 +1,16 @@
 /**
  * Commit-derived portfolio-fit fields (Slice 5).
  *
- * Drives the full `analyze` action with every generator mocked and a portfolio
- * supplied in the caller input, then reads the committed PM memo's `portfolioFit`
- * from the in-memory store. Asserts the FOUR fields the writer derives
- * deterministically (NOT from the LLM):
+ * Drives the full `analyze` action with every generator mocked and the portfolio
+ * seeded as user-scoped `accounts` + `portfolioQuotes` resources (seedSession
+ * computes the snapshot server-side), then reads the committed PM memo's
+ * `portfolioFit` from the in-memory store. Asserts the FOUR fields the writer
+ * derives deterministically (NOT from the LLM):
  *   - `currentWeightPct` — summed from the snapshot's priced rows for the ticker.
  *   - `weightDeltaPct`   — targetWeightPct − currentWeightPct.
  *   - `suggestedAccount` — validated against the real account list; a
  *                          hallucinated/absent label resolves to "".
- *   - `hasPortfolioContext` — true with a supplied portfolio, false without.
+ *   - `hasPortfolioContext` — true when accounts are seeded, false without.
  *
  * Runs on `fast` so the phase-2b lens pack is cost-gated off (no convergence) —
  * the portfolio-fit derivation is independent of the lens pack.
@@ -315,23 +316,60 @@ function upstreamMocks() {
   };
 }
 
-/** A portfolio snapshot: NVDA held in the Roth at 2% weight, plus a taxable. */
-function portfolioInput() {
-  return {
-    totalNav: 100000,
-    snapshotAsOf: "2026-05-06",
-    pricedHoldings: 2,
-    totalHoldings: 2,
-    accounts: [
-      { id: "acc-roth", label: "Roth IRA", type: "Roth" as const, cash: 5000 },
-      { id: "acc-tax", label: "Taxable Brokerage", type: "taxable" as const, cash: 10000 },
-    ],
-    holdings: [
-      { ticker: "NVDA", account: "acc-roth", weightPct: 2, marketValue: 2000, costBasis: 100, sector: null },
-      { ticker: "AAPL", account: "acc-tax", weightPct: 3, marketValue: 3000, costBasis: 150, sector: null },
-    ],
-  };
-}
+/**
+ * User-scoped resource state that `seedSession` will use to compute the
+ * portfolio snapshot server-side. Layout:
+ *
+ *   Roth IRA   — NVDA × 10 @ price 200 → mv 2000; cash 5000
+ *   Taxable    — no holdings; cash 93000
+ *   totalNav   = 2000 + 5000 + 93000 = 100000
+ *   NVDA weight = 2000 / 100000 = 2% exactly
+ *
+ * Both accounts are in scope (selectedAccountIds: []) so the Taxable account
+ * label ("Taxable Brokerage") appears in `portfolio.accounts` for label-
+ * validation assertions. NVDA's weight is 2% so the PM writer echo-fields
+ * are deterministic.
+ */
+const USER_ID = "test-user";
+
+const rothAccountId = "acc-roth";
+const taxableAccountId = "acc-tax";
+
+const storedRothAccount = {
+  accountId: rothAccountId,
+  name: "Roth IRA",
+  type: "Roth",
+  currency: "USD",
+  cashBalance: 5000,
+  holdings: [{ ticker: "NVDA", quantity: 10, costBasis: 100, acquiredDate: null }],
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const storedTaxableAccount = {
+  accountId: taxableAccountId,
+  name: "Taxable Brokerage",
+  type: "taxable",
+  currency: "USD",
+  cashBalance: 93000,
+  holdings: [],
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+/** Quotes giving NVDA price = 200 so that 10 shares → mv 2000 / nav 100000 = 2%. */
+const storedQuotes = {
+  dataSource: "fixture",
+  fetchedAt: "2026-05-06T12:00:00.000Z",
+  quotes: [{ ticker: "NVDA", price: 200, asOf: "2026-05-06" }],
+};
+
+/** User resources seeding for tests that need a portfolio. */
+const userResourcesWithPortfolio = {
+  [`accounts/${rothAccountId}`]: storedRothAccount,
+  [`accounts/${taxableAccountId}`]: storedTaxableAccount,
+  portfolioQuotes: storedQuotes,
+};
 
 type PmMemo = {
   status?: string;
@@ -347,7 +385,7 @@ type PmMemo = {
 
 async function runAndReadPmMemo(opts: {
   sessionId: string;
-  portfolio: ReturnType<typeof portfolioInput> | null;
+  hasPortfolio: boolean;
   suggestedAccountLabel: string;
   targetWeightPct: number;
 }): Promise<PmMemo | undefined> {
@@ -355,7 +393,7 @@ async function runAndReadPmMemo(opts: {
   const result = await testFlow({
     flow: tradingDeskFlow,
     action: "analyze",
-    userId: "test-user",
+    userId: USER_ID,
     sessionId: opts.sessionId,
     stores,
     input: {
@@ -363,9 +401,12 @@ async function runAndReadPmMemo(opts: {
       date,
       costPreset: "fast" as const,
       dataSource: "fixture" as const,
-      portfolio: opts.portfolio,
-      selectedAccountIds: opts.portfolio ? ["acc-roth"] : [],
+      // Portfolio snapshot is now computed server-side from user resources.
+      // `selectedAccountIds: []` includes all accounts (both Roth + Taxable).
+      selectedAccountIds: [],
     },
+    // Seed user-scoped accounts + quotes so seedSession can compute the snapshot.
+    seed: opts.hasPortfolio ? { user: { resources: userResourcesWithPortfolio } } : undefined,
     generators: {
       ...upstreamMocks(),
       "portfolio-manager-generator": mockGenerator({
@@ -384,12 +425,12 @@ describe("portfolio-fit commit-derived fields", () => {
   it("derives currentWeightPct from the snapshot and weightDeltaPct from the target", async () => {
     const pm = await runAndReadPmMemo({
       sessionId: "pf-derive",
-      portfolio: portfolioInput(),
+      hasPortfolio: true,
       suggestedAccountLabel: "Roth IRA",
       targetWeightPct: 3.5,
     });
     expect(pm?.status).toBe("published");
-    // NVDA held at 2% in the Roth → currentWeightPct = 2.
+    // NVDA held at 2% (10 × 200 / 100000) → currentWeightPct = 2.
     expect(pm?.portfolioFit?.currentWeightPct).toBe(2);
     // delta = 3.5 − 2 = 1.5.
     expect(pm?.portfolioFit?.weightDeltaPct).toBeCloseTo(1.5);
@@ -399,7 +440,7 @@ describe("portfolio-fit commit-derived fields", () => {
   it("keeps a suggestedAccount that matches a real account label", async () => {
     const pm = await runAndReadPmMemo({
       sessionId: "pf-valid-account",
-      portfolio: portfolioInput(),
+      hasPortfolio: true,
       suggestedAccountLabel: "Roth IRA",
       targetWeightPct: 3,
     });
@@ -409,7 +450,7 @@ describe("portfolio-fit commit-derived fields", () => {
   it("rejects a hallucinated suggestedAccount label → empty string", async () => {
     const pm = await runAndReadPmMemo({
       sessionId: "pf-hallucinated-account",
-      portfolio: portfolioInput(),
+      hasPortfolio: true,
       suggestedAccountLabel: "Schwab 529 College Fund", // not in the account list
       targetWeightPct: 3,
     });
@@ -419,7 +460,7 @@ describe("portfolio-fit commit-derived fields", () => {
   it("with NO portfolio: hasPortfolioContext false, currentWeightPct 0, suggestedAccount dropped", async () => {
     const pm = await runAndReadPmMemo({
       sessionId: "pf-no-portfolio",
-      portfolio: null,
+      hasPortfolio: false,
       suggestedAccountLabel: "Roth IRA", // no accounts → cannot validate → ""
       targetWeightPct: 3,
     });

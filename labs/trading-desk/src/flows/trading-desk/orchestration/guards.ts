@@ -26,6 +26,9 @@ import { memoResources, type MemoStatus } from "../resources";
 import { specialInstructionsStateSchema } from "../special-instructions";
 import { specialInstructionsResource } from "../special-instructions-resource";
 import { sessionStateSchema } from "../state";
+import { accountsCollection } from "../portfolio/portfolio-resources";
+import { portfolioQuotesResource } from "../portfolio/portfolio-quotes-resource";
+import { buildPortfolioContext } from "../portfolio/build-portfolio-context";
 
 /**
  * Patches session state from action input and resets the memo-status
@@ -36,6 +39,7 @@ export const seedSession = handler({
   inputSchema: analyzeInputSchema,
   outputSchema: analyzeInputSchema,
   sessionStateSchema,
+  resources: { accounts: accountsCollection, portfolioQuotes: portfolioQuotesResource },
   execute: async (input, ctx) => {
     // Freeze the per-run thesis at seed time so editing the form mid-run
     // can't affect the session that's already analyzing. A non-null
@@ -49,6 +53,16 @@ export const seedSession = handler({
       rawThesis.length > 0 && !hasUsableThesis
         ? "Thesis too short to audit (under 20 characters) — Phase 6 skipped."
         : null;
+
+    // Portfolio snapshot, computed server-side from the shared user-scoped
+    // accounts + last-known quotes (replaces the client-built dispatch input).
+    const accountRefs = await ctx.resources.accounts.list();
+    const allAccounts = accountRefs.map((r) => r.state); // ResourceRef.state is a SYNC getter — do NOT await
+    const scoped = input.selectedAccountIds.length
+      ? allAccounts.filter((a) => input.selectedAccountIds.includes(a.accountId))
+      : allAccounts;
+    const q = ctx.resources.portfolioQuotes.state; // nullable single-resource read
+    const portfolio = buildPortfolioContext(scoped, q?.quotes ?? [], q?.fetchedAt ?? null);
 
     await ctx.session.patchState({
       ticker: input.ticker,
@@ -68,10 +82,9 @@ export const seedSession = handler({
       userThesis,
       userThesisRationale: userThesis === null ? null : input.userThesisRationale,
       userThesisWarning,
-      // Freeze the per-run portfolio snapshot (Slice 5), same discipline as
-      // `userThesis`. Null → portfolio-blind run. The pipeline (P1–P2) runs
-      // blind; only the lens pack, the trader, and the PM read it.
-      portfolio: input.portfolio,
+      // Portfolio snapshot computed server-side from user-scoped accounts + quotes
+      // (was: input.portfolio). Null → portfolio-blind run.
+      portfolio,
       selectedAccountIds: input.selectedAccountIds,
     });
     return input;
