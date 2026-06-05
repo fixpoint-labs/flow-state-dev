@@ -73,14 +73,9 @@ import { setupPhase5Memos } from "../agents/portfolio-manager/setup";
 import { setupScenarioForecastMemos } from "../agents/scenario-forecaster/setup";
 import { commitPortfolioManagerMemo } from "../agents/portfolio-manager/writer";
 import { commitScenarioForecastMemo } from "../agents/scenario-forecaster/writer";
-import { thesisValidatorApproachGenerator } from "../agents/thesis-validator/approach";
-import { thesisValidatorGenerator } from "../agents/thesis-validator/thesis-validator";
+import { thesisValidatorBody } from "../agents/thesis-validator/thesis-validator";
 import { setupPhase6Memos } from "../agents/thesis-validator/setup";
-import {
-  commitThesisAlignmentMemo,
-  markErrorP6,
-  markWritingP6,
-} from "../agents/thesis-validator/writer";
+import { commitThesisAlignmentMemo } from "../agents/thesis-validator/writer";
 
 /**
  * `analystFanOut` — the Phase 1 stage.
@@ -376,11 +371,14 @@ export const portfolioStage = sequencer({
  * `thesisAuditStage` — the Phase 6 stage (post-decision thesis audit).
  *
  * Runs after Phase 5, gated on a non-null `userThesis` (see `analyze.ts`). It
- * pre-creates the thesis-alignment memo in `pending`, then a single step taps
- * `markWritingP6`, runs the validator, and taps `commitThesisAlignmentMemo` on
- * success. A per-step rescue flips the memo to `error` on generator failure
- * or on an anti-yes-man enforcement throw — same shape as Phase 5's
- * single-step rescue.
+ * pre-creates the thesis-alignment memo in `pending`, then the validator step
+ * pre-marks the memo `writing`, runs the validator body (approach preamble →
+ * structured generator), and commits on success. Placed via the shared
+ * `defineMemoStep` apparatus: `thesisValidatorBody` is the body,
+ * `commitThesisAlignmentMemo` is the commit, and the keyed memo lifecycle
+ * (`markWriting → … → rescue(markError)`) is resolved from the registry — so a
+ * generator failure or an anti-yes-man enforcement throw flips the memo to
+ * `error`, same shape as Phase 5's single-step rescue.
  *
  * Like Phases 3–5, a fast-model approach preamble streams before the
  * structured generator so the transcript shows a "Phase 6 Approach" beat —
@@ -389,12 +387,10 @@ export const portfolioStage = sequencer({
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires.
  */
-const validatorStep = sequencer({ name: "phase-6-validator-step" })
-  .tap(markWritingP6("thesisAlignment"))
-  .step(thesisValidatorApproachGenerator)
-  .step(thesisValidatorGenerator)
-  .tap(commitThesisAlignmentMemo)
-  .rescue([{ block: markErrorP6("thesisAlignment") }]);
+const validatorStep = defineMemoStep(thesisValidatorBody, {
+  key: "thesisAlignment",
+  commit: commitThesisAlignmentMemo,
+});
 
 export const thesisAuditStage = sequencer({
   name: "phase-6-thesis-audit",

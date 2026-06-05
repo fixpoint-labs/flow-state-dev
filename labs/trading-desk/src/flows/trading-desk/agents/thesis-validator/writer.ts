@@ -1,33 +1,22 @@
 /**
- * Phase 6 memo-writing blocks.
+ * Phase 6 commit handler (the post-decision thesis audit).
  *
- *   - `markWritingP6` / `markErrorP6` — built via `defineMemoStateBlocks`.
  *   - `commitThesisAlignmentMemo` — plain handler that enforces the
  *     anti-yes-man rule, then publishes the validator's audit.
  *
  * The anti-yes-man rule lives here rather than in the output schema because a
  * Zod refinement would wrap the schema in `ZodEffects` and break OpenAI strict
- * structured output (BP-016). Throwing in the commit triggers the
- * `markErrorP6` rescue, so a yes-man verdict flips the memo to `error`
- * instead of publishing — same shape as Phase 5's lineage-violation throw.
+ * structured output (BP-016). Throwing in the commit triggers the per-step
+ * rescue, so a yes-man verdict flips the memo to `error` instead of publishing
+ * — same shape as Phase 5's lineage-violation throw.
+ *
+ * The memo `writing`/`error` lifecycle is no longer built here — it comes from
+ * the keyed `markWriting`/`markError` resolved by `defineMemoStep` from the
+ * registry entry in `orchestration/stages.ts`.
  */
 import { PHASE_6_MEMO_KEYS } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { thesisAlignmentOutputSchema } from "./thesis-validator";
-
-export const {
-  markWriting: markWritingP6,
-  markError: markErrorP6,
-} = defineMemoStateBlocks({
-  phaseId: "p6",
-  agentTeam: "pm",
-  keys: PHASE_6_MEMO_KEYS,
-  errorMessageFallback: "Phase 6 generator failed.",
-});
 
 export const commitThesisAlignmentMemo = memoHandler({
   name: "commit-memo-p6-thesis-alignment",

@@ -20,7 +20,7 @@
  * `ZodEffects` and break OpenAI strict structured output. `blindSpots.min(1)`
  * IS schema-enforced because a plain array minimum stays strict-compatible.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_6_MEMO_KEYS } from "../../registry";
@@ -28,6 +28,7 @@ import { tradingDesk } from "../../capability";
 import { memoCitation, thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
+import { thesisValidatorApproachGenerator } from "./approach";
 
 const thesisValidatorPrompt = loadPrompt(
   "agents/thesis-validator/prompts/thesis-validator.prompt.md",
@@ -93,3 +94,16 @@ export const thesisValidatorGenerator = generator({
   sessionStateSchema,
   outputSchema: thesisAlignmentOutputSchema,
 });
+
+/**
+ * The thesis-validator's portable pre-commit body: the fast-model approach
+ * preamble streams its plan, then the structured `thesisValidatorGenerator`
+ * writes the typed thesis-alignment audit. No memo writes — `defineMemoStep`
+ * wraps this with the keyed `markWriting → … → commit → rescue(markError)`
+ * lifecycle in `orchestration/stages.ts`.
+ */
+export const thesisValidatorBody = sequencer({
+  name: "thesis-validator-body",
+})
+  .step(thesisValidatorApproachGenerator)
+  .step(thesisValidatorGenerator);
