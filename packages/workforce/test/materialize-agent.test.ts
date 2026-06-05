@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import { z } from "zod";
 import { materializeAgent } from "../src/materialize-agent";
 import { defineAgent } from "../src/define-agent";
+import { defineCapability } from "@flow-state-dev/core";
 import type { Agent, MaterializeAgentOptions } from "@flow-state-dev/core";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
@@ -201,6 +203,73 @@ describe("materializeAgent", () => {
         makeOpts(),
       ) as any;
       expect(inspectGenerator(block).agentName).toBe("trusted-name");
+    });
+  });
+
+  describe("structured output (FIX-732)", () => {
+    const structured = z.object({ rating: z.string(), score: z.number() });
+
+    it("standalone honors a declared structured outputSchema", () => {
+      const block = materializeAgent(
+        makeAgent({ outputSchema: structured }),
+        makeOpts({ shape: "standalone" }),
+      ) as any;
+      const config = inspectGenerator(block);
+      expect(config.outputSchema._def.typeName).toBe("ZodObject");
+      expect(config.outputSchema.shape).toHaveProperty("rating");
+    });
+
+    it("workers ignore outputSchema and stay z.string()", () => {
+      const block = materializeAgent(
+        makeAgent({ outputSchema: structured }),
+        makeOpts(), // worker shape
+      ) as any;
+      expect(inspectGenerator(block).outputSchema._def.typeName).toBe("ZodString");
+    });
+
+    it("standalone with no outputSchema defaults to z.string()", () => {
+      const block = materializeAgent(
+        makeAgent(),
+        makeOpts({ shape: "standalone" }),
+      ) as any;
+      expect(inspectGenerator(block).outputSchema._def.typeName).toBe("ZodString");
+    });
+  });
+
+  describe("capability refs (FIX-732)", () => {
+    it("passes a .presets()-configured capability ref through to uses (no catalog needed)", () => {
+      const cap = defineCapability({ name: "testCap", presets: { a: {} } });
+      const block = materializeAgent(
+        makeAgent({ usesCapabilities: [cap.presets({ a: true })] }),
+        makeOpts({ shape: "standalone" }),
+      ) as any;
+      const used = (inspectGenerator(block).uses ?? []).find(
+        (u: any) => u?.name === "testCap",
+      );
+      expect(used).toBeDefined();
+      expect(used.__presetOverrides).toEqual({ a: true });
+    });
+
+    it("still resolves a string key against the capabilityCatalog", () => {
+      const cap = defineCapability({ name: "catCap" });
+      const block = materializeAgent(
+        makeAgent({ usesCapabilities: ["k"] }),
+        makeOpts({ shape: "standalone", capabilityCatalog: { k: cap } }),
+      ) as any;
+      const names = (inspectGenerator(block).uses ?? []).map((u: any) => u?.name);
+      expect(names).toContain("catCap");
+    });
+
+    it("resolves a mix of string keys and capability refs", () => {
+      const keyed = defineCapability({ name: "keyedCap" });
+      const ref = defineCapability({ name: "refCap", presets: { a: {} } });
+      const block = materializeAgent(
+        makeAgent({ usesCapabilities: ["k", ref.presets({ a: true })] }),
+        makeOpts({ shape: "standalone", capabilityCatalog: { k: keyed } }),
+      ) as any;
+      const names = (inspectGenerator(block).uses ?? []).map((u: any) => u?.name);
+      expect(names).toContain("keyedCap");
+      expect(names).toContain("refCap");
     });
   });
 

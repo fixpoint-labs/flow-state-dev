@@ -43,20 +43,26 @@ function resolveCatalogTools(
 
 function resolveCapabilities(
   agentName: string,
-  capKeys: readonly string[] | undefined,
+  entries: ReadonlyArray<string | DefinedCapability> | undefined,
   catalog: Record<string, DefinedCapability> | undefined,
 ): DefinedCapability[] {
-  if (!capKeys || capKeys.length === 0 || !catalog) return [];
+  if (!entries || entries.length === 0) return [];
   const out: DefinedCapability[] = [];
-  for (const key of capKeys) {
-    const cap = catalog[key];
-    if (!cap) {
-      console.warn(
-        `[workforce] agent "${agentName}": unknown capability "${key}" — skipped`,
-      );
-      continue;
+  for (const entry of entries) {
+    // A string is a catalog key (registry-resolved); a capability reference
+    // (base or `.presets()`-configured) is used as-is — refs need no catalog.
+    if (typeof entry === "string") {
+      const cap = catalog?.[entry];
+      if (!cap) {
+        console.warn(
+          `[workforce] agent "${agentName}": unknown capability "${entry}" — skipped`,
+        );
+        continue;
+      }
+      out.push(cap);
+    } else {
+      out.push(entry);
     }
-    out.push(cap);
   }
   return out;
 }
@@ -121,7 +127,9 @@ function buildAgentGenerator(
     itemVisibility,
     agentName: agent.name,
     inputSchema: isWorker ? workerInputSchema : z.object({ goal: z.string() }),
-    outputSchema: z.string(),
+    // Standalone agents honor a declared structured outputSchema; workers stay
+    // z.string() (the skills pattern machinery builds follow-on actions from text).
+    outputSchema: !isWorker && agent.outputSchema ? agent.outputSchema : z.string(),
     model,
     prompt: (_input: unknown, ctx: unknown) =>
       resolveAgentPersona(agent.persona, ctx as any),
