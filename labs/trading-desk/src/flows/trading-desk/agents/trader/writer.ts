@@ -1,29 +1,17 @@
 /**
- * Phase 3 memo-writing blocks.
+ * Phase 3 memo-writing block.
  *
- *   - `markWritingP3` / `markErrorP3` — built via `defineMemoStateBlocks`.
  *   - `commitTraderMemo` — plain handler. Derives `conviction` from the
  *     LLM's string-typed `metrics.conviction` (the display shape is
  *     string-only per the Claude Design handoff; the structured 0..1
  *     number is what Phase 5 reads).
+ *
+ * The `writing` / `error` memo transitions are placed by `defineMemoStep`
+ * (`orchestration/stages.ts`) via the registry-keyed `markWriting` / `markError`.
  */
 import { PHASE_3_MEMO_KEYS } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { tradeProposalOutputSchema } from "./trader";
-
-export const {
-  markWriting: markWritingP3,
-  markError: markErrorP3,
-} = defineMemoStateBlocks({
-  phaseId: "p3",
-  agentTeam: "trade",
-  keys: PHASE_3_MEMO_KEYS,
-  errorMessageFallback: "Phase 3 generator failed.",
-});
 
 export const commitTraderMemo = memoHandler({
   name: "commit-memo-p3-trader",

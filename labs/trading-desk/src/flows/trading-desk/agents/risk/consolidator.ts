@@ -12,13 +12,14 @@
  * `itemVisibility: { client: true, history: false }` — no structured-output
  * card in the transcript; the memo on the right pane is the artifact.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { PHASE_4_MEMO_KEYS } from "../../registry";
 import { sessionStateSchema } from "../../state";
 import { tradingDesk } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
 import { riskAssessmentOutputSchema } from "./schemas";
+import { riskAssessmentApproachGenerator } from "./approach";
 
 const riskAssessmentPrompt = loadPrompt(
   "agents/risk/prompts/risk-assessment.prompt.md"
@@ -43,3 +44,14 @@ export const riskAssessmentGenerator = generator({
   sessionStateSchema,
   outputSchema: riskAssessmentOutputSchema,
 });
+
+/**
+ * The risk-assessment consolidator's portable pre-commit body: the fast-model
+ * approach preamble streams its plan, then `riskAssessmentGenerator` writes the
+ * typed `RiskAssessment`. No memo writes — `defineMemoStep`
+ * (orchestration/stages.ts) wraps this with the keyed
+ * `markWriting → … → commit → rescue(markError)` lifecycle from the registry.
+ */
+export const riskAssessmentBody = sequencer({ name: "risk-assessment-body" })
+  .step(riskAssessmentApproachGenerator)
+  .step(riskAssessmentGenerator);

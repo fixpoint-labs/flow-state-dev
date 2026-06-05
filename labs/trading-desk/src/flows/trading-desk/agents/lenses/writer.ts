@@ -1,8 +1,6 @@
 /**
- * Phase-2b lens-pack memo-writing blocks + the deterministic convergence tap.
+ * Phase-2b lens-pack commit factory + the deterministic convergence tap.
  *
- *   - `markWritingP2b` / `markErrorP2b` — built via `defineMemoStateBlocks`
- *     (identity-only parameterization), over the lens-pack memo registry.
  *   - `commitLensVerdict(lensId)` — a per-lens commit factory (BP-024). Projects
  *     the strict `lensVerdictOutputSchema` onto memo state, validates the echoed
  *     `lensId`, stamps `label`/`attribution`/`stance` (from the pack, NOT the
@@ -25,25 +23,11 @@ import {
   lensConvergenceResource,
   type LensVerdictRecord,
 } from "./lens-convergence-resource";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { memoResources, type ThesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";
 import { LENS_BODY_SECTION } from "./lens-body-sections";
-
-export const {
-  markWriting: markWritingP2b,
-  markError: markErrorP2b,
-} = defineMemoStateBlocks({
-  phaseId: "p2b",
-  agentTeam: "research",
-  keys: PHASE_2B_MEMO_KEYS,
-  errorMessageFallback: "Lens verdict failed.",
-});
 
 /** Map a 3-tier stance to the free-form `rating` header chip + a colorable label. */
 function stanceLabel(stance: "bullish" | "neutral" | "bearish"): string {

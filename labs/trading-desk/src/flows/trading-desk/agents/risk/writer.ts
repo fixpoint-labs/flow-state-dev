@@ -12,34 +12,21 @@
  *     and extension fields are unrelated to the persona shape, so it
  *     doesn't fold into the persona factory.
  *
- *   - `errorTextPlaceholder` is configured on the state-blocks factory so
- *     `markErrorP4` returns `{ status, text }` with the failing agent's
- *     name. The placeholder isn't consumed at runtime by downstream
- *     personas (they read prior critiques from the persona memos which
- *     `markErrorP4` flips to `error`), but keeping a typed non-empty
- *     rescue output simplifies the test seam.
+ * The `writing` / `error` memo transitions are placed by `defineMemoStep`
+ * (`orchestration/stages.ts`) via the registry-keyed `markWriting` /
+ * `markError`. The persona `error` rescue carries a non-empty `text`
+ * placeholder (`(critique unavailable: <agent>)`) sourced from each persona's
+ * `errorPlaceholder` registry entry — it isn't consumed at runtime by
+ * downstream personas (they read prior critiques from the persona memos the
+ * rescue flips to `error`), but the typed non-empty shape simplifies the test
+ * seam.
  */
 import { PHASE_4_MEMO_KEYS } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { personaCritiqueOutputSchema, riskAssessmentOutputSchema } from "./schemas";
 
 /** The three persona memos share a commit shape; `riskAssessment` does not. */
 export type Phase4PersonaShortName = "aggressive" | "conservative" | "neutral";
-
-export const {
-  markWriting: markWritingP4,
-  markError: markErrorP4,
-} = defineMemoStateBlocks({
-  phaseId: "p4",
-  agentTeam: "risk",
-  keys: PHASE_4_MEMO_KEYS,
-  errorMessageFallback: "Phase 4 generator failed.",
-  errorTextPlaceholder: (agentName) => `(critique unavailable: ${agentName})`,
-});
 
 /**
  * Commit a persona's critique to its `memos/p4/{persona}-risk` memo.

@@ -27,7 +27,7 @@ export type Citation = z.infer<typeof citation>;
  * OpenAI strict structured-output requires a closed `properties` set, so an
  * open string-keyed map (`z.record`) trips the schema check. Each analyst
  * still emits the four role-specific keys named in its prompt; the writer
- * (`commitMemo`) flattens the array to a `Record<string, string>` before
+ * (`commitAnalystMemo`) flattens the array to a `Record<string, string>` before
  * persisting, so the stored memo shape is unchanged.
  */
 export const thesisOutputSchema = z.object({

@@ -1,30 +1,18 @@
 /**
- * Scenario-forecaster memo-writing blocks (runs first in Phase 5).
+ * Scenario-forecaster commit handler (runs first in Phase 5).
  *
- *   - `markWritingForecast` / `markErrorForecast` — built via
- *     `defineMemoStateBlocks`.
  *   - `commitScenarioForecastMemo` — normalizes the scenario probabilities,
  *     copies `horizon` from the trader memo, and publishes. Throws
  *     `probability-violation` when the raw probabilities sum outside
  *     [0.8, 1.2], caught by the pipeline's per-step rescue.
+ *
+ * The memo `writing`/`error` lifecycle is no longer built here — it comes from
+ * the keyed `markWriting`/`markError` resolved by `defineMemoStep` from the
+ * registry entry in `orchestration/stages.ts`.
  */
 import { PHASE_3_MEMO_KEYS, PHASE_5_MEMO_KEYS } from "../../registry";
-import {
-  defineMemoStateBlocks,
-  memoHandler,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { memoHandler, publishMemo } from "../_recipe/memo-writer";
 import { scenarioForecastOutputSchema } from "./scenario-forecaster";
-
-export const {
-  markWriting: markWritingForecast,
-  markError: markErrorForecast,
-} = defineMemoStateBlocks({
-  phaseId: "p5",
-  agentTeam: "pm",
-  keys: { scenarioForecast: PHASE_5_MEMO_KEYS.scenarioForecast },
-  errorMessageFallback: "Scenario forecaster failed.",
-});
 
 export const commitScenarioForecastMemo = memoHandler({
   name: "commit-memo-p5-scenario-forecast",

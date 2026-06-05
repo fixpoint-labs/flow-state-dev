@@ -47,7 +47,7 @@ sequencer({ name: "analyst-fundamentals" })
   .map(tickerDate)                          // pull ticker+date from session
   .parallel({ /* pre-fetch tools */ })
   .step(fundamentalsGenerator)              // LLM call → typed Thesis
-  .tap(commitMemo("fundamentals"))          // write to memo resource
+  .tap(commitAnalystMemo("fundamentals"))   // write to memo resource
   .rescue([{ block: markError("fundamentals") }]);
 ```
 
@@ -99,11 +99,11 @@ The preamble lives in the same step sequencer as the trader, inserted with one `
 
 ```ts
 sequencer({ name: "phase-3-trader-step" })
-  .tap(markWritingP3("trader"))
+  .tap(markWriting("trader"))
   .step(traderApproachGenerator)   // ← fast-model preamble, streams
   .step(traderGenerator)            // structured TradeProposal
   .tap(commitTraderMemo)
-  .rescue([{ block: markErrorP3("trader") }]);
+  .rescue([{ block: markError("trader") }]);
 ```
 
 `itemVisibility: { client: true, history: true }` on the trader generator tells the framework to render the structured output as a card in the transcript. The transcript renderer reads the item type and dispatches to the right component. No custom event handling in the React layer.

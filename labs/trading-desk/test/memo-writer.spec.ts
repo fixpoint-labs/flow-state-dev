@@ -1,21 +1,18 @@
 /**
- * Unit tests for the memo-writer taps — `markWriting`, `commitMemo`,
+ * Unit tests for the memo-writer taps — `markWriting`, `commitAnalystMemo`,
  * `markError`. Confirms each tap mutates both resource state (carries body
  * content) and session state (carries the live navigator status).
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import {
-  commitMemo,
-  markError,
-  markWriting,
-} from "../src/flows/trading-desk/agents/analysts/writer";
+import { commitAnalystMemo } from "../src/flows/trading-desk/agents/analysts/writer";
+import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const writeBlock = markWriting("fundamentals");
-const commitBlock = commitMemo("fundamentals");
+const commitBlock = commitAnalystMemo("fundamentals");
 const errorBlock = markError("fundamentals");
 
 const fixtureFlow = defineFlow({
@@ -39,7 +36,7 @@ const baseSessionState = {
 };
 
 /**
- * `commitMemo` and `markError` both `get()` the pre-existing memo (throws
+ * `commitAnalystMemo` and `markError` both `get()` the pre-existing memo (throws
  * when missing — see writer.ts). In the live pipeline, `setupPhase1Memos`
  * pre-creates the memo before any analyst runs; the unit tests have to
  * seed the equivalent state via the testBlock `session.resources` slot.
@@ -77,7 +74,7 @@ describe("memo-writer taps", () => {
     expect(sessionState.memoStatus.fundamentals).toBe("writing");
   });
 
-  it("commitMemo writes thesis fields and flips memoStatus to published", async () => {
+  it("commitAnalystMemo writes thesis fields and flips memoStatus to published", async () => {
     const thesis = {
       label: "Fundamentals memo",
       headline: "Top-line growth durable; margins stable.",

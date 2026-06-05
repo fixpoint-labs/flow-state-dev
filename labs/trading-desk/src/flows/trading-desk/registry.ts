@@ -107,6 +107,34 @@ const LENS_AGENT_BY_ID: Record<LensId, AgentName> = {
   "forensic-skeptic": "forensicSkepticLens",
 };
 
+/** A single memo-key registry row: memo identity for one participant.
+ *
+ *  `agentTeam` / `phaseId` / `errorMessageFallback` were previously supplied
+ *  to the per-phase `defineMemoStateBlocks(...)` factory; consolidating them
+ *  here makes `ALL_MEMO_KEYS[key]` the single source of memo identity and
+ *  forces every entry to be fully specified (a half-specified row fails to
+ *  type-check).
+ *
+ *  - `agentName` — the `AGENTS` entry backing this memo's badge/identity.
+ *  - `memoKey` — the full storage key (e.g. `memos/p1/fundamentals`).
+ *  - `collectionKey` — the bare suffix (e.g. `p1/fundamentals`) passed to
+ *    `collection.create(...)`; the framework auto-prepends the `memos/` prefix.
+ *  - `agentTeam` — team stamped onto new memo scaffolds (badge color group).
+ *  - `phaseId` — phase id stamped onto new memo scaffolds (e.g. `"p1"`).
+ *  - `errorMessageFallback` — error text used when a rescued payload carries
+ *    no readable error (e.g. a thrown non-Error value).
+ *  - `errorPlaceholder` — optional; when set, a memo's `error` rescue output
+ *    carries this template text. The Phase-4 risk personas use it. */
+export type MemoKeyEntry = {
+  agentName: AgentName;
+  memoKey: string;
+  collectionKey: string;
+  agentTeam: AgentTeam;
+  phaseId: string;
+  errorMessageFallback: string;
+  errorPlaceholder?: (agentName: AgentName) => string;
+};
+
 /** Resource storage keys for Phase 1 memos.
  *
  * - `memoKey` is the full storage key (e.g. `memos/p1/fundamentals`) for
@@ -119,51 +147,75 @@ export const PHASE_1_MEMO_KEYS = {
     agentName: "fundamentalsAnalyst",
     memoKey: "memos/p1/fundamentals",
     collectionKey: "p1/fundamentals",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   sentiment: {
     agentName: "sentimentAnalyst",
     memoKey: "memos/p1/sentiment",
     collectionKey: "p1/sentiment",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   news: {
     agentName: "newsAnalyst",
     memoKey: "memos/p1/news",
     collectionKey: "p1/news",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   technical: {
     agentName: "technicalAnalyst",
     memoKey: "memos/p1/technical",
     collectionKey: "p1/technical",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   companyProfile: {
     agentName: "companyProfileAnalyst",
     memoKey: "memos/p1/company-profile",
     collectionKey: "p1/company-profile",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   market: {
     agentName: "marketAnalyst",
     memoKey: "memos/p1/market",
     collectionKey: "p1/market",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   macro: {
     agentName: "macroAnalyst",
     memoKey: "memos/p1/macro",
     collectionKey: "p1/macro",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   quant: {
     agentName: "quantAnalyst",
     memoKey: "memos/p1/quant",
     collectionKey: "p1/quant",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
   disclosure: {
     agentName: "disclosureAnalyst",
     memoKey: "memos/p1/disclosure",
     collectionKey: "p1/disclosure",
+    agentTeam: "analyst",
+    phaseId: "p1",
+    errorMessageFallback: "Analyst run failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase1MemoShortName = keyof typeof PHASE_1_MEMO_KEYS;
 
@@ -174,21 +226,27 @@ export const PHASE_2_MEMO_KEYS = {
     agentName: "bullResearcher",
     memoKey: "memos/p2/bull",
     collectionKey: "p2/bull",
+    agentTeam: "research",
+    phaseId: "p2",
+    errorMessageFallback: "Phase 2 generator failed.",
   },
   bear: {
     agentName: "bearResearcher",
     memoKey: "memos/p2/bear",
     collectionKey: "p2/bear",
+    agentTeam: "research",
+    phaseId: "p2",
+    errorMessageFallback: "Phase 2 generator failed.",
   },
   researchManager: {
     agentName: "researchManager",
     memoKey: "memos/p2/research-manager",
     collectionKey: "p2/research-manager",
+    agentTeam: "research",
+    phaseId: "p2",
+    errorMessageFallback: "Phase 2 generator failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase2MemoShortName = keyof typeof PHASE_2_MEMO_KEYS;
 
@@ -204,12 +262,12 @@ export const PHASE_2B_MEMO_KEYS = Object.fromEntries(
       agentName: LENS_AGENT_BY_ID[id],
       memoKey: `memos/p2b/${id}`,
       collectionKey: `p2b/${id}`,
+      agentTeam: "research",
+      phaseId: "p2b",
+      errorMessageFallback: "Lens verdict failed.",
     },
   ]),
-) as Record<
-  LensId,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+) as Record<LensId, MemoKeyEntry>;
 
 export type Phase2bMemoShortName = keyof typeof PHASE_2B_MEMO_KEYS;
 
@@ -220,11 +278,11 @@ export const PHASE_3_MEMO_KEYS = {
     agentName: "trader",
     memoKey: "memos/p3/trader",
     collectionKey: "p3/trader",
+    agentTeam: "trade",
+    phaseId: "p3",
+    errorMessageFallback: "Phase 3 generator failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase3MemoShortName = keyof typeof PHASE_3_MEMO_KEYS;
 
@@ -235,26 +293,38 @@ export const PHASE_4_MEMO_KEYS = {
     agentName: "aggressiveRisk",
     memoKey: "memos/p4/aggressive-risk",
     collectionKey: "p4/aggressive-risk",
+    agentTeam: "risk",
+    phaseId: "p4",
+    errorMessageFallback: "Phase 4 generator failed.",
+    errorPlaceholder: (agentName) => `(critique unavailable: ${agentName})`,
   },
   conservative: {
     agentName: "conservativeRisk",
     memoKey: "memos/p4/conservative-risk",
     collectionKey: "p4/conservative-risk",
+    agentTeam: "risk",
+    phaseId: "p4",
+    errorMessageFallback: "Phase 4 generator failed.",
+    errorPlaceholder: (agentName) => `(critique unavailable: ${agentName})`,
   },
   neutral: {
     agentName: "neutralRisk",
     memoKey: "memos/p4/neutral-risk",
     collectionKey: "p4/neutral-risk",
+    agentTeam: "risk",
+    phaseId: "p4",
+    errorMessageFallback: "Phase 4 generator failed.",
+    errorPlaceholder: (agentName) => `(critique unavailable: ${agentName})`,
   },
   riskAssessment: {
     agentName: "riskAssessment",
     memoKey: "memos/p4/risk-assessment",
     collectionKey: "p4/risk-assessment",
+    agentTeam: "risk",
+    phaseId: "p4",
+    errorMessageFallback: "Phase 4 generator failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase4MemoShortName = keyof typeof PHASE_4_MEMO_KEYS;
 
@@ -265,16 +335,19 @@ export const PHASE_5_MEMO_KEYS = {
     agentName: "scenarioForecaster",
     memoKey: "memos/p5/scenario-forecaster",
     collectionKey: "p5/scenario-forecaster",
+    agentTeam: "pm",
+    phaseId: "p5",
+    errorMessageFallback: "Scenario forecaster failed.",
   },
   portfolioManager: {
     agentName: "portfolioManager",
     memoKey: "memos/p5/portfolio-manager",
     collectionKey: "p5/portfolio-manager",
+    agentTeam: "pm",
+    phaseId: "p5",
+    errorMessageFallback: "Portfolio manager failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase5MemoShortName = keyof typeof PHASE_5_MEMO_KEYS;
 
@@ -287,11 +360,11 @@ export const PHASE_6_MEMO_KEYS = {
     agentName: "thesisValidator",
     memoKey: "memos/p6/thesis-alignment",
     collectionKey: "p6/thesis-alignment",
+    agentTeam: "pm",
+    phaseId: "p6",
+    errorMessageFallback: "Phase 6 generator failed.",
   },
-} as const satisfies Record<
-  string,
-  { agentName: AgentName; memoKey: string; collectionKey: string }
->;
+} as const satisfies Record<string, MemoKeyEntry>;
 
 export type Phase6MemoShortName = keyof typeof PHASE_6_MEMO_KEYS;
 

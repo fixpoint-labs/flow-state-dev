@@ -46,65 +46,36 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
-  markErrorP2,
-  markWritingP2,
 } from "../agents/research/writer";
 import { LENS_PACK } from "../agents/lenses/lenses";
-import { defineLensStep } from "../agents/lenses/lens-step";
+import { defineLensGenerator } from "../agents/lenses/lens-generator";
 import { setupLensMemos } from "../agents/lenses/setup";
-import { computeAndStoreConvergence } from "../agents/lenses/writer";
-import { traderApproachGenerator } from "../agents/trader/approach";
+import { commitLensVerdict, computeAndStoreConvergence } from "../agents/lenses/writer";
+import { defineMemoStep } from "../agents/_recipe/memo-writer";
+import type { LensId } from "../registry";
 import { setupPhase3Memos } from "../agents/trader/setup";
-import { traderGenerator } from "../agents/trader/trader";
+import { traderBody } from "../agents/trader/trader";
+import { commitTraderMemo } from "../agents/trader/writer";
+import { riskAssessmentBody } from "../agents/risk/consolidator";
 import {
-  commitTraderMemo,
-  markErrorP3,
-  markWritingP3,
-} from "../agents/trader/writer";
-import {
-  aggressiveApproachGenerator,
-  conservativeApproachGenerator,
-  neutralApproachGenerator,
-  riskAssessmentApproachGenerator,
-} from "../agents/risk/approach";
-import { riskAssessmentGenerator } from "../agents/risk/consolidator";
-import {
-  aggressiveRiskGenerator,
-  conservativeRiskGenerator,
-  neutralRiskGenerator,
+  aggressiveBody,
+  conservativeBody,
+  neutralBody,
 } from "../agents/risk/personas";
 import { setupPhase4Memos } from "../agents/risk/setup";
 import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
-  markErrorP4,
-  markWritingP4,
-  type Phase4PersonaShortName,
 } from "../agents/risk/writer";
-import { portfolioManagerApproachGenerator } from "../agents/portfolio-manager/approach";
-import { scenarioForecasterApproachGenerator } from "../agents/scenario-forecaster/approach";
-import { portfolioManagerGenerator } from "../agents/portfolio-manager/portfolio-manager";
-import { scenarioForecasterGenerator } from "../agents/scenario-forecaster/scenario-forecaster";
+import { portfolioManagerBody } from "../agents/portfolio-manager/portfolio-manager";
+import { scenarioForecasterBody } from "../agents/scenario-forecaster/scenario-forecaster";
 import { setupPhase5Memos } from "../agents/portfolio-manager/setup";
 import { setupScenarioForecastMemos } from "../agents/scenario-forecaster/setup";
-import {
-  commitPortfolioManagerMemo,
-  markErrorP5,
-  markWritingP5,
-} from "../agents/portfolio-manager/writer";
-import {
-  commitScenarioForecastMemo,
-  markErrorForecast,
-  markWritingForecast,
-} from "../agents/scenario-forecaster/writer";
-import { thesisValidatorApproachGenerator } from "../agents/thesis-validator/approach";
-import { thesisValidatorGenerator } from "../agents/thesis-validator/thesis-validator";
+import { commitPortfolioManagerMemo } from "../agents/portfolio-manager/writer";
+import { commitScenarioForecastMemo } from "../agents/scenario-forecaster/writer";
+import { thesisValidatorBody } from "../agents/thesis-validator/thesis-validator";
 import { setupPhase6Memos } from "../agents/thesis-validator/setup";
-import {
-  commitThesisAlignmentMemo,
-  markErrorP6,
-  markWritingP6,
-} from "../agents/thesis-validator/writer";
+import { commitThesisAlignmentMemo } from "../agents/thesis-validator/writer";
 
 /**
  * `analystFanOut` — the Phase 1 stage.
@@ -161,23 +132,20 @@ export const analystFanOut = sequencer({
  * read the running transcript via `ctx.resources` rather than threading it
  * through the sub-sequencer's state.
  */
-const bullStep = sequencer({ name: "phase-2-bull-step" })
-  .tap(markWritingP2("bull"))
-  .step(consolidateBullMemo)
-  .tap(commitBullMemo)
-  .rescue([{ block: markErrorP2("bull") }]);
+const bullStep = defineMemoStep(consolidateBullMemo, {
+  key: "bull",
+  commit: commitBullMemo,
+});
 
-const bearStep = sequencer({ name: "phase-2-bear-step" })
-  .tap(markWritingP2("bear"))
-  .step(consolidateBearMemo)
-  .tap(commitBearMemo)
-  .rescue([{ block: markErrorP2("bear") }]);
+const bearStep = defineMemoStep(consolidateBearMemo, {
+  key: "bear",
+  commit: commitBearMemo,
+});
 
-const researchManagerStep = sequencer({ name: "phase-2-research-manager-step" })
-  .tap(markWritingP2("researchManager"))
-  .step(researchManagerGenerator)
-  .tap(commitResearchManagerMemo)
-  .rescue([{ block: markErrorP2("researchManager") }]);
+const researchManagerStep = defineMemoStep(researchManagerGenerator, {
+  key: "researchManager",
+  commit: commitResearchManagerMemo,
+});
 
 export const researchStage = sequencer({
   name: "phase-2-research-debate",
@@ -230,8 +198,17 @@ export const researchStage = sequencer({
  * `costPreset === "full"` (RISK-F3).
  */
 /** One independent lens sub-sequencer per pack entry, chained SEQUENTIALLY (see
- *  the file header — each lens is blind to the others regardless). */
-const lensSteps = LENS_PACK.map((lens) => defineLensStep(lens));
+ *  the file header — each lens is blind to the others regardless). Each lens is
+ *  placed via the shared `defineMemoStep` apparatus: its generator is the body,
+ *  the per-lens commit is `commitLensVerdict`, and the keyed memo lifecycle
+ *  (`markWriting → … → rescue(markError)`) is resolved from the registry. */
+const lensSteps = LENS_PACK.map((lens) => {
+  const lensId = lens.id as LensId;
+  return defineMemoStep(defineLensGenerator(lens), {
+    key: lensId,
+    commit: commitLensVerdict(lensId),
+  });
+});
 
 export const lensStage = lensSteps
   .reduce(
@@ -250,20 +227,21 @@ export const lensStage = lensSteps
  * `traderStage` — the Phase 3 stage.
  *
  * Runs after Phase 2: pre-creates the trader memo in `pending`, then the
- * trader step taps `markWritingP3`, runs the trader generator, and taps
- * `commitTraderMemo` on success. A per-step rescue flips the memo to
- * `error` on generator failure — same shape as Phase 2's per-step rescues.
+ * trader step pre-marks the memo `writing`, runs the trader body (approach
+ * preamble → structured generator), and commits on success. A per-step rescue
+ * flips the memo to `error` on generator failure — same shape as Phase 2's
+ * per-step rescues. Placed via the shared `defineMemoStep` apparatus: the
+ * `traderBody` is the body, `commitTraderMemo` is the commit, and the keyed
+ * memo lifecycle is resolved from the registry.
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the Claude Design handoff
  * verbatim.
  */
-const traderStep = sequencer({ name: "phase-3-trader-step" })
-  .tap(markWritingP3("trader"))
-  .step(traderApproachGenerator)
-  .step(traderGenerator)
-  .tap(commitTraderMemo)
-  .rescue([{ block: markErrorP3("trader") }]);
+const traderStep = defineMemoStep(traderBody, {
+  key: "trader",
+  commit: commitTraderMemo,
+});
 
 export const traderStage = sequencer({
   name: "phase-3-trader",
@@ -283,64 +261,43 @@ export const traderStage = sequencer({
  * as a plain `.step()` chain, then runs the consolidation
  * `riskAssessmentGenerator` as a final step.
  *
- * Each persona step is built by the local `personaStep()` factory and
- * wraps its body in its own `.rescue` so a single persona's failure flips
- * only that memo to `error` while the rest run. Downstream personas read
- * prior persona memos via memo-backed `context` entries on their
- * generator definitions (see `personas.ts`) — Phase 4 does not use the
- * `roundRobin()` pattern because none of its distinguishing features
- * (multi-round debate, referee, homogeneous roster, shared transcript
- * readback) apply here. Phase 2's bull/bear debate is the canonical
- * `roundRobin()` demo in this example; see the round-robin section of
- * `labs/trading-desk/CLAUDE.md`.
+ * Each persona step is placed via the shared `defineMemoStep` apparatus: the
+ * persona body (approach preamble → structured generator) is the body, the
+ * per-persona commit is `commitPersonaMemo(shortName)`, and the keyed memo
+ * lifecycle (`markWriting → … → rescue(markError)`) is resolved from the
+ * registry — so a single persona's failure flips only that memo to `error`
+ * while the rest run. Downstream personas read prior persona memos via
+ * memo-backed `context` entries on their generator definitions (see
+ * `personas.ts`) — Phase 4 does not use the `roundRobin()` pattern because
+ * none of its distinguishing features (multi-round debate, referee,
+ * homogeneous roster, shared transcript readback) apply here. Phase 2's
+ * bull/bear debate is the canonical `roundRobin()` demo in this example; see
+ * the round-robin section of `labs/trading-desk/CLAUDE.md`.
  *
  * Container `component` starts with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design comment
  * verbatim ("Phase 4 — Risk Round-Robin. 3 risk officers, round-robin
  * order.").
  */
-/** Build a persona step: `markWriting → approach → generator → commit`,
- *  wrapped in a per-step `.rescue` that flips only this persona's memo to
- *  `error`. Approach + generator are untyped (`unknown`-cast) because the
- *  three personas have different output schemas (neutral diverges) and a
- *  precise generic signature here would be more noise than the local
- *  call sites need. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function personaStep(shortName: Phase4PersonaShortName, approach: any, gen: any) {
-  return sequencer({ name: `phase-4-${shortName}-step` })
-    .tap(markWritingP4(shortName))
-    .step(approach)
-    .step(gen)
-    .tap(commitPersonaMemo(shortName))
-    .rescue([{ block: markErrorP4(shortName) }]);
-}
+const aggressiveStep = defineMemoStep(aggressiveBody, {
+  key: "aggressive",
+  commit: commitPersonaMemo("aggressive"),
+});
 
-const aggressiveStep = personaStep(
-  "aggressive",
-  aggressiveApproachGenerator,
-  aggressiveRiskGenerator,
-);
+const conservativeStep = defineMemoStep(conservativeBody, {
+  key: "conservative",
+  commit: commitPersonaMemo("conservative"),
+});
 
-const conservativeStep = personaStep(
-  "conservative",
-  conservativeApproachGenerator,
-  conservativeRiskGenerator,
-);
+const neutralStep = defineMemoStep(neutralBody, {
+  key: "neutral",
+  commit: commitPersonaMemo("neutral"),
+});
 
-const neutralStep = personaStep(
-  "neutral",
-  neutralApproachGenerator,
-  neutralRiskGenerator,
-);
-
-const riskAssessmentStep = sequencer({
-  name: "phase-4-risk-assessment-step",
-})
-  .tap(markWritingP4("riskAssessment"))
-  .step(riskAssessmentApproachGenerator)
-  .step(riskAssessmentGenerator)
-  .tap(commitRiskAssessmentMemo)
-  .rescue([{ block: markErrorP4("riskAssessment") }]);
+const riskAssessmentStep = defineMemoStep(riskAssessmentBody, {
+  key: "riskAssessment",
+  commit: commitRiskAssessmentMemo,
+});
 
 export const riskStage = sequencer({
   name: "phase-4-risk-debate",
@@ -361,30 +318,29 @@ export const riskStage = sequencer({
  * each its own top-level phase-divider container (composed sequentially in
  * `analyze.ts`).
  *
- *   - `forecastStage` — pre-creates the scenario-forecaster memo, taps
- *     `markWritingForecast`, runs the forecaster, and taps
- *     `commitScenarioForecastMemo` on success.
- *   - `portfolioStage` — pre-creates the portfolio-manager memo, taps
- *     `markWritingP5`, runs the portfolioManagerGenerator, and taps
- *     `commitPortfolioManagerMemo` on success.
+ *   - `forecastStage` — pre-creates the scenario-forecaster memo, then the
+ *     forecaster step pre-marks it `writing`, runs the forecaster body
+ *     (approach preamble → structured generator), and commits on success.
+ *   - `portfolioStage` — pre-creates the portfolio-manager memo, then the PM
+ *     step pre-marks it `writing`, runs the PM body (approach preamble →
+ *     structured generator), and commits on success.
  *
- * Each stage's single step has a per-step rescue that flips its memo to
- * `error` on generator failure or a writer integrity throw
- * (`probability-violation` for the forecaster, `lineage-violation` for the
- * PM) — same shape as Phase 3's single-step rescue.
+ * Both steps are placed via the shared `defineMemoStep` apparatus: the
+ * participant body is the body, the per-participant commit is the commit, and
+ * the keyed memo lifecycle (`markWriting → … → rescue(markError)`) is resolved
+ * from the registry. Each step's per-step rescue flips its memo to `error` on
+ * generator failure or a writer integrity throw (`probability-violation` for
+ * the forecaster, `lineage-violation` for the PM) — same shape as Phase 3's
+ * single-step rescue.
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design reference's
  * Phase 5 divider lines.
  */
-const scenarioForecasterStep = sequencer({
-  name: "phase-5-scenario-forecaster-step",
-})
-  .tap(markWritingForecast("scenarioForecast"))
-  .step(scenarioForecasterApproachGenerator)
-  .step(scenarioForecasterGenerator)
-  .tap(commitScenarioForecastMemo)
-  .rescue([{ block: markErrorForecast("scenarioForecast") }]);
+const scenarioForecasterStep = defineMemoStep(scenarioForecasterBody, {
+  key: "scenarioForecast",
+  commit: commitScenarioForecastMemo,
+});
 
 export const forecastStage = sequencer({
   name: "phase-5-scenario-forecaster",
@@ -396,14 +352,10 @@ export const forecastStage = sequencer({
   .tap(setupScenarioForecastMemos)
   .step(scenarioForecasterStep);
 
-const portfolioManagerStep = sequencer({
-  name: "phase-5-portfolio-manager-step",
-})
-  .tap(markWritingP5("portfolioManager"))
-  .step(portfolioManagerApproachGenerator)
-  .step(portfolioManagerGenerator)
-  .tap(commitPortfolioManagerMemo)
-  .rescue([{ block: markErrorP5("portfolioManager") }]);
+const portfolioManagerStep = defineMemoStep(portfolioManagerBody, {
+  key: "portfolioManager",
+  commit: commitPortfolioManagerMemo,
+});
 
 export const portfolioStage = sequencer({
   name: "phase-5-portfolio-manager",
@@ -419,11 +371,14 @@ export const portfolioStage = sequencer({
  * `thesisAuditStage` — the Phase 6 stage (post-decision thesis audit).
  *
  * Runs after Phase 5, gated on a non-null `userThesis` (see `analyze.ts`). It
- * pre-creates the thesis-alignment memo in `pending`, then a single step taps
- * `markWritingP6`, runs the validator, and taps `commitThesisAlignmentMemo` on
- * success. A per-step rescue flips the memo to `error` on generator failure
- * or on an anti-yes-man enforcement throw — same shape as Phase 5's
- * single-step rescue.
+ * pre-creates the thesis-alignment memo in `pending`, then the validator step
+ * pre-marks the memo `writing`, runs the validator body (approach preamble →
+ * structured generator), and commits on success. Placed via the shared
+ * `defineMemoStep` apparatus: `thesisValidatorBody` is the body,
+ * `commitThesisAlignmentMemo` is the commit, and the keyed memo lifecycle
+ * (`markWriting → … → rescue(markError)`) is resolved from the registry — so a
+ * generator failure or an anti-yes-man enforcement throw flips the memo to
+ * `error`, same shape as Phase 5's single-step rescue.
  *
  * Like Phases 3–5, a fast-model approach preamble streams before the
  * structured generator so the transcript shows a "Phase 6 Approach" beat —
@@ -432,12 +387,10 @@ export const portfolioStage = sequencer({
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires.
  */
-const validatorStep = sequencer({ name: "phase-6-validator-step" })
-  .tap(markWritingP6("thesisAlignment"))
-  .step(thesisValidatorApproachGenerator)
-  .step(thesisValidatorGenerator)
-  .tap(commitThesisAlignmentMemo)
-  .rescue([{ block: markErrorP6("thesisAlignment") }]);
+const validatorStep = defineMemoStep(thesisValidatorBody, {
+  key: "thesisAlignment",
+  commit: commitThesisAlignmentMemo,
+});
 
 export const thesisAuditStage = sequencer({
   name: "phase-6-thesis-audit",

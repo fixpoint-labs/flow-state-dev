@@ -1,7 +1,6 @@
 /**
- * Portfolio-manager memo-writing blocks (runs second in Phase 5, terminal).
+ * Portfolio-manager commit handler (runs second in Phase 5, terminal).
  *
- *   - `markWritingP5` / `markErrorP5` — built via `defineMemoStateBlocks`.
  *   - `commitPortfolioManagerMemo` — derives two structural fields at
  *     commit time (`agreesWithTrader` from the trader memo's direction vs
  *     the PM's final rating; `upstreamReferences` from the canonical key
@@ -12,6 +11,10 @@
  * abstracted into a factory callback. This is the cleanest expression of
  * "this commit also marks the run complete": one statement, in the same
  * scope as the rest of the commit body.
+ *
+ * The memo `writing`/`error` lifecycle is no longer built here — it comes from
+ * the keyed `markWriting`/`markError` resolved by `defineMemoStep` from the
+ * registry entry in `orchestration/stages.ts`.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -27,10 +30,7 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
-import {
-  defineMemoStateBlocks,
-  publishMemo,
-} from "../_recipe/memo-writer";
+import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
 import { memoResources } from "../../resources";
 import { sessionStateSchema } from "../../state";
@@ -42,16 +42,6 @@ import {
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 
 // ── Portfolio manager ────────────────────────────────────────────────
-
-export const {
-  markWriting: markWritingP5,
-  markError: markErrorP5,
-} = defineMemoStateBlocks({
-  phaseId: "p5",
-  agentTeam: "pm",
-  keys: { portfolioManager: PHASE_5_MEMO_KEYS.portfolioManager },
-  errorMessageFallback: "Portfolio manager failed.",
-});
 
 /** Map a Phase 5 final rating to the trader-shape direction it implies, so
  *  PM-vs-trader agreement can be checked structurally. Buy/Overweight →
@@ -111,7 +101,7 @@ export const commitPortfolioManagerMemo = handler({
     // freely in `keyDependencies` without orphaning a judgment. Only the
     // writer can guarantee coverage — an un-dispositioned dependency means
     // the PM silently lost a contestable judgment. Throwing here triggers
-    // the `markErrorP5` rescue, which flips the memo to `error`.
+    // the keyed mark-error rescue, which flips the memo to `error`.
     const traderDeps = traderState?.dependsOn ?? [];
     const dispositioned = new Set(
       decision.traderDependencyDispositions.map((d) => d.index),

@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitMemo } from "../src/flows/trading-desk/agents/analysts/writer";
+import { commitAnalystMemo } from "../src/flows/trading-desk/agents/analysts/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import { emptyPayload, skippedDiscoveryPayload } from "../src/flows/trading-desk/tools/empty-payloads";
@@ -40,7 +40,7 @@ function disclosureThesis() {
   };
 }
 
-const commitBlock = commitMemo("disclosure");
+const commitBlock = commitAnalystMemo("disclosure");
 const fixtureFlow = defineFlow({
   kind: "trading-desk-disclosure-test",
   actions: { commit: { block: commitBlock } },

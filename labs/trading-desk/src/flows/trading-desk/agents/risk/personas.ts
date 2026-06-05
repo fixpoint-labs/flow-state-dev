@@ -21,7 +21,7 @@
  * transcript). The memo on the right pane is the persona's structured
  * artifact.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { PHASE_4_MEMO_KEYS } from "../../registry";
 import { sessionStateSchema } from "../../state";
@@ -31,6 +31,11 @@ import {
 } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
 import { personaCritiqueOutputSchema } from "./schemas";
+import {
+  aggressiveApproachGenerator,
+  conservativeApproachGenerator,
+  neutralApproachGenerator,
+} from "./approach";
 
 const aggressivePrompt = loadPrompt("agents/risk/prompts/aggressive.prompt.md");
 const conservativePrompt = loadPrompt(
@@ -105,3 +110,26 @@ export const neutralRiskGenerator = generator({
   sessionStateSchema,
   outputSchema: personaCritiqueOutputSchema,
 });
+
+// ---------------------------------------------------------------------------
+// Portable persona bodies — `approach preamble → structured generator`, no
+// memo writes. `defineMemoStep` (orchestration/stages.ts) wraps each with the
+// keyed `markWriting → … → commit → rescue(markError)` lifecycle resolved from
+// the registry. One body per persona (rather than one shared factory) because
+// the three carry divergent output schemas (neutral populates `dismissedRisks`).
+// ---------------------------------------------------------------------------
+
+/** Aggressive persona pre-commit body. */
+export const aggressiveBody = sequencer({ name: "aggressive-body" })
+  .step(aggressiveApproachGenerator)
+  .step(aggressiveRiskGenerator);
+
+/** Conservative persona pre-commit body. */
+export const conservativeBody = sequencer({ name: "conservative-body" })
+  .step(conservativeApproachGenerator)
+  .step(conservativeRiskGenerator);
+
+/** Neutral persona pre-commit body. */
+export const neutralBody = sequencer({ name: "neutral-body" })
+  .step(neutralApproachGenerator)
+  .step(neutralRiskGenerator);

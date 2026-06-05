@@ -313,8 +313,9 @@ Update policy:
   - When several blocks share **identity-only** parameterization (the body
     is identical across instances; only some key / name / lookup-target
     varies), express the pattern as a **factory** that takes the identity
-    and returns the block. Trading-desk examples: `defineMemoStateBlocks`
-    (markWriting / markError factories), `defineMemoSetup`, `defineAnalyst`
+    and returns the block. Trading-desk examples: the key-driven
+    `markWriting` / `markError` factories (and `defineMemoStep`, which wraps a
+    body in the lifecycle they tap), `defineMemoSetup`, `defineAnalyst`
     in Phase 1, `commitPersonaMemo` in Phase 4.
   - When several blocks share **scaffolding only** (the body is unique per
     instance — different projection, derivation, side effect), express the
@@ -327,8 +328,8 @@ Update policy:
     (the common case for sibling handlers in one file or package), express
     the shared config as `handler.withDefaults({...})` (or eventually
     `generator.withDefaults`, etc.). Trading-desk example: `memoHandler`
-    — used by every commit handler, by `defineMemoStateBlocks` internals,
-    and by `defineMemoSetup` to skip restating `sessionStateSchema`,
+    — used by every commit handler, by the key-driven `markWriting` /
+    `markError`, and by `defineMemoSetup` to skip restating `sessionStateSchema`,
     `resources: memoResources`, `outputSchema: z.void()`. Per-call
     overrides are supported (`markError` overrides `outputSchema`).
 - Why:
