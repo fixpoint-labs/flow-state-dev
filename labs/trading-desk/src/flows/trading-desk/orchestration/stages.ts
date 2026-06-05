@@ -56,25 +56,16 @@ import type { LensId } from "../registry";
 import { setupPhase3Memos } from "../agents/trader/setup";
 import { traderBody } from "../agents/trader/trader";
 import { commitTraderMemo } from "../agents/trader/writer";
+import { riskAssessmentBody } from "../agents/risk/consolidator";
 import {
-  aggressiveApproachGenerator,
-  conservativeApproachGenerator,
-  neutralApproachGenerator,
-  riskAssessmentApproachGenerator,
-} from "../agents/risk/approach";
-import { riskAssessmentGenerator } from "../agents/risk/consolidator";
-import {
-  aggressiveRiskGenerator,
-  conservativeRiskGenerator,
-  neutralRiskGenerator,
+  aggressiveBody,
+  conservativeBody,
+  neutralBody,
 } from "../agents/risk/personas";
 import { setupPhase4Memos } from "../agents/risk/setup";
 import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
-  markErrorP4,
-  markWritingP4,
-  type Phase4PersonaShortName,
 } from "../agents/risk/writer";
 import { portfolioManagerApproachGenerator } from "../agents/portfolio-manager/approach";
 import { scenarioForecasterApproachGenerator } from "../agents/scenario-forecaster/approach";
@@ -285,64 +276,43 @@ export const traderStage = sequencer({
  * as a plain `.step()` chain, then runs the consolidation
  * `riskAssessmentGenerator` as a final step.
  *
- * Each persona step is built by the local `personaStep()` factory and
- * wraps its body in its own `.rescue` so a single persona's failure flips
- * only that memo to `error` while the rest run. Downstream personas read
- * prior persona memos via memo-backed `context` entries on their
- * generator definitions (see `personas.ts`) — Phase 4 does not use the
- * `roundRobin()` pattern because none of its distinguishing features
- * (multi-round debate, referee, homogeneous roster, shared transcript
- * readback) apply here. Phase 2's bull/bear debate is the canonical
- * `roundRobin()` demo in this example; see the round-robin section of
- * `labs/trading-desk/CLAUDE.md`.
+ * Each persona step is placed via the shared `defineMemoStep` apparatus: the
+ * persona body (approach preamble → structured generator) is the body, the
+ * per-persona commit is `commitPersonaMemo(shortName)`, and the keyed memo
+ * lifecycle (`markWriting → … → rescue(markError)`) is resolved from the
+ * registry — so a single persona's failure flips only that memo to `error`
+ * while the rest run. Downstream personas read prior persona memos via
+ * memo-backed `context` entries on their generator definitions (see
+ * `personas.ts`) — Phase 4 does not use the `roundRobin()` pattern because
+ * none of its distinguishing features (multi-round debate, referee,
+ * homogeneous roster, shared transcript readback) apply here. Phase 2's
+ * bull/bear debate is the canonical `roundRobin()` demo in this example; see
+ * the round-robin section of `labs/trading-desk/CLAUDE.md`.
  *
  * Container `component` starts with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design comment
  * verbatim ("Phase 4 — Risk Round-Robin. 3 risk officers, round-robin
  * order.").
  */
-/** Build a persona step: `markWriting → approach → generator → commit`,
- *  wrapped in a per-step `.rescue` that flips only this persona's memo to
- *  `error`. Approach + generator are untyped (`unknown`-cast) because the
- *  three personas have different output schemas (neutral diverges) and a
- *  precise generic signature here would be more noise than the local
- *  call sites need. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function personaStep(shortName: Phase4PersonaShortName, approach: any, gen: any) {
-  return sequencer({ name: `phase-4-${shortName}-step` })
-    .tap(markWritingP4(shortName))
-    .step(approach)
-    .step(gen)
-    .tap(commitPersonaMemo(shortName))
-    .rescue([{ block: markErrorP4(shortName) }]);
-}
+const aggressiveStep = defineMemoStep(aggressiveBody, {
+  key: "aggressive",
+  commit: commitPersonaMemo("aggressive"),
+});
 
-const aggressiveStep = personaStep(
-  "aggressive",
-  aggressiveApproachGenerator,
-  aggressiveRiskGenerator,
-);
+const conservativeStep = defineMemoStep(conservativeBody, {
+  key: "conservative",
+  commit: commitPersonaMemo("conservative"),
+});
 
-const conservativeStep = personaStep(
-  "conservative",
-  conservativeApproachGenerator,
-  conservativeRiskGenerator,
-);
+const neutralStep = defineMemoStep(neutralBody, {
+  key: "neutral",
+  commit: commitPersonaMemo("neutral"),
+});
 
-const neutralStep = personaStep(
-  "neutral",
-  neutralApproachGenerator,
-  neutralRiskGenerator,
-);
-
-const riskAssessmentStep = sequencer({
-  name: "phase-4-risk-assessment-step",
-})
-  .tap(markWritingP4("riskAssessment"))
-  .step(riskAssessmentApproachGenerator)
-  .step(riskAssessmentGenerator)
-  .tap(commitRiskAssessmentMemo)
-  .rescue([{ block: markErrorP4("riskAssessment") }]);
+const riskAssessmentStep = defineMemoStep(riskAssessmentBody, {
+  key: "riskAssessment",
+  commit: commitRiskAssessmentMemo,
+});
 
 export const riskStage = sequencer({
   name: "phase-4-risk-debate",
