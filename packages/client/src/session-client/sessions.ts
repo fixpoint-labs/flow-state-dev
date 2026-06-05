@@ -39,6 +39,13 @@ export type ListSessionRequestsOptions = {
   status?: SessionRequestSummary["status"];
   limit?: number;
   offset?: number;
+  /**
+   * Request the full item log for each summary (`include_items=true`). Off by
+   * default — the list endpoint returns summaries only. Inspection surfaces
+   * (the DevTool) opt in to render the item tree for already-completed
+   * requests.
+   */
+  includeItems?: boolean;
 };
 
 /**
@@ -158,7 +165,12 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/requests`,
-        query: asQuery(listOptions)
+        query: asQuery({
+          status: listOptions?.status,
+          limit: listOptions?.limit,
+          offset: listOptions?.offset,
+          include_items: listOptions?.includeItems
+        })
       })
     });
 
