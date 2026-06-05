@@ -52,6 +52,13 @@ export function useFocusRevalidate(
   useEffect(() => {
     if (!enabled) return;
 
+    // Reset the throttle clock on (re-)enable so the first event after the hook
+    // becomes enabled always fires — the same guarantee as initial mount.
+    // Otherwise re-enabling within throttleMs of the last run (e.g. an
+    // out-of-band change arriving between an SSE stream ending and the user
+    // re-focusing) would silently drop that first event.
+    lastRunRef.current = Number.NEGATIVE_INFINITY;
+
     const maybeRun = () => {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();

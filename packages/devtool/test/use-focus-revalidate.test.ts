@@ -83,6 +83,26 @@ describe("useFocusRevalidate", () => {
     expect(cb).toHaveBeenCalledTimes(2);
   });
 
+  it("resets the throttle on re-enable so the first event after re-enable fires", () => {
+    // Re-enabling (e.g. an SSE stream ending) must restore the "first event
+    // always fires" guarantee even if the previous run was within the window.
+    const cb = vi.fn();
+    const { rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useFocusRevalidate(cb, { enabled, throttleMs: 5000 }),
+      { initialProps: { enabled: true } },
+    );
+
+    fireFocus();
+    expect(cb).toHaveBeenCalledTimes(1);
+
+    // Disable then re-enable within the throttle window.
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+
+    fireFocus();
+    expect(cb).toHaveBeenCalledTimes(2);
+  });
+
   it("does not attach listeners when disabled", () => {
     const cb = vi.fn();
     renderHook(() => useFocusRevalidate(cb, { enabled: false }));
