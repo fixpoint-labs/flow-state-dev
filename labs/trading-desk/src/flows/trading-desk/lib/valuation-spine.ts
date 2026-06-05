@@ -8,7 +8,7 @@ import type {
   cashflowSchema,
   fundamentalsSchema,
   incomeStatementSchema,
-} from "../phase-1/tools/schemas";
+} from "../tools/schemas";
 import { computeExpectedReturn, type ExpectedReturn } from "./expected-return";
 import { computeFairValue, isFinancialSector, type FairValue } from "./fair-value";
 import { computeSetupScore, type SetupScore } from "./setup-score";

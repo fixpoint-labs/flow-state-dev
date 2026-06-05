@@ -26,7 +26,7 @@ import {
   buildLensCardModel,
   type LensMemoData,
 } from "../components/theses/lens-card";
-import { LENS_PACK } from "../src/flows/trading-desk/lib/lenses";
+import { LENS_PACK } from "../src/flows/trading-desk/agents/lenses/lenses";
 import type { ThesisSection } from "../src/flows/trading-desk/resources";
 
 /** Build a lens memo's client-data subset the way the Slice-5 writer's

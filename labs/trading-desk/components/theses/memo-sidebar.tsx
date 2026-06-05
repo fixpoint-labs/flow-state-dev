@@ -17,7 +17,7 @@ import {
   shortNameForAgent,
   type AgentName,
   type AnyMemoShortName,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/trading-desk/registry";
 import type { MemoStatus } from "@/src/flows/trading-desk/resources";
 import { cn } from "@/lib/utils";
 

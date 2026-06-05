@@ -12,7 +12,7 @@ import type {
   cashflowSchema,
   fundamentalsSchema,
   incomeStatementSchema,
-} from "../phase-1/tools/schemas";
+} from "../tools/schemas";
 
 type Fundamentals = z.infer<typeof fundamentalsSchema>;
 type BalanceSheet = z.infer<typeof balanceSheetSchema>;

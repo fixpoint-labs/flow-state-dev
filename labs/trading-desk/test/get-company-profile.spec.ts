@@ -8,10 +8,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_company_profile } from "../src/flows/trading-desk/phase-1/tools/get_company_profile";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
-import { emptyPayload } from "../src/flows/trading-desk/phase-1/tools/empty-payloads";
-import { companyProfileSchema } from "../src/flows/trading-desk/phase-1/tools/schemas";
+import { get_company_profile } from "../src/flows/trading-desk/tools/data/get_company_profile";
+import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
+import { emptyPayload } from "../src/flows/trading-desk/tools/empty-payloads";
+import { companyProfileSchema } from "../src/flows/trading-desk/tools/schemas";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const fixtureFlow = defineFlow({

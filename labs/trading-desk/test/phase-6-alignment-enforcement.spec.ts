@@ -13,8 +13,8 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitThesisAlignmentMemo } from "../src/flows/trading-desk/phase-6/writer";
-import type { ThesisAlignmentOutput } from "../src/flows/trading-desk/phase-6/thesis-validator";
+import { commitThesisAlignmentMemo } from "../src/flows/trading-desk/agents/thesis-validator/writer";
+import type { ThesisAlignmentOutput } from "../src/flows/trading-desk/agents/thesis-validator/thesis-validator";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

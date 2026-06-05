@@ -8,7 +8,7 @@ export {
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   ALL_MEMO_KEYS,
-} from "./flows/trading-desk/agents";
+} from "./flows/trading-desk/registry";
 export type {
   AgentName,
   AgentMeta,
@@ -19,7 +19,7 @@ export type {
   Phase4MemoShortName,
   Phase5MemoShortName,
   AnyMemoShortName,
-} from "./flows/trading-desk/agents";
+} from "./flows/trading-desk/registry";
 export {
   memosCollection,
   memoStateSchema,

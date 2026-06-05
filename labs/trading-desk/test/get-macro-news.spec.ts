@@ -14,9 +14,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { get_macro_news } from "../src/flows/trading-desk/phase-1/tools/get_macro_news";
-import { fetchFinnhubMacroNews } from "../src/flows/trading-desk/providers/finnhub";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
+import { get_macro_news } from "../src/flows/trading-desk/tools/data/get_macro_news";
+import { fetchFinnhubMacroNews } from "../src/flows/trading-desk/tools/providers/finnhub";
+import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const fixtureFlow = defineFlow({

@@ -12,7 +12,7 @@
 import { useState, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { AgentBadge } from "@/components/agent-badge";
-import type { AgentName } from "@/src/flows/trading-desk/agents";
+import type { AgentName } from "@/src/flows/trading-desk/registry";
 import { cn } from "@/lib/utils";
 
 export type TxToolProps = {

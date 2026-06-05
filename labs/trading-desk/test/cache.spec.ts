@@ -11,7 +11,7 @@ import {
   _resetCache,
   cacheKey,
   getOrFetch,
-} from "../src/flows/trading-desk/lib/cache";
+} from "../src/flows/trading-desk/tools/runtime/cache";
 
 afterEach(() => {
   _resetCache();

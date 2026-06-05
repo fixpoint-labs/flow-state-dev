@@ -9,9 +9,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { search_news } from "../src/flows/trading-desk/phase-1/tools/search_news";
-import { fetchFinnhubCompanyNews } from "../src/flows/trading-desk/providers/finnhub";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
+import { search_news } from "../src/flows/trading-desk/tools/data/search_news";
+import { fetchFinnhubCompanyNews } from "../src/flows/trading-desk/tools/providers/finnhub";
+import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 
 const fixtureFlow = defineFlow({

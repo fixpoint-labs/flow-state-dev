@@ -21,7 +21,7 @@ import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../src/flows/trading-desk/store-price-history";
 import { priceHistoryResource } from "../src/flows/trading-desk/price-history-resource";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
+import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",

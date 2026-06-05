@@ -10,7 +10,7 @@ import {
   commitMemo,
   markError,
   markWriting,
-} from "../src/flows/trading-desk/phase-1/writer";
+} from "../src/flows/trading-desk/agents/analysts/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 

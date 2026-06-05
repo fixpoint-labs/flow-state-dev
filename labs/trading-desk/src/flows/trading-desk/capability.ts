@@ -34,16 +34,16 @@ import {
   fetch as createFetchTool,
   search as createSearchTool,
 } from "@flow-state-dev/tools";
-import { find_counter_evidence } from "./phase-2/tools/find_counter_evidence";
+import { find_counter_evidence } from "./agents/research/tools/find_counter_evidence";
 import {
   PHASE_2_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
-} from "./agents";
+} from "./registry";
 import { memosCollection, phase2Contributions } from "./resources";
 import { valuationSpineResource } from "./valuation-spine-resource";
-import { lensConvergenceResource } from "./lens-convergence-resource";
+import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
 import {
   formatValuationSpine,
   formatRatingEnvelope,

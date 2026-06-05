@@ -12,8 +12,8 @@ import {
   commitPortfolioManagerMemo,
   markErrorP5,
   markWritingP5,
-} from "../src/flows/trading-desk/phase-5/writer";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
+} from "../src/flows/trading-desk/agents/portfolio-manager/writer";
+import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/agents/portfolio-manager/portfolio-manager";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";

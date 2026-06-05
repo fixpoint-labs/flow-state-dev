@@ -18,7 +18,7 @@ import {
   trendLabel,
   vwma,
   type Bar,
-} from "../src/flows/trading-desk/phase-1/tools/indicators-math";
+} from "../src/flows/trading-desk/tools/indicators-math";
 
 function bar(date: string, close: number, range = 1, volume = 1000): Bar {
   return {

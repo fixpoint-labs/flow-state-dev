@@ -17,7 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/phase-5/writer";
+import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/agents/portfolio-manager/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";

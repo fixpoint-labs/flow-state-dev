@@ -13,7 +13,7 @@ import type { z } from "zod";
 import type {
   fundamentalsSchema,
   incomeStatementSchema,
-} from "../phase-1/tools/schemas";
+} from "../tools/schemas";
 import type { ExpectedReturn } from "./expected-return";
 
 type Fundamentals = z.infer<typeof fundamentalsSchema>;

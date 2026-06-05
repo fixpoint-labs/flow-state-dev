@@ -13,17 +13,17 @@ import {
   commitRiskAssessmentMemo,
   markErrorP4,
   markWritingP4,
-} from "../src/flows/trading-desk/phase-4/writer";
+} from "../src/flows/trading-desk/agents/risk/writer";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import { sessionStateSchema } from "../src/flows/trading-desk/state";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/trading-desk/phase-4/schemas";
+} from "../src/flows/trading-desk/agents/risk/schemas";
 
 // The phase-4 prompts now live as `.md` files; read them raw to assert their
 // prose names every dismissal category (parity with the prior string-export).
-const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/phase-4/prompts");
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/agents/risk/prompts");
 const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
 const RISK_ASSESSMENT_PROMPT = readFileSync(
   path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),

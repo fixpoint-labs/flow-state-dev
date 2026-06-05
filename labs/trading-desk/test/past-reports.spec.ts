@@ -23,8 +23,8 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-import { checkTickerResolvable } from "../src/flows/trading-desk/flow";
-import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/phase-5/writer";
+import { checkTickerResolvable } from "../src/flows/trading-desk/orchestration/guards";
+import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/agents/portfolio-manager/writer";
 import { decisionSnapshotResource } from "../src/flows/trading-desk/decision-snapshot-resource";
 import { memosCollection } from "../src/flows/trading-desk/resources";
 import {

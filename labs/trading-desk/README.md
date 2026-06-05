@@ -381,7 +381,7 @@ analyze
 
 All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
-[`services/approach-generator.ts`](src/flows/trading-desk/services/approach-generator.ts).
+[`agents/_recipe/approach-generator.ts`](src/flows/trading-desk/agents/_recipe/approach-generator.ts).
 The factory locks the shared policy (`itemVisibility: { client: true, history: false }`,
 `model: "intent/utility"`, the user-instruction template) and exposes
 only the per-agent knobs.

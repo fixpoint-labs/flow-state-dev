@@ -11,10 +11,10 @@ import type {
   RoundRobinContributionEntry,
   RoundRobinContributionsState,
 } from "@flow-state-dev/patterns/round-robin";
-import { AGENTS, PHASE_1_MEMO_KEYS } from "../agents";
+import { AGENTS, PHASE_1_MEMO_KEYS } from "../registry";
 import type { CitationIntegrity } from "../resources";
 import type { PortfolioContextInput } from "../flow-schema";
-import type { LensConvergenceState } from "../lens-convergence-resource";
+import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 
 /** Render a memo state as a compact prompt block. Permissive `any` —
  *  body shape is enforced by `memoStateSchema` at write time, so reads
