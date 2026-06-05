@@ -77,6 +77,18 @@ function gatedAdapter(): StoreAdapter & { release: () => void; disposed: () => n
   };
 }
 
+/** An in-memory adapter whose store init rejects — simulating a permanent init failure. */
+function failingAdapter(): StoreAdapter {
+  const inner = inMemoryStores();
+  return {
+    capabilities: inner.capabilities,
+    resolve: async () => {
+      throw new Error("store init failed");
+    },
+    dispose: () => {},
+  };
+}
+
 const handles: ServeHandle[] = [];
 afterEach(async () => {
   while (handles.length > 0) {
@@ -118,6 +130,16 @@ describe("serve — raw FlowApiRouter", () => {
     expect(res.status).toBe(404);
   });
 
+  it("does not register signal handlers when handleSignals is false", async () => {
+    const sigtermBefore = process.listenerCount("SIGTERM");
+    const sigintBefore = process.listenerCount("SIGINT");
+
+    await start(fakeRouter, { port: 0, handleSignals: false });
+
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+    expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
+  });
+
   it("rejects and leaks no signal handlers when the bind fails", async () => {
     // Take a port, then try to bind it again — the second listen fails.
     const handle = await start(fakeRouter, { port: 0 });
@@ -152,6 +174,22 @@ describe("serve — FlowState lifecycle", () => {
     const after = await fetch(`http://127.0.0.1:${handle.port}/healthz`);
     expect(after.status).toBe(200);
     expect((await after.json()).status).toBe("ok");
+  });
+
+  it("returns 500 from /healthz when initialization fails permanently", async () => {
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: failingAdapter() } },
+    });
+    const handle = await start(fs, { port: 0 });
+    // let the rejected getRouter() settle so initError is recorded
+    await new Promise((r) => setTimeout(r, 20));
+
+    const res = await fetch(`http://127.0.0.1:${handle.port}/healthz`);
+    // 500 (not 503) so a PaaS fails the deploy fast instead of retrying.
+    expect(res.status).toBe(500);
+    expect((await res.json()).status).toBe("error");
   });
 
   it("disposes the FlowState stores on close()", async () => {

@@ -146,6 +146,11 @@ export async function handleApiRequest(
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+    } else if (!res.writableEnded) {
+      // Headers were already flushed (e.g. reading a non-SSE body stream failed
+      // mid-read), so we can't change the status — just close the socket so the
+      // client isn't left waiting on a response that will never finish.
+      res.end();
     }
   }
 }

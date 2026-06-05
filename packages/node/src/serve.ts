@@ -39,6 +39,12 @@ export interface ServeOptions {
   staticDir?: string;
   /** SIGTERM/SIGINT grace window (ms) before connections are force-closed. Default 10000. */
   shutdownGraceMs?: number;
+  /**
+   * Whether `serve` installs its own `SIGTERM`/`SIGINT` handlers (which call
+   * `close()`). Default `true`. Set `false` when the caller runs its own signal
+   * handling and drives `handle.close()` itself, so teardown lives in one path.
+   */
+  handleSignals?: boolean;
 }
 
 /** Handle returned by {@link serve} for lifecycle control. */
@@ -112,6 +118,7 @@ export function serve(
   const healthPath = options.healthPath ?? DEFAULT_HEALTH_PATH;
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
+  const handleSignals = options.handleSignals ?? true;
 
   const flowState = isFlowState(app) ? app : undefined;
 
@@ -224,22 +231,28 @@ export function serve(
       // Only take ownership of process signals once the bind succeeds, so a
       // failed listen (e.g. EADDRINUSE) doesn't leave teardown handlers — which
       // would dispose the FlowState — registered for a server that never started.
-      process.on("SIGTERM", onSignal);
-      process.on("SIGINT", onSignal);
+      // Callers managing their own signals opt out via `handleSignals: false`.
+      if (handleSignals) {
+        process.on("SIGTERM", onSignal);
+        process.on("SIGINT", onSignal);
+      }
       const boundPort = (server.address() as AddressInfo).port;
       resolveServe({ server, port: boundPort, close });
     });
   });
 }
 
-/** Respond to a health probe: 200 once ready, 503 while initializing, 503 on init failure. */
+/** Respond to a health probe: 200 once ready, 503 while initializing, 500 on init failure. */
 function handleHealth(
   res: ServerResponse,
   ready: boolean,
   initError: Error | undefined,
 ): void {
   if (initError !== undefined) {
-    res.writeHead(503, { "Content-Type": "application/json" });
+    // A permanent init failure (bad config, unreachable store) won't resolve by
+    // retrying — return 500 so a PaaS fails the deploy fast instead of treating
+    // a 503 as transient and spinning in a health-check retry loop.
+    res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "error", message: initError.message }));
     return;
   }

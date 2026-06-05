@@ -144,6 +144,33 @@ describe("handleApiRequest — translation", () => {
     expect(res.state.statusCode).toBe(500);
     expect(JSON.parse(res.body).message).toBe("boom");
   });
+
+  it("ends the response when a non-SSE body read fails after headers are sent", async () => {
+    // A regular (non-SSE) response whose body stream errors mid-read: headers
+    // are already flushed, so the bridge can't change the status — it must still
+    // close the socket so the client isn't left hanging.
+    const failingBody: FlowApiRouter = {
+      ...echoRouter,
+      GET: async () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new Error("read failed"));
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    };
+    const req = makeReq({ method: "GET", url: "/api/flows/chat" });
+    const res = makeRes();
+
+    await handleApiRequest(req, res as never, req.url, failingBody, base);
+
+    expect(res.state.headersSent).toBe(true);
+    expect(res.state.ended).toBe(true);
+  });
 });
 
 describe("handleApiRequest — SSE streaming", () => {

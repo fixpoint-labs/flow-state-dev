@@ -137,6 +137,9 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     host: "127.0.0.1",
     basePath: "/api/flows",
     staticDir: assetPath,
+    // The dev command owns shutdown (it also closes the SQLite stores), so opt
+    // out of serve's signal handlers and drive a single teardown path below.
+    handleSignals: false,
   });
 
   const flowNames = flows.map((f) => f.kind);
@@ -152,10 +155,11 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     openBrowser(`http://localhost:${port}`);
   }
 
-  // Keep the process alive and handle graceful shutdown. `serve` tears down
-  // the HTTP server and router on SIGINT/SIGTERM; the dev command additionally
-  // closes the SQLite stores it owns (they're passed to the router directly,
-  // not via a FlowState, so serve() can't dispose them).
+  // Keep the process alive and handle graceful shutdown. `handle.close()` tears
+  // down the HTTP server and router; the dev command additionally closes the
+  // SQLite stores it owns (they're passed to the router directly, not via a
+  // FlowState, so serve() can't dispose them). serve's own signal handling is
+  // disabled above so this is the single teardown path.
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
