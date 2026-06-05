@@ -408,6 +408,20 @@ Update policy:
 - Why:
   - Drilling re-introduces a 5-file edit for one-concept additions, and grows fragile as the option set widens. The bundle keeps the public boundary flat (good ergonomics) while the internal plumbing stays narrow — a new forwarded field becomes a one- to two-file change.
 
+### BP-027: User-scoped resources default to shared (`flowIsolation` off); isolate only deliberately
+
+- Status: Active
+- Date: 2026-06-05
+- Rule:
+  - Leave `flowIsolation` unset (or set it to `false`) on user-scoped resources unless there is a deliberate privacy or isolation reason — e.g., the resource contains per-app configuration that should never bleed between unrelated products sharing the same `userId`.
+  - Do NOT reflexively add `flowIsolation: true` on every user-scoped resource as a "safe default." Reflexive isolation prevents legitimate cross-flow reads without any benefit.
+  - When any user-scoped resource on a flow carries `flowIsolation: true`, the framework's `effectiveScopeIsolation` function raises the flag for the ENTIRE flow's user scope — ALL user-scoped resources (including those with `flowIsolation: false`) then resolve their storage key to `{userId}:{flowKind}` instead of bare `{userId}`. One stray isolation flag silently breaks cross-flow sharing for every other user-scoped resource on the flow. Until FIX-735 ships (per-resource-granularity isolation), isolation is an all-or-nothing property at the flow-scope level.
+  - The practical test: if a second flow needs to read this resource without a client bridge (e.g., the analysis flow reads the portfolio flow's `accounts` and `portfolioQuotes` at `seedSession`), the resource MUST have `flowIsolation: false` (or unset) on both sides.
+- Why:
+  - The trading-desk hit this exactly: when `accounts`, `portfolioQuotes`, and `specialInstructions` each carried `flowIsolation: true`, the analysis flow's `seedSession` was resolving the portfolio's account data under `{userId}:analysis`, not the bare `{userId}` the portfolio flow wrote to — so it read zero accounts. The resource appeared written, but no cross-flow consumer could find it.
+  - Until FIX-735 resolves per-resource isolation granularity, the only safe, predictable behavior is: default shared, opt into isolation explicitly and with documentation of the reason.
+- See: FIX-735 (tracks the framework-level gap that makes isolation an all-or-nothing flow-scope property)
+
 ## Template For New Entries
 
 ```md

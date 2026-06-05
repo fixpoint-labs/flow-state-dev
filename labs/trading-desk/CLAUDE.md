@@ -1,11 +1,13 @@
 # Trading Desk — Agent Guide
 
-The trading-desk is a multi-agent flow that produces a structured
-trade recommendation for a given ticker. It's a real app — live market data,
-durable re-openable reports, a real imported portfolio — built on a non-trivial
-flow with capabilities, a self-contained tool catalog, per-tool files, and
-fixture/live data modes. It lives in `labs/`, not `examples/`: past a teaching
-snippet, still research software.
+The trading-desk is a multi-agent app (package `@flow-state-dev/trading-desk`)
+that produces a structured trade recommendation for a given ticker. It's a real
+app — live market data, durable re-openable reports, a real imported portfolio —
+built on **two purpose-named flows**: `analysis` (the research pipeline) and
+`portfolio` (the account / holdings / price system of record). The package and
+app stay "trading-desk"; only the flows are renamed to reflect what they do.
+It lives in `labs/`, not `examples/`: past a teaching snippet, still research
+software.
 
 The pipeline is organized by **identity, not phase**: participants live under
 `agents/` (one directory per analyst group / trader / risk / PM / etc.), the
@@ -23,11 +25,15 @@ haven't:
 
 ## Layout
 
-The tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and
-**composition** (`orchestration/`). The flow contract stays at the root.
+The app has **two flows** under `src/flows/`:
+
+- **`analysis/`** — the research pipeline (the five-phase analyst→researcher→trader→risk→PM sequence). Previously named `trading-desk`.
+- **`portfolio/`** — the account / holdings / price system of record (Spine B). A separate flow owning its own actions and resources.
+
+The analysis flow's tree is grouped by **identity** (`agents/`), **catalog** (`tools/`), and **composition** (`orchestration/`). The flow contract stays at the root.
 
 ```
-src/flows/trading-desk/
+src/flows/analysis/
   flow.ts                        flow definition — defineFlow only (actions, resources, session state)
   state.ts                       sessionStateSchema (ticker, date, costPreset, dataSource, ...)
   flow-schema.ts                 analyzeInputSchema (the required caller input)
@@ -42,6 +48,7 @@ src/flows/trading-desk/
   compute-spine.ts               .tap that computes + stores the valuation spine
   store-price-history.ts         .tap that persists the thinned price series
   capability.ts                  the tradingDesk capability — single import for every generator
+  build-portfolio-context.ts     pure leaf: builds the portfolio snapshot from accounts + quotes
   prompts/_partials/             shared prompt fragments ({% render %} targets); the loader anchors
                                  PARTIALS_DIR here, so this stays at the flow root (not per-agent)
 
@@ -109,18 +116,20 @@ src/flows/trading-desk/
     valuation.ts valuation-spine.ts fair-value.ts expected-return.ts
     rating-engine.ts setup-score.ts sector-resolution.ts   (analysis / scoring math)
 
-  portfolio/                     Portfolio domain (Spine B) — accounts (holdings inline) + CSV + getQuotes
-    portfolio-schema.ts          pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
-    portfolio-csv.ts             pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
-    portfolio-resources.ts       BP-019 leaf: accountsCollection (user-scoped, flow-isolated; holdings live inline)
-    portfolio-quotes-resource.ts session-scoped resource getQuotes writes (sendAction returns no output)
-    portfolio-actions.ts         saveAccount / deleteAccount / importHoldings / deleteHolding handlers
-    get-quotes.ts                getQuotes read handler (last-close per ticker, fixture/live, null degrades)
-    portfolio-pdf.ts             pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
-    portfolio-pdf-resource.ts    session-scoped pdfImport scratch resource (dialog reads via useResource)
-    extract-pdf-text.server.ts   NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
-    extract-holdings-generator.ts broker-agnostic LLM transcription (statement text → strict rows)
-    extract-holdings-action.ts   sequencer: decode bytes → extractPdfText → generator → commit pdfImport
+src/flows/portfolio/             The `portfolio` flow — owns the account/holdings/price domain (Spine B)
+  flow.ts                        defineFlow — portfolio actions, resources, and (empty) session state
+  state.ts                       sessionStateSchema (minimal; this flow has no run state)
+  portfolio-schema.ts            pure leaf: account schema (holdings inline), holdingSchema/Holding, CanonicalRow
+  portfolio-csv.ts               pure leaf: tolerant CSV parser (synonym mapping, validation, dedupe-merge)
+  portfolio-resources.ts         BP-019 leaf: accountsCollection + portfolioQuotesResource + pdfImportResource
+                                   — all user-scoped shared (flowIsolation: false → bare {userId}), EXCEPT
+                                   pdfImport which is session-scoped (transient per-import scratch channel)
+  portfolio-actions.ts           saveAccount / deleteAccount / importHoldings / deleteHolding handlers
+  get-quotes.ts                  getQuotes read handler (last-close per ticker, fixture/live, null degrades)
+  portfolio-pdf.ts               pure leaf: strict pdfExtractionSchema + reconcile() + canonical mapping
+  extract-pdf-text.server.ts     NODE-ONLY: unpdf (worker-free pdfjs) — PDF bytes → statement text
+  extract-holdings-generator.ts  broker-agnostic LLM transcription (statement text → strict rows)
+  extract-holdings-action.ts     sequencer: decode bytes → extractPdfText → generator → commit pdfImport
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -241,20 +250,21 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
 ## Portfolio view
 
 The app has a **Portfolio** view (TopBar nav → `components/portfolio/`) backed by
-the `portfolio/` flow folder (Spine B). It is the durable record of what the user
-owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
+the `portfolio` flow (`src/flows/portfolio/`). It is the durable record of what
+the user owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
 
 - **Data model — one collection; holdings live inside the account.** `accounts`
   (`accounts/*`, keyed `accountId`) is the only collection — user-scoped +
-  `flowIsolation: true`, so it persists under `{userId}:trading-desk` on the
-  existing filesystem store (no new store adapter, no `StoreRegistry` change).
-  Each account record carries its positions inline as
-  `accountStateSchema.holdings: Holding[]` (a `Holding` is exactly a
-  `CanonicalRow`). The per-account record is the write unit: an import is ONE
-  write to one account, not one write per ticker. That suits this small,
-  rarely-changing, batch-written JSON — there is no concurrent-row-write race to
-  isolate, so the earlier per-holding-key scheme was over-modeled. The same
-  ticker in two accounts is simply two entries, one per account's array.
+  **`flowIsolation: false`**, so it persists under bare `{userId}` on the
+  filesystem store (shared across flows; no `{userId}:portfolio` or similar
+  namespace). This is required so the analysis flow's `seedSession` can read the
+  same accounts without a client bridge (see BP-027). Each account record carries
+  its positions inline as `accountStateSchema.holdings: Holding[]` (a `Holding`
+  is exactly a `CanonicalRow`). The per-account record is the write unit: an
+  import is ONE write to one account, not one write per ticker. That suits this
+  small, rarely-changing, batch-written JSON — there is no concurrent-row-write
+  race to isolate, so the earlier per-holding-key scheme was over-modeled. The
+  same ticker in two accounts is simply two entries, one per account's array.
 - **Schemas are RESOURCE STATE, not generator outputs.** `.default()` /
   `.nullable()` are fine (BP-016 only constrains generator outputs). Do NOT add
   them to `output-schemas-strict.spec.ts`. Cost basis is **average cost
@@ -293,9 +303,10 @@ owns; it does NOT do portfolio-aware analysis or sizing (a later slice).
   unavailable price degrades to `null` (UI shows `—`), never a fabricated number;
   live mode never silently substitutes fixture data. Because `sendAction` returns
   a request envelope (NOT the handler output) in this runtime, `getQuotes` writes
-  its result to the session-scoped `portfolioQuotes` resource; the pane reads it
-  via `useResource` after `session.refresh()`. **The pane always requests `live`
-  prices, decoupled from the analysis fixture/live toggle** — holdings are real,
+  its result to the user-scoped shared `portfolioQuotes` resource; the pane reads
+  it via `useResource` after `session.refresh()`. **The pane always requests
+  `live` prices, decoupled from the analysis fixture/live toggle** — holdings are
+  real,
   and fixtures only cover the 3 demo tickers (AAPL/JPM/NVDA), so a fixture-priced
   real portfolio is mostly `—`. The live fan-out is **bounded + retried** via the
   shared `lib/concurrency.ts` `mapLimit` (cap `QUOTE_CONCURRENCY`, per-ticker
@@ -317,21 +328,21 @@ A run can carry the live portfolio so the trader and the PM size against real
 positions, and a pack of documented-methodology investor LENSES re-reads the
 evidence to produce a convergence signal the PM uses for sizing conviction.
 
-- **The portfolio snapshot is built CLIENT-SIDE at dispatch.** Slice 4 stores
-  `quantity` / `costBasis` per holding but NOT market value, weight, NAV, or
-  sector. `app/page.tsx` reads the Slice-4 `accounts` + the live
-  `portfolioQuotes` resource and calls
-  `portfolio/build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
+- **The portfolio snapshot is built SERVER-SIDE at `seedSession`.** The analysis
+  flow's `seedSession` handler reads the shared user-scoped `accounts` collection
+  and the shared user-scoped `portfolioQuotes` resource (both owned by the
+  `portfolio` flow; both declared on the analysis flow with `flowIsolation: false`
+  so they resolve to the same bare `{userId}` key). It calls
+  `build-portfolio-context.ts` (a pure leaf) to compute the snapshot:
   per-holding `marketValue = quantity × live quote`, `totalNav = Σ known
   marketValue + Σ cash`, `weightPct = marketValue / totalNav`. A ticker with no
   live quote degrades to `marketValue: null` / `weightPct: null` — NEVER a
   fabricated price. The snapshot carries `snapshotAsOf` (the quotes' as-of) and
   `pricedHoldings` / `totalHoldings` so the prompt + UI label staleness and
-  coverage honestly. The flow freezes it onto session state at `seedSession`
-  (the `userThesis` precedent) and NEVER recomputes weights. Null → the run is
-  portfolio-blind exactly as before. The input/state field names are the flow's
-  own (`portfolioContextInput`), mapped from the Slice-4 account shape in the
-  builder.
+  coverage honestly. The flow freezes it onto session state and NEVER recomputes
+  weights. Null → the run is portfolio-blind exactly as before. There is NO
+  client-built snapshot bridge — the `analyze` action no longer takes a
+  `portfolio` dispatch input; the data comes from the shared resources at seed.
 - **`portfolioContext` + `lensConvergence` capability presets.** The
   `portfolioContext` preset renders `<portfolioContext>` from frozen session
   state (no resource — like `userThesis`); returns `null` to suppress the tag
@@ -441,7 +452,7 @@ uses: [tradingDesk.presets({
 ```
 
 See the capability's available presets in
-[`capability.ts`](src/flows/trading-desk/capability.ts).
+[`capability.ts`](src/flows/analysis/capability.ts).
 
 ### The memo lifecycle: one `defineMemoStep` convention
 
@@ -451,7 +462,7 @@ thesis-validator, and the three research consolidations — wears the **same**
 memo lifecycle: pre-mark the memo `writing`, run the participant's body,
 commit the result, and on failure rescue to `error`. There is exactly **one**
 apparatus that expresses it, in
-[`agents/_recipe/memo-writer.ts`](src/flows/trading-desk/agents/_recipe/memo-writer.ts):
+[`agents/_recipe/memo-writer.ts`](src/flows/analysis/agents/_recipe/memo-writer.ts):
 
 ```ts
 defineMemoStep(body, { key, commit })
@@ -499,7 +510,7 @@ The factory composes the analyst-specific body — `.map(tickerDate) →
 .parallel(attributedTools) → generator` — and hands it to `defineMemoStep`,
 which owns the `markWriting → body → commit → rescue(markError)` lifecycle.
 The call site supplies only what varies — the role's tools and its
-synthesis generator. See [`agents/analysts/analysts.ts`](src/flows/trading-desk/agents/analysts/analysts.ts)
+synthesis generator. See [`agents/analysts/analysts.ts`](src/flows/analysis/agents/analysts/analysts.ts)
 for the nine existing analysts.
 
 To add another:
@@ -668,7 +679,7 @@ of them with no consumer. Keep it a plain chain.
 
 Fixtures are a single pinned snapshot at `2026-05-06` (the
 `FIXTURE_SNAPSHOT` constant in
-[`tools/runtime/fixtures.ts`](src/flows/trading-desk/tools/runtime/fixtures.ts)). The
+[`tools/runtime/fixtures.ts`](src/flows/analysis/tools/runtime/fixtures.ts)). The
 loader ignores `args.date` and always reads from the snapshot directory. The
 returned payload carries the fixture's own `asOf` field, so analysts see the
 actual data date.
@@ -727,7 +738,7 @@ live-Grok path is a generator with the `xSearch` provider tool installed.
 The dispatch primitive is a `router` (block kinds differ across routes —
 the rest of the Phase 1 tools use `if` inside a handler because every
 branch is the same kind). See
-[`tools/data/get_social_sentiment.ts`](src/flows/trading-desk/tools/data/get_social_sentiment.ts)
+[`tools/data/get_social_sentiment.ts`](src/flows/analysis/tools/data/get_social_sentiment.ts)
 as the canonical example of a router-with-LLM-route pattern.
 
 If a live provider fails for a given tool, the tool returns an empty payload

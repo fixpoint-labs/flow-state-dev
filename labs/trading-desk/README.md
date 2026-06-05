@@ -192,17 +192,18 @@ Phase 5 — portfolio manager:
 Portfolio-aware analysis + lens pack (optional):
 
 - **A supplied portfolio makes sizing concrete** — when a run carries a
-  portfolio snapshot (the user's accounts + live quotes, built client-side
-  at dispatch and frozen onto session state), the trader and PM see a
+  portfolio snapshot (the user's accounts + live quotes, read server-side at
+  `seedSession` from the shared user-scoped `accounts` and `portfolioQuotes`
+  resources and frozen onto session state), the trader and PM see a
   `<portfolioContext>` block: existing position, current weight, available
   cash, account types. The PM then emits a `portfolioFit` verdict —
   `action` (initiate / add / trim / exit / hold), a `targetWeightPct`, a
   sizing rationale that references the existing position, a concentration
   read, and a suggested account validated against the real account list
   (a hallucinated label resolves to none, never an invented account).
-  With no portfolio supplied the run stays portfolio-blind exactly as
-  before. Market value, NAV, and weight are computed from stored quantity
-  × a sourced live quote; a missing quote degrades to a dash, never a
+  With no portfolio data the run stays portfolio-blind exactly as before.
+  Market value, NAV, and weight are computed from stored quantity × a
+  sourced live quote; a missing quote degrades to a dash, never a
   fabricated price, and the panel shows the snapshot's as-of so a frozen
   snapshot never reads as live.
 - **An investor-lens convergence signal (Phase 2b, `full` only)** — after
@@ -292,10 +293,10 @@ with a short framing sentence followed by the global block and the active
 phase's block. When both are empty the wrapper tag is suppressed entirely —
 no `<userInstructions/>` leaks into the prompt when nothing is set.
 
-**Where it's stored.** Per user, under
-`.fsdev/data/users/<userId>:trading-desk/` (the `:trading-desk` suffix comes
-from `flowIsolation: true` on the resource, so other flows running for the
-same user never see these instructions). The directory is covered by
+**Where it's stored.** Per user, under `.fsdev/data/users/<userId>/` (the
+resource is user-scoped with `flowIsolation: false`, so it stores under bare
+`{userId}` — shared across flows for the same user, and readable by the
+analysis flow without a flow-namespaced key). The directory is covered by
 `.gitignore`.
 
 ## Provider keys
@@ -381,7 +382,7 @@ analyze
 
 All eight Phase 3–6 approach preamble generators are built via the
 `createApproachGenerator` factory in
-[`agents/_recipe/approach-generator.ts`](src/flows/trading-desk/agents/_recipe/approach-generator.ts).
+[`agents/_recipe/approach-generator.ts`](src/flows/analysis/agents/_recipe/approach-generator.ts).
 The factory locks the shared policy (`itemVisibility: { client: true, history: false }`,
 `model: "intent/utility"`, the user-instruction template) and exposes
 only the per-agent knobs.
