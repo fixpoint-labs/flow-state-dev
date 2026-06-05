@@ -25,16 +25,18 @@
  * BP-011: this is a generator, composed into the `extractHoldingsFromPdf` action
  * as a sequencer step — never a handler calling `block.run()`.
  *
- * `uses: [tradingDesk]` supplies the model (`intent/${costPreset}`) and the
- * shared grounding clause. It deliberately does NOT opt into ticker/date memo
- * context — extraction is about the document in front of it, not the analyzed
- * ticker. (The `core` preset's `<ticker>`/`<date>` tags ride along harmlessly;
- * the prompt tells the model to ignore them and read only the statement.)
+ * This is a `portfolio`-flow utility, so it sets its own `model: "intent/utility"`
+ * rather than borrowing the analysis `tradingDesk` capability — that capability
+ * resolves the model from `intent/${costPreset}`, and the `portfolio` flow's
+ * session state carries no `costPreset` (it would resolve to `intent/undefined`
+ * and fall back to the default model with a warning). The prompt is fully
+ * self-contained — it reads only the statement text and is told never to
+ * fabricate — so it needs neither the analysis grounding clause nor ticker/date
+ * context.
  */
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 import { AGENTS } from "../analysis/registry";
-import { tradingDesk } from "../analysis/capability";
 import { pdfExtractionSchema } from "./portfolio-pdf";
 
 /** The statement text, supplied by the action from the client extraction. */
@@ -90,7 +92,7 @@ export const extractHoldingsGenerator = generator({
   // conversation history — it is a utility transcription, not analysis.
   itemVisibility: { client: true, history: false },
   agentName: "statementParser" satisfies keyof typeof AGENTS,
-  uses: [tradingDesk],
+  model: "intent/utility",
   inputSchema: extractHoldingsInputSchema,
   prompt: EXTRACTION_PROMPT,
   user: (input) =>
