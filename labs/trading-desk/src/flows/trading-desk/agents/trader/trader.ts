@@ -12,7 +12,7 @@
  * fixed-shape object, `rating` / `direction` / `holdingPeriod` are enums
  * of literals, and `nullable` is never reached for output fields.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_3_MEMO_KEYS } from "../../registry";
@@ -20,6 +20,7 @@ import { tradingDesk } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
 import { thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
+import { traderApproachGenerator } from "./approach";
 
 const traderPrompt = loadPrompt("agents/trader/prompts/trader.prompt.md");
 
@@ -69,3 +70,14 @@ export const traderGenerator = generator({
   sessionStateSchema,
   outputSchema: tradeProposalOutputSchema,
 });
+
+/**
+ * The trader's portable pre-commit body: the fast-model approach preamble
+ * streams its plan, then the structured `traderGenerator` writes the typed
+ * `TradeProposal`. No memo writes — `defineMemoStep` wraps this with the
+ * keyed `markWriting → … → commit → rescue(markError)` lifecycle in
+ * `orchestration/stages.ts`.
+ */
+export const traderBody = sequencer({ name: "trader-body" })
+  .step(traderApproachGenerator)
+  .step(traderGenerator);

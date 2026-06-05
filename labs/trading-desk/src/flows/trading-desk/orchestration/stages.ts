@@ -53,14 +53,9 @@ import { setupLensMemos } from "../agents/lenses/setup";
 import { commitLensVerdict, computeAndStoreConvergence } from "../agents/lenses/writer";
 import { defineMemoStep } from "../agents/_recipe/memo-writer";
 import type { LensId } from "../registry";
-import { traderApproachGenerator } from "../agents/trader/approach";
 import { setupPhase3Memos } from "../agents/trader/setup";
-import { traderGenerator } from "../agents/trader/trader";
-import {
-  commitTraderMemo,
-  markErrorP3,
-  markWritingP3,
-} from "../agents/trader/writer";
+import { traderBody } from "../agents/trader/trader";
+import { commitTraderMemo } from "../agents/trader/writer";
 import {
   aggressiveApproachGenerator,
   conservativeApproachGenerator,
@@ -256,20 +251,21 @@ export const lensStage = lensSteps
  * `traderStage` — the Phase 3 stage.
  *
  * Runs after Phase 2: pre-creates the trader memo in `pending`, then the
- * trader step taps `markWritingP3`, runs the trader generator, and taps
- * `commitTraderMemo` on success. A per-step rescue flips the memo to
- * `error` on generator failure — same shape as Phase 2's per-step rescues.
+ * trader step pre-marks the memo `writing`, runs the trader body (approach
+ * preamble → structured generator), and commits on success. A per-step rescue
+ * flips the memo to `error` on generator failure — same shape as Phase 2's
+ * per-step rescues. Placed via the shared `defineMemoStep` apparatus: the
+ * `traderBody` is the body, `commitTraderMemo` is the commit, and the keyed
+ * memo lifecycle is resolved from the registry.
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the Claude Design handoff
  * verbatim.
  */
-const traderStep = sequencer({ name: "phase-3-trader-step" })
-  .tap(markWritingP3("trader"))
-  .step(traderApproachGenerator)
-  .step(traderGenerator)
-  .tap(commitTraderMemo)
-  .rescue([{ block: markErrorP3("trader") }]);
+const traderStep = defineMemoStep(traderBody, {
+  key: "trader",
+  commit: commitTraderMemo,
+});
 
 export const traderStage = sequencer({
   name: "phase-3-trader",
