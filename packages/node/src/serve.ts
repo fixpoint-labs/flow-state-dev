@@ -216,13 +216,16 @@ export function serve(
   const onSignal = () => {
     void close();
   };
-  process.on("SIGTERM", onSignal);
-  process.on("SIGINT", onSignal);
 
   return new Promise<ServeHandle>((resolveServe, rejectServe) => {
     server.once("error", rejectServe);
     server.listen(port, host, () => {
       server.off("error", rejectServe);
+      // Only take ownership of process signals once the bind succeeds, so a
+      // failed listen (e.g. EADDRINUSE) doesn't leave teardown handlers — which
+      // would dispose the FlowState — registered for a server that never started.
+      process.on("SIGTERM", onSignal);
+      process.on("SIGINT", onSignal);
       const boundPort = (server.address() as AddressInfo).port;
       resolveServe({ server, port: boundPort, close });
     });

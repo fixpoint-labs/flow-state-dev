@@ -117,6 +117,18 @@ describe("serve — raw FlowApiRouter", () => {
     const res = await fetch(`http://127.0.0.1:${handle.port}/anything`);
     expect(res.status).toBe(404);
   });
+
+  it("rejects and leaks no signal handlers when the bind fails", async () => {
+    // Take a port, then try to bind it again — the second listen fails.
+    const handle = await start(fakeRouter, { port: 0 });
+    const sigtermBefore = process.listenerCount("SIGTERM");
+    const sigintBefore = process.listenerCount("SIGINT");
+
+    await expect(serve(fakeRouter, { port: handle.port })).rejects.toBeDefined();
+
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+    expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
+  });
 });
 
 describe("serve — FlowState lifecycle", () => {
