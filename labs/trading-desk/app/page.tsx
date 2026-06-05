@@ -75,6 +75,19 @@ function titleForTuple(t: AnalyzeTuple): string {
   return `${t.ticker} · ${t.date} · ${t.costPreset} · ${t.dataSource}`;
 }
 
+/** Binds a portfolio-flow session and passes it to PortfolioPane.
+ *  Rendered inside a <FlowProvider flowKind="trading-desk-portfolio">, so its
+ *  useFlow + useSession calls dispatch to the portfolio flow. Sessions are
+ *  incidental — accounts and quotes are user-scoped, so any session sees the
+ *  same data. Auto-create/select so the pane is usable immediately. */
+function PortfolioView(): ReactElement {
+  const flow = useFlow({ autoCreateSession: true, autoSelectSession: true });
+  const session = useSession(flow.activeSessionId);
+  return (
+    <PortfolioPane session={session} hasSession={flow.activeSessionId !== undefined} />
+  );
+}
+
 export default function Page(): ReactElement {
   return (
     <FlowProvider flowKind={FLOW_KIND} userId={USER_ID} baseUrl="">
@@ -341,14 +354,14 @@ function TradingDeskApp(): ReactElement {
         </main>
       ) : view === "portfolio" ? (
         <main className="flex flex-col overflow-hidden">
-          {/* Portfolio reads user-scoped resources through a session snapshot.
-              Reuse the same `readSession` fallback the settings dialog uses —
-              the active session, else the first session. Prices are always live
-              (real holdings), so the analysis fixture/live toggle is not passed. */}
-          <PortfolioPane
-            session={readSession}
-            hasSession={readSessionId !== undefined}
-          />
+          {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
+              trading-desk-portfolio flow, so the Portfolio view gets its own
+              provider + session binding that dispatches to that flow. User-scoped
+              storage (accounts, portfolioQuotes) is shared at the storage layer —
+              no data bridge between providers is needed. */}
+          <FlowProvider flowKind="trading-desk-portfolio" userId={USER_ID} baseUrl="">
+            <PortfolioView />
+          </FlowProvider>
         </main>
       ) : (
         <main
