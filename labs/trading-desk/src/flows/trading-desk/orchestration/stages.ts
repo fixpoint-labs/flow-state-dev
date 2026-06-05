@@ -67,22 +67,12 @@ import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
 } from "../agents/risk/writer";
-import { portfolioManagerApproachGenerator } from "../agents/portfolio-manager/approach";
-import { scenarioForecasterApproachGenerator } from "../agents/scenario-forecaster/approach";
-import { portfolioManagerGenerator } from "../agents/portfolio-manager/portfolio-manager";
-import { scenarioForecasterGenerator } from "../agents/scenario-forecaster/scenario-forecaster";
+import { portfolioManagerBody } from "../agents/portfolio-manager/portfolio-manager";
+import { scenarioForecasterBody } from "../agents/scenario-forecaster/scenario-forecaster";
 import { setupPhase5Memos } from "../agents/portfolio-manager/setup";
 import { setupScenarioForecastMemos } from "../agents/scenario-forecaster/setup";
-import {
-  commitPortfolioManagerMemo,
-  markErrorP5,
-  markWritingP5,
-} from "../agents/portfolio-manager/writer";
-import {
-  commitScenarioForecastMemo,
-  markErrorForecast,
-  markWritingForecast,
-} from "../agents/scenario-forecaster/writer";
+import { commitPortfolioManagerMemo } from "../agents/portfolio-manager/writer";
+import { commitScenarioForecastMemo } from "../agents/scenario-forecaster/writer";
 import { thesisValidatorApproachGenerator } from "../agents/thesis-validator/approach";
 import { thesisValidatorGenerator } from "../agents/thesis-validator/thesis-validator";
 import { setupPhase6Memos } from "../agents/thesis-validator/setup";
@@ -333,30 +323,29 @@ export const riskStage = sequencer({
  * each its own top-level phase-divider container (composed sequentially in
  * `analyze.ts`).
  *
- *   - `forecastStage` — pre-creates the scenario-forecaster memo, taps
- *     `markWritingForecast`, runs the forecaster, and taps
- *     `commitScenarioForecastMemo` on success.
- *   - `portfolioStage` — pre-creates the portfolio-manager memo, taps
- *     `markWritingP5`, runs the portfolioManagerGenerator, and taps
- *     `commitPortfolioManagerMemo` on success.
+ *   - `forecastStage` — pre-creates the scenario-forecaster memo, then the
+ *     forecaster step pre-marks it `writing`, runs the forecaster body
+ *     (approach preamble → structured generator), and commits on success.
+ *   - `portfolioStage` — pre-creates the portfolio-manager memo, then the PM
+ *     step pre-marks it `writing`, runs the PM body (approach preamble →
+ *     structured generator), and commits on success.
  *
- * Each stage's single step has a per-step rescue that flips its memo to
- * `error` on generator failure or a writer integrity throw
- * (`probability-violation` for the forecaster, `lineage-violation` for the
- * PM) — same shape as Phase 3's single-step rescue.
+ * Both steps are placed via the shared `defineMemoStep` apparatus: the
+ * participant body is the body, the per-participant commit is the commit, and
+ * the keyed memo lifecycle (`markWriting → … → rescue(markError)`) is resolved
+ * from the registry. Each step's per-step rescue flips its memo to `error` on
+ * generator failure or a writer integrity throw (`probability-violation` for
+ * the forecaster, `lineage-violation` for the PM) — same shape as Phase 3's
+ * single-step rescue.
  *
  * Container `component` must start with `"phase-"` so the TranscriptPane
  * phase-divider predicate fires. `label` matches the design reference's
  * Phase 5 divider lines.
  */
-const scenarioForecasterStep = sequencer({
-  name: "phase-5-scenario-forecaster-step",
-})
-  .tap(markWritingForecast("scenarioForecast"))
-  .step(scenarioForecasterApproachGenerator)
-  .step(scenarioForecasterGenerator)
-  .tap(commitScenarioForecastMemo)
-  .rescue([{ block: markErrorForecast("scenarioForecast") }]);
+const scenarioForecasterStep = defineMemoStep(scenarioForecasterBody, {
+  key: "scenarioForecast",
+  commit: commitScenarioForecastMemo,
+});
 
 export const forecastStage = sequencer({
   name: "phase-5-scenario-forecaster",
@@ -368,14 +357,10 @@ export const forecastStage = sequencer({
   .tap(setupScenarioForecastMemos)
   .step(scenarioForecasterStep);
 
-const portfolioManagerStep = sequencer({
-  name: "phase-5-portfolio-manager-step",
-})
-  .tap(markWritingP5("portfolioManager"))
-  .step(portfolioManagerApproachGenerator)
-  .step(portfolioManagerGenerator)
-  .tap(commitPortfolioManagerMemo)
-  .rescue([{ block: markErrorP5("portfolioManager") }]);
+const portfolioManagerStep = defineMemoStep(portfolioManagerBody, {
+  key: "portfolioManager",
+  commit: commitPortfolioManagerMemo,
+});
 
 export const portfolioStage = sequencer({
   name: "phase-5-portfolio-manager",

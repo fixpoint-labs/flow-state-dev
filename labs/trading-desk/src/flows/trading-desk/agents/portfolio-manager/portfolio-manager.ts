@@ -19,7 +19,7 @@
  * the trader memo's `direction` field. Making the LLM emit them would
  * add hallucination surface for fields we can compute deterministically.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_5_MEMO_KEYS } from "../../registry";
@@ -27,6 +27,7 @@ import { tradingDesk } from "../../capability";
 import { thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
+import { portfolioManagerApproachGenerator } from "./approach";
 
 const portfolioManagerPrompt = loadPrompt(
   "agents/portfolio-manager/prompts/portfolio-manager.prompt.md"
@@ -148,3 +149,16 @@ export const portfolioManagerGenerator = generator({
   sessionStateSchema,
   outputSchema: portfolioDecisionOutputSchema,
 });
+
+/**
+ * The portfolio-manager's portable pre-commit body: the fast-model approach
+ * preamble streams its plan, then the structured `portfolioManagerGenerator`
+ * writes the typed `PortfolioDecision`. No memo writes — `defineMemoStep`
+ * wraps this with the keyed `markWriting → … → commit → rescue(markError)`
+ * lifecycle in `orchestration/stages.ts`.
+ */
+export const portfolioManagerBody = sequencer({
+  name: "portfolio-manager-body",
+})
+  .step(portfolioManagerApproachGenerator)
+  .step(portfolioManagerGenerator);

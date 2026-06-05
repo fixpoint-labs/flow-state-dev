@@ -14,7 +14,7 @@
  * shape; the Phase 5 writer imports the type back to project the commit.
  * `horizon` and `probabilitySum` are writer projections, not model output.
  */
-import { generator } from "@flow-state-dev/core";
+import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_5_MEMO_KEYS } from "../../registry";
@@ -22,6 +22,7 @@ import { tradingDesk } from "../../capability";
 import { thesisSection } from "../../resources";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
+import { scenarioForecasterApproachGenerator } from "./approach";
 
 const scenarioForecasterPrompt = loadPrompt(
   "agents/scenario-forecaster/prompts/scenario-forecaster.prompt.md",
@@ -79,3 +80,16 @@ export const scenarioForecasterGenerator = generator({
   sessionStateSchema,
   outputSchema: scenarioForecastOutputSchema,
 });
+
+/**
+ * The scenario-forecaster's portable pre-commit body: the fast-model approach
+ * preamble streams its plan, then the structured `scenarioForecasterGenerator`
+ * writes the typed scenario forecast. No memo writes — `defineMemoStep` wraps
+ * this with the keyed `markWriting → … → commit → rescue(markError)` lifecycle
+ * in `orchestration/stages.ts`.
+ */
+export const scenarioForecasterBody = sequencer({
+  name: "scenario-forecaster-body",
+})
+  .step(scenarioForecasterApproachGenerator)
+  .step(scenarioForecasterGenerator);
