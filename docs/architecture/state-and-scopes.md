@@ -332,28 +332,35 @@ The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask
 
 ### Per-flow isolation (opt-in)
 
-Two layers can promote a user/org-scope record to flow-isolated storage:
+Isolation promotes a user/org-scope storage cell to a flow-namespaced key (`${id}:${flowKind}`) so it can't be read or overwritten by other flows. Two layers decide it, at two different granularities (FIX-735):
 
-- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Acts as the default for resources at the relevant scope that don't declare `flowIsolation` themselves. The flow does not participate in the registry schema merge for the isolated scope.
-- **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Always wins. A library can ship a flow-private user-scoped resource, and consumers don't need to flip the flow flag.
+- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope does not participate in the registry schema merge for it.
+- **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Decides **that resource's** storage key, and always wins over the flow default — in both directions. A library can ship a flow-private user-scoped resource without consumers flipping the flow flag, and a resource declared `flowIsolation: false` stays shared even when a sibling on the same flow is isolated.
 
-When either layer marks a user/org-scope storage cell as isolated, its key becomes `${id}:${flowKind}`. Other flows cannot conflict with it, and it cannot read data written by other flows.
+Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}`, each `flowIsolation: true` resource at `{id}:{flowKind}`. The scope record's own `state` keys independently, on the flow-level flag alone.
 
-Use isolation for internal-only flows, background jobs, library-private state, or flows with domain-specific data that should not leak into shared surfaces.
+Use isolation for internal-only flows, background jobs, library-private state, or domain-specific data that should not leak into shared surfaces.
 
-The `UserRecord.id` / `OrgRecord.id` field holds the namespaced key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
+The `UserRecord.id` / `OrgRecord.id` field holds the scope-record's (possibly namespaced) key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
 
 ### Storage-key derivation
 
-Key resolution is centralized in `packages/server/src/stores/scope-keys.ts`:
+Key resolution is centralized in `packages/server/src/stores/scope-keys.ts`. The **scope record** keys on the flow-level flag:
 
 ```ts
-export function resolveUserStorageKey(userId: string, flow: IsolationFlow): string {
+export function resolveUserStorageKey(userId, flow): string {
   return flow.isolateUserState ? `${userId}:${flow.kind}` : userId;
 }
 ```
 
-`createExecutionContext` uses these helpers for every `user` / `org` read and write, including `ContentStore` operations. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
+**Resources** resolve a `scopeId` per resource from their effective isolation (the resource's `flowIsolation` if set, else the flow default):
+
+```ts
+const isolated = resolveResourceIsolation(resource.flowIsolation, flow, "user");
+const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id, or `${id}:${kind}`
+```
+
+`createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) enumerate the buckets a flow declares via `resourceScopeIds` and merge. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
 
 ### Non-goals
 
