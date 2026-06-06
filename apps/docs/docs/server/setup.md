@@ -49,6 +49,7 @@ Common options:
 | `defaultProfile` | Which profile to use when no `FSD_ENV` is set. |
 | `settings` | Instance-level config read inside blocks via `ctx.settings`. |
 | `onError` | HTTP-level error sink. |
+| `errorCapture` | Block-aware sink for routing runtime block failures to an external service. |
 
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/server";
@@ -143,6 +144,8 @@ Which profile is active is resolved on the first `ready()` or `getRouter()` call
 onError: (error, ctx) =>
   console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message),
 ```
+
+For routing runtime block failures (tool errors, generator failures, handler exceptions) to an external observability service, use the block-aware `errorCapture` hook instead. It receives the failing block's identity plus the flow, request, session, and user IDs. See [Error capture](/docs/advanced/error-capture).
 
 ## Adapters
 

@@ -235,7 +235,8 @@ class InternalFlowState<TSettings extends object>
       settings: this.#options.settings as FlowStateSettings | undefined,
       middleware: this.#options.middleware,
       onBackgroundWork: this.#options.onBackgroundWork,
-      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs
+      defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
+      errorCapture: this.#options.errorCapture
     });
 
     return { registry: this.#registry, stores, runtimeConfig };

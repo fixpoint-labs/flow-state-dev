@@ -85,6 +85,16 @@ export interface CreateFlowStateOptions<
   onError?: CreateFlowApiRouterOptions["onError"];
 
   /**
+   * Opt-in error-capture sink (FIX-724). Routes runtime block failures (tool
+   * errors, generator failures, handler exceptions) to an external
+   * observability service. Distinct from `onError`, which is an HTTP-level sink:
+   * `errorCapture` is block-aware and receives the failing block's identity plus
+   * the flow / request / session / user IDs. Provider-neutral — the operator
+   * writes the adapter; the framework ships no provider SDK. Off by default.
+   */
+  errorCapture?: CreateFlowApiRouterOptions["errorCapture"];
+
+  /**
    * Background-work keep-alive hook. On serverless platforms that freeze the
    * function after the response (Vercel), pass the platform's post-response
    * primitive — e.g. `(p) => after(() => p)` from `next/server` — so
