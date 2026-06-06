@@ -20,7 +20,7 @@ import {
   checkPhase1HasFundamentalsAndProfile,
 } from "../src/flows/analysis/orchestration/guards";
 import { PHASE_1_MEMO_KEYS } from "../src/flows/analysis/registry";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({

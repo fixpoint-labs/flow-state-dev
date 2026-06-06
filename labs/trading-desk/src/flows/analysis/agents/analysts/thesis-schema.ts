@@ -8,7 +8,7 @@
  * without round-tripping through the full memo state.
  */
 import { z } from "zod";
-import { thesisSection } from "../../resources";
+import { thesisSection } from "../../resources/memos";
 
 /** A single auditable citation. `url` and `title` only — inline `[n]`
  *  markers and per-claim source IDs are deferred (FIX-612 v1 is body-

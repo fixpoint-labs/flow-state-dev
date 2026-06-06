@@ -21,7 +21,8 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { memoSectionTexts, normalizeWhitespace } from "../../lib/format";
-import { memosCollection, phase2Contributions } from "../../resources";
+import { memosCollection } from "../../resources/memos";
+import { phase2Contributions } from "../../resources/phase2-contributions";
 import { sessionStateSchema } from "../../state";
 import type { RoundRobinContributionEntry } from "@flow-state-dev/patterns/round-robin";
 

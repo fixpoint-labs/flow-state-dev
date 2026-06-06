@@ -25,7 +25,7 @@ import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { z } from "zod";
 import { PHASE_6_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
-import { memoCitation, thesisSection } from "../../resources";
+import { memoCitation, thesisSection } from "../../resources/memos";
 import { sessionStateSchema } from "../../state";
 import { loadPrompt } from "../../lib/prompt";
 import { thesisValidatorApproachGenerator } from "./approach";

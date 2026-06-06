@@ -18,7 +18,7 @@ import {
   type AgentName,
   type AnyMemoShortName,
 } from "@/src/flows/analysis/registry";
-import type { MemoStatus } from "@/src/flows/analysis/resources";
+import type { MemoStatus } from "@/src/flows/analysis/resources/memos";
 import { cn } from "@/lib/utils";
 
 type MemoSidebarProps = {

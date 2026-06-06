@@ -18,7 +18,7 @@ import { ThesisBody } from "./thesis-body";
 import type {
   MemoState,
   ThesisSection,
-} from "@/src/flows/analysis/resources";
+} from "@/src/flows/analysis/resources/memos";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;

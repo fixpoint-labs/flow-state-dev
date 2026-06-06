@@ -19,7 +19,7 @@ import { loadFixture } from "./tools/runtime/fixtures";
 import {
   priceHistoryResource,
   type PriceHistorySlice,
-} from "./price-history-resource";
+} from "./resources/price-history";
 import { sessionStateSchema } from "./state";
 
 export const storePriceHistory = handler({

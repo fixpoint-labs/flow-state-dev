@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { computeConvergence } from "../src/flows/analysis/agents/lenses/convergence-math";
 import { LENS_PACK } from "../src/flows/analysis/agents/lenses/lenses";
 import { LENS_IDS } from "../src/flows/analysis/registry";
-import type { LensVerdictRecord } from "../src/flows/analysis/agents/lenses/lens-convergence-resource";
+import type { LensVerdictRecord } from "../src/flows/analysis/resources/lens-convergence";
 
 /** Minimal verdict record builder — only the fields the math reads matter. */
 function verdict(

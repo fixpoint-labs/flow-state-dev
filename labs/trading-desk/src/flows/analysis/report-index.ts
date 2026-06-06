@@ -10,8 +10,8 @@
  *
  * Import-safe in the browser: zod + plain types only. No
  * `@flow-state-dev/core` resource imports, no Node-only model resolvers. The
- * decision-snapshot resource (the heavy, scoreable record) lives in the
- * sibling `decision-snapshot-resource.ts` and is never imported from here.
+ * decision-snapshot resource (the heavy, scoreable record) lives in
+ * `resources/decision-snapshot.ts` and is never imported from here.
  */
 import { z } from "zod";
 

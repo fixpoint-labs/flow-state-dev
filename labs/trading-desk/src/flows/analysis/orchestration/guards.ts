@@ -22,9 +22,9 @@ import { z } from "zod";
 import { PHASE_1_MEMO_KEYS } from "../registry";
 import { analyzeInputSchema } from "../flow-schema";
 import { resolveTicker } from "../lib/ticker-resolver";
-import { memoResources, type MemoStatus } from "../resources";
+import { memoResources, type MemoStatus } from "../resources/memos";
 import { specialInstructionsStateSchema } from "../special-instructions";
-import { specialInstructionsResource } from "../special-instructions-resource";
+import { specialInstructionsResource } from "../resources/special-instructions";
 import { sessionStateSchema } from "../state";
 import {
   accountsCollection,

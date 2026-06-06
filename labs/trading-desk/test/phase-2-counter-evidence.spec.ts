@@ -11,7 +11,8 @@ import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { find_counter_evidence } from "../src/flows/analysis/agents/research/tools/find_counter_evidence";
 import { PHASE_1_MEMO_KEYS } from "../src/flows/analysis/registry";
-import { memosCollection, phase2Contributions } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
+import { phase2Contributions } from "../src/flows/analysis/resources/phase2-contributions";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const flow = defineFlow({

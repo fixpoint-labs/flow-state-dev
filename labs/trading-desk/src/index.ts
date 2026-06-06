@@ -24,5 +24,5 @@ export {
   memosCollection,
   memoStateSchema,
   memoStatusSchema,
-} from "./flows/analysis/resources";
-export type { MemoState, MemoStatus, ThesisSection } from "./flows/analysis/resources";
+} from "./flows/analysis/resources/memos";
+export type { MemoState, MemoStatus, ThesisSection } from "./flows/analysis/resources/memos";

@@ -14,7 +14,7 @@ import type { ReactElement } from "react";
 import { AgentBadge } from "@/components/agent-badge";
 import { AGENTS, type AgentName } from "@/src/flows/analysis/registry";
 import { ThesisBody } from "./thesis-body";
-import type { ThesisSection } from "@/src/flows/analysis/resources";
+import type { ThesisSection } from "@/src/flows/analysis/resources/memos";
 import { cn } from "@/lib/utils";
 
 const TRIGGER_SOURCE_LABELS: Record<string, string> = {

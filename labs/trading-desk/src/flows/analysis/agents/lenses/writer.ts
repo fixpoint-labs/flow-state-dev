@@ -22,9 +22,9 @@ import { computeConvergence } from "./convergence-math";
 import {
   lensConvergenceResource,
   type LensVerdictRecord,
-} from "./lens-convergence-resource";
+} from "../../resources/lens-convergence";
 import { memoHandler, publishMemo } from "../_recipe/memo-writer";
-import { memoResources, type ThesisSection } from "../../resources";
+import { memoResources, type ThesisSection } from "../../resources/memos";
 import { sessionStateSchema } from "../../state";
 import { lensVerdictOutputSchema } from "./lens-verdict-schema";
 import { LENS_BODY_SECTION } from "./lens-body-sections";

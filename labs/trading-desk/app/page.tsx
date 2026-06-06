@@ -25,7 +25,7 @@ import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
 import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
-import type { MemoStatus } from "@/src/flows/analysis/resources";
+import type { MemoStatus } from "@/src/flows/analysis/resources/memos";
 import type { AnyMemoShortName } from "@/src/flows/analysis/registry";
 import {
   EMPTY_INSTRUCTIONS,

@@ -43,7 +43,7 @@ import {
   type AnyMemoShortName,
   type MemoKeyEntry,
 } from "../../registry";
-import { memoResources, type MemoState } from "../../resources";
+import { memoResources, type MemoState } from "../../resources/memos";
 import { sessionStateSchema, type SessionState } from "../../state";
 
 // ---------------------------------------------------------------------------

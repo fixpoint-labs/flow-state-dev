@@ -16,7 +16,7 @@ import {
   markError,
   markWriting,
 } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 import {
   personaCritiqueOutputSchema,

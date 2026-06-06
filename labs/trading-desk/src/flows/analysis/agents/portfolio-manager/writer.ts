@@ -28,17 +28,17 @@ import {
 import {
   decisionSnapshotResource,
   type DecisionSnapshotState,
-} from "../../decision-snapshot-resource";
+} from "../../resources/decision-snapshot";
 import { clampRatingToBand } from "../../lib/rating-engine";
 import { publishMemo } from "../_recipe/memo-writer";
 import type { ReportDecisionMeta } from "../../report-index";
-import { memoResources } from "../../resources";
+import { memoResources } from "../../resources/memos";
 import { sessionStateSchema } from "../../state";
-import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
+import { valuationSpineResource, type ValuationSpineState } from "../../resources/valuation-spine";
 import {
   lensConvergenceResource,
   type LensConvergenceState,
-} from "../lenses/lens-convergence-resource";
+} from "../../resources/lens-convergence";
 import { portfolioDecisionOutputSchema } from "./portfolio-manager";
 
 // ── Portfolio manager ────────────────────────────────────────────────

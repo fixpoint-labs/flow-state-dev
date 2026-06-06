@@ -19,7 +19,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../src/flows/analysis/store-price-history";
-import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
+import { priceHistoryResource } from "../src/flows/analysis/resources/price-history";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 

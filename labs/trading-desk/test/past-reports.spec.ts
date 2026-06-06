@@ -25,8 +25,8 @@ import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/server
 import { testFlow } from "@flow-state-dev/testing";
 import { checkTickerResolvable } from "../src/flows/analysis/orchestration/guards";
 import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
-import { decisionSnapshotResource } from "../src/flows/analysis/decision-snapshot-resource";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { decisionSnapshotResource } from "../src/flows/analysis/resources/decision-snapshot";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import {
   parseReportRow,
   relativeTime,
@@ -38,7 +38,7 @@ import { sessionStateSchema } from "../src/flows/analysis/state";
 import {
   valuationSpineResource,
   type ValuationSpineState,
-} from "../src/flows/analysis/valuation-spine-resource";
+} from "../src/flows/analysis/resources/valuation-spine";
 
 // ── 1. parseReportRow ────────────────────────────────────────────────
 

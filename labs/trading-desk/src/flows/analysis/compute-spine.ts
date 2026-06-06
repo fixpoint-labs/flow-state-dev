@@ -13,7 +13,7 @@ import { loadFixture } from "./tools/runtime/fixtures";
 import type { ToolName } from "./tools/schemas";
 import { computeValuation } from "./lib/valuation";
 import { buildValuationSpine } from "./lib/valuation-spine";
-import { valuationSpineResource } from "./valuation-spine-resource";
+import { valuationSpineResource } from "./resources/valuation-spine";
 import { sessionStateSchema } from "./state";
 
 function pickMode(state: { dataSource: string }): "fixture" | "live" {

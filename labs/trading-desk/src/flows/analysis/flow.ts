@@ -12,22 +12,20 @@
  * client's `useClientData` hook.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import { decisionSnapshotResource } from "./decision-snapshot-resource";
+import { decisionSnapshotResource } from "./resources/decision-snapshot";
 import { analyze } from "./orchestration/analyze";
 import { setInstructions } from "./orchestration/guards";
-import { lensConvergenceResource } from "./agents/lenses/lens-convergence-resource";
-import { priceHistoryResource } from "./price-history-resource";
+import { lensConvergenceResource } from "./resources/lens-convergence";
+import { priceHistoryResource } from "./resources/price-history";
 import {
   accountsCollection,
   portfolioQuotesResource,
 } from "../portfolio/portfolio-resources";
-import {
-  memosCollection,
-  phase2Contributions,
-} from "./resources";
-import { specialInstructionsResource } from "./special-instructions-resource";
+import { memosCollection } from "./resources/memos";
+import { phase2Contributions } from "./resources/phase2-contributions";
+import { specialInstructionsResource } from "./resources/special-instructions";
 import { sessionStateSchema } from "./state";
-import { valuationSpineResource } from "./valuation-spine-resource";
+import { valuationSpineResource } from "./resources/valuation-spine";
 
 export { sessionStateSchema, type SessionState } from "./state";
 export { analyzeInputSchema, type AnalyzeInput } from "./flow-schema";

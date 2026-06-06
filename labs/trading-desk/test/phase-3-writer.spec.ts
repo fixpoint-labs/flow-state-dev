@@ -8,7 +8,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { commitTraderMemo } from "../src/flows/analysis/agents/trader/writer";
 import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/analysis/resources";
+import { memosCollection } from "../src/flows/analysis/resources/memos";
 import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const writeTrader = markWriting("trader");

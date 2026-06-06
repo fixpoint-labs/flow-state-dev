@@ -12,8 +12,8 @@
  * which keeps the real-money trust gate honest: there is exactly one mapping
  * from stored stance labels to the convergence axis, and it is unit-tested.
  */
-import type { MemoState } from "@/src/flows/analysis/resources";
-import type { ValuationSpineState } from "@/src/flows/analysis/valuation-spine-resource";
+import type { MemoState } from "@/src/flows/analysis/resources/memos";
+import type { ValuationSpineState } from "@/src/flows/analysis/resources/valuation-spine";
 import {
   AGENTS,
   ALL_MEMO_KEYS,

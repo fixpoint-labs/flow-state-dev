@@ -18,7 +18,7 @@ import { z } from "zod";
 import { PHASE_3_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { loadPrompt } from "../../lib/prompt";
-import { thesisSection } from "../../resources";
+import { thesisSection } from "../../resources/memos";
 import { sessionStateSchema } from "../../state";
 import { traderApproachGenerator } from "./approach";
 
