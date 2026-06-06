@@ -150,7 +150,7 @@ The thrown error also sets `retryable`: a 5xx, a network failure, or a timeout i
 | Request times out | Throws with `errorType: "timeout"` | Yes |
 | URL redirects | Follows redirects automatically (standard fetch behavior) | — |
 | Page has no readable content | Returns best-effort markdown, no error | — |
-| Firecrawl API error | Throws with the Firecrawl error message | Yes |
+| Firecrawl API error | Throws with the Firecrawl error message | No (fails fast — no status to judge) |
 
 To branch on the failure yourself, read `error.details` in a rescue or catch:
 

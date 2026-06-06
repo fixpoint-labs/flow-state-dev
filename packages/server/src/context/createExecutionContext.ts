@@ -56,7 +56,7 @@ import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
-import { normalizeError } from "../errors/normalize-error";
+import { normalizeError, displayCause } from "../errors/normalize-error";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
@@ -2633,9 +2633,14 @@ export async function createExecutionContext<
             if (generatorModelIdentity !== undefined) {
               (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
             }
-            // Fold any error cause chain into details so intermediate
-            // failures aren't swallowed on the failed block_trace.
-            const blockTraceErrorDetails = errorDetailsWithCause(normalized);
+            // Fold the error cause chain into details so intermediate
+            // failures aren't swallowed on the failed block_trace. `displayCause`
+            // unwraps the synthetic layer normalizeError adds for plain throws,
+            // so this matches the tool-output seam for the same failure.
+            const blockTraceErrorDetails = errorDetailsWithCause({
+              details: normalized.details,
+              cause: displayCause(normalized),
+            });
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",

@@ -39,6 +39,9 @@ export function classifyFetchFailure(err: unknown): FetchErrorType {
   const name = (err as { name?: unknown } | null)?.name;
   if (name === "AbortError") return "abort";
   if (name === "TimeoutError") return "timeout";
+  // The bundled adapters only route transport throws (always a `TypeError`)
+  // here, so `parse` is not reached today; it keeps the classifier complete for
+  // an adapter that parses a response body inside its own transport guard.
   if (err instanceof SyntaxError) return "parse";
 
   const code = findCode(err);
@@ -119,11 +122,15 @@ export function transportFetchError(provider: string, url: string, cause: unknow
 /**
  * Build the `FlowError` thrown when a provider SDK reports failure without an
  * HTTP `Response` to inspect (e.g. Firecrawl's `{ success: false, error }`).
+ *
+ * Defaults to `retryable: false` (fail fast): with no status to inspect, the
+ * failure could be permanent (bad API key, blocked content, invalid URL), and
+ * retrying an opaque SDK error just burns the retry budget before surfacing it.
  */
 export function providerFetchError(provider: string, url: string, message: string): FlowError {
   return new FlowError(`${provider} fetch failed: ${message} for ${url}`, {
     code: "fetch_provider_error",
-    retryable: true,
+    retryable: false,
     details: {
       errorType: "http" satisfies FetchErrorType,
       url,
