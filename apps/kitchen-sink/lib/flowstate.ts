@@ -15,7 +15,8 @@
 import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, filesystemStores, inMemoryStores } from "@flow-state-dev/server";
+import { createFlowState, createFlowRegistry, createModelResolver, createInMemoryStores, inMemoryStores, filesystemStores } from "@flow-state-dev/server";
+import type { RuntimeConfig } from "@flow-state-dev/server";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -24,7 +25,7 @@ import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
-import { createBullmqRuntime } from "@flow-state-dev/bullmq";
+import { createBullmqRuntime, createRedisStreamBridge } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
@@ -121,8 +122,54 @@ export const flowstate = createFlowState({
   },
 });
 
-if (bullmqRuntime) {
-  console.log("[flowstate] BullMQ runtime available (REDIS_URL set)");
+// Co-located worker: when REDIS_URL is set, start a worker in the same process
+// that processes enqueued jobs. Build deps from the same config used by createFlowState.
+if (bullmqRuntime && redisUrl) {
+  const registry = createFlowRegistry();
+  registry.register(chatAgentFlow);
+  registry.register(richTextComponentFlow);
+  registry.register(weeklyDigestFlow);
+
+  const stores = createInMemoryStores();
+
+  const runtimeConfig: RuntimeConfig = {
+    modelResolver:
+      process.env.KITCHEN_SINK_TEST_MODE === "1"
+        ? createKitchenSinkTestModelResolver()
+        : createModelResolver({
+            defaultModel: "vercel/anthropic/claude-sonnet-4.6",
+            intents: {
+              utility: [
+                "vercel/google/gemini-3.1-flash-lite",
+                "vercel/anthropic/claude-haiku-4.5",
+                "vercel/openai/gpt-5.4-nano",
+              ],
+              chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+              plan: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
+              synthesize: [
+                "vercel/anthropic/claude-sonnet-4.6",
+                "vercel/openai/gpt-5.5",
+                "vercel/google/gemini-2.5-pro",
+              ],
+              code: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+              reason: ["vercel/anthropic/claude-opus-4.7", "vercel/openai/gpt-5.5"],
+            },
+            gateways: gatewayApiKey
+              ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
+              : undefined,
+          }),
+  };
+
+  const bridge = createRedisStreamBridge({ connection: redisUrl });
+
+  bullmqRuntime.createWorker({
+    registry,
+    stores,
+    runtimeConfig,
+    bridge,
+  });
+
+  console.log("[flowstate] BullMQ co-located worker started (REDIS_URL set)");
 }
 
 export { bullmqRuntime };
