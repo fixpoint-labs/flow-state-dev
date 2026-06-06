@@ -21,7 +21,8 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
   resolveOrgStorageKey,
-  resolveUserStorageKey
+  resolveUserStorageKey,
+  resourceScopeIds
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
@@ -128,32 +129,45 @@ export async function getPersistedData(
   }
 
   if (scope === "user") {
-    // Forward the full flow object — `resolveUserStorageKey` consults
-    // `flow.resources` to honor per-resource `flowIsolation` overrides
-    // (FIX-435). Stripping the field would silently route to the wrong
-    // storage key when any user-scope resource sets its own override.
-    const user = await ctx.stores.user.get(
-      resolveUserStorageKey(session.userId, toIsolationFlow(flow))
-    );
+    const isoFlow = toIsolationFlow(flow);
+    const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, isoFlow));
     if (!user) return undefined;
+    // FIX-735: resources key per isolation bucket (bare `{userId}` when shared,
+    // `{userId}:{flowKind}` when isolated). Read every bucket the flow declares
+    // and merge — the snapshot/clientData builders filter to declared configs,
+    // so other flows' shared rows under the bare key never surface.
+    const scopeIds = resourceScopeIds(session.userId, isoFlow, "user");
     const [resources, content] = await Promise.all([
-      ctx.stores.resourceState.getAll("user", user.id),
-      ctx.stores.content.getAll("user", user.id)
+      mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
+      mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("user", id)))
     ]);
     return { resources, content };
   }
 
   // org
   if (!session.orgId) return undefined;
-  const org = await ctx.stores.org.get(
-    resolveOrgStorageKey(session.orgId, toIsolationFlow(flow))
-  );
+  const isoFlow = toIsolationFlow(flow);
+  const org = await ctx.stores.org.get(resolveOrgStorageKey(session.orgId, isoFlow));
   if (!org) return undefined;
+  const scopeIds = resourceScopeIds(session.orgId, isoFlow, "org");
   const [resources, content] = await Promise.all([
-    ctx.stores.resourceState.getAll("org", org.id),
-    ctx.stores.content.getAll("org", org.id)
+    mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id))),
+    mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   return { resources, content };
+}
+
+/**
+ * Await per-bucket store reads and merge them into one map. Used by the
+ * read paths to coalesce a scope's shared and isolated isolation buckets
+ * (FIX-735). Keys never collide across buckets — a resource lives in exactly
+ * one — so merge order is immaterial.
+ */
+async function mergeScopeReads<T>(
+  reads: Array<Promise<Record<string, T>>>
+): Promise<Record<string, T>> {
+  const results = await Promise.all(reads);
+  return Object.assign({}, ...results) as Record<string, T>;
 }
 
 /**

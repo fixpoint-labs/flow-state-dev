@@ -8,7 +8,8 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
   resolveOrgStorageKey,
-  resolveUserStorageKey
+  resolveUserStorageKey,
+  resourceScopeIds
 } from "../stores/scope-keys";
 import {
   buildResourceSnapshot,
@@ -24,6 +25,18 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
+
+/**
+ * Await per-bucket store reads and merge them into one map (FIX-735). A
+ * resource lives in exactly one isolation bucket, so keys never collide and
+ * merge order is immaterial. An empty input yields an empty map.
+ */
+async function mergeScopeReads<T>(
+  reads: Array<Promise<Record<string, T>>>
+): Promise<Record<string, T>> {
+  const results = await Promise.all(reads);
+  return Object.assign({}, ...results) as Record<string, T>;
+}
 
 type StateRouteContext = {
   registry: FlowRegistry;
@@ -107,15 +120,33 @@ export async function handleGetSessionState(
   // Resource content is canonical in ContentStore (FIX-347); resource state is
   // canonical in ResourceStateStore (FIX-689). Both are keyed per-resource,
   // separate from the scope record.
+  //
+  // FIX-735: user/org resources key per isolation bucket (bare id when shared,
+  // `{id}:{flowKind}` when isolated), so read every declared bucket and merge.
+  // The snapshot/clientData builders filter to declared configs, so other
+  // flows' shared rows under the bare key never leak in.
+  const isoFlow = {
+    kind: flow.kind,
+    isolateUserState: flow.isolateUserState ?? false,
+    isolateOrgState: flow.isolateOrgState ?? false,
+    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
+  };
+  const userScopeIds =
+    user !== undefined ? resourceScopeIds(session.userId, isoFlow, "user") : [];
+  const orgScopeIds =
+    org !== undefined && session.orgId !== undefined
+      ? resourceScopeIds(session.orgId, isoFlow, "org")
+      : [];
+
   const [sessionContent, userContent, orgContent] = await Promise.all([
     ctx.stores.content.getAll("session", session.id),
-    user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
-    org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
+    mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
+    mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   const [sessionState, userState, orgState] = await Promise.all([
     ctx.stores.resourceState.getAll("session", session.id),
-    user !== undefined ? ctx.stores.resourceState.getAll("user", user.id) : Promise.resolve({}),
-    org !== undefined ? ctx.stores.resourceState.getAll("org", org.id) : Promise.resolve({})
+    mergeScopeReads(userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
+    mergeScopeReads(orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id)))
   ]);
 
   // FIX-435: partition the flat flow.resources map back into per-scope
