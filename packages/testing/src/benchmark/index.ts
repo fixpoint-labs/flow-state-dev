@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 import { generator, sequencer } from "@flow-state-dev/core";
-import type { SequencerDefinition } from "@flow-state-dev/core";
+import type { SequencerDefinition, UsesSlot } from "@flow-state-dev/core";
 import type {
   BenchmarkRegistry,
   BenchmarkSubject,
@@ -64,6 +64,10 @@ export function baselineSubject(opts: {
 export type ComparePatternsConfig = Omit<RunBenchmarkConfig, "subjects"> & {
   /** Append the single-generator baseline. Default true. */
   baseline?: boolean;
+  /** Capabilities forwarded to each adapter's `build({ uses })`, so benchmarks
+   *  that need tools (web search, code execution) can run via this convenience
+   *  path rather than building subjects by hand. */
+  uses?: UsesSlot;
 };
 
 /**
@@ -84,14 +88,14 @@ export async function comparePatterns(
         `Unknown benchmark pattern "${name}". Available: ${available}.`,
       );
     }
-    return adapter.build({ model: config.model });
+    return adapter.build({ model: config.model, uses: config.uses });
   });
 
   if (config.baseline !== false) {
     subjects.push(baselineSubject({ model: config.model }));
   }
 
-  const { baseline: _baseline, ...runConfig } = config;
+  const { baseline: _baseline, uses: _uses, ...runConfig } = config;
   return runBenchmark({ ...runConfig, subjects });
 }
 

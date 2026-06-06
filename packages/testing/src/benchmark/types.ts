@@ -64,6 +64,9 @@ export interface SubjectCategoryStat {
   costUsd: number;
   /** Mean wall-clock latency (ms) per cell. */
   meanLatencyMs: number;
+  /** Mean of each optional code scorer (from `RunBenchmarkConfig.scorers`) across
+   *  successful cells. Empty when no code scorers were configured. */
+  codeScores: Record<string, number>;
 }
 
 /** A subject's standing within a category ranking. */

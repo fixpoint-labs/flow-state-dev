@@ -97,6 +97,18 @@ describe("buildBenchmarkReport", () => {
     expect(debate?.credible).toBe(false);
   });
 
+  it("aggregates optional code scorer means across successful cells", () => {
+    const runs: BenchmarkRunResult[] = [
+      cell({ subject: "p", kind: "pattern", score: 0.9, run: 0, codeScores: { exactMatch: 1 } }),
+      cell({ subject: "p", kind: "pattern", score: 0.7, run: 1, codeScores: { exactMatch: 0 } }),
+    ];
+    const report = buildBenchmarkReport(runs, meta);
+    const stat = report.stats.find(
+      (s) => s.subject === "p" && s.category === "overall",
+    );
+    expect(stat?.codeScores.exactMatch).toBeCloseTo(0.5, 5);
+  });
+
   it("excludes errored cells from score stats but keeps them in run counts", () => {
     const runs: BenchmarkRunResult[] = [
       cell({ subject: "rlm", kind: "pattern", score: 0.8, run: 0 }),

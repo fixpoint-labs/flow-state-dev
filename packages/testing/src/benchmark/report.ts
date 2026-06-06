@@ -71,6 +71,24 @@ function aggregate(
   const meanLatencyMs =
     cells.length > 0 ? cells.reduce((acc, c) => acc + c.latencyMs, 0) / cells.length : 0;
 
+  // Mean of each optional code scorer across the successful cells that recorded
+  // it, so deterministic scorers passed in `RunBenchmarkConfig.scorers` surface
+  // in the report alongside the judge score.
+  const codeScoreAcc: Record<string, { sum: number; n: number }> = {};
+  for (const c of successful) {
+    if (c.codeScores === undefined) continue;
+    for (const [name, value] of Object.entries(c.codeScores)) {
+      const acc = codeScoreAcc[name] ?? { sum: 0, n: 0 };
+      acc.sum += value;
+      acc.n += 1;
+      codeScoreAcc[name] = acc;
+    }
+  }
+  const codeScores: Record<string, number> = {};
+  for (const [name, { sum, n }] of Object.entries(codeScoreAcc)) {
+    codeScores[name] = round(sum / n);
+  }
+
   return {
     subject,
     category,
@@ -80,7 +98,8 @@ function aggregate(
     runs: cells.length,
     successfulRuns: successful.length,
     costUsd: round(costUsd),
-    meanLatencyMs: round(meanLatencyMs, 1)
+    meanLatencyMs: round(meanLatencyMs, 1),
+    codeScores
   };
 }
 

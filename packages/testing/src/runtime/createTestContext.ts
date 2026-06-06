@@ -491,6 +491,19 @@ export async function createTestContext<TInput = unknown>(
 
   // A real resolver injected by the caller (e.g. the benchmark engine) wins over
   // the deterministic mock resolver; absent one, fall back to the scripted mock.
+  // Warn if the caller mixed both: the mock-config options are ignored when a
+  // resolver is supplied, which is easy to do by accident.
+  if (
+    options.modelResolver !== undefined &&
+    (options.generators !== undefined ||
+      options.models !== undefined ||
+      options.unmockedGeneratorPolicy !== undefined)
+  ) {
+    console.warn(
+      "[flow-state-dev] createTestContext: `modelResolver` overrides the mock " +
+        "resolver, so `generators`/`models`/`unmockedGeneratorPolicy` are ignored.",
+    );
+  }
   const modelResolver = options.modelResolver ?? createMockModelResolver({
     generators: options.generators,
     models: options.models,
