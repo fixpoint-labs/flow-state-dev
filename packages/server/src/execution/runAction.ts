@@ -298,6 +298,9 @@ async function emitTerminalError(
     emitItemDone: (item: ErrorItem) => Promise<unknown>;
   };
 
+  // Fold any error cause chain into details so intermediate failures aren't
+  // swallowed on the terminal error item.
+  const details = errorDetailsWithCause(error);
   const item: ErrorItem = {
     id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "error",
@@ -308,7 +311,7 @@ async function emitTerminalError(
     ts: Date.now(),
     message: error.message,
     code: error.code,
-    ...(errorDetailsWithCause(error) ? { details: errorDetailsWithCause(error) } : {})
+    ...(details ? { details } : {})
   };
 
   await response.emitItemAdded(item);

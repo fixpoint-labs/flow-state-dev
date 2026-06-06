@@ -2633,6 +2633,9 @@ export async function createExecutionContext<
             if (generatorModelIdentity !== undefined) {
               (childContext as { _generatorModelIdentity?: unknown })._generatorModelIdentity = undefined;
             }
+            // Fold any error cause chain into details so intermediate
+            // failures aren't swallowed on the failed block_trace.
+            const blockTraceErrorDetails = errorDetailsWithCause(normalized);
             childContext._runtimeHooks?.onBlockTraceCapture?.(
               {
                 phase: "output",
@@ -2641,14 +2644,11 @@ export async function createExecutionContext<
                   output: { kind: "inline", value: undefined },
                   completedAt,
                   duration: completedAt - traceStartedAt,
-                  error: (() => {
-                    const details = errorDetailsWithCause(normalized);
-                    return {
-                      message: normalized.message,
-                      code: normalized.code,
-                      ...(details ? { details } : {}),
-                    };
-                  })(),
+                  error: {
+                    message: normalized.message,
+                    code: normalized.code,
+                    ...(blockTraceErrorDetails ? { details: blockTraceErrorDetails } : {}),
+                  },
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
                 },

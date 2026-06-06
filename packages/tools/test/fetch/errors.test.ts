@@ -103,6 +103,22 @@ describe("builtin adapter error shaping", () => {
     expect(err.details).toMatchObject({ errorType: "http", httpStatus: 503 });
   });
 
+  it("marks a 429 rate-limited response retryable", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      text: () => Promise.resolve("slow down"),
+    });
+
+    const err = (await builtinFetchAdapter
+      .fetch("https://example.com", { waitForJS: false })
+      .catch((e) => e)) as FlowError;
+
+    expect(err.retryable).toBe(true);
+    expect(err.details).toMatchObject({ errorType: "http", httpStatus: 429 });
+  });
+
   it("throws a classified FlowError carrying the cause on a transport failure", async () => {
     const cause = new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
     globalThis.fetch = vi.fn().mockRejectedValue(cause);
@@ -115,6 +131,6 @@ describe("builtin adapter error shaping", () => {
     expect(err.code).toBe("fetch_transport_error");
     expect(err.retryable).toBe(true);
     expect(err.cause).toBe(cause);
-    expect(err.details).toMatchObject({ errorType: "network", causeCode: "ECONNRESET" });
+    expect(err.details).toMatchObject({ errorType: "network" });
   });
 });

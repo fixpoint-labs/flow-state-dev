@@ -76,7 +76,8 @@ export function httpFetchError(
   res: Response,
   body: string
 ): FlowError {
-  const retryable = res.status >= 500;
+  // 5xx is transient; 429 (rate limited) and 408 (request timeout) are too.
+  const retryable = res.status >= 500 || res.status === 429 || res.status === 408;
   return new FlowError(
     `${provider} fetch failed: ${res.status} ${res.statusText} for ${url}`,
     {
@@ -102,14 +103,14 @@ export function httpFetchError(
 export function transportFetchError(provider: string, url: string, cause: unknown): FlowError {
   const errorType = classifyFetchFailure(cause);
   const retryable = errorType === "network" || errorType === "timeout";
-  const code = findCode(cause);
+  // The underlying code (e.g. ECONNRESET) is preserved on the serialized
+  // `cause` chain downstream, so it isn't duplicated as a flat detail key.
   return new FlowError(`${provider} fetch failed (${errorType}) for ${url}`, {
     code: "fetch_transport_error",
     retryable,
     cause,
     details: {
       errorType,
-      ...(code ? { causeCode: code } : {}),
       url,
     },
   });
