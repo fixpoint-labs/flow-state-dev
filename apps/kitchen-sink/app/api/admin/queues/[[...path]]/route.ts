@@ -54,8 +54,16 @@ async function handler(req: Request): Promise<Response> {
         if (v != null)
           responseHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
       }
+      // The Web Response constructor forbids a body on "null body status"
+      // codes (101, 103, 204, 205, 304). Bull Board's static asset serving
+      // returns 304 on conditional requests, so pass null instead of an
+      // (empty) buffer to avoid a TypeError that escapes as an uncaughtException.
+      const nullBodyStatus = new Set([101, 103, 204, 205, 304]);
+      const responseBody = nullBodyStatus.has(nodeRes.statusCode)
+        ? null
+        : Buffer.concat(chunks);
       resolve(
-        new Response(Buffer.concat(chunks), {
+        new Response(responseBody, {
           status: nodeRes.statusCode,
           headers: responseHeaders,
         })
