@@ -10,7 +10,7 @@ import type {
   Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { SuspensionError } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { mergeMiddlewareStacks } from "../middleware/compose";
@@ -307,7 +307,8 @@ async function emitTerminalError(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: error.message,
-    code: error.code
+    code: error.code,
+    ...(errorDetailsWithCause(error) ? { details: errorDetailsWithCause(error) } : {})
   };
 
   await response.emitItemAdded(item);

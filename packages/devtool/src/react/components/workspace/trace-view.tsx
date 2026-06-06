@@ -13,7 +13,7 @@ import { useDebug } from "../../context/debug-context";
 import { useTraceLookup } from "../../context/trace-context";
 import { isInternalBlockValue } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
-import { cn } from "../../lib/utils";
+import { cn, errorSummary } from "../../lib/utils";
 
 type TraceViewProps = {
   requestGroups: RequestGroup[];
@@ -249,6 +249,10 @@ function TraceNodeView({
       node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
         ? node.traceItem.error?.message
         : undefined;
+    const traceErrorSummary =
+      node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
+        ? errorSummary(node.traceItem.error?.details)
+        : undefined;
 
     // Chevron toggles expansion; clicking the row body selects the block.
     // Keeping these separate means you can inspect a block without
@@ -294,6 +298,11 @@ function TraceNodeView({
             </span>
           )}
           {node.phase === "work" && <BackgroundBadge />}
+          {traceErrorSummary && (
+            <span className="text-[10px] font-mono px-1 py-0 rounded border border-red-700/60 text-red-300 shrink-0">
+              {traceErrorSummary}
+            </span>
+          )}
           {traceError && (
             <span
               className="text-[11px] text-red-400/80 truncate max-w-[20rem]"

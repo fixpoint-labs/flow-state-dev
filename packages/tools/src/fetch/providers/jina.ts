@@ -1,4 +1,5 @@
 import type { FetchProviderAdapter, FetchResult } from "../types";
+import { httpFetchError, readTruncatedBody, transportFetchError } from "../errors";
 
 export const jinaFetchAdapter: FetchProviderAdapter = {
   name: "jina",
@@ -10,14 +11,17 @@ export const jinaFetchAdapter: FetchProviderAdapter = {
       headers["Authorization"] = `Bearer ${options.apiKey}`;
     }
 
-    const response = await globalThis.fetch(`https://r.jina.ai/${url}`, {
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await globalThis.fetch(`https://r.jina.ai/${url}`, {
+        headers,
+      });
+    } catch (cause) {
+      throw transportFetchError("jina", url, cause);
+    }
 
     if (!response.ok) {
-      throw new Error(
-        `Jina Reader error: ${response.status} ${response.statusText}`
-      );
+      throw httpFetchError("jina", url, response, await readTruncatedBody(response));
     }
 
     const data = (await response.json()) as {

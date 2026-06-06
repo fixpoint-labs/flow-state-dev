@@ -7,7 +7,7 @@ import { useState } from "react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { AlertTriangle, Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
-import { safeParseJson } from "../../lib/utils";
+import { safeParseJson, errorSummary } from "../../lib/utils";
 
 export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -36,7 +36,9 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
         }
         <span className={`font-mono ${isFailed ? "text-red-300" : "text-purple-300"}`}>{item.toolCall.name}</span>
         {isFailed
-          ? <span className="text-red-400/70 font-mono truncate">failed</span>
+          ? <span className="text-red-400/70 font-mono truncate">
+              failed{errorSummary(item.error?.details) ? ` · ${errorSummary(item.error?.details)}` : ""}
+            </span>
           : <span className="text-slate-500 font-mono truncate">({truncatedArgs})</span>
         }
         {item.cached === true && (

@@ -194,6 +194,50 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     expect(doneForFailing).toBeDefined();
   });
 
+  it("failed block: serializes the error cause chain into block_trace.error.details (FIX-723)", async () => {
+    const failing = handler({
+      name: "h-fails-cause",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        const root = Object.assign(new TypeError("fetch failed"), { code: "ENOTFOUND" });
+        throw new Error("upstream failed", { cause: root });
+      }
+    });
+
+    const pipeline = sequencer({
+      name: "fail-cause-seq",
+      inputSchema: z.object({})
+    }).step(failing);
+
+    const flow = defineFlow({
+      kind: "fail-cause-flow",
+      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+    })();
+
+    const stores = createInMemoryStores();
+    const response = createResponseEmitter({ requestId: "req_lf3", now: () => Date.now() });
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u",
+      sessionId: "s",
+      stores,
+      responseEmitter: response,
+      runtimeConfig: {}
+    });
+
+    const failingTrace = getTraces(response.getItems()).find(
+      (t) => t.blockName === "h-fails-cause"
+    );
+    expect(failingTrace!.status).toBe("failed");
+    expect(failingTrace!.error?.details?.cause).toMatchObject({
+      message: "upstream failed",
+      cause: { name: "TypeError", message: "fetch failed", code: "ENOTFOUND" }
+    });
+  });
+
   it("trace observability disabled: no block_trace items emitted", async () => {
     process.env.FSDEV_TRACE_OBSERVABILITY = "false";
     const block = handler({

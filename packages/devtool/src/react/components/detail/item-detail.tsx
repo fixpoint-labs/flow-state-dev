@@ -527,12 +527,7 @@ function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_trace"
 }
 
 function ErrorDetail({ item }: { item: DevtoolItem & { type: "error" } }) {
-  return (
-    <div className="space-y-2">
-      <MetadataRow label="Message" value={item.message} />
-      {item.code && <MetadataRow label="Code" value={item.code} mono />}
-    </div>
-  );
+  return <ErrorPanel error={{ message: item.message, code: item.code, details: item.details }} />;
 }
 
 function ReasoningDetail({ item }: { item: DevtoolItem & { type: "reasoning" } }) {
@@ -716,6 +711,44 @@ function MetadataRow({ label, value, mono, children }: { label: string; value?: 
   );
 }
 
+/** Serialized error node as produced by core's `serializeError` (FIX-723). */
+type SerializedErrorNode = {
+  name: string;
+  message: string;
+  code?: string;
+  cause?: SerializedErrorNode;
+};
+
+function isSerializedError(value: unknown): value is SerializedErrorNode {
+  return (
+    isObject(value) &&
+    typeof value.name === "string" &&
+    typeof value.message === "string"
+  );
+}
+
+/**
+ * Render a serialized `cause` chain as nested rows — each level shows the error
+ * name, its message, and the system/undici `code` when present, so a buried
+ * `ECONNRESET` is visible without expanding raw JSON.
+ */
+function CauseChain({ cause }: { cause: SerializedErrorNode }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[11px] font-mono text-slate-300">
+        <span className="text-red-300">{cause.name}</span>
+        {cause.code && <span className="text-amber-400 ml-1.5">[{cause.code}]</span>}
+        <span className="text-slate-400">: {cause.message}</span>
+      </div>
+      {cause.cause && (
+        <div className="pl-3 border-l border-slate-800">
+          <CauseChain cause={cause.cause} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Shared render for `{ message, code?, details? }` shaped errors used by the
  * block-trace, block-output, and tool-output detail panels. When `details` is
@@ -723,6 +756,10 @@ function MetadataRow({ label, value, mono, children }: { label: string; value?: 
  * (the runtime-emitted shape from `OutputValidationError`) are present, they
  * each render as dedicated sections so a generator-validation failure shows
  * the raw model text and a typed Zod-issues list without traversing JSON.
+ *
+ * The fetch tool's well-known keys (`errorType`, `httpStatus`, `responseBody`,
+ * and the serialized `cause` chain — FIX-723) likewise render as dedicated
+ * sections so a failed fetch is diagnosable without reading raw JSON.
  */
 function ErrorPanel({
   error,
@@ -734,30 +771,65 @@ function ErrorPanel({
   const issues = Array.isArray(details?.issues)
     ? (details.issues as Array<{ path?: Array<string | number>; message?: string }>)
     : undefined;
+  const errorType = typeof details?.errorType === "string" ? (details.errorType as string) : undefined;
+  const httpStatus = typeof details?.httpStatus === "number" ? (details.httpStatus as number) : undefined;
+  const httpStatusText =
+    typeof details?.httpStatusText === "string" ? (details.httpStatusText as string) : undefined;
+  const responseBody =
+    typeof details?.responseBody === "string" ? (details.responseBody as string) : undefined;
+  const cause = isSerializedError(details?.cause) ? details.cause : undefined;
   // Strip the well-known keys that already have dedicated sections above so
-  // the Details JSON catch-all doesn't duplicate the raw model output or the
-  // Zod issues. `phase` is contextual to validation failures and is shown via
-  // the issues list framing; omit it from the JSON too.
+  // the Details JSON catch-all doesn't duplicate them. `phase` is contextual to
+  // validation failures and is shown via the issues list framing; omit it too.
+  const WELL_KNOWN = new Set([
+    "rawOutput",
+    "issues",
+    "phase",
+    "errorType",
+    "httpStatus",
+    "httpStatusText",
+    "responseBody",
+    "cause",
+  ]);
   const remainingDetails =
     details !== undefined
-      ? Object.fromEntries(
-          Object.entries(details).filter(
-            ([k]) =>
-              !(rawOutput !== undefined && k === "rawOutput") &&
-              !(issues !== undefined && k === "issues") &&
-              k !== "phase"
-          )
-        )
+      ? Object.fromEntries(Object.entries(details).filter(([k]) => !WELL_KNOWN.has(k)))
       : undefined;
   return (
     <div className="space-y-2">
       <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
         <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
         <p className="text-xs text-red-300 mt-0.5 font-mono whitespace-pre-wrap">{error.message}</p>
+        {(httpStatus !== undefined || errorType !== undefined) && (
+          <div className="flex items-center gap-1.5 mt-1">
+            {httpStatus !== undefined && (
+              <span className="text-[10px] font-mono px-1.5 py-0 rounded border border-red-700/60 text-red-300">
+                HTTP {httpStatus}{httpStatusText ? ` ${httpStatusText}` : ""}
+              </span>
+            )}
+            {errorType !== undefined && errorType !== "http" && (
+              <span className="text-[10px] font-mono px-1.5 py-0 rounded border border-amber-700/60 text-amber-300">
+                {errorType}
+              </span>
+            )}
+          </div>
+        )}
         {error.code && (
           <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{error.code}</p>
         )}
       </div>
+      {responseBody !== undefined && (
+        <CollapsibleSection title="Response body" defaultOpen={true}>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {responseBody}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {cause !== undefined && (
+        <CollapsibleSection title="Cause" defaultOpen={true}>
+          <CauseChain cause={cause} />
+        </CollapsibleSection>
+      )}
       {rawOutput !== undefined && (
         <CollapsibleSection title="Raw output" defaultOpen={true}>
           <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">

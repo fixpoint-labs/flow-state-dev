@@ -97,6 +97,10 @@ Always works — falls back to built-in when no API keys are set.
 import { firecrawlFetch, jinaFetch, builtinFetch } from "@flow-state-dev/tools/fetch";
 ```
 
+### Error details
+
+When a fetch fails, the tool throws a `FlowError` whose `error.details` carries `errorType` (`"http"` / `"network"` / `"timeout"` / `"abort"` / `"parse"`), plus `httpStatus`, `httpStatusText`, and a truncated `responseBody` for HTTP failures, and the underlying `cause` for transport failures. `retryable` is set per class — 5xx / network / timeout are retryable, 4xx is not — so a generator's built-in retry handles transient failures for you. See [Error handling](https://flow-state.dev/docs/advanced/error-handling).
+
 ## Crawl
 
 Crawl a website starting from a root URL, following links breadth-first.

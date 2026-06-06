@@ -67,6 +67,7 @@ describe("jina fetch adapter", () => {
       ok: false,
       status: 429,
       statusText: "Too Many Requests",
+      text: () => Promise.resolve("rate limited"),
     });
 
     await expect(
@@ -74,6 +75,6 @@ describe("jina fetch adapter", () => {
         waitForJS: false,
         apiKey: "key",
       })
-    ).rejects.toThrow("Jina Reader error: 429 Too Many Requests");
+    ).rejects.toThrow("jina fetch failed: 429 Too Many Requests");
   });
 });

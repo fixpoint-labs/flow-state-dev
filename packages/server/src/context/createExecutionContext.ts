@@ -52,7 +52,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -2641,11 +2641,14 @@ export async function createExecutionContext<
                   output: { kind: "inline", value: undefined },
                   completedAt,
                   duration: completedAt - traceStartedAt,
-                  error: {
-                    message: normalized.message,
-                    code: normalized.code,
-                    ...(normalized.details ? { details: normalized.details } : {}),
-                  },
+                  error: (() => {
+                    const details = errorDetailsWithCause(normalized);
+                    return {
+                      message: normalized.message,
+                      code: normalized.code,
+                      ...(details ? { details } : {}),
+                    };
+                  })(),
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
                 },
