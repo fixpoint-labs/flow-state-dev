@@ -1,0 +1,13 @@
+---
+"@flow-state-dev/testing": minor
+"@flow-state-dev/patterns": minor
+"@flow-state-dev/cli": minor
+"@flow-state-dev/core": minor
+---
+
+Add a cross-pattern benchmark harness that runs a fixed task suite across multiple coordination patterns plus a single-generator baseline on one model and produces a comparative scorecard.
+
+- `@flow-state-dev/testing`: `runBenchmark`, `comparePatterns`, `baselineSubject`, `defineBenchmark`, `buildBenchmarkReport`, and `renderScorecard`. `testBlock` and `analyzerScorer` now accept an optional `modelResolver`, so subjects and the LLM judge can run against real models.
+- `@flow-state-dev/patterns`: benchmark adapters and `defaultBenchmarkRegistry` for the supervisor, plan-and-execute, parallel-tasks, round-robin, debate, and routed-specialists patterns, so adding a pattern adapter gets it benchmarked.
+- `@flow-state-dev/cli`: a `fsdev benchmark` command that runs a benchmark definition and prints a table, markdown, or JSON scorecard, with a cost ceiling and a distinct judge model.
+- `@flow-state-dev/core`: benchmark contract types (`BenchmarkTask`, `BenchmarkSubject`, `BenchmarkAdapter`, `BenchmarkRegistry`, `BenchmarkCategory`).
