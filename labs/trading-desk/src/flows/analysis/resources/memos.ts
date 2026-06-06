@@ -6,6 +6,17 @@
  * lazy content — because the renderer needs structured sections, not a
  * markdown blob, and `client.data` projects a sidebar-friendly summary
  * without an extra fetch.
+ *
+ * This is one collection with one wide, nullable state schema: every memo
+ * (analyst → research → trader → risk → PM → validator) shares it, and each
+ * phase populates only its own slice (the rest stay `null`). That single
+ * collection is load-bearing — the uniform memo lifecycle (`defineMemoStep`),
+ * the one-page sidebar/Summary list read, and the `memoStatus` mirror all key
+ * off it. These are RESOURCE STATE, not a generator output, so
+ * `.nullable().default(null)` is the correct shape here, NOT the strict
+ * walker's shape (BP-016/BP-023). The per-phase nested shapes are extracted to
+ * named consts below so the `memoStateSchema` body reads as a flat field list;
+ * each const is the value *before* `.nullable().default(null)`.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -67,11 +78,148 @@ export const citationIntegritySchema = z.object({
 
 export type CitationIntegrity = z.infer<typeof citationIntegritySchema>;
 
+// ───────────────────────────────────────────────────────────────────────────
+// Per-phase nested field shapes
+//
+// Extracted from `memoStateSchema` purely for readability — each is the value
+// before `.nullable().default(null)`, so the inferred `MemoState` type is
+// identical to the inline form. Internal (not exported): consumers read these
+// via `MemoState["<field>"]`, never the value directly.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Phase 4 — risks a persona raised (aggressive / conservative critique). */
+const raisedRisksSchema = z.array(
+  z.object({
+    description: z.string(),
+    severity: z.enum(["high", "medium", "low"]),
+  }),
+);
+
+/** Phase 4 — a persona's proposed directional adjustments to the trade. */
+const proposedAdjustmentsSchema = z.object({
+  sizing: z.enum(["larger", "smaller", "unchanged"]).nullable(),
+  holdingPeriod: z.enum(["longer", "shorter", "unchanged"]).nullable(),
+  invalidation: z.enum(["tighter", "looser", "unchanged"]).nullable(),
+});
+
+/** Phase 4 — risks dismissed (neutralRisk + riskAssessment), with category. */
+const dismissedRisksSchema = z.array(
+  z.object({
+    description: z.string(),
+    reason: z.string(),
+    dismissalCategory: z.enum([
+      "already-addressed",
+      "out-of-scope",
+      "no-mechanism",
+      "asymmetric-no-bound",
+    ]),
+  }),
+);
+
+/** Phase 4 — risks the riskAssessment memo deemed critical, attributed. */
+const criticalRisksSchema = z.array(
+  z.object({
+    description: z.string(),
+    raisedBy: z.enum(["aggressive", "conservative"]),
+    severity: z.enum(["high", "medium", "low"]),
+  }),
+);
+
+/** Phase 4 — the riskAssessment memo's consolidated, attributed adjustments. */
+const recommendedAdjustmentsSchema = z.object({
+  sizing: z
+    .object({
+      direction: z.enum(["larger", "smaller", "unchanged"]),
+      rationale: z.string(),
+      attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+    })
+    .nullable(),
+  holdingPeriod: z
+    .object({
+      direction: z.enum(["longer", "shorter", "unchanged"]),
+      rationale: z.string(),
+      attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+    })
+    .nullable(),
+  invalidation: z
+    .object({
+      direction: z.enum(["tighter", "looser", "unchanged"]),
+      rationale: z.string(),
+      attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
+    })
+    .nullable(),
+});
+
+/** Phase 5 — the scenarioForecaster's probability-weighted scenario set. */
+const scenariosSchema = z.array(
+  z.object({
+    name: z.string(),
+    probability: z.number().min(0).max(1),
+    trigger: z.string(),
+    triggerSource: z.enum([
+      "investmentThesis",
+      "tradeProposal",
+      "riskAssessment",
+      "phase1",
+    ]),
+    expectedOutcome: z.string(),
+    tradeBehavior: z.string(),
+  }),
+);
+
+/** Phase 5 PM — which risk-team adjustments the PM accepted, with reasoning. */
+const acceptedAdjustmentsSchema = z.object({
+  sizing: z.object({ applied: z.boolean(), reasoning: z.string() }),
+  holdingPeriod: z.object({ applied: z.boolean(), reasoning: z.string() }),
+  invalidation: z.object({ applied: z.boolean(), reasoning: z.string() }),
+});
+
+/** Phase 5 PM — canonical keys of the upstream memos the decision rests on. */
+const upstreamReferencesSchema = z.object({
+  analystMemos: z.array(z.string()),
+  thesis: z.string(),
+  tradeProposal: z.string(),
+  riskAssessment: z.string(),
+});
+
+/** Phase 5 PM — the valuation-spine rating band the final rating is clamped to. */
+const ratingBandSchema = z.object({
+  floor: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+  ceiling: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
+});
+
+/** Phase 6 — a list of evidence items; shared by supporting + contradicting. */
+const evidenceListSchema = z.array(
+  z.object({ source: z.string(), claim: z.string() }),
+);
+
+/** Phase 5 PM — the portfolio-fit verdict (Slice 5). Five LLM-emitted fields
+ *  plus four echo fields DERIVED in the commit handler (never trusted from the
+ *  LLM — the `agreesWithTrader` / `upstreamReferences` precedent). */
+const portfolioFitSchema = z.object({
+  action: z.enum(["initiate", "add", "trim", "exit", "hold"]),
+  targetWeightPct: z.number(),
+  sizingRationale: z.string(),
+  concentrationRisk: z.string(),
+  convictionBasis: z.string(),
+  // Resolved/validated in the commit handler, NOT from the LLM:
+  suggestedAccount: z.string(), // resolved account label (or "")
+  currentWeightPct: z.number(), // existing weight in this name (0 if none)
+  weightDeltaPct: z.number(), // targetWeightPct − currentWeightPct
+  hasPortfolioContext: z.boolean(), // true only when a portfolio was supplied
+  // As-of of the frozen portfolio snapshot (the quotes' fetch time). Mirrored
+  // here so the PmHero panel can render the staleness/provenance line
+  // client-side — session-state `portfolio` is not client-exposed (§2.2), so
+  // the memo is the transport. Null on no-portfolio runs.
+  snapshotAsOf: z.string().nullable().default(null),
+});
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
  *  `writing` and populated at the `published` transition. */
 export const memoStateSchema = z.object({
+  // ── Core · every memo ────────────────────────────────────────────────
   status: memoStatusSchema,
   agentName: z.string(),
   agentTeam: z.enum(["analyst", "research", "trade", "risk", "pm"]),
@@ -86,6 +234,8 @@ export const memoStateSchema = z.object({
   startedAt: z.string().nullable().default(null),
   completedAt: z.string().nullable().default(null),
   errorMessage: z.string().nullable().default(null),
+
+  // ── Phase 1 · analyst ────────────────────────────────────────────────
   /** Phase 1 investigative citations (FIX-612). Populated by analyst
    *  generators when they invoke `fetch` on a discovery URL; null on the
    *  cheap preset and on memos that never investigated. Renderer shows a
@@ -95,6 +245,8 @@ export const memoStateSchema = z.object({
    *  this; later-phase memos leave it `null`. `"unavailable"` memos are
    *  flagged by the prompt formatters so downstream agents skip synthesis. */
   dataQuality: z.enum(["full", "partial", "unavailable"]).nullable().default(null),
+
+  // ── Phase 2 · research manager (InvestmentThesis) ────────────────────
   // Phase 2 InvestmentThesis extension. Only the research-manager memo
   // (`memos/p2/research-manager`) populates these; all other memos leave
   // them `null`. Read by Phase 3+ to reason about the debate's outcome.
@@ -108,6 +260,8 @@ export const memoStateSchema = z.object({
   // LLM never emits it). Null on every other memo and on runs that produced
   // no tagged contributions.
   citationIntegrity: citationIntegritySchema.nullable().default(null),
+
+  // ── Phase 3 · trader (TradeProposal) ─────────────────────────────────
   // Phase 3 TradeProposal extension. Only the trader memo
   // (`memos/p3/trader`) populates these; all other memos leave them `null`.
   // Read by Phase 4+ to reason about the proposed trade.
@@ -121,6 +275,8 @@ export const memoStateSchema = z.object({
     .default(null),
   invalidationCriteria: z.array(z.string()).nullable().default(null),
   dependsOn: z.array(z.string()).nullable().default(null),
+
+  // ── Phase 4 · risk critique / assessment ─────────────────────────────
   // Phase 4 RiskCritique / RiskAssessment extension. Persona memos populate
   // posture, raisedRisks, proposedAdjustments. The neutralRisk memo also
   // populates dismissedRisks. The riskAssessment memo populates the
@@ -130,100 +286,22 @@ export const memoStateSchema = z.object({
     .enum(["aggressive", "conservative", "neutral"])
     .nullable()
     .default(null),
-  raisedRisks: z
-    .array(
-      z.object({
-        description: z.string(),
-        severity: z.enum(["high", "medium", "low"]),
-      }),
-    )
-    .nullable()
-    .default(null),
-  proposedAdjustments: z
-    .object({
-      sizing: z.enum(["larger", "smaller", "unchanged"]).nullable(),
-      holdingPeriod: z.enum(["longer", "shorter", "unchanged"]).nullable(),
-      invalidation: z.enum(["tighter", "looser", "unchanged"]).nullable(),
-    })
-    .nullable()
-    .default(null),
-  dismissedRisks: z
-    .array(
-      z.object({
-        description: z.string(),
-        reason: z.string(),
-        dismissalCategory: z.enum([
-          "already-addressed",
-          "out-of-scope",
-          "no-mechanism",
-          "asymmetric-no-bound",
-        ]),
-      }),
-    )
-    .nullable()
-    .default(null),
-  criticalRisks: z
-    .array(
-      z.object({
-        description: z.string(),
-        raisedBy: z.enum(["aggressive", "conservative"]),
-        severity: z.enum(["high", "medium", "low"]),
-      }),
-    )
-    .nullable()
-    .default(null),
-  recommendedAdjustments: z
-    .object({
-      sizing: z
-        .object({
-          direction: z.enum(["larger", "smaller", "unchanged"]),
-          rationale: z.string(),
-          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
-        })
-        .nullable(),
-      holdingPeriod: z
-        .object({
-          direction: z.enum(["longer", "shorter", "unchanged"]),
-          rationale: z.string(),
-          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
-        })
-        .nullable(),
-      invalidation: z
-        .object({
-          direction: z.enum(["tighter", "looser", "unchanged"]),
-          rationale: z.string(),
-          attributedTo: z.enum(["aggressive", "conservative", "neutral"]),
-        })
-        .nullable(),
-    })
-    .nullable()
-    .default(null),
+  raisedRisks: raisedRisksSchema.nullable().default(null),
+  proposedAdjustments: proposedAdjustmentsSchema.nullable().default(null),
+  dismissedRisks: dismissedRisksSchema.nullable().default(null),
+  criticalRisks: criticalRisksSchema.nullable().default(null),
+  recommendedAdjustments: recommendedAdjustmentsSchema.nullable().default(null),
   confidenceCalibration: z
     .enum(["overconfident", "calibrated", "underconfident"])
     .nullable()
     .default(null),
   calibrationRationale: z.string().nullable().default(null),
+
+  // ── Phase 5 · scenario forecaster (ScenarioForecast) ─────────────────
   // Phase 5 ScenarioForecast extension. Only the scenarioForecaster memo
   // (`memos/p5/scenario-forecaster`) populates these; all other memos
   // leave them `null`.
-  scenarios: z
-    .array(
-      z.object({
-        name: z.string(),
-        probability: z.number().min(0).max(1),
-        trigger: z.string(),
-        triggerSource: z.enum([
-          "investmentThesis",
-          "tradeProposal",
-          "riskAssessment",
-          "phase1",
-        ]),
-        expectedOutcome: z.string(),
-        tradeBehavior: z.string(),
-      }),
-    )
-    .nullable()
-    .default(null),
+  scenarios: scenariosSchema.nullable().default(null),
   distribution: z
     .enum(["concentrated", "balanced", "barbell", "long-tail"])
     .nullable()
@@ -231,6 +309,8 @@ export const memoStateSchema = z.object({
   probabilitySum: z.number().nullable().default(null),
   horizon: z.string().nullable().default(null),
   evidenceBasis: z.enum(["sufficient", "thin"]).nullable().default(null),
+
+  // ── Phase 5 · portfolio manager (PortfolioDecision) ──────────────────
   // Phase 5 PortfolioDecision extension. Only the portfolioManager memo
   // (`memos/p5/portfolio-manager`) populates these; all other memos leave
   // them `null`. `finalRating` is the design-mandated 5-tier scale, stored
@@ -243,28 +323,15 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   decisionConfidence: z.number().min(0).max(1).nullable().default(null),
-  acceptedAdjustments: z
-    .object({
-      sizing: z.object({ applied: z.boolean(), reasoning: z.string() }),
-      holdingPeriod: z.object({ applied: z.boolean(), reasoning: z.string() }),
-      invalidation: z.object({ applied: z.boolean(), reasoning: z.string() }),
-    })
-    .nullable()
-    .default(null),
+  acceptedAdjustments: acceptedAdjustmentsSchema.nullable().default(null),
   keyDependencies: z.array(z.string()).nullable().default(null),
-  upstreamReferences: z
-    .object({
-      analystMemos: z.array(z.string()),
-      thesis: z.string(),
-      tradeProposal: z.string(),
-      riskAssessment: z.string(),
-    })
-    .nullable()
-    .default(null),
+  upstreamReferences: upstreamReferencesSchema.nullable().default(null),
   agreesWithTrader: z.boolean().nullable().default(null),
   // Phase 5 — scenario reference. The PM names which scenario bucket its
   // decision underwrites; empty string when no forecast is available.
   primaryScenario: z.string().nullable().default(null),
+
+  // ── Phase 5 · portfolio manager (valuation-spine derived) ────────────
   // Valuation-spine derived fields (FIX-715). Only the portfolioManager
   // memo populates these; all other memos leave them `null`. The writer
   // computes these from the spine resource at commit time — the LLM never
@@ -273,13 +340,7 @@ export const memoStateSchema = z.object({
     .enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"])
     .nullable()
     .default(null),
-  ratingBand: z
-    .object({
-      floor: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
-      ceiling: z.enum(["Sell", "Underweight", "Hold", "Overweight", "Buy"]),
-    })
-    .nullable()
-    .default(null),
+  ratingBand: ratingBandSchema.nullable().default(null),
   ratingClamped: z.boolean().nullable().default(null),
   ratingOverrideReason: z.string().nullable().default(null),
   absoluteRating: z.enum(["Buy", "Hold", "Sell"]).nullable().default(null),
@@ -287,6 +348,8 @@ export const memoStateSchema = z.object({
     .enum(["Overweight", "Equal Weight", "Underweight"])
     .nullable()
     .default(null),
+
+  // ── Phase 6 · thesis validator (ThesisAlignment) ─────────────────────
   // Phase 6 ThesisAlignment extension. Only the thesisValidator memo
   // (`memos/p6/thesis-alignment`) populates these; all other memos leave
   // them `null`. The validator audits the user's per-run thesis against the
@@ -297,16 +360,12 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   alignmentConfidence: z.number().min(0).max(1).nullable().default(null),
-  supportingEvidence: z
-    .array(z.object({ source: z.string(), claim: z.string() }))
-    .nullable()
-    .default(null),
-  contradictingEvidence: z
-    .array(z.object({ source: z.string(), claim: z.string() }))
-    .nullable()
-    .default(null),
+  supportingEvidence: evidenceListSchema.nullable().default(null),
+  contradictingEvidence: evidenceListSchema.nullable().default(null),
   blindSpots: z.array(z.string()).nullable().default(null),
   proposedRevision: z.string().nullable().default(null),
+
+  // ── Phase 5 · portfolio manager (PortfolioFit, Slice 5) ──────────────
   // Phase 5 PortfolioFit extension (Slice 5). Only the portfolioManager memo
   // populates this. RESOURCE STATE (not a generator output) → `.nullable()
   // .default(null)` is correct here, NOT the strict shape (BP-023). The five
@@ -314,27 +373,9 @@ export const memoStateSchema = z.object({
   // concentrationRisk / convictionBasis) pass through from the PM output; the
   // four echo fields (suggestedAccount / currentWeightPct / weightDeltaPct /
   // hasPortfolioContext) are DERIVED in the commit handler, never trusted from
-  // the LLM (the agreesWithTrader / upstreamReferences precedent).
-  portfolioFit: z
-    .object({
-      action: z.enum(["initiate", "add", "trim", "exit", "hold"]),
-      targetWeightPct: z.number(),
-      sizingRationale: z.string(),
-      concentrationRisk: z.string(),
-      convictionBasis: z.string(),
-      // Resolved/validated in the commit handler, NOT from the LLM:
-      suggestedAccount: z.string(), // resolved account label (or "")
-      currentWeightPct: z.number(), // existing weight in this name (0 if none)
-      weightDeltaPct: z.number(), // targetWeightPct − currentWeightPct
-      hasPortfolioContext: z.boolean(), // true only when a portfolio was supplied
-      // As-of of the frozen portfolio snapshot (the quotes' fetch time). Mirrored
-      // here so the PmHero panel can render the staleness/provenance line
-      // client-side — session-state `portfolio` is not client-exposed (§2.2), so
-      // the memo is the transport. Null on no-portfolio runs.
-      snapshotAsOf: z.string().nullable().default(null),
-    })
-    .nullable()
-    .default(null),
+  // the LLM (the agreesWithTrader / upstreamReferences precedent). See
+  // `portfolioFitSchema` above for the field-by-field shape.
+  portfolioFit: portfolioFitSchema.nullable().default(null),
   // Lens convergence mirror (Slice 5), projected onto the PM memo at commit so
   // the PmHero strip reads it without a second resource fetch. Reuses the
   // resource's own state schema (z.record-free → safe to import here, no cycle).
