@@ -653,6 +653,14 @@ export function useSession(
           if (event.item.type === "resource_change") {
             const rc = event.item as ResourceChangeItem;
             if (isReducibleResourceChange(rc)) {
+              // Live: merge the delta into the snapshot so a subscribed item
+              // updates with no refetch. A create or delete also changes
+              // membership/cardinality, which the per-item overlay handles but
+              // `count` / list pages don't — flag a single batched refetch at
+              // completion to reconcile those (mid-stream item state stays live).
+              if (rc.changeType === "created" || rc.changeType === "deleted") {
+                resourceChangedDuringStreamRef.current = true;
+              }
               setSnapshot((prev) => {
                 if (prev === null) {
                   pendingResourceChangesRef.current.push(rc);

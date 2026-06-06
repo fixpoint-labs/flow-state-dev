@@ -390,7 +390,7 @@ What ships and what doesn't:
 
 - Only the projected slice travels, never content. Content still loads on demand through its own endpoint.
 - The default (un-opted) batched-refetch path is unchanged. `live` is purely additive.
-- `count` tracks creates and deletes on a live collection so cardinality stays roughly current between refetches; full list membership still reconciles at completion.
+- Per-item state updates live (including a delete, which marks the item gone). The collection's `count` and list pages aren't tracked mid-stream — they reconcile at the end of the request, when the snapshot refetches.
 
 ### The `lifecycleSchema` mixin
 

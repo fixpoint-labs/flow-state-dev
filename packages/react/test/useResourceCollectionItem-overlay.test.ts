@@ -34,17 +34,21 @@ function liveChange(resourcePath: string, delta: unknown): ResourceChangeItem {
 
 /**
  * The exact read `useResourceCollectionItem` does: locate the collection entry
- * and overlay its per-topic live `clientData` over the fetched baseline.
+ * and apply its per-topic live overlay over the fetched baseline. `baseline`
+ * is `null` when the HTTP fetch hasn't resolved (or returned nothing).
  */
 function readItem(
   snapshot: SessionStateSnapshotResponse,
   ref: string,
   topic: string,
-  baseline: { topic: string; clientData?: unknown }
-): { topic: string; clientData?: unknown } {
+  baseline: { topic: string; clientData?: unknown } | null
+): { topic: string; clientData?: unknown } | null {
   const entry = snapshot.resources?.session?.[ref] as CollectionSnapshotEntry | undefined;
-  const liveClientData = entry?.live?.[topic]?.clientData;
-  return liveClientData !== undefined ? { ...baseline, clientData: liveClientData } : baseline;
+  const liveEntry = entry?.live?.[topic];
+  if (liveEntry === undefined) return baseline;
+  if (liveEntry.deleted === true) return null;
+  if (baseline !== null) return { ...baseline, clientData: liveEntry.clientData };
+  return { topic, clientData: liveEntry.clientData };
 }
 
 describe("useResourceCollectionItem live overlay (FIX-739)", () => {
@@ -73,5 +77,24 @@ describe("useResourceCollectionItem live overlay (FIX-739)", () => {
     const merged = mergeResourceChangeIntoSnapshot(baseSnapshot, liveChange("memos/m1", { status: "writing" }))!;
     const otherBaseline = { topic: "m2", clientData: { status: "pending" } };
     expect(readItem(merged, "memos", "m2", otherBaseline)).toEqual(otherBaseline);
+  });
+
+  it("surfaces an overlay even when the baseline hasn't loaded (no refetch needed)", () => {
+    // Bug: a create/update that arrives before the HTTP baseline resolves must
+    // not be dropped. With baseline null, the overlay still produces an item.
+    const merged = mergeResourceChangeIntoSnapshot(baseSnapshot, liveChange("memos/m1", { status: "writing" }))!;
+    expect(readItem(merged, "memos", "m1", null)).toEqual({ topic: "m1", clientData: { status: "writing" } });
+  });
+
+  it("shows the item as gone on a live delete without flashing the stale baseline", () => {
+    // Bug: a delete must not fall back to the last-fetched baseline. The
+    // tombstone makes the hook return null immediately.
+    const writing = mergeResourceChangeIntoSnapshot(baseSnapshot, liveChange("memos/m1", { status: "writing" }))!;
+    const deleted = mergeResourceChangeIntoSnapshot(
+      writing,
+      { ...liveChange("memos/m1", null), changeType: "deleted" }
+    )!;
+    const staleBaseline = { topic: "m1", clientData: { status: "pending" } };
+    expect(readItem(deleted, "memos", "m1", staleBaseline)).toBeNull();
   });
 });

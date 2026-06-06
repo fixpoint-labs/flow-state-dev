@@ -57,18 +57,27 @@ export function useResourceCollectionItem(
   const refetch = useCallback(() => setGeneration((g) => g + 1), []);
 
   // Live overlay (FIX-739): when a `client.live: true` collection mutates this
-  // topic mid-stream, the delta lands in the snapshot's per-topic `live` map.
-  // Layer it over the fetched baseline's `clientData` so the item updates with
-  // no refetch. No overlay (non-live collections) → the baseline passes through.
-  const liveClientData = useMemo(() => {
+  // topic mid-stream, the change lands in the snapshot's per-topic `live` map.
+  const liveEntry = useMemo(() => {
     const entry = findCollectionEntry(session, ref);
-    return entry?.live?.[topic]?.clientData;
+    return entry?.live?.[topic];
   }, [session.snapshot?.resources, ref, topic]);
 
+  // Apply the overlay over the fetched baseline so the item reflects mid-stream
+  // mutations with no refetch:
+  //   - tombstone (`deleted`) → the item is gone now, even if the baseline (or
+  //     a slower refetch) still has the last-fetched state. Show `null`.
+  //   - present + baseline → merge the live `clientData` over the baseline.
+  //   - present + no baseline yet → build a handle from the overlay so a
+  //     create/update that arrives before (or instead of) the baseline fetch is
+  //     still surfaced. `wrap` provides the lazy `fetchContent`.
+  //   - no overlay → the baseline passes through unchanged (non-live path).
   const itemWithLive = useMemo<CollectionItemHandle | null>(() => {
-    if (item === null || liveClientData === undefined) return item;
-    return { ...item, clientData: liveClientData };
-  }, [item, liveClientData]);
+    if (liveEntry === undefined) return item;
+    if (liveEntry.deleted === true) return null;
+    if (item !== null) return { ...item, clientData: liveEntry.clientData };
+    return wrap({ topic, clientData: liveEntry.clientData });
+  }, [item, liveEntry, topic, wrap]);
 
   return { item: itemWithLive, isLoading, error, refetch };
 }

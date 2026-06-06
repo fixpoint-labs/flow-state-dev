@@ -98,38 +98,31 @@ export function mergeResourceChangeIntoSnapshot(
     return replaceEntry(prev, scope, scopeResources, located.ref, nextEntry);
   }
 
-  // Collection item.
+  // Collection item — fold the change into the per-topic overlay. A delete
+  // writes a tombstone (rather than removing the key) so the hook can show the
+  // item as gone immediately, instead of falling back to the stale HTTP
+  // baseline. `count` is intentionally left untouched: it reconciles at the
+  // terminal-status refetch (useSession flags one on create/delete), and
+  // adjusting it here would trip useResourceCollection's count-watch into a
+  // mid-stream refetch, defeating the refetch-free path.
   const entry = scopeResources[located.ref] as CollectionSnapshotEntry;
   const live = entry.live ?? {};
-  if (rc.changeType === "deleted") {
-    if (!(located.topic in live)) {
-      // Topic was never overlaid; still reflect the cardinality drop so the
-      // count stays roughly live until the terminal refetch.
-      if (entry.count === undefined) return prev;
-      const nextEntry: CollectionSnapshotEntry = {
-        ...entry,
-        count: Math.max(0, entry.count - 1),
-      };
-      return replaceEntry(prev, scope, scopeResources, located.ref, nextEntry);
-    }
-    const nextLive = { ...live };
-    delete nextLive[located.topic];
-    const nextEntry: CollectionSnapshotEntry = {
-      ...entry,
-      live: nextLive,
-      count: entry.count === undefined ? undefined : Math.max(0, entry.count - 1),
-    };
-    return replaceEntry(prev, scope, scopeResources, located.ref, nextEntry);
+  const existing = live[located.topic];
+
+  const nextOverlay =
+    rc.changeType === "deleted" ? { deleted: true } : { clientData: rc.delta };
+
+  if (
+    existing !== undefined &&
+    existing.deleted === nextOverlay.deleted &&
+    existing.clientData === nextOverlay.clientData
+  ) {
+    return prev;
   }
 
-  // created / updated → set the overlay; bump count on a first-seen create.
-  const existing = live[located.topic];
-  if (existing !== undefined && existing.clientData === rc.delta) return prev;
-  const isNewTopic = rc.changeType === "created" && existing === undefined;
   const nextEntry: CollectionSnapshotEntry = {
     ...entry,
-    live: { ...live, [located.topic]: { clientData: rc.delta } },
-    count: isNewTopic && entry.count !== undefined ? entry.count + 1 : entry.count,
+    live: { ...live, [located.topic]: nextOverlay },
   };
   return replaceEntry(prev, scope, scopeResources, located.ref, nextEntry);
 }

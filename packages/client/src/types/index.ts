@@ -225,12 +225,15 @@ export type CollectionSnapshotEntry = {
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
   /**
-   * Per-topic live `clientData` overlay (FIX-739). Populated client-side by
+   * Per-topic live overlay (FIX-739). Populated client-side by
    * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
    * and read by `useResourceCollectionItem` as an overlay on the fetched
-   * baseline. Never emitted by the server — purely a client-merge target.
+   * baseline. A created/updated entry carries `clientData`; a deleted entry is
+   * a tombstone (`deleted: true`) so the hook can show the item as gone without
+   * waiting for a refetch. Never emitted by the server — purely a client-merge
+   * target, reconciled away on the next authoritative snapshot.
    */
-  live?: Record<string, { clientData: unknown }>;
+  live?: Record<string, { clientData?: unknown; deleted?: boolean }>;
 };
 
 /**

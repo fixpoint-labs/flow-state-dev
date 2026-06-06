@@ -110,7 +110,7 @@ describe("mergeResourceChangeIntoSnapshot — collection item", () => {
     const next = mergeResourceChangeIntoSnapshot(prev, memo("memos/m1", "updated", { status: "writing" }));
     const entry = next!.resources!.session!.memos as CollectionSnapshotEntry;
     expect(entry.live).toEqual({ m1: { clientData: { status: "writing" } } });
-    expect(entry.count).toBe(1); // unchanged on update
+    expect(entry.count).toBe(1); // count is untouched — it reconciles at refetch
   });
 
   it("captures a multi-segment topic", () => {
@@ -120,30 +120,32 @@ describe("mergeResourceChangeIntoSnapshot — collection item", () => {
     expect(entry.live).toEqual({ "p1/fundamentals": { clientData: { status: "pending" } } });
   });
 
-  it("increments count on a first-seen create", () => {
-    const prev = collSnapshot({ count: 2 });
-    const next = mergeResourceChangeIntoSnapshot(prev, memo("memos/m3", "created", { status: "pending" }));
-    expect((next!.resources!.session!.memos as CollectionSnapshotEntry).count).toBe(3);
-  });
-
-  it("decrements count and drops the overlay on delete", () => {
+  it("writes a tombstone (not a key removal) on delete, leaving count alone", () => {
     const prev = collSnapshot({ count: 2, live: { m1: { clientData: { status: "writing" } } } });
     const next = mergeResourceChangeIntoSnapshot(prev, rc({ scope: "session", resourcePath: "memos/m1", changeType: "deleted", delta: null }));
     const entry = next!.resources!.session!.memos as CollectionSnapshotEntry;
-    expect(entry.live).toEqual({});
-    expect(entry.count).toBe(1);
+    // Tombstone overwrites the prior overlay so the hook can show the item as
+    // gone without falling back to the stale baseline.
+    expect(entry.live).toEqual({ m1: { deleted: true } });
+    expect(entry.count).toBe(2);
   });
 
-  it("decrements count on delete of a never-overlaid topic", () => {
+  it("tombstones a never-overlaid topic on delete", () => {
     const prev = collSnapshot({ count: 5 });
     const next = mergeResourceChangeIntoSnapshot(prev, rc({ scope: "session", resourcePath: "memos/old", changeType: "deleted", delta: null }));
-    expect((next!.resources!.session!.memos as CollectionSnapshotEntry).count).toBe(4);
+    expect((next!.resources!.session!.memos as CollectionSnapshotEntry).live).toEqual({ old: { deleted: true } });
   });
 
   it("returns prev when the overlaid delta is unchanged", () => {
     const data = { status: "writing" };
     const prev = collSnapshot({ count: 1, live: { m1: { clientData: data } } });
     const next = mergeResourceChangeIntoSnapshot(prev, memo("memos/m1", "updated", data));
+    expect(next).toBe(prev);
+  });
+
+  it("returns prev on a repeated delete tombstone", () => {
+    const prev = collSnapshot({ count: 1, live: { m1: { deleted: true } } });
+    const next = mergeResourceChangeIntoSnapshot(prev, rc({ scope: "session", resourcePath: "memos/m1", changeType: "deleted", delta: null }));
     expect(next).toBe(prev);
   });
 });
