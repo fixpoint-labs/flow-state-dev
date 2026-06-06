@@ -6,7 +6,7 @@ import { testBlock } from "../src/test-utilities/testBlock";
 import { testSequencer } from "../src/test-utilities/testSequencer";
 
 // ---------------------------------------------------------------------------
-// Regression guard for FIX-614: an injected real `modelResolver` must route
+// Regression guard: an injected real `modelResolver` must route
 // generation instead of the default scripted mock resolver. The benchmark
 // engine relies on this to drive every subject through a single resolver.
 // ---------------------------------------------------------------------------

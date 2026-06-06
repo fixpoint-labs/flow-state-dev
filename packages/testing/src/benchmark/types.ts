@@ -88,6 +88,9 @@ export interface BenchmarkReport {
   runs: number;
   /** Subject names included. */
   subjects: string[];
+  /** Name of the baseline subject (kind "baseline"), when present. Deltas are
+   *  measured against it; rendering marks it. */
+  baselineSubject?: string;
   /** Categories present across the tasks. */
   categories: BenchmarkCategory[];
   /** Per (subject × category) and (subject × "overall") aggregates. */

@@ -18,7 +18,7 @@ import {
 } from "../src/benchmark";
 
 // ---------------------------------------------------------------------------
-// FIX-614 engine tests. All execution goes through injected mock resolvers —
+// Benchmark engine tests. All execution goes through injected mock resolvers —
 // no real LLM. The executor resolver answers subject generators (with token
 // usage so the cost guard is exercisable); the judge resolver returns canned
 // analyzer findings.

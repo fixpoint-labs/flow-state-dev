@@ -6,7 +6,7 @@ import {
 import type { BenchmarkRunResult } from "../src/benchmark";
 
 // ---------------------------------------------------------------------------
-// FIX-614: buildBenchmarkReport / renderScorecard are pure, so they are
+// buildBenchmarkReport / renderScorecard are pure, so they are
 // validated against synthetic per-cell results with no LLM.
 // ---------------------------------------------------------------------------
 
@@ -124,6 +124,10 @@ describe("renderScorecard", () => {
     startedAt: Date.now(),
     budgetExceeded: false,
     warnings: [],
+  });
+
+  it("carries the baseline subject identity through aggregation", () => {
+    expect(report.baselineSubject).toBe("single-generator");
   });
 
   it("renders a markdown table marking the baseline", () => {

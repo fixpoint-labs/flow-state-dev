@@ -69,7 +69,7 @@ export type {
   ScoreMapping,
 } from "./eval";
 
-// Cross-pattern benchmark harness (FIX-614): sweeps a task suite across
+// Cross-pattern benchmark harness: sweeps a task suite across
 // multiple subjects (patterns + baseline) and produces a comparative scorecard.
 export {
   runBenchmark,

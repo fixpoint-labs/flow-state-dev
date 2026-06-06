@@ -72,6 +72,16 @@ describe("buildBenchmarkRun", () => {
     expect(run.config.baseline).toBe(false);
   });
 
+  it("defers to the definition's baseline when --no-baseline is absent", () => {
+    // Commander sets options.baseline = true when --no-baseline is NOT passed.
+    // A definition's `baseline: false` must still take effect in that case.
+    const run = buildBenchmarkRun(def({ baseline: false }), { baseline: true });
+    expect(run.config.baseline).toBe(false);
+
+    const onByDef = buildBenchmarkRun(def({ baseline: true }), { baseline: true });
+    expect(onByDef.config.baseline).toBe(true);
+  });
+
   it("rejects an invalid format", () => {
     try {
       buildBenchmarkRun(def(), { format: "yaml" });

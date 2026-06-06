@@ -1,5 +1,5 @@
 /**
- * Cross-pattern benchmark adapter tests (FIX-614 phase 2).
+ * Cross-pattern benchmark adapter tests.
  *
  * For each shipped adapter we assert three things:
  *   1. `build({ model })` returns a subject with the right `name` and

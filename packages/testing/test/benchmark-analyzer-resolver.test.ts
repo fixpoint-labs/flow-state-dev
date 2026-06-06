@@ -3,7 +3,7 @@ import { analyzerScorer } from "../src/eval/analyzerScorer";
 import { createMockModelResolver, mockGenerator } from "../src/mocks/mockGenerator";
 
 // ---------------------------------------------------------------------------
-// FIX-614: analyzerScorer must accept an injected `modelResolver` and run the
+// analyzerScorer must accept an injected `modelResolver` and run the
 // judge against it (instead of the noop model the "allow" policy returns).
 // ---------------------------------------------------------------------------
 

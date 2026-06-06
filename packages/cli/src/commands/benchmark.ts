@@ -121,7 +121,11 @@ export function buildBenchmarkRun(
     maxCostUsd:
       options.maxCost !== undefined ? parsePositiveFloat(options.maxCost, "max-cost") : undefined,
     scorers: def.scorers,
-    baseline: options.baseline ?? def.baseline,
+    // Commander defaults `--no-baseline` to `options.baseline === true` when the
+    // flag is absent, so `??` would always override the definition. Only force
+    // the baseline off when the user actually passed `--no-baseline`; otherwise
+    // defer to the definition's `baseline` setting.
+    baseline: options.baseline === false ? false : def.baseline,
   };
 
   return { names, registry: def.registry, subjects: def.subjects, config, format };
@@ -140,6 +144,9 @@ export async function loadBenchmarkDefinition(file: string): Promise<BenchmarkDe
     );
   }
   const def = (mod.default ?? mod.benchmark) as BenchmarkDefinition | undefined;
+  // Boundary guard: the file is imported dynamically and may not have been built
+  // with `defineBenchmark`, so re-validate the task suite here even though the
+  // type marks it required.
   if (def === undefined || !Array.isArray(def.tasks)) {
     throw new CliError(
       `Benchmark file must default-export a defineBenchmark(...) definition: ${filePath}`,

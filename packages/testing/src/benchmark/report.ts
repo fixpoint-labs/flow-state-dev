@@ -50,6 +50,12 @@ function meanStddev(scores: number[]): { mean: number; stddev: number } {
   return { mean, stddev: Math.sqrt(variance) };
 }
 
+/** Variance of a group's mean: stddev^2 / n (0 when n is 0). Used for the
+ *  standard error of the difference of means in the credibility test. */
+function variancePerN(stddev: number, n: number): number {
+  return n > 0 ? (stddev * stddev) / n : 0;
+}
+
 /** Aggregate one bucket of cells into a `SubjectCategoryStat`. */
 function aggregate(
   subject: string,
@@ -126,15 +132,24 @@ export function buildBenchmarkReport(
       .map((subject) => statBySubjectCategory.get(`${subject}::${key}`))
       .filter((s): s is SubjectCategoryStat => s !== undefined);
 
-    // Baseline mean/stddev within this bucket (first baseline subject present).
+    // Baseline mean/stddev/n within this bucket (first baseline subject present).
     const baselineStat = entries.find((s) => baselineSubjects.has(s.subject));
     const baselineMean = baselineStat?.mean ?? 0;
     const baselineStddev = baselineStat?.stddev ?? 0;
+    const baselineN = baselineStat?.successfulRuns ?? 0;
 
     const ranked: BenchmarkRanking[] = entries
       .map((s) => {
         const deltaVsBaseline = round(s.mean - baselineMean);
-        const credible = Math.abs(deltaVsBaseline) > s.stddev + baselineStddev;
+        // Credible when the delta clears ~2 standard errors of the difference of
+        // means (pooled stddev/sqrt(n)). Unlike summing raw stddevs, this tightens
+        // as repetitions grow, so a real delta gets more credible with more runs
+        // and a delta lost in run-to-run noise is not reported as a win.
+        const seDiff = Math.sqrt(
+          variancePerN(s.stddev, s.successfulRuns) +
+            variancePerN(baselineStddev, baselineN),
+        );
+        const credible = Math.abs(deltaVsBaseline) > 2 * seDiff;
         return { subject: s.subject, mean: s.mean, deltaVsBaseline, credible };
       })
       .sort((a, b) => b.mean - a.mean);
@@ -150,6 +165,9 @@ export function buildBenchmarkReport(
     runs: meta.runs,
     subjects,
     categories,
+    // Carry the baseline's identity through aggregation so rendering reads it
+    // directly instead of re-deriving it from zero deltas.
+    baselineSubject: baselineSubjects.size > 0 ? [...baselineSubjects][0] : undefined,
     stats,
     rankings,
     totalCostUsd,
@@ -180,25 +198,11 @@ function columns(report: BenchmarkReport): Array<BenchmarkCategory | "overall"> 
   return [...report.categories, "overall"];
 }
 
-/**
- * Best-effort identification of the baseline subject for display. Deltas are
- * measured against the baseline, so the baseline's own overall delta is 0; we
- * treat the zero-delta subject as the baseline only when some other subject has
- * a nonzero delta (proving a baseline reference frame actually existed).
- */
-function baselineSubject(report: BenchmarkReport): string | undefined {
-  const overall = report.rankings["overall"] ?? [];
-  if (overall.length < 2) return undefined;
-  const hasReferenceFrame = overall.some((r) => r.deltaVsBaseline !== 0);
-  if (!hasReferenceFrame) return undefined;
-  return overall.find((r) => r.deltaVsBaseline === 0)?.subject;
-}
-
 /** Render a report as a publishable markdown table. */
 function renderMarkdown(report: BenchmarkReport): string {
   const cols = columns(report);
   const lookup = statLookup(report);
-  const baseline = baselineSubject(report);
+  const baseline = report.baselineSubject;
 
   const header = ["Subject", ...cols.map((c) => String(c))];
   const lines: string[] = [];
