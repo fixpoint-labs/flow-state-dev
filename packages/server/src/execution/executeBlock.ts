@@ -481,6 +481,19 @@ export async function executeBlock(
     // catch-path firing the `output` phase of `onBlockTraceCapture`.
     void terminalInstanceId;
 
+    // FIX-724: route the failure to the operator error-capture sink. Passes the
+    // raw caught error so the per-request dedup matches any leaf-level capture
+    // that `onBlockError` already fired for this same throw; only root blocks
+    // (bare handlers/generators, or container errors) land here un-deduped.
+    options.ctx._captureError?.(error, {
+      blockName: options.block.name,
+      blockKind: options.block.kind,
+      blockInstanceId: terminalInstanceId,
+      blockPath,
+      attempt: terminalAttempt,
+      scope: "block"
+    });
+
     return {
       output: undefined,
       items: getResponseItems(options.ctx.response),

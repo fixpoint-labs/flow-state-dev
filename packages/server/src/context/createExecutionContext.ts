@@ -57,6 +57,12 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
+import {
+  safeCaptureError,
+  toErrorCaptureEvent,
+  type ErrorCaptureBlockInfo,
+  type ErrorCaptureIdentity
+} from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
@@ -1831,6 +1837,41 @@ export async function createExecutionContext<
     flowKind: flow.kind
   };
 
+  // FIX-724: opt-in error-capture sink. A per-request dedup set plus a capture
+  // closure shared by `_runtimeHooks.onBlockError` (nested leaves) and
+  // `ctx._captureError` (the root action block, fired from executeBlock's
+  // catch). Dedup keys on the raw thrown error instance — core re-throws it
+  // unchanged up the block tree, so the deepest (leaf) capture wins and the
+  // ancestor / root captures of the same throw are suppressed.
+  const errorCapture = options.errorCapture;
+  const captureIdentity: ErrorCaptureIdentity = {
+    requestId: requestRef.current.id,
+    flowKind: flow.kind,
+    actionName: options.actionName,
+    userId,
+    sessionId: sessionRecord?.id,
+    orgId: orgRecord?.orgId
+  };
+  const capturedErrors = new WeakSet<object>();
+  const captureError = (error: unknown, block?: ErrorCaptureBlockInfo): void => {
+    if (errorCapture === undefined) return;
+    if (typeof error === "object" && error !== null) {
+      if (capturedErrors.has(error)) return;
+      capturedErrors.add(error);
+    }
+    // `normalizeError` treats `blockName: undefined` as absent, so this is safe
+    // whether or not the caller resolved a block name.
+    const normalized = normalizeError(error, {
+      blockName: block?.blockName,
+      scope: block?.scope
+    });
+    void safeCaptureError(
+      errorCapture,
+      toErrorCaptureEvent(normalized, captureIdentity, block),
+      logger
+    );
+  };
+
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
     onBlockStart: logger
       ? (blockName, blockKind, input, transient) => {
@@ -1859,18 +1900,33 @@ export async function createExecutionContext<
           });
         }
       : undefined,
-    onBlockError: logger
-      ? (blockName, blockKind, error, durationMs, transient) => {
+    onBlockError: (logger !== undefined || errorCapture !== undefined)
+      ? (blockName, blockKind, error, durationMs, transient, firingCtx) => {
           // Errors keep logging even for transient blocks — a failing
           // poll loop is exactly the kind of thing operators need to see.
-          void transient;
-          logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
-            ...baseLogContext,
-            blockName,
-            blockKind,
-            durationMs,
-            error: summarizeForLog(error)
-          });
+          if (logger !== undefined) {
+            logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
+              ...baseLogContext,
+              blockName,
+              blockKind,
+              durationMs,
+              error: summarizeForLog(error)
+            });
+          }
+          // FIX-724: route the leaf failure to the operator sink with its own
+          // identity, read from the firing block's `_blockIdentity`.
+          if (errorCapture !== undefined) {
+            const identity = firingCtx?._blockIdentity;
+            captureError(error, {
+              blockName,
+              blockKind: blockKind as ErrorCaptureBlockInfo["blockKind"],
+              blockInstanceId: identity?.blockInstanceId,
+              blockPath: identity?.blockPath,
+              attempt: identity?.attempt,
+              transient,
+              scope: "block"
+            });
+          }
         }
       : undefined,
     onRouteSelected: (routerName, selectedBlockName, routerInstanceId) => {
@@ -2346,6 +2402,9 @@ export async function createExecutionContext<
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,
+      // FIX-724: root-block / fallback capture entrypoint. `undefined` when no
+      // `errorCapture` handler is configured so callers incur zero overhead.
+      _captureError: errorCapture !== undefined ? captureError : undefined,
       _loadDeclaredResources: loadDeclaredResourcesIntoCache,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {

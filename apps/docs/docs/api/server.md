@@ -33,7 +33,8 @@ Selected options:
 | `stores` | `StoresConfig` | Required. Named profiles of capability slots. |
 | `defaultProfile` | `string` | Active profile when `FSD_ENV` is unset. |
 | `settings` | `TSettings` | Read in blocks via `ctx.settings`. |
-| `onError` | `(error, ctx) => void` | `ctx` is `{ method, path }`. |
+| `onError` | `(error, ctx) => void` | `ctx` is `{ method, path }`. HTTP-level sink. |
+| `errorCapture` | `(event: ErrorCaptureEvent) => void \| Promise<void>` | Opt-in, block-aware sink for routing runtime block failures to Sentry, Datadog, etc. See [Error capture](/docs/advanced/error-capture). |
 | `onBackgroundWork` | `(p) => void` | Serverless keep-alive, e.g. `(p) => after(() => p)`. |
 | `defaultSseHeartbeatMs` | `number` | Wire-level SSE heartbeat cadence. |
 
