@@ -91,6 +91,7 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 - Avoid read-modify-write patterns inside `parallel`/`forEach` unless using atomic ops
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
+- Resource-collection instance writes (`create` / `setState` / `patchState` / `writeContent`) commit per key and update the per-scope cache in place (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into the same-request view — a convergence `.list()` after a fan-out sees every instance. Same-key concurrent writes are last-writer-wins.
 
 ### Delta verb routing (FIX-405)
 
