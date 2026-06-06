@@ -10,7 +10,9 @@
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
+import type { SessionRecord } from "../src/stores/types";
+import { getPersistedData } from "../src/resources/internal";
 
 /**
  * Two user-scoped single resources on one flow: `accounts` is shared
@@ -184,5 +186,79 @@ describe("FIX-735: per-resource flowIsolation", () => {
 
     const isolated = await stores.resourceState.getByPrefix("user", "user_1:flow-coll", "iso/");
     expect(Object.keys(isolated)).toContain("iso/b");
+  });
+
+  it("reads shared user resources without requiring a scope record", async () => {
+    // FIX-735 review: the HTTP read path must not gate resource reads on the
+    // scope record. A shared resource lives at the bare `{userId}`, which can
+    // differ from the (flow-flag) scope-record key — gating would hide it.
+    const flow = makeMixedFlow("flow-a");
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.register(flow);
+
+    // Shared resource present at the bare userId, but NO user scope record.
+    await stores.resourceState.set("user", "user_1", "accounts", { balance: 42 });
+    const session: SessionRecord = {
+      id: "sess_a",
+      flowKind: "flow-a",
+      userId: "user_1",
+      state: {},
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await stores.session.set("sess_a", session, "any");
+    expect(await stores.user.get("user_1")).toBeUndefined();
+
+    const data = await getPersistedData({ registry, stores }, flow, "sess_a", "user");
+    expect(data?.resources.accounts).toEqual({ balance: 42 });
+  });
+
+  it("routes nested collection prefixes to the longest-matching bucket", async () => {
+    // FIX-735 review: `a/b/1` belongs to `a/b/*`, not the first-declared `a/*`.
+    const shallow = defineResourceCollection({
+      pattern: "a/*",
+      scope: "user",
+      flowIsolation: false,
+      stateSchema: z.object({ n: z.number().default(0) })
+    });
+    const deep = defineResourceCollection({
+      pattern: "a/b/*",
+      scope: "user",
+      flowIsolation: true,
+      stateSchema: z.object({ n: z.number().default(0) })
+    });
+    const flow = defineFlow({
+      kind: "flow-nested",
+      actions: { run: { inputSchema: z.string(), block: handler({ name: "noop", execute: () => "ok" }) } },
+      // `shallow` declared first, so a first-match resolver would mis-route `a/b/*`.
+      resources: { shallow, deep }
+    })();
+    const stores = createInMemoryStores();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_e",
+      sessionId: "sess_e",
+      userId: "user_1",
+      stores
+    });
+    const deepColl = ctx.resources.deep as unknown as {
+      create(key: string, init: { n: number }): Promise<unknown>;
+    };
+    const shallowColl = ctx.resources.shallow as unknown as {
+      create(key: string, init: { n: number }): Promise<unknown>;
+    };
+    await deepColl.create("1", { n: 1 });
+    await shallowColl.create("2", { n: 2 });
+
+    // The deep instance lands in the isolated bucket, not the shallow shared one.
+    const isolated = await stores.resourceState.getByPrefix("user", "user_1:flow-nested", "a/b/");
+    expect(Object.keys(isolated)).toContain("a/b/1");
+    // The shallow shared instance stays at the bare id, and the deep one is not there.
+    const bare = await stores.resourceState.getByPrefix("user", "user_1", "a/");
+    expect(Object.keys(bare)).toContain("a/2");
+    expect(Object.keys(bare)).not.toContain("a/b/1");
   });
 });

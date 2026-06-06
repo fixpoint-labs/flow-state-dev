@@ -7,6 +7,7 @@ import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  mergeScopeReads,
   resolveOrgStorageKey,
   resolveUserStorageKey,
   resourceScopeIds
@@ -25,18 +26,6 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
-
-/**
- * Await per-bucket store reads and merge them into one map (FIX-735). A
- * resource lives in exactly one isolation bucket, so keys never collide and
- * merge order is immaterial. An empty input yields an empty map.
- */
-async function mergeScopeReads<T>(
-  reads: Array<Promise<Record<string, T>>>
-): Promise<Record<string, T>> {
-  const results = await Promise.all(reads);
-  return Object.assign({}, ...results) as Record<string, T>;
-}
 
 type StateRouteContext = {
   registry: FlowRegistry;
@@ -124,19 +113,19 @@ export async function handleGetSessionState(
   // FIX-735: user/org resources key per isolation bucket (bare id when shared,
   // `{id}:{flowKind}` when isolated), so read every declared bucket and merge.
   // The snapshot/clientData builders filter to declared configs, so other
-  // flows' shared rows under the bare key never leak in.
+  // flows' shared rows under the bare key never leak in. The reads are keyed
+  // off the identity id, not the scope record — a shared resource at the bare
+  // id stays visible even when this flow's (flow-flag) scope record sits at a
+  // different key or doesn't exist yet.
   const isoFlow = {
     kind: flow.kind,
     isolateUserState: flow.isolateUserState ?? false,
     isolateOrgState: flow.isolateOrgState ?? false,
     resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
   };
-  const userScopeIds =
-    user !== undefined ? resourceScopeIds(session.userId, isoFlow, "user") : [];
+  const userScopeIds = resourceScopeIds(session.userId, isoFlow, "user");
   const orgScopeIds =
-    org !== undefined && session.orgId !== undefined
-      ? resourceScopeIds(session.orgId, isoFlow, "org")
-      : [];
+    session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
 
   const [sessionContent, userContent, orgContent] = await Promise.all([
     ctx.stores.content.getAll("session", session.id),

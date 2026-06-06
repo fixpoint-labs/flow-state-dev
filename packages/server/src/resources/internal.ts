@@ -19,11 +19,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import {
-  resolveOrgStorageKey,
-  resolveUserStorageKey,
-  resourceScopeIds
-} from "../stores/scope-keys";
+import { mergeScopeReads, resourceScopeIds } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
 import {
@@ -108,8 +104,12 @@ export function findResourceConfig(
  * content in the ContentStore (FIX-347) — both keyed per-resource, separate
  * from the scope record.
  *
- * Returns `undefined` if the session, user record, or org record is
- * missing for the requested scope.
+ * Returns `undefined` only when the session is missing (or, for org scope,
+ * the session has no org binding). The read is NOT gated on the scope record
+ * existing: under per-resource isolation (FIX-735) a shared resource lives at
+ * the bare identity id, which may differ from the (flow-flag) scope-record
+ * key — gating on the record would hide cross-flow shared data. A scope with
+ * nothing written simply reads as empty.
  */
 export async function getPersistedData(
   ctx: ResourcePersistenceContext,
@@ -129,14 +129,12 @@ export async function getPersistedData(
   }
 
   if (scope === "user") {
-    const isoFlow = toIsolationFlow(flow);
-    const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, isoFlow));
-    if (!user) return undefined;
-    // FIX-735: resources key per isolation bucket (bare `{userId}` when shared,
-    // `{userId}:{flowKind}` when isolated). Read every bucket the flow declares
-    // and merge — the snapshot/clientData builders filter to declared configs,
-    // so other flows' shared rows under the bare key never surface.
-    const scopeIds = resourceScopeIds(session.userId, isoFlow, "user");
+    // FIX-735: read resources by per-resource isolation bucket (bare `{userId}`
+    // when shared, `{userId}:{flowKind}` when isolated), keyed off the identity
+    // id — not the scope record. Read every bucket the flow declares and merge;
+    // the snapshot/clientData builders filter to declared configs, so other
+    // flows' shared rows under the bare key never surface.
+    const scopeIds = resourceScopeIds(session.userId, toIsolationFlow(flow), "user");
     const [resources, content] = await Promise.all([
       mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
       mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("user", id)))
@@ -146,28 +144,12 @@ export async function getPersistedData(
 
   // org
   if (!session.orgId) return undefined;
-  const isoFlow = toIsolationFlow(flow);
-  const org = await ctx.stores.org.get(resolveOrgStorageKey(session.orgId, isoFlow));
-  if (!org) return undefined;
-  const scopeIds = resourceScopeIds(session.orgId, isoFlow, "org");
+  const scopeIds = resourceScopeIds(session.orgId, toIsolationFlow(flow), "org");
   const [resources, content] = await Promise.all([
     mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id))),
     mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   return { resources, content };
-}
-
-/**
- * Await per-bucket store reads and merge them into one map. Used by the
- * read paths to coalesce a scope's shared and isolated isolation buckets
- * (FIX-735). Keys never collide across buckets — a resource lives in exactly
- * one — so merge order is immaterial.
- */
-async function mergeScopeReads<T>(
-  reads: Array<Promise<Record<string, T>>>
-): Promise<Record<string, T>> {
-  const results = await Promise.all(reads);
-  return Object.assign({}, ...results) as Record<string, T>;
 }
 
 /**

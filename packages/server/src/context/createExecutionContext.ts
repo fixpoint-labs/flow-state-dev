@@ -825,7 +825,9 @@ export async function createExecutionContext<
   // Resolve the per-resource storage `scopeId` from a (scope, storageKey). Used
   // by the lazy loaders and per-key persist loops, which only hold a storage
   // key (a single's canonical key or a collection *instance* key like
-  // `prefix/id`). Singles match exactly; collection instances match by prefix;
+  // `prefix/id`). Singles match exactly; collection instances match the
+  // *longest* declared prefix that owns them, so nested prefixes (e.g. `a/` and
+  // `a/b/`) route to the right collection rather than the first one declared;
   // an undeclared key falls back to the flow-flag bucket.
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
@@ -837,10 +839,12 @@ export async function createExecutionContext<
     const buckets = isolationBuckets[scope];
     let isolated = buckets.singles.get(storageKey);
     if (isolated === undefined) {
+      let bestLen = -1;
       for (const p of buckets.prefixes) {
-        if (p.prefix === "" || storageKey.startsWith(p.prefix)) {
+        const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
+        if (matches && p.prefix.length > bestLen) {
+          bestLen = p.prefix.length;
           isolated = p.isolated;
-          break;
         }
       }
     }

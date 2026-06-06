@@ -113,3 +113,15 @@ export function resourceScopeIds(
   }
   return [...ids];
 }
+
+/**
+ * Await a set of per-bucket store reads (one per `resourceScopeIds` entry) and
+ * merge them into one map. A resource lives in exactly one isolation bucket, so
+ * keys never collide and merge order is immaterial; an empty input yields `{}`.
+ */
+export async function mergeScopeReads<T>(
+  reads: Array<Promise<Record<string, T>>>
+): Promise<Record<string, T>> {
+  const results = await Promise.all(reads);
+  return Object.assign({}, ...results) as Record<string, T>;
+}
