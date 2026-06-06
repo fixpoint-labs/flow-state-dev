@@ -184,6 +184,54 @@ Output is a JSON object with execution results, schema validation status, and ti
 }
 ```
 
+### `fsdev benchmark` — Compare coordination patterns
+
+Loads a `defineBenchmark(...)` file, runs each pattern (plus a single-generator baseline) against the same task suite on the same model, and prints a comparative scorecard. One independent variable: the coordination shape. A blinded judge (a distinct model) scores every output against each task's locked rubric.
+
+Real runs make real model calls and need provider credentials in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`).
+
+```bash
+# Default suite, table scorecard
+fsdev benchmark ./benchmark.ts
+
+# Markdown table, capped spend
+fsdev benchmark ./benchmark.ts --format markdown --max-cost 0.50
+
+# A subset of patterns, one category, written to a file
+fsdev benchmark ./benchmark.ts \
+  --patterns supervisor,debate \
+  --category reasoning \
+  --output results.json --format json
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-m, --model <model>` | Override the executor model for all subjects |
+| `--judge-model <model>` | Override the judge model |
+| `--runs <n>` | Repetitions per (subject, task) |
+| `--concurrency <n>` | Concurrent (subject, task, run) cells |
+| `--category <name>` | Only run tasks in this category |
+| `--patterns <names>` | Comma-separated subset of pattern names to run |
+| `--no-baseline` | Skip the single-generator baseline subject |
+| `--max-cost <usd>` | Abort the sweep when the estimated cost exceeds this |
+| `--output <path>` | Write the scorecard to a file instead of stdout |
+| `--format <format>` | `table` \| `markdown` \| `json` (default: `table`) |
+
+Cost is tracked best-effort. When `--max-cost` is exceeded the sweep stops, prints a partial scorecard, and the command exits `1` so CI notices.
+
+A `table` scorecard puts subjects in rows, categories plus `overall` in columns, and `mean±stddev` of the judge score (0-1) in each cell:
+
+```
+subject           reasoning     multi-step-research  overall
+supervisor        0.840±0.060   0.910±0.040          0.875±0.058
+debate            0.870±0.090   0.800±0.080          0.835±0.091
+single-generator  0.720±0.070   0.690±0.090          0.705±0.083
+```
+
+See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the methodology and the [walkthrough guide](https://flow-state.dev/guides/choosing-patterns-with-benchmarks) for a worked example.
+
 ## Flow discovery
 
 Flows are discovered from conventional directories relative to the working directory:
