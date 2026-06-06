@@ -20,6 +20,8 @@ import type {
 
 /** Handle returned by `createBullmqRuntime`. */
 export interface BullmqRuntime {
+  /** The underlying BullMQ Queue instance (useful for monitoring tools like Bull Board). */
+  readonly queue: Queue;
   /** Enqueue a flow action for durable, off-request execution. Returns the BullMQ job id. */
   enqueueAction(data: FlowJobData, opts?: EnqueueOptions): Promise<string>;
   /** Construct a Worker that processes flow-run jobs by calling runAction. */
@@ -97,5 +99,5 @@ export function createBullmqRuntime(
     if (dlqQueue) await dlqQueue.close();
   };
 
-  return { enqueueAction, createWorker: createWorkerFn, close };
+  return { queue, enqueueAction, createWorker: createWorkerFn, close };
 }

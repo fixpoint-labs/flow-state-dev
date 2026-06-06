@@ -179,6 +179,26 @@ const queue = new Queue("fsd-schedules", { connection: redisUrl });
 const scheduleIndex = createBullmqScheduleIndex(queue);
 ```
 
+## Monitoring with Bull Board
+
+The runtime exposes its `queue` property for monitoring tools like [Bull Board](https://github.com/felixmosh/bull-board):
+
+```ts
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
+
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath("/admin/queues");
+
+createBullBoard({
+  queues: [new BullMQAdapter(bullmq.queue)],
+  serverAdapter,
+});
+```
+
+The kitchen-sink app includes a working integration at `/api/admin/queues` (requires `REDIS_URL`).
+
 ## Exports
 
 | Entry point                        | What it provides                                              |
