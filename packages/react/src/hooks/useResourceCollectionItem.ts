@@ -1,9 +1,16 @@
 /**
  * Convenience hook for fetching a single collection item by topic (FIX-427).
+ *
+ * The fetched item is the baseline; when the collection declares
+ * `client.live: true`, mid-stream mutations land in the snapshot's per-topic
+ * `live` overlay (`mergeResourceChangeIntoSnapshot`). This hook reads that
+ * overlay and layers it over the baseline's `clientData`, so a subscribed item
+ * reflects a `pending → writing → published` transition without a refetch
+ * (FIX-739).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CollectionItemHandle } from "@flow-state-dev/client";
-import { useResourceCollection } from "./useResourceCollection";
+import { findCollectionEntry, useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
 export type UseResourceCollectionItemResult = {
@@ -49,5 +56,19 @@ export function useResourceCollectionItem(
 
   const refetch = useCallback(() => setGeneration((g) => g + 1), []);
 
-  return { item, isLoading, error, refetch };
+  // Live overlay (FIX-739): when a `client.live: true` collection mutates this
+  // topic mid-stream, the delta lands in the snapshot's per-topic `live` map.
+  // Layer it over the fetched baseline's `clientData` so the item updates with
+  // no refetch. No overlay (non-live collections) → the baseline passes through.
+  const liveClientData = useMemo(() => {
+    const entry = findCollectionEntry(session, ref);
+    return entry?.live?.[topic]?.clientData;
+  }, [session.snapshot?.resources, ref, topic]);
+
+  const itemWithLive = useMemo<CollectionItemHandle | null>(() => {
+    if (item === null || liveClientData === undefined) return item;
+    return { ...item, clientData: liveClientData };
+  }, [item, liveClientData]);
+
+  return { item: itemWithLive, isLoading, error, refetch };
 }

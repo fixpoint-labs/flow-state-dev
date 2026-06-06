@@ -1386,13 +1386,26 @@ export async function createExecutionContext<
   // so clients can refresh clientData without waiting for request completion.
   const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
   const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
-    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean; delta?: unknown }) => Promise<unknown> })
     : undefined;
 
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     if (!emitter) return undefined;
-    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
-      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    return (
+      resourcePath: string,
+      changeType: "created" | "updated" | "deleted",
+      projection?: { delta: unknown }
+    ) => {
+      // `projection` is present only for `client.live: true` resources; it fills
+      // the resource_change item's `delta` slot so the client merges the change
+      // without a refetch (FIX-739). Absent → batched-refetch path unchanged.
+      void emitter.emitResourceChange({
+        scope,
+        resourcePath,
+        changeType,
+        transient: true,
+        delta: projection?.delta
+      });
     };
   }
 

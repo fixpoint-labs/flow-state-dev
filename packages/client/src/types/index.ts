@@ -224,6 +224,13 @@ export type CollectionSnapshotEntry = {
    * included only when `client.state.read: true`.
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
+  /**
+   * Per-topic live `clientData` overlay (FIX-739). Populated client-side by
+   * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
+   * and read by `useResourceCollectionItem` as an overlay on the fetched
+   * baseline. Never emitted by the server — purely a client-merge target.
+   */
+  live?: Record<string, { clientData: unknown }>;
 };
 
 /**

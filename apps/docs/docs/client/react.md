@@ -245,6 +245,8 @@ if (item === null) return <div>Not found</div>;
 const content = await item.fetchContent();
 ```
 
+If the collection declares `client: { live: true }`, mutations to this topic update `item.clientData` mid-stream with no refetch — a memo flipping from `writing` to `published` repaints in place. `useResource` behaves the same way for single resources. See [Resources: Client Access — Live updates](/docs/resources/client-access#live-updates) for the server-side setup.
+
 ## useResourceManifest
 
 The manifest tells you what every public resource on the session exposes — kind, scope, pattern, declared permissions. The hook fetches once per `flowKind` and shares the result across all components via a module-level cache.

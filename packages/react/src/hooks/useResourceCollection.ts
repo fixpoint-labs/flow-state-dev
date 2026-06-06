@@ -100,7 +100,7 @@ function pathAffectsCollection(path: string, ref: string): boolean {
 }
 
 /** Locate the snapshot entry for `ref` across all scopes. */
-function findCollectionEntry(
+export function findCollectionEntry(
   session: SessionView,
   ref: string
 ): CollectionSnapshotEntry | undefined {

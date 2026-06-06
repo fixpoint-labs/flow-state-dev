@@ -359,9 +359,53 @@ All paths are relative to `/api/flows`. Permissions are enforced server-side bas
 
 ## Live updates
 
-When a resource changes during streaming (e.g., a tool creates an artifact), the server emits a `resource_change` SSE event. The React hooks handle this automatically: the session snapshot is refreshed after the request completes, and collection items update in place.
+When a resource changes during streaming (e.g., a tool creates an artifact), the server emits a `resource_change` event over the stream. By default this is an invalidation cue, not the data: the React hooks refresh the session snapshot once the request completes, and collection items update in place then. You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.
 
-You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.
+That batched-at-completion default is the right call for most resources. It avoids a burst of per-change HTTP fetches during artifact-heavy turns, and it never ships content you didn't ask for.
+
+### Opt-in mid-stream updates with `live: true`
+
+Some UIs need the change *now*, not at completion: a navigator that renders a memo moving through `pending → writing → published` as the agent works. For those, set `live: true` on the resource's `client` config:
+
+```ts
+const memos = defineResourceCollection({
+  pattern: "memos/**",
+  scope: "session",
+  stateSchema: z.object({
+    ...lifecycleSchema(["pending", "writing", "published"]),
+    title: z.string(),
+  }),
+  client: {
+    state: { read: true },
+    live: true,
+  },
+});
+```
+
+With `live: true`, each mutation carries its projected `clientData` inline on the `resource_change` event. The React layer folds that delta straight into the cached snapshot, so a subscribed `useResource` or `useResourceCollectionItem` reflects the change in the same paint as the server mutation, with no refetch. This is the resource-side analog of how scope-level `state_change` updates merge mid-stream (see [State & Scopes](/docs/fundamentals/state-and-scopes)).
+
+`live` requires that the resource's `clientData` actually reach the client. For a collection that means `state.read: true` or a projection (`expose` / `exclude` / `data`); for a single resource it means a projection. Declaring `live` without a client-visible projection throws at definition time — there would be nothing to stream.
+
+What ships and what doesn't:
+
+- Only the projected slice travels, never content. Content still loads on demand through its own endpoint.
+- The default (un-opted) batched-refetch path is unchanged. `live` is purely additive.
+- `count` tracks creates and deletes on a live collection so cardinality stays roughly current between refetches; full list membership still reconciles at completion.
+
+### The `lifecycleSchema` mixin
+
+A resource needs a status field to project before a UI can render its lifecycle. `lifecycleSchema(statuses)` returns that field set — a required `status` enum plus nullable `startedAt` / `completedAt` / `errorMessage` slots — to spread into a `stateSchema`:
+
+```ts
+import { lifecycleSchema } from "@flow-state-dev/core";
+
+stateSchema: z.object({
+  ...lifecycleSchema(["pending", "writing", "published"]),
+  title: z.string(),
+})
+```
+
+The nullable fields follow the resource-schema default convention (`.nullable().default(null)`), so a `create` or `setState` call supplies only the `status` and lets the framework fill the rest. It pairs naturally with `live: true`, but it's an ordinary schema fragment — use it anywhere you want a status-bearing resource.
 
 ## Debug and the DevTool
 

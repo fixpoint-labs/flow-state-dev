@@ -66,6 +66,15 @@ export type ResourceClientConfig<TState extends JsonObject = JsonObject> = {
   exclude?: ReadonlyArray<keyof TState & string>;
   /** Escape hatch for computed / transformed projections. Mutually exclusive with `expose` and `exclude`. */
   data?: ResourceClientDataFn<TState>;
+  /**
+   * Stream this resource's projected `clientData` as an inline delta on every
+   * state mutation, merged into the client's cached snapshot without a refetch
+   * (the resource-side analog of `state_change` live merge). Requires a
+   * projection (`expose` / `exclude` / `data`) — a single resource with no
+   * projection keeps its state private and has nothing to stream. Default
+   * `false`: mutations flag a batched snapshot refetch at request completion.
+   */
+  live?: boolean;
 };
 
 /**
@@ -110,6 +119,15 @@ export type CollectionClientConfig<TState extends JsonObject = JsonObject> = {
    * entries (the latter only when `state.read: true`).
    */
   data?: ResourceClientDataFn<TState>;
+  /**
+   * Stream each mutated instance's projected `clientData` as an inline delta
+   * mid-stream, merged into the client's cached snapshot without a refetch
+   * (the resource-side analog of `state_change` live merge). Requires the
+   * item's `clientData` to be client-visible — set `state.read: true` (identity
+   * projection) or a projection (`expose` / `exclude` / `data`). Default
+   * `false`: mutations flag a batched snapshot refetch at request completion.
+   */
+  live?: boolean;
 };
 
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
@@ -310,6 +328,7 @@ export function defineResource<
   validateClientProjection({
     definer: "defineResource()",
     ref: config.ref ?? "(unnamed)",
+    kind: "single",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });

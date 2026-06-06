@@ -28,6 +28,10 @@ import {
   isReducibleStateChange,
   mergeStateChangeIntoSnapshot
 } from "../internal/mergeStateChangeIntoSnapshot";
+import {
+  isReducibleResourceChange,
+  mergeResourceChangeIntoSnapshot
+} from "../internal/mergeResourceChangeIntoSnapshot";
 import { compareItemOrder, createItemStore } from "../internal/item-store";
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
@@ -346,6 +350,14 @@ export function useSession(
    * with no intermediate transitions. Drained in `applySnapshot`.
    */
   const pendingStateChangesRef = useRef<StateChangeItem[]>([]);
+  /**
+   * Buffer for `live: true` `resource_change` items received before the initial
+   * snapshot lands — the resource-side twin of `pendingStateChangesRef`
+   * (FIX-739). `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
+   * mid-stream resource deltas emitted before the snapshot resolves would be
+   * lost without this buffer. Drained in `applySnapshot`.
+   */
+  const pendingResourceChangesRef = useRef<ResourceChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
   const optimisticIdRef = useRef<string | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
@@ -456,6 +468,15 @@ export function useSession(
       let merged: SessionStateSnapshotResponse = nextSnapshot;
       for (const sc of pending) {
         const next = mergeStateChangeIntoSnapshot(merged, sc);
+        if (next !== null) {
+          merged = next;
+        }
+      }
+      // Drain buffered live resource_change deltas the same way (FIX-739).
+      const pendingResources = pendingResourceChangesRef.current;
+      pendingResourceChangesRef.current = [];
+      for (const resourceChange of pendingResources) {
+        const next = mergeResourceChangeIntoSnapshot(merged, resourceChange);
         if (next !== null) {
           merged = next;
         }
@@ -616,26 +637,39 @@ export function useSession(
           }
 
           // resource_change and state_change are the framework's two
-          // invalidation paths (both InvalidationItem leaves in core). The
-          // asymmetry below is intentional, not a gap: resources have separate
-          // content endpoints, so a resource_change flags a batched snapshot
-          // refetch at completion; state_change carries the delta inline, so it
-          // merges into clientData mid-stream (see the FIX-576 block below).
+          // invalidation paths (both InvalidationItem leaves in core). There are
+          // two resource_change shapes:
           //
-          // Track that resources changed during streaming. Rather than firing
-          // individual HTTP fetches per resource_change (which creates bursts
-          // during artifact-heavy flows), we batch into one refresh at request
-          // completion. The onRequestStatus handler checks this flag.
+          //   - LIVE (`client.live: true`, carries an inline `delta`, FIX-739):
+          //     merge the projected delta into the cached snapshot mid-stream —
+          //     same mechanism as state_change — and skip the refetch path so a
+          //     subscribed useResourceCollectionItem/useResource updates with no
+          //     HTTP round-trip.
+          //   - DEFAULT (no delta): resources have separate content endpoints,
+          //     so flag a single batched snapshot refetch at completion rather
+          //     than firing per-change fetches (which burst during
+          //     artifact-heavy flows). The onRequestStatus handler checks the
+          //     flag; the notice channel drives collection-hook invalidation.
           if (event.item.type === "resource_change") {
-            resourceChangedDuringStreamRef.current = true;
             const rc = event.item as ResourceChangeItem;
-            resourceChangeSeqRef.current++;
-            const notice: ResourceChangeNotice = {
-              resourcePath: rc.resourcePath,
-              changeType: rc.changeType,
-              seq: resourceChangeSeqRef.current
-            };
-            setResourceChanges((prev) => [...prev, notice]);
+            if (isReducibleResourceChange(rc)) {
+              setSnapshot((prev) => {
+                if (prev === null) {
+                  pendingResourceChangesRef.current.push(rc);
+                  return prev;
+                }
+                return mergeResourceChangeIntoSnapshot(prev, rc);
+              });
+            } else {
+              resourceChangedDuringStreamRef.current = true;
+              resourceChangeSeqRef.current++;
+              const notice: ResourceChangeNotice = {
+                resourcePath: rc.resourcePath,
+                changeType: rc.changeType,
+                seq: resourceChangeSeqRef.current
+              };
+              setResourceChanges((prev) => [...prev, notice]);
+            }
           }
 
           // FIX-576: reduce session/user/org-scope state_change items into the
@@ -809,6 +843,7 @@ export function useSession(
       resourceChangeSeqRef.current = 0;
       storeRef.current.clear();
       pendingStateChangesRef.current = [];
+      pendingResourceChangesRef.current = [];
       cancelScheduledFlush();
       setDetail(null);
       setSnapshot(null);

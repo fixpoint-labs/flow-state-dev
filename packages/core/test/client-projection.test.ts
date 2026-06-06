@@ -65,13 +65,13 @@ describe("validateClientProjection", () => {
 
   it("does nothing when client is undefined", () => {
     expect(() =>
-      validateClientProjection({ definer: "x", ref: "y", stateSchema, client: undefined })
+      validateClientProjection({ definer: "x", ref: "y", kind: "single", stateSchema, client: undefined })
     ).not.toThrow();
   });
 
   it("does nothing when zero projection fields are set", () => {
     expect(() =>
-      validateClientProjection({ definer: "x", ref: "y", stateSchema, client: {} })
+      validateClientProjection({ definer: "x", ref: "y", kind: "single", stateSchema, client: {} })
     ).not.toThrow();
   });
 
@@ -80,6 +80,7 @@ describe("validateClientProjection", () => {
       validateClientProjection({
         definer: "defineResource()",
         ref: "things",
+        kind: "single",
         stateSchema,
         client: { expose: ["a"], data: (s) => s },
       })
@@ -91,6 +92,7 @@ describe("validateClientProjection", () => {
       validateClientProjection({
         definer: "defineResource()",
         ref: "things",
+        kind: "single",
         stateSchema,
         client: { expose: ["a"], exclude: ["b"], data: (s) => s },
       })
@@ -102,6 +104,7 @@ describe("validateClientProjection", () => {
       validateClientProjection({
         definer: "defineResource()",
         ref: "things",
+        kind: "single",
         stateSchema,
         client: { expose: ["bogus"] },
       })
@@ -113,6 +116,7 @@ describe("validateClientProjection", () => {
       validateClientProjection({
         definer: "defineResource()",
         ref: "things",
+        kind: "single",
         stateSchema,
         client: { exclude: ["nope"] },
       })
@@ -125,10 +129,73 @@ describe("validateClientProjection", () => {
       validateClientProjection({
         definer: "defineResource()",
         ref: "things",
+        kind: "single",
         stateSchema: unionSchema,
         client: { expose: ["nothing-here"] },
       })
     ).not.toThrow();
+  });
+
+  describe("live visibility gate", () => {
+    it("rejects live on a single resource with no projection", () => {
+      expect(() =>
+        validateClientProjection({
+          definer: "defineResource()",
+          ref: "memo",
+          kind: "single",
+          stateSchema,
+          client: { content: { read: true }, live: true },
+        })
+      ).toThrow(/client\.live requires.*projected.*expose.*exclude.*data/);
+    });
+
+    it("accepts live on a single resource with a projection", () => {
+      expect(() =>
+        validateClientProjection({
+          definer: "defineResource()",
+          ref: "memo",
+          kind: "single",
+          stateSchema,
+          client: { expose: ["a"], live: true },
+        })
+      ).not.toThrow();
+    });
+
+    it("rejects live on a collection with neither state.read nor a projection", () => {
+      expect(() =>
+        validateClientProjection({
+          definer: "defineResourceCollection()",
+          ref: "memos/**",
+          kind: "collection",
+          stateSchema,
+          client: { content: { read: true }, live: true },
+        })
+      ).toThrow(/client\.live requires.*client-visible.*state\.read/);
+    });
+
+    it("accepts live on an identity-projection collection with state.read", () => {
+      expect(() =>
+        validateClientProjection({
+          definer: "defineResourceCollection()",
+          ref: "memos/**",
+          kind: "collection",
+          stateSchema,
+          client: { state: { read: true }, live: true },
+        })
+      ).not.toThrow();
+    });
+
+    it("accepts live on a collection with a projection but no state.read", () => {
+      expect(() =>
+        validateClientProjection({
+          definer: "defineResourceCollection()",
+          ref: "memos/**",
+          kind: "collection",
+          stateSchema,
+          client: { expose: ["a"], live: true },
+        })
+      ).not.toThrow();
+    });
   });
 });
 

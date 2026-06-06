@@ -162,7 +162,7 @@ Convenience hook for paginated list views. Returns `items` (array of `Collection
 
 ### `useResourceCollectionItem(session, ref, topic)`
 
-Single-item lookup by topic. Returns `null` when not present. Refetches automatically when the watched `ref` receives a `resource_change` notice — e.g., a memo flipping from `writing` to `published` updates in place without remounting.
+Single-item lookup by topic. Returns `null` when not present. Refetches automatically when the watched `ref` receives a `resource_change` notice — e.g., a memo flipping from `writing` to `published` updates in place without remounting. When the collection declares `client: { live: true }`, the mutation arrives as an inline delta merged into the snapshot, so `item.clientData` updates mid-stream with no refetch (`useResource` does the same for single resources).
 
 ### `SessionView.resourceChanges`
 
