@@ -11,11 +11,15 @@
  * takes to get it benchmarked — no per-pattern harness wiring.
  */
 import { defineBenchmark } from "@flow-state-dev/testing";
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
 import { tasks } from "./tasks";
 
 export default defineBenchmark({
   name: "fsd-cross-pattern",
-  // Resolved against defaultBenchmarkRegistry by the CLI. The baseline is
+  // Registry carried on the definition so the CLI resolves `patterns` without
+  // importing @flow-state-dev/patterns itself.
+  registry: defaultBenchmarkRegistry,
+  // Resolved against the registry by the CLI. The baseline is
   // appended automatically (baseline: true) — "patterns beat the naive single
   // call" is the load-bearing claim, so the control is always present.
   patterns: [

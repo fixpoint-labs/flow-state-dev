@@ -14,7 +14,8 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import type {
   BenchmarkSubject,
   BenchmarkTask,
-  BenchmarkCategory
+  BenchmarkCategory,
+  BenchmarkRegistry
 } from "@flow-state-dev/core";
 
 /** Configuration for a single `runBenchmark` invocation. */
@@ -135,8 +136,14 @@ export interface BenchmarkDefinition {
   name: string;
   /** Explicit subjects, when not resolving via a registry. */
   subjects?: BenchmarkSubject[];
-  /** Pattern names resolved against a registry passed to comparePatterns. */
+  /** Pattern names resolved against `registry` (or a registry the runner supplies). */
   patterns?: string[];
+  /**
+   * Registry used to resolve `patterns` into subjects. Carried on the definition
+   * so a runner (e.g. the `fsdev benchmark` CLI) stays generic — it resolves
+   * names without importing any specific pattern package.
+   */
+  registry?: BenchmarkRegistry;
   /** Append a baseline subject (default true at run time). */
   baseline?: boolean;
   /** Tasks to run. Must be non-empty. */
