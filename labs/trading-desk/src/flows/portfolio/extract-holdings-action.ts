@@ -36,7 +36,7 @@ import { z } from "zod";
 import { extractHoldingsGenerator } from "./extract-holdings-generator";
 import { extractPdfText } from "./extract-pdf-text.server";
 import { pdfExtractionSchema } from "./portfolio-pdf";
-import { pdfImportResource } from "./portfolio-pdf-resource";
+import { pdfImportResource } from "./portfolio-resources";
 
 /** Action input: the base64-encoded PDF bytes the dialog uploaded. */
 export const extractHoldingsActionInputSchema = z.object({

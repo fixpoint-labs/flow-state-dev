@@ -8,12 +8,12 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/agents/portfolio-manager/writer";
-import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/agents/portfolio-manager/portfolio-manager";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
-import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";
+import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
+import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
 
 const writePm = markWriting("portfolioManager");
 const errorPm = markError("portfolioManager");

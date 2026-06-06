@@ -23,22 +23,22 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-import { checkTickerResolvable } from "../src/flows/trading-desk/orchestration/guards";
-import { commitPortfolioManagerMemo } from "../src/flows/trading-desk/agents/portfolio-manager/writer";
-import { decisionSnapshotResource } from "../src/flows/trading-desk/decision-snapshot-resource";
-import { memosCollection } from "../src/flows/trading-desk/resources";
+import { checkTickerResolvable } from "../src/flows/analysis/orchestration/guards";
+import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
+import { decisionSnapshotResource } from "../src/flows/analysis/decision-snapshot-resource";
+import { memosCollection } from "../src/flows/analysis/resources";
 import {
   parseReportRow,
   relativeTime,
   reportRowTuple,
   type ReportRow,
   type ReportSessionSummary,
-} from "../src/flows/trading-desk/report-index";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+} from "../src/flows/analysis/report-index";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 import {
   valuationSpineResource,
   type ValuationSpineState,
-} from "../src/flows/trading-desk/valuation-spine-resource";
+} from "../src/flows/analysis/valuation-spine-resource";
 
 // ── 1. parseReportRow ────────────────────────────────────────────────
 

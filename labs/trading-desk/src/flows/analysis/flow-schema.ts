@@ -2,18 +2,24 @@
  * `analyzeInputSchema` lifted out of `flow.ts` so guard handlers can import
  * it without creating a cycle through the flow definition.
  *
- * The portfolio sub-schemas (Slice 5) are caller input validated by a handler,
- * NOT generator outputs — so `z.record()`, `.default()`, and `.nullable()` are
- * all fine here (BP-016 only constrains generator output shapes). Do not "fix"
- * them to strict shape.
+ * The portfolio sub-schemas (Slice 5) are resource-state shapes, NOT generator
+ * outputs — so `z.record()`, `.default()`, and `.nullable()` are all fine here
+ * (BP-016 only constrains generator output shapes). Do not "fix" them to strict
+ * shape.
+ *
+ * `portfolio` was removed from `analyzeInputSchema` in Task 2: the snapshot is
+ * now computed server-side by `seedSession` from the user-scoped `accounts` +
+ * `portfolioQuotes` resources. `portfolioContextInput` is kept as an export
+ * because it is the type of the `state.portfolio` field and is referenced by
+ * `state.ts` and `build-portfolio-context.ts`.
  */
 import { z } from "zod";
 
 /**
- * One holding line within the dispatched portfolio snapshot. The CLIENT
- * (`app/page.tsx`) computes `marketValue` / `weightPct` at dispatch from the
- * Slice-4 stored `quantity` × a live `portfolioQuotes` price — the flow never
- * recomputes them. A ticker with no live quote degrades to `marketValue: null`
+ * One holding line within the computed portfolio snapshot. `seedSession`
+ * computes `marketValue` / `weightPct` server-side from the Slice-4 stored
+ * `quantity` × a `portfolioQuotes` price — the flow never recomputes them
+ * downstream. A ticker with no live quote degrades to `marketValue: null`
  * / `weightPct: null` (NEVER a fabricated price). `sector` is best-effort (the
  * Slice-4 model does not store it, so it is null today).
  */
@@ -39,8 +45,8 @@ const portfolioAccountInput = z.object({
  * exactly as today. The pipeline (P1–P2) never sees this; only the lens pack,
  * the trader (P3), and the PM (P5) read it via the `portfolioContext` preset.
  *
- * `totalNav` = Σ(holding.marketValue, when known) + Σ(account.cash), computed by
- * the client at dispatch. `snapshotAsOf` carries the quotes' as-of so the PM/UI
+ * `totalNav` = Σ(holding.marketValue, when known) + Σ(account.cash), computed
+ * server-side at seed. `snapshotAsOf` carries the quotes' as-of so the PM/UI
  * can label staleness (RISK-P3) — a frozen snapshot is never presented as live.
  * `pricedHoldings` / `totalHoldings` let the prompt + UI state coverage honestly
  * (e.g. "12 of 18 holdings priced") without fabricating the missing values.
@@ -68,13 +74,11 @@ export const analyzeInputSchema = z.object({
   // gates Phase 6; null skips it entirely.
   userThesis: z.string().max(1500).nullable().default(null),
   userThesisRationale: z.string().max(1500).nullable().default(null),
-  // Optional per-run portfolio snapshot (Slice 5). Null → portfolio-blind run.
-  // Frozen onto session state at seed time (same precedent as `userThesis`).
-  portfolio: portfolioContextInput.nullable().default(null),
   // Which account(s) the user is considering this position for. Empty → let the
-  // PM suggest. Subset of `portfolio.accounts[].id`. Does NOT join the session
-  // keying tuple in v1 (open-Q#2) — account selection is a refinement, not a new
-  // report.
+  // PM suggest. Does NOT join the session keying tuple in v1 — account selection
+  // is a refinement, not a new report. The portfolio snapshot itself is computed
+  // server-side by `seedSession` from the user-scoped accounts + portfolioQuotes
+  // resources (Task 2), so no `portfolio` field is passed from the client.
   selectedAccountIds: z.array(z.string()).default([]),
 });
 

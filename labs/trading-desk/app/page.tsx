@@ -9,7 +9,6 @@ import {
   useClientData,
   useResource,
   useResourceCollectionItem,
-  useResourceCollectionList,
 } from "@flow-state-dev/react";
 import {
   TopBar,
@@ -24,21 +23,17 @@ import { TranscriptPane } from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
-import { parseReportRow, reportRowTuple } from "@/src/flows/trading-desk/report-index";
-import { buildAnalyzeInput } from "@/src/flows/trading-desk/analyze-input";
-import { buildPortfolioContext } from "@/src/flows/trading-desk/portfolio/build-portfolio-context";
-import type { AccountState } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
-import type { PortfolioQuotesState } from "@/src/flows/trading-desk/portfolio/portfolio-quotes-resource";
-import type { PortfolioContextInput } from "@/src/flows/trading-desk/flow-schema";
-import type { MemoStatus } from "@/src/flows/trading-desk/resources";
-import type { AnyMemoShortName } from "@/src/flows/trading-desk/registry";
+import { parseReportRow, reportRowTuple } from "@/src/flows/analysis/report-index";
+import { buildAnalyzeInput } from "@/src/flows/analysis/analyze-input";
+import type { MemoStatus } from "@/src/flows/analysis/resources";
+import type { AnyMemoShortName } from "@/src/flows/analysis/registry";
 import {
   EMPTY_INSTRUCTIONS,
   type SpecialInstructionsState,
-} from "@/src/flows/trading-desk/special-instructions";
+} from "@/src/flows/analysis/special-instructions";
 
 const DEFAULT_TICKER = "NVDA";
-const FLOW_KIND = "trading-desk";
+const FLOW_KIND = "analysis";
 const USER_ID = "devuser";
 
 /** The four user-visible inputs that identify one analysis run. Sessions are
@@ -80,6 +75,19 @@ function titleForTuple(t: AnalyzeTuple): string {
   return `${t.ticker} · ${t.date} · ${t.costPreset} · ${t.dataSource}`;
 }
 
+/** Binds a portfolio-flow session and passes it to PortfolioPane.
+ *  Rendered inside a <FlowProvider flowKind="portfolio">, so its
+ *  useFlow + useSession calls dispatch to the portfolio flow. Sessions are
+ *  incidental — accounts and quotes are user-scoped, so any session sees the
+ *  same data. Auto-create/select so the pane is usable immediately. */
+function PortfolioView(): ReactElement {
+  const flow = useFlow({ autoCreateSession: true, autoSelectSession: true });
+  const session = useSession(flow.activeSessionId);
+  return (
+    <PortfolioPane session={session} hasSession={flow.activeSessionId !== undefined} />
+  );
+}
+
 export default function Page(): ReactElement {
   return (
     <FlowProvider flowKind={FLOW_KIND} userId={USER_ID} baseUrl="">
@@ -113,31 +121,6 @@ function TradingDeskApp(): ReactElement {
     (instructionsClientData as SpecialInstructionsState | null) ??
     EMPTY_INSTRUCTIONS;
 
-  // Portfolio snapshot for portfolio-aware analysis (Slice 5). Read the Slice-4
-  // accounts (holdings inline) + the live `portfolioQuotes` from the bound read
-  // session, and build the dispatch snapshot CLIENT-SIDE: the flow never
-  // recomputes weights, and a missing live price degrades to null (never
-  // fabricated — see `buildPortfolioContext`). Null when the user has no
-  // accounts → the run is portfolio-blind exactly as today.
-  // 50 is a generous ceiling for a demo. A real portfolio above this would
-  // produce a SILENTLY incomplete snapshot — missing accounts/holdings/cash, so
-  // the PM reasons from an under-counted NAV with no signal. Acceptable for the
-  // example; raise or paginate (and surface the truncation) before real use.
-  const accountsList = useResourceCollectionList(readSession, "accounts", {
-    limit: 50,
-  });
-  const { clientData: quotesClientData } = useResource(readSession, "portfolioQuotes");
-  const portfolioSnapshot = useMemo<PortfolioContextInput | null>(() => {
-    const accounts = accountsList.items
-      .map((it) => it.clientData as AccountState | undefined)
-      .filter((a): a is AccountState => a !== undefined);
-    const quotes = quotesClientData as PortfolioQuotesState | null;
-    return buildPortfolioContext(
-      accounts,
-      quotes?.quotes ?? [],
-      quotes?.fetchedAt ?? null,
-    );
-  }, [accountsList.items, quotesClientData]);
   const activeInstructionCount = Object.values(instructions).filter(
     (v) => typeof v === "string" && v.trim().length > 0,
   ).length;
@@ -174,7 +157,6 @@ function TradingDeskApp(): ReactElement {
       tuple: AnalyzeTuple;
       userThesis: string | null;
       userThesisRationale: string | null;
-      portfolio: PortfolioContextInput | null;
     } | null
   >(null);
 
@@ -282,16 +264,12 @@ function TradingDeskApp(): ReactElement {
       tuple,
       userThesis: frozen.userThesis,
       userThesisRationale: frozen.userThesisRationale,
-      // Freeze the portfolio snapshot at click time too — later price refreshes
-      // or account edits don't reach a run already in flight.
-      portfolio: portfolioSnapshot,
     });
   }, [
     tuple,
     matchedSessionId,
     userThesis,
     userThesisRationale,
-    portfolioSnapshot,
     flow,
     sessionClient,
   ]);
@@ -333,17 +311,15 @@ function TradingDeskApp(): ReactElement {
   useEffect(() => {
     if (pendingDispatch === null) return;
     if (flow.activeSessionId !== pendingDispatch.sessionId) return;
-    const { tuple, userThesis: ut, userThesisRationale: utr, portfolio } = pendingDispatch;
+    const { tuple, userThesis: ut, userThesisRationale: utr } = pendingDispatch;
     setPendingDispatch(null);
     void session.sendAction("analyze", {
       ...tuple,
       userThesis: ut,
       userThesisRationale: utr,
-      // Portfolio-aware analysis (Slice 5). Null → portfolio-blind run. v1 does
-      // not select accounts in the UI, so `selectedAccountIds` is empty (the PM
-      // suggests an account). `selectedAccountIds` does NOT join the session
-      // keying tuple in v1 (it is a refinement, not a new report).
-      portfolio,
+      // `selectedAccountIds` is empty in v1 (the PM suggests an account). The
+      // portfolio snapshot is now computed server-side at seed from the user-scoped
+      // accounts + portfolioQuotes resources — no `portfolio` field is dispatched.
       selectedAccountIds: [],
     });
   }, [pendingDispatch, flow.activeSessionId, session]);
@@ -378,14 +354,14 @@ function TradingDeskApp(): ReactElement {
         </main>
       ) : view === "portfolio" ? (
         <main className="flex flex-col overflow-hidden">
-          {/* Portfolio reads user-scoped resources through a session snapshot.
-              Reuse the same `readSession` fallback the settings dialog uses —
-              the active session, else the first session. Prices are always live
-              (real holdings), so the analysis fixture/live toggle is not passed. */}
-          <PortfolioPane
-            session={readSession}
-            hasSession={readSessionId !== undefined}
-          />
+          {/* Portfolio actions (saveAccount, getQuotes, etc.) live on the
+              portfolio flow, so the Portfolio view gets its own
+              provider + session binding that dispatches to that flow. User-scoped
+              storage (accounts, portfolioQuotes) is shared at the storage layer —
+              no data bridge between providers is needed. */}
+          <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
+            <PortfolioView />
+          </FlowProvider>
         </main>
       ) : (
         <main

@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import type {
   AccountType,
-} from "@/src/flows/trading-desk/portfolio/portfolio-schema";
+} from "@/src/flows/portfolio/portfolio-schema";
 
 type NewAccountDraft = {
   name: string;

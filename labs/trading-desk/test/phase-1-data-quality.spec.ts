@@ -18,10 +18,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitAnalystMemo } from "../src/flows/trading-desk/agents/analysts/writer";
-import { thesisOutputSchema } from "../src/flows/trading-desk/agents/analysts/thesis-schema";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer";
+import { thesisOutputSchema } from "../src/flows/analysis/agents/analysts/thesis-schema";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const DATA_QUALITY_VALUES = ["full", "partial", "unavailable"] as const;
 

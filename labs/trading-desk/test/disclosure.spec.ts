@@ -8,11 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitAnalystMemo } from "../src/flows/trading-desk/agents/analysts/writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
-import { emptyPayload, skippedDiscoveryPayload } from "../src/flows/trading-desk/tools/empty-payloads";
-import { toolOutputSchemas } from "../src/flows/trading-desk/tools/schemas";
+import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
+import { emptyPayload, skippedDiscoveryPayload } from "../src/flows/analysis/tools/empty-payloads";
+import { toolOutputSchemas } from "../src/flows/analysis/tools/schemas";
 
 function disclosureThesis() {
   return {

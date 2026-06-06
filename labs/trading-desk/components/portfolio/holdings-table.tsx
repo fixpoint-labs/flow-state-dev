@@ -13,8 +13,8 @@
 import type { ReactElement } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Holding } from "@/src/flows/trading-desk/portfolio/portfolio-schema";
-import type { Quote } from "@/src/flows/trading-desk/portfolio/get-quotes";
+import type { Holding } from "@/src/flows/portfolio/portfolio-schema";
+import type { Quote } from "@/src/flows/portfolio/get-quotes";
 import {
   DASH,
   formatMoney,

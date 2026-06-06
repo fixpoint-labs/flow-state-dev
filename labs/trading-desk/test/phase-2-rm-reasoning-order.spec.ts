@@ -15,13 +15,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitResearchManagerMemo } from "../src/flows/trading-desk/agents/research/writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitResearchManagerMemo } from "../src/flows/analysis/agents/research/writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const RM_PROMPT_PATH = path.join(
   process.cwd(),
-  "src/flows/trading-desk/agents/research/prompts/research-manager.prompt.md",
+  "src/flows/analysis/agents/research/prompts/research-manager.prompt.md",
 );
 
 const flow = defineFlow({

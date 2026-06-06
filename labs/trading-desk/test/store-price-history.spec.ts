@@ -18,10 +18,10 @@ import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { testFlow } from "@flow-state-dev/testing";
-import { storePriceHistory } from "../src/flows/trading-desk/store-price-history";
-import { priceHistoryResource } from "../src/flows/trading-desk/price-history-resource";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
-import { _resetCache } from "../src/flows/trading-desk/tools/runtime/cache";
+import { storePriceHistory } from "../src/flows/analysis/store-price-history";
+import { priceHistoryResource } from "../src/flows/analysis/price-history-resource";
+import { sessionStateSchema } from "../src/flows/analysis/state";
+import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",

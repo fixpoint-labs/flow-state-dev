@@ -14,29 +14,29 @@
 import { describe, expect, it } from "vitest";
 import { makeSchemaStrict } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
-import { thesisOutputSchema } from "../src/flows/trading-desk/agents/analysts/thesis-schema";
-import { grokOutputSchema } from "../src/flows/trading-desk/tools/data/get_social_sentiment";
+import { thesisOutputSchema } from "../src/flows/analysis/agents/analysts/thesis-schema";
+import { grokOutputSchema } from "../src/flows/analysis/tools/data/get_social_sentiment";
 import {
   secFilingsSchema,
   analystEstimatesSchema,
   earningsTranscriptSchema,
   discoveryPayloadSchema,
-} from "../src/flows/trading-desk/tools/schemas";
+} from "../src/flows/analysis/tools/schemas";
 import {
   bearThesisOutputSchema,
   bullThesisOutputSchema,
   investmentThesisOutputSchema,
-} from "../src/flows/trading-desk/agents/research/generators";
-import { tradeProposalOutputSchema } from "../src/flows/trading-desk/agents/trader/trader";
+} from "../src/flows/analysis/agents/research/generators";
+import { tradeProposalOutputSchema } from "../src/flows/analysis/agents/trader/trader";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/trading-desk/agents/risk/schemas";
-import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/agents/scenario-forecaster/scenario-forecaster";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/agents/portfolio-manager/portfolio-manager";
-import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/agents/thesis-validator/thesis-validator";
-import { pdfExtractionSchema } from "../src/flows/trading-desk/portfolio/portfolio-pdf";
-import { lensVerdictOutputSchema } from "../src/flows/trading-desk/agents/lenses/lens-verdict-schema";
+} from "../src/flows/analysis/agents/risk/schemas";
+import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
+import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
+import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
+import { pdfExtractionSchema } from "../src/flows/portfolio/portfolio-pdf";
+import { lensVerdictOutputSchema } from "../src/flows/analysis/agents/lenses/lens-verdict-schema";
 
 type Issue = { path: string; reason: string };
 

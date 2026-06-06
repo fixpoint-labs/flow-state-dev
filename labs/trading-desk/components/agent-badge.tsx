@@ -10,7 +10,7 @@
  * caller sets to `oklch(62% 0.12 <hue>)` from the AGENTS table.
  */
 import type { CSSProperties, ReactElement } from "react";
-import { AGENTS, type AgentName } from "@/src/flows/trading-desk/registry";
+import { AGENTS, type AgentName } from "@/src/flows/analysis/registry";
 import { cn } from "@/lib/utils";
 
 type AgentBadgeProps = {

@@ -24,7 +24,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
-import tradingDeskFlow from "../src/flows/trading-desk/flow";
+import analysisFlow from "../src/flows/analysis/flow";
 
 function analystThesis(label: string, headline: string) {
   return {
@@ -124,7 +124,7 @@ describe("session resources are persisted after analyze run", () => {
     const sessionId = "layout-session";
 
     const result = await testFlow({
-      flow: tradingDeskFlow,
+      flow: analysisFlow,
       action: "analyze",
       userId: "test-user",
       sessionId,

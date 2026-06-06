@@ -7,8 +7,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
 } from "@flow-state-dev/server";
-import tradingDeskFlow from "@/src/flows/trading-desk/flow";
-import { hasXaiKey } from "@/src/flows/trading-desk/tools/providers/xai";
+import analysisFlow from "@/src/flows/analysis/flow";
+import portfolioFlow from "@/src/flows/portfolio/flow";
+import { hasXaiKey } from "@/src/flows/analysis/tools/providers/xai";
 
 // Filesystem-backed stores so analysis history survives `pnpm dev` restarts.
 // Defaults to `<example>/.fsdev/data` (covered by the root `.gitignore`'s
@@ -50,7 +51,8 @@ const modelResolver = createModelResolver({
 });
 
 const registry = createFlowRegistry();
-registry.register(tradingDeskFlow);
+registry.register(analysisFlow);
+registry.register(portfolioFlow);
 
 export const router = createFlowApiRouter({
   registry,

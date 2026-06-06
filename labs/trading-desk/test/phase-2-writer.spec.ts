@@ -11,10 +11,10 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
-} from "../src/flows/trading-desk/agents/research/writer";
-import { markError, markWriting } from "../src/flows/trading-desk/agents/_recipe/memo-writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+} from "../src/flows/analysis/agents/research/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const writeBull = markWriting("bull");
 const errorBull = markError("bull");

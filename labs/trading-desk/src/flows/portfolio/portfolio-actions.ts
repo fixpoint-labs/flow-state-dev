@@ -28,9 +28,8 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { parsePortfolioCsv, type RowError } from "./portfolio-csv";
-import { pdfImportResource } from "./portfolio-pdf-resource";
 import { accountTypeSchema, type Holding } from "./portfolio-schema";
-import { portfolioResources } from "./portfolio-resources";
+import { pdfImportResource, portfolioResources } from "./portfolio-resources";
 
 /** Import feedback. Handler output (not a generator output) so a fixed-shape
  *  object is fine; `errors`/`warnings` carry the per-row + import-level notes
