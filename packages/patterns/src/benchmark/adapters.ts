@@ -16,7 +16,7 @@ import type {
   BenchmarkSubject,
   BenchmarkAdapterOptions,
   BenchmarkTask,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core";
 import { createWorkspace } from "../routedSpecialists";
 import { supervisor } from "../supervisor";
 import { planAndExecute } from "../plan-and-execute";

@@ -15,7 +15,7 @@
  *     they don't map cleanly onto a single generic benchmark task and would
  *     need bespoke per-task glue.
  */
-import type { BenchmarkRegistry } from "@flow-state-dev/core/types";
+import type { BenchmarkRegistry } from "@flow-state-dev/core";
 import {
   supervisorBenchmarkAdapter,
   planAndExecuteBenchmarkAdapter,
