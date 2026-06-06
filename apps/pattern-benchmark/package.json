@@ -1,0 +1,22 @@
+{
+  "name": "@flow-state-dev/pattern-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-pattern benchmark suite — proves FSD coordination patterns measurably differ on a fixed task suite + model (FIX-614).",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root . --passWithNoTests",
+    "test:watch": "vitest --root . --passWithNoTests"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/patterns": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
