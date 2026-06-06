@@ -429,6 +429,21 @@ export async function executeBlock(
                   error: summarizeForLog(error)
                 }
               );
+              // FIX-724: capture each non-terminal failed attempt so a retried
+              // root block reports per attempt, consistent with nested blocks
+              // (which fire `onBlockError` on every attempt under a retried
+              // parent). The terminal attempt is captured by the outer catch.
+              // Deduped by the shared per-request set when `onBlockError`
+              // already fired for this same throw.
+              const failedAttempt = retryAttempt - 1;
+              options.ctx._captureError?.(error, {
+                blockName: options.block.name,
+                blockKind: options.block.kind,
+                blockInstanceId: buildBlockInstanceId(requestId, blockPath, failedAttempt),
+                blockPath,
+                attempt: failedAttempt,
+                scope: "block"
+              });
             }
           });
 

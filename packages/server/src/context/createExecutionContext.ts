@@ -1840,9 +1840,11 @@ export async function createExecutionContext<
   // FIX-724: opt-in error-capture sink. A per-request dedup set plus a capture
   // closure shared by `_runtimeHooks.onBlockError` (nested leaves) and
   // `ctx._captureError` (the root action block, fired from executeBlock's
-  // catch). Dedup keys on the raw thrown error instance — core re-throws it
-  // unchanged up the block tree, so the deepest (leaf) capture wins and the
-  // ancestor / root captures of the same throw are suppressed.
+  // catch). Dedup keys on the raw thrown value — core re-throws it unchanged up
+  // the block tree, so the deepest (leaf) capture wins and the ancestor / root
+  // captures of the same throw are suppressed. A `Set` (not `WeakSet`) so that
+  // primitive throws (`throw "x"`, `throw null`) dedup by value too; it is
+  // scoped to this request's closure and discarded with it.
   const errorCapture = options.errorCapture;
   const captureIdentity: ErrorCaptureIdentity = {
     requestId: requestRef.current.id,
@@ -1852,13 +1854,11 @@ export async function createExecutionContext<
     sessionId: sessionRecord?.id,
     orgId: orgRecord?.orgId
   };
-  const capturedErrors = new WeakSet<object>();
+  const capturedErrors = new Set<unknown>();
   const captureError = (error: unknown, block?: ErrorCaptureBlockInfo): void => {
     if (errorCapture === undefined) return;
-    if (typeof error === "object" && error !== null) {
-      if (capturedErrors.has(error)) return;
-      capturedErrors.add(error);
-    }
+    if (capturedErrors.has(error)) return;
+    capturedErrors.add(error);
     // `normalizeError` treats `blockName: undefined` as absent, so this is safe
     // whether or not the caller resolved a block name.
     const normalized = normalizeError(error, {

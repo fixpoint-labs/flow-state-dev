@@ -200,6 +200,32 @@ describe("errorCapture wiring", () => {
     });
   });
 
+  it("captures every failed attempt of a retried root block (one per attempt)", async () => {
+    const events: ErrorCaptureEvent[] = [];
+    const ctx = await createCtx("req_retry", (e) => {
+      events.push(e);
+    });
+
+    const retry = { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 };
+    const flaky = handler({
+      name: "flaky",
+      retry,
+      execute: () => {
+        throw new Error("always fails");
+      }
+    });
+
+    const result = await executeBlock({ block: flaky, input: 1, ctx, retry });
+
+    expect(result.error).toBeInstanceOf(FlowError);
+    // One event per failed attempt (2 non-terminal via onRetry + 1 terminal via
+    // the catch), each carrying its 0-indexed attempt number. This matches the
+    // per-attempt behaviour nested blocks already have under a retried parent.
+    expect(events).toHaveLength(3);
+    expect(events.map((e) => e.attempt)).toEqual([0, 1, 2]);
+    expect(events.every((e) => e.blockName === "flaky")).toBe(true);
+  });
+
   it("a throwing capture handler does not break execution", async () => {
     const handlerSpy = vi.fn(() => {
       throw new Error("sink exploded");

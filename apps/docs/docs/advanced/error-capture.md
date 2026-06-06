@@ -54,7 +54,7 @@ The callback is read-only. Its return value is ignored, and the runtime calls it
 | `scope` | `"block" \| "request" \| "work" \| "resource"?` | Where the error originated. |
 | `transient` | `boolean?` | `true` for high-frequency transient blocks (poll loops). |
 
-The runtime fires the callback once per failing block, identified by the leaf block where the failure actually happened. A failure deep in a nested sequencer reports the inner block, not the outer container.
+The runtime fires the callback once per failed block, identified by the leaf block where the failure actually happened. A failure deep in a nested sequencer reports the inner block, not the outer container. When a block runs under a retry policy, each failed attempt fires once, distinguished by `attempt`; a block that recovers on a later attempt still reports the attempts that failed. Filter these out in your adapter if you only want terminal failures (see below).
 
 ## Choosing which errors to capture
 

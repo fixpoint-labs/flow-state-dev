@@ -76,9 +76,13 @@ export interface ErrorCaptureBlockInfo {
 
 /**
  * Build an `ErrorCaptureEvent` from a normalized error, the request identity,
- * and optional per-block overrides. Block overrides win over fields carried on
- * the `FlowError`; `scope` prefers the error's own scope and falls back to the
- * block-info scope so request-level fallbacks can label themselves.
+ * and optional per-block overrides. For fields the `FlowError` also carries
+ * (`blockName`, `blockInstanceId`), the block override wins and the error's
+ * value is the fallback. `blockKind` has no `FlowError` counterpart — the error
+ * taxonomy carries no kind — so it is sourced solely from the block override
+ * (always present for block-scope captures). `scope` prefers the error's own
+ * scope and falls back to the block-info scope so a request-level fallback can
+ * label itself.
  */
 export function toErrorCaptureEvent(
   error: FlowError,
