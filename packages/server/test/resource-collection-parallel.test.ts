@@ -152,4 +152,51 @@ describe("FIX-744: parallel distinct-key collection writes survive in cache", ()
     expect(await refA.readContent()).toBe("body-a");
     expect(await refB.readContent()).toBe("body-b");
   });
+
+  it("LRU eviction during a parallel fan-out keeps cache and store consistent", async () => {
+    const lruMemos = defineResourceCollection({
+      scope: "session",
+      pattern: "lru/**",
+      stateSchema: memoSchema,
+      maxInstances: 3,
+      eviction: "lru"
+    });
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "fix744-lru",
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: handler({ name: "noop", resources: { lru: lruMemos }, execute: () => "ok" })
+        }
+      }
+    })();
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_1",
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores
+    });
+    const ns = ctx.resources.lru as unknown as ResourceCollectionRef<{ status: string }>;
+
+    // Fan 6 distinct creates into a 3-slot LRU collection: evictions fire via
+    // `deleteResourceKey` while sibling creates are in flight.
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) => ns.create(String(i), { status: "done" }))
+    );
+
+    // The invariant the fix guarantees: the in-memory cache and the durable
+    // store agree on exactly which instances survived — eviction's per-key
+    // delete removed the evicted key from BOTH, and no sibling create was
+    // clobbered out of the cache. (Which keys survive under concurrent LRU
+    // eviction is non-deterministic and out of scope; the cache-equals-store
+    // invariant is not.)
+    const inCache = (await ns.list()).map((r) => r.path).sort();
+    const inStore = Object.keys(await stores.resourceState.getAll("session", "sess_1"))
+      .filter((k) => k.startsWith("lru/"))
+      .sort();
+    expect(inCache).toEqual(inStore);
+  });
 });

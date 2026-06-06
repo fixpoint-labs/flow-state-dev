@@ -1177,6 +1177,13 @@ export async function createExecutionContext<
       },
       deleteResourceKey: async (key: string): Promise<void> => {
         const scopeId = scopeIdForScope(scope);
+        // `!(key in stateRef.current)` is a load-state check, not a
+        // correctness guarantee: it scopes the delete to keys present in the
+        // cache, matching the prior whole-map reconciliation (which only ever
+        // diffed cached keys). Eager scopes hold the full set, so this is
+        // exact; for a `prefetchMode: 'lazy'` instance never loaded this
+        // request the store row is left untouched — a pre-existing gap, not
+        // introduced by the per-key path.
         if (scopeId === undefined || !(key in stateRef.current)) return;
         await stores.resourceState.delete(scope, scopeId, key);
         delete stateRef.current[key];
@@ -1190,6 +1197,7 @@ export async function createExecutionContext<
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
         const scopeId = scopeIdForScope(scope);
+        // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
         await stores.content.delete(scope, scopeId, key);
         delete contentRef.current[key];
