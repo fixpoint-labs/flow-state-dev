@@ -261,4 +261,40 @@ describe("FIX-735: per-resource flowIsolation", () => {
     expect(Object.keys(bare)).toContain("a/2");
     expect(Object.keys(bare)).not.toContain("a/b/1");
   });
+
+  it("rejects same-prefix collections with conflicting flowIsolation", async () => {
+    // FIX-735 review: two parameterized collections both collapse to the empty
+    // storage prefix. Collections sharing a prefix share one storage slot and
+    // can't live in different isolation buckets — fail loudly instead of
+    // silently mis-routing one collection's data.
+    const events = defineResourceCollection({
+      pattern: "[t]/events",
+      scope: "user",
+      flowIsolation: false,
+      stateSchema: z.object({ n: z.number().default(0) })
+    });
+    const notes = defineResourceCollection({
+      pattern: "[t]/notes",
+      scope: "user",
+      flowIsolation: true,
+      stateSchema: z.object({ n: z.number().default(0) })
+    });
+    const flow = defineFlow({
+      kind: "flow-conflict",
+      actions: { run: { inputSchema: z.string(), block: handler({ name: "noop", execute: () => "ok" }) } },
+      resources: { events, notes }
+    })();
+    const stores = createInMemoryStores();
+
+    await expect(
+      createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_f",
+        sessionId: "sess_f",
+        userId: "user_1",
+        stores
+      })
+    ).rejects.toThrow(/conflicting flowIsolation/);
+  });
 });

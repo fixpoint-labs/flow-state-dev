@@ -783,6 +783,15 @@ export async function createExecutionContext<
     const keys = scopeStorageKeyMaps[scope];
     const singles = new Map<string, boolean>();
     const prefixes: Array<{ prefix: string; isolated: boolean }> = [];
+    // FIX-735: collection storage is keyed by pattern prefix (load waves,
+    // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
+    // on it). Two collections that share a prefix therefore share one storage
+    // slot and MUST share an isolation bucket — otherwise one would silently
+    // shadow the other's loads/writes. Patterns whose first segment is a
+    // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
+    // this most often bites two parameterized collections at one scope. Reject
+    // the conflict loudly at setup rather than mis-route data.
+    const prefixIsolation = new Map<string, boolean>();
     for (const [accessor, config] of Object.entries(configs)) {
       const isolated = resolveResourceIsolation(
         (config as { flowIsolation?: boolean }).flowIsolation,
@@ -790,8 +799,19 @@ export async function createExecutionContext<
         scope
       );
       if (isCollectionConfig(config)) {
-        const prefix = getPatternPrefix(config.pattern);
-        prefixes.push({ prefix: prefix === "" ? "" : `${prefix}/`, isolated });
+        const rawPrefix = getPatternPrefix(config.pattern);
+        const keyPrefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
+        const existing = prefixIsolation.get(keyPrefix);
+        if (existing !== undefined && existing !== isolated) {
+          throw new Error(
+            `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
+              `"${keyPrefix || "(whole scope)"}" declare conflicting flowIsolation. ` +
+              `Collections that share a storage prefix must share an isolation bucket — ` +
+              `give them distinct static prefixes or matching flowIsolation (FIX-735).`
+          );
+        }
+        prefixIsolation.set(keyPrefix, isolated);
+        prefixes.push({ prefix: keyPrefix, isolated });
       } else {
         singles.set(keys[accessor] ?? accessor, isolated);
       }
