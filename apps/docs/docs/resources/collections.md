@@ -79,6 +79,10 @@ Each returned `ResourceRef` supports the same operations as a static resource: `
 
 Each returned ref also carries `path`, `scope`, and `uri` fields for identity — see [Resource identity](./overview#resource-identity-path-scope-and-uri) for details.
 
+:::note Parallel writes
+Creating distinct collection instances across concurrent `.parallel` / `.forEach` branches is safe: each write commits to its own key, and a later `list()` or `count()` in the same request sees all of them. Two branches writing the *same* instance key are last-writer-wins. See [parallelism in control flow](../sequencers/control-flow.md#parallelism).
+:::
+
 ### `create({ replace })` and `upsert` — handling the exists/missing branches
 
 Two additional operations cover the recurring "is the instance already there?" patterns that show up in setup/reset and incremental-update paths:

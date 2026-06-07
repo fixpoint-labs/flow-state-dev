@@ -1323,137 +1323,64 @@ export async function createExecutionContext<
   const readProjectResourceContent = (): Record<string, string> =>
     orgContentRef.current;
 
-  const persistSessionResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResources(sessionResourceConfigs, next);
-    const previous = sessionStateRef.current;
-
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("session", sessionId, key, value);
+  // FIX-744: single-key resource persistence. Each write/delete commits one
+  // key to the durable store, then mutates the live per-scope cache IN PLACE
+  // at that key (`ref.current[key] = value`) rather than snapshotting and
+  // replacing the whole map. Distinct keys are independent, so concurrent
+  // distinct-key writes from `.parallel` / `.forEach` branches — which all
+  // share one `ctx` — can no longer clobber each other in the in-memory view
+  // a convergence read sees. Mirrors the per-field commutative path the
+  // scope-state container already uses. Same-key concurrent writes resolve
+  // last-writer-wins (accepted, matching commutative state semantics).
+  //
+  // FIX-735: the durable store id is resolved PER KEY via
+  // `resolveResourceStorageScopeId(scope, key)` (each resource persists to its
+  // own isolation bucket); the in-memory cache stays keyed by the resource key
+  // regardless of which bucket backs it.
+  const makeKeyPersisters = (scope: ContentScopeType) => {
+    const stateRef = scopeStateRef(scope);
+    const contentRef = scopeContentRef(scope);
+    return {
+      persistResourceKey: async (key: string, value: JsonObject): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        if (scopeId === undefined) return;
+        if (deepEqual(stateRef.current[key], value)) return;
+        await stores.resourceState.set(scope, scopeId, key, value);
+        stateRef.current[key] = value;
+      },
+      deleteResourceKey: async (key: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        // `!(key in stateRef.current)` is a load-state check, not a
+        // correctness guarantee: it scopes the delete to keys present in the
+        // cache, matching the prior whole-map reconciliation (which only ever
+        // diffed cached keys). Eager scopes hold the full set, so this is
+        // exact; for a `prefetchMode: 'lazy'` instance never loaded this
+        // request the store row is left untouched — a pre-existing gap, not
+        // introduced by the per-key path.
+        if (scopeId === undefined || !(key in stateRef.current)) return;
+        await stores.resourceState.delete(scope, scopeId, key);
+        delete stateRef.current[key];
+      },
+      persistResourceContentKey: async (key: string, content: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        if (scopeId === undefined) return;
+        if (contentRef.current[key] === content) return;
+        await stores.content.set(scope, scopeId, key, content);
+        contentRef.current[key] = content;
+      },
+      deleteResourceContentKey: async (key: string): Promise<void> => {
+        const scopeId = resolveResourceStorageScopeId(scope, key);
+        // Load-state check, as in `deleteResourceKey` above.
+        if (scopeId === undefined || !(key in contentRef.current)) return;
+        await stores.content.delete(scope, scopeId, key);
+        delete contentRef.current[key];
       }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("session", sessionId, key);
-      }
-    }
-
-    sessionStateRef.current = normalized;
+    };
   };
 
-  const persistSessionResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResourceContent(sessionResourceConfigs, next);
-    const previous = sessionContentRef.current;
-
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("session", sessionId, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("session", sessionId, key);
-      }
-    }
-
-    sessionContentRef.current = normalized;
-  };
-
-  const persistUserResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResources(userResourceConfigs, next);
-    const previous = userStateRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("user", resolveResourceStorageScopeId("user", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("user", resolveResourceStorageScopeId("user", key)!, key);
-      }
-    }
-
-    userStateRef.current = normalized;
-  };
-
-  const persistUserResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    const normalized = normalizeScopeResourceContent(userResourceConfigs, next);
-    const previous = userContentRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("user", resolveResourceStorageScopeId("user", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("user", resolveResourceStorageScopeId("user", key)!, key);
-      }
-    }
-
-    userContentRef.current = normalized;
-  };
-
-  const persistProjectResources = async (
-    next: Record<string, JsonObject>
-  ): Promise<void> => {
-    if (resolvedOrgKey === undefined) {
-      return;
-    }
-
-    const normalized = normalizeScopeResources(orgResourceConfigs, next);
-    const previous = orgStateRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (!deepEqual(previous[key], value)) {
-        await stores.resourceState.set("org", resolveResourceStorageScopeId("org", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.resourceState.delete("org", resolveResourceStorageScopeId("org", key)!, key);
-      }
-    }
-
-    orgStateRef.current = normalized;
-  };
-
-  const persistProjectResourceContent = async (
-    next: Record<string, string>
-  ): Promise<void> => {
-    if (resolvedOrgKey === undefined) {
-      return;
-    }
-
-    const normalized = normalizeScopeResourceContent(orgResourceConfigs, next);
-    const previous = orgContentRef.current;
-
-    // FIX-735: each resource persists to its own isolation bucket.
-    for (const [key, value] of Object.entries(normalized)) {
-      if (previous[key] !== value) {
-        await stores.content.set("org", resolveResourceStorageScopeId("org", key)!, key, value);
-      }
-    }
-    for (const key of Object.keys(previous)) {
-      if (!(key in normalized)) {
-        await stores.content.delete("org", resolveResourceStorageScopeId("org", key)!, key);
-      }
-    }
-
-    orgContentRef.current = normalized;
-  };
+  const sessionKeyPersisters = makeKeyPersisters("session");
+  const userKeyPersisters = makeKeyPersisters("user");
+  const orgKeyPersisters = makeKeyPersisters("org");
 
   const requestContainer = createStateContainer<TRequestState>(
     requestRef.current.state as TRequestState,
@@ -1578,9 +1505,8 @@ export async function createExecutionContext<
     scopeId: userId,
     configs: userResourceConfigs,
     readResources: readUserResources,
-    persistResources: persistUserResources,
     readResourceContent: readUserResourceContent,
-    persistResourceContent: persistUserResourceContent,
+    ...userKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("user"),
     lazyLoad: userLazyLoad,
     recordResourceLoad,
@@ -1593,9 +1519,8 @@ export async function createExecutionContext<
     scopeId: sessionId,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
-    persistResources: persistSessionResources,
     readResourceContent: readSessionResourceContent,
-    persistResourceContent: persistSessionResourceContent,
+    ...sessionKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("session"),
     lazyLoad: sessionLazyLoad,
     recordResourceLoad,
@@ -1611,9 +1536,8 @@ export async function createExecutionContext<
           scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
           readResources: readProjectResources,
-          persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
-          persistResourceContent: persistProjectResourceContent,
+          ...orgKeyPersisters,
           onResourceChanged: makeResourceChangeHandler("org"),
           lazyLoad: orgLazyLoad,
           recordResourceLoad,
