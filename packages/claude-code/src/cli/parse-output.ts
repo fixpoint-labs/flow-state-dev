@@ -10,6 +10,12 @@
 
 /** Matches a claude.ai cloud-session URL anywhere in the output. */
 const URL_RE = /https?:\/\/claude\.ai\/[^\s"')<>]+/i;
+/**
+ * Captures the session id segment of a `claude.ai/code/<id>` URL. The id may be
+ * a `session_…` token or a UUID — both are accepted, since the exact CLI format
+ * is undocumented and has varied.
+ */
+const CODE_SESSION_RE = /https?:\/\/claude\.ai\/code\/([^\s"')<>/?#]+)/i;
 /** Matches a v4-style UUID. */
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 
@@ -19,13 +25,14 @@ export interface ParsedRemoteDispatch {
 }
 
 /**
- * Extract `{ url, sessionId }` from dispatch stdout. Prefers a UUID embedded in
- * the URL path (most specific), then falls back to the first UUID anywhere in
- * the output. Both fields are independently nullable.
+ * Extract `{ url, sessionId }` from dispatch stdout. Prefers the id segment of a
+ * `claude.ai/code/<id>` URL (handles both `session_…` and UUID forms), then
+ * falls back to the first bare UUID anywhere in the output. Both fields are
+ * independently nullable.
  */
 export function parseRemoteDispatchOutput(stdout: string): ParsedRemoteDispatch {
   const url = stdout.match(URL_RE)?.[0] ?? null;
   const sessionId =
-    (url ? url.match(UUID_RE)?.[0] : undefined) ?? stdout.match(UUID_RE)?.[0] ?? null;
+    stdout.match(CODE_SESSION_RE)?.[1] ?? stdout.match(UUID_RE)?.[0] ?? null;
   return { url, sessionId };
 }

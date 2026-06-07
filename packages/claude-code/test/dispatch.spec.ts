@@ -85,6 +85,15 @@ describe("claudeRemoteDispatch", () => {
     expect((error?.cause as ClaudeRemoteDispatchError).detail?.exitCode).toBe(1);
   });
 
+  it("wraps a non-ENOENT exec failure (e.g. timeout) as ClaudeRemoteDispatchError", async () => {
+    const block = withExec(async () => {
+      throw new Error("`claude` timed out after 150ms");
+    });
+    const { error } = await testBlock(block, { input: { instructions: "Fix the bug" } });
+
+    expect(error?.cause).toBeInstanceOf(ClaudeRemoteDispatchError);
+  });
+
   it("throws ClaudeCliNotFoundError when the binary cannot be launched", async () => {
     const enoent = Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
     const block = withExec(async () => {

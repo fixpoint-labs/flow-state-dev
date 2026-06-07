@@ -11,6 +11,13 @@ describe("parseRemoteDispatchOutput", () => {
     expect(sessionId).toBe("3f9a1c2d-1b2c-4d5e-8f90-abcdef012345");
   });
 
+  it("extracts a session_ id from the URL path (non-UUID form)", () => {
+    const stdout = "Started cloud session: https://claude.ai/code/session_abc123XYZ\n";
+    const { url, sessionId } = parseRemoteDispatchOutput(stdout);
+    expect(url).toBe("https://claude.ai/code/session_abc123XYZ");
+    expect(sessionId).toBe("session_abc123XYZ");
+  });
+
   it("falls back to the first UUID when there is no URL", () => {
     const stdout = "Created session 3f9a1c2d-1b2c-4d5e-8f90-abcdef012345 (queued)";
     const { url, sessionId } = parseRemoteDispatchOutput(stdout);

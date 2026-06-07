@@ -75,7 +75,7 @@ export function claudeRemoteDispatch(options: ClaudeRemoteDispatchOptions = {}) 
         throw new ClaudeRemoteDispatchError("claudeRemoteDispatch requires non-empty instructions.");
       }
 
-      const resolved = await resolveClaudeCli(ctx as unknown as BlockContext);
+      const resolved = await resolveClaudeCli(ctx);
       const dispatchedAt = Date.now();
 
       let result;

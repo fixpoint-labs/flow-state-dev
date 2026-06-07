@@ -45,9 +45,13 @@ export interface ResolvedClaudeCli {
   exec: ClaudeCliExec;
 }
 
-/** Host hook that resolves how to run `claude` for a given block invocation. */
+/**
+ * Host hook that resolves how to run `claude` for a given block invocation.
+ * Accepts the block context loosely (`BlockContext<any>`) so a fully
+ * parameterized `execute` context passes without a cast at the call site.
+ */
 export type ResolveClaudeCli = (
-  ctx: BlockContext,
+  ctx: BlockContext<any>,
 ) => ResolvedClaudeCli | Promise<ResolvedClaudeCli>;
 
 /**
@@ -85,13 +89,24 @@ export const defaultClaudeCliExec: ClaudeCliExec = (bin, args, opts) =>
       if (timer) clearTimeout(timer);
       reject(err);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (timer) clearTimeout(timer);
       if (timedOut) {
         reject(new Error(`\`${bin}\` timed out after ${opts.timeoutMs}ms`));
         return;
       }
-      resolve({ stdout, stderr, code: code ?? 0 });
+      if (code === null) {
+        // A null exit code means the child was terminated by a signal (not our
+        // timeout). Surface it as a non-zero exit so the caller treats it as a
+        // failed dispatch rather than a success built from partial stdout.
+        resolve({
+          stdout,
+          stderr: stderr || `\`${bin}\` was terminated by signal ${signal ?? "unknown"}`,
+          code: 1,
+        });
+        return;
+      }
+      resolve({ stdout, stderr, code });
     });
   });
 
