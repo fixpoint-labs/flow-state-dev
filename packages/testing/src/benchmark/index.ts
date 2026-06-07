@@ -57,13 +57,28 @@ export function baselineSubject(opts: {
     kind: "baseline",
     sequencer: seq,
     mapTask: (task) => ({ prompt: task.prompt }),
+    model: opts.model,
   };
+}
+
+/** Last path segment of a model id, for compact baseline names. */
+function shortModel(model: string): string {
+  const parts = model.split("/");
+  return parts[parts.length - 1];
 }
 
 /** Config for `comparePatterns` — `runBenchmark` config minus the resolved subjects. */
 export type ComparePatternsConfig = Omit<RunBenchmarkConfig, "subjects"> & {
   /** Append the single-generator baseline. Default true. */
   baseline?: boolean;
+  /**
+   * Pure-model baselines to compare the patterns against. Defaults to one
+   * baseline on the run's `model` (named `single-generator`). Provide several —
+   * e.g. `[model, "anthropic/claude-sonnet-4-6"]` — to ask "do the patterns on
+   * the cheap model beat both pure models?". Each is a single-generator subject
+   * on that model, named `pure-<model>`.
+   */
+  baselineModels?: string[];
   /** Capabilities forwarded to each adapter's `build({ uses })`, so benchmarks
    *  that need tools (web search, code execution) can run via this convenience
    *  path rather than building subjects by hand. */
@@ -71,9 +86,10 @@ export type ComparePatternsConfig = Omit<RunBenchmarkConfig, "subjects"> & {
 };
 
 /**
- * Resolves `names` against `registry`, appends the single-generator baseline
- * (unless `baseline: false`), and runs the benchmark. Throws a clear error
- * naming the available patterns when a name is missing.
+ * Resolves `names` against `registry` (patterns run on `config.model`), appends
+ * a pure-model baseline per `baselineModels` entry (default: one on the run
+ * model), and runs the benchmark. Throws a clear error naming the available
+ * patterns when a name is missing.
  */
 export async function comparePatterns(
   registry: BenchmarkRegistry,
@@ -92,10 +108,17 @@ export async function comparePatterns(
   });
 
   if (config.baseline !== false) {
-    subjects.push(baselineSubject({ model: config.model }));
+    const baselineModels = config.baselineModels ?? [config.model];
+    for (const m of baselineModels) {
+      // The same-model baseline keeps the canonical name so single-model runs
+      // and existing scorecards read the same; extra pure models get distinct
+      // `pure-<model>` names.
+      const name = m === config.model ? "single-generator" : `pure-${shortModel(m)}`;
+      subjects.push(baselineSubject({ model: m, name }));
+    }
   }
 
-  const { baseline: _baseline, uses: _uses, ...runConfig } = config;
+  const { baseline: _baseline, baselineModels: _bm, uses: _uses, ...runConfig } = config;
   return runBenchmark({ ...runConfig, subjects });
 }
 

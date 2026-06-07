@@ -139,7 +139,8 @@ describe("renderScorecard", () => {
   });
 
   it("carries the baseline subject identity through aggregation", () => {
-    expect(report.baselineSubject).toBe("single-generator");
+    expect(report.baselineSubjects).toContain("single-generator");
+    expect(report.primaryBaseline).toBe("single-generator");
   });
 
   it("renders a markdown table marking the baseline", () => {

@@ -40,6 +40,7 @@ export interface BenchmarkCommandOptions {
   category?: string;
   patterns?: string;
   baseline?: boolean;
+  baselineModel?: string[];
   maxCost?: string;
   output?: string;
   format?: string;
@@ -109,9 +110,18 @@ export function buildBenchmarkRun(
       ? options.patterns.split(",").map((s) => s.trim()).filter(Boolean)
       : def.patterns;
 
+  const model = options.model ?? def.model;
+  // `--baseline-model` (repeatable) adds pure-model baselines beyond the run
+  // model — e.g. compare cheap-model patterns against a pure stronger model. The
+  // run model is always included so the same-model delta is present.
+  const baselineModels =
+    options.baselineModel !== undefined && options.baselineModel.length > 0
+      ? Array.from(new Set([model, ...options.baselineModel]))
+      : def.baselineModels;
+
   const config: ComparePatternsConfig = {
     tasks,
-    model: options.model ?? def.model,
+    model,
     judgeModel: options.judgeModel ?? def.judgeModel,
     runs: options.runs !== undefined ? parsePositiveInt(options.runs, "runs") : def.runs,
     concurrency:
@@ -121,6 +131,7 @@ export function buildBenchmarkRun(
     maxCostUsd:
       options.maxCost !== undefined ? parsePositiveFloat(options.maxCost, "max-cost") : undefined,
     scorers: def.scorers,
+    baselineModels,
     // Commander defaults `--no-baseline` to `options.baseline === true` when the
     // flag is absent, so `??` would always override the definition. Only force
     // the baseline off when the user actually passed `--no-baseline`; otherwise
@@ -217,6 +228,12 @@ export function registerBenchmarkCommand(program: Command): void {
     .option("--concurrency <n>", "Concurrent (subject, task, run) cells")
     .option("--category <name>", "Only run tasks in this category")
     .option("--patterns <names>", "Comma-separated subset of pattern names to run")
+    .option(
+      "--baseline-model <model>",
+      "Add a pure-model baseline to compare against (repeatable; the run model is always included)",
+      (value: string, previous: string[] | undefined) => (previous ?? []).concat(value),
+      undefined,
+    )
     .option("--no-baseline", "Skip the single-generator baseline subject")
     .option("--max-cost <usd>", "Abort the sweep when the estimated cost exceeds this")
     .option("--output <path>", "Write the scorecard to a file instead of stdout")

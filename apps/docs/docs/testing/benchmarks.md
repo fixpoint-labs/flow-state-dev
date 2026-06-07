@@ -132,6 +132,32 @@ fsdev benchmark ./benchmark.ts \
   --model openrouter/meta-llama/llama-3.1-70b-instruct
 ```
 
+## Comparing across models
+
+Holding the model fixed answers "do the patterns beat the naive call on the same model". A different and useful question is whether coordination on a cheap model beats a more expensive model used alone — "does a Haiku swarm beat raw Sonnet?". Add pure-model baselines for that:
+
+```bash
+fsdev benchmark ./benchmark.ts \
+  --model anthropic/claude-haiku-4-5 \
+  --baseline-model anthropic/claude-sonnet-4-6
+```
+
+Programmatically, pass `baselineModels` to `comparePatterns` (or build subjects with a per-subject `model` and call `runBenchmark`):
+
+```ts
+await comparePatterns(defaultBenchmarkRegistry, ["supervisor", "debate"], {
+  tasks,
+  model: "anthropic/claude-haiku-4-5",          // patterns run here
+  judgeModel: "openai/gpt-5.4-mini",
+  baselineModels: [
+    "anthropic/claude-haiku-4-5",                // pure Haiku (the delta reference)
+    "anthropic/claude-sonnet-4-6",               // pure Sonnet, as its own row
+  ],
+});
+```
+
+The same-model baseline stays the delta reference (`deltaVsBaseline` / the credibility flag are measured against it); each additional pure model is a row of its own, so you read whether the patterns clear it from the absolute scores. `report.baselineSubjects` lists every baseline and `report.primaryBaseline` names the reference.
+
 ## See also
 
 - [Patterns overview](../patterns/overview) — the coordination patterns you'd compare

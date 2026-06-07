@@ -57,6 +57,13 @@ export interface BenchmarkSubject {
   sequencer: SequencerDefinition<any, any>;
   /** Map the generic task onto this subject's input schema. */
   mapTask: (task: BenchmarkTask) => unknown;
+  /**
+   * Model this subject's generators run on. The engine forces them to this
+   * model, falling back to the run's model when unset. Lets one benchmark mix
+   * subjects on different models — e.g. cheap-model patterns against a pure
+   * expensive-model baseline ("does a Haiku swarm beat raw Sonnet?").
+   */
+  model?: string;
 }
 
 /** Options a pattern adapter consumes when materializing a benchmark subject. */

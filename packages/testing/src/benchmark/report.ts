@@ -32,6 +32,9 @@ export interface BuildBenchmarkReportMeta {
   budgetExceeded: boolean;
   /** Accumulated warnings. */
   warnings: string[];
+  /** Baseline used as the delta reference (the same-model baseline). Falls back
+   *  to the first baseline when unset. */
+  primaryBaseline?: string;
 }
 
 function round(n: number, decimals = 4): number {
@@ -142,6 +145,16 @@ export function buildBenchmarkReport(
     statBySubjectCategory.set(`${subject}::overall`, overall);
   }
 
+  // The delta reference: the same-model baseline named by the engine, else the
+  // first baseline present. Other baselines (e.g. a stronger pure model) are
+  // ranked as ordinary rows; their absolute means answer "does the swarm beat
+  // that model too?".
+  const baselineOrder = [...baselineSubjects];
+  const primaryBaseline =
+    meta.primaryBaseline !== undefined && baselineSubjects.has(meta.primaryBaseline)
+      ? meta.primaryBaseline
+      : baselineOrder[0];
+
   // Rankings: for each category (and "overall"), subjects sorted by mean desc.
   const rankingKeys: Array<BenchmarkCategory | "overall"> = [...categories, "overall"];
   const rankings: Record<string, BenchmarkRanking[]> = {};
@@ -151,8 +164,8 @@ export function buildBenchmarkReport(
       .map((subject) => statBySubjectCategory.get(`${subject}::${key}`))
       .filter((s): s is SubjectCategoryStat => s !== undefined);
 
-    // Baseline mean/stddev/n within this bucket (first baseline subject present).
-    const baselineStat = entries.find((s) => baselineSubjects.has(s.subject));
+    // Baseline mean/stddev/n within this bucket (the primary baseline).
+    const baselineStat = entries.find((s) => s.subject === primaryBaseline);
     const baselineMean = baselineStat?.mean ?? 0;
     const baselineStddev = baselineStat?.stddev ?? 0;
     const baselineN = baselineStat?.successfulRuns ?? 0;
@@ -184,9 +197,11 @@ export function buildBenchmarkReport(
     runs: meta.runs,
     subjects,
     categories,
-    // Carry the baseline's identity through aggregation so rendering reads it
-    // directly instead of re-deriving it from zero deltas.
-    baselineSubject: baselineSubjects.size > 0 ? [...baselineSubjects][0] : undefined,
+    // Carry baseline identity through aggregation so rendering reads it directly
+    // instead of re-deriving it from zero deltas. `primaryBaseline` is the delta
+    // reference; `baselineSubjects` lists every baseline (for multi-model runs).
+    baselineSubjects: baselineOrder,
+    primaryBaseline,
     stats,
     rankings,
     totalCostUsd,
@@ -221,7 +236,7 @@ function columns(report: BenchmarkReport): Array<BenchmarkCategory | "overall"> 
 function renderMarkdown(report: BenchmarkReport): string {
   const cols = columns(report);
   const lookup = statLookup(report);
-  const baseline = report.baselineSubject;
+  const baselines = new Set(report.baselineSubjects);
 
   const header = ["Subject", ...cols.map((c) => String(c))];
   const lines: string[] = [];
@@ -229,7 +244,7 @@ function renderMarkdown(report: BenchmarkReport): string {
   lines.push(`| ${header.map(() => "---").join(" | ")} |`);
 
   for (const subject of report.subjects) {
-    const label = subject === baseline ? `${subject} (baseline)` : subject;
+    const label = baselines.has(subject) ? `${subject} (baseline)` : subject;
     const cells = cols.map((c) => fmtCell(lookup.get(`${subject}::${c}`)));
     lines.push(`| ${[label, ...cells].join(" | ")} |`);
   }

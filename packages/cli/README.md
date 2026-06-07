@@ -202,7 +202,15 @@ fsdev benchmark ./benchmark.ts \
   --patterns supervisor,debate \
   --category reasoning \
   --output results.json --format json
+
+# Cross-model: run the patterns on Haiku and compare them against pure Haiku
+# AND pure Sonnet ("does a Haiku swarm beat raw Sonnet?")
+fsdev benchmark ./benchmark.ts \
+  --model anthropic/claude-haiku-4-5 \
+  --baseline-model anthropic/claude-sonnet-4-6
 ```
+
+`--baseline-model` adds a pure single-generator baseline on that model; the run model is always included as the same-model baseline (the delta reference). The other baselines appear as their own rows, so you read whether the patterns beat them from the absolute scores.
 
 Options:
 
@@ -214,6 +222,7 @@ Options:
 | `--concurrency <n>` | Concurrent (subject, task, run) cells |
 | `--category <name>` | Only run tasks in this category |
 | `--patterns <names>` | Comma-separated subset of pattern names to run |
+| `--baseline-model <model>` | Add a pure-model baseline to compare against (repeatable; the run model is always included) |
 | `--no-baseline` | Skip the single-generator baseline subject |
 | `--max-cost <usd>` | Abort the sweep when the estimated cost exceeds this |
 | `--output <path>` | Write the scorecard to a file instead of stdout |

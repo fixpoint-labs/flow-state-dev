@@ -91,9 +91,12 @@ export interface BenchmarkReport {
   runs: number;
   /** Subject names included. */
   subjects: string[];
-  /** Name of the baseline subject (kind "baseline"), when present. Deltas are
-   *  measured against it; rendering marks it. */
-  baselineSubject?: string;
+  /** Every baseline subject (kind "baseline"), in first-seen order. A run may
+   *  carry several — one per pure model in a cross-model comparison. */
+  baselineSubjects: string[];
+  /** The baseline used as the delta reference (the same-model baseline). Other
+   *  baselines are compared by absolute mean. */
+  primaryBaseline?: string;
   /** Categories present across the tasks. */
   categories: BenchmarkCategory[];
   /** Per (subject × category) and (subject × "overall") aggregates. */
@@ -152,6 +155,9 @@ export interface BenchmarkDefinition {
   registry?: BenchmarkRegistry;
   /** Append a baseline subject (default true at run time). */
   baseline?: boolean;
+  /** Pure-model baselines to compare against (default: one on `model`). List
+   *  several to ask "do the patterns beat each of these pure models?". */
+  baselineModels?: string[];
   /** Tasks to run. Must be non-empty. */
   tasks: BenchmarkTask[];
   /** Executor model id. */

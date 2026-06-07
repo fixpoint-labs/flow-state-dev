@@ -41,6 +41,7 @@ export const supervisorBenchmarkAdapter: BenchmarkAdapter = {
   build: ({ model, uses }: BenchmarkAdapterOptions): BenchmarkSubject => ({
     name: "supervisor",
     kind: "pattern",
+    model,
     sequencer: supervisor({
       name: "bench-supervisor",
       worker: sharedDefaultWorker("bench-supervisor-worker", model),
@@ -59,6 +60,7 @@ export const planAndExecuteBenchmarkAdapter: BenchmarkAdapter = {
   build: ({ model, uses }: BenchmarkAdapterOptions): BenchmarkSubject => ({
     name: "plan-and-execute",
     kind: "pattern",
+    model,
     sequencer: planAndExecute({
       name: "bench-plan-and-execute",
       model,
@@ -77,6 +79,7 @@ export const parallelTasksBenchmarkAdapter: BenchmarkAdapter = {
   build: ({ model }: BenchmarkAdapterOptions): BenchmarkSubject => ({
     name: "parallel-tasks",
     kind: "pattern",
+    model,
     sequencer: parallelTasks({
       name: "bench-parallel-tasks",
       worker: sharedDefaultWorker("bench-parallel-tasks-worker", model),
@@ -94,6 +97,7 @@ export const roundRobinBenchmarkAdapter: BenchmarkAdapter = {
   build: ({ model, uses }: BenchmarkAdapterOptions): BenchmarkSubject => ({
     name: "round-robin",
     kind: "pattern",
+    model,
     sequencer: roundRobin({
       name: "bench-round-robin",
       roster: [{ name: "alpha" }, { name: "beta" }, { name: "gamma" }],
@@ -114,6 +118,7 @@ export const debateBenchmarkAdapter: BenchmarkAdapter = {
   build: ({ model, uses }: BenchmarkAdapterOptions): BenchmarkSubject => ({
     name: "debate",
     kind: "pattern",
+    model,
     sequencer: debate({
       name: "bench-debate",
       debaters: [
@@ -144,6 +149,7 @@ export const routedSpecialistsBenchmarkAdapter: BenchmarkAdapter = {
     return {
       name: "routed-specialists",
       kind: "pattern",
+      model,
       sequencer: routedSpecialists({
         name: "bench-routed-specialists",
         workspace,

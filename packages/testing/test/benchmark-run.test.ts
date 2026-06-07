@@ -274,6 +274,27 @@ describe("comparePatterns", () => {
     expect(report.subjects).toContain("single-generator");
   });
 
+  it("adds a pure-model baseline per baselineModels entry (cross-model)", async () => {
+    const report = await comparePatterns(registry, ["fake"], {
+      tasks: [tasks[0]],
+      model: "openai/gpt-5.4-mini",
+      judgeModel: "anthropic/claude-haiku-4-5",
+      runs: 1,
+      baselineModels: ["openai/gpt-5.4-mini", "anthropic/claude-sonnet-4-6"],
+      modelResolver: executorResolver("a"),
+      judgeResolver: judgeResolver(0.9),
+    });
+
+    // The run-model baseline keeps the canonical name and is the delta reference;
+    // the stronger pure model appears as its own baseline row.
+    expect(report.subjects).toContain("single-generator");
+    expect(report.subjects).toContain("pure-claude-sonnet-4-6");
+    expect(report.baselineSubjects).toEqual(
+      expect.arrayContaining(["single-generator", "pure-claude-sonnet-4-6"]),
+    );
+    expect(report.primaryBaseline).toBe("single-generator");
+  });
+
   it("omits the baseline when baseline: false", async () => {
     const report = await comparePatterns(registry, ["fake"], {
       tasks: [tasks[0]],

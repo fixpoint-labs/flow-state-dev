@@ -29,7 +29,7 @@ import type {
   BenchmarkReport,
   RunBenchmarkConfig,
 } from "./types";
-import type { BenchmarkTask } from "@flow-state-dev/core";
+import type { BenchmarkSubject, BenchmarkTask } from "@flow-state-dev/core";
 
 /**
  * Builds a resolver that forces every model reference to `modelId`, wrapping the
@@ -83,8 +83,31 @@ export async function runBenchmark(
     );
   }
 
-  const executorResolver = config.modelResolver ?? forceModelResolver(model);
+  // Per-subject executor resolver: when the caller injects a resolver (tests)
+  // it serves every subject; otherwise each subject is forced to its own model
+  // (`subject.model`) or the run's `model`. Per-subject forcing is what lets one
+  // run mix cheap-model patterns with a pure expensive-model baseline.
+  const resolverCache = new Map<string, ModelResolver>();
+  const resolverForSubject = (subject: BenchmarkSubject): ModelResolver => {
+    if (config.modelResolver !== undefined) return config.modelResolver;
+    const subjectModel = subject.model ?? model;
+    let resolver = resolverCache.get(subjectModel);
+    if (resolver === undefined) {
+      resolver = forceModelResolver(subjectModel);
+      resolverCache.set(subjectModel, resolver);
+    }
+    return resolver;
+  };
+
   const judgeResolver = config.judgeResolver ?? forceModelResolver(judgeModelId);
+
+  // The same-model baseline (kind "baseline", model === run model) is the primary
+  // reference for deltas — "pattern on model X vs pure model X". Other baselines
+  // (e.g. a stronger pure model) appear as rows whose absolute means answer
+  // "does the swarm beat that model too?".
+  const primaryBaseline = subjects.find(
+    (s) => s.kind === "baseline" && (s.model ?? model) === model,
+  )?.name;
 
   // Per-task rubric judge: blinded (sees only task prompt + output), distinct
   // model, criteria locked to the task's published rubric.
@@ -130,7 +153,7 @@ export async function runBenchmark(
         try {
           const res = await testSequencer(subject.sequencer, {
             input: subject.mapTask(task),
-            modelResolver: executorResolver,
+            modelResolver: resolverForSubject(subject),
           });
 
           if (res.error) {
@@ -191,5 +214,6 @@ export async function runBenchmark(
     startedAt,
     budgetExceeded,
     warnings,
+    primaryBaseline,
   });
 }
