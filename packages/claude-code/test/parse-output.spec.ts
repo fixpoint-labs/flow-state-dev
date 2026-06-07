@@ -25,6 +25,13 @@ describe("parseRemoteDispatchOutput", () => {
     expect(sessionId).toBe("3f9a1c2d-1b2c-4d5e-8f90-abcdef012345");
   });
 
+  it("strips trailing sentence punctuation from the URL and session id", () => {
+    const stdout = "Session ready at https://claude.ai/code/session_abc.";
+    const { url, sessionId } = parseRemoteDispatchOutput(stdout);
+    expect(url).toBe("https://claude.ai/code/session_abc");
+    expect(sessionId).toBe("session_abc");
+  });
+
   it("returns nulls for output it cannot recognize", () => {
     const { url, sessionId } = parseRemoteDispatchOutput("ok\n");
     expect(url).toBeNull();

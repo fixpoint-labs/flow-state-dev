@@ -91,14 +91,18 @@ export const defaultClaudeCliExec: ClaudeCliExec = (bin, args, opts) =>
     });
     child.on("close", (code, signal) => {
       if (timer) clearTimeout(timer);
-      if (timedOut) {
+      // A null exit code means the child was terminated by a signal. Only treat
+      // that as a timeout when our timer is what killed it; if the child exited
+      // naturally in the same tick the timer fired (code is a real number),
+      // honor the natural exit rather than misreporting a timeout.
+      if (timedOut && code === null) {
         reject(new Error(`\`${bin}\` timed out after ${opts.timeoutMs}ms`));
         return;
       }
       if (code === null) {
-        // A null exit code means the child was terminated by a signal (not our
-        // timeout). Surface it as a non-zero exit so the caller treats it as a
-        // failed dispatch rather than a success built from partial stdout.
+        // Killed by some other signal — surface it as a non-zero exit so the
+        // caller treats it as a failed dispatch, not a success built from
+        // partial stdout.
         resolve({
           stdout,
           stderr: stderr || `\`${bin}\` was terminated by signal ${signal ?? "unknown"}`,
