@@ -47,10 +47,11 @@ export function classifyFetchFailure(err: unknown): FetchErrorType {
   const code = findCode(err);
   if (code === undefined) return "unknown";
   if (code === "UND_ERR_ABORTED" || code === "ABORT_ERR") return "abort";
-  if (code.includes("TIMEOUT") || code === "ETIMEDOUT" || code === "EAI_AGAIN") {
+  if (code.includes("TIMEOUT") || code === "ETIMEDOUT") {
     return "timeout";
   }
-  // ENOTFOUND, ECONNRESET, ECONNREFUSED, UND_ERR_SOCKET, TLS codes, etc.
+  // ENOTFOUND / EAI_AGAIN (DNS), ECONNRESET, ECONNREFUSED, UND_ERR_SOCKET,
+  // TLS codes, etc. — all transport-level, retryable network failures.
   return "network";
 }
 
@@ -126,13 +127,15 @@ export function transportFetchError(provider: string, url: string, cause: unknow
  * Defaults to `retryable: false` (fail fast): with no status to inspect, the
  * failure could be permanent (bad API key, blocked content, invalid URL), and
  * retrying an opaque SDK error just burns the retry budget before surfacing it.
+ * `errorType` is `"unknown"` — there is no HTTP status to justify `"http"`, and
+ * `"unknown"` renders an honest badge in the devtool instead of an empty one.
  */
 export function providerFetchError(provider: string, url: string, message: string): FlowError {
   return new FlowError(`${provider} fetch failed: ${message} for ${url}`, {
     code: "fetch_provider_error",
     retryable: false,
     details: {
-      errorType: "http" satisfies FetchErrorType,
+      errorType: "unknown" satisfies FetchErrorType,
       url,
     },
   });

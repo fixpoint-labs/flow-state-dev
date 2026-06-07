@@ -32,6 +32,10 @@ describe("classifyFetchFailure", () => {
     expect(
       classifyFetchFailure(new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }))
     ).toBe("network");
+    // EAI_AGAIN is a transient DNS failure, not a timeout.
+    expect(
+      classifyFetchFailure(new TypeError("fetch failed", { cause: { code: "EAI_AGAIN" } }))
+    ).toBe("network");
   });
 
   it("classifies a JSON parse failure", () => {
