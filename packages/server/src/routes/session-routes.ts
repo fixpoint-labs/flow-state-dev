@@ -13,6 +13,7 @@ import {
   getPositiveInteger,
   getString,
   jsonResponse,
+  loadTenantSession,
   parseJsonBody
 } from "./route-utils";
 import {
@@ -62,8 +63,10 @@ export async function handleGetSession(
   route: Extract<ParsedFlowRoute, { kind: "get_session" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
   );
   if (session === undefined) {
     return jsonResponse(404, {
@@ -164,7 +167,11 @@ export async function handleDeleteSession(
   ctx: SessionRouteContext
 ): Promise<Response> {
   const sessionKey = resolveSessionStorageKey(route.sessionId, ctx.tenantId);
-  const existing = await ctx.stores.session.get(sessionKey);
+  const existing = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
+  );
   if (existing === undefined) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
@@ -187,8 +194,10 @@ export async function handlePatchSessionMetadata(
   route: Extract<ParsedFlowRoute, { kind: "patch_session_metadata" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
   );
   if (session === undefined) {
     return jsonResponse(404, {
@@ -223,8 +232,10 @@ export async function handleListSessionRequests(
   route: Extract<ParsedFlowRoute, { kind: "list_session_requests" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
   );
   if (session === undefined) {
     return jsonResponse(404, {

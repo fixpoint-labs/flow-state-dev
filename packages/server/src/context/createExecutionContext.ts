@@ -75,7 +75,11 @@ import {
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
-import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+import {
+  OrgBindingMismatchError,
+  TenantBindingMismatchError,
+  UserBindingMismatchError
+} from "./binding-errors";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -602,6 +606,21 @@ export async function createExecutionContext<
     // route this user's actions against another user's data.
     if (sessionRecord.userId !== userId) {
       throw new UserBindingMismatchError(sessionId, sessionRecord.userId, userId);
+    }
+
+    // Tenant binding (FIX-682). The session storage key is
+    // `${tenantId}:${sessionId}`, which is ambiguous when the caller controls
+    // `sessionId`: omitting the tenant header while passing
+    // `sessionId = "${otherTenant}:${id}"` resolves to another tenant's key.
+    // The loaded record's stored `tenantId` is authoritative — reject when it
+    // differs from this request's tenant so a key collision can never read or
+    // mutate across the tenant boundary.
+    if ((sessionRecord.tenantId ?? undefined) !== (options.tenantId ?? undefined)) {
+      throw new TenantBindingMismatchError(
+        sessionId,
+        sessionRecord.tenantId,
+        options.tenantId
+      );
     }
   }
 

@@ -100,6 +100,34 @@ describe("tenant store-key isolation", () => {
     expect(all.map((r) => r.id).sort()).toEqual(["r_a1", "r_a2", "r_b1", "r_none"]);
   });
 
+  it("rejects a cross-tenant key collision via a crafted session id", async () => {
+    // The `${tenantId}:${sessionId}` key is ambiguous: a no-tenant caller
+    // passing sessionId "acme:s" resolves to the same key as tenant acme's
+    // session "s". The tenant-binding check must reject it (same userId, so the
+    // userId guard does not catch this — only the tenant guard does).
+    const stores = createInMemoryStores();
+    await run(stores, { tenantId: "acme", by: 1, requestId: "r_a" });
+
+    await expect(
+      runAction({
+        flow: buildCountingFlow(),
+        actionName: "run",
+        input: { by: 99 },
+        userId: "u",
+        sessionId: "acme:s", // crafted to collide with key `acme:s`
+        requestId: "r_attack",
+        // no tenantId — attacker omits the header
+        stores,
+        responseEmitter: createResponseEmitter({ requestId: "r_attack" }),
+        runtimeConfig: {}
+      })
+    ).rejects.toThrow(/tenant/i);
+
+    // Acme's session state is untouched by the bypass attempt.
+    const acme = await stores.session.get(resolveSessionStorageKey("s", "acme"));
+    expect((acme?.state as { count?: number }).count).toBe(1);
+  });
+
   it("re-dispatches a retry within the original tenant", async () => {
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();

@@ -11,7 +11,8 @@ import { getPatternPrefix, matchesPattern, resolveCollectionKey } from "@flow-st
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestRecord, SessionRecord } from "../stores/types";
+import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";
@@ -53,6 +54,26 @@ export function extractTenantId(
 ): string | undefined {
   const value = request.headers.get(tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER);
   return value !== null && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Load a session for the calling tenant, returning `undefined` unless the
+ * stored record's tenant matches the request's (FIX-682). The
+ * `${tenantId}:${sessionId}` storage key is ambiguous when the caller controls
+ * `sessionId` — omitting the header while passing `sessionId =
+ * "${otherTenant}:${id}"` collides on another tenant's key. Verifying the
+ * stored `tenantId` closes that bypass; callers treat `undefined` as
+ * not-found, so a cross-tenant probe gets a 404, never another tenant's data.
+ */
+export async function loadTenantSession(
+  store: SessionStore,
+  sessionId: string,
+  tenantId: string | undefined
+): Promise<SessionRecord | undefined> {
+  const record = await store.get(resolveSessionStorageKey(sessionId, tenantId));
+  if (record === undefined) return undefined;
+  if ((record.tenantId ?? undefined) !== (tenantId ?? undefined)) return undefined;
+  return record;
 }
 
 /**

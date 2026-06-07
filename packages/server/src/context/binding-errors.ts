@@ -1,6 +1,7 @@
 /**
  * Errors raised by `createExecutionContext` when an incoming request's claimed
- * `userId` or `orgId` conflicts with the values the session was created with.
+ * `userId`, `orgId`, or `tenantId` conflicts with the values the session was
+ * created with.
  *
  * Sessions own a single user and at most one org for their lifetime. Subsequent
  * requests that claim a different identity are rejected here rather than
@@ -47,5 +48,34 @@ export class OrgBindingMismatchError extends Error {
     this.sessionId = sessionId;
     this.sessionOrgId = sessionOrgId;
     this.requestedOrgId = requestedOrgId;
+  }
+}
+
+/**
+ * Thrown when a request resolves to a session record whose stored `tenantId`
+ * differs from the request's tenant (FIX-682). The `${tenantId}:${sessionId}`
+ * storage key is ambiguous when the caller controls `sessionId` — omitting the
+ * tenant header while passing `sessionId = "${otherTenant}:${id}"` collides on
+ * another tenant's key. Comparing the stored tenant to the request's closes
+ * that bypass: a key collision can never be acted on across a tenant boundary.
+ * `"<none>"` stands in for an absent tenant in the message.
+ */
+export class TenantBindingMismatchError extends Error {
+  readonly sessionId: string;
+  readonly sessionTenantId: string;
+  readonly requestedTenantId: string;
+
+  constructor(
+    sessionId: string,
+    sessionTenantId: string | undefined,
+    requestedTenantId: string | undefined
+  ) {
+    super(
+      `Session ${sessionId} belongs to tenant ${sessionTenantId ?? "<none>"} but request supplied tenant ${requestedTenantId ?? "<none>"}.`
+    );
+    this.name = "TenantBindingMismatchError";
+    this.sessionId = sessionId;
+    this.sessionTenantId = sessionTenantId ?? "<none>";
+    this.requestedTenantId = requestedTenantId ?? "<none>";
   }
 }

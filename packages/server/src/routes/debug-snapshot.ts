@@ -260,7 +260,11 @@ export async function buildDebugResourceTree(opts: {
   const session = await ctx.stores.session.get(
     resolveSessionStorageKey(sessionId, tenantId)
   );
-  if (!session) return null;
+  // Reject a tenant-key collision: the stored tenant must match the request's
+  // (FIX-682), so a crafted `sessionId` can't inspect another tenant's data.
+  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+    return null;
+  }
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return null;
 
@@ -425,7 +429,9 @@ export async function buildDebugCollectionItems(opts: {
   const session = await ctx.stores.session.get(
     resolveSessionStorageKey(sessionId, tenantId)
   );
-  if (!session) return { ok: false, kind: "session_not_found" };
+  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+    return { ok: false, kind: "session_not_found" };
+  }
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return { ok: false, kind: "session_not_found" };
 
@@ -561,7 +567,9 @@ export async function lookupDebugContent(opts: {
   const session = await ctx.stores.session.get(
     resolveSessionStorageKey(sessionId, tenantId)
   );
-  if (!session) return { ok: false, kind: "session_not_found" };
+  if (!session || (session.tenantId ?? undefined) !== (tenantId ?? undefined)) {
+    return { ok: false, kind: "session_not_found" };
+  }
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return { ok: false, kind: "session_not_found" };
 

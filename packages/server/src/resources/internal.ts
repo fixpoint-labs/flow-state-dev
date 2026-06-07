@@ -129,6 +129,10 @@ export async function getPersistedData(
     resolveSessionStorageKey(sessionId, tenantId)
   );
   if (!session) return undefined;
+  // Tenant binding: the `${tenantId}:${sessionId}` key is ambiguous when the
+  // caller controls `sessionId`, so reject a record whose stored tenant differs
+  // from the request's — a key collision must never read across tenants.
+  if ((session.tenantId ?? undefined) !== (tenantId ?? undefined)) return undefined;
 
   if (scope === "session") {
     const [resources, content] = await Promise.all([

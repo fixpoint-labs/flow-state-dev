@@ -148,7 +148,15 @@ export function createInboundTransportHost(
       const existing = await stores.session.get(
         resolveSessionStorageKey(envelope.sessionId, envelope.tenantId)
       );
-      if (existing?.orgId !== undefined) return;
+      // Only honor the loaded session's org binding when its stored tenant
+      // matches this request's — guards the `:`-delimited key collision so a
+      // crafted sessionId can't borrow another tenant's org (FIX-682).
+      if (
+        existing?.orgId !== undefined &&
+        (existing.tenantId ?? undefined) === (envelope.tenantId ?? undefined)
+      ) {
+        return;
+      }
     }
     throw new OrgRequiredError(envelope.flowKind);
   };

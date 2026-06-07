@@ -9,7 +9,6 @@ import type { StoreRegistry } from "../stores/types";
 import {
   mergeScopeReads,
   resolveOrgStorageKey,
-  resolveSessionStorageKey,
   resolveUserStorageKey,
   resourceScopeIds
 } from "../stores/scope-keys";
@@ -21,6 +20,7 @@ import {
   getPositiveInteger,
   getString,
   jsonResponse,
+  loadTenantSession,
   parseClientDataFilter,
   sortItems
 } from "./route-utils";
@@ -40,8 +40,10 @@ export async function handleGetSessionState(
   route: Extract<ParsedFlowRoute, { kind: "get_session_state" }>,
   ctx: StateRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  const session = await loadTenantSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId
   );
   if (session === undefined) {
     return jsonResponse(404, {
