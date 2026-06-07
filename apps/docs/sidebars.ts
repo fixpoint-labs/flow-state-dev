@@ -51,6 +51,7 @@ const sidebars: SidebarsConfig = {
             "resources/overview",
             "resources/storage",
             "resources/collections",
+            "resources/edges",
             "resources/client-access",
             "resources/manifest",
           ],
@@ -183,6 +184,7 @@ const sidebars: SidebarsConfig = {
           items: [
             "memory/overview",
             "memory/configuration",
+            "memory/relations",
             "memory/recall-tool",
             "memory/hygiene",
           ],

@@ -378,3 +378,7 @@ The old snapshot carried `resources[scope][ref].items` as a record of every item
 3. If you relied on `Object.keys(items).length` for a count, read the always-emitted `count` field from the snapshot.
 
 See the changelog entry for the per-version detail.
+
+## See also
+
+For relationships between resources or entities rather than many instances of one shape, see [Edges](./edges).
