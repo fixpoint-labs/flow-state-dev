@@ -13,6 +13,7 @@ import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
+  extractTenantId,
   getString,
   jsonResponse,
   parseJsonBody,
@@ -33,9 +34,6 @@ type ActionRunInput = {
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 };
-
-/** Default HTTP header carrying the tenant id (FIX-406 6D). */
-const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
 
 type ActionRouteContext = {
   host: InboundTransportHost;
@@ -65,8 +63,7 @@ export async function handleExecuteAction(
   const sessionId = route.sessionId ?? getString(body.sessionId);
   const metadata = asObject(body.metadata);
   // FIX-406 6D: optional tenant id from a configurable header.
-  const tenantId =
-    request.headers.get(ctx.tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER) ?? undefined;
+  const tenantId = extractTenantId(request, ctx.tenantIdHeader);
 
   // Build principal-resolution context. The body is exposed under
   // `metadata.body` so the default body-userId resolver can read it

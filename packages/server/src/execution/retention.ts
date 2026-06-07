@@ -41,12 +41,18 @@ export async function applyRetentionPolicy(
   sessionId: string,
   currentRequestId: string,
   policy: ResolvedRetentionPolicy,
-  now: number = Date.now()
+  now: number = Date.now(),
+  tenantId?: string
 ): Promise<{ deletedRequestIds: string[] }> {
   const deletedRequestIds: string[] = [];
 
   const requests = await stores.request.list({
     sessionId,
+    // Scope the prune to this request's tenant (FIX-682). Retention is
+    // otherwise tenant-blind (no separate per-tenant policy), but a per-session
+    // prune must never delete another tenant's requests that share a bare
+    // session id. Always pass the tenant (possibly undefined).
+    tenantId,
     status: "completed",
     // maxItems policy below counts `req.items.length` per request.
     withItems: true,

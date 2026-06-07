@@ -287,6 +287,24 @@ Org scope is also shared across flows by default with the same registry-time sch
 
 For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 
+## Multi-tenant isolation
+
+If you run one deployment for several customers (your "tenants"), you can isolate their data at the store layer without writing your own filtering. Send a tenant id on each request through an HTTP header — `x-tenant-id` by default, configurable with `createFlowApiRouter({ tenantIdHeader })`. Set it from your gateway, or from your client's `fetch` wrapper, the same way you'd attach an auth header.
+
+When a tenant id is present, the framework namespaces the **session** storage key. Two tenants that both use session id `chat-1` get two separate session records, separate session state, and separate session-scoped resources. Cross-turn history and request listing are scoped to the tenant too, so one tenant never sees another's turns.
+
+```bash
+# Two tenants, same session id, two independent sessions:
+curl -H "x-tenant-id: acme"   ... -d '{"sessionId":"chat-1", ...}'
+curl -H "x-tenant-id: globex" ... -d '{"sessionId":"chat-1", ...}'
+```
+
+What stays shared, on purpose: **user** and **org** scopes. Org-level policy and quotas, and a user's preferences, are usually meant to apply across tenants, so they key on `userId` / `orgId` alone. If you need those isolated per tenant, encode the tenant into the id you pass.
+
+You read the tenant in a block the same way as any identity field: `ctx.session.identity.tenantId`. The session id you get back (`ctx.session.identity.id`, API responses) is always the bare id you sent — the tenant prefix is an internal storage detail.
+
+Single-tenant apps do nothing and change nothing: when no header is sent, keys are identical to before and there's no migration.
+
 ## Why four scopes?
 
 Two scopes would force you to choose between "per-request" and "everything else." Six would create unnecessary ceremony. Four maps cleanly to the real boundaries:

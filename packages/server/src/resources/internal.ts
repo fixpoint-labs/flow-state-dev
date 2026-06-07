@@ -19,7 +19,11 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { mergeScopeReads, resourceScopeIds } from "../stores/scope-keys";
+import {
+  mergeScopeReads,
+  resolveSessionStorageKey,
+  resourceScopeIds
+} from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
 import {
@@ -115,9 +119,15 @@ export async function getPersistedData(
   ctx: ResourcePersistenceContext,
   flow: ResourceFlowLike,
   sessionId: string,
-  scope: ResolvedResourceScope
+  scope: ResolvedResourceScope,
+  tenantId?: string
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
-  const session = await ctx.stores.session.get(sessionId);
+  // Namespace the session lookup by tenant (FIX-682); `session.id` then carries
+  // the namespaced key so the session-scope content/state reads below are
+  // tenant-isolated. `undefined` tenant → bare key (single-tenant, unchanged).
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(sessionId, tenantId)
+  );
   if (!session) return undefined;
 
   if (scope === "session") {

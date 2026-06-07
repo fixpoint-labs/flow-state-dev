@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   flow_kind   TEXT NOT NULL,
   user_id     TEXT NOT NULL,
   org_id  TEXT,
+  tenant_id   TEXT,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_kind   ON sessions(flow_kind);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
 `;
 
@@ -33,6 +35,7 @@ CREATE TABLE IF NOT EXISTS requests (
   user_id     TEXT NOT NULL,
   session_id  TEXT,
   org_id  TEXT,
+  tenant_id   TEXT,
   status      TEXT NOT NULL,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
@@ -45,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_user_id         ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status          ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
 `;
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS active_requests (
   session_id        TEXT,
   user_id           TEXT NOT NULL,
   org_id        TEXT,
+  tenant_id         TEXT,
   source            TEXT NOT NULL DEFAULT 'http',
   input             TEXT,
   metadata          TEXT,
@@ -110,6 +115,29 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   const hasSource = cols.some((c) => c.name === "source");
   if (!hasSource) {
     db.exec("ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'http'");
+  }
+}
+
+/**
+ * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * `active_requests` tables. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we
+ * probe `pragma_table_info` first. The column is nullable with no default, so
+ * existing rows read back as no-tenant (single-tenant), which is the correct
+ * pre-isolation semantics. Idempotent on subsequent boots.
+ */
+function migrateAddTenantId(db: Database.Database): void {
+  for (const tableName of ["sessions", "requests", "active_requests"]) {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(tableName);
+    if (tableExists === undefined) continue;
+
+    const cols = db
+      .prepare("SELECT name FROM pragma_table_info(?)")
+      .all(tableName) as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "tenant_id")) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN tenant_id TEXT`);
+    }
   }
 }
 
@@ -324,6 +352,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   // its target columns.
   migrateProjectToOrg(db);
   migrateAddActiveRequestsSource(db);
+  migrateAddTenantId(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

@@ -21,6 +21,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   findResourceConfig,
   getPersistedData,
@@ -32,6 +33,11 @@ import {
 type ResourceRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  /**
+   * Tenant id from the request header (FIX-682). Namespaces the session lookup
+   * so resource reads/writes land in the calling tenant's session scope.
+   */
+  tenantId?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -47,7 +53,7 @@ async function resolveTemplateRaw(
   if (!config.contentTemplateRef) return undefined;
   const templateFound = findResourceConfig(flow, config.contentTemplateRef);
   if (!templateFound) return undefined;
-  const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope);
+  const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope, ctx.tenantId);
   return templateData?.content[templateFound.storageKey];
 }
 
@@ -64,7 +70,9 @@ export async function handleGetResourceContent(
   route: Extract<ParsedFlowRoute, { kind: "get_resource_content" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -85,7 +93,7 @@ export async function handleGetResourceContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const state = normalizeResourceState(config, data.resources[found.storageKey]);
@@ -105,7 +113,9 @@ export async function handleGetCollectionItemContent(
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_content" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -123,7 +133,7 @@ export async function handleGetCollectionItemContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   // The topic arrives as either a bare key ("my-doc") or the full storage key
@@ -159,7 +169,9 @@ export async function handleCreateCollectionItem(
   route: Extract<ParsedFlowRoute, { kind: "create_collection_item" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -225,7 +237,9 @@ export async function handleUpdateResourceContent(
   route: Extract<ParsedFlowRoute, { kind: "update_resource_content" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -306,7 +320,9 @@ export async function handleListCollectionState(
   route: Extract<ParsedFlowRoute, { kind: "list_collection_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -355,7 +371,7 @@ export async function handleListCollectionState(
     // resolver (honors flowIsolation). A missing user/org record is a valid
     // empty collection — the user simply hasn't written anything yet — so it
     // reads as `{}`, never a 500. The pattern filter below applies identically.
-    const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
     persisted = data?.resources ?? {};
   }
   const matchedKeys = Object.keys(persisted)
@@ -401,7 +417,9 @@ export async function handleGetCollectionItemState(
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -438,7 +456,7 @@ export async function handleGetCollectionItemState(
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
     // yet, which the not-present branch below already handles as 200 + null.
-    const data = await getPersistedData(ctx, flow, route.sessionId, scope);
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
     value = data?.resources[storageKey];
   }
   if (value === undefined) {
@@ -483,7 +501,9 @@ export async function handleGetResourceManifest(
   route: Extract<ParsedFlowRoute, { kind: "get_resource_manifest" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);
@@ -561,7 +581,9 @@ export async function handleDeleteCollectionItem(
   route: Extract<ParsedFlowRoute, { kind: "delete_collection_item" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await ctx.stores.session.get(route.sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(route.sessionId, ctx.tenantId)
+  );
   if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
 
   const flow = ctx.registry.get(session.flowKind);

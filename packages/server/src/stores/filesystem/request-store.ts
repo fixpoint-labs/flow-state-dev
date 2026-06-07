@@ -14,6 +14,7 @@ import {
 } from "./shared";
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import { withRequestSourceDefault } from "../shared";
+import { matchesTenantFilter } from "../scope-keys";
 import { pollEvents } from "../subscribe-helpers";
 import { appendFile, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
@@ -157,6 +158,10 @@ export class FilesystemRequestStore implements RequestStore {
           listOptions?.status !== undefined &&
           record.status !== listOptions.status
         ) {
+          return false;
+        }
+
+        if (!matchesTenantFilter(listOptions, record.tenantId)) {
           return false;
         }
 

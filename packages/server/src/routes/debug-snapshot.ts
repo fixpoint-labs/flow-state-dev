@@ -27,6 +27,7 @@ import {
   type ResourcePersistenceContext
 } from "../resources/internal";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -252,9 +253,13 @@ export async function buildDebugResourceTree(opts: {
   sessionId: string;
   ctx: ResourcePersistenceContext;
   countLimit: number;
+  /** Tenant id for namespacing the session lookup (FIX-682). */
+  tenantId?: string;
 }): Promise<DebugResourcesResponse | null> {
-  const { sessionId, ctx, countLimit } = opts;
-  const session = await ctx.stores.session.get(sessionId);
+  const { sessionId, ctx, countLimit, tenantId } = opts;
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(sessionId, tenantId)
+  );
   if (!session) return null;
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return null;
@@ -274,7 +279,8 @@ export async function buildDebugResourceTree(opts: {
         ctx,
         flow as ResourceFlowLike,
         sessionId,
-        scope
+        scope,
+        tenantId
       );
       persistedCache.set(scope, data ?? null);
     })
@@ -403,8 +409,10 @@ export async function buildDebugCollectionItems(opts: {
   cursor: string | null;
   topicFilter: string | null;
   ctx: ResourcePersistenceContext;
+  /** Tenant id for namespacing the session lookup (FIX-682). */
+  tenantId?: string;
 }): Promise<BuildItemsResult> {
-  const { sessionId, ref, ctx } = opts;
+  const { sessionId, ref, ctx, tenantId } = opts;
   const limit = clampLimit(opts.limit);
   if (limit === null) {
     return { ok: false, kind: "bad_request", detail: "invalid_limit" };
@@ -414,7 +422,9 @@ export async function buildDebugCollectionItems(opts: {
     return { ok: false, kind: "bad_request", detail: "invalid_cursor" };
   }
 
-  const session = await ctx.stores.session.get(sessionId);
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(sessionId, tenantId)
+  );
   if (!session) return { ok: false, kind: "session_not_found" };
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return { ok: false, kind: "session_not_found" };
@@ -434,7 +444,8 @@ export async function buildDebugCollectionItems(opts: {
     ctx,
     flow as ResourceFlowLike,
     sessionId,
-    group.scope
+    group.scope,
+    tenantId
   );
   if (!persisted) {
     return {
@@ -543,9 +554,13 @@ export async function lookupDebugContent(opts: {
   ref: string;
   topic: string | null;
   ctx: ResourcePersistenceContext;
+  /** Tenant id for namespacing the session lookup (FIX-682). */
+  tenantId?: string;
 }): Promise<DebugContentResult> {
-  const { sessionId, ref, topic, ctx } = opts;
-  const session = await ctx.stores.session.get(sessionId);
+  const { sessionId, ref, topic, ctx, tenantId } = opts;
+  const session = await ctx.stores.session.get(
+    resolveSessionStorageKey(sessionId, tenantId)
+  );
   if (!session) return { ok: false, kind: "session_not_found" };
   const flow = ctx.registry.get(session.flowKind);
   if (!flow) return { ok: false, kind: "session_not_found" };
@@ -561,7 +576,8 @@ export async function lookupDebugContent(opts: {
     ctx,
     flow as ResourceFlowLike,
     sessionId,
-    group.scope
+    group.scope,
+    tenantId
   );
   if (!persisted) return { ok: false, kind: "content_not_found" };
 

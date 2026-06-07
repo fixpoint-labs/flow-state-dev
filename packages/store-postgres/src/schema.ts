@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   flow_kind   TEXT NOT NULL,
   user_id     TEXT NOT NULL,
   org_id  TEXT,
+  tenant_id   TEXT,
   version     INTEGER NOT NULL,
   created_at  BIGINT NOT NULL,
   updated_at  BIGINT NOT NULL,
@@ -22,6 +23,7 @@ const SESSIONS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_kind   ON sessions(flow_kind)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at)"
 ];
 
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS requests (
   user_id     TEXT NOT NULL,
   session_id  TEXT,
   org_id  TEXT,
+  tenant_id   TEXT,
   status      TEXT NOT NULL,
   version     INTEGER NOT NULL,
   created_at  BIGINT NOT NULL,
@@ -47,6 +50,7 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_status          ON requests(status)",
   "CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, status)",
+  "CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
@@ -89,6 +93,7 @@ CREATE TABLE IF NOT EXISTS active_requests (
   session_id        TEXT,
   user_id           TEXT NOT NULL,
   org_id        TEXT,
+  tenant_id         TEXT,
   source            TEXT NOT NULL DEFAULT 'http',
   input             TEXT,
   metadata          TEXT,
@@ -114,6 +119,32 @@ BEGIN
   ) THEN
     EXECUTE 'ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT ''http''';
   END IF;
+END $$;
+`;
+
+/**
+ * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * `active_requests` tables. Idempotent — wrapped in a DO block so absence of
+ * the column adds it and presence is a no-op. Must run BEFORE the index DDL so
+ * `idx_sessions_user_tenant` / `idx_requests_session_tenant` find the column.
+ */
+const ADD_TENANT_ID_MIGRATION = `
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sessions', 'requests', 'active_requests']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = current_schema() AND table_name = t
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = t AND column_name = 'tenant_id'
+    ) THEN
+      EXECUTE format('ALTER TABLE %I ADD COLUMN tenant_id TEXT', t);
+    END IF;
+  END LOOP;
 END $$;
 `;
 
@@ -321,7 +352,12 @@ const PROJECT_TO_ORG_MIGRATIONS = [
 
   // FIX-438: ensure `active_requests.source` exists on pre-FIX-438 schemas.
   // Idempotent on fresh databases.
-  ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION
+  ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION,
+
+  // FIX-682: add the nullable `tenant_id` column to pre-isolation `sessions`,
+  // `requests`, and `active_requests` tables. Existing rows read back as
+  // no-tenant. Idempotent — no-op once the column exists.
+  ADD_TENANT_ID_MIGRATION
 ];
 
 /**

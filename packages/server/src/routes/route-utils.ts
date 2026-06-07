@@ -37,6 +37,24 @@ export function emptyResponse(status: number): Response {
   return new Response(null, { status });
 }
 
+/** Default HTTP header carrying the tenant id (FIX-406 6D). */
+export const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
+
+/**
+ * Read the tenant id from the configurable HTTP header (FIX-682). Returns
+ * `undefined` when the header is absent or empty — an empty header is treated
+ * as single-tenant (bare keys), matching `resolveSessionStorageKey`. The
+ * canonical extraction point so action dispatch and every session-touching
+ * route namespace consistently.
+ */
+export function extractTenantId(
+  request: Request,
+  tenantIdHeader?: string
+): string | undefined {
+  const value = request.headers.get(tenantIdHeader ?? DEFAULT_TENANT_ID_HEADER);
+  return value !== null && value.length > 0 ? value : undefined;
+}
+
 /**
  * Strip the static pattern prefix from a full storage key, leaving the
  * "bare topic" — the identifying portion a collection author addresses

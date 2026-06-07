@@ -16,6 +16,7 @@ import {
   pushToArrayInMap
 } from "./shared";
 import { withRequestSourceDefault } from "../shared";
+import { matchesTenantFilter } from "../scope-keys";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
 import { isTerminalRequestStreamEvent } from "../subscribe-helpers";
@@ -220,6 +221,10 @@ export class InMemoryRequestStore implements RequestStore {
       }
 
       if (options?.userId !== undefined && record.userId !== options.userId) {
+        return false;
+      }
+
+      if (!matchesTenantFilter(options, record.tenantId)) {
         return false;
       }
 

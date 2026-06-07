@@ -305,7 +305,19 @@ const router = createFlowApiRouter({
 });
 ```
 
-The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`. Today the value is informational only — it does not yet namespace store keys, so two tenants sharing a session id still share a session record. Tenant-scoped store-key isolation (deriving `${tenantId}:${sessionId}` and threading it through the session, content, and request stores) is tracked separately.
+The axis is optional. Single-tenant apps never send the header and `tenantId` stays `undefined`.
+
+### Store-key isolation
+
+When a `tenantId` is present, it namespaces session storage so two tenants sharing a session id never share data:
+
+- The **session record** key and the **session-scoped** content / resource-state `scopeId` become `${tenantId}:${sessionId}` (via `resolveSessionStorageKey`). The session store is fetched by primary key, so the tenant lives in the key.
+- **Request records** keep a bare `sessionId` and carry a separate `tenantId` field. Cross-turn history isolates by filtering `request.list({ sessionId, tenantId })`, not by namespacing the field — which keeps request recovery a clean pass-through (recovery re-derives the key from the bare `sessionId` + `tenantId`). The `tenantId` list filter exact-matches when present (an explicit `undefined` matches only no-tenant records) and is skipped when absent.
+- **User and org** scopes stay shared across tenants by design — org-level policy and quota, and user preferences, are meant to span tenants.
+
+The public session id stays bare everywhere it surfaces: `ctx.session.identity.id`, emitted events, and HTTP responses all return `sessionId`, never the namespaced key.
+
+Single-tenant apps are unaffected: `resolveSessionStorageKey(sessionId, undefined) === sessionId`, so every key is byte-identical to a deployment without the axis. There is no migration for the common case. Persistence adapters add a nullable `tenant_id` column (SQLite/Postgres) via an idempotent `ADD COLUMN` migration; existing rows read back as no-tenant.
 
 ## Cross-Flow State: Shared vs Isolated
 

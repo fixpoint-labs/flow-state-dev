@@ -13,6 +13,7 @@ import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
+import { resolveSessionStorageKey } from "../../stores/scope-keys";
 import { generateId } from "../../utils/generate-id";
 import { OrgRequiredError, PrincipalResolutionError } from "../errors";
 import type {
@@ -144,7 +145,9 @@ export function createInboundTransportHost(
     if (!flow.requiresOrg) return;
     if ((envelope.orgId ?? envelope.principal.orgId) !== undefined) return;
     if (envelope.sessionId !== undefined) {
-      const existing = await stores.session.get(envelope.sessionId);
+      const existing = await stores.session.get(
+        resolveSessionStorageKey(envelope.sessionId, envelope.tenantId)
+      );
       if (existing?.orgId !== undefined) return;
     }
     throw new OrgRequiredError(envelope.flowKind);

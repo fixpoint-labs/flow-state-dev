@@ -75,9 +75,22 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 | **Request state** | Request scope | Lives for one action execution, then discarded |
 | **Sequencer state** | Sequencer execution | In-memory only, never persisted |
 
+## Tenant isolation
+
+If you send a tenant id (the `x-tenant-id` header by default), session storage is namespaced by tenant automatically. Two tenants using the same session id get separate records. The isolation is per scope:
+
+| Scope | Tenant-isolated? |
+|-------|------------------|
+| Session (record, state, session-scoped resources) | Yes |
+| Request (history, listing) | Yes |
+| User | No — shared across tenants by design |
+| Org | No — shared across tenants by design |
+
+The session store key becomes `${tenantId}:${sessionId}`; request records keep a bare `sessionId` and a separate `tenantId` that listing filters on. Persistent adapters (SQLite, Postgres) add a nullable `tenant_id` column through an idempotent migration, so upgrading an existing database needs no manual step and existing rows read back as no-tenant. Single-tenant apps that never send the header are unchanged. See [State and scopes](/docs/fundamentals/state-and-scopes#multi-tenant-isolation) for the full model.
+
 ## Custom stores
 
-The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/server`.
+The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/server`. A custom store isolates by tenant the same way the built-ins do: namespace records by their `id` (already tenant-prefixed for sessions) and honor the `tenantId` field on `SessionListOptions` / `RequestListOptions` (present means exact-match, including `undefined`; absent means no filter).
 
 ### Live tail
 
