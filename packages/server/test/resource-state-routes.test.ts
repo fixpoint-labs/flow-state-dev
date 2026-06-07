@@ -14,7 +14,7 @@ import {
 import { createInMemoryStores, createFlowRegistry } from "../src";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { StoreRegistry, SessionRecord, UserRecord } from "../src/stores/types";
-import { resolveUserStorageKey } from "../src/stores/scope-keys";
+import { resolveResourceScopeId, resolveUserStorageKey } from "../src/stores/scope-keys";
 import {
   handleListCollectionState,
   handleGetCollectionItemState,
@@ -90,13 +90,11 @@ function buildFlow() {
   })();
 }
 
-/** Effective user storage key for the flowIsolation user-scoped collections. */
+/** Scope-record (`ctx.user.state`) storage key — keys on the flow-level flag. */
 function userKeyFor(flow: ReturnType<typeof buildFlow>, userId: string): string {
   return resolveUserStorageKey(userId, {
     kind: flow.kind,
     isolateUserState: flow.isolateUserState ?? false,
-    isolateOrgState: flow.isolateOrgState ?? false,
-    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }>,
   });
 }
 
@@ -153,8 +151,12 @@ async function setupCtx(opts: {
       updatedAt: Date.now(),
     };
     await stores.user.set(userKey, userRecord, "any");
+    // FIX-735: `accountsCollection` declares `flowIsolation: true`, so its
+    // instances key per-resource at the isolated bucket `{userId}:{flowKind}` —
+    // independent of the (flow-flag) scope-record key above.
+    const accountsScopeId = resolveResourceScopeId(userId, flow.kind, true);
     for (const [topic, state] of Object.entries(opts.accounts)) {
-      await stores.resourceState.set("user", userKey, `accounts/${topic}`, state as JsonObject);
+      await stores.resourceState.set("user", accountsScopeId, `accounts/${topic}`, state as JsonObject);
     }
   }
 

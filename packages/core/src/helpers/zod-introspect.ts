@@ -34,6 +34,26 @@ export function getZodArrayElement(schema: ZodTypeAny): ZodTypeAny | undefined {
 }
 
 /**
+ * Returns the variant schemas of a `z.union()` or `z.discriminatedUnion()`, or
+ * `undefined` for any other schema. Both union kinds expose their variants on
+ * `_def.options`.
+ */
+export function getZodUnionOptions(schema: ZodTypeAny): ZodTypeAny[] | undefined {
+  const typeName = getZodTypeName(schema);
+  if (typeName !== "ZodUnion" && typeName !== "ZodDiscriminatedUnion") return undefined;
+  return (schema as any)._def.options as ZodTypeAny[];
+}
+
+/**
+ * Returns the value schema of a `z.record()` (the type behind every key), or
+ * `undefined` for non-records. A record's value type lives on `_def.valueType`.
+ */
+export function getZodRecordValueType(schema: ZodTypeAny): ZodTypeAny | undefined {
+  if (getZodTypeName(schema) !== "ZodRecord") return undefined;
+  return (schema as any)._def.valueType as ZodTypeAny;
+}
+
+/**
  * Unwrap one layer of ZodOptional / ZodDefault / ZodNullable (`_def.innerType`)
  * or ZodEffects (`_def.schema`). Returns `undefined` for non-wrapper types.
  */

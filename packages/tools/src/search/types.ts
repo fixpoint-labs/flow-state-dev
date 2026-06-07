@@ -5,6 +5,18 @@ import { z } from "zod";
 export const searchProviders = ["tavily", "exa", "perplexity", "serper", "brave", "parallel", "perplexity-sonar"] as const;
 export type SearchProviderName = (typeof searchProviders)[number];
 
+// --- Normalized retrieval-depth tier ---
+
+/**
+ * Provider-agnostic retrieval-thoroughness tier. A deliberately small, lossy
+ * vocabulary mapped per-provider — not a copy of any single vendor's enum.
+ * `fast` favours latency, `deep` favours thoroughness, `balanced` is the
+ * sensible default. Each adapter maps it to its native knob; providers with no
+ * depth concept (serper, brave) ignore it.
+ */
+export const searchTiers = ["fast", "balanced", "deep"] as const;
+export type SearchTier = (typeof searchTiers)[number];
+
 // --- Normalized output ---
 
 export const searchResultSchema = z.object({
@@ -53,30 +65,68 @@ export interface SearchConfig {
   /** Search depth. 'basic' is faster/cheaper, 'advanced' returns full content. Default: 'basic'. */
   searchDepth?: "basic" | "advanced";
   /**
-   * Provider-agnostic execution-mode hint. Each provider interprets it on its
-   * own terms; providers that have no mode concept ignore it. Currently only
-   * the Parallel adapter reads it (mapping to its `mode` request field,
-   * defaulting to "agentic").
+   * Provider-native execution-mode passthrough / escape hatch. When set, it
+   * overrides the `tier`-derived native value for adapters that read it (exa →
+   * `type`, parallel → `mode`). Use it to reach provider-specific behaviors the
+   * normalized `tier` does not cover (e.g. Exa `neural` / `instant` /
+   * `deep-reasoning`). Adapters with no mode concept ignore it.
    */
   searchMode?: string;
+  /**
+   * Normalized retrieval-thoroughness tier. Maps per-provider; providers with
+   * no depth knob (serper, brave) ignore it, and auto-selection prefers a
+   * provider that meaningfully supports the requested tier. Default: 'balanced'.
+   * When `agentControlsTier` is set, this is the default the model can override.
+   */
+  tier?: SearchTier;
+  /**
+   * Expose `tier` as a tool parameter so the calling model picks the depth per
+   * query (e.g. choosing 'deep' when the user asks for thorough research). When
+   * false (default), `tier` stays a build-time setting the model never sees.
+   */
+  agentControlsTier?: boolean;
+  /** Restrict results to these domains, where the provider supports it. */
+  includeDomains?: string[];
+  /** Exclude these domains from results, where the provider supports it. */
+  excludeDomains?: string[];
   /** Topic filter. Default: 'general'. */
   topic?: "general" | "news";
   /** Explicit API keys. If omitted, auto-detect from env vars. */
   keys?: Partial<Record<SearchProviderName, string>>;
 }
 
+// --- Provider capability descriptor ---
+
+/** Declares what a provider can meaningfully do, used to steer auto-selection. */
+export interface SearchCapabilities {
+  /**
+   * Tiers this provider can meaningfully serve. Capability-aware auto-selection
+   * prefers a provider whose set includes the requested tier. Every provider
+   * supports `balanced`, so the default never changes selection.
+   */
+  tiers: SearchTier[];
+}
+
 // --- Provider adapter interface ---
 
 export interface SearchProviderAdapter {
   name: SearchProviderName;
+  /** Static capability descriptor consulted by `resolveProvider`. */
+  capabilities: SearchCapabilities;
   search(
     query: string,
     options: {
       maxResults: number;
       searchDepth: "basic" | "advanced";
       topic: "general" | "news";
-      /** Provider-agnostic mode hint from `SearchConfig.searchMode`. Undefined when unset. */
+      /** Provider-native mode override from `SearchConfig.searchMode`. Undefined when unset. */
       searchMode?: string;
+      /** Normalized retrieval tier. Undefined is treated as `balanced`. */
+      tier?: SearchTier;
+      /** Domain allow-list, where the provider supports it. */
+      includeDomains?: string[];
+      /** Domain deny-list, where the provider supports it. */
+      excludeDomains?: string[];
       apiKey: string;
     }
   ): Promise<SearchOutput>;

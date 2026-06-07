@@ -412,9 +412,21 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     scopeId: string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
-    persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
-    persistResourceContent: (next: Record<string, string>) => Promise<void>;
+    /**
+     * Persist a single resource / collection-instance state key (FIX-744).
+     * Commits the one key to the durable store and mutates the live scope
+     * cache IN PLACE (`cache[key] = value`) — never snapshots and replaces the
+     * whole map. This is what lets concurrent distinct-key writes from
+     * parallel branches coexist in the in-memory view instead of clobbering.
+     */
+    persistResourceKey: (key: string, value: JsonObject) => Promise<void>;
+    /** Remove a single state key: durable per-key delete plus in-place live-cache delete. */
+    deleteResourceKey: (key: string) => Promise<void>;
+    /** Persist a single resource's content body: durable per-key write plus in-place live-cache set. */
+    persistResourceContentKey: (key: string, content: string) => Promise<void>;
+    /** Remove a single resource's content body: durable per-key delete plus in-place live-cache delete. */
+    deleteResourceContentKey: (key: string) => Promise<void>;
     /**
      * Called after any resource mutation so the streaming layer can push change
      * events to clients. The optional `projection` carries the mutated
@@ -493,24 +505,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       throw new Error(`Resource "${name}" is read-only`);
     }
 
-    const nextResources = {
-      ...options.readResources(),
-      [name]: normalizeResourceState(config, next)
-    };
-
-    await options.persistResources(nextResources);
-  };
-
-  const persistResourceContent = async (
-    name: string,
-    content: string
-  ): Promise<void> => {
-    const nextContent = {
-      ...options.readResourceContent(),
-      [name]: content
-    };
-
-    await options.persistResourceContent(nextContent);
+    await options.persistResourceKey(name, normalizeResourceState(config, next));
   };
 
   // --- Namespace instance persistence helpers ---
@@ -522,29 +517,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     const parsed = nsConfig.stateSchema.safeParse(next);
     const value = parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
 
-    const nextResources = {
-      ...options.readResources(),
-      [storageKey]: value
-    };
-
-    await options.persistResources(nextResources);
+    await options.persistResourceKey(storageKey, value);
   };
 
   const deleteNamespaceInstance = async (
     storageKey: string
   ): Promise<void> => {
-    const current = options.readResources();
-    const next = { ...current };
-    delete next[storageKey];
-
-    await options.persistResources(next);
+    await options.deleteResourceKey(storageKey);
 
     // Also remove content if present
-    const currentContent = options.readResourceContent();
-    if (storageKey in currentContent) {
-      const nextContent = { ...currentContent };
-      delete nextContent[storageKey];
-      await options.persistResourceContent(nextContent);
+    if (storageKey in options.readResourceContent()) {
+      await options.deleteResourceContentKey(storageKey);
     }
   };
 
@@ -650,11 +633,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof raw === "string" ? raw : null;
       },
       async writeContent(content: string): Promise<void> {
-        const nextContent = {
-          ...options.readResourceContent(),
-          [storageKey]: content
-        };
-        await options.persistResourceContent(nextContent);
+        await options.persistResourceContentKey(storageKey, content);
         options.onResourceChanged?.(storageKey, "updated");
       }
     };
@@ -770,7 +749,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
                 );
               }
               // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
+              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx);
             }
           }
 
@@ -800,8 +779,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
             : undefined;
 
-          const nextResources = { ...(options.readResources()), [storageKey]: state };
-          await options.persistResources(nextResources);
+          await options.persistResourceKey(storageKey, state);
 
           lruAccess.set(storageKey, Date.now());
 
@@ -930,9 +908,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
 
           // A live collection streams deletes too (delta `null`) so the client
-          // drops the item and decrements its count without a refetch, keeping
-          // the collection fully refetch-free. Non-live deletes carry no delta
-          // and fall through to the batched-refetch path.
+          // tombstones the item mid-stream without a refetch; the collection's
+          // count / list membership reconcile on the next snapshot. Non-live
+          // deletes carry no delta and fall through to the batched-refetch path.
           options.onResourceChanged?.(
             storageKey,
             "deleted",
@@ -1139,7 +1117,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           throw new Error(`Resource "${resourceName}" content is read-only`);
         }
 
-        await persistResourceContent(storageKey, content);
+        await options.persistResourceContentKey(storageKey, content);
       }
     };
   }
@@ -1176,7 +1154,7 @@ async function evictInstance(
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
-  persistResources: (next: Record<string, JsonObject>) => Promise<void>,
+  deleteResourceKey: (key: string) => Promise<void>,
   hookCtx: CollectionHookContext
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
@@ -1198,12 +1176,9 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
-  // Persist the deletion without mutating the caller's map — persistResources
-  // diffs next-vs-cache to derive the per-key delete, so the cache must still
-  // hold evictKey when it runs.
-  const next = { ...resources };
-  delete next[evictKey];
-  await persistResources(next);
+  // Per-key delete: removes evictKey from the durable store and the live cache
+  // in place, leaving sibling instances untouched.
+  await deleteResourceKey(evictKey);
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {

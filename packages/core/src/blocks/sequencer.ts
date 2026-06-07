@@ -500,7 +500,7 @@ export async function executeBlock(
 
       return output;
     } catch (error) {
-      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient);
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient, scopedCtx);
 
       // FIX-573: forward partial modelUsage on the failure path too. The
       // `output` phase in `_withExecutionScope` reads it and patches the

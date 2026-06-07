@@ -376,12 +376,13 @@ evidence to produce a convergence signal the PM uses for sizing conviction.
   generator (`defineLensGenerator`, BP-024 factory) reads ONLY the shared
   post-Phase-2 bundle (`investmentThesis` + `phase1MemosFull` + `valuationSpine`)
   plus its own persona via a per-generator `context` slot — NEVER another lens's
-  memo. The steps are chained SEQUENTIALLY (not `.parallel`) for a runtime
-  reason: this runtime does not merge all parallel branches' collection writes
-  back into the continuation's resource cache, so a convergence tap after a
-  parallel fan-out reads a stale view (3 of 4 lens memos still `pending`). A
-  sequential chain commits each memo before the next runs, so the convergence
-  tap sees all N. Sequential ≠ debate — each lens is still blind. Lens verdict
+  memo. The steps are fanned out with `.parallel`. They previously ran as a
+  sequential chain to dodge a runtime bug where parallel branches' distinct-key
+  collection writes clobbered each other in the continuation cache, so a
+  convergence tap after the fan-out read a stale view (3 of 4 lens memos still
+  `pending`). FIX-744 made distinct-key collection writes cache-consistent, so
+  the convergence tap now sees all N after a parallel fan-out. Parallel ≠ debate
+  — each lens is still blind. Lens verdict
   schema (`agents/lenses/lens-verdict-schema.ts`) is STRICT per BP-016 (3-tier
   `stance` + `conviction` + `missingData` honesty array; in the strict walker).
 - **Convergence is DETERMINISTIC (no LLM).** `computeAndStoreConvergence` (a

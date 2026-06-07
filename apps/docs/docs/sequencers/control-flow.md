@@ -42,6 +42,8 @@ pipeline.parallel(
 
 **When to reach for this**: you have a known set of independent steps and you want each result accessible by name (`output.analysis`).
 
+Branches share one execution context. If each branch writes a distinct [resource-collection](../resources/collections.md) instance, all the writes are visible to a later step in the same request. Branches writing the same instance key, or the same scope-state field, are last-writer-wins — reach for an atomic state op (`incState`, `pushState`, `setStateRecord`) when a shared key is unavoidable.
+
 If each branch is a deterministic tool fetch and you want the transcript to show a tool pill for each, wrap the branch block with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool):
 
 ```ts

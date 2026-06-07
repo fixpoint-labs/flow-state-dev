@@ -49,17 +49,19 @@ function makeRegistry(options: {
     projection?: { delta: unknown }
   ) => void;
 }) {
-  let state = { ...(options.initialState ?? {}) };
-  let content = { ...(options.initialContent ?? {}) };
+  const state = { ...(options.initialState ?? {}) };
+  const content = { ...(options.initialContent ?? {}) };
 
   return createScopeResourceRegistry({
     scope: "session",
     scopeId: "sess_1",
     configs: options.configs ?? {},
     readResources: () => state,
-    persistResources: async (next) => { state = next; },
     readResourceContent: () => content,
-    persistResourceContent: async (next) => { content = next; },
+    persistResourceKey: async (key, value) => { state[key] = value; },
+    deleteResourceKey: async (key) => { delete state[key]; },
+    persistResourceContentKey: async (key, value) => { content[key] = value; },
+    deleteResourceContentKey: async (key) => { delete content[key]; },
     onResourceChanged: options.onResourceChanged
   });
 }

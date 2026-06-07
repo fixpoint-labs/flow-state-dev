@@ -402,8 +402,14 @@ export type FlowDefinition<
   costEstimator?: CostEstimator;
 
   /**
-   * Default flow-isolation for user-scoped resources whose `flowIsolation`
-   * is unset. Resource-level declarations always win (FIX-435).
+   * Isolation for the user scope. Two roles:
+   *   - keys the scope's `state` record (`ctx.user.state`) — bare `{userId}`
+   *     when false, `{userId}:{flowKind}` when true; and
+   *   - the default `flowIsolation` for user-scoped resources that don't
+   *     declare their own.
+   *
+   * Resources key per resource (FIX-735): a resource's own `flowIsolation`
+   * always wins over this default, in both directions (FIX-435).
    * Default: false (resources are shared across flows under the same userId).
    */
   isolateUserState?: boolean;

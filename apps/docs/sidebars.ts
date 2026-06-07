@@ -152,9 +152,11 @@ const sidebars: SidebarsConfig = {
           label: "Tools",
           items: [
             "tools/overview",
+            "tools/search",
             "tools/fetch",
             "tools/crawl",
             "tools/bash",
+            "tools/claude-code-cli",
           ],
         },
         {
@@ -213,6 +215,7 @@ const sidebars: SidebarsConfig = {
         "advanced/generator-prompts-markdown",
         "advanced/resource-templates-markdown",
         "advanced/error-handling",
+        "advanced/error-capture",
         "advanced/idempotency",
         "advanced/durable-execution",
         "advanced/voice",

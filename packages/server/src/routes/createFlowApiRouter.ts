@@ -17,6 +17,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { createRuntimeConfig, type RuntimeConfig } from "../runtime-config";
+import type { ErrorCaptureHandler } from "../errors/error-capture";
 import {
   createFlowRouteHandlers,
   NOOP_INTERNAL_ROUTE_SEAMS
@@ -77,6 +78,12 @@ export type CreateFlowApiRouterOptions = {
    */
   tenantIdHeader?: string;
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  /**
+   * Opt-in error-capture sink (FIX-724). Block-aware: routes runtime block
+   * failures to an external observability service with the failing block's
+   * identity. Forwarded verbatim into the runtime config. Off by default.
+   */
+  errorCapture?: ErrorCaptureHandler;
   /**
    * Whether to detect interrupted requests from previous runs on startup.
    * Disable on serverless platforms where background queries on init can
