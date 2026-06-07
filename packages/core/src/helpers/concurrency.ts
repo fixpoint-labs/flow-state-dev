@@ -14,7 +14,9 @@
  * `maxConcurrency` of `undefined` (or any value ≥ `values.length`) runs every
  * item concurrently; values below 1 are clamped to 1. An empty input resolves
  * to `[]` without invoking `mapper`. The first rejecting `mapper` call rejects
- * the returned promise.
+ * the returned promise; any mapper calls already in flight on other workers run
+ * to completion (their results and errors are dropped), so callers using this
+ * for side-effecting work should not assume those operations were cancelled.
  */
 export async function mapLimit<TInput, TOutput>(
   values: readonly TInput[],
