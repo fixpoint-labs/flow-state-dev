@@ -214,6 +214,34 @@ export interface DigestSystemConfig {
   }
 }
 
+/**
+ * Configuration for the relations (typed-edge knowledge graph) tier (FIX-745).
+ *
+ * Relations are opt-in and default OFF: omitting `semantic.relations` adds zero
+ * behaviour and leaves the semantic store byte-for-byte unchanged. When
+ * enabled, consolidation also extracts typed directed edges between subjects
+ * (e.g. `user --married to--> moni`) and stores them on the semantic resource's
+ * framework `edges` field.
+ */
+export interface RelationsConfig {
+  /**
+   * Curated relation vocabulary. When set, consolidation drops (and warns on)
+   * any extracted edge whose `type` is not in the list. Omit for free-text
+   * relation types.
+   */
+  vocabulary?: string[]
+  /** Max stored edges. On overflow the framework culls lowest-confidence edges. */
+  maxEdges?: number
+  /**
+   * When an extracted edge references an endpoint that is not a known fact
+   * subject, mint a node for it instead of dropping the edge. Default false
+   * (unknown endpoints are dropped).
+   */
+  createImplicitEntities?: boolean
+  /** Decay edge confidence during the hygiene pass. Default true when hygiene is on. */
+  decay?: boolean
+}
+
 /** Configuration for the semantic memory module within memory.system(). */
 export interface SemanticMemoryConfig {
   /** Scope for semantic storage. Default: same as episodic, or 'user'. */
@@ -228,6 +256,13 @@ export interface SemanticMemoryConfig {
   }
   /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
   pruneThreshold?: number
+  /**
+   * Relations (typed-edge knowledge graph) tier (FIX-745). Opt-in, default OFF.
+   * `true` for defaults; an object for curated vocabulary / size cap / implicit
+   * entities. Omit to disable — no edge field, no edge extraction, no behaviour
+   * change to the personalization path.
+   */
+  relations?: boolean | RelationsConfig
 }
 
 /**

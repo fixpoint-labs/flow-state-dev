@@ -33,6 +33,7 @@ import type { EncodeEpisodeInput } from './episodic-memory-helpers'
 
 import { createSemanticMemoryResource, type SemanticMemoryState } from './semantic-memory'
 import type { SemanticFact } from './semantic-memory'
+import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
 import { addFact, updateFact, reinforce, removeFact, allFacts, query } from './semantic-memory-helpers'
 
 import { createDigestMemoryResource, type DigestMemoryState } from './digest-memory'
@@ -142,6 +143,12 @@ export const episodicMemoryCapability = createEpisodicMemoryCapability()
 export interface SemanticMemoryCapabilityConfig {
   /** Resource scope. Default: 'user'. */
   scope?: 'user' | 'org'
+  /**
+   * Edge-slot config for the relations tier (FIX-745). When set, the semantic
+   * resource is created with a typed-edge graph (`edges` field + `.edges` API).
+   * Omit to disable relations (no edge field, no behaviour change).
+   */
+  edges?: EdgeSlotConfig
 }
 
 /** Input type for adding a new semantic fact via capability helpers. */
@@ -159,7 +166,7 @@ export type AddSemanticFactInput = Omit<
 export function createSemanticMemoryCapability(config?: SemanticMemoryCapabilityConfig) {
   const scope = config?.scope ?? 'user'
 
-  const resource = createSemanticMemoryResource(scope)
+  const resource = createSemanticMemoryResource(scope, config?.edges)
 
   return defineCapability({
     name: 'semanticMemory' as const,

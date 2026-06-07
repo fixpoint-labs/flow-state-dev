@@ -14,7 +14,7 @@ import { workingMemoryResource } from './working-memory'
 import { memorySystemResource } from './memory-system'
 import { createEpisodicMemoryResource } from './episodic-memory'
 import { createSemanticMemoryResource } from './semantic-memory'
-import { cullByEffectiveConfidence } from './semantic-memory-helpers'
+import { cullByEffectiveConfidence, knownSubjects } from './semantic-memory-helpers'
 import { cullByTTL, markStale } from './episodic-memory-helpers'
 import type { EpisodicTTLConfig } from './episodic-memory-helpers'
 import { janitorResource } from './janitor'
@@ -97,6 +97,18 @@ export function memorySystemJanitor(
           culledFactIds = await cullByEffectiveConfidence(semRef, now, halfLife, cullFloor)
         } catch (err) {
           console.warn('[memory] janitor: confidence-decay cull failed:', (err as Error).message ?? err)
+        }
+      }
+
+      // Relations dangling-edge cleanup (FIX-745): after fact culls land, drop
+      // edges whose endpoints no longer correspond to a stored fact subject.
+      // Runs only when relations is enabled and the live ref carries the edge
+      // API. Non-fatal — a failure here must not crash the hygiene pass.
+      if (semRef?.edges && config.semantic?.relations) {
+        try {
+          await semRef.edges.pruneDangling(knownSubjects(semRef))
+        } catch (err) {
+          console.warn('[memory] janitor: dangling-edge prune failed:', (err as Error).message ?? err)
         }
       }
 

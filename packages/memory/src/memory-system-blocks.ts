@@ -19,6 +19,8 @@ import {
   removeFact,
   allFacts,
 } from './semantic-memory-helpers'
+import type { Edge } from '@flow-state-dev/core/graph'
+import type { ResolvedRelationsConfig } from './internal/config'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
 import { findBestOverlap } from './internal/helpers'
 import { createDigestMemoryResource } from './digest-memory'
@@ -66,6 +68,11 @@ export interface MemorySystemBlocksConfig {
     }
     /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
     pruneThreshold?: number
+    /**
+     * Resolved relations (typed-edge graph) config (FIX-745). Present only when
+     * the relations tier is enabled; absent disables all edge behaviour.
+     */
+    relations?: ResolvedRelationsConfig
   }
   /** Shared semantic resource reference — must be the same instance across blocks. */
   _semanticResource?: ReturnType<typeof createSemanticMemoryResource>
@@ -112,9 +119,169 @@ export const consolidationOutputSchema = z.object({
     /** ID of existing fact for reinforce/update/invalidate actions. Empty for 'new'. */
     targetFactId: z.string().default(''),
   })),
+  /**
+   * Typed directed relation edges between named entities (FIX-745). Always
+   * present in the schema (strict-mode requires a fixed shape — see BP-016),
+   * but the prompt only solicits edges when the relations tier is enabled; when
+   * it is off the model returns `[]` and persist ignores the field.
+   *
+   * Endpoints are subject strings (e.g. 'user', 'moni') reusing the same
+   * subject namespace as facts. `type` is an active-voice relation
+   * ('married to', 'works at'). `action` mirrors the fact actions:
+   *  - 'new'       — record a new edge (deduped to a reinforce if one matches).
+   *  - 'reinforce' — bump confidence on the matching active edge.
+   *  - 'supersede' — close `targetEdgeId` (set validUntil) and add the
+   *                  replacement edge described by from/to/type.
+   * `targetEdgeId` is '' for 'new'.
+   */
+  edges: z.array(z.object({
+    from: z.string(),
+    to: z.string(),
+    type: z.string(),
+    confidence: z.number().min(0).max(1),
+    action: z.enum(['new', 'reinforce', 'supersede']),
+    targetEdgeId: z.string(),
+  })),
 })
 
 export type ConsolidationOutput = z.infer<typeof consolidationOutputSchema>
+
+/** A single edge proposal from the consolidation generator. */
+export type ConsolidationEdge = ConsolidationOutput['edges'][number]
+
+/**
+ * Input schema for the consolidation persist handler. Looser than the generator
+ * output schema: `edges` is optional so callers (and pre-FIX-745 inputs) that
+ * omit it still validate. The persist body treats a missing `edges` as `[]`.
+ * This is intentionally NOT the generator output schema — that one keeps
+ * `edges` required for OpenAI strict mode (BP-016).
+ */
+export const consolidationPersistInputSchema = consolidationOutputSchema.extend({
+  edges: consolidationOutputSchema.shape.edges.optional(),
+})
+
+// ---------------------------------------------------------------------------
+// Relation-edge application (FIX-745)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the generator's extracted edges onto a semantic resource that carries
+ * the typed-edge graph (`ref.edges` present). Pure side-effecting helper used
+ * by `consolidationPersist`.
+ *
+ * Per-edge rules:
+ *  - Canonicalize `from`/`to` (lowercase/trim) — the same canonicalization
+ *    facts use, so endpoints align with stored fact subjects.
+ *  - Endpoint must be a known fact subject; otherwise drop+warn, unless
+ *    `createImplicitEntities` is set, in which case the endpoint is minted.
+ *  - When `vocabulary` is set, a `type` outside it is dropped+warned.
+ *  - `action: 'new'` adds an edge, but if an active edge with the same
+ *    from+to+type already exists it is treated as a reinforce (no duplicate).
+ *  - `action: 'reinforce'` bumps confidence on the matching active edge
+ *    (supersede the old, add a higher-confidence replacement).
+ *  - `action: 'supersede'` closes `targetEdgeId` (sets validUntil) and adds the
+ *    described replacement edge.
+ *
+ * Every operation is wrapped so one bad edge cannot crash the background
+ * consolidation pass.
+ */
+async function applyEdges(
+  semRef: any,
+  relations: ResolvedRelationsConfig,
+  edges: ConsolidationEdge[],
+): Promise<void> {
+  // Known node identities = canonicalized subjects of every stored fact.
+  const knownNodes = new Set<string>(
+    semRef.state.facts.map((f: any) => (f.subject ?? 'user').toLowerCase()),
+  )
+
+  // Confidence boost applied when reinforcing an existing edge. Mirrors the
+  // semantic-fact reinforce default so edge and fact confidence move in step.
+  const REINFORCE_BOOST = 0.05
+
+  const canon = (s: string): string => s.trim().toLowerCase()
+
+  // Resolve an endpoint: known subject → use as-is; unknown → mint when
+  // createImplicitEntities, else null (caller drops the edge).
+  const resolveEndpoint = (raw: string): string | null => {
+    const node = canon(raw)
+    if (knownNodes.has(node)) return node
+    if (relations.createImplicitEntities) {
+      knownNodes.add(node)
+      return node
+    }
+    return null
+  }
+
+  for (const proposal of edges) {
+    try {
+      const from = resolveEndpoint(proposal.from)
+      const to = resolveEndpoint(proposal.to)
+      if (from == null || to == null) {
+        console.warn(`[memory] relations: dropping edge with unknown endpoint (${proposal.from} -> ${proposal.to})`)
+        continue
+      }
+
+      const type = proposal.type.trim()
+      if (relations.vocabulary && !relations.vocabulary.includes(type)) {
+        console.warn(`[memory] relations: dropping out-of-vocab edge type "${type}" (vocabulary: ${relations.vocabulary.join(', ')})`)
+        continue
+      }
+
+      const activeNow = (semRef.edges.all({ at: new Date().toISOString() }) as Edge[])
+      const findMatch = (): Edge | undefined =>
+        activeNow.find((e) => e.from === from && e.to === to && e.type === type)
+
+      switch (proposal.action) {
+        case 'new': {
+          // Dedup: an identical active edge means this is really a reinforce.
+          const match = findMatch()
+          if (match) {
+            await semRef.edges.supersede(match.id)
+            await semRef.edges.add({
+              from, to, type,
+              confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
+              source: match.source,
+            })
+          } else {
+            await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: [] })
+          }
+          break
+        }
+
+        case 'reinforce': {
+          // Bump confidence on the matching active edge by superseding it and
+          // adding a higher-confidence replacement (keeps provenance).
+          const match = proposal.targetEdgeId
+            ? activeNow.find((e) => e.id === proposal.targetEdgeId)
+            : findMatch()
+          if (!match) {
+            console.warn(`[memory] relations: reinforce target not found (${from} -${type}-> ${to})`)
+            break
+          }
+          await semRef.edges.supersede(match.id)
+          await semRef.edges.add({
+            from: match.from, to: match.to, type: match.type,
+            confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
+            source: match.source,
+          })
+          break
+        }
+
+        case 'supersede': {
+          if (proposal.targetEdgeId) {
+            await semRef.edges.supersede(proposal.targetEdgeId)
+          }
+          // Add the replacement edge described by from/to/type.
+          await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: [] })
+          break
+        }
+      }
+    } catch (err) {
+      console.warn('[memory] relations: failed to apply edge:', (err as Error).message ?? err)
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Output repair helpers
@@ -678,6 +845,36 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
 }
 
 /**
+ * Build the relation-extraction lines appended to the consolidation prompt when
+ * the relations tier is enabled (FIX-745). Kept short so the prompt does not
+ * bloat; when a `vocabulary` is configured, the model is constrained to it.
+ */
+function buildRelationsPromptSection(relations: ResolvedRelationsConfig): string[] {
+  const lines = [
+    '',
+    'RELATIONS (knowledge graph edges):',
+    'Besides facts, also extract typed directed relationships BETWEEN named entities',
+    'as `edges`. Each edge connects two subjects (the same subject strings you use',
+    'for facts, e.g. \'user\', \'moni\', \'acme-corp\').',
+    '- from / to: the two subjects, in the direction the relation reads ("user married to moni").',
+    '- type: a short active-voice relation verb phrase ("married to", "works at", "owns").',
+    '- confidence: 0-1, same evidence scale as facts.',
+    '- action: \'new\' for a fresh relation; \'reinforce\' to confirm an existing one;',
+    '  \'supersede\' to replace an outdated one (set targetEdgeId to the old edge id).',
+    '- targetEdgeId: \'\' for \'new\'.',
+    'Only emit an edge when BOTH endpoints are real named entities and the relation is',
+    'stable knowledge. Do not invent relations. Return an empty edges array if none apply.',
+  ]
+  if (relations.vocabulary && relations.vocabulary.length > 0) {
+    lines.push(
+      `Use ONLY these relation types for \`type\`: ${relations.vocabulary.join(', ')}. ` +
+        'Drop any relation that does not fit one of these.',
+    )
+  }
+  return lines
+}
+
+/**
  * Creates the consolidation generator.
  * LLM call that synthesizes semantic facts from episodic observations.
  */
@@ -749,6 +946,9 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     '  for reinforce/update, the target MUST have the same subject as the fact you are',
     '  writing — if no same-subject target exists, use action:\'new\'.',
     '- Return empty facts array if nothing qualifies as stable knowledge',
+    // Relation-extraction section (FIX-745): only included when the relations
+    // tier is enabled, so the prompt stays lean when relations is off.
+    ...(config.semantic?.relations ? buildRelationsPromptSection(config.semantic.relations) : ['', 'Always return an empty edges array.']),
   ].join('\n')
 
   function buildContext(input: any): string {
@@ -797,7 +997,11 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     // background task fails (a failed `block_output` will then surface on
     // the trace channel).
     repair: { mode: 'auto', maxAttempts: 3 },
-    repairOutput: buildEnvelopeRepair(['facts']),
+    // `edges` is a required field on the schema (FIX-745) but the model may omit
+    // it (always when relations is off, sometimes when on). Patch a missing
+    // `edges` key to `[]` so validation passes; `facts` stays the primary key so
+    // bare-array recovery still routes to facts.
+    repairOutput: buildEnvelopeRepair(['facts', 'edges']),
     itemVisibility: { client: false, history: false },
   })
 }
@@ -817,7 +1021,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
   return handler({
     name: config.name ? `${config.name}/consolidate/persist` : 'memory/consolidate/persist',
-    inputSchema: consolidationOutputSchema,
+    inputSchema: consolidationPersistInputSchema,
     outputSchema: z.any(),
     // FIX-435: flat resources map; intrinsic scope routes each resource.
     // Episodic and semantic are conditionally installed via spread — widens
@@ -829,7 +1033,21 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       ...(semanticResource ? { semanticMemory: semanticResource } : {}),
     },
     execute: async (input, ctx) => {
-      if (input.facts.length === 0) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+      // Relations tier (FIX-745): resolved relations config + the edge proposals
+      // the generator returned. `edges` is always present on the schema but only
+      // populated when relations is enabled. We process edges whenever relations
+      // is on AND the live ref carries the edge API — so an empty-facts batch
+      // that still proposes edges is not skipped by the fast-path below.
+      const relations = config.semantic?.relations
+      const semRefForEdges = ctx.resources.semanticMemory as any
+      const hasEdgeWork = !!relations &&
+        !!semRefForEdges?.edges &&
+        Array.isArray((input as any).edges) &&
+        (input as any).edges.length > 0
+
+      if (input.facts.length === 0 && !hasEdgeWork) {
+        return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+      }
 
       // Episodic and semantic are installed conditionally above; cast at
       // point of use to the helper signatures.
@@ -947,6 +1165,16 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
         } catch (err) {
           console.warn('[memory] Failed to process consolidation fact:', (err as Error).message ?? err)
         }
+      }
+
+      // Relations tier (FIX-745): apply extracted edges onto the semantic
+      // resource's framework edge graph. Only runs when relations is enabled
+      // and the live ref carries the `.edges` API. Every edge failure is
+      // non-fatal (consolidation runs in a background `.work()`): we warn and
+      // continue rather than crash the turn. Edge extraction NEVER touches fact
+      // subjects — it only reads them to canonicalize endpoints (FIX-703).
+      if (relations && semRef.edges && Array.isArray((input as any).edges)) {
+        await applyEdges(semRef, relations, (input as any).edges as ConsolidationEdge[])
       }
 
       // Mark episodes as consolidated

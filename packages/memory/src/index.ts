@@ -222,6 +222,7 @@ export type {
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
+  RelationsConfig,
   DigestSystemConfig,
   MemoryCapabilityPreset,
 } from './memory-system'

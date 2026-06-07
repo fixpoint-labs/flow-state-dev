@@ -95,6 +95,33 @@ Two entry points: `createMemoryCapability()` builds the read-side capability; `s
 
 Every memory carries a `subject` — `'user'` for the primary user, a lowercase first name for other people (`'moni'`), a lowercase-hyphenated name for orgs. The subject is computed once by the observer and carried through the whole pipeline: working entry → episode → semantic fact → digest. Consolidation and prune read the stored subject instead of re-guessing ownership, and refuse to rewrite or merge a fact across subjects. The digest narrates the primary user; other people are described in relation to the user (e.g. "his wife Moni"), never collapsed into the user persona.
 
+## Relations (knowledge graph)
+
+The semantic tier can store typed directed relationships between subjects, not just standalone facts. Turn it on with `semantic: { relations: true }`:
+
+```ts
+const mem = system({
+  model: 'openai/gpt-5.4-mini',
+  working: true,
+  episodic: true,
+  semantic: { relations: true },
+})
+```
+
+Relations are opt-in and default off. When disabled, the semantic store is unchanged — no edge field, no extra prompting, no behaviour difference. When enabled, consolidation extracts edges alongside facts in the same LLM call (e.g. `user --married to--> moni`) and stores them on the semantic resource's edge graph.
+
+Endpoints reuse the subject namespace, so an edge connects the same canonicalized subject strings facts use. An edge whose endpoint is not a known fact subject is dropped by default; set `createImplicitEntities: true` to mint the node instead. Relation types are free text unless you pass a `vocabulary`, in which case out-of-vocabulary types are dropped. The hygiene janitor removes dangling edges whose endpoints were culled.
+
+```ts
+semantic: {
+  relations: {
+    vocabulary: ['married to', 'works at', 'owns'], // optional; free-text if omitted
+    maxEdges: 500,                                  // optional size cap
+    createImplicitEntities: false,                  // default: drop unknown endpoints
+  },
+}
+```
+
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
 **Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).

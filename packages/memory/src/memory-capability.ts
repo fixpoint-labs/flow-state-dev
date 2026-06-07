@@ -160,6 +160,21 @@ export function buildMemoryCapability(
     throw new Error('Digest requires semantic memory to be configured')
   }
 
+  // Validate: relations requires semantic (FIX-745). Relations live on the
+  // semantic store's edge slot — without semantic there is nothing to attach
+  // them to. `semantic: true` has no `relations` field, so this only fires for
+  // an explicit object config that set `relations` with semantic absent — but
+  // since `relations` nests under `semantic`, that shape is unreachable; the
+  // guard documents the invariant and catches untyped callers.
+  if (
+    options.semantic &&
+    options.semantic !== true &&
+    options.semantic.relations &&
+    !options.episodic
+  ) {
+    throw new Error('Relations require episodic memory (via semantic) to be configured')
+  }
+
   // Validate: model is required for the recall tool's filter strategy.
   // TypeScript enforces this at compile time; this guard catches untyped callers.
   if (options.model == null || (Array.isArray(options.model) && options.model.length === 0)) {
@@ -186,6 +201,18 @@ export function buildMemoryCapability(
   const semCapability = semanticConfig
     ? createSemanticMemoryCapability({
         scope: semanticConfig.scope,
+        // Relations tier (FIX-745): when resolved, create the resource with a
+        // typed-edge slot. The edge-slot config only carries vocabulary +
+        // maxEdges; createImplicitEntities / decay are lifecycle concerns the
+        // write path and janitor read from `semanticConfig.relations`.
+        ...(semanticConfig.relations
+          ? {
+              edges: {
+                ...(semanticConfig.relations.vocabulary ? { vocabulary: semanticConfig.relations.vocabulary } : {}),
+                ...(semanticConfig.relations.maxEdges != null ? { maxEdges: semanticConfig.relations.maxEdges } : {}),
+              },
+            }
+          : {}),
       })
     : undefined
 

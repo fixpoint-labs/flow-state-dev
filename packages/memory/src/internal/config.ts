@@ -27,6 +27,7 @@ import type {
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
   DigestSystemConfig,
+  RelationsConfig,
 } from '../memory-system'
 
 /** Concrete episodic config after defaulting. */
@@ -34,6 +35,26 @@ export interface ResolvedEpisodicConfig {
   scope: 'user' | 'org'
   significanceThreshold: number
   maxEpisodes: number
+}
+
+/**
+ * Concrete relations (typed-edge graph) config after defaulting (FIX-745).
+ * Present on `ResolvedSemanticConfig.relations` only when the relations tier is
+ * enabled — absence means edges are disabled entirely.
+ */
+export interface ResolvedRelationsConfig {
+  /** Curated relation vocabulary. When set, out-of-vocab edge types are dropped. */
+  vocabulary?: string[]
+  /** Max stored edges (forwarded to the framework edge slot). */
+  maxEdges?: number
+  /** Mint a node for an unknown edge endpoint instead of dropping the edge. Default false. */
+  createImplicitEntities: boolean
+  /**
+   * Decay edge confidence during hygiene. Default true. Resolved and carried
+   * for the planned edge-confidence-decay follow-up; the janitor currently
+   * performs dangling-edge cleanup only (not confidence decay on edges).
+   */
+  decay: boolean
 }
 
 /** Concrete semantic config after defaulting. */
@@ -45,6 +66,8 @@ export interface ResolvedSemanticConfig {
     minInterval: number
   }
   pruneThreshold: number
+  /** Resolved relations config — undefined when the relations tier is disabled. */
+  relations?: ResolvedRelationsConfig
 }
 
 /** Concrete digest config after defaulting. Scope is inherited from semantic. */
@@ -68,6 +91,25 @@ export interface MemoryTierOptions {
   episodic?: EpisodicMemoryConfig | true
   semantic?: SemanticMemoryConfig | true
   digest?: DigestSystemConfig | true
+}
+
+/**
+ * Resolve the relations tier config (FIX-745). `undefined`/`false` disables
+ * relations (returns `undefined` — no edge field, no behaviour). `true`
+ * resolves to defaults; an object overrides selected fields. `decay` defaults
+ * to true and `createImplicitEntities` to false.
+ */
+function resolveRelationsConfig(
+  relations: boolean | RelationsConfig | undefined,
+): ResolvedRelationsConfig | undefined {
+  if (!relations) return undefined
+  const r: RelationsConfig = relations === true ? {} : relations
+  return {
+    ...(r.vocabulary ? { vocabulary: r.vocabulary } : {}),
+    ...(r.maxEdges != null ? { maxEdges: r.maxEdges } : {}),
+    createImplicitEntities: r.createImplicitEntities ?? false,
+    decay: r.decay ?? true,
+  }
 }
 
 /**
@@ -112,6 +154,7 @@ export function resolveMemoryConfigs(config: MemoryTierOptions): ResolvedMemoryC
           minInterval: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.minInterval : (config.semantic.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval),
         },
         pruneThreshold: config.semantic === true ? DEFAULT_PRUNE_CONFIG.pruneThreshold : (config.semantic.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold),
+        relations: resolveRelationsConfig(config.semantic === true ? undefined : config.semantic.relations),
       }
     : undefined
 
