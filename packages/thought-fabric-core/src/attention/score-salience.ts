@@ -12,6 +12,15 @@ const DEFAULT_DIMENSIONS = {
 
 const scoreSchema = z.number().min(0).max(1)
 
+// Per-dimension score as an array-of-pairs rather than `z.record(...)`. The
+// dimension set is configurable (open-keyed), and an open-keyed map serializes
+// to `additionalProperties: true`, which OpenAI strict structured-output mode
+// rejects. See BP-016.
+const dimensionScoreSchema = z.object({
+  dimension: z.string(),
+  score: scoreSchema
+})
+
 const salienceItemSchema = z.object({
   id: z.string(),
   content: z.string(),
@@ -26,15 +35,15 @@ const salienceInputSchema = z.object({
 })
 
 const salienceOutputSchema = z.object({
-  scores: z.record(scoreSchema),
+  scores: z.array(dimensionScoreSchema),
   composite: scoreSchema,
   ranking: z.array(z.string()),
   itemScores: z.array(
     z.object({
       itemId: z.string(),
-      scores: z.record(scoreSchema),
+      scores: z.array(dimensionScoreSchema),
       composite: scoreSchema,
-      reasoning: z.string().optional()
+      reasoning: z.string().nullable()
     })
   )
 })

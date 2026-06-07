@@ -39,6 +39,7 @@ export function isTerminalRequestStreamEvent(
     case "request.failed":
     case "request.aborted":
     case "request.incomplete":
+    case "request.suspended":
       return true;
     case "request.interrupted":
       return (event as { status?: string }).status === "interrupted";

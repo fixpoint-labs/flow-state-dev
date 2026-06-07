@@ -49,6 +49,25 @@ const block = agentBlock(analyst, { catalog });
 // Input: { goal: string }, Output: string
 ```
 
+## Structured Output & Capabilities
+
+By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Workers always emit `z.string()`, because the skills pattern machinery builds follow-on actions from text.
+
+`usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.presets({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
+
+```ts
+const pm = defineAgent({
+  name: "portfolio-manager",
+  description: "Sizes the position into a typed decision.",
+  persona: { path: "personas/pm" },
+  outputSchema: portfolioDecisionSchema, // standalone only; workers stay string
+  usesCapabilities: [
+    tradingDesk.presets({ valuationSpine: true }), // typed capability ref
+    "someSharedSkill",                             // string key (catalog)
+  ],
+});
+```
+
 ## Persona Sourcing
 
 An agent's persona can be sourced three ways:

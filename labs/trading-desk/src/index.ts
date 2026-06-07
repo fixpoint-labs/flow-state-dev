@@ -1,4 +1,4 @@
-export { default as tradingDeskFlow } from "./flows/trading-desk/flow";
+export { default as analysisFlow } from "./flows/analysis/flow";
 export {
   AGENTS,
   PHASE_GROUPS,
@@ -8,7 +8,7 @@ export {
   PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   ALL_MEMO_KEYS,
-} from "./flows/trading-desk/agents";
+} from "./flows/analysis/registry";
 export type {
   AgentName,
   AgentMeta,
@@ -19,10 +19,10 @@ export type {
   Phase4MemoShortName,
   Phase5MemoShortName,
   AnyMemoShortName,
-} from "./flows/trading-desk/agents";
+} from "./flows/analysis/registry";
 export {
   memosCollection,
   memoStateSchema,
   memoStatusSchema,
-} from "./flows/trading-desk/resources";
-export type { MemoState, MemoStatus, ThesisSection } from "./flows/trading-desk/resources";
+} from "./flows/analysis/resources";
+export type { MemoState, MemoStatus, ThesisSection } from "./flows/analysis/resources";

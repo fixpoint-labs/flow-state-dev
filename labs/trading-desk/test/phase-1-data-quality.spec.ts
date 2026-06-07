@@ -8,7 +8,7 @@
  *
  *   1. `thesisOutputSchema` requires `dataQuality` and accepts exactly the
  *      three enum values (fails if the field is dropped or the enum drifts).
- *   2. `commitMemo` accepts a thesis carrying any of the three values and
+ *   2. `commitAnalystMemo` accepts a thesis carrying any of the three values and
  *      publishes the memo without error (fails if the commit projection
  *      stops threading the new required field through).
  *
@@ -18,10 +18,10 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { commitMemo } from "../src/flows/trading-desk/phase-1/writer";
-import { thesisOutputSchema } from "../src/flows/trading-desk/phase-1/thesis-schema";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitAnalystMemo } from "../src/flows/analysis/agents/analysts/writer";
+import { thesisOutputSchema } from "../src/flows/analysis/agents/analysts/thesis-schema";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const DATA_QUALITY_VALUES = ["full", "partial", "unavailable"] as const;
 
@@ -62,7 +62,7 @@ describe("thesisOutputSchema dataQuality contract", () => {
   });
 });
 
-const commitBlock = commitMemo("fundamentals");
+const commitBlock = commitAnalystMemo("fundamentals");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-data-quality-test",
@@ -92,7 +92,7 @@ const seededResources = {
   },
 };
 
-describe("commitMemo with dataQuality sentinel", () => {
+describe("commitAnalystMemo with dataQuality sentinel", () => {
   for (const value of DATA_QUALITY_VALUES) {
     it(`publishes a memo carrying dataQuality="${value}"`, async () => {
       const result = await testBlock(commitBlock, {

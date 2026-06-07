@@ -45,6 +45,7 @@ export type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
+  FlowStateRuntime,
   FlowStateVoiceConfig
 } from "./flowstate/types";
 export type {
@@ -136,6 +137,10 @@ export {
   FlowStateDisposedError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
+export type {
+  ErrorCaptureEvent,
+  ErrorCaptureHandler
+} from "./errors/error-capture";
 export {
   StoreSubscriptionError,
   STORE_SUBSCRIPTION_ERROR_CODES,

@@ -8,6 +8,7 @@
  * supplies the concrete implementation.
  */
 
+import type { ZodTypeAny } from "zod";
 import type { ItemVisibility } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { BlockContext, BlockDefinition } from "./block";
@@ -68,10 +69,20 @@ export interface Agent {
   model?: string;
   /** Defaults to `{ client: true, history: false }` when undefined. */
   itemVisibility?: ItemVisibility;
+  /** Structured output contract for the materialized generator. When omitted,
+   *  the agent emits free text (`z.string()`). Subject to the same BP-016
+   *  OpenAI-strict requirement as any generator output. Honored only for the
+   *  STANDALONE shape — workers always emit `z.string()` (skills pattern
+   *  machinery builds follow-on actions from text). */
+  outputSchema?: ZodTypeAny;
   /** Tool-catalog keys this agent may reference. */
   allowedTools?: string[];
-  /** Capability keys this agent composes via `uses`, resolved against the capabilityCatalog. */
-  usesCapabilities?: string[];
+  /** Capabilities this agent composes via `uses`. Each entry is EITHER a string
+   *  key resolved against the materialize-time `capabilityCatalog`, OR a
+   *  capability reference used as-is — including `someCapability.presets({ ... })`,
+   *  which keeps full preset typing (mirrors how `generator({ uses })` consumes
+   *  capabilities today). */
+  usesCapabilities?: Array<string | DefinedCapability>;
   /** RESERVED — not resolved by FIX-702. */
   usesSkills?: string[];
   /** Default activation mode when dispatched standalone. Only "inline" is honored initially. */

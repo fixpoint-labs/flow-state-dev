@@ -11,7 +11,7 @@ import { AgentBadge } from "@/components/agent-badge";
 import {
   AGENTS,
   type AgentName,
-} from "@/src/flows/trading-desk/agents";
+} from "@/src/flows/analysis/registry";
 import { cn } from "@/lib/utils";
 
 export type TxSpeakProps = {

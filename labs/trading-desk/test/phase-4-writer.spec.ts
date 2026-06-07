@@ -1,6 +1,6 @@
 /**
- * Tests for the Phase 4 writer taps. Confirms `markWritingP4`,
- * `markErrorP4`, and the four commit handlers flip `session.memoStatus`
+ * Tests for the Phase 4 writer taps. Confirms `markWriting`,
+ * `markError`, and the four commit handlers flip `session.memoStatus`
  * and patch the resources with the right extension fields.
  */
 import { readFileSync } from "node:fs";
@@ -11,19 +11,21 @@ import { testBlock } from "@flow-state-dev/testing";
 import {
   commitPersonaMemo,
   commitRiskAssessmentMemo,
-  markErrorP4,
-  markWritingP4,
-} from "../src/flows/trading-desk/phase-4/writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+} from "../src/flows/analysis/agents/risk/writer";
+import {
+  markError,
+  markWriting,
+} from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 import {
   personaCritiqueOutputSchema,
   riskAssessmentOutputSchema,
-} from "../src/flows/trading-desk/phase-4/schemas";
+} from "../src/flows/analysis/agents/risk/schemas";
 
 // The phase-4 prompts now live as `.md` files; read them raw to assert their
 // prose names every dismissal category (parity with the prior string-export).
-const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/trading-desk/phase-4/prompts");
+const PHASE_4_PROMPTS = path.resolve(process.cwd(), "src/flows/analysis/agents/risk/prompts");
 const NEUTRAL_PROMPT = readFileSync(path.join(PHASE_4_PROMPTS, "neutral.prompt.md"), "utf8");
 const RISK_ASSESSMENT_PROMPT = readFileSync(
   path.join(PHASE_4_PROMPTS, "risk-assessment.prompt.md"),
@@ -37,8 +39,8 @@ const DISMISSAL_CATEGORIES = [
   "asymmetric-no-bound",
 ] as const;
 
-const writeAggressive = markWritingP4("aggressive");
-const errorAggressive = markErrorP4("aggressive");
+const writeAggressive = markWriting("aggressive");
+const errorAggressive = markError("aggressive");
 const commitAggressive = commitPersonaMemo("aggressive");
 const commitConservative = commitPersonaMemo("conservative");
 const commitNeutral = commitPersonaMemo("neutral");
@@ -254,7 +256,7 @@ function lastSessionState(result: {
 }
 
 describe("Phase 4 writer taps", () => {
-  it("markWritingP4 flips memoStatus[shortName] to writing", async () => {
+  it("markWriting flips memoStatus[shortName] to writing", async () => {
     const result = await testBlock(writeAggressive, {
       input: {},
       flow: fixtureFlow,
@@ -396,7 +398,7 @@ describe("Phase 4 writer taps", () => {
     }
   });
 
-  it("markErrorP4 flips memo to error and returns a text placeholder", async () => {
+  it("markError flips memo to error and returns a text placeholder", async () => {
     const result = await testBlock(errorAggressive, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,

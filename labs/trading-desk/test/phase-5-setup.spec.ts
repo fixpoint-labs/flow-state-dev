@@ -6,9 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { setupPhase5Memos } from "../src/flows/trading-desk/phase-5/setup";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { setupPhase5Memos } from "../src/flows/analysis/agents/portfolio-manager/setup";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-setup-test",

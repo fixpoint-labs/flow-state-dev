@@ -9,6 +9,7 @@
   "references": [
     { "path": "../core" },
     { "path": "../devtool" },
+    { "path": "../node" },
     { "path": "../server" },
     { "path": "../store-sqlite" },
     { "path": "../testing" }

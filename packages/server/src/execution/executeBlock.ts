@@ -4,6 +4,7 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
+import { SuspensionError } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
@@ -428,6 +429,21 @@ export async function executeBlock(
                   error: summarizeForLog(error)
                 }
               );
+              // FIX-724: capture each non-terminal failed attempt so a retried
+              // root block reports per attempt, consistent with nested blocks
+              // (which fire `onBlockError` on every attempt under a retried
+              // parent). The terminal attempt is captured by the outer catch.
+              // Deduped by the shared per-request set when `onBlockError`
+              // already fired for this same throw.
+              const failedAttempt = retryAttempt - 1;
+              options.ctx._captureError?.(error, {
+                blockName: options.block.name,
+                blockKind: options.block.kind,
+                blockInstanceId: buildBlockInstanceId(requestId, blockPath, failedAttempt),
+                blockPath,
+                attempt: failedAttempt,
+                scope: "block"
+              });
             }
           });
 
@@ -446,6 +462,10 @@ export async function executeBlock(
       durationMs: Date.now() - startedAt
     };
   } catch (error) {
+    // SuspensionError is control flow, not a block failure — let it propagate.
+    if (error instanceof SuspensionError) {
+      throw error;
+    }
     const normalized = normalizeError(error, {
       blockName: options.block.name,
       scope: "block"
@@ -475,6 +495,19 @@ export async function executeBlock(
     // FIX-573: root failure trace is handled by `_withExecutionScope`'s
     // catch-path firing the `output` phase of `onBlockTraceCapture`.
     void terminalInstanceId;
+
+    // FIX-724: route the failure to the operator error-capture sink. Passes the
+    // raw caught error so the per-request dedup matches any leaf-level capture
+    // that `onBlockError` already fired for this same throw; only root blocks
+    // (bare handlers/generators, or container errors) land here un-deduped.
+    options.ctx._captureError?.(error, {
+      blockName: options.block.name,
+      blockKind: options.block.kind,
+      blockInstanceId: terminalInstanceId,
+      blockPath,
+      attempt: terminalAttempt,
+      scope: "block"
+    });
 
     return {
       output: undefined,

@@ -11,14 +11,13 @@ import {
   commitBearMemo,
   commitBullMemo,
   commitResearchManagerMemo,
-  markErrorP2,
-  markWritingP2,
-} from "../src/flows/trading-desk/phase-2/writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+} from "../src/flows/analysis/agents/research/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
-const writeBull = markWritingP2("bull");
-const errorBull = markErrorP2("bull");
+const writeBull = markWriting("bull");
+const errorBull = markError("bull");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p2-writer-test",
@@ -163,7 +162,7 @@ const investmentThesis = {
 };
 
 describe("Phase 2 writer taps", () => {
-  it("markWritingP2 flips memoStatus to writing", async () => {
+  it("markWriting flips memoStatus to writing", async () => {
     const result = await testBlock(writeBull, {
       input: {},
       flow: fixtureFlow,
@@ -219,7 +218,7 @@ describe("Phase 2 writer taps", () => {
     expect(last.memoStatus.researchManager).toBe("published");
   });
 
-  it("markErrorP2 flips bull to error and stamps the message", async () => {
+  it("markError flips bull to error and stamps the message", async () => {
     const result = await testBlock(errorBull, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,

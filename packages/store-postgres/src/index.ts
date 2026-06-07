@@ -16,11 +16,9 @@ import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 import { createPostgresResourceStateStore } from "./resource-state-store";
 import { createPostgresCheckpointStore } from "./checkpoint-store";
-import {
-  createInMemoryTraceStore,
-  createInMemorySuspensionStore,
-  createInMemoryLeaseStore
-} from "@flow-state-dev/server";
+import { createInMemoryTraceStore } from "@flow-state-dev/server";
+import { createPostgresSuspensionStore } from "./suspension-store";
+import { createPostgresLeaseStore } from "./lease-store";
 import { createPgPoolTx } from "./tx";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
@@ -195,8 +193,8 @@ export async function createPostgresStores(
       resourceState: createPostgresResourceStateStore(executor),
       checkpoints: createPostgresCheckpointStore(executor),
       traces: createInMemoryTraceStore(),
-      suspensions: createInMemorySuspensionStore(),
-      leases: createInMemoryLeaseStore(),
+      suspensions: createPostgresSuspensionStore(executor),
+      leases: createPostgresLeaseStore(executor),
       async close() {
         await closePool();
       }
@@ -217,8 +215,8 @@ export async function createPostgresStores(
     resourceState: createPostgresResourceStateStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),
     traces: createInMemoryTraceStore(),
-    suspensions: createInMemorySuspensionStore(),
-    leases: createInMemoryLeaseStore(),
+    suspensions: createPostgresSuspensionStore(executor),
+    leases: createPostgresLeaseStore(executor),
     async close() {
       await closePool();
     }
@@ -252,7 +250,9 @@ export {
   createPostgresActiveRequestRegistry,
   createPostgresContentStore,
   createPostgresResourceStateStore,
-  createPostgresCheckpointStore
+  createPostgresCheckpointStore,
+  createPostgresSuspensionStore,
+  createPostgresLeaseStore
 };
 
 export { initializeSchema } from "./schema";

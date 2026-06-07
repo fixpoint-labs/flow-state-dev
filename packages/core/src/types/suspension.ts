@@ -46,6 +46,8 @@ export interface SuspensionRecord {
 
   blockInstanceId: string;
   stepIndex: number;
+  /** The input value that was about to be passed to the step that suspended. */
+  stepInput?: unknown;
 
   createdAt: number;
   expiresAt?: number;

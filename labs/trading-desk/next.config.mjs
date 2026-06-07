@@ -18,7 +18,7 @@ const nextConfig = {
   // generally bundles fine, but turbopack has mangled pdfjs worker loading twice
   // (the client web worker URL, then the server "fake worker" chunk), so
   // externalizing it is the belt-and-suspenders that avoids the class entirely.
-  // See src/flows/trading-desk/portfolio/extract-pdf-text.server.ts.
+  // See src/flows/portfolio/extract-pdf-text.server.ts.
   serverExternalPackages: ["unpdf"],
   turbopack: {
     root: resolve(__dirname, "../../"),

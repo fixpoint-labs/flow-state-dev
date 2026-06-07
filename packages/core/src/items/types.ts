@@ -522,7 +522,7 @@ export type StateSnapshotItem = OutputItemBase & {
 export type SuspensionItem = OutputItemBase & {
   type: "suspension";
   suspensionId: string;
-  status: SuspensionStatus;
+  suspensionStatus: SuspensionStatus;
   reason: SuspensionReason;
   message: string;
   data?: Record<string, unknown>;

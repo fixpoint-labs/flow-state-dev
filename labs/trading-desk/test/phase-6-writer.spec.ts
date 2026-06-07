@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 6 writer taps and the ThesisAlignment output schema.
- * Confirms `markWritingP6` flips `session.memoStatus`, that
+ * Confirms `markWriting` flips `session.memoStatus`, that
  * `commitThesisAlignmentMemo` publishes a well-formed audit, and that the
  * schema enforces the `blindSpots.min(1)` floor (the structural guard that
  * forces the validator to do the audit work).
@@ -8,17 +8,14 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import {
-  commitThesisAlignmentMemo,
-  markErrorP6,
-  markWritingP6,
-} from "../src/flows/trading-desk/phase-6/writer";
-import { thesisAlignmentOutputSchema } from "../src/flows/trading-desk/phase-6/thesis-validator";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitThesisAlignmentMemo } from "../src/flows/analysis/agents/thesis-validator/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { thesisAlignmentOutputSchema } from "../src/flows/analysis/agents/thesis-validator/thesis-validator";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
-const writeTv = markWritingP6("thesisAlignment");
-const errorTv = markErrorP6("thesisAlignment");
+const writeTv = markWriting("thesisAlignment");
+const errorTv = markError("thesisAlignment");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p6-writer-test",
@@ -99,7 +96,7 @@ function thesisAlignment(
 }
 
 describe("Phase 6 writer taps", () => {
-  it("markWritingP6 flips memoStatus.thesisAlignment to writing", async () => {
+  it("markWriting flips memoStatus.thesisAlignment to writing", async () => {
     const result = await testBlock(writeTv, {
       input: {},
       flow: fixtureFlow,
@@ -128,7 +125,7 @@ describe("Phase 6 writer taps", () => {
     expect(last.memoStatus.thesisAlignment).toBe("published");
   });
 
-  it("markErrorP6 flips thesisAlignment to error", async () => {
+  it("markError flips thesisAlignment to error", async () => {
     const result = await testBlock(errorTv, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,

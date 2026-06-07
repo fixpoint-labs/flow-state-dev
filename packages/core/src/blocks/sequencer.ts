@@ -2,6 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
 import { asRuntime } from "../types/block";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
+import { SuspensionError } from "../errors/suspension-error";
 import type {
   BranchStep,
   BranchStepOutput,
@@ -38,6 +39,17 @@ import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot"
 import { compareZodSchemasStructurally } from "../helpers/zod-introspect";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
+
+/**
+ * Resume state injected by runAction when re-invoking a durable action.
+ * Carried on ctx._resumeState so the sequencer can skip completed steps.
+ */
+export type ResumeState = {
+  stepIndex: number;
+  state?: Record<string, unknown>;
+  /** The input value that was about to be passed to the step that suspended. */
+  stepInput?: unknown;
+};
 
 /** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
 const waitForConditionOutputSchema = z.object({ timedOut: z.boolean() });
@@ -488,7 +500,7 @@ export async function executeBlock(
 
       return output;
     } catch (error) {
-      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient);
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt, block.transient, scopedCtx);
 
       // FIX-573: forward partial modelUsage on the failure path too. The
       // `output` phase in `_withExecutionScope` reads it and patches the
@@ -677,6 +689,13 @@ function runSequencerOperations(
     let lastStepName = "__initial__";
     let lastStepIndex = -1;
     let lastStateJson: string | undefined;
+    let currentStepIndex = -1;
+
+    // Resume mode: when `_resumeState` is present on ctx, skip completed steps
+    // and inject cached outputs. The resume state is populated by runAction when
+    // re-invoking a durable action after suspension or crash.
+    const resumeState = (ctx as { _resumeState?: ResumeState })._resumeState;
+    const resumeStepIndex = resumeState?.stepIndex ?? -1;
 
     try {
       try {
@@ -693,9 +712,26 @@ function runSequencerOperations(
           stateSchema
         );
 
+        // In resume mode, restore sequencer state from the checkpoint.
+        if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
+          ctx.sequencer.setState(resumeState.state as any);
+        }
+
         for (let index = 0; index < operations.length; index += 1) {
           const operation = operations[index];
           runtime.stepHistory.push(operation.name);
+          currentStepIndex = index;
+
+          // Skip completed steps in resume mode. On the last skipped step,
+          // set currentValue to stepInput so the re-executed step receives
+          // the same input it saw on the original run.
+          if (resumeState !== undefined && index <= resumeStepIndex) {
+            if (index === resumeStepIndex && resumeState.stepInput !== undefined) {
+              currentValue = resumeState.stepInput;
+            }
+            continue;
+          }
+
           const result = await operation.run(currentValue, ctx, runtime, index);
           currentValue = result.value;
           if (result.descriptor !== undefined) {
@@ -769,6 +805,18 @@ function runSequencerOperations(
 
         return { value: currentValue, lastStepName };
       } catch (error) {
+        // SuspensionError is a control-flow signal, not a block failure.
+        // Rescue handlers must NOT fire for it — propagate directly to runAction.
+        // Stamp step context so runAction can build a correct SuspensionRecord
+        // and the resume runtime can skip-and-inject up to this point.
+        if (error instanceof SuspensionError) {
+          error._stepIndex = currentStepIndex;
+          error._currentValue = currentValue;
+          error._sequencerState = ctx.sequencer !== undefined
+            ? (typeof ctx.sequencer.state === "object" ? { ...ctx.sequencer.state as Record<string, unknown> } : undefined)
+            : undefined;
+          throw error;
+        }
         const normalizedError = toError(error);
         for (let i = 0; i < rescueHandlers.length; i += 1) {
           const handler = rescueHandlers[i];

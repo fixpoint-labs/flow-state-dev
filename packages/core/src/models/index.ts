@@ -55,6 +55,8 @@ export type {
 // Prompt caching (provider-specific cacheControl translation)
 export { applyCaching, DEFAULT_CACHING_CONFIG } from "./caching";
 
-// Strict-mode schema helper. Re-exported from the package root so authors can
-// validate generator outputSchemas at test time. See BP-016.
-export { makeSchemaStrict } from "./makeSchemaStrict";
+// Strict-mode schema helpers. Re-exported from the package root so authors can
+// validate generator outputSchemas at test time; `assertStrictCompatible` also
+// runs eagerly at `generator()` definition. See BP-016.
+export { makeSchemaStrict, assertStrictCompatible } from "./makeSchemaStrict";
+export type { MakeSchemaStrictOptions, StrictViolation } from "./makeSchemaStrict";

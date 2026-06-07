@@ -2,14 +2,14 @@
  * `fsdev dev` command — starts an HTTP dev server serving the flow API and DevTool UI.
  *
  * Discovers flows from conventional directories, registers them in a FlowRegistry,
- * creates an HTTP server that routes `/api/flows/*` to createFlowApiRouter and
- * serves the DevTool static assets for all other requests.
+ * then delegates the HTTP server to `@flow-state-dev/node`'s `serve()`, which
+ * routes `/api/flows/*` to createFlowApiRouter and serves the DevTool static
+ * assets (with SPA fallback) for all other requests.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { resolve, extname, join, sep } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { Command } from "commander";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import {
@@ -17,30 +17,12 @@ import {
   createFlowRegistry,
   createModelResolver,
 } from "@flow-state-dev/server";
+import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow";
 import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_DISCOVERY_ERROR, EXIT_CONFIG_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 import { loadEnvFiles } from "../load-env";
-
-/** MIME types for static file serving. */
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".map": "application/json",
-};
 
 interface DevCommandOptions {
   port?: string;
@@ -146,48 +128,49 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
     },
   });
 
-  // 7. Create HTTP server
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? "/";
-
-    // Route /api/flows/* to the flow API router
-    if (url.startsWith("/api/flows")) {
-      await handleApiRequest(req, res, url, router);
-      return;
-    }
-
-    // Serve static files for everything else
-    await serveStaticFile(req, res, url, assetPath);
+  // 7. Serve over HTTP via the shared Node host adapter. `serve` owns the
+  // node:http bridge (incl. unbuffered SSE) and DevTool static serving; the
+  // dev server binds localhost (not the PaaS-default 0.0.0.0) and mounts the
+  // API under /api/flows.
+  const handle = await serve(router, {
+    port,
+    host: "127.0.0.1",
+    basePath: "/api/flows",
+    staticDir: assetPath,
+    // The dev command owns shutdown (it also closes the SQLite stores), so opt
+    // out of serve's signal handlers and drive a single teardown path below.
+    handleSignals: false,
   });
 
-  // 8. Start listening
-  server.listen(port, () => {
-    const flowNames = flows.map((f) => f.kind);
-    process.stderr.write("\n");
-    process.stderr.write(`  DevTool server running at http://localhost:${port}\n`);
-    process.stderr.write("\n");
-    process.stderr.write(`  Flows:  ${flowNames.join(", ")}\n`);
-    process.stderr.write(`  API:    http://localhost:${port}/api/flows\n`);
-    process.stderr.write(`  Data:   .fsdev/data/fsdev.db (SQLite)\n`);
-    process.stderr.write("\n");
+  const flowNames = flows.map((f) => f.kind);
+  process.stderr.write("\n");
+  process.stderr.write(`  DevTool server running at http://localhost:${port}\n`);
+  process.stderr.write("\n");
+  process.stderr.write(`  Flows:  ${flowNames.join(", ")}\n`);
+  process.stderr.write(`  API:    http://localhost:${port}/api/flows\n`);
+  process.stderr.write(`  Data:   .fsdev/data/fsdev.db (SQLite)\n`);
+  process.stderr.write("\n");
 
-    if (options.open !== false) {
-      openBrowser(`http://localhost:${port}`);
-    }
-  });
+  if (options.open !== false) {
+    openBrowser(`http://localhost:${port}`);
+  }
 
-  // Keep process alive and handle graceful shutdown
+  // Keep the process alive and handle graceful shutdown. `handle.close()` tears
+  // down the HTTP server and router; the dev command additionally closes the
+  // SQLite stores it owns (they're passed to the router directly, not via a
+  // FlowState, so serve() can't dispose them). serve's own signal handling is
+  // disabled above so this is the single teardown path.
   let shuttingDown = false;
-  const shutdown = () => {
+  const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     process.stderr.write("\nShutting down...\n");
-    server.close();
+    await handle.close();
     stores.close();
     process.exit(EXIT_SUCCESS);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 /**
@@ -222,172 +205,6 @@ async function resolveDevToolAssets(): Promise<string> {
     "  # or in the monorepo: cd apps/devtool && pnpm build",
     EXIT_CONFIG_ERROR,
   );
-}
-
-/**
- * Converts a Node.js IncomingMessage to a Web API Request,
- * dispatches it to the flow API router, and writes the Response back.
- */
-async function handleApiRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: string,
-  router: ReturnType<typeof createFlowApiRouter>,
-): Promise<void> {
-  const method = (req.method ?? "GET").toUpperCase();
-
-  // Extract path segments after /api/flows
-  const pathAfterPrefix = url.replace(/^\/api\/flows\/?/, "");
-  const [pathPart] = pathAfterPrefix.split("?", 2);
-  const pathSegments = pathPart
-    .split("/")
-    .filter((s) => s.length > 0);
-
-  // Build full URL for the Web API Request
-  const fullUrl = `http://localhost${url}`;
-
-  // Read request body for POST/PATCH (the router supports GET, POST, PATCH, DELETE)
-  let body: string | undefined;
-  if (method === "POST" || method === "PATCH") {
-    body = await readRequestBody(req);
-  }
-
-  // Build Web API Request
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value !== undefined) {
-      headers.set(key, Array.isArray(value) ? value.join(", ") : value);
-    }
-  }
-
-  const webRequest = new Request(fullUrl, {
-    method,
-    headers,
-    body: body !== undefined ? body : undefined,
-  });
-
-  // Dispatch to the appropriate router method
-  const handler = router[method as keyof typeof router];
-  if (handler === undefined) {
-    res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Method not allowed" }));
-    return;
-  }
-
-  try {
-    const webResponse = await handler(webRequest, {
-      params: { path: pathSegments },
-    });
-
-    // Write status and headers
-    res.writeHead(webResponse.status, Object.fromEntries(webResponse.headers.entries()));
-
-    // Handle SSE streaming responses
-    const contentType = webResponse.headers.get("content-type") ?? "";
-    if (contentType.includes("text/event-stream") && webResponse.body !== null) {
-      // Stream the response body
-      const reader = webResponse.body.getReader();
-      const decoder = new TextDecoder();
-
-      // Disable buffering for SSE
-      res.flushHeaders();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          res.write(chunk);
-        }
-        // Flush any buffered bytes from incomplete multibyte sequences
-        const finalChunk = decoder.decode();
-        if (finalChunk) res.write(finalChunk);
-      } catch (streamErr) {
-        // Client disconnect is expected; log other errors for debugging
-        if (streamErr instanceof Error && streamErr.name !== "AbortError") {
-          process.stderr.write(`[SSE stream error] ${streamErr.message}\n`);
-        }
-      } finally {
-        res.end();
-      }
-      return;
-    }
-
-    // Regular response: read body and write
-    const responseBody = await webResponse.text();
-    res.end(responseBody);
-  } catch (err) {
-    if (!res.headersSent) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        error: "Internal server error",
-        message: err instanceof Error ? err.message : String(err),
-      }));
-    }
-  }
-}
-
-/** Reads the full request body as a string. */
-function readRequestBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", reject);
-  });
-}
-
-/** Serves a static file from the DevTool asset directory. */
-async function serveStaticFile(
-  _req: IncomingMessage,
-  res: ServerResponse,
-  url: string,
-  assetDir: string,
-): Promise<void> {
-  // Strip query string
-  const cleanUrl = url.split("?")[0];
-
-  // Resolve to a file path within the asset directory
-  let filePath: string;
-  if (cleanUrl === "/" || cleanUrl === "") {
-    filePath = join(assetDir, "index.html");
-  } else {
-    // Prevent directory traversal — ensure resolved path is strictly inside assetDir
-    const normalized = resolve(assetDir, "." + cleanUrl);
-    if (normalized !== assetDir && !normalized.startsWith(assetDir + sep)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-    filePath = normalized;
-  }
-
-  try {
-    const fileStat = await stat(filePath);
-
-    if (fileStat.isDirectory()) {
-      filePath = join(filePath, "index.html");
-      await stat(filePath); // Verify index.html exists
-    }
-
-    const content = await readFile(filePath);
-    const ext = extname(filePath);
-    const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
-
-    res.writeHead(200, { "Content-Type": mimeType });
-    res.end(content);
-  } catch {
-    // SPA fallback: serve index.html for unmatched routes
-    try {
-      const indexPath = join(assetDir, "index.html");
-      const content = await readFile(indexPath);
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(content);
-    } catch {
-      res.writeHead(404);
-      res.end("Not found");
-    }
-  }
 }
 
 /** Opens a URL in the default browser (best-effort, non-blocking). */

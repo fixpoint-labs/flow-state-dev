@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 5 scenario-forecast writer taps and the ScenarioForecast output schema.
- * Confirms `markWritingForecast` flips `session.memoStatus`, that
+ * Confirms `markWriting` flips `session.memoStatus`, that
  * `commitScenarioForecastMemo` publishes a well-formed forecast with
  * normalized probabilities and copied horizon, and that out-of-band
  * probability sums trigger `probability-violation`.
@@ -8,17 +8,14 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import {
-  commitScenarioForecastMemo,
-  markErrorForecast,
-  markWritingForecast,
-} from "../src/flows/trading-desk/phase-5/writer";
-import { scenarioForecastOutputSchema } from "../src/flows/trading-desk/phase-5/scenario-forecaster";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitScenarioForecastMemo } from "../src/flows/analysis/agents/scenario-forecaster/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { scenarioForecastOutputSchema } from "../src/flows/analysis/agents/scenario-forecaster/scenario-forecaster";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
-const writeSf = markWritingForecast("scenarioForecast");
-const errorSf = markErrorForecast("scenarioForecast");
+const writeSf = markWriting("scenarioForecast");
+const errorSf = markError("scenarioForecast");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-sf-writer-test",
@@ -117,7 +114,7 @@ function scenarioForecast(
 }
 
 describe("Phase 5 scenario-forecast writer taps", () => {
-  it("markWritingForecast flips memoStatus.scenarioForecast to writing", async () => {
+  it("markWriting flips memoStatus.scenarioForecast to writing", async () => {
     const result = await testBlock(writeSf, {
       input: {},
       flow: fixtureFlow,
@@ -187,7 +184,7 @@ describe("Phase 5 scenario-forecast writer taps", () => {
     expect(last.memoStatus.scenarioForecast).toBe("published");
   });
 
-  it("markErrorForecast flips scenarioForecast to error", async () => {
+  it("markError flips scenarioForecast to error", async () => {
     const result = await testBlock(errorSf, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,

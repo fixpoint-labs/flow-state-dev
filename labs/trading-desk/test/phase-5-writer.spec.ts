@@ -1,6 +1,6 @@
 /**
- * Tests for the Phase 5 writer taps. Confirms `markWritingP5`,
- * `markErrorP5`, and `commitPortfolioManagerMemo` flip
+ * Tests for the Phase 5 writer taps. Confirms `markWriting`,
+ * `markError`, and `commitPortfolioManagerMemo` flip
  * `session.memoStatus` and patch the resource correctly — including the
  * seven Phase 5 extension fields, the derived `agreesWithTrader` and
  * `upstreamReferences` fields, and the `runComplete` session flag.
@@ -8,18 +8,15 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import {
-  commitPortfolioManagerMemo,
-  markErrorP5,
-  markWritingP5,
-} from "../src/flows/trading-desk/phase-5/writer";
-import { portfolioDecisionOutputSchema } from "../src/flows/trading-desk/phase-5/portfolio-manager";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
-import { valuationSpineResource } from "../src/flows/trading-desk/valuation-spine-resource";
+import { commitPortfolioManagerMemo } from "../src/flows/analysis/agents/portfolio-manager/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { portfolioDecisionOutputSchema } from "../src/flows/analysis/agents/portfolio-manager/portfolio-manager";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
+import { valuationSpineResource } from "../src/flows/analysis/valuation-spine-resource";
 
-const writePm = markWritingP5("portfolioManager");
-const errorPm = markErrorP5("portfolioManager");
+const writePm = markWriting("portfolioManager");
+const errorPm = markError("portfolioManager");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p5-writer-test",
@@ -172,7 +169,7 @@ function portfolioDecision(
 }
 
 describe("Phase 5 writer taps", () => {
-  it("markWritingP5 flips memoStatus.portfolioManager to writing", async () => {
+  it("markWriting flips memoStatus.portfolioManager to writing", async () => {
     const result = await testBlock(writePm, {
       input: {},
       flow: fixtureFlow,
@@ -253,7 +250,7 @@ describe("Phase 5 writer taps", () => {
     }
   });
 
-  it("markErrorP5 flips portfolioManager to error and leaves runComplete false", async () => {
+  it("markError flips portfolioManager to error and leaves runComplete false", async () => {
     const result = await testBlock(errorPm, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,

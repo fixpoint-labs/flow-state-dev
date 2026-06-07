@@ -16,13 +16,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { _resetCache } from "../src/flows/trading-desk/lib/cache";
-import { discover_fundamentals_context } from "../src/flows/trading-desk/phase-1/tools/discover_fundamentals_context";
-import { discover_sentiment_context } from "../src/flows/trading-desk/phase-1/tools/discover_sentiment_context";
-import { discover_technical_context } from "../src/flows/trading-desk/phase-1/tools/discover_technical_context";
-import { discover_profile_context } from "../src/flows/trading-desk/phase-1/tools/discover_profile_context";
-import { discoveryPayloadSchema } from "../src/flows/trading-desk/phase-1/tools/schemas";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { _resetCache } from "../src/flows/analysis/tools/runtime/cache";
+import { discover_fundamentals_context } from "../src/flows/analysis/tools/data/discover_fundamentals_context";
+import { discover_sentiment_context } from "../src/flows/analysis/tools/data/discover_sentiment_context";
+import { discover_technical_context } from "../src/flows/analysis/tools/data/discover_technical_context";
+import { discover_profile_context } from "../src/flows/analysis/tools/data/discover_profile_context";
+import { discoveryPayloadSchema } from "../src/flows/analysis/tools/schemas";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
 // Use the runtime-isolated approach from get-company-profile.spec — vi.mock
 // the resolver module so live-branch tests can assert behaviour without

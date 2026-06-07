@@ -100,6 +100,25 @@ createFlowState({ /* ... */ onBackgroundWork: (p) => after(() => p) });
 
 It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
 
+### Error capture
+
+`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to an external observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
+
+```ts
+import * as Sentry from "@sentry/node";
+
+createFlowState({
+  /* ... */
+  errorCapture: (event) =>
+    Sentry.captureException(event.error, {
+      user: { id: event.userId },
+      tags: { flow: event.flowKind, block: event.blockName ?? "unknown" },
+    }),
+});
+```
+
+See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture) for the full event shape and filtering guidance.
+
 ### Connection resilience
 
 `createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
@@ -418,6 +437,27 @@ interface CheckpointStore {
 Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Custom registries can wrap a third-party KV store; storage is constant per sequencer regardless of step count, so the implementation needs no enumeration or pruning.
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
+
+## DurabilityProvider
+
+`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume. Wire it onto `RuntimeConfig.durabilityProvider` to enable `ctx.suspend()` in durable actions.
+
+```ts
+import { createCheckpointDurabilityProvider } from "@flow-state-dev/server";
+
+const provider = createCheckpointDurabilityProvider({
+  checkpoints: stores.checkpoints,
+  suspensions: stores.suspensions,
+  leases: stores.leases
+});
+
+// Pass to runtime config
+{ durabilityProvider: provider }
+```
+
+The interface has 8 methods: `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, and `cleanup`. `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
+
+`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
 
 ## Connection resilience
 

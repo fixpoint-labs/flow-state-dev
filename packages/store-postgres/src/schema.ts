@@ -239,6 +239,40 @@ const REQUEST_RUNONCE_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_runonce_request_id ON request_runonce(request_id)"
 ];
 
+// FIX-140: suspension records for durable execution. Identity is
+// (request_id, suspension_id); `data` is JSONB storing the full
+// SuspensionRecord. Scalar columns enable indexed queries.
+const SUSPENSION_RECORDS_TABLE = `
+CREATE TABLE IF NOT EXISTS suspension_records (
+  request_id    TEXT NOT NULL,
+  suspension_id TEXT NOT NULL,
+  data          JSONB NOT NULL,
+  created_at    BIGINT NOT NULL,
+  PRIMARY KEY (request_id, suspension_id)
+);
+`;
+
+const SUSPENSION_RECORDS_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id)",
+  "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)"
+];
+
+// FIX-140: lease records for preventing concurrent resume. One active
+// lease per request at a time.
+const LEASES_TABLE = `
+CREATE TABLE IF NOT EXISTS leases (
+  request_id  TEXT PRIMARY KEY,
+  lease_id    TEXT NOT NULL,
+  holder      TEXT NOT NULL,
+  acquired_at BIGINT NOT NULL,
+  expires_at  BIGINT NOT NULL
+);
+`;
+
+const LEASES_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at)"
+];
+
 /**
  * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
@@ -315,7 +349,9 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
       SEQUENCER_CHECKPOINTS_TABLE,
-      SCHEDULE_INDEX_TABLE
+      SCHEDULE_INDEX_TABLE,
+      SUSPENSION_RECORDS_TABLE,
+      LEASES_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -329,7 +365,9 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,
       ...SEQUENCER_CHECKPOINTS_INDEXES,
-      ...SCHEDULE_INDEX_INDEXES
+      ...SCHEDULE_INDEX_INDEXES,
+      ...SUSPENSION_RECORDS_INDEXES,
+      ...LEASES_INDEXES
     ]
   };
 }

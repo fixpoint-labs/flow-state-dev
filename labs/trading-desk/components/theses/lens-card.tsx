@@ -35,10 +35,10 @@ import {
   PHASE_2B_MEMO_KEYS,
   type AgentName,
   type LensId,
-} from "@/src/flows/trading-desk/agents";
-import { LENS_PACK } from "@/src/flows/trading-desk/lib/lenses";
-import { LENS_BODY_SECTION } from "@/src/flows/trading-desk/phase-2b/lens-body-sections";
-import type { ThesisSection } from "@/src/flows/trading-desk/resources";
+} from "@/src/flows/analysis/registry";
+import { LENS_PACK } from "@/src/flows/analysis/agents/lenses/lenses";
+import { LENS_BODY_SECTION } from "@/src/flows/analysis/agents/lenses/lens-body-sections";
+import type { ThesisSection } from "@/src/flows/analysis/resources";
 import { cn } from "@/lib/utils";
 
 /** The lensId whose lens is the pack's permanent structural bear (Burry —

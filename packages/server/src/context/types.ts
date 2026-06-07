@@ -10,6 +10,7 @@ import type {
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
+import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 
 export type RequestRuntime = {
   requestId: string;
@@ -31,6 +32,14 @@ export type ExecutionContext<
   actionName: string;
   requestRuntime: RequestRuntime;
   stores: StoreRegistry;
+  /**
+   * @internal Route a (possibly already-normalized) error to the configured
+   * `errorCapture` sink (FIX-724). Deduped per request against block-level
+   * captures keyed on the raw error instance. Undefined when no `errorCapture`
+   * handler is configured. Called from `executeBlock`'s catch for the root
+   * action block; nested block failures are captured via `_runtimeHooks.onBlockError`.
+   */
+  _captureError?: (error: unknown, block?: ErrorCaptureBlockInfo) => void;
 };
 
 export type CreateExecutionContextOptions<
@@ -78,4 +87,11 @@ export type CreateExecutionContextOptions<
    * `resolveTracingLevel()` (env / observability default).
    */
   tracingLevel?: TracingLevel;
+  /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
+  durabilityEnabled?: boolean;
+  /**
+   * Opt-in error-capture sink (FIX-724). When set, runtime block failures are
+   * delivered to it with provider-neutral context. Absent → no capture.
+   */
+  errorCapture?: ErrorCaptureHandler;
 };

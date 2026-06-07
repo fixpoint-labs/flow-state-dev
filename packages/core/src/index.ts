@@ -273,7 +273,8 @@ export {
   isModelSelection,
   applyCaching,
   DEFAULT_CACHING_CONFIG,
-  makeSchemaStrict
+  makeSchemaStrict,
+  assertStrictCompatible
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
@@ -296,7 +297,9 @@ export type {
   ProviderPreference,
   ResolveOptions,
   ExplainCandidate,
-  ExplainResult
+  ExplainResult,
+  MakeSchemaStrictOptions,
+  StrictViolation
 } from "./models";
 export type {
   RequestWorkPool,
@@ -310,8 +313,12 @@ export { getRequestWorkPool } from "./execution/request-work-pool";
 export {
   FlowError,
   OutputValidationError,
+  StrictSchemaError,
   SequencerOutputSchemaError,
   SequencerSchemaMismatchError,
+  SuspensionError,
+  SuspensionRejectedError,
+  SuspensionTimeoutError,
   rootCause,
   isAbortLike
 } from "./errors";
@@ -320,5 +327,6 @@ export type {
   FlowErrorScope,
   OutputValidationDetails,
   SequencerOutputSchemaErrorDetails,
-  SequencerSchemaMismatchErrorDetails
+  SequencerSchemaMismatchErrorDetails,
+  SuspendOptions
 } from "./errors";

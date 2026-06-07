@@ -13,9 +13,11 @@ type FlowItemProps = {
   isActive: boolean;
   onSelect: () => void;
   sessionRefreshKey?: number;
+  /** Also bring the open session current when the Sessions ⟳ is clicked. */
+  onRefreshActiveSession?: () => void;
 };
 
-export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey }: FlowItemProps) {
+export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey, onRefreshActiveSession }: FlowItemProps) {
   const { setActiveSession } = useDevTool();
   const { sessions, isLoading, refresh, createSession } = useSessions(isActive ? flow.kind : null);
   const { activeSessionId, setActiveSessionId } = useActiveSession(isActive ? flow.kind : null);
@@ -58,7 +60,16 @@ export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey }: FlowIt
         <div className="ml-3 border-l border-slate-800 pl-2">
           <div className="flex items-center gap-1 py-1">
             <span className="flex-1 text-[10px] font-medium uppercase text-slate-500">Sessions</span>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => refresh()} title="Refresh sessions">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 w-5 p-0"
+              onClick={() => {
+                void refresh();
+                onRefreshActiveSession?.();
+              }}
+              title="Refresh sessions"
+            >
               <RefreshCw className={`h-3 w-3 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
             <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={handleCreateSession} title="New session">

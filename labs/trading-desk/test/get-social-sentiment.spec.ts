@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   _routesForTest,
   get_social_sentiment,
-} from "../src/flows/trading-desk/phase-1/tools/get_social_sentiment";
+} from "../src/flows/analysis/tools/data/get_social_sentiment";
 
 const originalCwd = process.cwd();
 beforeEach(() => {

@@ -3,6 +3,7 @@ import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
 import { jsonSchema } from "ai";
 import { getZodTypeName } from "../helpers/zod-introspect";
+import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import type {
   BlockConfig,
   BlockContext,
@@ -1311,6 +1312,15 @@ export function generator<
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
   const blockItemVisibility = config.itemVisibility;
+
+  // Eager strict-mode guard: a reachable z.record / non-literal union in the
+  // declared output schema fails OpenAI strict mode at the first live call with
+  // an opaque error. Throw here, at definition, naming the offending node
+  // instead. Only runs when the author declared an outputSchema — the z.string()
+  // default and other text/primitive outputs are always strict-safe. See BP-016.
+  if (config.outputSchema !== undefined) {
+    assertStrictCompatible(config.outputSchema as ZodTypeAny, `Generator "${String(config.name)}"`);
+  }
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {

@@ -22,6 +22,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "./execution/logging";
+import type { DurabilityProvider } from "./durability/types";
+import type { ErrorCaptureHandler } from "./errors/error-capture";
 
 export interface RuntimeConfig {
   modelResolver?: ModelResolver;
@@ -46,6 +48,14 @@ export interface RuntimeConfig {
   defaultSseHeartbeatMs?: number;
   /** Forwarded to runAction so serverless platforms can keep work alive. */
   onBackgroundWork?: (promise: Promise<unknown>) => void;
+  /** Durable execution provider for checkpoint-based resume and HITL suspend. */
+  durabilityProvider?: DurabilityProvider;
+  /**
+   * Opt-in error-capture sink (FIX-724). Routes runtime block failures to an
+   * external observability service (Sentry, Datadog, ...). Forwarded to
+   * `createExecutionContext`; absent → no capture.
+   */
+  errorCapture?: ErrorCaptureHandler;
 }
 
 /**
@@ -64,6 +74,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     tracingLevel: options.tracingLevel,
     maxResponseBufferSize: options.maxResponseBufferSize,
     defaultSseHeartbeatMs: options.defaultSseHeartbeatMs,
-    onBackgroundWork: options.onBackgroundWork
+    onBackgroundWork: options.onBackgroundWork,
+    durabilityProvider: options.durabilityProvider,
+    errorCapture: options.errorCapture
   };
 }

@@ -507,6 +507,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../node
       '@flow-state-dev/server':
         specifier: workspace:*
         version: link:../server
@@ -733,6 +736,25 @@ importers:
         version: 22.19.13
       zod:
         specifier: ^3.25.76
+        version: 3.25.76
+
+  packages/node:
+    dependencies:
+      '@flow-state-dev/server':
+        specifier: workspace:*
+        version: link:../server
+    devDependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      zod:
+        specifier: ^3.24.1
         version: 3.25.76
 
   packages/patterns:

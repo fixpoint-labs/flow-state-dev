@@ -202,15 +202,18 @@ export async function handleListSessionRequests(
   }
 
   const url = new URL(request.url);
-  // Summary listing — does not request full item logs (FIX-685). Callers
-  // that need a request's items read it directly or via the state endpoint.
+  // Summary listing omits full item logs by default (FIX-685). Inspection
+  // surfaces (the DevTool) opt in with `include_items=true` to back-fill the
+  // item tree for requests that completed before the view was opened (FIX-733).
+  const includeItems = getBooleanFlag(url.searchParams.get("include_items"));
   const requests = await ctx.stores.request.list({
     sessionId: route.sessionId,
     status: getString(url.searchParams.get("status")) as
       | RequestStatus
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
-    offset: getPositiveInteger(url.searchParams.get("offset"))
+    offset: getPositiveInteger(url.searchParams.get("offset")),
+    withItems: includeItems
   });
 
   return jsonResponse(200, {

@@ -13,6 +13,7 @@ const sidebars: SidebarsConfig = {
     "projects-on-org-scope",
     "writing-ui-stories",
     "choosing-patterns-with-benchmarks",
+    "routing-errors-to-sentry",
     {
       type: "category",
       label: "Deployment",

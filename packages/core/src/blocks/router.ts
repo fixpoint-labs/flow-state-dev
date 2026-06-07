@@ -238,7 +238,7 @@ export function router<
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt, selected.transient);
           return output;
         } catch (error) {
-          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt, selected.transient);
+          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt, selected.transient, scopedCtx);
           throw error;
         }
       };

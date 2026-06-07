@@ -1,21 +1,18 @@
 /**
- * Tests for the Phase 3 writer taps. Confirms `markWritingP3`,
- * `markErrorP3`, and `commitTraderMemo` flip `session.memoStatus` and
+ * Tests for the Phase 3 writer taps. Confirms `markWriting`,
+ * `markError`, and `commitTraderMemo` flip `session.memoStatus` and
  * patch the resource correctly — including the seven P3 extension fields.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import {
-  commitTraderMemo,
-  markErrorP3,
-  markWritingP3,
-} from "../src/flows/trading-desk/phase-3/writer";
-import { memosCollection } from "../src/flows/trading-desk/resources";
-import { sessionStateSchema } from "../src/flows/trading-desk/state";
+import { commitTraderMemo } from "../src/flows/analysis/agents/trader/writer";
+import { markError, markWriting } from "../src/flows/analysis/agents/_recipe/memo-writer";
+import { memosCollection } from "../src/flows/analysis/resources";
+import { sessionStateSchema } from "../src/flows/analysis/state";
 
-const writeTrader = markWritingP3("trader");
-const errorTrader = markErrorP3("trader");
+const writeTrader = markWriting("trader");
+const errorTrader = markError("trader");
 
 const fixtureFlow = defineFlow({
   kind: "trading-desk-p3-writer-test",
@@ -98,7 +95,7 @@ const tradeProposal = {
 };
 
 describe("Phase 3 writer taps", () => {
-  it("markWritingP3 flips memoStatus.trader to writing", async () => {
+  it("markWriting flips memoStatus.trader to writing", async () => {
     const result = await testBlock(writeTrader, {
       input: {},
       flow: fixtureFlow,
@@ -130,7 +127,7 @@ describe("Phase 3 writer taps", () => {
     expect(last.memoStatus.trader).toBe("published");
   });
 
-  it("markErrorP3 flips trader to error and stamps the message", async () => {
+  it("markError flips trader to error and stamps the message", async () => {
     const result = await testBlock(errorTrader, {
       input: { error: new Error("LLM hiccup") },
       flow: fixtureFlow,
