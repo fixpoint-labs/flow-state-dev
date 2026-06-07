@@ -25,3 +25,11 @@ export {
   traverse,
   type TraversalOpts,
 } from "./traverse";
+
+export {
+  createResourceEdgeApi,
+  type AddEdgeInput,
+  type EdgeBackingRef,
+  type EdgeSlotConfig,
+  type ResourceEdgeApi,
+} from "./resource-edges";

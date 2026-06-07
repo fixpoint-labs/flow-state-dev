@@ -3,6 +3,7 @@ import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
 import type { ResourceRef, CollectionClientConfig } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
+import type { EdgeSlotConfig } from "../graph";
 
 // Re-export pattern utilities for consumers
 export {
@@ -75,6 +76,15 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig<TState>;
+
+  /**
+   * Declare a typed-edge graph on each instance of this collection. `true` =
+   * defaults; object = curated vocabulary / size cap. Attaches an `.edges` API
+   * to each live instance ref backed by that instance's own state. The instance
+   * `stateSchema` must carry an `edges` field (collections do not auto-inject the
+   * schema field the way `defineResource` does).
+   */
+  edges?: boolean | EdgeSlotConfig;
 
   /**
    * Number of items to inline in the snapshot's `prefetched` window for this
