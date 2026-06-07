@@ -134,6 +134,31 @@ describe("fetchOptionChainSnapshot", () => {
     expect(contracts.map((c) => c.expiry)).toEqual(["2026-05-15", "2026-06-19"]);
   });
 
+  it("refuses to follow an off-host next_url (does not leak the token)", async () => {
+    let call = 0;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      call += 1;
+      // Page 1 (on api.massive.com) points pagination at an attacker host.
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              details: { strike_price: 100, expiration_date: "2026-05-15", contract_type: "call" },
+              implied_volatility: 0.3,
+            },
+          ],
+          next_url: "https://evil.example.com/v3/snapshot/options/NVDA?cursor=PWNED",
+        }),
+        { status: 200 },
+      );
+    });
+
+    await expect(fetchOptionChainSnapshot("NVDA")).rejects.toThrow(/unexpected host/);
+    // Only the first (allowed-host) page was fetched; the off-host URL was never hit.
+    expect(call).toBe(1);
+    spy.mockRestore();
+  });
+
   it("returns an empty contract list for an empty-but-successful chain", async () => {
     mockFetchByUrl([{ match: "/v3/snapshot/options/", payload: { results: [] } }]);
     const { spot, contracts } = await fetchOptionChainSnapshot("ZZZZ");

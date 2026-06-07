@@ -25,6 +25,12 @@ import type { OptionContract } from "../data/options-math";
 
 const MASSIVE_BASE = "https://api.massive.com";
 
+/** Hosts the bearer token may be sent to. Pagination follows a `next_url`
+ *  returned by the API, so we pin it to the known Massive/Polygon hosts before
+ *  attaching credentials — a malformed or tampered `next_url` pointing off-domain
+ *  must never leak the API key (defence-in-depth). */
+const MASSIVE_ALLOWED_HOSTS = new Set(["api.massive.com", "api.polygon.io"]);
+
 function requireKey(): string {
   const key = process.env.MASSIVE_API_KEY?.trim();
   if (!key) throw new Error("MASSIVE_API_KEY not set");
@@ -49,6 +55,11 @@ async function massiveFetchJson<T>(
   const url = pathOrUrl.startsWith("http")
     ? new URL(pathOrUrl)
     : new URL(`${MASSIVE_BASE}${pathOrUrl}`);
+  if (!MASSIVE_ALLOWED_HOSTS.has(url.hostname)) {
+    // Refuse to attach the bearer token to an unexpected host (e.g. an
+    // off-domain `next_url`). Throw before fetching so the key never leaves.
+    throw new Error(`Massive: refusing to send credentials to unexpected host ${url.hostname}`);
+  }
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${requireKey()}` },
