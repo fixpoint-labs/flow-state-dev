@@ -231,7 +231,7 @@ return (
 );
 ```
 
-Each `item` is a `CollectionItemHandle` — `{ topic, clientData, fetchContent() }`. `fetchContent()` calls the existing content endpoint for that topic on demand.
+Each `item` is a `CollectionItemHandle<TClient>` — `{ topic, clientData, fetchContent() }`. `fetchContent()` calls the existing content endpoint for that topic on demand.
 
 If the collection declares `prefetchWindow > 0`, the snapshot's prefetched window paints first while the network fetch runs underneath.
 
@@ -244,6 +244,20 @@ const { item, isLoading, error, refetch } = useResourceCollectionItem(session, "
 if (item === null) return <div>Not found</div>;
 const content = await item.fetchContent();
 ```
+
+### Typing `clientData`
+
+These hooks (and `useResource`) take a `TClient` type parameter that types `clientData` instead of leaving it `unknown`. Derive it from the definition with `ClientDataOf<typeof collection>` so it can't drift from the projection:
+
+```tsx
+import type { ClientDataOf } from "@flow-state-dev/core";
+import { artifacts } from "./resources";
+
+const { item } = useResourceCollectionItem<ClientDataOf<typeof artifacts>>(session, "artifacts", "spec.md");
+// item?.clientData is the projected type — no cast
+```
+
+The parameter defaults to `unknown`, so untyped call sites are unchanged. See [Client Access — Typing `clientData`](/docs/resources/client-access#typing-clientdata) for how the type is derived from `expose` / `exclude` / `data`.
 
 ## useResourceManifest
 

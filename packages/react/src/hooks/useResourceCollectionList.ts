@@ -15,9 +15,15 @@ import {
 } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
-export type UseResourceCollectionListResult = {
+/**
+ * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * pass it via the hook generic, e.g.
+ * `useResourceCollectionList<ClientDataOf<typeof memos>>(...)`. Defaults to
+ * `unknown` so existing untyped call sites are unchanged.
+ */
+export type UseResourceCollectionListResult<TClient = unknown> = {
   /** Items accumulated across `loadMore` calls. */
-  items: CollectionItemHandle[];
+  items: CollectionItemHandle<TClient>[];
   /** Pagination metadata for the latest page. */
   pagination: CollectionListPage["pagination"] | undefined;
   isLoading: boolean;
@@ -28,16 +34,16 @@ export type UseResourceCollectionListResult = {
   loadMore: () => void;
 };
 
-export function useResourceCollectionList(
+export function useResourceCollectionList<TClient = unknown>(
   session: SessionView,
   ref: string,
   options: { limit?: number; topicPrefix?: string } = {}
-): UseResourceCollectionListResult {
-  const { list, prefetched, count, wrap } = useResourceCollection(session, ref);
+): UseResourceCollectionListResult<TClient> {
+  const { list, prefetched, count, wrap } = useResourceCollection<TClient>(session, ref);
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
-  const [items, setItems] = useState<CollectionItemHandle[]>([]);
+  const [items, setItems] = useState<CollectionItemHandle<TClient>[]>([]);
   const [pagination, setPagination] = useState<CollectionListPage["pagination"] | undefined>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | undefined>(undefined);

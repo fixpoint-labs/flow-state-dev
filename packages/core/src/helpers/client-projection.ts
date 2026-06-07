@@ -25,6 +25,28 @@ type ProjectionClient =
   | undefined;
 
 /**
+ * Type-level mirror of `resolveClientProjection`'s runtime branches (FIX-741).
+ * Derives the client-visible shape from a resource/collection `client` config:
+ *
+ *   - `data`    → the (awaited) return type of the projection fn
+ *   - `expose`  → `Pick<TState, listed keys>`
+ *   - `exclude` → `Omit<TState, listed keys>`
+ *   - none      → `TState` (identity default, including `client: undefined`)
+ *
+ * Mutual exclusion of `expose`/`exclude`/`data` is enforced at runtime by
+ * `validateClientProjection`, so the ordered conditional is sound. Pure type —
+ * the runtime contract stays `JsonValue`.
+ */
+export type ProjectedClient<TState extends JsonObject, TClient> =
+  TClient extends { data: (state: any) => infer R }
+    ? Awaited<R>
+    : TClient extends { expose: ReadonlyArray<infer K extends keyof TState> }
+      ? Pick<TState, K>
+      : TClient extends { exclude: ReadonlyArray<infer K extends keyof TState> }
+        ? Omit<TState, K>
+        : TState;
+
+/**
  * Throws at definition time when the `client` projection config is ambiguous
  * (more than one of `expose`/`exclude`/`data` set) or references a field name
  * that isn't on the state schema. `definer` is included verbatim in the

@@ -14,10 +14,14 @@ import { useFlowContext } from "../context/FlowContext";
 
 /**
  * Return type for useResource — metadata available immediately, content fetched on demand.
+ *
+ * `TClient` (FIX-741) is the resource's projected client-data type; pass it via
+ * the hook generic, e.g. `useResource<ClientDataOf<typeof doc>>(...)`. Defaults
+ * to `unknown` so existing untyped call sites are unchanged.
  */
-export type UseResourceResult = {
+export type UseResourceResult<TClient = unknown> = {
   /** Client data derived from the resource's state. Available immediately from the snapshot. */
-  clientData: unknown;
+  clientData: TClient;
   /** Fetches the rendered content body on demand. Returns null if no content exists. */
   fetchContent: () => Promise<string | null>;
 };
@@ -26,10 +30,10 @@ export type UseResourceResult = {
  * Reads a single resource's clientData from the session snapshot and provides
  * a `fetchContent()` function for lazy content loading.
  */
-export function useResource(
+export function useResource<TClient = unknown>(
   session: SessionView,
   ref: string
-): UseResourceResult {
+): UseResourceResult<TClient> {
   const context = useFlowContext();
   const baseUrl = context.baseUrl;
 
@@ -55,7 +59,10 @@ export function useResource(
     return undefined;
   }, [session.snapshot?.resources, ref]);
 
-  const clientData = entry?.clientData ?? null;
+  // Runtime payload is the server's JsonValue projection; the cast threads the
+  // declared TClient (FIX-741). Absent clientData coalesces to null, matching
+  // the prior behaviour.
+  const clientData = (entry?.clientData ?? null) as TClient;
 
   const fetchContent = useCallback(async (): Promise<string | null> => {
     const sessionId = session.sessionId;

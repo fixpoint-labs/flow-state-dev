@@ -7,9 +7,10 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
-import type { ResourceCollectionRef } from "./resource-collection";
+import type { ResourceCollectionRef, DefinedResourceCollection } from "./resource-collection";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
+import type { ProjectedClient } from "../helpers/client-projection";
 
 /**
  * The scope a resource is intrinsically bound to. Determines which storage
@@ -189,12 +190,33 @@ export type ResourceContext<TState extends JsonObject = JsonObject> = {
 /**
  * Branded definition returned by `defineResource()`. Carries the resolved
  * state type and intrinsic scope/flowIsolation stamps used by the framework
- * to derive storage keys and detect cross-flow collisions.
+ * to derive storage keys and detect cross-flow collisions. `ClientType`
+ * (FIX-741) is the projected client-data shape derived from the `client` config
+ * — a pure type-level brand (runtime `clientData` stays `JsonValue`). Extract it
+ * with `ClientDataOf<typeof resource>`.
  */
-export type DefinedResource<TState extends JsonObject = JsonObject> = ResourceConfig & {
+export type DefinedResource<
+  TState extends JsonObject = JsonObject,
+  TClient = JsonValue,
+> = ResourceConfig & {
   StateType: TState;
   ContextType: ResourceContext<TState>;
+  ClientType: TClient;
 };
+
+/**
+ * Extracts the projected client-data output type from a defined resource or
+ * collection (FIX-741). Resolves to the `client` projection's shape —
+ * `Pick`/`Omit`/computed-return/identity — so consumers derive the client type
+ * from the definition instead of hand-mirroring it. `never` for anything that
+ * isn't a defined resource/collection.
+ */
+export type ClientDataOf<T> =
+  T extends DefinedResourceCollection<any, infer C>
+    ? C
+    : T extends DefinedResource<any, infer C>
+      ? C
+      : never;
 
 export type MessageLike = {
   role: "system" | "developer" | "user" | "assistant" | "tool";
@@ -277,7 +299,10 @@ export function defineResource<
   const TConfig extends ResourceConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
+): TConfig & DefinedResource<
+  AsStateObject<TStateSchema["_output"]>,
+  ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+> {
   const contentSources = [
     config.content !== undefined && "content",
     config.contentFile !== undefined && "contentFile",
@@ -314,7 +339,10 @@ export function defineResource<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
-  return config as unknown as TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>>;
+  return config as unknown as TConfig & DefinedResource<
+    AsStateObject<TStateSchema["_output"]>,
+    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+  >;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

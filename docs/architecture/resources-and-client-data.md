@@ -429,6 +429,8 @@ defineResourceCollection({
 - `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
 - Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
 
+**Client-projection output type (FIX-741).** `defineResource` / `defineResourceCollection` carry the projected client-data type as a phantom (`ClientType`) alongside `StateType`, derived from the `client` config: `Pick` from `expose`, `Omit` from `exclude`, the awaited return of `data`, or the full state for the identity default. `ClientDataOf<typeof def>` extracts it, and the React hooks accept it as a `TClient` type parameter so `clientData` is typed instead of `unknown`. This is a pure type-level brand — `resolveClientProjection` and the `JsonValue` wire contract are unchanged; the hook applies a single projection-backed cast at its boundary. The `data` branch depends on the projection function's return type, so annotating that return is what threads a precise shape (the function's `state` argument is not concretely typed at the definer's inference position).
+
 ### Snapshot Response with Resources
 
 The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):

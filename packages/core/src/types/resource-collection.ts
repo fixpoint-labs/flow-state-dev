@@ -1,8 +1,9 @@
 import type { ZodTypeAny } from "zod";
-import type { JsonObject } from "../schema/common";
+import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, CollectionClientConfig } from "./resource";
+import type { ResourceRef, CollectionClientConfig, StateOf } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
+import type { ProjectedClient } from "../helpers/client-projection";
 
 // Re-export pattern utilities for consumers
 export {
@@ -103,17 +104,23 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
  * Branded type returned by `defineResourceCollection()`.
- * Carries phantom `StateType` for downstream type inference. The `prefetchMode`
- * config field still exists (it controls server-side loading behaviour), but
- * it no longer affects the ref's read-method signatures — both eager and lazy
- * collections expose the same async `ResourceCollectionRef` interface (FIX-700).
+ * Carries phantom `StateType` for downstream type inference, and `ClientType`
+ * (FIX-741) — the projected client-data shape derived from the `client` config
+ * (`expose`/`exclude`/`data`/identity). `ClientType` is a pure type-level brand;
+ * the runtime `clientData` payload stays `JsonValue`. Extract it with
+ * `ClientDataOf<typeof collection>`. The `prefetchMode` config field still exists
+ * (it controls server-side loading behaviour), but it no longer affects the
+ * ref's read-method signatures — both eager and lazy collections expose the same
+ * async `ResourceCollectionRef` interface (FIX-700).
  */
 export type DefinedResourceCollection<
   TState extends JsonObject = JsonObject,
+  TClient = JsonValue,
 > =
   ResourceCollectionConfig & {
     readonly __brand: "ResourceCollection";
     StateType: TState;
+    ClientType: TClient;
   };
 
 // ---------------------------------------------------------------------------
@@ -211,7 +218,10 @@ export function defineResourceCollection<
   const TConfig extends ResourceCollectionConfig<AsStateObject<TStateSchema["_output"]>> & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
+): TConfig & DefinedResourceCollection<
+  AsStateObject<TStateSchema["_output"]>,
+  ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+> {
   validatePattern(config.pattern);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
@@ -273,7 +283,10 @@ export function defineResourceCollection<
 
   return Object.assign({}, config, {
     __brand: "ResourceCollection" as const,
-  }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
+  }) as unknown as TConfig & DefinedResourceCollection<
+    AsStateObject<TStateSchema["_output"]>,
+    ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
+  >;
 }
 
 // ---------------------------------------------------------------------------

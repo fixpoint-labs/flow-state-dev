@@ -348,6 +348,8 @@ Block, flow, resource, scope, streaming, and model type definitions. Use this su
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
+`defineResource` and `defineResourceCollection` carry a derived client-projection type alongside the state type. `ClientDataOf<typeof def>` extracts it — the `Pick` from `expose`, the `Omit` from `exclude`, the return type of `data`, or the full state for the identity default. Pass it to the React hooks (`useResource<T>`, `useResourceCollectionItem<T>`, …) so `clientData` is typed instead of `unknown`. This is a type-level brand only; the runtime payload stays `JsonValue`. For `data` projections, annotate the function's return so the type is captured precisely.
+
 ### Items (`@flow-state-dev/core/items`)
 
 Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `container`, `tool_output`, `status`, `source`, `state_change`, `resource_change`, `error`.

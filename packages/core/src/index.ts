@@ -23,7 +23,7 @@ export {
   whenResourceChanged,
   whenResourceMatching
 } from "./items/predicates";
-export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
+export type { ClientDataOf, ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
   DefinedResourceCollection,
