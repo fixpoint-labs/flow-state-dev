@@ -371,6 +371,12 @@ export async function executeBlock(
                 );
                 if (rescued !== undefined) {
                   (scopedCtx as { _didRescue?: boolean })._didRescue = true;
+                  // Mirror the other rescue seams: carry the handler's output
+                  // descriptor so `_withExecutionScope` records a ref (not a
+                  // defaulted `inline`) for the rescued block's trace output.
+                  if (rescued.descriptor.kind !== "inline") {
+                    (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescued.descriptor;
+                  }
                   return rescued.value;
                 }
               }

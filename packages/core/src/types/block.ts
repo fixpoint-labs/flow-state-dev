@@ -929,7 +929,7 @@ export interface BlockDefinition<
    * have already unwound) — the same behavior as `SequencerDefinition.rescue()`,
    * which is the chain-level spelling.
    */
-  rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema>;
+  rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
 }
 
 /** Options for {@link BlockDefinition.asTool}. */

@@ -330,7 +330,7 @@ export function buildBlock<
         modelOutputMapper: mapper,
       });
     },
-    rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema> {
+    rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
       // Fold each rescue handler block's declared resources / `requiresOrg`
       // into this block's accumulators so a handler's resources resolve at run
       // time, mirroring the sequencer's chain-level `.rescue()`.
