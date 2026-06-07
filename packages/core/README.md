@@ -58,6 +58,8 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 
+`.rescue()` is also a method on any block. `someBlock.rescue([{ block: fallback }])` returns a block that recovers from its own failure and returns the handler's output instead of throwing — so a single step (or one `forEach` element, `parallel` branch, or `router` route) can fail in isolation while the rest of the chain continues. The chain-level `.rescue()` above is the same operation applied to the whole sequencer.
+
 A later step can check whether an earlier one was recovered with `ctx.wasRescued(blockName | blockDef)` — without the recovered value carrying any marker.
 
 Sequencers can optionally declare an `outputSchema` as a runtime contract on the composed output of the whole chain — validated on every exit path (tail, `exitIf`, `rescue`). Call `.validate()` at build time to catch structural drift early.

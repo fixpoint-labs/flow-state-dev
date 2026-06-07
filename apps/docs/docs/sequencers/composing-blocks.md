@@ -245,9 +245,34 @@ orderPipeline
 
 Handlers are checked in order. The first match runs. If the recovery block succeeds, its output continues down the chain. If no handler matches, the original error propagates up. Add a final entry without `when` to catch anything else.
 
-`rescue` is the only error-handling primitive in the DSL. There's no try/catch wrapping at the chain level. If you don't add `.rescue()`, errors bubble out and the sequencer fails — which is usually what you want.
+If you don't add a rescue, errors bubble out and the sequencer fails — which is usually what you want.
 
 For throwing structured errors with machine-readable codes and `details` that surface in the DevTool, see [Error handling](/docs/advanced/error-handling).
+
+### Per-step rescue: recover and continue
+
+`.rescue()` is also a method on any block, not just the sequencer. Call it on a single block and you get a copy that recovers from its own failure: if the block throws, the first matching handler runs and its output is returned in place of the throw. The handler runs with the block's own context, so it can read sequencer state.
+
+The difference from the chain-level rescue above is scope, not behavior. Put a rescue on one step and the chain *continues* to the next step, because that step returned a value instead of throwing:
+
+```ts
+const fallbackPrice = handler({
+  name: "fallback-price",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ price: z.number() }),
+  execute: () => ({ price: 0 }),
+});
+
+pipeline
+  .step(fetchInventory)
+  // priceOrder can fail on its own without taking down the rest of the chain.
+  .step(priceOrder.rescue([{ block: fallbackPrice }]))
+  .step(recordOrder); // still runs, with the fallback price
+```
+
+Reach for a per-step rescue when one step is allowed to fail in isolation — a flaky external call, one element of a fan-out, one branch of a `.parallel`. Reach for the chain-level `.rescue()` when a failure anywhere in the chain should stop it and route to recovery. Both are the same operation; you choose where it applies.
+
+A `.tap()` step that carries a rescue runs its handler for the side effect and leaves the running value unchanged, since `.tap` never changes the value. That is the shape for "mark this record failed and keep going."
 
 ### Querying rescue status
 

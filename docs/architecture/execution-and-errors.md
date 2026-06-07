@@ -133,6 +133,16 @@ pipeline
 - Rescue failure propagates to the next matching handler or bubbles up
 - Rescue boundaries only handle failures from steps **before** them in the sequencer
 
+### Block-level rescue (`block.rescue`, FIX-742)
+
+`.rescue(handlers)` is also a method on every block, stored as `config.rescue`. When a block carrying it throws a non-`SuspensionError`, the first matching handler runs with the block's own scoped context and its output replaces the throw, so the enclosing chain / `forEach` / `parallel` / `router` continues. This is the same recovery operation as the chain-level rescue above, applied at block scope rather than sequencer scope — a leaf step continues the chain; a whole sequencer recovers as a unit.
+
+It is honored at the block-execution seam so the handler inherits the executing block's context (sequencer state included):
+- **Child invocations** (every in-flow composition): core's `executeBlock` catch (`packages/core/src/blocks/sequencer.ts`) runs the handler via the kernel at a `…/rescue[i]` path, giving it a full child trace, then stamps `_didRescue` on the scoped context.
+- **Scope-less direct runs** (`asRuntime(block).run(...)`, e.g. a unit harness): `build-block`'s `run()` catch recovers inline.
+
+`SuspensionError` is never rescued (control flow). Sequencer blocks are excluded from this seam — they keep their operation-loop rescue so a sub-sequencer handler runs in the sequencer's own state scope — which prevents double-handling.
+
 ### Rescue registry (`ctx.wasRescued`)
 
 A downstream block can ask whether a prior block in the same sequencer scope threw and was recovered, via the public `ctx.wasRescued(target)` query (`target` is a block name or definition). This keeps rescue's shape-preserving contract intact — the recovered value carries no marker — while still letting a later step branch on "was this recovered?".
@@ -140,7 +150,7 @@ A downstream block can ask whether a prior block in the same sequencer scope thr
 The rescued bit is a transient flag on each block's sibling-result entry, never persisted into snapshots. It is per-iteration correct under `.loopBack` because the descending sibling search consults the **most recent** matching entry, and nested rescues are tracked at the scope where the rescued block ran as a sibling (the scope whose `_withExecutionScope` invoked it).
 
 The write → stamp → read chain:
-1. **Write** — when a `.rescue()` handler recovers an error, `runSequencerOperations`' catch sets `ctx._didRescue = true` on the rescued block's scoped context before returning the recovered value (`packages/core/src/blocks/sequencer.ts`).
+1. **Write** — when a `.rescue()` handler recovers an error, `ctx._didRescue = true` is set on the rescued block's scoped context before the recovered value is returned. For chain-level rescue this happens in `runSequencerOperations`' catch; for block-level rescue it happens in `executeBlock`'s catch (both `packages/core/src/blocks/sequencer.ts`, via the shared `runRescue` helper).
 2. **Stamp** — after the child returns, `_withExecutionScope`'s success branch copies `_didRescue` onto that block's `SiblingRegistryEntry.result.rescued` (`packages/server/src/context/createExecutionContext.ts`).
 3. **Read** — `ctx.wasRescued(target)` resolves `target` by name and returns `result.rescued === true` for the most-recent matching sibling, mirroring `getBlockResult`'s search. Returns `false` for a clean run, a never-dispatched step, an unknown name, or a call outside a sequencer; never throws.
 

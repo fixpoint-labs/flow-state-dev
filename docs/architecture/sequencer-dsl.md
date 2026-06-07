@@ -336,6 +336,8 @@ pipeline
 - Failure propagates to the next handler or bubbles up
 - Only handles errors from steps **before** the rescue in the chain
 
+**Block-level rescue (FIX-742).** `.rescue(handlers)` is also a method on every block (declared on `BlockDefinition`, implemented in `build-block.ts`), not only the sequencer builder. `someBlock.rescue([...])` returns a block that, if it throws a non-`SuspensionError`, runs the first matching handler with the block's own scoped context (sequencer-state access intact) and returns the handler's output in place of the throw. Applied to a leaf step the chain continues; applied to a whole sequencer it is this chain-level rescue. `.tap(x.rescue([...]))` runs the handler for the side effect and leaves the running value unchanged. Honored at the block-execution seam: core's `executeBlock` for child invocations (full child trace), and `build-block`'s `run()` for the scope-less direct path. Sequencers keep their op-loop rescue and are excluded from the block-level seam to avoid double-handling.
+
 ### `stepAll(blocks, options?)` — Parallel Array Execution
 
 Run an array of blocks concurrently with the same input. Returns results as an ordered array.

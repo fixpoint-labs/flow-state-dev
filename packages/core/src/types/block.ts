@@ -735,6 +735,16 @@ export interface BlockConfig<
   middleware?: Middleware[];
 
   /**
+   * Per-block rescue handlers (FIX-742). When this block's execution throws a
+   * non-`SuspensionError`, the first handler whose `when` matches runs with the
+   * block's own scoped context — so it can read sequencer state — and its
+   * output replaces the throw, letting the enclosing chain / fan-out continue.
+   * Set via `block.rescue([...])`. Sequencers handle their own chain-level
+   * rescue in the operation loop and do not use this field.
+   */
+  rescue?: RescueHandlerSpec[];
+
+  /**
    * Opt-in flag declaring this block requires the session to be bound to an
    * org. Bubbles up via `mergeDeclaredResources` so a flow rejects requests
    * without `orgId` when any block in any action declares it. Per-block
@@ -904,6 +914,22 @@ export interface BlockDefinition<
   asTool(
     opts?: AsToolOpts
   ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
+
+  /**
+   * Return a copy of this block that recovers from its own failures. If the
+   * block throws a non-`SuspensionError`, the first handler whose `when` matches
+   * runs — receiving the thrown error, with the same scoped context the block
+   * executed in (so it can read sequencer state) — and its output is returned in
+   * place of the throw. The enclosing sequencer chain, `forEach` fan-out,
+   * `parallel` branch, or `router` route therefore continues to the next step.
+   * `ctx.wasRescued(block)` reports `true` afterwards.
+   *
+   * Available on every block kind. A leaf step recovers and the chain
+   * continues; a whole sequencer recovers as a unit (the steps after the failure
+   * have already unwound) — the same behavior as `SequencerDefinition.rescue()`,
+   * which is the chain-level spelling.
+   */
+  rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema>;
 }
 
 /** Options for {@link BlockDefinition.asTool}. */
