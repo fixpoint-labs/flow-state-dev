@@ -20,8 +20,12 @@ import { useFlowContext } from "../context/FlowContext";
  * to `unknown` so existing untyped call sites are unchanged.
  */
 export type UseResourceResult<TClient = unknown> = {
-  /** Client data derived from the resource's state. Available immediately from the snapshot. */
-  clientData: TClient;
+  /**
+   * Client data derived from the resource's state. Available immediately from
+   * the snapshot, or `null` when the resource isn't present in it. The `| null`
+   * reflects the runtime coalesce below — `TClient` alone would over-promise.
+   */
+  clientData: TClient | null;
   /** Fetches the rendered content body on demand. Returns null if no content exists. */
   fetchContent: () => Promise<string | null>;
 };
@@ -61,8 +65,8 @@ export function useResource<TClient = unknown>(
 
   // Runtime payload is the server's JsonValue projection; the cast threads the
   // declared TClient (FIX-741). Absent clientData coalesces to null, matching
-  // the prior behaviour.
-  const clientData = (entry?.clientData ?? null) as TClient;
+  // the prior behaviour — hence the `| null` on the result type.
+  const clientData = (entry?.clientData ?? null) as TClient | null;
 
   const fetchContent = useCallback(async (): Promise<string | null> => {
     const sessionId = session.sessionId;

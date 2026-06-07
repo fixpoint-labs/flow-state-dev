@@ -18,9 +18,9 @@ type Assert<T extends true> = T;
 
 type Client = { title: string; count: number };
 
-// useResource threads TClient onto clientData (required field).
+// useResource threads TClient onto clientData, `| null` for the absent case.
 type _ResClient = Assert<
-  Equals<ReturnType<typeof useResource<Client>>["clientData"], Client>
+  Equals<ReturnType<typeof useResource<Client>>["clientData"], Client | null>
 >;
 
 // useResource defaults to `unknown` — existing untyped call sites unchanged.
