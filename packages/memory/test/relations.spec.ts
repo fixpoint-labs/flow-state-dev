@@ -521,6 +521,52 @@ describe('memory/relations ENABLED', () => {
     warn.mockRestore()
   })
 
+  it('supersede with a hallucinated targetEdgeId still closes the from+type match', async () => {
+    // The model can hallucinate a non-empty targetEdgeId (it never sees real
+    // ids). A bogus id must not bypass the from+type fallback and leave the
+    // stale edge open beside the replacement.
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_acme', subject: 'acme' }), makeFact({ id: 'sf_stripe', subject: 'stripe' })] },
+      {},
+    )
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'acme', type: 'works at', confidence: 0.8, action: 'new', targetEdgeId: '' }],
+    } as any)
+    const oldId = allEdges(semRef as any)[0].id
+
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'stripe', type: 'works at', confidence: 0.9, action: 'supersede', targetEdgeId: 'hallucinated-uuid' }],
+    } as any)
+
+    const active = allEdges(semRef as any, { at: new Date().toISOString() })
+    expect(allEdges(semRef as any).find((e) => e.id === oldId)?.validUntil).not.toBeNull()
+    expect(active).toHaveLength(1)
+    expect(active[0].to).toBe('stripe')
+  })
+
+  it('reinforce with a hallucinated targetEdgeId falls back to the endpoint match', async () => {
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_moni', subject: 'moni' })] },
+      {},
+    )
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.7, action: 'new', targetEdgeId: '' }],
+    } as any)
+
+    // Bogus id — must reinforce the endpoint match instead of dropping it.
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.7, action: 'reinforce', targetEdgeId: 'hallucinated-uuid' }],
+    } as any)
+
+    const active = allEdges(semRef as any, { at: new Date().toISOString() })
+    expect(active).toHaveLength(1)
+    expect(active[0].confidence).toBeGreaterThan(0.7)
+  })
+
   it('drops an out-of-vocab edge type when vocabulary is set, warns', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const vocab = { vocabulary: ['married to', 'works at'] }

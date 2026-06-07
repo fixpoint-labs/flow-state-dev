@@ -231,14 +231,17 @@ async function applyEdges(
       // resolve the proposal's from/to first, since that would mint a phantom
       // node (createImplicitEntities) for endpoints we never use, or drop a
       // valid reinforce whose proposal endpoints happen to be unknown.
+      // `targetEdgeId` is a hint, not a guarantee: the model never sees stored
+      // edge ids, so a supplied id is usually empty and occasionally
+      // hallucinated. Resolve by id when it matches an active edge; otherwise
+      // fall through to endpoint+type matching below rather than losing the op.
       if (proposal.action === 'reinforce' && proposal.targetEdgeId) {
         const match = activeNow.find((e) => e.id === proposal.targetEdgeId)
-        if (!match) {
-          console.warn(`[memory] relations: reinforce target not found (${proposal.targetEdgeId})`)
+        if (match) {
+          await reinforceMatch(match)
           continue
         }
-        await reinforceMatch(match)
-        continue
+        // Unknown id — fall through; the 'reinforce' case re-matches by endpoints.
       }
 
       const from = resolveEndpoint(proposal.from)
@@ -281,23 +284,22 @@ async function applyEdges(
         }
 
         case 'supersede': {
-          if (proposal.targetEdgeId) {
-            await semRef.edges.supersede(proposal.targetEdgeId)
+          // Resolve the edge to close: prefer a valid targetEdgeId, but treat
+          // it as a hint — the model never sees edge ids, so it's usually empty
+          // and occasionally hallucinated. Fall back to the active from+type
+          // match (the `to` is what changed, e.g. switching employers). Without
+          // this the old edge is never closed and stale edges accumulate beside
+          // their replacements.
+          const byId = proposal.targetEdgeId
+            ? activeNow.find((e) => e.id === proposal.targetEdgeId)
+            : undefined
+          const stale = byId ?? activeNow.find((e) => e.from === from && e.type === type)
+          if (stale) {
+            await semRef.edges.supersede(stale.id)
           } else {
-            // The consolidation prompt never shows the model existing edge IDs,
-            // so `targetEdgeId` is effectively always empty. Best-effort close:
-            // supersede an active edge with the same `from` and `type` — the
-            // `to` is what changed in the common supersede case (e.g. switching
-            // employers). Without this the old edge is never closed and stale
-            // edges accumulate beside their replacements.
-            const stale = activeNow.find((e) => e.from === from && e.type === type)
-            if (stale) {
-              await semRef.edges.supersede(stale.id)
-            } else {
-              console.warn(
-                `[memory] relations: supersede with no targetEdgeId and no active ${from} -${type}-> * to close`,
-              )
-            }
+            console.warn(
+              `[memory] relations: supersede found no active ${from} -${type}-> * to close`,
+            )
           }
           // Add the replacement edge described by from/to/type.
           await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: [] })
@@ -887,8 +889,9 @@ function buildRelationsPromptSection(relations: ResolvedRelationsConfig): string
     '- type: a short active-voice relation verb phrase ("married to", "works at", "owns").',
     '- confidence: 0-1, same evidence scale as facts.',
     '- action: \'new\' for a fresh relation; \'reinforce\' to confirm an existing one;',
-    '  \'supersede\' to replace an outdated one (set targetEdgeId to the old edge id).',
-    '- targetEdgeId: \'\' for \'new\'.',
+    '  \'supersede\' to replace an outdated one (e.g. the relation\'s target changed).',
+    '- targetEdgeId: always \'\'. You cannot see stored edge ids; the system resolves',
+    '  which edge to reinforce or supersede from the from/to/type you provide.',
     'Only emit an edge when BOTH endpoints are real named entities and the relation is',
     'stable knowledge. Do not invent relations. Return an empty edges array if none apply.',
   ]
