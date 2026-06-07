@@ -5,6 +5,9 @@ const root = resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
   test: {
+    // Strip ambient FSDEV_* / provider env so the run-command integration
+    // tests resolve models deterministically (mirrors core/server setup).
+    setupFiles: ["./test/setup-env.ts"],
     // resolve-block / run-command tests dynamically import fixtures that pull
     // core + server in as TypeScript source (aliased below); vitest transpiles
     // that graph on first import. Under Turborepo's parallel test execution the
