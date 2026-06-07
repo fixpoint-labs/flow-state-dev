@@ -122,9 +122,17 @@ semantic: {
 }
 ```
 
+### Reading relations
+
+When relations is enabled, three read paths open up (all no-ops or absent when it's off):
+
+- **`memory/connect` tool.** Installed on the generator automatically (default-on via the `connect` preset; also available as `mem.tool.connect()`). The agent calls it with `from` alone to list everything connected to an entity, or `from` and `to` to find the path between two entities. Results come back in the same envelope shape as `memory/recall`. Unreachable targets return empty results; relations being off returns a recoverable error envelope rather than throwing.
+- **Graph-expanded recall.** A normal `memory/recall` query also surfaces edges connected to entities named in the query, so a relation relevant only because it links to a mentioned person/place is pulled into the candidate set instead of being missed by keyword matching alone.
+- **Typed helpers** on `ctx.cap.memory`: `connections(entity)` (neighbour edges), `relate(from, to)` (shortest-path edges or `null`), and `egoGraph(entity)` (`{ nodes, edges }`). Each returns empty/`null` when relations is disabled.
+
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
-**Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+**Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createConnectTool`, `edgeToMemoryItem`, `graphExpandCandidates`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
 
 ## Where it came from
 

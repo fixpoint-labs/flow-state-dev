@@ -44,7 +44,7 @@ Two read surfaces use the graph:
 - **The `memory/connect` tool** answers connection questions directly. Give it one entity to get everything connected to it, or two entities to get the path between them ("what links our NVDA exposure to Taiwan?"). It returns the connecting edges.
 - **Recall** becomes connection-aware. When the agent searches memory, entities named in the query pull in nearby facts and edges from the graph, so a relevant fact two hops away surfaces even when its wording doesn't match the query.
 
-Handlers can also reach the graph directly through `ctx.cap.connections(entity)`, `ctx.cap.relate(from, to)`, and `ctx.cap.egoGraph(entity)`.
+Handlers can also reach the graph directly through `ctx.cap.memory.connections(entity)` (direct links), `ctx.cap.memory.relate(from, to)` (shortest path), and `ctx.cap.memory.egoGraph(entity)` (the neighborhood).
 
 ## Curated vocabulary, and why it's worth it
 

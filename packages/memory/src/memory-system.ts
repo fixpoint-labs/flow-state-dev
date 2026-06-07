@@ -63,6 +63,7 @@ import {
 import { digestRegenerate } from './digest-blocks'
 import { createMemoryContextFormatter } from './formatter'
 import { createRecallTool } from './tools/recall-tool'
+import type { createConnectTool } from './tools/connect-tool'
 import { buildMemoryCapability } from './memory-capability'
 import type { BuiltInStrategyName } from './tools/strategies/index'
 import type { RetrievalStrategy } from './tools/types'
@@ -605,6 +606,12 @@ export interface MemorySystem extends MemoryProvider {
   tool: {
     /** Recall-tool factory — returns the handler block, ready to install. */
     recall: () => ReturnType<typeof createRecallTool>
+    /**
+     * Connect-tool factory (relations tier, FIX-745) — returns the
+     * `memory/connect` block. Present only when relations is enabled; otherwise
+     * omitted (calling it would have no graph to traverse).
+     */
+    connect?: () => ReturnType<typeof createConnectTool>
   }
 }
 
@@ -852,6 +859,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
     workingMemoryCapability: memCap.tiers.working,
     tool: {
       recall: () => memCap.recallToolBlock,
+      ...(memCap.connectToolBlock
+        ? { connect: () => memCap.connectToolBlock! }
+        : {}),
     },
   }
 

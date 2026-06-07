@@ -28,6 +28,8 @@ import type { SemanticFact, SemanticMemoryState } from '../../semantic-memory'
 import type { WorkingMemoryState } from '../../working-memory'
 import { allFacts } from '../../semantic-memory-helpers'
 import { effectiveConfidence } from '../../janitor'
+import { graphExpandCandidates } from './graph-expand'
+import type { ResourceEdgeApi } from '@flow-state-dev/core/graph'
 import type {
   MemoryItem,
   PrepareEnvelope,
@@ -297,6 +299,22 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
         ...preRankedEpisodes.map((c) => c.item),
         ...passThroughs.map((c) => c.item),
       ]
+
+      // Graph-expanded recall (FIX-745): when the relations tier is enabled,
+      // surface edges connected to entities named in the query that a
+      // keyword/intrinsic candidate set would miss. Strictly gated on the edge
+      // API being present and non-empty — `graphExpandCandidates` is a no-op
+      // for an empty graph, so the relations-disabled path adds nothing and
+      // pays no cost. Reading edges from ctx here (rather than threading them
+      // through the strategy) keeps the strategy contract unchanged.
+      const edgeApi = (ctx.resources?.semanticMemory as { edges?: ResourceEdgeApi } | undefined)?.edges
+      if (edgeApi) {
+        const allEdges = edgeApi.all()
+        if (allEdges.length > 0) {
+          const includedIdsForExpand = new Set(candidates.map((c) => c.id))
+          candidates.push(...graphExpandCandidates(allEdges, input.query, includedIdsForExpand))
+        }
+      }
 
       return {
         query: input.query,
