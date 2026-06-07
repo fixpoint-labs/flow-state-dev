@@ -18,10 +18,18 @@ export const serperAdapter: SearchProviderAdapter = {
         ? "https://google.serper.dev/news"
         : "https://google.serper.dev/search";
 
+    // Multiple includes are OR-grouped: `site:a site:b` would require both
+    // domains at once (Google ANDs them) and return nothing. Excludes stay
+    // AND-chained — every `-site:` must hold.
+    const includeFilters = (options.includeDomains ?? []).map((d) => `site:${d}`);
+    const includeClause =
+      includeFilters.length > 1
+        ? `(${includeFilters.join(" OR ")})`
+        : includeFilters.join("");
     const siteFilters = [
-      ...(options.includeDomains ?? []).map((d) => `site:${d}`),
+      includeClause,
       ...(options.excludeDomains ?? []).map((d) => `-site:${d}`),
-    ];
+    ].filter(Boolean);
     const q = siteFilters.length ? `${query} ${siteFilters.join(" ")}` : query;
 
     const response = await globalThis.fetch(endpoint, {

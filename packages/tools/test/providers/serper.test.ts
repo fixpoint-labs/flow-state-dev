@@ -116,6 +116,23 @@ describe("serperAdapter", () => {
     expect(result.query).toBe("react hooks");
   });
 
+  it("OR-groups multiple include domains so Google does not AND them", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    );
+
+    await serperAdapter.search("gpu papers", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["arxiv.org", "github.com"],
+      apiKey: "test-key",
+    });
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.q).toBe("gpu papers (site:arxiv.org OR site:github.com)");
+  });
+
   it("declares it does not support the deep tier", () => {
     expect(serperAdapter.capabilities.tiers).toEqual(["fast", "balanced"]);
   });
