@@ -213,8 +213,10 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // defineResourceCollection()
 // ---------------------------------------------------------------------------
 
+import { z } from "zod";
 import { validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
+import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,
@@ -281,7 +283,27 @@ export function defineResourceCollection<
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
   });
 
+  // Edge slot injection (FIX-745): when a collection declares `edges`, extend
+  // each instance's state schema with an `edges: Edge[]` field — the same way
+  // `defineResource` does for single resources. Without this, Zod strips edge
+  // writes on persist (the field isn't in the schema), silently discarding
+  // them. Collections have no config-level `default`; the per-instance default
+  // comes from parsing the schema, so the `.default([])` on the injected field
+  // is enough to seed `edges: []` on every new instance.
+  let stateSchema = config.stateSchema as ZodTypeAny;
+  if (config.edges) {
+    if (!(stateSchema instanceof z.ZodObject)) {
+      throw new Error(
+        `defineResourceCollection() with edges requires an object stateSchema (got ${stateSchema.constructor.name})`
+      );
+    }
+    if (!("edges" in stateSchema.shape)) {
+      stateSchema = stateSchema.extend({ edges: edgeListSchema.default([]) });
+    }
+  }
+
   return Object.assign({}, config, {
+    stateSchema,
     __brand: "ResourceCollection" as const,
   }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
 }

@@ -18,7 +18,8 @@
 
 import { defineCapability } from '@flow-state-dev/core'
 import type { DefinedCapability, CapabilityRef } from '@flow-state-dev/core'
-import type { Edge, NodeRef, ResourceEdgeApi, TraversalOpts } from '@flow-state-dev/core/graph'
+import type { Edge, NodeRef, TraversalOpts } from '@flow-state-dev/core/graph'
+import { canonicalizeSubject, edgesOf } from './internal/helpers'
 
 import {
   memorySystemResource,
@@ -209,13 +210,17 @@ export function buildMemoryCapability(
     ? createSemanticMemoryCapability({
         scope: semanticConfig.scope,
         // Relations tier (FIX-745): when resolved, create the resource with a
-        // typed-edge slot. The edge-slot config only carries vocabulary +
-        // maxEdges; createImplicitEntities / decay are lifecycle concerns the
-        // write path and janitor read from `semanticConfig.relations`.
+        // typed-edge slot. We forward ONLY `maxEdges` to the core slot.
+        // Vocabulary enforcement is owned by memory's `applyEdges`, which
+        // pre-filters out-of-vocab edge types with a drop+warn before they ever
+        // reach `edges.add` — forwarding `vocabulary` here too would arm the
+        // core slot's throw-on-out-of-vocab path, a second, conflicting failure
+        // mode. `createImplicitEntities` is a write-path concern read from
+        // `semanticConfig.relations`. The core slot's `vocabulary` feature is
+        // intact for other consumers; memory simply doesn't use it.
         ...(semanticConfig.relations
           ? {
               edges: {
-                ...(semanticConfig.relations.vocabulary ? { vocabulary: semanticConfig.relations.vocabulary } : {}),
                 ...(semanticConfig.relations.maxEdges != null ? { maxEdges: semanticConfig.relations.maxEdges } : {}),
               },
             }
@@ -283,7 +288,7 @@ export function buildMemoryCapability(
       // on the semantic resource. All relation helpers degrade to empty/null
       // when it is absent (relations disabled), so callers can invoke them
       // unconditionally.
-      const edges = (ctx.resources?.semanticMemory as { edges?: ResourceEdgeApi } | undefined)?.edges
+      const edges = edgesOf(ctx)
       return {
         /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
         recall: (cue?: string) => recallFn(ctx, cue),
@@ -293,21 +298,21 @@ export function buildMemoryCapability(
          * lowercase) to match stored edge endpoints.
          */
         connections: (entity: string, opts?: TraversalOpts): Edge[] =>
-          edges ? edges.neighbors(entity.trim().toLowerCase() as NodeRef, opts) : [],
+          edges ? edges.neighbors(canonicalizeSubject(entity) as NodeRef, opts) : [],
         /**
          * Shortest-path edges between two entities, or `null` if unreachable /
          * relations disabled. Endpoints are canonicalized.
          */
         relate: (from: string, to: string, opts?: TraversalOpts): Edge[] | null =>
           edges
-            ? edges.shortestPath(from.trim().toLowerCase() as NodeRef, to.trim().toLowerCase() as NodeRef, opts)
+            ? edges.shortestPath(canonicalizeSubject(from) as NodeRef, canonicalizeSubject(to) as NodeRef, opts)
             : null,
         /**
          * Full ego graph (`{ nodes, edges }`) around `entity`. Returns an empty
          * graph when relations are disabled. Entity is canonicalized.
          */
         egoGraph: (entity: string, opts?: TraversalOpts): { nodes: NodeRef[]; edges: Edge[] } =>
-          edges ? edges.egoGraph(entity.trim().toLowerCase() as NodeRef, opts) : { nodes: [], edges: [] },
+          edges ? edges.egoGraph(canonicalizeSubject(entity) as NodeRef, opts) : { nodes: [], edges: [] },
       }
     },
     presets: {

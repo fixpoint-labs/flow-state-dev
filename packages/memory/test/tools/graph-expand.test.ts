@@ -179,6 +179,14 @@ describe('graphExpandCandidates', () => {
     const edges = [makeEdge({ id: 'e1', from: 'user', to: 'moni', type: 'married to' })]
     expect(graphExpandCandidates(edges, 'unrelated topic', new Set())).toEqual([])
   })
+
+  it('does not expand on the bare "user" subject (false-positive guard)', () => {
+    // The graph's only matchable endpoint is the generic 'user' subject. A query
+    // mentioning "user" must NOT pull the whole user ego-graph — that would make
+    // every query containing "user" drag in unrelated relations.
+    const edges = [makeEdge({ id: 'e1', from: 'user', to: 'moni', type: 'married to' })]
+    expect(graphExpandCandidates(edges, 'what does the user want', new Set())).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------

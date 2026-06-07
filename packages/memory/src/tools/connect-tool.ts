@@ -22,9 +22,9 @@
 import { handler } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { Edge } from '@flow-state-dev/core/graph'
-import type { ResourceEdgeApi } from '@flow-state-dev/core/graph'
 import { edgeToMemoryItem } from './types'
 import type { RecallResultItem, RecallToolResult } from './types'
+import { canonicalizeSubject, edgesOf } from '../internal/helpers'
 
 /** Zod schema for the connect tool's input parameters. */
 export const connectToolInputSchema = z.object({
@@ -62,14 +62,6 @@ export const connectToolDescription =
   'Pass `from` alone to list everything connected to that entity, ' +
   'or `from` and `to` to find the relationship path between two entities. ' +
   'Use this when a question is about connections between people, places, or things.'
-
-/**
- * Canonicalize an entity name to a node ref — trim + lowercase, matching the
- * write-side canonicalization of edge endpoints (see memory-system-blocks.ts).
- */
-function canonicalize(entity: string): string {
-  return entity.trim().toLowerCase()
-}
 
 /** Render an ordered edge list into the connect tool's success envelope. */
 function buildConnectResult(edges: Edge[], query: string): RecallToolResult {
@@ -123,8 +115,7 @@ export function createConnectTool(opts: CreateConnectToolOptions = {}) {
       const query = input.to ? `${input.from} -> ${input.to}` : input.from
 
       try {
-        const edges = (ctx.resources?.semanticMemory as { edges?: ResourceEdgeApi } | undefined)
-          ?.edges
+        const edges = edgesOf(ctx)
         if (!edges) {
           return {
             error:
@@ -134,11 +125,11 @@ export function createConnectTool(opts: CreateConnectToolOptions = {}) {
           }
         }
 
-        const from = canonicalize(input.from)
+        const from = canonicalizeSubject(input.from)
         const depth = input.depth ?? DEFAULT_CONNECT_DEPTH
 
         if (input.to) {
-          const to = canonicalize(input.to)
+          const to = canonicalizeSubject(input.to)
           const path = edges.shortestPath(from, to, { depth })
           // Unreachable within depth → empty results, not an error.
           return buildConnectResult(path ?? [], query)

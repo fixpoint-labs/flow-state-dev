@@ -63,12 +63,74 @@ export type EdgeBackingRef = {
 };
 
 /**
+ * Cull an over-cap edge list down to `maxEdges`, preserving the live graph.
+ *
+ * Policy (in order):
+ *  1. Drop superseded edges (`validUntil !== null`) first, oldest `createdAt`
+ *     first, only as many as needed to reach `maxEdges`. Superseded edges are
+ *     tombstones — keeping them while evicting an active edge would let a
+ *     bounded graph fill with closed history and starve out live relations.
+ *  2. If still over cap after all superseded edges are gone, cull active edges
+ *     by lowest `confidence` first; ties broken by oldest `createdAt` first
+ *     (older edges go before newer ones). The newest/highest-confidence edges
+ *     are kept.
+ *
+ * Returns a new array of length `maxEdges`; preserves the relative order of the
+ * survivors as they appeared in `edges`.
+ */
+function cullToMax(edges: Edge[], maxEdges: number): Edge[] {
+  let overflow = edges.length - maxEdges;
+  if (overflow <= 0) return edges;
+
+  const dropIds = new Set<string>();
+
+  // Phase 1: drop oldest superseded edges first.
+  const superseded = edges
+    .filter((e) => e.validUntil !== null)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const e of superseded) {
+    if (overflow <= 0) break;
+    dropIds.add(e.id);
+    overflow--;
+  }
+
+  // Phase 2: still over cap — cull active edges by lowest confidence, then
+  // oldest createdAt. Sort the cull candidates worst-first and drop the head.
+  if (overflow > 0) {
+    const active = edges
+      .filter((e) => e.validUntil === null)
+      .sort((a, b) =>
+        a.confidence !== b.confidence
+          ? a.confidence - b.confidence
+          : a.createdAt.localeCompare(b.createdAt),
+      );
+    for (const e of active) {
+      if (overflow <= 0) break;
+      dropIds.add(e.id);
+      overflow--;
+    }
+  }
+
+  return edges.filter((e) => !dropIds.has(e.id));
+}
+
+/**
  * Build the `.edges` API over a resource ref. `slot` is the resolved
  * EdgeSlotConfig (`{}` when declared as `true`). Read methods operate
  * synchronously on the current `ref.state.edges`; mutators persist via
  * `ref.updateState`.
  */
 export function createResourceEdgeApi(ref: EdgeBackingRef, slot: EdgeSlotConfig): ResourceEdgeApi {
+  // Fail loud on misconfiguration. `defineResource` / `defineResourceCollection`
+  // inject an `edges` array into the state schema + default when `edges` is
+  // declared, so a correctly-configured resource always has one here. If it is
+  // missing, the state schema lacks an `edges` field and Zod would silently
+  // strip every edge write on persist — surface that at construction instead.
+  if (!Array.isArray(ref.state.edges)) {
+    throw new Error(
+      "createResourceEdgeApi: resource state has no `edges` array — the state schema is missing the framework-injected field. Declare edges via defineResource/defineResourceCollection so the field is injected.",
+    );
+  }
   const readEdges = (): Edge[] => (ref.state.edges as Edge[] | undefined) ?? [];
 
   return {
@@ -92,9 +154,7 @@ export function createResourceEdgeApi(ref: EdgeBackingRef, slot: EdgeSlotConfig)
       await ref.updateState((s) => {
         let edges: Edge[] = [...((s.edges as Edge[] | undefined) ?? []), edge];
         if (slot.maxEdges != null && edges.length > slot.maxEdges) {
-          edges = [...edges]
-            .sort((a, b) => b.confidence - a.confidence)
-            .slice(0, slot.maxEdges);
+          edges = cullToMax(edges, slot.maxEdges);
         }
         return { ...s, edges };
       });

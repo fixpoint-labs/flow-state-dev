@@ -27,7 +27,8 @@ import {
   semanticMemoryStateSchema,
 } from '../src/semantic-memory.js'
 import type { SemanticFact, SemanticMemoryState } from '../src/semantic-memory.js'
-import { allEdges, knownSubjects } from '../src/semantic-memory-helpers.js'
+import { knownSubjects } from '../src/semantic-memory-helpers.js'
+import type { Edge } from '@flow-state-dev/core/graph'
 import { workingMemoryStateSchema } from '../src/working-memory.js'
 import type { WorkingMemoryState } from '../src/working-memory.js'
 import { episodicMemoryStateSchema } from '../src/episodic-memory.js'
@@ -160,6 +161,15 @@ function createMockResources(refs: Record<string, any>) {
   }
 }
 
+/**
+ * Read the edges off a mock semantic ref via the live `ResourceEdgeApi` — the
+ * same surface production read sites use (`ref.edges.all(...)`). Returns `[]`
+ * when the relations tier is disabled (no edge API attached).
+ */
+function allEdges(ref: any, opts?: { at?: string }): Edge[] {
+  return ref.edges ? ref.edges.all(opts) : []
+}
+
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
   return {
     subject: 'user',
@@ -270,7 +280,10 @@ describe('memory/relations system() wiring', () => {
     expect('edges' in (res.default as object)).toBe(true)
   })
 
-  it('forwards a curated vocabulary to the edge slot', () => {
+  it('does NOT forward vocabulary to the core edge slot (memory owns enforcement)', () => {
+    // Vocabulary enforcement is owned by `applyEdges` (drop+warn), not the core
+    // slot's throw-on-out-of-vocab path. Forwarding it to the slot too would arm
+    // a second, conflicting failure mode (FIX-745 reconciliation).
     const mem = system({
       model: 'gpt-5-mini',
       working: true,
@@ -278,7 +291,19 @@ describe('memory/relations system() wiring', () => {
       semantic: { relations: { vocabulary: ['married to', 'works at'] } },
     })
     const res = mem.userResources.semanticMemory as any
-    expect(res.edges.vocabulary).toEqual(['married to', 'works at'])
+    expect(res.edges).toBeDefined()
+    expect(res.edges.vocabulary).toBeUndefined()
+  })
+
+  it('forwards maxEdges to the core edge slot', () => {
+    const mem = system({
+      model: 'gpt-5-mini',
+      working: true,
+      episodic: true,
+      semantic: { relations: { maxEdges: 42 } },
+    })
+    const res = mem.userResources.semanticMemory as any
+    expect(res.edges.maxEdges).toBe(42)
   })
 })
 
@@ -390,6 +415,112 @@ describe('memory/relations ENABLED', () => {
     expect(active.find((e) => e.to === 'stripe')).toBeDefined()
   })
 
+  it('supersede with an empty targetEdgeId closes the active from+type match', async () => {
+    // The consolidation prompt never shows the model edge IDs, so a real
+    // 'supersede' proposal carries targetEdgeId: ''. The persist path must
+    // still close the stale edge by matching from+type (the `to` changed).
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_acme', subject: 'acme' }), makeFact({ id: 'sf_stripe', subject: 'stripe' })] },
+      {},
+    )
+
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'acme', type: 'works at', confidence: 0.8, action: 'new', targetEdgeId: '' }],
+    } as any)
+    const oldId = allEdges(semRef as any)[0].id
+
+    // Supersede with NO targetEdgeId — only the changed destination is given.
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'stripe', type: 'works at', confidence: 0.9, action: 'supersede', targetEdgeId: '' }],
+    } as any)
+
+    const now = new Date().toISOString()
+    const active = allEdges(semRef as any, { at: now })
+    // Old edge closed despite the empty targetEdgeId; exactly one active edge.
+    expect(allEdges(semRef as any).find((e) => e.id === oldId)?.validUntil).not.toBeNull()
+    expect(active).toHaveLength(1)
+    expect(active[0].to).toBe('stripe')
+  })
+
+  it('edges-only batch applies edges but leaves consolidation bookkeeping untouched', async () => {
+    // A consolidation cycle with no facts but proposed edges must NOT bump
+    // totalConsolidations or reset the episodic counters — edges carry no
+    // episode ids, so doing so would corrupt the consolidation cadence.
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_moni', subject: 'moni' })], totalConsolidations: 0 },
+      {},
+    )
+
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.9, action: 'new', targetEdgeId: '' }],
+    } as any)
+
+    // Edge applied, but the fact-consolidation counter is unchanged.
+    expect(allEdges(semRef as any)).toHaveLength(1)
+    expect(semRef.state.totalConsolidations).toBe(0)
+
+    // Control: a batch WITH a fact does bump the counter.
+    await runPersist(relConfig, semRef, {
+      facts: [{ subject: 'user', content: 'Name is Jake', confidence: 0.9, category: 'identity', sourceEpisodeIds: ['ep1'], action: 'new', targetFactId: '' }],
+      edges: [],
+    } as any)
+    expect(semRef.state.totalConsolidations).toBe(1)
+  })
+
+  it("reinforce with a valid targetEdgeId supersedes and re-adds at higher confidence", async () => {
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_moni', subject: 'moni' })] },
+      {},
+    )
+
+    // Seed an edge to reinforce.
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.7, action: 'new', targetEdgeId: '' }],
+    } as any)
+    const seeded = allEdges(semRef as any)
+    expect(seeded).toHaveLength(1)
+    const oldId = seeded[0].id
+
+    // Reinforce by id — supersedes the old edge and adds a higher-confidence one.
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.8, action: 'reinforce', targetEdgeId: oldId }],
+    } as any)
+
+    const now = new Date().toISOString()
+    const all = allEdges(semRef as any)
+    const active = allEdges(semRef as any, { at: now })
+
+    // Old edge is closed (superseded); exactly one active edge remains at a
+    // higher confidence than the original.
+    expect(all.find((e) => e.id === oldId)?.validUntil).not.toBeNull()
+    expect(active).toHaveLength(1)
+    expect(active[0].id).not.toBe(oldId)
+    expect(active[0].confidence).toBeCloseTo(0.75, 5) // 0.7 + REINFORCE_BOOST
+  })
+
+  it('reinforce with a not-found targetEdgeId warns and does not crash', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' }), makeFact({ id: 'sf_moni', subject: 'moni' })] },
+      {},
+    )
+
+    await runPersist(relConfig, semRef, {
+      facts: [],
+      edges: [{ from: 'user', to: 'moni', type: 'married to', confidence: 0.8, action: 'reinforce', targetEdgeId: 'does-not-exist' }],
+    } as any)
+
+    // No edge written, a warning surfaced, no throw.
+    expect(allEdges(semRef as any)).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('reinforce target not found'))
+    warn.mockRestore()
+  })
+
   it('drops an out-of-vocab edge type when vocabulary is set, warns', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const vocab = { vocabulary: ['married to', 'works at'] }
@@ -471,6 +602,43 @@ describe('memory/relations ENABLED', () => {
     expect(semRef.state.facts.find((f) => f.id === 'sf_moni')?.subject).toBe('moni')
     expect(semRef.state.facts.find((f) => f.id === 'sf_user')?.content).toBe('Name is Jake')
   })
+
+  it('caps the active edge set at maxEdges, keeping the highest-confidence edges', async () => {
+    // maxEdges threads from `semantic.relations.maxEdges` to the core edge slot.
+    // Arm the mock's edge API with the same cap (mirroring what the capability
+    // forwards) and push more edges than the cap through consolidation persist.
+    const maxEdges = 2
+    const semRef = createMockSemRef(
+      {
+        facts: [
+          makeFact({ id: 'sf_user', subject: 'user' }),
+          makeFact({ id: 'sf_a', subject: 'acme' }),
+          makeFact({ id: 'sf_b', subject: 'beta' }),
+          makeFact({ id: 'sf_c', subject: 'gamma' }),
+        ],
+      },
+      { maxEdges },
+    )
+    const cfg = { ...baseConfig, semantic: { ...baseConfig.semantic, relations: { maxEdges } as any } }
+
+    // Three distinct active edges at distinct confidences; cap=2 forces one out.
+    await runPersist(cfg, semRef, {
+      facts: [],
+      edges: [
+        { from: 'user', to: 'acme', type: 'works at', confidence: 0.3, action: 'new', targetEdgeId: '' },
+        { from: 'user', to: 'beta', type: 'works at', confidence: 0.9, action: 'new', targetEdgeId: '' },
+        { from: 'user', to: 'gamma', type: 'works at', confidence: 0.6, action: 'new', targetEdgeId: '' },
+      ],
+    } as any)
+
+    const active = allEdges(semRef as any, { at: new Date().toISOString() })
+    expect(active).toHaveLength(maxEdges)
+    // The lowest-confidence edge (user→acme @0.3) was culled; the two highest
+    // survive.
+    const tos = active.map((e) => e.to).sort()
+    expect(tos).toEqual(['beta', 'gamma'])
+    expect(active.every((e) => e.validUntil === null)).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -528,5 +696,53 @@ describe('memory/relations cleanup', () => {
 
     const edges = allEdges(semRef as any)
     expect(edges.map((e) => e.id)).toEqual(['e_keep'])
+  })
+
+  it('janitor does NOT prune non-fact-subject edges when createImplicitEntities is true', async () => {
+    // With implicit entities enabled the write side legitimately persists edges
+    // to endpoints that are not fact subjects. The janitor's fact-subject prune
+    // signal must not delete them (FIX-745 follow-up, Bug A).
+    const rel = { createImplicitEntities: true }
+    const semRef = createMockSemRef(
+      { facts: [makeFact({ id: 'sf_user', subject: 'user' })] },
+      {},
+    )
+    // Seed an edge to "ghost" — a legitimately-minted implicit entity, NOT a
+    // fact subject. It must survive the hygiene pass.
+    await semRef.updateState((s) => ({
+      ...s,
+      edges: [
+        {
+          id: 'e_implicit', from: 'user', to: 'ghost', type: 'knows',
+          confidence: 1, validFrom: null, validUntil: null, source: [],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }) as any)
+
+    const cfg = {
+      ...baseConfig,
+      semantic: { ...baseConfig.semantic, relations: rel as any },
+      _semanticResource: semRef as any,
+      hygiene: {
+        confidenceDecay: false as const,
+        episodicTTL: false as const,
+        schedule: 'onConsolidation' as const,
+      },
+    }
+    const block = memorySystemJanitor(cfg as any)
+    const ctx = {
+      resources: createMockResources({
+        workingMemory: createMockWmRef({ currentTurn: 5 }),
+        memorySystem: createMockSysRef(),
+        janitor: createMockJanRef(),
+        semanticMemory: semRef,
+      }),
+      response: { emit: async () => {} },
+    } as any
+    await runForTest(block, {} as any, ctx)
+
+    const edges = allEdges(semRef as any)
+    expect(edges.map((e) => e.id)).toEqual(['e_implicit'])
   })
 })

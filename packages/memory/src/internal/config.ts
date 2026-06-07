@@ -49,12 +49,6 @@ export interface ResolvedRelationsConfig {
   maxEdges?: number
   /** Mint a node for an unknown edge endpoint instead of dropping the edge. Default false. */
   createImplicitEntities: boolean
-  /**
-   * Decay edge confidence during hygiene. Default true. Resolved and carried
-   * for the planned edge-confidence-decay follow-up; the janitor currently
-   * performs dangling-edge cleanup only (not confidence decay on edges).
-   */
-  decay: boolean
 }
 
 /** Concrete semantic config after defaulting. */
@@ -96,8 +90,8 @@ export interface MemoryTierOptions {
 /**
  * Resolve the relations tier config (FIX-745). `undefined`/`false` disables
  * relations (returns `undefined` — no edge field, no behaviour). `true`
- * resolves to defaults; an object overrides selected fields. `decay` defaults
- * to true and `createImplicitEntities` to false.
+ * resolves to defaults; an object overrides selected fields.
+ * `createImplicitEntities` defaults to false.
  */
 function resolveRelationsConfig(
   relations: boolean | RelationsConfig | undefined,
@@ -108,7 +102,6 @@ function resolveRelationsConfig(
     ...(r.vocabulary ? { vocabulary: r.vocabulary } : {}),
     ...(r.maxEdges != null ? { maxEdges: r.maxEdges } : {}),
     createImplicitEntities: r.createImplicitEntities ?? false,
-    decay: r.decay ?? true,
   }
 }
 

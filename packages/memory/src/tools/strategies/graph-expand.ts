@@ -70,9 +70,15 @@ export function graphExpandCandidates(
 
   const focalNodes: string[] = []
   for (const node of endpoints) {
+    // The generic 'user' subject is on nearly every edge, so matching it would
+    // pull the entire user ego-graph for any query containing the word "user".
+    // Exclude it from focal-node matching — a real named entity in the query is
+    // what should drive expansion. Also require single-token endpoints to be at
+    // least 2 chars so stray one-letter tokens can't trigger an expansion.
+    if (node === 'user') continue
     const matches = node.includes(' ')
       ? phrases.includes(node) || lowerQuery.includes(node)
-      : queryTokens.has(node)
+      : node.length >= 2 && queryTokens.has(node)
     if (matches) focalNodes.push(node)
   }
   if (focalNodes.length === 0) return []

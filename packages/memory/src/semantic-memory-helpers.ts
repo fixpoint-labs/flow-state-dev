@@ -1,7 +1,7 @@
 import type { ResourceContext } from '@flow-state-dev/core'
-import type { Edge, NodeRef } from '@flow-state-dev/core/graph'
+import type { NodeRef } from '@flow-state-dev/core/graph'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory'
-import { shortId, tokenOverlap } from './internal/helpers'
+import { shortId, tokenOverlap, canonicalizeSubject } from './internal/helpers'
 import { effectiveConfidence } from './janitor'
 
 type SemRef = ResourceContext<SemanticMemoryState>
@@ -213,28 +213,18 @@ export function query(ref: SemRef, q: string, limit?: number, subject?: string):
 // ---------------------------------------------------------------------------
 
 /**
- * All relation edges stored on the semantic resource. Pass `{ at }` to filter
- * to edges active at that instant (excludes superseded edges). Returns `[]`
- * when the relations tier is disabled (`ref.edges` absent).
- */
-export function allEdges(ref: SemRef, opts?: { at?: string }): Edge[] {
-  if (!ref.edges) return []
-  return ref.edges.all(opts)
-}
-
-/**
  * The set of node identities known to the semantic store — the canonicalized
  * subjects of every stored fact. Used as the `knownNodes` argument to
  * `ref.edges.pruneDangling` so the janitor can drop edges whose endpoints no
  * longer correspond to a stored fact subject after a cull.
  *
- * Subjects are lowercased to match the canonicalization the write path applies
- * to edge endpoints.
+ * Subjects are canonicalized (trim + lowercase) to match the canonicalization
+ * the write path applies to edge endpoints.
  */
 export function knownSubjects(ref: SemRef): Set<NodeRef> {
   const subjects = new Set<NodeRef>()
   for (const fact of ref.state.facts) {
-    subjects.add((fact.subject ?? 'user').toLowerCase())
+    subjects.add(canonicalizeSubject(fact.subject ?? 'user'))
   }
   return subjects
 }

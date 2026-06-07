@@ -25,6 +25,20 @@ function api(ref: EdgeBackingRef, slot: EdgeSlotConfig = {}) {
 }
 
 describe("createResourceEdgeApi", () => {
+  it("throws when constructed over a ref whose state has no edges array", () => {
+    // Guards the silent-write-loss footgun: edges declared but the state
+    // schema lacks the field, so Zod would strip writes on persist.
+    const badRef = {
+      get state() {
+        return {} as { edges?: Edge[] } & Record<string, unknown>;
+      },
+      async updateState() {
+        /* no-op */
+      },
+    } as EdgeBackingRef;
+    expect(() => createResourceEdgeApi(badRef, {})).toThrow(/no `edges` array/);
+  });
+
   it("add assigns a crypto-strong id, defaults, createdAt and persists", async () => {
     const ref = makeFakeRef();
     const edge = await api(ref).add({ from: "a", to: "b", type: "drives" });
@@ -73,6 +87,49 @@ describe("createResourceEdgeApi", () => {
     expect(stored).toHaveLength(2);
     const confidences = stored.map((x) => x.confidence).sort();
     expect(confidences).toEqual([0.5, 0.9]);
+  });
+
+  it("maxEdges drops superseded edges before active lower-confidence ones", async () => {
+    // Seed two active edges, then a third add that overflows cap=2. One of the
+    // existing edges is superseded (a tombstone) but has higher confidence than
+    // the surviving active edge — it must still be the one dropped.
+    const ref = makeFakeRef();
+    const e = api(ref, { maxEdges: 2 });
+    const tombstone = await e.add({ from: "a", to: "b", type: "r", confidence: 0.95 });
+    await e.supersede(tombstone.id); // high-confidence but superseded
+    await e.add({ from: "a", to: "c", type: "r", confidence: 0.3 }); // active, low confidence
+    await e.add({ from: "a", to: "d", type: "r", confidence: 0.4 }); // overflow → cull
+
+    const stored = ref.state.edges ?? [];
+    expect(stored).toHaveLength(2);
+    // The superseded high-confidence edge is gone; both survivors are active.
+    expect(stored.find((x) => x.id === tombstone.id)).toBeUndefined();
+    expect(stored.every((x) => x.validUntil === null)).toBe(true);
+    expect(stored.map((x) => x.confidence).sort()).toEqual([0.3, 0.4]);
+  });
+
+  it("maxEdges confidence-tie cull is deterministic (oldest createdAt dropped first)", async () => {
+    // Three active edges with identical confidence; cap=2 forces one out. The
+    // oldest (first-created) must be the one culled, deterministically.
+    const ref = makeFakeRef();
+    const e = api(ref, { maxEdges: 2 });
+    const oldest = await e.add({ from: "a", to: "b", type: "r", confidence: 0.5 });
+    // Force strictly increasing createdAt so the tiebreak is observable even if
+    // the clock has millisecond resolution.
+    const bump = (edge: Edge, ms: number) => {
+      const edges = (ref.state.edges as Edge[]).map((x) =>
+        x.id === edge.id ? { ...x, createdAt: new Date(ms).toISOString() } : x,
+      );
+      (ref.current as Record<string, unknown>).edges = edges;
+    };
+    bump(oldest, 1000);
+    const middle = await e.add({ from: "a", to: "c", type: "r", confidence: 0.5 });
+    bump(middle, 2000);
+    await e.add({ from: "a", to: "d", type: "r", confidence: 0.5 });
+
+    const stored = ref.state.edges ?? [];
+    expect(stored).toHaveLength(2);
+    expect(stored.find((x) => x.id === oldest.id)).toBeUndefined();
   });
 
   it("supersede sets validUntil without removing the edge", async () => {

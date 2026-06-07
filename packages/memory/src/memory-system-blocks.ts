@@ -22,7 +22,7 @@ import {
 import type { Edge } from '@flow-state-dev/core/graph'
 import type { ResolvedRelationsConfig } from './internal/config'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
-import { findBestOverlap } from './internal/helpers'
+import { findBestOverlap, canonicalizeSubject, edgesOf } from './internal/helpers'
 import { createDigestMemoryResource } from './digest-memory'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks'
 import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks'
@@ -192,19 +192,17 @@ async function applyEdges(
 ): Promise<void> {
   // Known node identities = canonicalized subjects of every stored fact.
   const knownNodes = new Set<string>(
-    semRef.state.facts.map((f: any) => (f.subject ?? 'user').toLowerCase()),
+    semRef.state.facts.map((f: any) => canonicalizeSubject(f.subject ?? 'user')),
   )
 
   // Confidence boost applied when reinforcing an existing edge. Mirrors the
   // semantic-fact reinforce default so edge and fact confidence move in step.
   const REINFORCE_BOOST = 0.05
 
-  const canon = (s: string): string => s.trim().toLowerCase()
-
   // Resolve an endpoint: known subject → use as-is; unknown → mint when
   // createImplicitEntities, else null (caller drops the edge).
   const resolveEndpoint = (raw: string): string | null => {
-    const node = canon(raw)
+    const node = canonicalizeSubject(raw)
     if (knownNodes.has(node)) return node
     if (relations.createImplicitEntities) {
       knownNodes.add(node)
@@ -213,8 +211,36 @@ async function applyEdges(
     return null
   }
 
+  // Bump confidence on an existing edge: supersede it, re-add a
+  // higher-confidence replacement built entirely from the matched edge (keeps
+  // provenance and never touches proposal endpoints).
+  const reinforceMatch = async (match: Edge): Promise<void> => {
+    await semRef.edges.supersede(match.id)
+    await semRef.edges.add({
+      from: match.from, to: match.to, type: match.type,
+      confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
+      source: match.source,
+    })
+  }
+
   for (const proposal of edges) {
     try {
+      const activeNow = (semRef.edges.all({ at: new Date().toISOString() }) as Edge[])
+
+      // Reinforce-by-id is resolved purely from the stored edge — we must NOT
+      // resolve the proposal's from/to first, since that would mint a phantom
+      // node (createImplicitEntities) for endpoints we never use, or drop a
+      // valid reinforce whose proposal endpoints happen to be unknown.
+      if (proposal.action === 'reinforce' && proposal.targetEdgeId) {
+        const match = activeNow.find((e) => e.id === proposal.targetEdgeId)
+        if (!match) {
+          console.warn(`[memory] relations: reinforce target not found (${proposal.targetEdgeId})`)
+          continue
+        }
+        await reinforceMatch(match)
+        continue
+      }
+
       const from = resolveEndpoint(proposal.from)
       const to = resolveEndpoint(proposal.to)
       if (from == null || to == null) {
@@ -228,7 +254,6 @@ async function applyEdges(
         continue
       }
 
-      const activeNow = (semRef.edges.all({ at: new Date().toISOString() }) as Edge[])
       const findMatch = (): Edge | undefined =>
         activeNow.find((e) => e.from === from && e.to === to && e.type === type)
 
@@ -237,12 +262,7 @@ async function applyEdges(
           // Dedup: an identical active edge means this is really a reinforce.
           const match = findMatch()
           if (match) {
-            await semRef.edges.supersede(match.id)
-            await semRef.edges.add({
-              from, to, type,
-              confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
-              source: match.source,
-            })
+            await reinforceMatch(match)
           } else {
             await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: [] })
           }
@@ -250,27 +270,34 @@ async function applyEdges(
         }
 
         case 'reinforce': {
-          // Bump confidence on the matching active edge by superseding it and
-          // adding a higher-confidence replacement (keeps provenance).
-          const match = proposal.targetEdgeId
-            ? activeNow.find((e) => e.id === proposal.targetEdgeId)
-            : findMatch()
+          // No targetEdgeId — locate the matching active edge by endpoints+type.
+          const match = findMatch()
           if (!match) {
             console.warn(`[memory] relations: reinforce target not found (${from} -${type}-> ${to})`)
             break
           }
-          await semRef.edges.supersede(match.id)
-          await semRef.edges.add({
-            from: match.from, to: match.to, type: match.type,
-            confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
-            source: match.source,
-          })
+          await reinforceMatch(match)
           break
         }
 
         case 'supersede': {
           if (proposal.targetEdgeId) {
             await semRef.edges.supersede(proposal.targetEdgeId)
+          } else {
+            // The consolidation prompt never shows the model existing edge IDs,
+            // so `targetEdgeId` is effectively always empty. Best-effort close:
+            // supersede an active edge with the same `from` and `type` — the
+            // `to` is what changed in the common supersede case (e.g. switching
+            // employers). Without this the old edge is never closed and stale
+            // edges accumulate beside their replacements.
+            const stale = activeNow.find((e) => e.from === from && e.type === type)
+            if (stale) {
+              await semRef.edges.supersede(stale.id)
+            } else {
+              console.warn(
+                `[memory] relations: supersede with no targetEdgeId and no active ${from} -${type}-> * to close`,
+              )
+            }
           }
           // Add the replacement edge described by from/to/type.
           await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: [] })
@@ -1039,9 +1066,8 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // is on AND the live ref carries the edge API — so an empty-facts batch
       // that still proposes edges is not skipped by the fast-path below.
       const relations = config.semantic?.relations
-      const semRefForEdges = ctx.resources.semanticMemory as any
       const hasEdgeWork = !!relations &&
-        !!semRefForEdges?.edges &&
+        !!edgesOf(ctx) &&
         Array.isArray((input as any).edges) &&
         (input as any).edges.length > 0
 
@@ -1173,28 +1199,41 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // non-fatal (consolidation runs in a background `.work()`): we warn and
       // continue rather than crash the turn. Edge extraction NEVER touches fact
       // subjects — it only reads them to canonicalize endpoints (FIX-703).
-      if (relations && semRef.edges && Array.isArray((input as any).edges)) {
+      if (relations && edgesOf(ctx) && Array.isArray((input as any).edges)) {
         await applyEdges(semRef, relations, (input as any).edges as ConsolidationEdge[])
       }
 
-      // Mark episodes as consolidated
-      if (epRef && consolidatedEpisodeIds.size > 0) {
-        await markConsolidated(epRef, [...consolidatedEpisodeIds])
+      // Fact-consolidation bookkeeping (FIX-745 follow-up): mark episodes
+      // consolidated, bump the consolidation count, and reset the episodic
+      // consolidation counters. This is tied to FACT consolidation and must run
+      // ONLY when facts were processed. Edge proposals carry no episode ids, so
+      // an edges-only batch consolidates nothing episodic — bumping the count
+      // and clearing "episodes since last consolidation" without marking any
+      // episodes consolidated would corrupt the consolidation cadence (it would
+      // reset the counter that triggers consolidation while leaving the episodes
+      // unconsolidated). When `facts` is empty we apply edges additively above
+      // and leave this bookkeeping untouched, matching the pre-FIX-745 no-facts
+      // behaviour.
+      if (input.facts.length > 0) {
+        // Mark episodes as consolidated
+        if (epRef && consolidatedEpisodeIds.size > 0) {
+          await markConsolidated(epRef, [...consolidatedEpisodeIds])
+        }
+
+        // Increment consolidation counter
+        await semRef.updateState((s: any) => ({
+          ...s,
+          totalConsolidations: s.totalConsolidations + 1,
+        }))
+
+        // Reset memory system consolidation counters
+        await sysRef.updateState((s: any) => ({
+          ...s,
+          episodicWritesSinceLastConsolidation: 0,
+          evictedPersistentSinceLastConsolidation: 0,
+          lastConsolidationTurn: wmRef.state.currentTurn,
+        }))
       }
-
-      // Increment consolidation counter
-      await semRef.updateState((s: any) => ({
-        ...s,
-        totalConsolidations: s.totalConsolidations + 1,
-      }))
-
-      // Reset memory system consolidation counters
-      await sysRef.updateState((s: any) => ({
-        ...s,
-        episodicWritesSinceLastConsolidation: 0,
-        evictedPersistentSinceLastConsolidation: 0,
-        lastConsolidationTurn: wmRef.state.currentTurn,
-      }))
 
       return { added, reinforced, updated, invalidated }
     },

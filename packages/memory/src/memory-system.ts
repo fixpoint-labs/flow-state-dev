@@ -239,8 +239,6 @@ export interface RelationsConfig {
    * (unknown endpoints are dropped).
    */
   createImplicitEntities?: boolean
-  /** Decay edge confidence during the hygiene pass. Default true when hygiene is on. */
-  decay?: boolean
 }
 
 /** Configuration for the semantic memory module within memory.system(). */

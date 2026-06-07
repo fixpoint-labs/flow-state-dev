@@ -29,7 +29,7 @@ import type { WorkingMemoryState } from '../../working-memory'
 import { allFacts } from '../../semantic-memory-helpers'
 import { effectiveConfidence } from '../../janitor'
 import { graphExpandCandidates } from './graph-expand'
-import type { ResourceEdgeApi } from '@flow-state-dev/core/graph'
+import { edgesOf } from '../../internal/helpers'
 import type {
   MemoryItem,
   PrepareEnvelope,
@@ -307,7 +307,7 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
       // for an empty graph, so the relations-disabled path adds nothing and
       // pays no cost. Reading edges from ctx here (rather than threading them
       // through the strategy) keeps the strategy contract unchanged.
-      const edgeApi = (ctx.resources?.semanticMemory as { edges?: ResourceEdgeApi } | undefined)?.edges
+      const edgeApi = edgesOf(ctx)
       if (edgeApi) {
         const allEdges = edgeApi.all()
         if (allEdges.length > 0) {
@@ -365,6 +365,14 @@ function extractCandidateMetadata(item: MemoryItem): Record<string, unknown> {
       category: item.category,
       confidence: item.confidence,
       reinforcementCount: item.reinforcementCount,
+    }
+  }
+  if (item.source === 'relation') {
+    return {
+      from: item.from,
+      to: item.to,
+      relationType: item.relationType,
+      confidence: item.confidence,
     }
   }
   return {
