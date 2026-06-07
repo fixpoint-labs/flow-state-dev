@@ -74,7 +74,6 @@ type Subscriber = {
   /** Last time real events were delivered; drives the liveness timeout. */
   lastTickAt: number;
   livenessMs: number;
-  signal: AbortSignal | undefined;
   /** Events delivered by the loop, awaiting the generator to drain them. */
   buffer: RequestStreamEvent[];
   capacity: number;
@@ -228,7 +227,6 @@ export function createLiveTailRegistry(
       lastSeen,
       lastTickAt: Date.now(),
       livenessMs,
-      signal: options.signal,
       buffer: [],
       capacity: options.maxPendingEvents ?? DEFAULT_MAX_PENDING_EVENTS,
       terminated: false,
@@ -258,12 +256,16 @@ export function createLiveTailRegistry(
           sub.wake = () => {};
           continue;
         }
-        const batch = sub.buffer;
-        sub.buffer = [];
-        // A `wake()` that fires while we're draining (sub.wake is the no-op
-        // here, not the parked resolver) is safely dropped: the loop re-checks
-        // `sub.buffer.length` at the top and drains anything pushed meanwhile.
-        for (const event of batch) {
+        // Drain in place (shift from the front) rather than swapping in a
+        // fresh array. The shared loop's capacity guard reads `sub.buffer.length`
+        // to bound outstanding events; draining in place keeps that length
+        // honest — events a tick queues while we're parked mid-yield are
+        // counted against the cap instead of escaping it behind a detached
+        // batch. A `wake()` that fires here (sub.wake is the no-op, not the
+        // parked resolver) is safely dropped: the outer loop re-checks
+        // `sub.buffer.length` and drains anything pushed meanwhile.
+        while (sub.buffer.length > 0) {
+          const event = sub.buffer.shift() as RequestStreamEvent;
           yield event;
           if (isTerminalRequestStreamEvent(event)) return;
         }
