@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { section, list, keyValues, entries, codeBlock, join, when } from "../src/prompt";
+import { section, list, keyValues, table, entries, codeBlock, join, when } from "../src/prompt";
 
 describe("prompt formatters", () => {
   describe("section", () => {
@@ -23,6 +23,56 @@ describe("prompt formatters", () => {
       expect(section("All Falsy", undefined, null, false, "")).toBe(
         "## All Falsy"
       );
+    });
+
+    it("defaults a string title to a level-2 heading", () => {
+      expect(section("Top", "body")).toBe("## Top\nbody");
+    });
+
+    it("uses the options form to set a nested heading level", () => {
+      expect(section({ title: "Sub", level: 3 }, "body")).toBe("### Sub\nbody");
+    });
+
+    it("clamps the heading level to 1–6", () => {
+      expect(section({ title: "Lo", level: 0 }, "x")).toBe("# Lo\nx");
+      expect(section({ title: "Hi", level: 9 }, "x")).toBe("###### Hi\nx");
+    });
+
+    it("supports the options form with no content", () => {
+      expect(section({ title: "Sub", level: 4 })).toBe("#### Sub");
+    });
+  });
+
+  describe("table", () => {
+    it("renders an array of records as a Markdown table", () => {
+      expect(
+        table([
+          { ticker: "AAPL", qty: 10 },
+          { ticker: "JPM", qty: 5 }
+        ])
+      ).toBe("| ticker | qty |\n| --- | --- |\n| AAPL | 10 |\n| JPM | 5 |");
+    });
+
+    it("takes the union of keys in first-seen order, empty for missing cells", () => {
+      expect(table([{ a: 1 }, { b: 2 }])).toBe(
+        "| a | b |\n| --- | --- |\n| 1 |  |\n|  | 2 |"
+      );
+    });
+
+    it("honors an explicit column list and order", () => {
+      expect(
+        table([{ a: 1, b: 2, c: 3 }], { columns: ["c", "a"] })
+      ).toBe("| c | a |\n| --- | --- |\n| 3 | 1 |");
+    });
+
+    it("escapes pipes and flattens newlines in cells", () => {
+      expect(table([{ note: "a|b\nc" }])).toBe(
+        "| note |\n| --- |\n| a\\|b c |"
+      );
+    });
+
+    it("returns an empty string for empty input", () => {
+      expect(table([])).toBe("");
     });
   });
 

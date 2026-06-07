@@ -287,13 +287,31 @@ Three overloads: `(session)`, `(session, user)`, `(session, user, org)`.
 
 | Formatter | Signature | Description |
 |-----------|-----------|-------------|
-| `section(title, ...content)` | `(string, ...string[]) => string` | Titled section with `##` header |
+| `section(title, ...content)` | `(string \| { title, level? }, ...string[]) => string` | Titled section; default `##`, or pass `{ title, level }` (1–6) to nest |
 | `list(items, options?)` | `(string[], { ordered?, prefix? }) => string` | Bullet or numbered list |
 | `keyValues(data)` | `(Record<string, unknown>) => string` | Key-value pairs |
+| `table(rows, options?)` | `(Record<string, unknown>[], { columns? }) => string` | Markdown table; columns default to the key union |
 | `entries(record, formatter)` | `(Record, fn) => string` | Mapped record entries |
 | `codeBlock(code, language?)` | `(string, string?) => string` | Fenced code block |
 | `join(...parts)` | `(...(string \| falsy)[]) => string` | Join with newlines, filtering falsy |
 | `when(condition, content)` | `(boolean, string) => string \| ""` | Conditional inclusion |
+
+The same `keyValues` / `list` / `table` shapes are available inside `.md` prompt templates as the auto-registered `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters — see [Prompts as Markdown](../advanced/generator-prompts-markdown.md#built-in-filters).
+
+## Concurrency
+
+### `mapLimit(values, maxConcurrency, mapper)`
+
+`(readonly T[], number | undefined, (value: T, index: number) => Promise<R>) => Promise<R[]>`
+
+Runs `mapper` over `values` with at most `maxConcurrency` calls in flight at once, preserving input order. `undefined` (or any value ≥ length) runs everything concurrently; empty input resolves to `[]`. Use it for bounded async fan-out **inside a handler** — `.parallel` fans out blocks, this fans out plain async work.
+
+```ts
+import { mapLimit } from "@flow-state-dev/core";
+
+// At most 5 quote fetches in flight, results in ticker order.
+const quotes = await mapLimit(tickers, 5, (ticker) => fetchQuote(ticker));
+```
 
 ## Client Data
 
@@ -421,4 +439,4 @@ type Output = BlockOutput<typeof myBlock>;
 
 - `@flow-state-dev/core/types` — Block, flow, resource, scope, streaming, and model type definitions
 - `@flow-state-dev/core/items` — Item unions, content types, and stream event helpers
-- `@flow-state-dev/core/prompt` — Composable prompt formatters (`section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when`)
+- `@flow-state-dev/core/prompt` — Composable prompt formatters (`section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when`)

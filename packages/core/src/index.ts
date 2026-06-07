@@ -95,6 +95,7 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { mapLimit } from "./helpers/concurrency";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";

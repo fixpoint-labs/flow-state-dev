@@ -227,6 +227,7 @@ Update policy:
 - Rule:
   - When two or more blocks (across phases or within a phase) format the same shape of data into a prompt — memo blocks, transcript dumps, structured-field rollups — lift the formatter into a `services/format.ts` file (or equivalent service module) and import it from each consumer.
   - Phase-specific formatters used by only one block stay in that block's file; the bar is "two or more consumers."
+  - Before hand-rolling a formatter, reach for the framework's prompt composers in `@flow-state-dev/core/prompt` — `section` (with a `{ title, level }` form for nesting), `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when`. Inside `.md` prompt templates the same shapes are available as the auto-registered `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters, so a typed object renders without a TypeScript pre-flatten step. Only write a service formatter for shapes these don't cover.
 - Why:
   - Inline copies drift. The trading-desk had three nearly-identical copies of `formatMemoBlock` across phase-2/3/4 before BP-018 — they diverged enough that one introduced a duplicate-heading bug that was caught only by a manual review.
   - One canonical formatter per data shape means one place to fix rendering tweaks, one place to enforce field ordering, one place to test.

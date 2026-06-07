@@ -205,7 +205,10 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
-- `section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context
+- `section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context. `section` takes a string title (default `##`) or `{ title, level }` to nest under another section; `table` renders an array of records as a Markdown table. The same `keyValues` / `list` / `table` shapes are auto-registered as `fsd_*` filters inside `.md` prompt templates.
+
+**Concurrency** (`@flow-state-dev/core`):
+- `mapLimit(values, maxConcurrency, mapper)` — bounded-concurrency async fan-out preserving input order. Use it for async work **inside a handler** (`.parallel` fans out blocks, not in-handler async).
 - `xmlTag(name, content)`, `renderTaggedContext(tagged, order)` — XML tag rendering used by object-form generator context
 - `validateTagName(name)`, `RESERVED_TAG_NAMES` — Reserved-tag list and validator for object-form context keys
 

@@ -73,6 +73,8 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
 
 For tool-call scenarios, set both `text` and `toolCalls` on the same step so the mock returns a terminal result without entering its internal execute loop. The stream wrapper in `lib/server.ts` then emits the tool-call items + the assistant text together.
 
+When a flow has many generators and you only care about a few, `createMockModelResolver` (and `testFlow`) accept `policy: "default"` plus an `unmockedDefault` script. Generators you mock explicitly win; any you forgot fall back to the default instead of throwing or emitting empty output. Reserve it for breadth tests — keep mocking explicitly wherever a generator's output shape drives the assertion. See [`unmockedGeneratorPolicy`](../api/testing.md#testflowoptions) for the full option set.
+
 ## Adding a scenario
 
 1. Pick a sentinel: `[scenario:my-thing]`.
