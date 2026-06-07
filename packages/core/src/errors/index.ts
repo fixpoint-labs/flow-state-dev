@@ -6,6 +6,8 @@ export { FlowError } from "./flow-error";
 export type { FlowErrorOptions, FlowErrorScope } from "./flow-error";
 export { OutputValidationError } from "./output-validation-error";
 export type { OutputValidationDetails } from "./output-validation-error";
+export { StrictSchemaError } from "./strict-schema-error";
+export type { StrictViolation } from "./strict-schema-error";
 export {
   SequencerOutputSchemaError,
   SequencerSchemaMismatchError

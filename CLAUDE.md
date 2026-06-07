@@ -297,7 +297,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 - No `z.record()` reachable from a generator output — use a fixed-shape `z.object({...})` or `z.array(z.object({ key, value }))` when keys are dynamic.
 - No `z.optional()` / `z.default()` on outputs — use `z.nullable()` instead.
 - No `z.union([...])` of differently-shaped variants. Collapse to a nullable single shape or split generators.
-- Guard with a test: import `makeSchemaStrict` from `@flow-state-dev/core` and assert no `ZodOptional` / `ZodDefault` / `ZodRecord` / non-literal `ZodUnion` survives. See `labs/trading-desk/test/output-schemas-strict.spec.ts` for a copy-paste walker.
+- Enforced automatically: `generator()` throws a `StrictSchemaError` at definition when a reachable `z.record` / non-literal `z.union` survives `makeSchemaStrict`. To assert a bare schema constant in a test, `import { assertStrictCompatible } from "@flow-state-dev/core"` and call it — no copied walker. See `labs/trading-desk/test/output-schemas-strict.spec.ts`.
 
 **Document new and changed user-facing functionality**
 
