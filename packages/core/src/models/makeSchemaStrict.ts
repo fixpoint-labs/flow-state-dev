@@ -19,6 +19,7 @@ import {
   getZodArrayElement,
   getZodObjectShape,
   getZodUnionOptions,
+  getZodRecordValueType,
 } from "../helpers/zod-introspect";
 import { StrictSchemaError, type StrictViolation } from "../errors/strict-schema-error";
 
@@ -157,13 +158,20 @@ function findStrictViolations(schema: ZodTypeAny, path = "$"): StrictViolation[]
       break;
     }
 
-    case "ZodRecord":
+    case "ZodRecord": {
       issues.push({
         path,
         typeName,
         reason: "additionalProperties=true — OpenAI strict mode rejects open-keyed maps",
       });
+      // Recurse into the value type so a nested violation (e.g. a union inside
+      // the record's value object) surfaces in the same throw rather than on a
+      // second `generator()` call after the record is restructured. `[*]` marks
+      // the open value position, distinct from an array's `[]`.
+      const valueType = getZodRecordValueType(schema);
+      if (valueType) issues.push(...findStrictViolations(valueType, `${path}[*]`));
       break;
+    }
 
     case "ZodUnion":
     case "ZodDiscriminatedUnion": {

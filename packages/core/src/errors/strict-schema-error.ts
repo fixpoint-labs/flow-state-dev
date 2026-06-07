@@ -41,9 +41,13 @@ export class StrictSchemaError extends FlowError {
       details: { violations },
     });
     this.name = "StrictSchemaError";
-    this.violations = violations;
   }
 
-  /** The strict-mode incompatibilities found, each with its path and reason. */
-  readonly violations: StrictViolation[];
+  /**
+   * The strict-mode incompatibilities found, each with its path and reason.
+   * Delegates to `details.violations` so the data has a single home.
+   */
+  get violations(): StrictViolation[] {
+    return this.details.violations;
+  }
 }

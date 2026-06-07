@@ -213,6 +213,53 @@ describe("assertStrictCompatible", () => {
     expect(() => assertStrictCompatible(schema)).toThrow(StrictSchemaError);
   });
 
+  it("surfaces a violation nested inside a record value in the same throw", () => {
+    // A record (itself a violation) whose value object contains a union. Both
+    // the record and the nested union should be reported at once, so the author
+    // does not have to fix the record, re-run, then discover the union.
+    const schema = z.object({
+      byKey: z.record(
+        z.string(),
+        z.object({ choice: z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]) }),
+      ),
+    });
+
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e).toBeInstanceOf(StrictSchemaError);
+      const paths = e.violations.map((v) => v.path);
+      expect(paths).toContain("$.byKey"); // the record itself
+      expect(paths).toContain("$.byKey[*].choice"); // the nested union under the open value
+    }
+  });
+
+  it("does not over-report a record of safe values", () => {
+    const schema = z.object({ counts: z.record(z.string(), z.number()) });
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      // Only the record itself — the number value type is strict-safe.
+      expect(e.violations).toHaveLength(1);
+      expect(e.violations[0].path).toBe("$.counts");
+    }
+  });
+
+  it("exposes violations via both `violations` and `details.violations`", () => {
+    const schema = z.object({ metrics: z.record(z.string(), z.number()) });
+    try {
+      assertStrictCompatible(schema);
+      throw new Error("expected throw");
+    } catch (err) {
+      const e = err as StrictSchemaError;
+      expect(e.violations).toBe(e.details.violations);
+    }
+  });
+
   it("passes an enum-style union of literals", () => {
     const schema = z.object({
       status: z.union([z.literal("a"), z.literal("b"), z.literal("c")]),
