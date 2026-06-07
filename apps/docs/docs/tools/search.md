@@ -66,6 +66,16 @@ Here's how each tier lands on each provider:
 
 Serper and Brave are thin wrappers with no depth concept, so the tier has no effect on them. That matters for provider selection (below).
 
+### Letting the agent choose the tier
+
+By default `tier` is a build-time setting — the model never sees it. Set `agentControlsTier: true` to expose `tier` as a tool parameter, so the model picks the depth per query (choosing `deep` when the user asks for thorough research, for example):
+
+```ts
+tools.search({ agentControlsTier: true });
+```
+
+A config `tier` still applies as the default the model can override. Leave `agentControlsTier` off for agents that shouldn't vary depth.
+
 ## Domain filters
 
 Restrict or exclude domains where the provider supports it:

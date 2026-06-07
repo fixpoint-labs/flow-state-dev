@@ -46,6 +46,7 @@ search({
   provider: "tavily",        // override auto-detection
   maxResults: 10,            // default: 5
   tier: "deep",              // "fast" | "balanced" (default) | "deep" — retrieval thoroughness
+  agentControlsTier: true,   // expose `tier` to the model so it picks depth per query
   searchDepth: "advanced",   // "basic" (default) or "advanced" — content pulled per result
   searchMode: "neural",      // provider-native override of the tier mapping (e.g. Exa type)
   includeDomains: ["arxiv.org"],   // restrict to these domains (where supported)

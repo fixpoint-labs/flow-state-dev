@@ -76,8 +76,15 @@ export interface SearchConfig {
    * Normalized retrieval-thoroughness tier. Maps per-provider; providers with
    * no depth knob (serper, brave) ignore it, and auto-selection prefers a
    * provider that meaningfully supports the requested tier. Default: 'balanced'.
+   * When `agentControlsTier` is set, this is the default the model can override.
    */
   tier?: SearchTier;
+  /**
+   * Expose `tier` as a tool parameter so the calling model picks the depth per
+   * query (e.g. choosing 'deep' when the user asks for thorough research). When
+   * false (default), `tier` stays a build-time setting the model never sees.
+   */
+  agentControlsTier?: boolean;
   /** Restrict results to these domains, where the provider supports it. */
   includeDomains?: string[];
   /** Exclude these domains from results, where the provider supports it. */

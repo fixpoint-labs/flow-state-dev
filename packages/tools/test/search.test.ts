@@ -192,6 +192,53 @@ describe("search tool factory", () => {
     );
   });
 
+  it("does not expose tier to the model by default (config-only)", async () => {
+    const { exaAdapter } = (await import("../src/search/providers")) as any;
+    const tool = search({ keys: { exa: "k" } });
+    // A model-supplied tier is stripped by the schema; the config default wins.
+    await runForTest(
+      tool,
+      { query: "test", maxResults: 5, topic: "general", tier: "deep" } as any,
+      {} as any
+    );
+    expect(exaAdapter.search).toHaveBeenCalledWith(
+      "test",
+      expect.objectContaining({ tier: "balanced" })
+    );
+  });
+
+  it("lets the model choose tier when agentControlsTier is set", async () => {
+    const { exaAdapter } = (await import("../src/search/providers")) as any;
+    const tool = search({ keys: { exa: "k" }, agentControlsTier: true });
+    await runForTest(
+      tool,
+      { query: "test", maxResults: 5, topic: "general", tier: "deep" } as any,
+      {} as any
+    );
+    expect(exaAdapter.search).toHaveBeenCalledWith(
+      "test",
+      expect.objectContaining({ tier: "deep" })
+    );
+  });
+
+  it("falls back to the config tier when the model omits it", async () => {
+    const { exaAdapter } = (await import("../src/search/providers")) as any;
+    const tool = search({
+      keys: { exa: "k" },
+      agentControlsTier: true,
+      tier: "fast",
+    });
+    await runForTest(
+      tool,
+      { query: "test", maxResults: 5, topic: "general" },
+      {} as any
+    );
+    expect(exaAdapter.search).toHaveBeenCalledWith(
+      "test",
+      expect.objectContaining({ tier: "fast" })
+    );
+  });
+
   it("throws when no provider available at execution time (lazy)", async () => {
     const tool = search();
 
